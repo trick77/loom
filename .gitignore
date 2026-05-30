@@ -1,0 +1,17 @@
+# Brainstorming visual companion artifacts
+.superpowers/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# Go
+/eve
+*.test
+
+# Local data & secrets
+*.db
+*.db-*
+.env
+.env.*
+data/
