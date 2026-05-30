@@ -68,8 +68,26 @@ WHERE token_hash = ? AND expires_at > datetime('now')`,
 	}
 	session.Token = token
 	session.ExpiresAt = expiresAt
-	_, _ = s.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at = datetime('now') WHERE token_hash = ?`, hashToken(token))
+	_, _ = s.db.ExecContext(ctx, `
+UPDATE sessions
+SET last_seen_at = datetime('now')
+WHERE token_hash = ? AND last_seen_at < datetime('now', '-1 minute')`,
+		hashToken(token),
+	)
 	return session, true, nil
+}
+
+// DeleteExpired removes expired sessions and returns how many rows were deleted.
+func (s *SessionStore) DeleteExpired(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= datetime('now')`)
+	if err != nil {
+		return 0, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count deleted sessions: %w", err)
+	}
+	return deleted, nil
 }
 
 // Revoke deletes the session for token.

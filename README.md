@@ -109,3 +109,10 @@ The callback URL configured in authentik must exactly match `SPARK_OIDC_REDIRECT
 5. Confirm Spark opens the authenticated app shell.
 6. Sign in as a member of `SPARK_OIDC_ADMIN_GROUP` and confirm admin features appear.
 7. Sign out and confirm returning to Spark requires a new authenticated session.
+
+### Logout behavior
+
+Spark logout revokes the local Spark session and redirects to
+`SPARK_OIDC_POST_LOGOUT_REDIRECT_URL`. It does not currently perform RP-initiated logout against
+authentik's `end_session_endpoint`. If the browser still has an active authentik SSO session, clicking
+**Sign in** again can immediately create a new Spark session without showing the authentik login form.

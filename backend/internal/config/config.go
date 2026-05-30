@@ -76,5 +76,16 @@ func Load() (Config, error) {
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("SPARK_SESSION_SECRET is required")
 	}
+	if cfg.OIDC.Issuer != "" {
+		if cfg.OIDC.ClientID == "" {
+			return Config{}, fmt.Errorf("SPARK_OIDC_CLIENT_ID is required when SPARK_OIDC_ISSUER is set")
+		}
+		if cfg.OIDC.ClientSecret == "" {
+			return Config{}, fmt.Errorf("SPARK_OIDC_CLIENT_SECRET is required when SPARK_OIDC_ISSUER is set")
+		}
+		if cfg.OIDC.RedirectURL == "" {
+			return Config{}, fmt.Errorf("SPARK_OIDC_REDIRECT_URL is required when SPARK_OIDC_ISSUER is set")
+		}
+	}
 	return cfg, nil
 }

@@ -101,6 +101,67 @@ func TestSessionStore_RevokeRemovesSession(t *testing.T) {
 	}
 }
 
+func TestSessionStore_LookupThrottlesLastSeenWrites(t *testing.T) {
+	db := openTestDB(t)
+	user := insertTestUser(t, db, RoleUser)
+	store := NewSessionStore(db, false)
+
+	session, err := store.Create(context.Background(), user.ID, time.Hour)
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	oldLastSeen := "2000-01-01 00:00:00"
+	_, err = db.ExecContext(context.Background(), `UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?`, oldLastSeen, hashToken(session.Token))
+	if err != nil {
+		t.Fatalf("set old last_seen_at: %v", err)
+	}
+
+	if _, ok, err := store.Lookup(context.Background(), session.Token); err != nil || !ok {
+		t.Fatalf("first Lookup() ok=%v err=%v", ok, err)
+	}
+	firstSeen := sessionLastSeen(t, db, session.Token)
+	if firstSeen == oldLastSeen {
+		t.Fatal("old last_seen_at was not refreshed")
+	}
+
+	if _, ok, err := store.Lookup(context.Background(), session.Token); err != nil || !ok {
+		t.Fatalf("second Lookup() ok=%v err=%v", ok, err)
+	}
+	secondSeen := sessionLastSeen(t, db, session.Token)
+	if secondSeen != firstSeen {
+		t.Fatalf("last_seen_at changed within throttle window: %q -> %q", firstSeen, secondSeen)
+	}
+}
+
+func TestSessionStore_DeleteExpiredRemovesOldSessions(t *testing.T) {
+	db := openTestDB(t)
+	user := insertTestUser(t, db, RoleUser)
+	store := NewSessionStore(db, false)
+
+	expired, err := store.Create(context.Background(), user.ID, -time.Hour)
+	if err != nil {
+		t.Fatalf("Create(expired) error: %v", err)
+	}
+	active, err := store.Create(context.Background(), user.ID, time.Hour)
+	if err != nil {
+		t.Fatalf("Create(active) error: %v", err)
+	}
+
+	deleted, err := store.DeleteExpired(context.Background())
+	if err != nil {
+		t.Fatalf("DeleteExpired() error: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", deleted)
+	}
+	if sessionExists(t, db, expired.Token) {
+		t.Fatal("expired session still exists")
+	}
+	if !sessionExists(t, db, active.Token) {
+		t.Fatal("active session was deleted")
+	}
+}
+
 func TestSessionStore_CookieFlags(t *testing.T) {
 	store := NewSessionStore(&sql.DB{}, true)
 	cookie := store.CookieFor("abc", time.Now().Add(time.Hour))
@@ -117,4 +178,24 @@ func TestSessionStore_CookieFlags(t *testing.T) {
 	if cookie.Path != "/" {
 		t.Fatalf("cookie path = %q, want /", cookie.Path)
 	}
+}
+
+func sessionLastSeen(t *testing.T, db DBTX, token string) string {
+	t.Helper()
+	var value string
+	err := db.QueryRowContext(context.Background(), `SELECT last_seen_at FROM sessions WHERE token_hash = ?`, hashToken(token)).Scan(&value)
+	if err != nil {
+		t.Fatalf("query last_seen_at: %v", err)
+	}
+	return value
+}
+
+func sessionExists(t *testing.T, db DBTX, token string) bool {
+	t.Helper()
+	var count int
+	err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM sessions WHERE token_hash = ?`, hashToken(token)).Scan(&count)
+	if err != nil {
+		t.Fatalf("query session exists: %v", err)
+	}
+	return count == 1
 }

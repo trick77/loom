@@ -62,3 +62,14 @@ func TestLoad_oidcSettings(t *testing.T) {
 		t.Fatalf("OIDC admin group = %q", cfg.OIDC.AdminGroup)
 	}
 }
+
+func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
+	t.Setenv("SPARK_OIDC_ISSUER", "https://auth.example.com/application/o/spark/")
+	t.Setenv("SPARK_OIDC_CLIENT_ID", "spark-client")
+	t.Setenv("SPARK_OIDC_REDIRECT_URL", "https://spark.example.com/api/auth/callback")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when OIDC issuer is set without client secret")
+	}
+}

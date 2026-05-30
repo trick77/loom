@@ -107,7 +107,7 @@ func (s *OIDCService) HandleCallback(r *http.Request) (Claims, error) {
 	if err != nil {
 		return Claims{}, fmt.Errorf("verify oidc claims: %w", err)
 	}
-	if verified.Nonce != "" && verified.Nonce != nonceCookie.Value {
+	if verified.Nonce == "" || verified.Nonce != nonceCookie.Value {
 		return Claims{}, ErrInvalidNonce
 	}
 	return verified.Claims, nil

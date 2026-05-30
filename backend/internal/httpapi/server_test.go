@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -103,6 +104,37 @@ func TestAdminUsersRequiresAdmin(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", rec.Code)
 	}
+}
+
+func TestAuthCallbackRedirectsOnOIDCError(t *testing.T) {
+	srv := New(Deps{
+		Version: "test",
+		OIDC:   fakeOIDCService{err: errors.New("bad callback")},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=bad", nil)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/?auth_error=oidc_callback_failed" {
+		t.Fatalf("Location = %q", loc)
+	}
+}
+
+type fakeOIDCService struct {
+	claims auth.Claims
+	err    error
+}
+
+func (f fakeOIDCService) StartLogin(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "https://auth.example.com/authorize", http.StatusFound)
+}
+
+func (f fakeOIDCService) HandleCallback(*http.Request) (auth.Claims, error) {
+	return f.claims, f.err
 }
 
 type fakeSessionStore struct {

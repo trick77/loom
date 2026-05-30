@@ -32,7 +32,7 @@ func TestOIDCService_CallbackMapsVerifiedClaims(t *testing.T) {
 			Username: "jan",
 			Email:    "jan@example.com",
 			Groups:   []string{"spark-admins"},
-		}},
+		}, nonce: "valid-nonce"},
 	})
 	req := requestWithValidStateAndNonce(t, service)
 
@@ -45,6 +45,32 @@ func TestOIDCService_CallbackMapsVerifiedClaims(t *testing.T) {
 	}
 	if claims.Groups[0] != "spark-admins" {
 		t.Fatalf("groups = %v", claims.Groups)
+	}
+}
+
+func TestOIDCService_CallbackRejectsMissingNonceClaim(t *testing.T) {
+	service := NewOIDCService(OIDCServiceConfig{
+		ClientID: "client",
+		Backend: fakeOIDCBackend{claims: Claims{Subject: "sub-1"}},
+	})
+	req := requestWithValidStateAndNonce(t, service)
+
+	_, err := service.HandleCallback(req)
+	if !errors.Is(err, ErrInvalidNonce) {
+		t.Fatalf("error = %v, want ErrInvalidNonce", err)
+	}
+}
+
+func TestOIDCService_CallbackRejectsNonceMismatch(t *testing.T) {
+	service := NewOIDCService(OIDCServiceConfig{
+		ClientID: "client",
+		Backend: fakeOIDCBackend{claims: Claims{Subject: "sub-1"}, nonce: "wrong-nonce"},
+	})
+	req := requestWithValidStateAndNonce(t, service)
+
+	_, err := service.HandleCallback(req)
+	if !errors.Is(err, ErrInvalidNonce) {
+		t.Fatalf("error = %v, want ErrInvalidNonce", err)
 	}
 }
 
@@ -79,10 +105,13 @@ func requestWithValidStateAndNonce(t *testing.T, service *OIDCService) *http.Req
 	var state string
 	callback := httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=abc", nil)
 	for _, cookie := range rec.Result().Cookies() {
-		callback.AddCookie(cookie)
 		if cookie.Name == oidcStateCookieName {
 			state = cookie.Value
 		}
+		if cookie.Name == oidcNonceCookieName {
+			cookie.Value = "valid-nonce"
+		}
+		callback.AddCookie(cookie)
 	}
 	callback.URL.RawQuery = "code=abc&state=" + state
 	return callback
@@ -91,6 +120,7 @@ func requestWithValidStateAndNonce(t *testing.T, service *OIDCService) *http.Req
 type fakeOIDCBackend struct {
 	authURL string
 	claims  Claims
+	nonce   string
 }
 
 func (f fakeOIDCBackend) AuthCodeURL(state string, opts ...oauth2.AuthCodeOption) string {
@@ -105,5 +135,5 @@ func (f fakeOIDCBackend) Exchange(context.Context, string) (*oauth2.Token, error
 }
 
 func (f fakeOIDCBackend) VerifyClaims(context.Context, *oauth2.Token) (VerifiedClaims, error) {
-	return VerifiedClaims{Claims: f.claims, Nonce: ""}, nil
+	return VerifiedClaims{Claims: f.claims, Nonce: f.nonce}, nil
 }

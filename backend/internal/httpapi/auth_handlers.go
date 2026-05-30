@@ -19,13 +19,17 @@ func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
-	if s.oidc == nil || s.users == nil || s.sessions == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "auth is not configured")
+	if s.oidc == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "oidc is not configured")
 		return
 	}
 	claims, err := s.oidc.HandleCallback(r)
 	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "oidc callback failed")
+		http.Redirect(w, r, "/?auth_error=oidc_callback_failed", http.StatusFound)
+		return
+	}
+	if s.users == nil || s.sessions == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "auth is not configured")
 		return
 	}
 	user, err := s.users.UpsertFromClaims(r.Context(), claims, s.oidcAdminGroup)

@@ -43,6 +43,9 @@ func run() error {
 	secureCookies := strings.HasPrefix(cfg.PublicURL, "https://")
 	userStore := auth.NewUserStore(db)
 	sessionStore := auth.NewSessionStore(db, secureCookies)
+	if _, err := sessionStore.DeleteExpired(context.Background()); err != nil {
+		return err
+	}
 	authMW := auth.NewMiddleware(sessionStore, userStore)
 	var oidcService *auth.OIDCService
 	if cfg.OIDC.Issuer != "" {
