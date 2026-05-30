@@ -16,6 +16,7 @@ frontend/dist/
 *.db-*
 .env
 .env.*
+!.env.example
 data/
 
 # Embedded frontend build output (generated; keep dir + placeholders)
