@@ -10,17 +10,22 @@ import (
 //go:embed all:dist
 var distFS embed.FS
 
-// SPAHandler serves the embedded frontend. Existing files are served directly;
-// any other path falls back to index.html so client-side routing works.
+// SPAHandler serves the embedded frontend (web/dist) as a SPA.
 func SPAHandler() http.Handler {
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
 		panic(err) // dist is embedded at build time; this is a programmer error
 	}
-	fileServer := http.FileServer(http.FS(sub))
+	return spaHandler(sub)
+}
 
+// spaHandler serves fsys as a SPA: existing regular files are served directly;
+// any other path — unknown client-side routes AND directory paths — falls back
+// to index.html (so a directory never renders an http.FileServer listing).
+func spaHandler(fsys fs.FS) http.Handler {
+	fileServer := http.FileServer(http.FS(fsys))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := fs.Stat(sub, trimLeadingSlash(r.URL.Path)); err == nil {
+		if info, err := fs.Stat(fsys, trimLeadingSlash(r.URL.Path)); err == nil && !info.IsDir() {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
