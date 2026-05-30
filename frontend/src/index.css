@@ -1,9 +1,11 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
-@import "@fontsource/fraunces";
 
-/* UI direction A — Warm Editorial. These tokens drive the Tailwind v4 theme
-   (generating bg-*/text-*/border-*/font-*/rounded-spark utilities).
+/* Font packages are imported in main.tsx so this file is just the Tailwind
+   entry plus the theme. (Avoid bare "* slash" glob examples in comments here:
+   a literal close-comment sequence ends the comment early and breaks parsing.) */
+
+/* UI direction A — Warm Editorial. These tokens drive the Tailwind v4 theme,
+   generating the bg, text, border, font, and rounded-spark utilities.
    SWAP POINT: replace --font-sans / --font-serif with the real Anthropic font
    package once its npm name is confirmed. */
 @theme {

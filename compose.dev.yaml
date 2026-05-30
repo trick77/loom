@@ -1,0 +1,40 @@
+# Local development: single embedded binary, dev auth (no authentik), host networking.
+#
+#   docker compose -f compose.dev.yaml up --build      # start (UI on http://localhost:8080)
+#   docker compose -f compose.dev.yaml down            # stop
+#
+# Auto-signs in as a fixed "dev" admin user. The dev-auth guard requires a loopback
+# SPARK_ADDR, which is why this uses network_mode: host instead of published ports
+# (a 127.0.0.1 bind inside a bridge-network container is unreachable via -p).
+services:
+  # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
+  spark-init:
+    image: alpine
+    command: chown -R 65532:65532 /data
+    volumes:
+      - spark-dev-data:/data
+
+  spark:
+    build:
+      context: .
+      dockerfile: backend/Containerfile
+    network_mode: host
+    environment:
+      SPARK_AUTH_MODE: dev
+      SPARK_ADDR: "127.0.0.1:8080"
+      SPARK_PUBLIC_URL: "http://localhost:8080"
+      SPARK_SESSION_SECRET: dev-secret-please-change
+      SPARK_DB_PATH: /data/spark.db
+      SPARK_USERS_DIR: /data/users
+      # Optional: point at a real OpenAI-compatible endpoint to actually chat.
+      SPARK_CHAT_BASE_URL: "${SPARK_CHAT_BASE_URL:-}"
+      SPARK_CHAT_API_KEY: "${SPARK_CHAT_API_KEY:-}"
+      SPARK_CHAT_MODEL: "${SPARK_CHAT_MODEL:-MiMo}"
+    volumes:
+      - spark-dev-data:/data
+    depends_on:
+      spark-init:
+        condition: service_completed_successfully
+
+volumes:
+  spark-dev-data:
