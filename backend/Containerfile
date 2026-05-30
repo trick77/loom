@@ -11,13 +11,14 @@ RUN npm run build
 
 # --- Stage 2: build the Go binary (pure-Go, no cgo) ---
 FROM golang:1.25-alpine AS build
+ARG SPARK_VERSION=dev
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 # bring in the built frontend so //go:embed all:dist has real assets
 COPY --from=web /app/backend/web/dist ./web/dist
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(date +%Y%m%d)" -o /out/spark ./cmd/spark
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${SPARK_VERSION}" -o /out/spark ./cmd/spark
 
 # --- Stage 3: minimal runtime ---
 FROM gcr.io/distroless/static-debian12:nonroot

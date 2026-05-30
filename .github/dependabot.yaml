@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # Go backend
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      go-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Pinned to v0.20.0 for sqlite-vec ABI compatibility (see AGENTS.md);
+      # bumping minor/major breaks the sqlite-vec binding.
+      - dependency-name: github.com/ncruces/go-sqlite3
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+
+  # React frontend
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+# Note: the image uses backend/Containerfile (Podman naming), which Dependabot's
+# docker ecosystem does not auto-detect; base-image bumps are handled manually.

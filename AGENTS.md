@@ -9,6 +9,7 @@ Full design: `docs/superpowers/specs/2026-05-30-spark-design.md`. Per-phase plan
 - One feature branch per phase (`feat/phase-N-...`); never commit to `master`. Conventional commits.
 - TDD: write the failing test first, then the minimal implementation.
 - Keep files focused — one clear responsibility each.
+- YAML files use the `.yaml` extension (never `.yml`).
 
 ## Commands
 - `make test` — backend Go tests (`go test ./...`)
