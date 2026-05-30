@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/trick77/spark/internal/auth"
+	"github.com/trick77/spark/internal/chat"
+	"github.com/trick77/spark/internal/llm"
 )
 
 // Deps are the dependencies needed to build the server. Grows in later phases
@@ -19,6 +21,8 @@ type Deps struct {
 	Auth                  *auth.Middleware
 	Sessions              SessionService
 	Users                 UserService
+	Chat                  ChatStore
+	LLM                   ChatClient
 	OIDCAdminGroup        string
 	DevAuthClaims         auth.Claims
 	PostLogoutRedirectURL string
@@ -30,9 +34,35 @@ type server struct {
 	auth                  *auth.Middleware
 	sessions              SessionService
 	users                 UserService
+	chat                  ChatStore
+	llm                   ChatClient
 	oidcAdminGroup        string
 	devAuthClaims         auth.Claims
 	postLogoutRedirectURL string
+}
+
+// ChatStore is the chat persistence dependency used by chat handlers.
+type ChatStore interface {
+	CreateProject(context.Context, string, chat.CreateProjectInput) (chat.Project, error)
+	ListProjects(context.Context, string, bool) ([]chat.Project, error)
+	UpdateProject(context.Context, string, string, chat.UpdateProjectInput) (chat.Project, bool, error)
+	SetProjectArchived(context.Context, string, string, bool) (bool, error)
+	DeleteProject(context.Context, string, string) (bool, error)
+	CreateThread(context.Context, string, chat.CreateThreadInput) (chat.Thread, error)
+	GetThread(context.Context, string, string) (chat.Thread, bool, error)
+	ListThreads(context.Context, string, chat.ListThreadsOptions) ([]chat.Thread, error)
+	UpdateThread(context.Context, string, string, chat.UpdateThreadInput) (chat.Thread, bool, error)
+	SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error)
+	SetThreadArchived(context.Context, string, string, bool) (bool, error)
+	DeleteThread(context.Context, string, string) (bool, error)
+	AddMessage(context.Context, string, string, chat.Role, string) (chat.Message, error)
+	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
+}
+
+// ChatClient is the LLM dependency used by chat stream handlers.
+type ChatClient interface {
+	StreamChat(context.Context, []llm.Message, func(string) error) (string, error)
+	GenerateTitle(context.Context, string, string) (string, error)
 }
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.
@@ -65,6 +95,8 @@ func New(d Deps) http.Handler {
 		auth:                  d.Auth,
 		sessions:              d.Sessions,
 		users:                 d.Users,
+		chat:                  d.Chat,
+		llm:                   d.LLM,
 		oidcAdminGroup:        d.OIDCAdminGroup,
 		devAuthClaims:         d.DevAuthClaims,
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
@@ -78,6 +110,22 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/auth/logout", s.requireAuth(http.HandlerFunc(s.handleAuthLogout)))
 	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
 	mux.Handle("GET /api/admin/users", s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdminUsers))))
+	mux.Handle("GET /api/projects", s.requireAuth(http.HandlerFunc(s.handleListProjects)))
+	mux.Handle("POST /api/projects", s.requireAuth(http.HandlerFunc(s.handleCreateProject)))
+	mux.Handle("PATCH /api/projects/{projectID}", s.requireAuth(http.HandlerFunc(s.handleUpdateProject)))
+	mux.Handle("POST /api/projects/{projectID}/archive", s.requireAuth(http.HandlerFunc(s.handleArchiveProject)))
+	mux.Handle("POST /api/projects/{projectID}/unarchive", s.requireAuth(http.HandlerFunc(s.handleUnarchiveProject)))
+	mux.Handle("DELETE /api/projects/{projectID}", s.requireAuth(http.HandlerFunc(s.handleDeleteProject)))
+	mux.Handle("GET /api/threads", s.requireAuth(http.HandlerFunc(s.handleListThreads)))
+	mux.Handle("POST /api/threads", s.requireAuth(http.HandlerFunc(s.handleCreateThread)))
+	mux.Handle("GET /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleGetThread)))
+	mux.Handle("PATCH /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleUpdateThread)))
+	mux.Handle("POST /api/threads/{threadID}/star", s.requireAuth(http.HandlerFunc(s.handleStarThread)))
+	mux.Handle("POST /api/threads/{threadID}/unstar", s.requireAuth(http.HandlerFunc(s.handleUnstarThread)))
+	mux.Handle("POST /api/threads/{threadID}/archive", s.requireAuth(http.HandlerFunc(s.handleArchiveThread)))
+	mux.Handle("POST /api/threads/{threadID}/unarchive", s.requireAuth(http.HandlerFunc(s.handleUnarchiveThread)))
+	mux.Handle("DELETE /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleDeleteThread)))
+	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
 	if d.Static != nil {
 		mux.Handle("/", d.Static)
 	}
