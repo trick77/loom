@@ -109,7 +109,7 @@ func TestAdminUsersRequiresAdmin(t *testing.T) {
 func TestAuthCallbackRedirectsOnOIDCError(t *testing.T) {
 	srv := New(Deps{
 		Version: "test",
-		OIDC:   fakeOIDCService{err: errors.New("bad callback")},
+		OIDC:    fakeOIDCService{err: errors.New("bad callback")},
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=bad", nil)
@@ -121,6 +121,43 @@ func TestAuthCallbackRedirectsOnOIDCError(t *testing.T) {
 	}
 	if loc := rec.Header().Get("Location"); loc != "/?auth_error=oidc_callback_failed" {
 		t.Fatalf("Location = %q", loc)
+	}
+}
+
+func TestDevAuthLoginCreatesAdminSession(t *testing.T) {
+	user := auth.User{ID: "u1", Username: "dev", Role: auth.RoleAdmin, ResponseLanguage: "auto"}
+	session := auth.Session{Token: "tok", UserID: user.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	srv := New(Deps{
+		Version: "test",
+		Sessions: fakeSessionStore{
+			session: session,
+		},
+		Users: fakeUserStore{user: user},
+		DevAuthClaims: auth.Claims{
+			Subject:  "dev-admin",
+			Username: "dev",
+			Email:    "dev@example.local",
+			Name:     "Dev Admin",
+			Groups:   []string{auth.DevAdminGroup},
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/login", nil)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302: %s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "/" {
+		t.Fatalf("Location = %q, want /", loc)
+	}
+	cookie := rec.Result().Cookies()[0]
+	if cookie.Name != auth.SessionCookieName {
+		t.Fatalf("cookie name = %q, want %q", cookie.Name, auth.SessionCookieName)
+	}
+	if cookie.Value != "tok" {
+		t.Fatalf("cookie value = %q, want tok", cookie.Value)
 	}
 }
 

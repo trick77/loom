@@ -73,3 +73,42 @@ func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
 		t.Fatal("expected error when OIDC issuer is set without client secret")
 	}
 }
+
+func TestLoad_devAuthRequiresLoopbackAddr(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
+	t.Setenv("SPARK_AUTH_MODE", "dev")
+	t.Setenv("SPARK_ADDR", ":8080")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when dev auth listens on all interfaces")
+	}
+}
+
+func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
+	t.Setenv("SPARK_AUTH_MODE", "dev")
+	t.Setenv("SPARK_ADDR", "localhost:8080")
+	t.Setenv("SPARK_PUBLIC_URL", "https://spark.example.com")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when dev auth has a non-loopback public URL")
+	}
+}
+
+func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
+	t.Setenv("SPARK_AUTH_MODE", "dev")
+	t.Setenv("SPARK_ADDR", "127.0.0.1:8080")
+	t.Setenv("SPARK_PUBLIC_URL", "http://localhost:8080")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.AuthMode != AuthModeDev {
+		t.Fatalf("AuthMode = %q, want dev", cfg.AuthMode)
+	}
+	if cfg.DevUser.Role != "admin" {
+		t.Fatalf("DevUser role = %q, want admin", cfg.DevUser.Role)
+	}
+}

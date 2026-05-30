@@ -13,6 +13,9 @@ const (
 	RoleUser  Role = "user"
 )
 
+// DevAdminGroup is the synthetic group used only by local development auth.
+const DevAdminGroup = "spark-dev-admin"
+
 // User is Spark's app-local user profile.
 type User struct {
 	ID               string `json:"id"`

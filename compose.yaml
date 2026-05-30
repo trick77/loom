@@ -10,6 +10,7 @@ services:
       SPARK_DB_PATH: "/data/spark.db"
       SPARK_USERS_DIR: "/data/users"
       SPARK_PUBLIC_URL: "${SPARK_PUBLIC_URL}"
+      SPARK_AUTH_MODE: "${SPARK_AUTH_MODE:-oidc}"
       SPARK_TIKA_URL: "http://tika:9998"
       SPARK_SEARXNG_URL: "http://searxng:8080"
       SPARK_MCP_CONFIG: "/config/mcp.json"

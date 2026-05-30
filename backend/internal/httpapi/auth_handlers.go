@@ -11,6 +11,10 @@ import (
 const sessionTTL = 30 * 24 * time.Hour
 
 func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
+	if s.devAuthClaims.Subject != "" {
+		s.createSessionFromClaims(w, r, s.devAuthClaims, auth.DevAdminGroup)
+		return
+	}
 	if s.oidc == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "oidc is not configured")
 		return
@@ -28,11 +32,15 @@ func (s *server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?auth_error=oidc_callback_failed", http.StatusFound)
 		return
 	}
+	s.createSessionFromClaims(w, r, claims, s.oidcAdminGroup)
+}
+
+func (s *server) createSessionFromClaims(w http.ResponseWriter, r *http.Request, claims auth.Claims, adminGroup string) {
 	if s.users == nil || s.sessions == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "auth is not configured")
 		return
 	}
-	user, err := s.users.UpsertFromClaims(r.Context(), claims, s.oidcAdminGroup)
+	user, err := s.users.UpsertFromClaims(r.Context(), claims, adminGroup)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "user upsert failed")
 		return
