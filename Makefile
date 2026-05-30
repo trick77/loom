@@ -1,4 +1,4 @@
-.PHONY: build test fe-build fe-test run dev tidy
+.PHONY: build test fe-build fe-test run dev docker-dev docker-dev-down tidy
 
 tidy:
 	cd backend && go mod tidy
@@ -20,3 +20,10 @@ run:
 
 dev:
 	./hack/dev.sh
+
+# Dockerized local dev with dev auth (no authentik). Single embedded image, UI on http://localhost:8080.
+docker-dev:
+	docker compose -f compose.dev.yaml up --build
+
+docker-dev-down:
+	docker compose -f compose.dev.yaml down
