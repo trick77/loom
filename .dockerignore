@@ -1,0 +1,5 @@
+**/node_modules
+**/.git
+bin
+.superpowers
+backend/web/dist/assets
