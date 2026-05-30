@@ -47,13 +47,6 @@ jobs:
           echo "short=$SHORT"  >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEXT ($BUMP) at $SHORT" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Create and push tag
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.ver.outputs.version }}"
-          git push origin "${{ steps.ver.outputs.version }}"
-
       - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v4
@@ -78,3 +71,12 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Tag only AFTER a successful image build/push, so a failed build never
+      # leaves an orphan git tag behind.
+      - name: Create and push tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.ver.outputs.version }}"
+          git push origin "${{ steps.ver.outputs.version }}"
