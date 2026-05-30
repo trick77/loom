@@ -1,14 +1,27 @@
+@import "tailwindcss";
 @import "@fontsource-variable/inter";
 @import "@fontsource/fraunces";
-@import "./theme/tokens.css";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* UI direction A — Warm Editorial. These tokens drive the Tailwind v4 theme
+   (generating bg-*/text-*/border-*/font-*/rounded-spark utilities).
+   SWAP POINT: replace --font-sans / --font-serif with the real Anthropic font
+   package once its npm name is confirmed. */
+@theme {
+  --color-bg: #faf7f2;
+  --color-panel: #f1ebe1;
+  --color-active: #e9dfce;
+  --color-border: #e3dccf;
+  --color-ink: #2b2520;
+  --color-muted: #9a8f7e;
+  --color-accent: #cc785c;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Fraunces", Georgia, serif;
+  --radius-spark: 12px;
+}
 
 body {
   margin: 0;
-  background: var(--spark-bg);
-  color: var(--spark-text);
-  font-family: var(--spark-font-sans), ui-sans-serif, system-ui, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }
