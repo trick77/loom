@@ -33,6 +33,16 @@ type Claims struct {
 	Groups   []string
 }
 
+type contextKey string
+
+const userContextKey contextKey = "spark_user"
+
+// UserFromContext returns the authenticated user stored on a request context.
+func UserFromContext(ctx context.Context) (User, bool) {
+	user, ok := ctx.Value(userContextKey).(User)
+	return user, ok
+}
+
 // DBTX is the subset of *sql.DB used by auth stores.
 type DBTX interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)

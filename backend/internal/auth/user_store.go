@@ -98,6 +98,24 @@ ORDER BY username ASC`)
 	return users, nil
 }
 
+// FindByID returns a user by app-local ID.
+func (s *UserStore) FindByID(ctx context.Context, id string) (User, bool, error) {
+	var user User
+	err := s.db.QueryRowContext(ctx, `
+SELECT id, oidc_subject, username, email, display_name, role, response_language
+FROM users
+WHERE id = ?`,
+		id,
+	).Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage)
+	if err == nil {
+		return user, true, nil
+	}
+	if err == sql.ErrNoRows {
+		return User{}, false, nil
+	}
+	return User{}, false, fmt.Errorf("find user by id: %w", err)
+}
+
 func (s *UserStore) findBySubject(ctx context.Context, subject string) (User, bool, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
