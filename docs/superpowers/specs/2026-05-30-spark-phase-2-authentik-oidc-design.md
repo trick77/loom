@@ -12,7 +12,7 @@ Included:
 
 - OIDC authorization-code login against authentik.
 - Server-side Spark session cookie after successful OIDC callback.
-- Logout that clears the Spark session and redirects to authentik's end-session flow when configured.
+- Logout that clears the Spark session and redirects to a configured post-logout URL.
 - Local `users` table keyed by the OIDC subject claim.
 - Local `sessions` table keyed by opaque random session tokens.
 - Admin role mapping from a configured authentik group claim.
@@ -68,7 +68,8 @@ refreshed on every login so authentik remains authoritative.
 
 - `GET /api/auth/login`: starts OIDC login.
 - `GET /api/auth/callback`: validates callback, upserts user, creates Spark session, redirects to `/`.
-- `POST /api/auth/logout`: revokes the current session and returns a logout redirect URL.
+- `POST /api/auth/logout`: revokes the current session and returns the configured post-logout
+  redirect URL.
 - `GET /api/me`: returns the current user or `401`.
 - `GET /api/admin/users`: returns app-local users; admin only.
 
