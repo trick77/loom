@@ -25,7 +25,3 @@ opportunistically when touching the relevant code.
 ## Config / deployment
 - **`mcp.json` transport**: currently `"http"` with `/sse` URLs. Align with the MCP client's schema in
   Phase 4 (likely `"sse"`), once the client defines it.
-
-## Docs
-- The Phase 1 plan doc says "Go 1.23"; `go.mod` is `go 1.25.0` (a dependency bumped the toolchain). The
-  design spec pins no Go version, so this is only a stale reference in the plan.

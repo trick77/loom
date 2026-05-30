@@ -6,7 +6,7 @@
 
 **Architecture:** One Go module (`backend/`) serves `/api/*` (JSON + SSE) and the embedded React build (`web/dist` via `embed.FS`) with SPA fallback. Persistence is one SQLite file accessed through the **pure-Go** `ncruces/go-sqlite3` driver (no cgo) with **sqlite-vec** linked via `sqlite-vec-go-bindings/ncruces`. A hand-rolled migration runner applies embedded `.sql` files. The frontend is a Vite + React + TypeScript + Tailwind app using the chosen **UI direction A (Warm Editorial)** palette. Containerfile is multi-stage (Node build → Go static build → distroless), `compose.yaml` wires `spark` + `searxng` + `tika`.
 
-**Tech Stack:** Go 1.23 (stdlib `net/http` 1.22+ routing, no web framework), `github.com/ncruces/go-sqlite3` + `github.com/asg017/sqlite-vec-go-bindings/ncruces`, React 18 + TypeScript + Vite 5 + Tailwind 3, Vitest + Testing Library, OCI Containerfile/compose (Podman/Docker).
+**Tech Stack:** Go 1.25 (stdlib `net/http` 1.22+ routing, no web framework), `github.com/ncruces/go-sqlite3` + `github.com/asg017/sqlite-vec-go-bindings/ncruces`, React 18 + TypeScript + Vite 5 + Tailwind 3, Vitest + Testing Library, OCI Containerfile/compose (Podman/Docker).
 
 ---
 
@@ -25,7 +25,7 @@
 ```
 spark/
   backend/
-    go.mod                                  # module github.com/trick77/spark, go 1.23
+    go.mod                                  # module github.com/trick77/spark, go 1.25
     cmd/spark/main.go                         # entrypoint: load config, open store, build server, serve + graceful shutdown
     internal/
       config/config.go                      # Config struct + Load() from ENV
@@ -70,7 +70,7 @@ spark/
 
 Run:
 ```bash
-mkdir -p backend/cmd/spark && cd backend && go mod init github.com/trick77/spark && go mod edit -go=1.23
+mkdir -p backend/cmd/spark && cd backend && go mod init github.com/trick77/spark && go mod edit -go=1.25
 ```
 
 - [ ] **Step 2: Add a temporary main stub so the module compiles**
@@ -1343,7 +1343,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # --- Stage 2: build the Go binary (pure-Go, no cgo) ---
-FROM golang:1.23-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
