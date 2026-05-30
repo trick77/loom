@@ -1,0 +1,14 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource/fraunces";
+@import "./theme/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: var(--eve-bg);
+  color: var(--eve-text);
+  font-family: var(--eve-font-sans), ui-sans-serif, system-ui, sans-serif;
+}

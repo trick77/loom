@@ -1,0 +1,18 @@
+/* UI direction A — Warm Editorial (Claude-inspired). Starting palette from the
+   design spec; fine-tuned during the frontend phase. */
+:root {
+  --eve-bg: #faf7f2;
+  --eve-panel: #f1ebe1;
+  --eve-active: #e9dfce;
+  --eve-border: #e3dccf;
+  --eve-text: #2b2520;
+  --eve-muted: #9a8f7e;
+  --eve-accent: #cc785c;
+  --eve-accent-text: #ffffff;
+
+  /* Font stand-ins. SWAP POINT: replace these two custom-props (and the
+     @fontsource imports in index.css) with the real Anthropic font package
+     once its npm name is confirmed. */
+  --eve-font-sans: "Inter Variable";
+  --eve-font-serif: "Fraunces";
+}
