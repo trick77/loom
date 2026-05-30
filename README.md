@@ -19,12 +19,21 @@ make test
 make fe-test
 make fe-build
 make build
+make dev
 ```
 
 ### Local development without OIDC
 
 For local UI/API work, Spark can sign in as one fixed admin user without contacting authentik.
-Run this from `backend/`:
+Start both the backend and Vite frontend with:
+
+```bash
+make dev
+```
+
+The script binds both services to IPv4 loopback so Vite proxies `/api` to Spark predictably.
+
+To run only the backend from `backend/`:
 
 ```bash
 SPARK_SESSION_SECRET=dev-secret \

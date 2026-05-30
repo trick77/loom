@@ -1,4 +1,4 @@
-.PHONY: build test fe-build fe-test run tidy
+.PHONY: build test fe-build fe-test run dev tidy
 
 tidy:
 	cd backend && go mod tidy
@@ -17,3 +17,6 @@ build: fe-build
 
 run:
 	cd backend && go run ./cmd/spark
+
+dev:
+	./hack/dev.sh
