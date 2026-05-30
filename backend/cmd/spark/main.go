@@ -48,7 +48,8 @@ func run() error {
 	}
 	authMW := auth.NewMiddleware(sessionStore, userStore)
 	var oidcService *auth.OIDCService
-	if cfg.OIDC.Issuer != "" {
+	var devAuthClaims auth.Claims
+	if cfg.AuthMode == config.AuthModeOIDC {
 		oidcService, err = auth.NewOIDCServiceFromDiscovery(context.Background(), auth.OIDCServiceConfig{
 			Issuer:       cfg.OIDC.Issuer,
 			ClientID:     cfg.OIDC.ClientID,
@@ -60,6 +61,16 @@ func run() error {
 			return err
 		}
 	}
+	if cfg.AuthMode == config.AuthModeDev {
+		slog.Warn("development auth enabled; local loopback use only")
+		devAuthClaims = auth.Claims{
+			Subject:  cfg.DevUser.Subject,
+			Username: cfg.DevUser.Username,
+			Email:    cfg.DevUser.Email,
+			Name:     cfg.DevUser.DisplayName,
+			Groups:   []string{auth.DevAdminGroup},
+		}
+	}
 
 	handler := httpapi.New(httpapi.Deps{
 		Version:               version,
@@ -69,6 +80,7 @@ func run() error {
 		Sessions:              sessionStore,
 		Users:                 userStore,
 		OIDCAdminGroup:        cfg.OIDC.AdminGroup,
+		DevAuthClaims:         devAuthClaims,
 		PostLogoutRedirectURL: cfg.OIDC.PostLogoutRedirectURL,
 	})
 

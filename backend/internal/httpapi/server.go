@@ -20,6 +20,7 @@ type Deps struct {
 	Sessions              SessionService
 	Users                 UserService
 	OIDCAdminGroup        string
+	DevAuthClaims         auth.Claims
 	PostLogoutRedirectURL string
 }
 
@@ -30,6 +31,7 @@ type server struct {
 	sessions              SessionService
 	users                 UserService
 	oidcAdminGroup        string
+	devAuthClaims         auth.Claims
 	postLogoutRedirectURL string
 }
 
@@ -64,6 +66,7 @@ func New(d Deps) http.Handler {
 		sessions:              d.Sessions,
 		users:                 d.Users,
 		oidcAdminGroup:        d.OIDCAdminGroup,
+		devAuthClaims:         d.DevAuthClaims,
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
 	}
 

@@ -10,7 +10,7 @@ Required for local backend startup:
 - Go 1.25
 - Node.js/npm for frontend builds
 - `SPARK_SESSION_SECRET`
-- OIDC configuration for authentik once Phase 2 is enabled
+- OIDC configuration for authentik, or local-only development auth
 
 Common commands:
 
@@ -20,6 +20,24 @@ make fe-test
 make fe-build
 make build
 ```
+
+### Local development without OIDC
+
+For local UI/API work, Spark can sign in as one fixed admin user without contacting authentik.
+Run this from `backend/`:
+
+```bash
+SPARK_SESSION_SECRET=dev-secret \
+SPARK_AUTH_MODE=dev \
+SPARK_ADDR=127.0.0.1:8080 \
+SPARK_PUBLIC_URL=http://localhost:8080 \
+SPARK_DB_PATH=/tmp/spark-dev.db \
+go run ./cmd/spark
+```
+
+This mode is guarded at startup. `SPARK_AUTH_MODE=dev` is rejected unless `SPARK_ADDR` binds to
+`localhost`, `127.0.0.1`, or `::1`, and `SPARK_PUBLIC_URL` is empty or loopback. It always creates an
+admin session for the fixed local development user; there is no user switcher.
 
 ## Authentik OIDC Setup
 
@@ -72,6 +90,7 @@ mapped to `user`.
 Set these variables for Spark:
 
 ```bash
+SPARK_AUTH_MODE=oidc
 SPARK_PUBLIC_URL=https://spark.example.com
 SPARK_SESSION_SECRET=replace-with-a-long-random-secret
 SPARK_OIDC_ISSUER=https://auth.example.com/application/o/spark/
