@@ -1,15 +1,121 @@
+import { useEffect, useState } from "react";
+import sparkImage from "./assets/spark.png";
+import { getMe, listUsers, logout, type User } from "./api";
+
+type Status = "loading" | "signed-out" | "ready" | "error";
+
 export default function App() {
+  const [status, setStatus] = useState<Status>("loading");
+  const [user, setUser] = useState<User | null>(null);
+  const [adminUsers, setAdminUsers] = useState<User[]>([]);
+  const [showAdmin, setShowAdmin] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    getMe()
+      .then((currentUser) => {
+        if (!active) return;
+        setUser(currentUser);
+        setStatus(currentUser ? "ready" : "signed-out");
+      })
+      .catch(() => {
+        if (!active) return;
+        setStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleLogout() {
+    const redirectUrl = await logout();
+    window.location.assign(redirectUrl);
+  }
+
+  async function handleAdmin() {
+    setShowAdmin(true);
+    if (adminUsers.length === 0) {
+      setAdminUsers(await listUsers());
+    }
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-bg font-sans text-muted">
+        Loading
+      </div>
+    );
+  }
+
+  if (status === "signed-out") {
+    return (
+      <main className="flex h-screen items-center justify-center bg-bg px-6 font-sans text-ink">
+        <section className="flex w-full max-w-md flex-col items-center gap-5 text-center">
+          <img src={sparkImage} alt="Spark" className="w-full max-w-sm rounded-spark" />
+          <a
+            href="/api/auth/login"
+            className="rounded-spark bg-accent px-5 py-3 text-sm font-semibold text-white"
+          >
+            Sign in
+          </a>
+        </section>
+      </main>
+    );
+  }
+
+  if (status === "error" || user === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-bg font-sans text-ink">
+        Service unavailable
+      </div>
+    );
+  }
+
   return (
     <div className="grid h-screen grid-cols-[240px_1fr_300px] font-sans text-ink">
       <aside className="flex flex-col gap-2 bg-panel p-3 border-r border-border">
-        <div className="font-serif text-xl font-semibold">spark</div>
+        <div className="flex items-center gap-2">
+          <img src={sparkImage} alt="Spark" className="h-9 w-14 rounded-sm object-cover" />
+          <div className="font-serif text-xl font-semibold">spark</div>
+        </div>
         <button className="rounded-spark bg-accent px-3 py-2 text-sm text-white">
           + New chat
         </button>
+        {user.role === "admin" && (
+          <button
+            className="rounded-spark bg-active px-3 py-2 text-left text-sm"
+            onClick={handleAdmin}
+          >
+            Admin
+          </button>
+        )}
+        <div className="mt-auto border-t border-border pt-3">
+          <div className="text-sm font-medium">{user.displayName || user.username}</div>
+          <div className="text-xs text-muted">{user.role}</div>
+          <button className="mt-2 text-sm text-muted" onClick={handleLogout}>
+            Logout
+          </button>
+        </div>
       </aside>
       <main className="flex flex-col bg-bg p-6">
-        <h1 className="font-serif text-lg">Welcome to spark</h1>
-        <p className="text-muted">Foundation is up. Chat arrives in a later phase.</p>
+        {showAdmin ? (
+          <>
+            <h1 className="font-serif text-lg">Admin</h1>
+            <div className="mt-4 divide-y divide-border border-y border-border">
+              {adminUsers.map((adminUser) => (
+                <div key={adminUser.id} className="flex justify-between py-3 text-sm">
+                  <span>{adminUser.displayName || adminUser.username}</span>
+                  <span className="text-muted">{adminUser.role}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <h1 className="font-serif text-lg">Welcome to spark</h1>
+            <p className="text-muted">Foundation is up. Chat arrives in a later phase.</p>
+          </>
+        )}
       </main>
       <aside className="bg-panel border-l border-border p-3 text-sm text-muted">
         Context panel
