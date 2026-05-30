@@ -1,4 +1,4 @@
-// Package config loads eve's runtime configuration from environment variables.
+// Package config loads spark's runtime configuration from environment variables.
 package config
 
 import (
@@ -37,26 +37,26 @@ func env(key, def string) string {
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:                 env("EVE_ADDR", ":8080"),
-		DBPath:               env("EVE_DB_PATH", "/data/eve.db"),
-		UsersDir:             env("EVE_USERS_DIR", "/data/users"),
-		ChatBaseURL:          env("EVE_CHAT_BASE_URL", ""),
-		ChatAPIKey:           env("EVE_CHAT_API_KEY", ""),
-		ChatModel:            env("EVE_CHAT_MODEL", "MiMo"),
-		EmbedBaseURL:         env("EVE_EMBED_BASE_URL", ""),
-		EmbedAPIKey:          env("EVE_EMBED_API_KEY", ""),
-		EmbedModel:           env("EVE_EMBED_MODEL", "text-embedding-3-small"),
-		TikaURL:              env("EVE_TIKA_URL", "http://tika:9998"),
-		SearxngURL:           env("EVE_SEARXNG_URL", "http://searxng:8080"),
-		MCPConfigPath:        env("EVE_MCP_CONFIG", "/config/mcp.json"),
-		AdminInitialPassword: env("EVE_ADMIN_INITIAL_PASSWORD", ""),
-		SessionSecret:        env("EVE_SESSION_SECRET", ""),
+		Addr:                 env("SPARK_ADDR", ":8080"),
+		DBPath:               env("SPARK_DB_PATH", "/data/spark.db"),
+		UsersDir:             env("SPARK_USERS_DIR", "/data/users"),
+		ChatBaseURL:          env("SPARK_CHAT_BASE_URL", ""),
+		ChatAPIKey:           env("SPARK_CHAT_API_KEY", ""),
+		ChatModel:            env("SPARK_CHAT_MODEL", "MiMo"),
+		EmbedBaseURL:         env("SPARK_EMBED_BASE_URL", ""),
+		EmbedAPIKey:          env("SPARK_EMBED_API_KEY", ""),
+		EmbedModel:           env("SPARK_EMBED_MODEL", "text-embedding-3-small"),
+		TikaURL:              env("SPARK_TIKA_URL", "http://tika:9998"),
+		SearxngURL:           env("SPARK_SEARXNG_URL", "http://searxng:8080"),
+		MCPConfigPath:        env("SPARK_MCP_CONFIG", "/config/mcp.json"),
+		AdminInitialPassword: env("SPARK_ADMIN_INITIAL_PASSWORD", ""),
+		SessionSecret:        env("SPARK_SESSION_SECRET", ""),
 	}
 	if cfg.SessionSecret == "" {
-		return Config{}, fmt.Errorf("EVE_SESSION_SECRET is required")
+		return Config{}, fmt.Errorf("SPARK_SESSION_SECRET is required")
 	}
 	if cfg.AdminInitialPassword == "" {
-		return Config{}, fmt.Errorf("EVE_ADMIN_INITIAL_PASSWORD is required")
+		return Config{}, fmt.Errorf("SPARK_ADMIN_INITIAL_PASSWORD is required")
 	}
 	return cfg, nil
 }

@@ -8,7 +8,7 @@
 
 body {
   margin: 0;
-  background: var(--eve-bg);
-  color: var(--eve-text);
-  font-family: var(--eve-font-sans), ui-sans-serif, system-ui, sans-serif;
+  background: var(--spark-bg);
+  color: var(--spark-text);
+  font-family: var(--spark-font-sans), ui-sans-serif, system-ui, sans-serif;
 }

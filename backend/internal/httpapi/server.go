@@ -1,4 +1,4 @@
-// Package httpapi builds eve's HTTP handler: JSON/SSE API plus the embedded SPA.
+// Package httpapi builds spark's HTTP handler: JSON/SSE API plus the embedded SPA.
 package httpapi
 
 import "net/http"

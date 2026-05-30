@@ -1,4 +1,4 @@
-// Command eve is the all-in-one server: API + embedded SPA, backed by SQLite.
+// Command spark is the all-in-one server: API + embedded SPA, backed by SQLite.
 package main
 
 import (
@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/trick77/eve/internal/config"
-	"github.com/trick77/eve/internal/httpapi"
-	"github.com/trick77/eve/internal/store"
-	"github.com/trick77/eve/web"
+	"github.com/trick77/spark/internal/config"
+	"github.com/trick77/spark/internal/httpapi"
+	"github.com/trick77/spark/internal/store"
+	"github.com/trick77/spark/web"
 )
 
 var version = "dev" // overridden via -ldflags at build time

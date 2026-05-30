@@ -6,8 +6,8 @@ node_modules/
 frontend/dist/
 
 # Go
-/eve
-/backend/eve
+/spark
+/backend/spark
 /bin/
 *.test
 

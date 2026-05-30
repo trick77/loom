@@ -1,4 +1,4 @@
-module github.com/trick77/eve
+module github.com/trick77/spark
 
 go 1.25.0
 
