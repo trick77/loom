@@ -11,6 +11,7 @@ type Config struct {
 	Addr     string // HTTP listen address
 	DBPath   string // path to the SQLite file
 	UsersDir string // root for per-user volumes: <UsersDir>/<user-id>/
+	PublicURL string // externally reachable base URL
 
 	ChatBaseURL  string // OpenAI-compatible chat endpoint (MiMo)
 	ChatAPIKey   string
@@ -23,8 +24,19 @@ type Config struct {
 	SearxngURL    string
 	MCPConfigPath string
 
-	AdminInitialPassword string
+	AdminInitialPassword string // legacy; authentik owns credentials in Phase 2
 	SessionSecret        string
+	OIDC                 OIDCConfig
+}
+
+// OIDCConfig holds authentik OpenID Connect settings.
+type OIDCConfig struct {
+	Issuer                string
+	ClientID              string
+	ClientSecret          string
+	RedirectURL           string
+	PostLogoutRedirectURL string
+	AdminGroup            string
 }
 
 func env(key, def string) string {
@@ -40,6 +52,7 @@ func Load() (Config, error) {
 		Addr:                 env("SPARK_ADDR", ":8080"),
 		DBPath:               env("SPARK_DB_PATH", "/data/spark.db"),
 		UsersDir:             env("SPARK_USERS_DIR", "/data/users"),
+		PublicURL:            env("SPARK_PUBLIC_URL", ""),
 		ChatBaseURL:          env("SPARK_CHAT_BASE_URL", ""),
 		ChatAPIKey:           env("SPARK_CHAT_API_KEY", ""),
 		ChatModel:            env("SPARK_CHAT_MODEL", "MiMo"),
@@ -51,12 +64,28 @@ func Load() (Config, error) {
 		MCPConfigPath:        env("SPARK_MCP_CONFIG", "/config/mcp.json"),
 		AdminInitialPassword: env("SPARK_ADMIN_INITIAL_PASSWORD", ""),
 		SessionSecret:        env("SPARK_SESSION_SECRET", ""),
+		OIDC: OIDCConfig{
+			Issuer:                env("SPARK_OIDC_ISSUER", ""),
+			ClientID:              env("SPARK_OIDC_CLIENT_ID", ""),
+			ClientSecret:          env("SPARK_OIDC_CLIENT_SECRET", ""),
+			RedirectURL:           env("SPARK_OIDC_REDIRECT_URL", ""),
+			PostLogoutRedirectURL: env("SPARK_OIDC_POST_LOGOUT_REDIRECT_URL", ""),
+			AdminGroup:            env("SPARK_OIDC_ADMIN_GROUP", ""),
+		},
 	}
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("SPARK_SESSION_SECRET is required")
 	}
-	if cfg.AdminInitialPassword == "" {
-		return Config{}, fmt.Errorf("SPARK_ADMIN_INITIAL_PASSWORD is required")
+	if cfg.OIDC.Issuer != "" {
+		if cfg.OIDC.ClientID == "" {
+			return Config{}, fmt.Errorf("SPARK_OIDC_CLIENT_ID is required when SPARK_OIDC_ISSUER is set")
+		}
+		if cfg.OIDC.ClientSecret == "" {
+			return Config{}, fmt.Errorf("SPARK_OIDC_CLIENT_SECRET is required when SPARK_OIDC_ISSUER is set")
+		}
+		if cfg.OIDC.RedirectURL == "" {
+			return Config{}, fmt.Errorf("SPARK_OIDC_REDIRECT_URL is required when SPARK_OIDC_ISSUER is set")
+		}
 	}
 	return cfg, nil
 }

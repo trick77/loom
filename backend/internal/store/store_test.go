@@ -14,20 +14,23 @@ func TestOpen_runsMigrations(t *testing.T) {
 	}
 	defer db.Close()
 
-	var name string
-	err = db.QueryRow(
-		`SELECT name FROM sqlite_master WHERE type='table' AND name='settings'`,
-	).Scan(&name)
-	if err != nil {
-		t.Fatalf("settings table missing: %v", err)
+	for _, table := range []string{"settings", "users", "sessions"} {
+		var name string
+		err = db.QueryRow(
+			`SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+			table,
+		).Scan(&name)
+		if err != nil {
+			t.Fatalf("%s table missing: %v", table, err)
+		}
 	}
 
 	var count int
 	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("schema_migrations query: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("applied migrations = %d, want 1", count)
+	if count != 2 {
+		t.Errorf("applied migrations = %d, want 2", count)
 	}
 }
 
@@ -50,7 +53,7 @@ func TestOpen_migrationsAreIdempotent(t *testing.T) {
 	if err := db2.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("schema_migrations query: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("applied migrations after re-open = %d, want 1", count)
+	if count != 2 {
+		t.Errorf("applied migrations after re-open = %d, want 2", count)
 	}
 }

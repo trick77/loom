@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/config"
 	"github.com/trick77/spark/internal/httpapi"
 	"github.com/trick77/spark/internal/store"
@@ -38,9 +40,36 @@ func run() error {
 	}
 	defer db.Close()
 
+	secureCookies := strings.HasPrefix(cfg.PublicURL, "https://")
+	userStore := auth.NewUserStore(db)
+	sessionStore := auth.NewSessionStore(db, secureCookies)
+	if _, err := sessionStore.DeleteExpired(context.Background()); err != nil {
+		return err
+	}
+	authMW := auth.NewMiddleware(sessionStore, userStore)
+	var oidcService *auth.OIDCService
+	if cfg.OIDC.Issuer != "" {
+		oidcService, err = auth.NewOIDCServiceFromDiscovery(context.Background(), auth.OIDCServiceConfig{
+			Issuer:       cfg.OIDC.Issuer,
+			ClientID:     cfg.OIDC.ClientID,
+			ClientSecret: cfg.OIDC.ClientSecret,
+			RedirectURL:  cfg.OIDC.RedirectURL,
+			SecureCookie: secureCookies,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
 	handler := httpapi.New(httpapi.Deps{
-		Version: version,
-		Static:  web.SPAHandler(),
+		Version:               version,
+		Static:                web.SPAHandler(),
+		OIDC:                  oidcService,
+		Auth:                  authMW,
+		Sessions:              sessionStore,
+		Users:                 userStore,
+		OIDCAdminGroup:        cfg.OIDC.AdminGroup,
+		PostLogoutRedirectURL: cfg.OIDC.PostLogoutRedirectURL,
 	})
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: handler}
