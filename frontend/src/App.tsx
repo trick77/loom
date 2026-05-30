@@ -54,7 +54,7 @@ export default function App() {
           <img src={sparkImage} alt="Spark" className="w-full max-w-sm rounded-spark" />
           <a
             href="/api/auth/login"
-            className="rounded-spark bg-accent px-5 py-3 text-sm font-semibold text-white"
+            className="rounded-spark bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"
           >
             Sign in
           </a>
@@ -74,16 +74,15 @@ export default function App() {
   return (
     <div className="grid h-screen grid-cols-[240px_1fr_300px] font-sans text-ink">
       <aside className="flex flex-col gap-2 bg-panel p-3 border-r border-border">
-        <div className="flex items-center gap-2">
-          <img src={sparkImage} alt="Spark" className="h-9 w-14 rounded-sm object-cover" />
-          <div className="font-serif text-xl font-semibold">spark</div>
+        <div className="flex items-center px-1">
+          <div className="font-serif text-xl font-medium tracking-tight">Spark</div>
         </div>
-        <button className="rounded-spark bg-accent px-3 py-2 text-sm text-white">
+        <button className="rounded-spark bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-strong">
           + New chat
         </button>
         {user.role === "admin" && (
           <button
-            className="rounded-spark bg-active px-3 py-2 text-left text-sm"
+            className="rounded-spark bg-active px-3 py-2 text-left text-sm transition-colors hover:bg-border"
             onClick={handleAdmin}
           >
             Admin
@@ -100,7 +99,7 @@ export default function App() {
       <main className="flex flex-col bg-bg p-6">
         {showAdmin ? (
           <>
-            <h1 className="font-serif text-lg">Admin</h1>
+            <h1 className="font-serif text-2xl font-light tracking-tight">Admin</h1>
             <div className="mt-4 divide-y divide-border border-y border-border">
               {adminUsers.map((adminUser) => (
                 <div key={adminUser.id} className="flex justify-between py-3 text-sm">
@@ -112,8 +111,12 @@ export default function App() {
           </>
         ) : (
           <>
-            <h1 className="font-serif text-lg">Welcome to spark</h1>
-            <p className="text-muted">Foundation is up. Chat arrives in a later phase.</p>
+            <h1 className="font-serif text-3xl font-light tracking-tight">
+              {user.displayName || user.username} returns!
+            </h1>
+            <p className="mt-2 text-base text-muted">
+              Foundation is up. Chat arrives in a later phase.
+            </p>
           </>
         )}
       </main>
