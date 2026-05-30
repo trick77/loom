@@ -11,6 +11,20 @@ frontend/dist/
 /bin/
 *.test
 
+# macOS
+.DS_Store
+
+# Editors / IDEs
+.vscode/
+.idea/
+.zed/
+
+# Codex (local, machine-specific)
+.codex/
+
+# Claude Code (local, machine-specific)
+.claude/settings.local.json
+
 # Local data & secrets
 *.db
 *.db-*
