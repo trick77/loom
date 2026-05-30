@@ -17,3 +17,8 @@ frontend/dist/
 .env
 .env.*
 data/
+
+# Embedded frontend build output (generated; keep dir + placeholders)
+backend/web/dist/*
+!backend/web/dist/.gitkeep
+!backend/web/dist/index.html
