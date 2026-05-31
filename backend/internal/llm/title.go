@@ -13,11 +13,17 @@ const titleSystemPrompt = "Name this chat in 2 to 6 words. Return only the title
 
 func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
 	start := time.Now()
-	resp, err := c.executeChatRequest(ctx, []Message{
+	messages := []Message{
 		{Role: "system", Content: titleSystemPrompt},
 		{Role: "user", Content: userMessage},
-		{Role: "assistant", Content: assistantMessage},
-	}, false)
+	}
+	// Only include the assistant turn when it has content. An assistant message
+	// with empty content serializes to {"role":"assistant"} (content is
+	// omitempty), which providers reject with "assistant must provide content".
+	if strings.TrimSpace(assistantMessage) != "" {
+		messages = append(messages, Message{Role: "assistant", Content: assistantMessage})
+	}
+	resp, err := c.executeChatRequest(ctx, messages, false)
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
