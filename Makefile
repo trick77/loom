@@ -1,4 +1,4 @@
-.PHONY: build test fe-build fe-test run dev refresh docker-dev docker-dev-down tidy
+.PHONY: build test coverage backend-coverage fe-build fe-test fe-coverage run dev refresh docker-dev docker-dev-down tidy
 
 tidy:
 	cd backend && go mod tidy
@@ -6,8 +6,18 @@ tidy:
 test:
 	cd backend && go test ./...
 
+coverage: backend-coverage fe-coverage
+
+backend-coverage:
+	mkdir -p coverage
+	cd backend && go test ./... -covermode=atomic -coverprofile=../coverage/backend.out
+	cd backend && go tool cover -func=../coverage/backend.out
+
 fe-test:
 	cd frontend && npm run test -- --run
+
+fe-coverage:
+	cd frontend && npm run test:coverage
 
 fe-build:
 	cd frontend && npm ci && npm run build
