@@ -33,6 +33,7 @@ frontend/dist/
 .env.*
 !.env.example
 data/
+logs/
 
 # Embedded frontend build output (generated; keep dir + placeholders)
 backend/web/dist/*

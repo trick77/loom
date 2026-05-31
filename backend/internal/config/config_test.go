@@ -18,6 +18,9 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.UsersDir != "/data/users" {
 		t.Errorf("UsersDir default = %q, want /data/users", cfg.UsersDir)
 	}
+	if cfg.ChatLogDir != "logs/llm-responses" {
+		t.Errorf("ChatLogDir default = %q, want logs/llm-responses", cfg.ChatLogDir)
+	}
 }
 
 func TestLoad_overrides_and_required(t *testing.T) {

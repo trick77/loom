@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -139,6 +141,57 @@ func TestClient_StreamChatResultLeavesUsageEmptyWhenMissing(t *testing.T) {
 	}
 	if result.Usage.Present() {
 		t.Fatal("usage.Present() = true, want false")
+	}
+}
+
+func TestClient_StreamChatLogsRawResponseWhenConfigured(t *testing.T) {
+	logDir := t.TempDir()
+	var responseCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		responseCount++
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("X-Debug-Trace", "trace-123")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"<!doctype html> response ` + string(rune('0'+responseCount)) + `"}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", ResponseLogDir: logDir}, server.Client())
+
+	for range 2 {
+		if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
+			t.Fatalf("StreamChat() error: %v", err)
+		}
+	}
+
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		t.Fatalf("ReadDir() error: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("log entries = %d, want 2", len(entries))
+	}
+	namePattern := regexp.MustCompile(`^\d{8}T\d{6}\.\d{9}Z-\d{6}\.http$`)
+	for index, entry := range entries {
+		if !namePattern.MatchString(entry.Name()) {
+			t.Fatalf("log file name = %q, want timestamped .http file", entry.Name())
+		}
+		logBytes, err := os.ReadFile(logDir + "/" + entry.Name())
+		if err != nil {
+			t.Fatalf("ReadFile() error: %v", err)
+		}
+		logText := string(logBytes)
+		for _, want := range []string{
+			"HTTP/1.1 200 OK",
+			"Content-Type: text/event-stream",
+			"X-Debug-Trace: trace-123",
+			`data: {"choices":[{"delta":{"content":"<!doctype html> response ` + string(rune('1'+index)) + `"}}]}`,
+			"data: [DONE]",
+		} {
+			if !strings.Contains(logText, want) {
+				t.Fatalf("log text missing %q:\n%s", want, logText)
+			}
+		}
 	}
 }
 
