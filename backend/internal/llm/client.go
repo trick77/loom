@@ -14,9 +14,10 @@ const maxErrorBodyBytes = 4096
 
 // Config holds the OpenAI-compatible chat completion settings.
 type Config struct {
-	BaseURL string
-	APIKey  string
-	Model   string
+	BaseURL         string
+	APIKey          string
+	Model           string
+	ReasoningEffort string
 }
 
 // Message is one OpenAI-compatible chat message.
@@ -29,22 +30,32 @@ type Message struct {
 
 // Client calls an OpenAI-compatible chat completion API.
 type Client struct {
-	baseURL    string
-	apiKey     string
-	model      string
-	httpClient *http.Client
+	baseURL         string
+	apiKey          string
+	model           string
+	reasoningEffort string
+	httpClient      *http.Client
 }
 
 func NewClient(cfg Config, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Client{
-		baseURL:    strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:     cfg.APIKey,
-		model:      cfg.Model,
-		httpClient: httpClient,
+	reasoningEffort := cfg.ReasoningEffort
+	if reasoningEffort == "" && isMiMoModel(cfg.Model) {
+		reasoningEffort = "high"
 	}
+	return &Client{
+		baseURL:         strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:          cfg.APIKey,
+		model:           cfg.Model,
+		reasoningEffort: reasoningEffort,
+		httpClient:      httpClient,
+	}
+}
+
+func isMiMoModel(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), "mimo")
 }
 
 func (c *Client) executeChatRequest(ctx context.Context, messages []Message, stream bool) (*http.Response, error) {
@@ -53,10 +64,11 @@ func (c *Client) executeChatRequest(ctx context.Context, messages []Message, str
 
 func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool) (*http.Response, error) {
 	body, err := json.Marshal(chatCompletionRequest{
-		Model:    c.model,
-		Messages: messages,
-		Stream:   stream,
-		Tools:    tools,
+		Model:           c.model,
+		Messages:        messages,
+		Stream:          stream,
+		Tools:           tools,
+		ReasoningEffort: c.reasoningEffort,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completion request: %w", err)

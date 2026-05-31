@@ -14,9 +14,10 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	var gotPath string
 	var gotAuth string
 	var gotBody struct {
-		Model    string    `json:"model"`
-		Messages []Message `json:"messages"`
-		Stream   bool      `json:"stream"`
+		Model           string    `json:"model"`
+		Messages        []Message `json:"messages"`
+		Stream          bool      `json:"stream"`
+		ReasoningEffort string    `json:"reasoning_effort"`
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +63,9 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	if !gotBody.Stream {
 		t.Fatal("stream = false, want true")
 	}
+	if gotBody.ReasoningEffort != "high" {
+		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
+	}
 	if len(gotBody.Messages) != 1 || gotBody.Messages[0].Role != "user" || gotBody.Messages[0].Content != "Hi" {
 		t.Fatalf("messages = %#v, want user message", gotBody.Messages)
 	}
@@ -70,6 +74,30 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	}
 	if final != "Hello" {
 		t.Fatalf("final = %q, want Hello", final)
+	}
+}
+
+func TestClient_StreamChatOmitsReasoningEffortForNonMiMoModel(t *testing.T) {
+	var gotBody struct {
+		ReasoningEffort string `json:"reasoning_effort"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "other-model"}, server.Client())
+
+	if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
+		t.Fatalf("StreamChat() error: %v", err)
+	}
+	if gotBody.ReasoningEffort != "" {
+		t.Fatalf("reasoning_effort = %q, want omitted", gotBody.ReasoningEffort)
 	}
 }
 
