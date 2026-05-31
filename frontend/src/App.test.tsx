@@ -157,8 +157,10 @@ test("creates a project from the sidebar", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: /new project/i }));
-  fireEvent.change(screen.getByPlaceholderText(/project name/i), { target: { value: "School" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create" }));
+  const projectNameInput = screen.getByPlaceholderText(/project name/i);
+  fireEvent.change(projectNameInput, { target: { value: "School" } });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Create" })).toBeEnabled());
+  fireEvent.submit(projectNameInput.closest("form")!);
 
   expect(await screen.findByText("School")).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith(
@@ -434,6 +436,7 @@ test("renders streamed reasoning in a collapsed thinking panel", async () => {
   fireEvent.click(toggle);
 
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
+  expect(screen.getByText("I checked the source first.").closest(".spark-assistant-markdown")).toBeNull();
   expect(screen.getByText("Answer.")).toBeInTheDocument();
 });
 
@@ -784,6 +787,9 @@ test("renders assistant markdown without rendering raw HTML", async () => {
   expect(screen.getByRole("list")).toBeInTheDocument();
   expect(screen.getByText(/<div>raw html<\/div>/)).toBeInTheDocument();
   expect(document.querySelector(".spark-markdown div")).toBeNull();
+  expect(screen.getByRole("heading", { name: "Overview" }).closest(".spark-markdown")).toHaveClass(
+    "spark-assistant-markdown",
+  );
   expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Download response" })).not.toBeInTheDocument();
 });

@@ -967,7 +967,7 @@ function MessageBubble({
 
 function ProseMarkdown({ children }: { children: string }) {
   return (
-    <div className="spark-message-text spark-markdown text-[#f3f0e8]">
+    <div className="spark-message-text spark-markdown spark-assistant-markdown text-[#f3f0e8]">
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
