@@ -195,8 +195,7 @@ export function ChatShell({
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
       setDraft(content);
-      const message = error instanceof Error && error.message !== "" ? error.message : "Message failed to send.";
-      handleActionError(error, message, setSendError);
+      handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
       if (abortController !== null && streamAbortRef.current === abortController) {
