@@ -11,9 +11,8 @@ updates:
         update-types: ["minor", "patch"]
     ignore:
       # Pinned to v0.20.0 for sqlite-vec ABI compatibility (see AGENTS.md);
-      # bumping minor/major breaks the sqlite-vec binding.
+      # only change this manually after validating sqlite-vec on Linux.
       - dependency-name: github.com/ncruces/go-sqlite3
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   # React frontend
   - package-ecosystem: npm
