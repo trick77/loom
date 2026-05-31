@@ -4,6 +4,7 @@
 # Node / frontend
 node_modules/
 frontend/dist/
+*.tsbuildinfo
 
 # Go
 /spark

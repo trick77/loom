@@ -918,31 +918,53 @@ function MessageBubble({
   return <AssistantText onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>{message.content}</AssistantText>;
 }
 
+function ProseMarkdown({ children }: { children: string }) {
+  return (
+    <div className="spark-message-text spark-markdown text-[#f3f0e8]">
+      <Markdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a({ children, ...props }) {
+            return (
+              <a {...props} target="_blank" rel="noreferrer">
+                {children}
+              </a>
+            );
+          },
+        }}
+      >
+        {children}
+      </Markdown>
+    </div>
+  );
+}
+
 function AssistantText({ children, onRetry }: { children: string; onRetry?: () => void }) {
   const downloadable = downloadableResponse(children);
 
   if (downloadable !== null) {
-    return <DownloadResponseBubble artifact={downloadable} />;
+    const { artifact, before, after } = downloadable;
+    if (before === "" && after === "") {
+      return <DownloadResponseBubble artifact={artifact} />;
+    }
+    return (
+      <div className="group max-w-[46rem] space-y-3">
+        {before !== "" && <ProseMarkdown>{before}</ProseMarkdown>}
+        <DownloadResponseBubble artifact={artifact} />
+        {after !== "" && <ProseMarkdown>{after}</ProseMarkdown>}
+        <MessageActions
+          copyLabel="Copy response"
+          copyText={markdownToPlainText(children)}
+          retryLabel="Retry response"
+          onRetry={onRetry}
+        />
+      </div>
+    );
   }
 
   return (
     <div className="group max-w-[46rem]">
-      <div className="spark-message-text spark-markdown text-[#f3f0e8]">
-        <Markdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            a({ children, ...props }) {
-              return (
-                <a {...props} target="_blank" rel="noreferrer">
-                  {children}
-                </a>
-              );
-            },
-          }}
-        >
-          {children}
-        </Markdown>
-      </div>
+      <ProseMarkdown>{children}</ProseMarkdown>
       <MessageActions
         copyLabel="Copy response"
         copyText={markdownToPlainText(children)}
@@ -1045,30 +1067,41 @@ function downloadArtifact(artifact: DownloadableResponse) {
   URL.revokeObjectURL(url);
 }
 
-function downloadableResponse(content: string): DownloadableResponse | null {
+type EmbeddedArtifact = {
+  artifact: DownloadableResponse;
+  before: string;
+  after: string;
+};
+
+function downloadableResponse(content: string): EmbeddedArtifact | null {
   const dataURL = dataURLArtifact(content);
-  if (dataURL !== null) return dataURL;
+  if (dataURL !== null) return { artifact: dataURL, before: "", after: "" };
 
   return fencedArtifact(content);
 }
 
-function fencedArtifact(content: string): DownloadableResponse | null {
+function fencedArtifact(content: string): EmbeddedArtifact | null {
   const matches = [...content.matchAll(/(?:^|\n)```([a-z0-9_-]+)[ \t]*\n([\s\S]*?)\n```(?=\n|$)/gi)];
   const downloadableMatches = matches
     .map((match) => ({
+      match,
       extension: extensionForLanguage(match[1].trim().toLowerCase()),
-      content: match[2],
     }))
-    .filter((artifact) => downloadOnlyExtensions.has(artifact.extension));
+    .filter((candidate) => downloadOnlyExtensions.has(candidate.extension));
 
   if (downloadableMatches.length !== 1) return null;
 
-  const artifact = downloadableMatches[0];
+  const { match, extension } = downloadableMatches[0];
+  const start = match.index ?? 0;
   return {
-    extension: artifact.extension,
-    label: artifact.extension.toUpperCase(),
-    mimeType: responseMimeType(artifact.extension),
-    content: artifact.content,
+    artifact: {
+      extension,
+      label: extension.toUpperCase(),
+      mimeType: responseMimeType(extension),
+      content: match[2],
+    },
+    before: content.slice(0, start).trim(),
+    after: content.slice(start + match[0].length).trim(),
   };
 }
 

@@ -171,7 +171,7 @@ test("creates a project from the sidebar", async () => {
 });
 
 test("new chat navigation does not create a thread or sidebar entry", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
@@ -871,7 +871,7 @@ test("shows fenced file-like assistant output as a dedicated download response",
   expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
 });
 
-test("shows a fenced HTML artifact with surrounding prose as a dedicated download response", async () => {
+test("shows a fenced HTML artifact as a download while keeping the surrounding prose", async () => {
   const content = "Here is the HTML:\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
   vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
 
@@ -879,8 +879,21 @@ test("shows a fenced HTML artifact with surrounding prose as a dedicated downloa
 
   expect(await screen.findByText("HTML response")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
+  expect(screen.getByText(/Here is the HTML/i)).toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
-  expect(screen.queryByText(/Here is the HTML/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
+});
+
+test("keeps prose before and after a fenced artifact around the download card", async () => {
+  const content = "Intro line.\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```\n\nClosing remark.";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("HTML response")).toBeInTheDocument();
+  expect(screen.getByText(/Intro line\./)).toBeInTheDocument();
+  expect(screen.getByText(/Closing remark\./)).toBeInTheDocument();
+  expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
 });
 
 test("renders inline triple backticks without treating them as a download fence", async () => {
