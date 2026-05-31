@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChatShell } from "./ChatShell";
 import sparkImage from "./assets/spark.png";
 import { getMe, listUsers, logout, type User } from "./api";
 
@@ -39,6 +40,10 @@ export default function App() {
     }
   }
 
+  function handleChat() {
+    setShowAdmin(false);
+  }
+
   if (status === "loading") {
     return (
       <div className="flex h-screen items-center justify-center bg-bg font-sans text-muted">
@@ -72,57 +77,25 @@ export default function App() {
   }
 
   return (
-    <div className="grid h-screen grid-cols-[240px_1fr_300px] font-sans text-ink">
-      <aside className="flex flex-col gap-2 bg-panel p-3 border-r border-border">
-        <div className="flex items-center px-1">
-          <div className="font-serif text-xl font-medium tracking-tight">Spark</div>
-        </div>
-        <button className="rounded-spark bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-strong">
-          + New chat
-        </button>
-        {user.role === "admin" && (
-          <button
-            className="rounded-spark bg-active px-3 py-2 text-left text-sm transition-colors hover:bg-border"
-            onClick={handleAdmin}
-          >
-            Admin
-          </button>
-        )}
-        <div className="mt-auto border-t border-border pt-3">
-          <div className="text-sm font-medium">{user.displayName || user.username}</div>
-          <div className="text-xs text-muted">{user.role}</div>
-          <button className="mt-2 text-sm text-muted" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </aside>
-      <main className="flex flex-col bg-bg p-6">
-        {showAdmin ? (
-          <>
-            <h1 className="font-serif text-2xl font-light tracking-tight">Admin</h1>
-            <div className="mt-4 divide-y divide-border border-y border-border">
-              {adminUsers.map((adminUser) => (
-                <div key={adminUser.id} className="flex justify-between py-3 text-sm">
-                  <span>{adminUser.displayName || adminUser.username}</span>
-                  <span className="text-muted">{adminUser.role}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            <h1 className="font-serif text-3xl font-light tracking-tight">
-              {user.displayName || user.username} returns!
-            </h1>
-            <p className="mt-2 text-base text-muted">
-              Foundation is up. Chat arrives in a later phase.
-            </p>
-          </>
-        )}
-      </main>
-      <aside className="bg-panel border-l border-border p-3 text-sm text-muted">
-        Context panel
-      </aside>
-    </div>
+    <ChatShell
+      user={user}
+      showAdmin={showAdmin}
+      onAdmin={handleAdmin}
+      onChat={handleChat}
+      onLogout={handleLogout}
+      adminPanel={
+        <section className="p-6">
+          <h1 className="font-serif text-2xl font-light tracking-tight">Admin</h1>
+          <div className="mt-4 divide-y divide-border border-y border-border">
+            {adminUsers.map((adminUser) => (
+              <div key={adminUser.id} className="flex justify-between py-3 text-sm">
+                <span>{adminUser.displayName || adminUser.username}</span>
+                <span className="text-muted">{adminUser.role}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      }
+    />
   );
 }
