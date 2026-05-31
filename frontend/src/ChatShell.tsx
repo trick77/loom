@@ -394,7 +394,7 @@ export function ChatShell({
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-[#f4f0e8]">{displayName}</div>
-              <div className="truncate text-[10px] text-[#8f8b82]">{user.role}</div>
+              <div className="truncate text-xs font-normal text-[#8f8b82]">{user.role}</div>
             </div>
             <button className="rounded-md px-2 py-1 text-[10px] text-[#aaa79e] hover:bg-[#2a2a28]" onClick={onLogout}>
               Logout
