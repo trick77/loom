@@ -62,6 +62,31 @@ test("streamMessage parses tool events", async () => {
   expect(events).toEqual(["call:search__web", "result:result"]);
 });
 
+test("streamMessage parses mcp_status events", async () => {
+  const body = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: mcp_status\ndata: {"active":2,"configured":3}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  let received: { active: number; configured: number } | null = null;
+
+  await streamMessage("t1", "Hi", {
+    onUserMessage: () => undefined,
+    onDelta: () => undefined,
+    onAssistantMessage: () => undefined,
+    onThread: () => undefined,
+    onMcpStatus: (event) => {
+      received = event;
+    },
+  });
+
+  expect(received).toEqual({ active: 2, configured: 3 });
+});
+
 test("streamMessage throws server-sent error events", async () => {
   const body = new ReadableStream({
     start(controller) {

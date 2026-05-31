@@ -52,3 +52,8 @@ type toolResultResponse struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
 }
+
+type mcpStatusResponse struct {
+	Active     int `json:"active"`
+	Configured int `json:"configured"`
+}

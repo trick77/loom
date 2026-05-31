@@ -2,6 +2,9 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/trick77/spark/internal/llm"
@@ -44,6 +47,65 @@ func TestServiceRejectsDuplicateToolNames(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("NewService() error = nil, want duplicate error")
+	}
+}
+
+func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		switch req.Method {
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{}})
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := Config{Servers: map[string]ServerConfig{
+		"alpha": {Transport: TransportStreamableHTTP, URL: server.URL},
+		"zeta":  {Transport: TransportStreamableHTTP, URL: "http://127.0.0.1:1"},
+	}}
+	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, server.Client(), nil)
+	if err != nil {
+		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+	}
+
+	statuses := service.ServerStatus(context.Background())
+	if len(statuses) != 2 {
+		t.Fatalf("ServerStatus() len = %d, want 2: %#v", len(statuses), statuses)
+	}
+	if statuses[0].Name != "alpha" || statuses[1].Name != "zeta" {
+		t.Fatalf("ServerStatus() not sorted by name: %#v", statuses)
+	}
+	active := map[string]bool{}
+	for _, st := range statuses {
+		active[st.Name] = st.Active
+	}
+	if !active["alpha"] {
+		t.Errorf("alpha Active = false, want true")
+	}
+	if active["zeta"] {
+		t.Errorf("zeta Active = true, want false")
+	}
+}
+
+func TestServiceServerStatusNilAndEmpty(t *testing.T) {
+	var nilService *Service
+	if got := nilService.ServerStatus(context.Background()); got != nil {
+		t.Errorf("nil service ServerStatus() = %#v, want nil", got)
+	}
+	empty, err := NewBestEffortServiceFromConfig(context.Background(), Config{Servers: map[string]ServerConfig{}}, nil, nil)
+	if err != nil {
+		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+	}
+	if got := empty.ServerStatus(context.Background()); got != nil {
+		t.Errorf("empty service ServerStatus() = %#v, want nil", got)
 	}
 }
 
