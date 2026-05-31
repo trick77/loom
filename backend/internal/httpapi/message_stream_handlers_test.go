@@ -42,6 +42,11 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 			t.Fatalf("SSE body missing %q:\n%s", want, body)
 		}
 	}
+	threadEvent := strings.Index(body, "event: thread")
+	assistantDelta := strings.Index(body, "event: assistant_delta")
+	if threadEvent < 0 || assistantDelta < 0 || threadEvent > assistantDelta {
+		t.Fatalf("thread title event index = %d, assistant delta index = %d, want title before assistant response:\n%s", threadEvent, assistantDelta, body)
+	}
 	if store.assistantContent != "Hello" {
 		t.Fatalf("assistantContent = %q, want Hello", store.assistantContent)
 	}

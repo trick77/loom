@@ -195,27 +195,11 @@ test("new chat navigation does not create a thread or sidebar entry", async () =
   ).toHaveLength(0);
 });
 
-test("creates the sidebar chat only after the first response title event", async () => {
-  const stream = new ReadableStream({
+test("inserts the titled sidebar chat before rendering the first new chat response", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const encoder = new TextEncoder();
-      controller.enqueue(
-        encoder.encode(
-          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"It is hot","createdAt":"2026-05-30T00:00:00Z"}\n\n',
-        ),
-      );
-      controller.enqueue(
-        encoder.encode(
-          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Drink water.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
-        ),
-      );
-      controller.enqueue(
-        encoder.encode(
-          'event: thread\ndata: {"id":"t1","title":"Weather comfort","starred":false,"createdAt":"2026-05-30T00:00:00Z","updatedAt":"2026-05-30T00:00:02Z","lastMessageAt":"2026-05-30T00:00:01Z"}\n\n',
-        ),
-      );
-      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
-      controller.close();
+      streamController.current = controller;
     },
   });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -246,20 +230,45 @@ test("creates the sidebar chat only after the first response title event", async
   });
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
-  expect(await screen.findByText("Drink water.")).toBeInTheDocument();
-  expect(window.location.pathname).toBe("/chat/t1");
-  expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
-  expect(await screen.findByRole("button", { name: "Weather comfort" })).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith(
-    "/api/threads",
-    expect.objectContaining({ method: "POST" }),
-  );
-  expect(fetchMock).toHaveBeenCalledWith(
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
     "/api/threads/t1/messages:stream",
     expect.objectContaining({
       method: "POST",
       body: JSON.stringify({ content: "It is hot" }),
     }),
+  ));
+
+  const encoder = new TextEncoder();
+  streamController.current?.enqueue(
+    encoder.encode(
+      'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"It is hot","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+    ),
+  );
+  streamController.current?.enqueue(
+    encoder.encode(
+      'event: thread\ndata: {"id":"t1","title":"Weather comfort","starred":false,"createdAt":"2026-05-30T00:00:00Z","updatedAt":"2026-05-30T00:00:02Z","lastMessageAt":"2026-05-30T00:00:01Z"}\n\n',
+    ),
+  );
+
+  expect(await screen.findByText("It is hot")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/chat/t1");
+  expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Weather comfort" })).toBeInTheDocument();
+  expect(screen.queryByText("Drink water.")).not.toBeInTheDocument();
+
+  streamController.current?.enqueue(
+    encoder.encode(
+      'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Drink water.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+    ),
+  );
+
+  expect(await screen.findByText("Drink water.")).toBeInTheDocument();
+
+  streamController.current?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/threads",
+    expect.objectContaining({ method: "POST" }),
   );
 });
 
