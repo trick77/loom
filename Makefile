@@ -1,4 +1,4 @@
-.PHONY: build test fe-build fe-test run dev docker-dev docker-dev-down tidy
+.PHONY: build test fe-build fe-test run dev refresh docker-dev docker-dev-down tidy
 
 tidy:
 	cd backend && go mod tidy
@@ -20,6 +20,9 @@ run:
 
 dev:
 	./hack/dev.sh
+
+refresh:
+	./hack/refresh.sh
 
 # Dockerized local dev with dev auth (no authentik). Single embedded image, UI on http://localhost:8080.
 docker-dev:

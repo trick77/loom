@@ -22,8 +22,9 @@ frontend/dist/
 # Codex (local, machine-specific)
 .codex/
 
-# Claude Code (local, machine-specific)
-.claude/settings.local.json
+# Local agent/browser tooling (machine-specific)
+.claude/
+.playwright-mcp/
 
 # Local data & secrets
 *.db
