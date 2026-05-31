@@ -233,14 +233,7 @@ func (s *server) startMCPStatus(ctx context.Context) <-chan mcpStatusResponse {
 	}
 	ch := make(chan mcpStatusResponse, 1)
 	go func() {
-		statuses := s.mcp.ServerStatus(ctx)
-		active := 0
-		for _, st := range statuses {
-			if st.Active {
-				active++
-			}
-		}
-		ch <- mcpStatusResponse{Active: active, Configured: len(statuses)}
+		ch <- s.currentMCPStatus(ctx)
 	}()
 	return ch
 }

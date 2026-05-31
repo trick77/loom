@@ -486,6 +486,26 @@ test("shows a green MCP indicator when all servers are active", async () => {
   expect(indicator.querySelector(".border-success")).not.toBeNull();
 });
 
+test("loads MCP status when the chat shell first renders", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/mcp/status") return Response.json({ active: 1, configured: 2 });
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+
+  const indicator = await screen.findByTitle("1 of 2 MCP servers active");
+  expect(indicator).toHaveTextContent("1");
+  expect(indicator.querySelector(".border-danger")).not.toBeNull();
+});
+
 test("hides the MCP indicator when no mcp_status event arrives", async () => {
   vi.stubGlobal("fetch", mcpStreamFetch(assistantMessageEvent + "event: done\ndata: {}\n\n"));
 

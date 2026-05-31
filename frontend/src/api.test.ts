@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { AuthExpiredError, listProjects, listThreads, streamMessage } from "./api";
+import { AuthExpiredError, getMcpStatus, listProjects, listThreads, streamMessage } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -12,6 +12,14 @@ test("listThreads builds query parameters", async () => {
   await listThreads({ starred: true, limit: 10 });
 
   expect(fetchMock).toHaveBeenCalledWith("/api/threads?starred=true&limit=10");
+});
+
+test("getMcpStatus loads current server counts", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(Response.json({ active: 1, configured: 2 }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(getMcpStatus()).resolves.toEqual({ active: 1, configured: 2 });
+  expect(fetchMock).toHaveBeenCalledWith("/api/mcp/status");
 });
 
 test("streamMessage parses server-sent events", async () => {

@@ -108,6 +108,11 @@ export async function listProjects(): Promise<Project[]> {
   return expectJSON<Project[]>(response, "failed to load projects");
 }
 
+export async function getMcpStatus(): Promise<McpStatusEvent> {
+  const response = await fetch("/api/mcp/status");
+  return expectJSON<McpStatusEvent>(response, "failed to load MCP status");
+}
+
 export async function createProject(input: { name: string; description?: string }): Promise<Project> {
   const response = await fetch("/api/projects", {
     method: "POST",

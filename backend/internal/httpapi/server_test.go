@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/trick77/spark/internal/auth"
+	"github.com/trick77/spark/internal/mcp"
 )
 
 func TestHealth_returnsOK(t *testing.T) {
@@ -84,6 +85,30 @@ func TestMeReturnsCurrentUser(t *testing.T) {
 	}
 	if body.Role != auth.RoleAdmin {
 		t.Fatalf("role = %q, want admin", body.Role)
+	}
+}
+
+func TestMCPStatusReturnsConfiguredServerCounts(t *testing.T) {
+	srv := newAuthenticatedChatServer(t, Deps{
+		MCP: fakeMCPService{statuses: []mcp.ServerStatus{
+			{Name: "alpha", Active: true},
+			{Name: "zeta", Active: false},
+		}},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodGet, "/api/mcp/status", "")
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var body mcpStatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Active != 1 || body.Configured != 2 {
+		t.Fatalf("body = %#v, want active=1 configured=2", body)
 	}
 }
 
