@@ -92,6 +92,43 @@ test("loads projects and recent threads after sign in", async () => {
   expect(screen.getByText("Algebra")).toBeInTheDocument();
 });
 
+test("creates a project from the sidebar", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects" && init?.method === undefined) return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json([]);
+    if (url === "/api/projects" && init?.method === "POST") {
+      return new Response(
+        JSON.stringify({
+          id: "p1",
+          name: "School",
+          description: "",
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        }),
+        { status: 201 },
+      );
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /new project/i }));
+  fireEvent.change(screen.getByPlaceholderText(/project name/i), { target: { value: "School" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+  expect(await screen.findByText("School")).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/projects",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ name: "School" }),
+    }),
+  );
+});
+
 test("creates a new chat from the sidebar", async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);

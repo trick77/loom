@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  createProject,
   createThread,
   getThread,
   listProjects,
@@ -26,6 +27,9 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [isSending, setIsSending] = useState(false);
 
@@ -56,6 +60,20 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
     const thread = await createThread();
     setThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
     await selectThread(thread.id);
+  }
+
+  async function handleCreateProject() {
+    const name = projectName.trim();
+    if (name === "" || isCreatingProject) return;
+    setIsCreatingProject(true);
+    try {
+      const project = await createProject({ name });
+      setProjects((current) => [project, ...current.filter((item) => item.id !== project.id)]);
+      setProjectName("");
+      setIsProjectFormOpen(false);
+    } finally {
+      setIsCreatingProject(false);
+    }
   }
 
   async function handleSend() {
@@ -110,7 +128,52 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
         <SidebarSection title="Starred" threads={starredThreads} onSelect={selectThread} />
         <SidebarSection title="Recents" threads={threads} onSelect={selectThread} />
         <section>
-          <div className="mb-2 text-xs font-semibold uppercase text-muted">Projects</div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold uppercase text-muted">Projects</div>
+            <button
+              className="text-xs font-medium text-muted transition-colors hover:text-ink"
+              onClick={() => setIsProjectFormOpen(true)}
+              type="button"
+            >
+              New project
+            </button>
+          </div>
+          {isProjectFormOpen && (
+            <form
+              className="mb-2 space-y-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleCreateProject();
+              }}
+            >
+              <input
+                autoFocus
+                className="w-full rounded-spark border border-border bg-bg px-2 py-1.5 text-sm text-ink outline-none placeholder:text-muted focus:border-accent"
+                placeholder="Project name"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+              />
+              <div className="flex gap-2">
+                <button
+                  className="rounded-spark bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-strong disabled:opacity-50"
+                  disabled={projectName.trim() === "" || isCreatingProject}
+                  type="submit"
+                >
+                  Create
+                </button>
+                <button
+                  className="px-2 py-1.5 text-xs text-muted transition-colors hover:text-ink"
+                  onClick={() => {
+                    setProjectName("");
+                    setIsProjectFormOpen(false);
+                  }}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
           <div className="space-y-1">
             {projects.map((project) => (
               <div key={project.id} className="rounded-spark px-2 py-1 text-sm">
