@@ -10,8 +10,8 @@
    SWAP POINT: replace --font-sans / --font-serif once the licensed display
    font package name is confirmed. */
 @theme {
-  --color-bg: #1f1f1e;
-  --color-panel: #171716;
+  --color-bg: #1f1e1b;
+  --color-panel: #1b1a18;
   --color-active: #2c2c2a;
   --color-border: #323230;
   --color-ink: #faf9f5;

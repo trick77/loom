@@ -38,6 +38,8 @@ type ToolActivity = {
   content?: string;
 };
 
+type SidebarIconName = "chats" | "projects" | "artifacts" | "customize";
+
 export function ChatShell({
   user,
   adminPanel,
@@ -276,7 +278,7 @@ export function ChatShell({
 
   return (
     <div className="grid h-screen grid-cols-[282px_1fr] bg-bg font-sans text-ink">
-      <aside className="flex min-h-0 flex-col border-r border-[#343432] bg-[#181817] text-sm text-[#c7c5bd]">
+      <aside className="flex min-h-0 flex-col border-r border-[#343432] bg-panel text-sm text-[#c7c5bd]">
         <div className="flex h-11 items-center justify-between px-3">
           <div className="font-serif text-2xl font-medium text-[#f4f0e8]">Spark</div>
           <div className="flex items-center gap-3 text-[#aaa79e]" aria-hidden="true">
@@ -284,26 +286,23 @@ export function ChatShell({
             <span className="text-sm">▯</span>
           </div>
         </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-3">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
           <button
-            className={`flex h-9 w-full items-center gap-3 rounded-md px-2 text-left transition-colors hover:bg-[#2a2a28] ${
+            className={`flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left transition-colors hover:bg-[#2a2a28] ${
               route.view === "new" && !showAdmin ? "bg-[#111110] text-white" : ""
             }`}
             onClick={navigateToNew}
             type="button"
           >
-            <span className="grid h-5 w-5 place-items-center rounded-full bg-[#30302e] text-base leading-none text-[#d5d2c9]">
+            <span className="grid h-[22px] w-[22px] place-items-center rounded-full bg-[#30302e] text-[17px] leading-none text-[#d5d2c9]">
               +
             </span>
             <span>New chat</span>
           </button>
-          <SidebarPrimaryItem label="Chats" icon="◔" />
-          <SidebarPrimaryItem label="Projects" icon="▱" />
-          <SidebarPrimaryItem label="Artifacts" icon="⌘" />
-          <SidebarPrimaryItem label="Customize" icon="▤" />
-          <SidebarLabel>Products</SidebarLabel>
-          <SidebarPrimaryItem label="Code" icon="‹/›" />
-          <SidebarPrimaryItem label="Design" icon="✾" />
+          <SidebarPrimaryItem label="Chats" icon="chats" />
+          <SidebarPrimaryItem label="Projects" icon="projects" />
+          <SidebarPrimaryItem label="Artifacts" icon="artifacts" />
+          <SidebarPrimaryItem label="Customize" icon="customize" />
           {loadError !== "" && (
             <div className="mx-2 mt-3 rounded-md border border-accent px-2 py-2 text-xs text-accent">
               {loadError}
@@ -403,7 +402,7 @@ export function ChatShell({
           {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator status={mcpStatus} />}
         </div>
       </aside>
-      <main className="min-w-0 bg-[#1f1f1d]">
+      <main className="min-w-0 bg-bg">
         {showAdmin ? (
           adminPanel
         ) : route.view === "new" ? (
@@ -472,17 +471,64 @@ function greetingForNow() {
   return "Evening";
 }
 
-function SidebarPrimaryItem({ icon, label }: { icon: string; label: string }) {
+function SidebarPrimaryItem({ icon, label }: { icon: SidebarIconName; label: string }) {
   return (
-    <div className="mt-1 flex h-8 items-center gap-3 rounded-md px-2 text-[#c7c5bd]">
-      <span className="w-5 shrink-0 text-center text-sm text-white">{icon}</span>
+    <div className="mt-0.5 flex h-8 items-center gap-2.5 rounded-md px-2 text-[#c7c5bd]">
+      <SidebarIcon name={icon} />
       <span className="truncate">{label}</span>
     </div>
   );
 }
 
-function SidebarLabel({ children }: { children: React.ReactNode }) {
-  return <div className="px-2 pb-1 pt-7 text-xs text-[#8f8b82]">{children}</div>;
+function SidebarIcon({ name }: { name: SidebarIconName }) {
+  const className = "h-[18px] w-[18px] shrink-0 text-[#f0eee7]";
+  if (name === "chats") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path
+          d="M6.5 15.5c-2.2-.2-3.5-1.6-3.5-3.8V8.8C3 6.3 4.5 5 7.1 5h5.1c2.6 0 4.1 1.3 4.1 3.8v2.9c0 2.5-1.5 3.8-4.1 3.8H9l-3.3 2.3v-2.3Z"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M17.2 9.2c2.5.1 3.8 1.4 3.8 3.8v2.4c0 2.2-1.3 3.5-3.6 3.7v2l-2.9-2h-3.2c-1.8 0-3-.7-3.5-2"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (name === "projects") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path
+          d="M4.5 8.5h5l1.6 2h8.4v7.2c0 1.2-.7 1.8-2 1.8h-11c-1.3 0-2-.6-2-1.8V8.5Z"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+        <path d="M4.5 8.5V6.8c0-1.1.7-1.7 1.9-1.7h3.1l1.6 2h6.5c1.2 0 1.9.6 1.9 1.7v1.7" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (name === "artifacts") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path d="M12 4.5v5.2M7.5 12.3 12 9.7l4.5 2.6M7.5 17.5v-5.2M16.5 17.5v-5.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M12 2.8 9.7 4.1v2.6L12 8l2.3-1.3V4.1L12 2.8ZM7.5 10.2l-2.3 1.3v2.6l2.3 1.3 2.3-1.3v-2.6l-2.3-1.3ZM16.5 10.2l-2.3 1.3v2.6l2.3 1.3 2.3-1.3v-2.6l-2.3-1.3ZM7.5 16.2l-2.3 1.3v2.6l2.3 1.3 2.3-1.3v-2.6l-2.3-1.3ZM16.5 16.2l-2.3 1.3v2.6l2.3 1.3 2.3-1.3v-2.6l-2.3-1.3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      <path d="M8.5 7V5.7c0-1 .7-1.7 1.8-1.7h3.4c1.1 0 1.8.7 1.8 1.7V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M5 7h14c1.2 0 2 .8 2 2v8.5c0 1.3-.8 2-2 2H5c-1.2 0-2-.7-2-2V9c0-1.2.8-2 2-2Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M3.5 12h17M10 12.2v1.2h4v-1.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function McpStatusIndicator({ status }: { status: McpStatusEvent }) {
