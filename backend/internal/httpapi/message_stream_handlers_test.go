@@ -10,6 +10,7 @@ import (
 
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/llm"
+	"github.com/trick77/spark/internal/mcp"
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
@@ -179,6 +180,54 @@ func TestStreamMessageStillCompletesWhenTitleGenerationFails(t *testing.T) {
 	}
 	if strings.Contains(body, "event: error") {
 		t.Fatalf("SSE body contains error for best-effort title failure:\n%s", body)
+	}
+}
+
+func TestStreamMessageEmitsMcpStatus(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{title: "Greeting"},
+		MCP: fakeMCPService{statuses: []mcp.ServerStatus{
+			{Name: "alpha", Active: true},
+			{Name: "zeta", Active: false},
+		}},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: mcp_status") {
+		t.Fatalf("SSE body missing mcp_status event:\n%s", body)
+	}
+	if !strings.Contains(body, `data: {"active":1,"configured":2}`) {
+		t.Fatalf("SSE body missing mcp_status payload:\n%s", body)
+	}
+}
+
+func TestStreamMessageOmitsMcpStatusWhenNoneConfigured(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{title: "Greeting"},
+		MCP:  fakeMCPService{},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if strings.Contains(rec.Body.String(), "event: mcp_status") {
+		t.Fatalf("SSE body should omit mcp_status when none configured:\n%s", rec.Body.String())
 	}
 }
 

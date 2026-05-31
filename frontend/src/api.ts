@@ -49,6 +49,11 @@ export type ToolResultEvent = {
   content: string;
 };
 
+export type McpStatusEvent = {
+  active: number;
+  configured: number;
+};
+
 type ThreadResponse = {
   thread: Thread;
   messages: Message[];
@@ -61,6 +66,7 @@ type StreamHandlers = {
   onThread(thread: Thread): void;
   onToolCall?(event: ToolCallEvent): void;
   onToolResult?(event: ToolResultEvent): void;
+  onMcpStatus?(event: McpStatusEvent): void;
 };
 
 export class AuthExpiredError extends Error {
@@ -263,6 +269,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "tool_result":
       handlers.onToolResult?.(payload as ToolResultEvent);
+      break;
+    case "mcp_status":
+      handlers.onMcpStatus?.(payload as McpStatusEvent);
       break;
     case "done":
       break;

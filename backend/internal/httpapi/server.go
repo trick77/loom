@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/llm"
+	"github.com/trick77/spark/internal/mcp"
 )
 
 // Deps are the dependencies needed to build the server. Grows in later phases
@@ -72,6 +73,7 @@ type ChatClient interface {
 type ToolService interface {
 	Tools() []llm.Tool
 	CallTool(context.Context, string, map[string]any) (string, error)
+	ServerStatus(context.Context) []mcp.ServerStatus
 }
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.

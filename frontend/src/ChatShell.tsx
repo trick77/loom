@@ -8,6 +8,7 @@ import {
   listThreads,
   setThreadStarred,
   streamMessage,
+  type McpStatusEvent,
   type Message,
   type Project,
   type Thread,
@@ -45,6 +46,7 @@ export function ChatShell({
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [toolEvents, setToolEvents] = useState<ToolActivity[]>([]);
+  const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -204,6 +206,7 @@ export function ChatShell({
             current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
           );
         },
+        onMcpStatus: (event) => setMcpStatus(event),
       }, abortController.signal);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -301,6 +304,7 @@ export function ChatShell({
         <div className="mt-auto border-t border-border pt-3">
           <div className="text-sm font-medium">{user.displayName || user.username}</div>
           <div className="text-xs text-muted">{user.role}</div>
+          {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator status={mcpStatus} />}
           <button className="mt-2 text-sm text-muted" onClick={onLogout}>
             Logout
           </button>
@@ -348,6 +352,23 @@ function upsertToolCall(current: ToolActivity[], event: ToolCallEvent): ToolActi
 function upsertToolResult(current: ToolActivity[], event: ToolResultEvent): ToolActivity[] {
   return current.map((item) =>
     item.id === event.id ? { ...item, status: "done", content: event.content } : item,
+  );
+}
+
+function McpStatusIndicator({ status }: { status: McpStatusEvent }) {
+  const allActive = status.active === status.configured;
+  const ringClass = allActive ? "border-success" : "border-danger";
+  const dotClass = allActive ? "bg-success" : "bg-danger";
+  return (
+    <div
+      className="mt-2 flex items-center gap-1.5 text-xs text-muted"
+      title={`${status.active} of ${status.configured} MCP servers active`}
+    >
+      <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
+        <span className={`h-1 w-1 rounded-full ${dotClass}`} />
+      </span>
+      <span>{status.active}</span>
+    </div>
   );
 }
 

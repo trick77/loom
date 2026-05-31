@@ -66,6 +66,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Kick off the MCP reachability probe now so its latency overlaps with
+	// assistant generation instead of delaying the final events.
+	mcpStatusCh := s.startMCPStatus(r.Context())
+
 	history := buildLLMHistory(user, priorMessages, userMessage)
 	assistantContent, err := s.runAssistantLoop(r.Context(), stream, history)
 	if err != nil {
@@ -91,6 +95,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
 		return
 	}
+
+	sendMCPStatus(stream, mcpStatusCh)
 
 	if thread.Title == chat.DefaultThreadTitle {
 		_ = s.generateAndSendThreadTitle(r.Context(), persistCtx, stream, user.ID, threadID, userMessage.Content, assistantMessage.Content)
@@ -215,6 +221,42 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 		return nil
 	}
 	return sendSSEJSON(stream, "thread", thread)
+}
+
+// startMCPStatus begins a live reachability probe of the configured MCP servers
+// in the background so its latency overlaps with assistant generation. It
+// returns nil when MCP is disabled. The channel is buffered, so the probe never
+// leaks even if the caller returns early without reading it.
+func (s *server) startMCPStatus(ctx context.Context) <-chan mcpStatusResponse {
+	if s.mcp == nil {
+		return nil
+	}
+	ch := make(chan mcpStatusResponse, 1)
+	go func() {
+		statuses := s.mcp.ServerStatus(ctx)
+		active := 0
+		for _, st := range statuses {
+			if st.Active {
+				active++
+			}
+		}
+		ch <- mcpStatusResponse{Active: active, Configured: len(statuses)}
+	}()
+	return ch
+}
+
+// sendMCPStatus emits a best-effort mcp_status event from a probe started by
+// startMCPStatus. It is skipped when MCP is disabled or no servers are
+// configured, and never aborts the stream.
+func sendMCPStatus(stream *sse.Writer, ch <-chan mcpStatusResponse) {
+	if ch == nil {
+		return
+	}
+	status := <-ch
+	if status.Configured == 0 {
+		return
+	}
+	_ = sendSSEJSON(stream, "mcp_status", status)
 }
 
 func buildLLMHistory(user auth.User, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
