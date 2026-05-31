@@ -279,17 +279,17 @@ export function ChatShell({
 
   return (
     <div className="grid h-screen grid-cols-[282px_1fr] bg-bg font-sans text-ink">
-      <aside className="flex min-h-0 flex-col border-r border-[#343432] bg-panel text-[13px] text-[#c7c5bd]">
+      <aside className="flex min-h-0 flex-col border-r border-[#343432] bg-panel text-sm text-[#c7c5bd]">
         <div className="flex h-11 items-center justify-between px-3">
-          <div className="font-serif text-[22px] font-medium text-[#f4f0e8]">Spark</div>
+          <div className="font-serif text-xl font-medium text-[#f4f0e8]">Spark</div>
           <div className="flex items-center gap-3 text-[#aaa79e]" aria-hidden="true">
             <span className="text-sm">⌕</span>
             <span className="text-xs">▯</span>
           </div>
         </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-1 pb-4 pt-2">
           <button
-            className={`flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left transition-colors hover:bg-[#2a2a28] ${
+            className={`flex h-7 w-full items-center gap-2.5 rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
               route.view === "new" && !showAdmin ? "bg-[#111110] text-white" : ""
             }`}
             onClick={navigateToNew}
@@ -305,7 +305,7 @@ export function ChatShell({
           <SidebarPrimaryItem label="Artifacts" icon="artifacts" />
           <SidebarPrimaryItem label="Customize" icon="customize" />
           {loadError !== "" && (
-            <div className="mx-2 mt-3 rounded-md border border-accent px-2 py-2 text-[11px] text-accent">
+            <div className="mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-xs text-accent">
               {loadError}
             </div>
           )}
@@ -321,8 +321,8 @@ export function ChatShell({
             activeThreadID={route.view === "chat" ? route.threadID : null}
             onSelect={selectThread}
           />
-          <section className="mt-4">
-            <div className="mb-2 flex items-center justify-between px-2 text-[11px] text-[#8f8b82]">
+          <section className="mt-3">
+            <div className="mb-2 flex items-center justify-between px-1.5 text-xs text-[#8f8b82]">
               <span>Projects</span>
               <button
                 className="rounded px-1 text-[#aaa79e] transition-colors hover:text-white"
@@ -350,14 +350,14 @@ export function ChatShell({
                 />
                 <div className="flex gap-2">
                   <button
-                    className="rounded-md bg-[#393936] px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+                    className="rounded-md bg-[#393936] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                     disabled={projectName.trim() === "" || isCreatingProject}
                     type="submit"
                   >
                     Create
                   </button>
                   <button
-                    className="px-2 py-1.5 text-[11px] text-muted transition-colors hover:text-ink"
+                    className="px-2 py-1.5 text-xs text-muted transition-colors hover:text-ink"
                     onClick={() => {
                       setProjectName("");
                       setIsProjectFormOpen(false);
@@ -371,7 +371,7 @@ export function ChatShell({
             )}
             <div className="space-y-1">
               {projects.map((project) => (
-                <div key={project.id} className="truncate rounded-md px-2 py-1.5 text-[13px]">
+                <div key={project.id} className="truncate rounded-md px-1.5 py-1.5 text-sm">
                   {project.name}
                 </div>
               ))}
@@ -379,7 +379,7 @@ export function ChatShell({
           </section>
           {user.role === "admin" && (
             <button
-              className="mt-4 flex h-8 w-full items-center rounded-md px-2 text-left text-[13px] transition-colors hover:bg-[#2a2a28]"
+              className="mt-3 flex h-7 w-full items-center rounded-md px-1.5 text-left text-sm transition-colors hover:bg-[#2a2a28]"
               onClick={onAdmin}
               type="button"
             >
@@ -396,7 +396,7 @@ export function ChatShell({
               <div className="truncate text-xs text-[#f4f0e8]">{displayName}</div>
               <div className="truncate text-xs font-normal text-[#8f8b82]">{user.role}</div>
             </div>
-            <button className="rounded-md px-2 py-1 text-[10px] text-[#aaa79e] hover:bg-[#2a2a28]" onClick={onLogout}>
+            <button className="rounded-md px-2 py-1 text-xs text-[#aaa79e] hover:bg-[#2a2a28]" onClick={onLogout}>
               Logout
             </button>
           </div>
@@ -474,7 +474,7 @@ function greetingForNow() {
 
 function SidebarPrimaryItem({ icon, label }: { icon: SidebarIconName; label: string }) {
   return (
-    <div className="mt-0.5 flex h-8 items-center gap-2.5 rounded-md px-2 text-[#c7c5bd]">
+    <div className="flex h-7 items-center gap-2.5 rounded-md px-1.5 text-[#c7c5bd]">
       <SidebarIcon name={icon} />
       <span className="truncate">{label}</span>
     </div>
@@ -538,7 +538,7 @@ function McpStatusIndicator({ status }: { status: McpStatusEvent }) {
   const dotClass = allActive ? "bg-success" : "bg-danger";
   return (
     <div
-      className="mt-2 flex items-center gap-1.5 text-[11px] text-muted"
+      className="mt-2 flex items-center gap-1.5 text-xs text-muted"
       title={`${status.active} of ${status.configured} MCP servers active`}
     >
       <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
@@ -561,13 +561,13 @@ function SidebarSection({
   onSelect(threadID: string): void;
 }) {
   return (
-    <section className="mt-4">
-      <div className="mb-2 px-2 text-[11px] text-[#8f8b82]">{title}</div>
+    <section className="mt-3">
+      <div className="mb-2 px-1.5 text-xs text-[#8f8b82]">{title}</div>
       <div className="space-y-1">
         {threads.map((thread) => (
           <button
             key={thread.id}
-            className={`block h-8 w-full truncate rounded-md px-2 text-left text-[13px] transition-colors hover:bg-[#2a2a28] ${
+            className={`block h-7 w-full truncate rounded-md px-1.5 text-left text-sm transition-colors hover:bg-[#2a2a28] ${
               activeThreadID === thread.id ? "bg-[#10100f] text-white" : ""
             }`}
             onClick={() => onSelect(thread.id)}
@@ -651,8 +651,8 @@ function ChatPanel({
 }) {
   return (
     <section className="flex h-screen min-h-0 flex-col">
-      <header className="flex h-9 shrink-0 items-center justify-between border-b border-[#252523] px-4 text-[13px] text-[#d5d2c9]">
-        <h1 className="min-w-0 truncate font-sans text-[13px] font-normal">
+      <header className="flex h-9 shrink-0 items-center justify-between border-b border-[#252523] px-4 text-sm text-[#d5d2c9]">
+        <h1 className="min-w-0 truncate font-sans text-sm font-normal">
           {thread?.title ?? "New chat"}
           <span className="ml-2 text-[#88857d]" aria-hidden="true">
             ⌄
@@ -660,7 +660,7 @@ function ChatPanel({
         </h1>
         {thread !== null && (
           <button
-            className="rounded-md px-2 py-1 text-[11px] text-[#aaa79e] transition-colors hover:bg-[#2a2a28] hover:text-white disabled:opacity-50"
+            className="rounded-md px-2 py-1 text-xs text-[#aaa79e] transition-colors hover:bg-[#2a2a28] hover:text-white disabled:opacity-50"
             disabled={isUpdatingStar}
             onClick={() => onStarChange(!thread.starred)}
             type="button"
@@ -689,7 +689,7 @@ function ChatPanel({
             onDraftChange={onDraftChange}
             onSend={onSend}
           />
-          <div className="mt-2 text-center text-[11px] text-[#858178]">
+          <div className="mt-2 text-center text-xs text-[#858178]">
             Spark can make mistakes. Please double-check responses.
           </div>
         </div>
@@ -770,7 +770,7 @@ function ToolActivityPanel({ events }: { events: ToolActivity[] }) {
         {events.map((event) => (
           <div key={event.id} className="flex items-center justify-between gap-3">
             <span className="min-w-0 truncate">{event.name}</span>
-            <span className="shrink-0 text-[11px]">{event.status === "done" ? "Done" : "Running"}</span>
+            <span className="shrink-0 text-xs">{event.status === "done" ? "Done" : "Running"}</span>
           </div>
         ))}
       </div>
@@ -781,7 +781,7 @@ function ToolActivityPanel({ events }: { events: ToolActivity[] }) {
 function MessageBubble({ message }: { message: Message }) {
   if (message.role === "user") {
     return (
-      <div className="ml-auto max-w-[40rem] rounded-xl bg-[#111110] px-4 py-3 text-sm leading-relaxed text-[#f3f0e8]">
+      <div className="ml-auto max-w-[40rem] rounded-xl bg-[#111110] px-4 py-3 text-base leading-relaxed text-[#f3f0e8]">
         {message.content}
       </div>
     );
@@ -790,7 +790,7 @@ function MessageBubble({ message }: { message: Message }) {
 }
 
 function AssistantText({ children }: { children: React.ReactNode }) {
-  return <div className="max-w-[46rem] text-sm leading-6 text-[#f3f0e8]">{children}</div>;
+  return <div className="max-w-[46rem] text-base leading-7 text-[#f3f0e8]">{children}</div>;
 }
 
 function ErrorText({ children }: { children: React.ReactNode }) {
