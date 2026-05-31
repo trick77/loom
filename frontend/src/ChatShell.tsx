@@ -279,7 +279,7 @@ export function ChatShell({
 
   return (
     <div className="grid h-screen grid-cols-[282px_1fr] bg-bg font-sans text-ink">
-      <aside className="flex min-h-0 flex-col border-r border-[#343432] bg-panel text-sm text-[#c7c5bd]">
+      <aside className="flex min-h-0 flex-col border-r border-[#343432] bg-panel text-xs text-[#c7c5bd]">
         <div className="flex h-11 items-center justify-between px-3">
           <div className="font-serif text-xl font-medium text-[#f4f0e8]">Spark</div>
           <div className="flex items-center gap-3 text-[#aaa79e]" aria-hidden="true">
@@ -371,7 +371,7 @@ export function ChatShell({
             )}
             <div className="space-y-1">
               {projects.map((project) => (
-                <div key={project.id} className="truncate rounded-md px-1.5 py-1.5 text-sm">
+                <div key={project.id} className="truncate rounded-md px-1.5 py-1.5 text-xs">
                   {project.name}
                 </div>
               ))}
@@ -379,7 +379,7 @@ export function ChatShell({
           </section>
           {user.role === "admin" && (
             <button
-              className="mt-3 flex h-7 w-full items-center rounded-md px-1.5 text-left text-sm transition-colors hover:bg-[#2a2a28]"
+              className="mt-3 flex h-7 w-full items-center rounded-md px-1.5 text-left text-xs transition-colors hover:bg-[#2a2a28]"
               onClick={onAdmin}
               type="button"
             >
@@ -567,7 +567,7 @@ function SidebarSection({
         {threads.map((thread) => (
           <button
             key={thread.id}
-            className={`block h-7 w-full truncate rounded-md px-1.5 text-left text-sm transition-colors hover:bg-[#2a2a28] ${
+            className={`block h-7 w-full truncate rounded-md px-1.5 text-left text-xs transition-colors hover:bg-[#2a2a28] ${
               activeThreadID === thread.id ? "bg-[#10100f] text-white" : ""
             }`}
             onClick={() => onSelect(thread.id)}
