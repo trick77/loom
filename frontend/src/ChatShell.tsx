@@ -317,7 +317,7 @@ export function ChatShell({
             <span className="text-xs">▯</span>
           </div>
         </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto px-1 pb-4 pt-2">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
           <button
             className={`flex h-7 w-full items-center gap-2.5 rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
               route.view === "new" && !showAdmin ? "bg-[#111110]" : ""
