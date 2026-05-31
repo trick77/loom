@@ -617,7 +617,7 @@ function StartPanel({
         <img className="h-10 w-10 shrink-0" src={logoImage} alt="" aria-hidden="true" />
         {greetingForNow()}, {displayName}
       </h1>
-      <div className="w-full max-w-[676px]">
+      <div className="w-full max-w-[674px]">
         <Composer
           variant="start"
           draft={draft}
@@ -748,7 +748,7 @@ function ChatPanel({
             className="pointer-events-none sticky bottom-0 -mx-8 bg-bg px-8 pb-5 pt-4"
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
-            <div className="pointer-events-auto mx-auto w-full max-w-[674px]">
+            <div className="pointer-events-auto mx-auto w-full max-w-[754px]">
               <Composer
                 variant="chat"
                 draft={draft}
@@ -824,7 +824,7 @@ function Composer({
   onDraftChange(value: string): void;
   onSend(): void;
 }) {
-  const height = variant === "start" ? "h-[122px]" : "h-[122px]";
+  const height = variant === "start" ? "h-[122px]" : "h-[102px]";
   const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   return (
     <form
