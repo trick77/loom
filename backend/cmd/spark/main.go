@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/trick77/spark/internal/auth"
+	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/config"
 	"github.com/trick77/spark/internal/httpapi"
+	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/store"
 	"github.com/trick77/spark/web"
 )
@@ -47,10 +49,19 @@ func run() error {
 		return err
 	}
 	authMW := auth.NewMiddleware(sessionStore, userStore)
-	var oidcService *auth.OIDCService
+	chatStore := chat.NewStore(db)
+	var chatClient httpapi.ChatClient
+	if cfg.ChatBaseURL != "" {
+		chatClient = llm.NewClient(llm.Config{
+			BaseURL: cfg.ChatBaseURL,
+			APIKey:  cfg.ChatAPIKey,
+			Model:   cfg.ChatModel,
+		}, http.DefaultClient)
+	}
+	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
 	if cfg.AuthMode == config.AuthModeOIDC {
-		oidcService, err = auth.NewOIDCServiceFromDiscovery(context.Background(), auth.OIDCServiceConfig{
+		discoveredOIDC, err := auth.NewOIDCServiceFromDiscovery(context.Background(), auth.OIDCServiceConfig{
 			Issuer:       cfg.OIDC.Issuer,
 			ClientID:     cfg.OIDC.ClientID,
 			ClientSecret: cfg.OIDC.ClientSecret,
@@ -60,6 +71,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		oidcService = discoveredOIDC
 	}
 	if cfg.AuthMode == config.AuthModeDev {
 		slog.Warn("development auth enabled; local loopback use only")
@@ -79,6 +91,8 @@ func run() error {
 		Auth:                  authMW,
 		Sessions:              sessionStore,
 		Users:                 userStore,
+		Chat:                  chatStore,
+		LLM:                   chatClient,
 		OIDCAdminGroup:        cfg.OIDC.AdminGroup,
 		DevAuthClaims:         devAuthClaims,
 		PostLogoutRedirectURL: cfg.OIDC.PostLogoutRedirectURL,

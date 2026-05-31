@@ -1,0 +1,406 @@
+package chat
+
+import (
+	"context"
+	"database/sql"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/trick77/spark/internal/store"
+)
+
+func openTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func insertTestUser(t *testing.T, db *sql.DB, id string) string {
+	t.Helper()
+	_, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES (?, ?, ?, 'user')`,
+		id, "subject-"+id, id,
+	)
+	if err != nil {
+		t.Fatalf("insert user %s: %v", id, err)
+	}
+	return id
+}
+
+func TestStore_CreateProjectAndThreadScopesByUser(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	aliceID := insertTestUser(t, db, "alice")
+	bobID := insertTestUser(t, db, "bob")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, aliceID, CreateProjectInput{
+		Name:        "  Alice Project  ",
+		Description: "  Project notes  ",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	if project.Name != "Alice Project" {
+		t.Fatalf("project.Name = %q, want trimmed name", project.Name)
+	}
+	if project.Description != "Project notes" {
+		t.Fatalf("project.Description = %q, want trimmed description", project.Description)
+	}
+
+	thread, err := store.CreateThread(ctx, aliceID, CreateThreadInput{
+		ProjectID: &project.ID,
+		Title:     "  Planning  ",
+	})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if thread.ProjectID == nil || *thread.ProjectID != project.ID {
+		t.Fatalf("thread.ProjectID = %v, want %q", thread.ProjectID, project.ID)
+	}
+	if thread.Title != "Planning" {
+		t.Fatalf("thread.Title = %q, want trimmed title", thread.Title)
+	}
+
+	if _, ok, err := store.GetThread(ctx, bobID, thread.ID); err != nil {
+		t.Fatalf("Bob GetThread() error: %v", err)
+	} else if ok {
+		t.Fatal("Bob GetThread() ok = true, want false")
+	}
+
+	got, ok, err := store.GetThread(ctx, aliceID, thread.ID)
+	if err != nil {
+		t.Fatalf("Alice GetThread() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("Alice GetThread() ok = false, want true")
+	}
+	if got.ProjectID == nil || *got.ProjectID != project.ID {
+		t.Fatalf("got.ProjectID = %v, want %q", got.ProjectID, project.ID)
+	}
+}
+
+func TestStore_ListMethodsReturnEmptySlices(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	projects, err := store.ListProjects(ctx, userID, false)
+	if err != nil {
+		t.Fatalf("ListProjects() error: %v", err)
+	}
+	if projects == nil {
+		t.Fatal("ListProjects() = nil, want empty slice")
+	}
+	if len(projects) != 0 {
+		t.Fatalf("len(projects) = %d, want 0", len(projects))
+	}
+
+	threads, err := store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads() error: %v", err)
+	}
+	if threads == nil {
+		t.Fatal("ListThreads() = nil, want empty slice")
+	}
+	if len(threads) != 0 {
+		t.Fatalf("len(threads) = %d, want 0", len(threads))
+	}
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Empty messages"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	messages, ok, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatalf("ListMessages() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("ListMessages() ok = false, want true")
+	}
+	if messages == nil {
+		t.Fatal("ListMessages() = nil, want empty slice")
+	}
+	if len(messages) != 0 {
+		t.Fatalf("len(messages) = %d, want 0", len(messages))
+	}
+}
+
+func TestStore_AddMessageRollsBackWhenThreadTimestampUpdateFails(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Atomic"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+CREATE TRIGGER fail_thread_timestamp_update
+BEFORE UPDATE OF last_message_at ON threads
+BEGIN
+	SELECT RAISE(ABORT, 'timestamp update failed');
+END`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, "hello"); err == nil {
+		t.Fatal("AddMessage() error = nil, want timestamp update failure")
+	}
+
+	messages, ok, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatalf("ListMessages() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("ListMessages() ok = false, want true")
+	}
+	if len(messages) != 0 {
+		t.Fatalf("len(messages) = %d, want rollback to leave 0", len(messages))
+	}
+}
+
+func TestStore_RejectsOverlongInputs(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	if _, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: strings.Repeat("p", MaxProjectNameLength+1)}); err == nil {
+		t.Fatal("CreateProject() error = nil, want overlong name error")
+	}
+	if _, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: strings.Repeat("t", MaxThreadTitleLength+1)}); err == nil {
+		t.Fatal("CreateThread() error = nil, want overlong title error")
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Length"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, strings.Repeat("m", MaxMessageContentLength+1)); err == nil {
+		t.Fatal("AddMessage() error = nil, want overlong content error")
+	}
+}
+
+func TestStore_ListThreadsSupportsRecentsAndStarred(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	first, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "First"})
+	if err != nil {
+		t.Fatalf("CreateThread(first) error: %v", err)
+	}
+	second, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Second"})
+	if err != nil {
+		t.Fatalf("CreateThread(second) error: %v", err)
+	}
+	if _, ok, err := store.SetThreadStarred(ctx, userID, second.ID, true); err != nil {
+		t.Fatalf("SetThreadStarred() error: %v", err)
+	} else if !ok {
+		t.Fatal("SetThreadStarred() ok = false, want true")
+	}
+
+	threads, err := store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads() error: %v", err)
+	}
+	if len(threads) != 2 {
+		t.Fatalf("len(threads) = %d, want 2", len(threads))
+	}
+
+	starred, err := store.ListThreads(ctx, userID, ListThreadsOptions{StarredOnly: true})
+	if err != nil {
+		t.Fatalf("ListThreads(starred) error: %v", err)
+	}
+	if len(starred) != 1 {
+		t.Fatalf("len(starred) = %d, want 1", len(starred))
+	}
+	if starred[0].ID != second.ID {
+		t.Fatalf("starred[0].ID = %q, want %q", starred[0].ID, second.ID)
+	}
+	if !starred[0].Starred {
+		t.Fatal("starred[0].Starred = false, want true")
+	}
+	if first.ID == second.ID {
+		t.Fatal("created duplicate thread IDs")
+	}
+}
+
+func TestStore_ArchiveAndUnarchiveThread(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Archive me"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	if ok, err := store.SetThreadArchived(ctx, userID, thread.ID, true); err != nil {
+		t.Fatalf("SetThreadArchived(true) error: %v", err)
+	} else if !ok {
+		t.Fatal("SetThreadArchived(true) ok = false, want true")
+	}
+
+	active, err := store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads(active) error: %v", err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("len(active) = %d, want 0", len(active))
+	}
+
+	archived, err := store.ListThreads(ctx, userID, ListThreadsOptions{Archived: true})
+	if err != nil {
+		t.Fatalf("ListThreads(archived) error: %v", err)
+	}
+	if len(archived) != 1 || archived[0].ID != thread.ID || archived[0].ArchivedAt == nil {
+		t.Fatalf("archived threads = %#v, want archived thread %q", archived, thread.ID)
+	}
+
+	if ok, err := store.SetThreadArchived(ctx, userID, thread.ID, false); err != nil {
+		t.Fatalf("SetThreadArchived(false) error: %v", err)
+	} else if !ok {
+		t.Fatal("SetThreadArchived(false) ok = false, want true")
+	}
+
+	active, err = store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads(active after unarchive) error: %v", err)
+	}
+	if len(active) != 1 || active[0].ID != thread.ID || active[0].ArchivedAt != nil {
+		t.Fatalf("active threads = %#v, want unarchived thread %q", active, thread.ID)
+	}
+}
+
+func TestStore_DeleteProjectCascadesThreadsAndMessages(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Project"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{ProjectID: &project.ID, Title: "Thread"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, "hello"); err != nil {
+		t.Fatalf("AddMessage() error: %v", err)
+	}
+
+	if ok, err := store.DeleteProject(ctx, userID, project.ID); err != nil {
+		t.Fatalf("DeleteProject() error: %v", err)
+	} else if !ok {
+		t.Fatal("DeleteProject() ok = false, want true")
+	}
+
+	if _, ok, err := store.GetThread(ctx, userID, thread.ID); err != nil {
+		t.Fatalf("GetThread() after DeleteProject error: %v", err)
+	} else if ok {
+		t.Fatal("GetThread() after DeleteProject ok = true, want false")
+	}
+
+	if messages, ok, err := store.ListMessages(ctx, userID, thread.ID); err != nil {
+		t.Fatalf("ListMessages() after DeleteProject error: %v", err)
+	} else if ok || len(messages) != 0 {
+		t.Fatalf("ListMessages() after DeleteProject = %d messages, ok %v; want 0, false", len(messages), ok)
+	}
+}
+
+func TestStore_AddMessageUpdatesThreadLastMessageAt(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Messages"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if thread.LastMessageAt != nil {
+		t.Fatalf("thread.LastMessageAt = %v, want nil", thread.LastMessageAt)
+	}
+
+	message, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, "  hello  ")
+	if err != nil {
+		t.Fatalf("AddMessage() error: %v", err)
+	}
+	if message.Content != "hello" {
+		t.Fatalf("message.Content = %q, want trimmed content", message.Content)
+	}
+	if string(message.ToolCalls) != "[]" {
+		t.Fatalf("message.ToolCalls = %q, want []", message.ToolCalls)
+	}
+	if string(message.Citations) != "[]" {
+		t.Fatalf("message.Citations = %q, want []", message.Citations)
+	}
+
+	got, ok, err := store.GetThread(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatalf("GetThread() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("GetThread() ok = false, want true")
+	}
+	if got.LastMessageAt == nil {
+		t.Fatal("got.LastMessageAt = nil, want timestamp")
+	}
+	if got.LastMessageAt.Before(thread.UpdatedAt) {
+		t.Fatalf("LastMessageAt = %v, want not before original UpdatedAt %v", got.LastMessageAt, thread.UpdatedAt)
+	}
+}
+
+func TestStore_CreateProjectlessThreadAndListMessagesScopesByUser(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	aliceID := insertTestUser(t, db, "alice")
+	bobID := insertTestUser(t, db, "bob")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, aliceID, CreateThreadInput{Title: "  "})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if thread.ProjectID != nil {
+		t.Fatalf("thread.ProjectID = %v, want nil", thread.ProjectID)
+	}
+	if thread.Title != DefaultThreadTitle {
+		t.Fatalf("thread.Title = %q, want %q", thread.Title, DefaultThreadTitle)
+	}
+
+	if _, err := store.AddMessage(ctx, aliceID, thread.ID, RoleUser, "hello"); err != nil {
+		t.Fatalf("AddMessage() error: %v", err)
+	}
+	if messages, ok, err := store.ListMessages(ctx, bobID, thread.ID); err != nil {
+		t.Fatalf("Bob ListMessages() error: %v", err)
+	} else if ok || len(messages) != 0 {
+		t.Fatalf("Bob ListMessages() = %d messages, ok %v; want 0, false", len(messages), ok)
+	}
+
+	messages, ok, err := store.ListMessages(ctx, aliceID, thread.ID)
+	if err != nil {
+		t.Fatalf("Alice ListMessages() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("Alice ListMessages() ok = false, want true")
+	}
+	if len(messages) != 1 {
+		t.Fatalf("len(messages) = %d, want 1", len(messages))
+	}
+	if string(messages[0].ToolCalls) != "[]" || string(messages[0].Citations) != "[]" {
+		t.Fatalf("message JSON defaults = %q, %q; want [], []", messages[0].ToolCalls, messages[0].Citations)
+	}
+}

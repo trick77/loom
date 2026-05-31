@@ -141,6 +141,7 @@ func TestDevAuthLoginCreatesAdminSession(t *testing.T) {
 			Groups:   []string{auth.DevAdminGroup},
 		},
 	})
+
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/login", nil)
 
@@ -158,6 +159,25 @@ func TestDevAuthLoginCreatesAdminSession(t *testing.T) {
 	}
 	if cookie.Value != "tok" {
 		t.Fatalf("cookie value = %q, want tok", cookie.Value)
+	}
+}
+
+func TestAuthLoginReturns503WhenOIDCDependencyMissing(t *testing.T) {
+	srv := New(Deps{Version: "test"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/login", nil)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "oidc is not configured" {
+		t.Fatalf("error = %q, want oidc is not configured", body["error"])
 	}
 }
 
