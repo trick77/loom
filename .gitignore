@@ -12,6 +12,10 @@ frontend/dist/
 /bin/
 *.test
 
+# Coverage reports
+/coverage/
+/frontend/coverage/
+
 # macOS
 .DS_Store
 
