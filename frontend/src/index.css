@@ -1,14 +1,65 @@
 @import "tailwindcss";
 
-/* Font packages are imported in main.tsx so this file is just the Tailwind
-   entry plus the theme. (Avoid bare "* slash" glob examples in comments here:
-   a literal close-comment sequence ends the comment early and breaks parsing.) */
+@font-face {
+  font-family: "Anthropic Sans";
+  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSans@300.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Sans";
+  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSans@400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Sans";
+  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSans@500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Sans";
+  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSans@600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Serif";
+  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSerif@300.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Serif";
+  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSerif@400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Serif";
+  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSerif@500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
 
 /* UI direction A — Warm Editorial, dark. These tokens drive the Tailwind v4
    theme, generating the bg, text, border, font, and rounded-spark utilities.
    Palette: warm charcoal surfaces, off-white ink, clay accent.
-   SWAP POINT: replace --font-sans / --font-serif once the licensed display
-   font package name is confirmed. */
+   Fonts are self-hosted from the anthropic-fonts npm package. */
 @theme {
   --color-bg: #1f1e1b;
   --color-panel: #1b1a18;
@@ -20,8 +71,8 @@
   --color-accent-strong: #c6613f;
   --color-success: #5fa97a;
   --color-danger: #d9534f;
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Fraunces", Georgia, serif;
+  --font-sans: "Anthropic Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Anthropic Serif", Georgia, serif;
   --radius-spark: 10px;
 }
 
@@ -43,6 +94,11 @@ body {
 .spark-wordmark {
   font-size: 1.25rem;
   line-height: 1.75rem;
+}
+
+.spark-greeting-text {
+  font-size: 2.25rem;
+  line-height: 1;
 }
 
 .spark-sidebar-text,
