@@ -70,6 +70,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// assistant generation instead of delaying the final events.
 	mcpStatusCh := s.startMCPStatus(r.Context())
 
+	if thread.Title == chat.DefaultThreadTitle {
+		_ = s.generateAndSendThreadTitle(r.Context(), context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
+	}
+
 	history := buildLLMHistory(user, priorMessages, userMessage)
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	assistantResult, err := s.runAssistantLoop(r.Context(), stream, history, inference)
@@ -101,10 +105,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendMCPStatus(stream, mcpStatusCh)
-
-	if thread.Title == chat.DefaultThreadTitle {
-		_ = s.generateAndSendThreadTitle(r.Context(), persistCtx, stream, user, threadID, userMessage.Content, assistantMessage.Content)
-	}
 	_ = stream.Send("done", "{}")
 }
 
