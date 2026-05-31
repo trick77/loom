@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   AuthExpiredError,
   createProject,
@@ -794,8 +796,183 @@ function MessageBubble({ message }: { message: Message }) {
   return <AssistantText>{message.content}</AssistantText>;
 }
 
-function AssistantText({ children }: { children: React.ReactNode }) {
-  return <div className="spark-message-text max-w-[46rem] text-[#f3f0e8]">{children}</div>;
+function AssistantText({ children }: { children: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    await copyResponse(children);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+
+  return (
+    <div className="group max-w-[46rem]">
+      <div className="spark-message-text spark-markdown text-[#f3f0e8]">
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a({ children, ...props }) {
+              return (
+                <a {...props} target="_blank" rel="noreferrer">
+                  {children}
+                </a>
+              );
+            },
+          }}
+        >
+          {children}
+        </Markdown>
+      </div>
+      <div className="mt-3 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <button
+          className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
+          onClick={handleCopy}
+          type="button"
+          title="Copy"
+          aria-label="Copy response"
+        >
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </button>
+        <button
+          className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
+          onClick={() => downloadResponse(children)}
+          type="button"
+          title="Download"
+          aria-label="Download response"
+        >
+          <DownloadIcon />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+async function copyResponse(content: string) {
+  await navigator.clipboard?.writeText(content);
+}
+
+function downloadResponse(content: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: responseMimeType(content) }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `spark-response.${responseExtension(content)}`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function responseMimeType(content: string): string {
+  const extension = responseExtension(content);
+  if (extension === "html") return "text/html;charset=utf-8";
+  if (extension === "json") return "application/json;charset=utf-8";
+  if (extension === "xml" || extension === "svg") return "application/xml;charset=utf-8";
+  if (extension === "md") return "text/markdown;charset=utf-8";
+  return "text/plain;charset=utf-8";
+}
+
+function responseExtension(content: string): string {
+  const trimmed = content.trim();
+  if (trimmed === "") return "txt";
+  if (isJSON(trimmed)) return "json";
+  if (/^```[a-z0-9_-]+\n[\s\S]*\n```$/i.test(trimmed)) {
+    return extensionForLanguage(trimmed.slice(3, trimmed.indexOf("\n")).trim().toLowerCase());
+  }
+  if (/^(<!doctype\s+html|<html[\s>])/i.test(trimmed)) return "html";
+  if (/^<svg[\s>]/i.test(trimmed)) return "svg";
+  if (/^<\?xml[\s?>]/i.test(trimmed)) return "xml";
+  if (looksLikeMarkdown(trimmed)) return "md";
+  return "txt";
+}
+
+function isJSON(content: string): boolean {
+  if (!content.startsWith("{") && !content.startsWith("[")) return false;
+  try {
+    JSON.parse(content);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeMarkdown(content: string): boolean {
+  return /(^|\n)(#{1,6}\s|\s*[-*+]\s|\s*\d+\.\s|>\s|```)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)/.test(content);
+}
+
+function extensionForLanguage(language: string): string {
+  const extensions: Record<string, string> = {
+    bash: "sh",
+    css: "css",
+    html: "html",
+    javascript: "js",
+    js: "js",
+    json: "json",
+    markdown: "md",
+    md: "md",
+    python: "py",
+    sh: "sh",
+    svg: "svg",
+    ts: "ts",
+    typescript: "ts",
+    xml: "xml",
+    yaml: "yaml",
+    yml: "yaml",
+  };
+  return extensions[language] ?? "txt";
+}
+
+function CopyIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M8 8.5V6.8c0-1 .8-1.8 1.8-1.8h7.4c1 0 1.8.8 1.8 1.8v7.4c0 1-.8 1.8-1.8 1.8h-1.7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.8 8h7.4c1 0 1.8.8 1.8 1.8v7.4c0 1-.8 1.8-1.8 1.8H5.8c-1 0-1.8-.8-1.8-1.8V9.8C4 8.8 4.8 8 5.8 8Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="m5 12.5 4.2 4.2L19 7"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 4.5v9M7.5 10 12 14.5 16.5 10"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5 18.5h14"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 function ErrorText({ children }: { children: React.ReactNode }) {

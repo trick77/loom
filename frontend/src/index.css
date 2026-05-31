@@ -117,6 +117,114 @@ body {
 }
 
 .spark-message-text {
-  font-size: 1rem;
-  line-height: 1.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
+.spark-markdown :where(p, ul, ol, blockquote, pre, table) {
+  margin-block: 0.75rem;
+}
+
+.spark-markdown :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
+  margin-top: 0;
+}
+
+.spark-markdown :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
+  margin-bottom: 0;
+}
+
+.spark-markdown :where(h1, h2, h3, h4) {
+  margin: 1.1rem 0 0.45rem;
+  color: #f3f0e8;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.spark-markdown :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
+  margin-top: 0;
+}
+
+.spark-markdown h1 {
+  font-size: 1.0625rem;
+}
+
+.spark-markdown :where(h2, h3, h4) {
+  font-size: 0.9375rem;
+}
+
+.spark-markdown :where(ul, ol) {
+  padding-left: 1.35rem;
+}
+
+.spark-markdown ul {
+  list-style: disc;
+}
+
+.spark-markdown ol {
+  list-style: decimal;
+}
+
+.spark-markdown li + li {
+  margin-top: 0.25rem;
+}
+
+.spark-markdown strong {
+  color: #faf9f5;
+  font-weight: 600;
+}
+
+.spark-markdown em {
+  color: #e2ded4;
+}
+
+.spark-markdown a {
+  color: #d97757;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.spark-markdown blockquote {
+  border-left: 2px solid #4b4a46;
+  color: #c3c2b7;
+  padding-left: 0.9rem;
+}
+
+.spark-markdown code {
+  border-radius: 0.25rem;
+  background: #2a2a28;
+  color: #f3f0e8;
+  font-size: 0.875em;
+  padding: 0.1rem 0.28rem;
+}
+
+.spark-markdown pre {
+  overflow-x: auto;
+  border: 1px solid #3e3d39;
+  border-radius: 0.5rem;
+  background: #111110;
+  padding: 0.85rem 1rem;
+}
+
+.spark-markdown pre code {
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.spark-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.spark-markdown :where(th, td) {
+  border: 1px solid #3e3d39;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+}
+
+.spark-markdown th {
+  background: #282826;
+  color: #faf9f5;
+  font-weight: 500;
 }

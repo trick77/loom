@@ -515,6 +515,24 @@ test("hides the MCP indicator when no mcp_status event arrives", async () => {
   expect(screen.queryByTitle(/MCP servers active/)).toBeNull();
 });
 
+test("renders assistant markdown without rendering raw HTML", async () => {
+  const content = "# Overview\\n\\nA **classic** film.\\n\\n- AI\\n- Control\\n\\n<div>raw html</div>";
+  const event =
+    `event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"${content}","createdAt":"2026-05-30T00:00:01Z"}\n\n` +
+    "event: done\ndata: {}\n\n";
+  vi.stubGlobal("fetch", mcpStreamFetch(event));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  expect(screen.getByText("classic").tagName).toBe("STRONG");
+  expect(screen.getByRole("list")).toBeInTheDocument();
+  expect(screen.getByText(/<div>raw html<\/div>/)).toBeInTheDocument();
+  expect(document.querySelector(".spark-markdown div")).toBeNull();
+  expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download response" })).toBeInTheDocument();
+});
+
 test("ignores stream events after switching threads", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
