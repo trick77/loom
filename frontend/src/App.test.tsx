@@ -249,6 +249,45 @@ test("creates a new chat from the sidebar", async () => {
   expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1");
 });
 
+test("stars and unstars the active chat", async () => {
+  let starred = false;
+  const thread = () => ({
+    id: "t1",
+    title: "Existing chat",
+    starred,
+    createdAt: "2026-05-30T00:00:00Z",
+    updatedAt: "2026-05-30T00:00:00Z",
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json([thread()]);
+    if (url === "/api/threads/t1") return Response.json({ thread: thread(), messages: [] });
+    if (url === "/api/threads/t1/star" && init?.method === "POST") {
+      starred = true;
+      return Response.json(thread());
+    }
+    if (url === "/api/threads/t1/unstar" && init?.method === "POST") {
+      starred = false;
+      return Response.json(thread());
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  fireEvent.click(await screen.findByRole("button", { name: "Star chat" }));
+  expect(await screen.findByRole("button", { name: "Unstar chat" })).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/star", { method: "POST" });
+
+  fireEvent.click(screen.getByRole("button", { name: "Unstar chat" }));
+  expect(await screen.findByRole("button", { name: "Star chat" })).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", { method: "POST" });
+});
+
 test("starting chat exits the admin panel", async () => {
   vi.stubGlobal(
     "fetch",
@@ -441,7 +480,7 @@ test("ignores stream events after switching threads", async () => {
   expect(screen.queryByText("Wrong thread answer")).not.toBeInTheDocument();
 });
 
-test("shows an error when message streaming fails", async () => {
+test("surfaces the server error and keeps the draft when sending fails", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -472,7 +511,7 @@ test("shows an error when message streaming fails", async () => {
         });
       }
       if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
-        return Response.json({ error: "llm unavailable" }, { status: 503 });
+        return Response.json({ error: "llm is not configured" }, { status: 503 });
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -483,7 +522,8 @@ test("shows an error when message streaming fails", async () => {
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  expect(await screen.findByText("Message failed to send.")).toBeInTheDocument();
+  expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
 });
 
 function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {

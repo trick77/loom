@@ -6,6 +6,7 @@ import {
   getThread,
   listProjects,
   listThreads,
+  setThreadStarred,
   streamMessage,
   type Message,
   type Project,
@@ -45,6 +46,7 @@ export function ChatShell({
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
 
@@ -53,7 +55,7 @@ export function ChatShell({
       onSessionExpired();
       return;
     }
-    setError(fallback);
+    setError(error instanceof Error && error.message !== "" ? error.message : fallback);
   }
 
   useEffect(() => {
@@ -123,6 +125,26 @@ export function ChatShell({
     }
   }
 
+  async function handleSetActiveThreadStarred(starred: boolean) {
+    if (activeThread === null || isUpdatingStar) return;
+    const threadID = activeThread.id;
+    setIsUpdatingStar(true);
+    try {
+      const updatedThread = await setThreadStarred(threadID, starred);
+      if (activeThreadIDRef.current === updatedThread.id) {
+        setActiveThread(updatedThread);
+      }
+      setThreads((current) =>
+        current.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread)),
+      );
+      setSendError("");
+    } catch (error) {
+      handleActionError(error, "Thread failed to update.", setSendError);
+    } finally {
+      setIsUpdatingStar(false);
+    }
+  }
+
   async function handleSend() {
     const content = draft.trim();
     if (content === "" || isSending) return;
@@ -172,7 +194,9 @@ export function ChatShell({
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
-      handleActionError(error, "Message failed to send.", setSendError);
+      setDraft(content);
+      const message = error instanceof Error && error.message !== "" ? error.message : "Message failed to send.";
+      handleActionError(error, message, setSendError);
     } finally {
       setIsSending(false);
       if (abortController !== null && streamAbortRef.current === abortController) {
@@ -279,8 +303,10 @@ export function ChatShell({
             streamingText={streamingText}
             sendError={sendError}
             isSending={isSending}
+            isUpdatingStar={isUpdatingStar}
             onDraftChange={setDraft}
             onSend={handleSend}
+            onStarChange={handleSetActiveThreadStarred}
           />
         )}
       </main>
@@ -326,8 +352,10 @@ function ChatPanel({
   streamingText,
   sendError,
   isSending,
+  isUpdatingStar,
   onDraftChange,
   onSend,
+  onStarChange,
 }: {
   thread: Thread | null;
   messages: Message[];
@@ -335,15 +363,27 @@ function ChatPanel({
   streamingText: string;
   sendError: string;
   isSending: boolean;
+  isUpdatingStar: boolean;
   onDraftChange(value: string): void;
   onSend(): void;
+  onStarChange(starred: boolean): void;
 }) {
   return (
     <>
-      <header className="border-b border-border px-6 py-4">
-        <h1 className="font-serif text-2xl font-light tracking-tight">
+      <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
+        <h1 className="min-w-0 truncate font-serif text-2xl font-light tracking-tight">
           {thread?.title ?? "New chat"}
         </h1>
+        {thread !== null && (
+          <button
+            className="shrink-0 rounded-spark border border-border px-3 py-1.5 text-sm text-muted transition-colors hover:text-ink disabled:opacity-50"
+            disabled={isUpdatingStar}
+            onClick={() => onStarChange(!thread.starred)}
+            type="button"
+          >
+            {thread.starred ? "Unstar chat" : "Star chat"}
+          </button>
+        )}
       </header>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
         {messages.map((message) => (

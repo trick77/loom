@@ -159,7 +159,7 @@ export async function streamMessage(
     throw new AuthExpiredError();
   }
   if (!response.ok) {
-    throw new Error("failed to stream message");
+    throw new Error(await readStreamError(response));
   }
   if (!response.body) {
     throw new Error("stream response has no body");
@@ -182,6 +182,18 @@ export async function streamMessage(
   } finally {
     reader.releaseLock();
   }
+}
+
+async function readStreamError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    if (typeof body.error === "string" && body.error !== "") {
+      return body.error;
+    }
+  } catch {
+    // response body was empty or not JSON
+  }
+  return "failed to stream message";
 }
 
 async function expectJSON<T>(response: Response, errorMessage: string): Promise<T> {

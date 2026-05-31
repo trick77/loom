@@ -87,3 +87,19 @@ test("streamMessage passes abort signal to fetch", async () => {
     expect.objectContaining({ signal: controller.signal }),
   );
 });
+
+test("streamMessage surfaces the server error message on failure", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(Response.json({ error: "llm is not configured" }, { status: 503 })),
+  );
+
+  await expect(
+    streamMessage("t1", "Hi", {
+      onUserMessage: () => undefined,
+      onDelta: () => undefined,
+      onAssistantMessage: () => undefined,
+      onThread: () => undefined,
+    }),
+  ).rejects.toThrow("llm is not configured");
+});
