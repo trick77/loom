@@ -18,6 +18,9 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 		Messages        []Message `json:"messages"`
 		Stream          bool      `json:"stream"`
 		ReasoningEffort string    `json:"reasoning_effort"`
+		StreamOptions   struct {
+			IncludeUsage bool `json:"include_usage"`
+		} `json:"stream_options"`
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +66,9 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	if !gotBody.Stream {
 		t.Fatal("stream = false, want true")
 	}
+	if !gotBody.StreamOptions.IncludeUsage {
+		t.Fatal("stream_options.include_usage = false, want true")
+	}
 	if gotBody.ReasoningEffort != "high" {
 		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
 	}
@@ -74,6 +80,65 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	}
 	if final != "Hello" {
 		t.Fatalf("final = %q, want Hello", final)
+	}
+}
+
+func TestClient_StreamChatResultCapturesUsageTrailerChunk(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
+		_, _ = w.Write([]byte(`data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":11,"total_tokens":18,"prompt_tokens_details":{"cached_tokens":3},"completion_tokens_details":{"reasoning_tokens":5}}}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	result, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
+	if err != nil {
+		t.Fatalf("StreamChatResult() error: %v", err)
+	}
+	if result.Content != "Done" {
+		t.Fatalf("content = %q, want Done", result.Content)
+	}
+	wantUsage := TokenUsage{
+		PromptTokens:     7,
+		CompletionTokens: 11,
+		TotalTokens:      18,
+		PromptTokensDetails: PromptTokenDetails{
+			CachedTokens: 3,
+		},
+		CompletionTokenDetails: CompletionTokenDetails{
+			ReasoningTokens: 5,
+		},
+	}
+	if result.Usage != wantUsage {
+		t.Fatalf("usage = %#v, want %#v", result.Usage, wantUsage)
+	}
+}
+
+func TestClient_StreamChatResultLeavesUsageEmptyWhenMissing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	result, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
+	if err != nil {
+		t.Fatalf("StreamChatResult() error: %v", err)
+	}
+	if result.Content != "Done" {
+		t.Fatalf("content = %q, want Done", result.Content)
+	}
+	if result.Usage != (TokenUsage{}) {
+		t.Fatalf("usage = %#v, want empty", result.Usage)
+	}
+	if result.Usage.Present() {
+		t.Fatal("usage.Present() = true, want false")
 	}
 }
 

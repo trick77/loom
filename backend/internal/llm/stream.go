@@ -6,26 +6,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta func(string) error) (string, error) {
+	result, err := c.StreamChatResult(ctx, messages, onDelta)
+	return result.Content, err
+}
+
+func (c *Client) StreamChatResult(ctx context.Context, messages []Message, onDelta func(string) error) (StreamResult, error) {
 	result, err := c.StreamChatWithTools(ctx, messages, nil, func(event StreamEvent) error {
 		if event.Delta == "" || onDelta == nil {
 			return nil
 		}
 		return onDelta(event.Delta)
 	})
-	return result.Content, err
+	return result, err
 }
 
 func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, tools []Tool, onEvent func(StreamEvent) error) (StreamResult, error) {
+	start := time.Now()
 	resp, err := c.executeChatRequestWithTools(ctx, messages, tools, true)
 	if err != nil {
+		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return StreamResult{}, err
 	}
 	defer resp.Body.Close()
 
 	var content strings.Builder
+	var usage TokenUsage
 	toolCalls := map[int]*ToolCall{}
 	var toolCallOrder []int
 	scanner := bufio.NewScanner(resp.Body)
@@ -41,12 +50,23 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payload == "[DONE]" {
-			return finishStream(content.String(), toolCalls, toolCallOrder, onEvent)
+			result, err := finishStream(content.String(), usage, toolCalls, toolCallOrder, onEvent)
+			if err != nil {
+				logInferenceFailed(ctx, c.model, time.Since(start), err)
+				return result, err
+			}
+			logInferenceCompleted(ctx, c.model, time.Since(start), result.Usage)
+			return result, nil
 		}
 
 		var chunk chatCompletionChunk
 		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
-			return StreamResult{Content: content.String()}, fmt.Errorf("decode chat completion chunk: %w", err)
+			err := fmt.Errorf("decode chat completion chunk: %w", err)
+			logInferenceFailed(ctx, c.model, time.Since(start), err)
+			return StreamResult{Content: content.String(), Usage: usage}, err
+		}
+		if chunk.Usage.Present() {
+			usage = chunk.Usage
 		}
 		if len(chunk.Choices) == 0 {
 			continue
@@ -57,7 +77,8 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			content.WriteString(delta.Content)
 			if onEvent != nil {
 				if err := onEvent(StreamEvent{Delta: delta.Content}); err != nil {
-					return StreamResult{Content: content.String()}, err
+					logInferenceFailed(ctx, c.model, time.Since(start), err)
+					return StreamResult{Content: content.String(), Usage: usage}, err
 				}
 			}
 		}
@@ -83,13 +104,21 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return StreamResult{Content: content.String()}, fmt.Errorf("read chat completion stream: %w", err)
+		err := fmt.Errorf("read chat completion stream: %w", err)
+		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		return StreamResult{Content: content.String(), Usage: usage}, err
 	}
-	return finishStream(content.String(), toolCalls, toolCallOrder, onEvent)
+	result, err := finishStream(content.String(), usage, toolCalls, toolCallOrder, onEvent)
+	if err != nil {
+		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		return result, err
+	}
+	logInferenceCompleted(ctx, c.model, time.Since(start), result.Usage)
+	return result, nil
 }
 
-func finishStream(content string, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error) (StreamResult, error) {
-	result := StreamResult{Content: content, ToolCalls: make([]ToolCall, 0, len(order))}
+func finishStream(content string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error) (StreamResult, error) {
+	result := StreamResult{Content: content, ToolCalls: make([]ToolCall, 0, len(order)), Usage: usage}
 	for _, index := range order {
 		call := *byIndex[index]
 		result.ToolCalls = append(result.ToolCalls, call)
