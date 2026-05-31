@@ -258,6 +258,11 @@ body {
 
 .spark-markdown {
   font-family: var(--font-serif);
+  font-weight: 360;
+  line-height: 1.55;
+}
+
+.spark-assistant-markdown {
   font-weight: 300;
   line-height: 1.5;
   padding-left: 0.5rem;
@@ -313,6 +318,10 @@ body {
 
 .spark-markdown strong {
   color: #faf9f5;
+  font-weight: 600;
+}
+
+.spark-assistant-markdown strong {
   font-weight: 500;
 }
 
