@@ -723,7 +723,7 @@ function Composer({
       }}
     >
       <textarea
-        className="h-[58px] w-full resize-none bg-transparent px-6 pt-5 text-base text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]"
+        className="h-[58px] w-full resize-none overflow-hidden bg-transparent px-6 pt-5 text-sm text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]"
         placeholder={placeholder}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
