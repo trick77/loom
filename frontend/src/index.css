@@ -117,8 +117,12 @@ body {
 }
 
 .spark-message-text {
-  font-size: 0.875rem;
+  font-size: 1rem;
   line-height: 1.5rem;
+}
+
+.spark-user-message-text {
+  line-height: 1.4;
 }
 
 .spark-thinking-indicator {
@@ -163,6 +167,7 @@ body {
 .spark-markdown {
   font-family: var(--font-serif);
   font-weight: 360;
+  line-height: 1.55;
 }
 
 .spark-markdown :where(p, ul, ol, blockquote, pre, table) {

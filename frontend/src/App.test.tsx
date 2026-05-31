@@ -777,6 +777,33 @@ test("shows copy and retry actions for saved markdown assistant responses", asyn
   expect(screen.queryByRole("button", { name: "Download response" })).not.toBeInTheDocument();
 });
 
+test("aligns chat messages and composer to the same readable rail", async () => {
+  vi.stubGlobal("fetch", persistedMarkdownChatFetch());
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  const transcript = await screen.findByRole("region", { name: "Conversation transcript" });
+  const composerDock = screen.getByLabelText("Message composer dock");
+
+  expect(transcript.querySelector(".spark-chat-rail")).toBeInTheDocument();
+  expect(composerDock.querySelector(".spark-chat-rail")).toBeInTheDocument();
+  expect(transcript.querySelector(".spark-user-message")).toHaveClass("ml-auto");
+  expect(transcript.querySelector(".spark-assistant-message")).toBeInTheDocument();
+});
+
+test("anchors the chat send button inside the composer action area", async () => {
+  vi.stubGlobal("fetch", persistedMarkdownChatFetch());
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  const sendButton = screen.getByRole("button", { name: "Send message" });
+
+  expect(sendButton.closest("form")).toHaveClass("spark-composer");
+  expect(sendButton).toHaveClass("spark-composer-send");
+});
+
 test("copying a markdown assistant response writes rendered plain text", async () => {
   const writeText = vi.fn();
   vi.stubGlobal("navigator", { clipboard: { writeText } });
