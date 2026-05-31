@@ -21,8 +21,10 @@ type Config struct {
 
 // Message is one OpenAI-compatible chat message.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 // Client calls an OpenAI-compatible chat completion API.
@@ -46,10 +48,15 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 }
 
 func (c *Client) executeChatRequest(ctx context.Context, messages []Message, stream bool) (*http.Response, error) {
+	return c.executeChatRequestWithTools(ctx, messages, nil, stream)
+}
+
+func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool) (*http.Response, error) {
 	body, err := json.Marshal(chatCompletionRequest{
 		Model:    c.model,
 		Messages: messages,
 		Stream:   stream,
+		Tools:    tools,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completion request: %w", err)

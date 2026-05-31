@@ -64,9 +64,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	history := buildLLMHistory(user, priorMessages, userMessage)
-	assistantContent, err := s.llm.StreamChat(r.Context(), history, func(delta string) error {
-		return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: delta})
-	})
+	assistantContent, err := s.runAssistantLoop(r.Context(), stream, history)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "stream failed"})
 		return
@@ -90,6 +88,78 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = s.generateAndSendThreadTitle(r.Context(), persistCtx, stream, user.ID, threadID, userMessage.Content, assistantMessage.Content)
 	}
 	_ = stream.Send("done", "{}")
+}
+
+const maxToolRounds = 4
+
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message) (string, error) {
+	tools := []llm.Tool(nil)
+	if s.mcp != nil {
+		tools = s.mcp.Tools()
+	}
+	if len(tools) == 0 {
+		return s.llm.StreamChat(ctx, history, func(delta string) error {
+			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: delta})
+		})
+	}
+
+	for range maxToolRounds {
+		result, err := s.llm.StreamChatWithTools(ctx, history, tools, func(event llm.StreamEvent) error {
+			if event.Delta != "" {
+				return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
+			}
+			if event.ToolCall.ID != "" {
+				return sendSSEJSON(stream, "tool_call", toolCallResponse{
+					ID:        event.ToolCall.ID,
+					Name:      event.ToolCall.Function.Name,
+					Arguments: event.ToolCall.Function.Arguments,
+				})
+			}
+			return nil
+		})
+		if err != nil {
+			return "", err
+		}
+		if len(result.ToolCalls) == 0 {
+			return result.Content, nil
+		}
+
+		history = append(history, llm.Message{
+			Role:      "assistant",
+			Content:   result.Content,
+			ToolCalls: result.ToolCalls,
+		})
+		for _, call := range result.ToolCalls {
+			arguments, err := parseToolArguments(call.Function.Arguments)
+			if err != nil {
+				return "", err
+			}
+			output, err := s.mcp.CallTool(ctx, call.Function.Name, arguments)
+			if err != nil {
+				return "", err
+			}
+			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+				return "", err
+			}
+			history = append(history, llm.Message{
+				Role:       "tool",
+				ToolCallID: call.ID,
+				Content:    output,
+			})
+		}
+	}
+	return "", nil
+}
+
+func parseToolArguments(raw string) (map[string]any, error) {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]any{}, nil
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		return nil, err
+	}
+	return args, nil
 }
 
 func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, userID, threadID, userMessage, assistantMessage string) error {

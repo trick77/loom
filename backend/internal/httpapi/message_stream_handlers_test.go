@@ -131,10 +131,10 @@ func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 	if !strings.Contains(history[0].Content, "Always answer in this language: de.") {
 		t.Fatalf("system prompt = %q, want response-language directive", history[0].Content)
 	}
-	if history[1] != (llm.Message{Role: "assistant", Content: "Earlier answer"}) {
+	if history[1].Role != "assistant" || history[1].Content != "Earlier answer" {
 		t.Fatalf("prior message = %#v", history[1])
 	}
-	if history[2] != (llm.Message{Role: "user", Content: "Neue Frage"}) {
+	if history[2].Role != "user" || history[2].Content != "Neue Frage" {
 		t.Fatalf("new user message = %#v", history[2])
 	}
 }
@@ -179,5 +179,75 @@ func TestStreamMessageStillCompletesWhenTitleGenerationFails(t *testing.T) {
 	}
 	if strings.Contains(body, "event: error") {
 		t.Fatalf("SSE body contains error for best-effort title failure:\n%s", body)
+	}
+}
+
+func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{ToolCalls: []llm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "search__web",
+					Arguments: `{"q":"spark"}`,
+				},
+			}}},
+			{Content: "I found Spark."},
+		},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{
+				Type: "function",
+				Function: llm.ToolFunction{
+					Name:        "search__web",
+					Description: "Search the web",
+					Parameters:  map[string]any{"type": "object"},
+				},
+			}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Spark"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"event: tool_call",
+		`"name":"search__web"`,
+		"event: tool_result",
+		`"content":"search result"`,
+		"event: assistant_delta",
+		`data: {"content":"I found Spark."}`,
+		"event: assistant_message",
+		"event: done",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("SSE body missing %q:\n%s", want, body)
+		}
+	}
+	if store.assistantContent != "I found Spark." {
+		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
+	}
+	if len(llmClient.histories) != 2 {
+		t.Fatalf("stream calls = %d, want 2", len(llmClient.histories))
+	}
+	lastHistory := llmClient.histories[1]
+	if len(lastHistory) < 3 {
+		t.Fatalf("last history too short: %#v", lastHistory)
+	}
+	if got := lastHistory[len(lastHistory)-1]; got.Role != "tool" || got.ToolCallID != "call_1" || got.Content != "search result" {
+		t.Fatalf("last history message = %#v, want tool result", got)
 	}
 }

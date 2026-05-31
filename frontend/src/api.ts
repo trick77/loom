@@ -37,6 +37,18 @@ export type Message = {
   createdAt: string;
 };
 
+export type ToolCallEvent = {
+  id: string;
+  name: string;
+  arguments: string;
+};
+
+export type ToolResultEvent = {
+  id: string;
+  name: string;
+  content: string;
+};
+
 type ThreadResponse = {
   thread: Thread;
   messages: Message[];
@@ -47,6 +59,8 @@ type StreamHandlers = {
   onDelta(delta: string): void;
   onAssistantMessage(message: Message): void;
   onThread(thread: Thread): void;
+  onToolCall?(event: ToolCallEvent): void;
+  onToolResult?(event: ToolResultEvent): void;
 };
 
 export class AuthExpiredError extends Error {
@@ -243,6 +257,12 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "thread":
       handlers.onThread(payload as Thread);
+      break;
+    case "tool_call":
+      handlers.onToolCall?.(payload as ToolCallEvent);
+      break;
+    case "tool_result":
+      handlers.onToolResult?.(payload as ToolResultEvent);
       break;
     case "done":
       break;

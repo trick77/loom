@@ -11,6 +11,8 @@ import {
   type Message,
   type Project,
   type Thread,
+  type ToolCallEvent,
+  type ToolResultEvent,
   type User,
 } from "./api";
 
@@ -42,6 +44,7 @@ export function ChatShell({
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [toolEvents, setToolEvents] = useState<ToolActivity[]>([]);
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -91,6 +94,7 @@ export function ChatShell({
     activeThreadIDRef.current = response.thread.id;
     setMessages(response.messages);
     setStreamingText("");
+    setToolEvents([]);
     setSendError("");
   }
 
@@ -151,6 +155,7 @@ export function ChatShell({
     setDraft("");
     setIsSending(true);
     setStreamingText("");
+    setToolEvents([]);
     setSendError("");
     let abortController: AbortController | null = null;
     try {
@@ -179,10 +184,19 @@ export function ChatShell({
         onDelta: (delta) => {
           if (isCurrentThread()) setStreamingText((current) => current + delta);
         },
+        onToolCall: (event) => {
+          if (!isCurrentThread()) return;
+          setToolEvents((current) => upsertToolCall(current, event));
+        },
+        onToolResult: (event) => {
+          if (!isCurrentThread()) return;
+          setToolEvents((current) => upsertToolResult(current, event));
+        },
         onAssistantMessage: (message) => {
           if (!isCurrentThread()) return;
           setMessages((current) => [...current, message]);
           setStreamingText("");
+          setToolEvents([]);
         },
         onThread: (updatedThread) => {
           if (isCurrentThread()) setActiveThread(updatedThread);
@@ -300,6 +314,7 @@ export function ChatShell({
             messages={messages}
             draft={draft}
             streamingText={streamingText}
+            toolEvents={toolEvents}
             sendError={sendError}
             isSending={isSending}
             isUpdatingStar={isUpdatingStar}
@@ -314,6 +329,24 @@ export function ChatShell({
         <p className="mt-2">Sources will appear with document and web answers.</p>
       </aside>
     </div>
+  );
+}
+
+type ToolActivity = {
+  id: string;
+  name: string;
+  status: "running" | "done";
+  content?: string;
+};
+
+function upsertToolCall(current: ToolActivity[], event: ToolCallEvent): ToolActivity[] {
+  const next = current.filter((item) => item.id !== event.id);
+  return [...next, { id: event.id, name: event.name, status: "running" }];
+}
+
+function upsertToolResult(current: ToolActivity[], event: ToolResultEvent): ToolActivity[] {
+  return current.map((item) =>
+    item.id === event.id ? { ...item, status: "done", content: event.content } : item,
   );
 }
 
@@ -349,6 +382,7 @@ function ChatPanel({
   messages,
   draft,
   streamingText,
+  toolEvents,
   sendError,
   isSending,
   isUpdatingStar,
@@ -360,6 +394,7 @@ function ChatPanel({
   messages: Message[];
   draft: string;
   streamingText: string;
+  toolEvents: ToolActivity[];
   sendError: string;
   isSending: boolean;
   isUpdatingStar: boolean;
@@ -388,6 +423,7 @@ function ChatPanel({
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
+        {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
         {streamingText !== "" && (
           <div className="max-w-3xl rounded-spark border border-border bg-panel px-4 py-3 text-sm">
             {streamingText}
@@ -423,6 +459,22 @@ function ChatPanel({
         </div>
       </form>
     </>
+  );
+}
+
+function ToolActivityPanel({ events }: { events: ToolActivity[] }) {
+  return (
+    <div className="max-w-3xl rounded-spark border border-border bg-panel px-4 py-3 text-sm text-muted">
+      <div className="font-medium text-ink">Tools</div>
+      <div className="mt-2 space-y-1">
+        {events.map((event) => (
+          <div key={event.id} className="flex items-center justify-between gap-3">
+            <span className="min-w-0 truncate">{event.name}</span>
+            <span className="shrink-0 text-xs">{event.status === "done" ? "Done" : "Running"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -1,12 +1,12 @@
 {
   "servers": {
     "searxng": {
-      "transport": "http",
-      "url": "http://searxng-mcp:8080/sse"
+      "transport": "streamable-http",
+      "url": "http://searxng-mcp:8080/mcp"
     },
     "fetch": {
-      "transport": "http",
-      "url": "http://fetch-mcp:8080/sse"
+      "transport": "streamable-http",
+      "url": "http://fetch-mcp:8080/mcp"
     }
   }
 }

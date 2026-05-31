@@ -168,3 +168,58 @@ func (f fakeChatClient) GenerateTitle(context.Context, string, string) (string, 
 	}
 	return f.title, nil
 }
+
+func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+	content, err := f.StreamChat(ctx, history, func(delta string) error {
+		if onEvent == nil {
+			return nil
+		}
+		return onEvent(llm.StreamEvent{Delta: delta})
+	})
+	return llm.StreamResult{Content: content}, err
+}
+
+type fakeToolChatClient struct {
+	results   []llm.StreamResult
+	histories [][]llm.Message
+}
+
+func (f *fakeToolChatClient) StreamChat(context.Context, []llm.Message, func(string) error) (string, error) {
+	return "", nil
+}
+
+func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+	f.histories = append(f.histories, append([]llm.Message(nil), history...))
+	result := f.results[0]
+	f.results = f.results[1:]
+	if onEvent != nil {
+		for _, call := range result.ToolCalls {
+			if err := onEvent(llm.StreamEvent{ToolCall: call}); err != nil {
+				return llm.StreamResult{}, err
+			}
+		}
+		if result.Content != "" {
+			if err := onEvent(llm.StreamEvent{Delta: result.Content}); err != nil {
+				return llm.StreamResult{}, err
+			}
+		}
+	}
+	return result, nil
+}
+
+func (f *fakeToolChatClient) GenerateTitle(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+type fakeMCPService struct {
+	tools  []llm.Tool
+	result string
+}
+
+func (f fakeMCPService) Tools() []llm.Tool {
+	return f.tools
+}
+
+func (f fakeMCPService) CallTool(context.Context, string, map[string]any) (string, error) {
+	return f.result, nil
+}

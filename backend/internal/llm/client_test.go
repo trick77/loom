@@ -62,7 +62,7 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	if !gotBody.Stream {
 		t.Fatal("stream = false, want true")
 	}
-	if len(gotBody.Messages) != 1 || gotBody.Messages[0] != (Message{Role: "user", Content: "Hi"}) {
+	if len(gotBody.Messages) != 1 || gotBody.Messages[0].Role != "user" || gotBody.Messages[0].Content != "Hi" {
 		t.Fatalf("messages = %#v, want user message", gotBody.Messages)
 	}
 	if strings.Join(chunks, "") != "Hello" {
@@ -70,6 +70,77 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	}
 	if final != "Hello" {
 		t.Fatalf("final = %q, want Hello", final)
+	}
+}
+
+func TestClient_StreamChatWithToolsSendsToolSchemas(t *testing.T) {
+	var gotBody struct {
+		Model string `json:"model"`
+		Tools []Tool `json:"tools"`
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Hi"}}, []Tool{{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "search__web",
+			Description: "Search the web",
+			Parameters:  map[string]any{"type": "object"},
+		},
+	}}, nil)
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if final.Content != "Done" {
+		t.Fatalf("final content = %q, want Done", final.Content)
+	}
+	if len(gotBody.Tools) != 1 || gotBody.Tools[0].Function.Name != "search__web" {
+		t.Fatalf("tools = %#v", gotBody.Tools)
+	}
+}
+
+func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search__web","arguments":"{\"q\""}}]}}]}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\"spark\"}"}}]}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	var events []StreamEvent
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, nil, func(event StreamEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if final.Content != "" {
+		t.Fatalf("final content = %q, want empty", final.Content)
+	}
+	if len(final.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %#v, want 1", final.ToolCalls)
+	}
+	call := final.ToolCalls[0]
+	if call.ID != "call_1" || call.Function.Name != "search__web" || call.Function.Arguments != `{"q":"spark"}` {
+		t.Fatalf("tool call = %#v", call)
+	}
+	if len(events) != 1 || events[0].ToolCall.Function.Name != "search__web" {
+		t.Fatalf("events = %#v, want final tool call event", events)
 	}
 }
 
@@ -132,13 +203,13 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	if len(gotBody.Messages) != 3 {
 		t.Fatalf("len(messages) = %d, want 3", len(gotBody.Messages))
 	}
-	if gotBody.Messages[0] != (Message{Role: "system", Content: "Name this chat in 2 to 6 words. Return only the title."}) {
+	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != "Name this chat in 2 to 6 words. Return only the title." {
 		t.Fatalf("system message = %#v", gotBody.Messages[0])
 	}
-	if gotBody.Messages[1] != (Message{Role: "user", Content: "Can you explain x?"}) {
+	if gotBody.Messages[1].Role != "user" || gotBody.Messages[1].Content != "Can you explain x?" {
 		t.Fatalf("user message = %#v", gotBody.Messages[1])
 	}
-	if gotBody.Messages[2] != (Message{Role: "assistant", Content: "Sure."}) {
+	if gotBody.Messages[2].Role != "assistant" || gotBody.Messages[2].Content != "Sure." {
 		t.Fatalf("assistant message = %#v", gotBody.Messages[2])
 	}
 	if title != "Algebra help" {
