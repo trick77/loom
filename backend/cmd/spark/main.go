@@ -17,6 +17,7 @@ import (
 	"github.com/trick77/spark/internal/config"
 	"github.com/trick77/spark/internal/httpapi"
 	"github.com/trick77/spark/internal/llm"
+	"github.com/trick77/spark/internal/mcp"
 	"github.com/trick77/spark/internal/store"
 	"github.com/trick77/spark/web"
 )
@@ -58,6 +59,25 @@ func run() error {
 			Model:   cfg.ChatModel,
 		}, http.DefaultClient)
 	}
+	var toolService httpapi.ToolService
+	if cfg.MCPConfigPath != "" {
+		mcpConfig, err := mcp.LoadConfig(cfg.MCPConfigPath)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			slog.Warn("MCP config not found; tools disabled", "path", cfg.MCPConfigPath)
+		} else {
+			discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			discovered, err := mcp.NewBestEffortServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 15 * time.Second}, slog.Default())
+			cancel()
+			if err != nil {
+				return err
+			}
+			toolService = discovered
+			slog.Info("MCP tools discovered", "count", len(discovered.Tools()))
+		}
+	}
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
 	if cfg.AuthMode == config.AuthModeOIDC {
@@ -93,6 +113,7 @@ func run() error {
 		Users:                 userStore,
 		Chat:                  chatStore,
 		LLM:                   chatClient,
+		MCP:                   toolService,
 		OIDCAdminGroup:        cfg.OIDC.AdminGroup,
 		DevAuthClaims:         devAuthClaims,
 		PostLogoutRedirectURL: cfg.OIDC.PostLogoutRedirectURL,

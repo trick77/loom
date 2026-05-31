@@ -131,10 +131,10 @@ func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 	if !strings.Contains(history[0].Content, "Always answer in this language: de.") {
 		t.Fatalf("system prompt = %q, want response-language directive", history[0].Content)
 	}
-	if history[1] != (llm.Message{Role: "assistant", Content: "Earlier answer"}) {
+	if history[1].Role != "assistant" || history[1].Content != "Earlier answer" {
 		t.Fatalf("prior message = %#v", history[1])
 	}
-	if history[2] != (llm.Message{Role: "user", Content: "Neue Frage"}) {
+	if history[2].Role != "user" || history[2].Content != "Neue Frage" {
 		t.Fatalf("new user message = %#v", history[2])
 	}
 }
@@ -179,5 +179,186 @@ func TestStreamMessageStillCompletesWhenTitleGenerationFails(t *testing.T) {
 	}
 	if strings.Contains(body, "event: error") {
 		t.Fatalf("SSE body contains error for best-effort title failure:\n%s", body)
+	}
+}
+
+func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{ToolCalls: []llm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "search__web",
+					Arguments: `{"q":"spark"}`,
+				},
+			}}},
+			{Content: "I found Spark."},
+		},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{
+				Type: "function",
+				Function: llm.ToolFunction{
+					Name:        "search__web",
+					Description: "Search the web",
+					Parameters:  map[string]any{"type": "object"},
+				},
+			}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Spark"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"event: tool_call",
+		`"name":"search__web"`,
+		"event: tool_result",
+		`"content":"search result"`,
+		"event: assistant_delta",
+		`data: {"content":"I found Spark."}`,
+		"event: assistant_message",
+		"event: done",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("SSE body missing %q:\n%s", want, body)
+		}
+	}
+	if store.assistantContent != "I found Spark." {
+		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
+	}
+	if len(llmClient.histories) != 2 {
+		t.Fatalf("stream calls = %d, want 2", len(llmClient.histories))
+	}
+	lastHistory := llmClient.histories[1]
+	if len(lastHistory) < 3 {
+		t.Fatalf("last history too short: %#v", lastHistory)
+	}
+	if got := lastHistory[len(lastHistory)-1]; got.Role != "tool" || got.ToolCallID != "call_1" || got.Content != "search result" {
+		t.Fatalf("last history message = %#v, want tool result", got)
+	}
+}
+
+func TestStreamMessageRecoversFromToolError(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{ToolCalls: []llm.ToolCall{{
+				ID: "call_1",
+				Function: llm.ToolCallFunction{
+					Name:      "search__web",
+					Arguments: `{"q":"spark"}`,
+				},
+			}}},
+			{Content: "The search tool failed, but I can continue."},
+		},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			err:   errFakeTool,
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Spark"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "event: error") {
+		t.Fatalf("SSE body contains turn-level error for tool failure:\n%s", body)
+	}
+	if !strings.Contains(body, "event: tool_result") || !strings.Contains(body, "tool failed: fake tool failed") {
+		t.Fatalf("SSE body missing tool failure result:\n%s", body)
+	}
+	if store.assistantContent != "The search tool failed, but I can continue." {
+		t.Fatalf("assistantContent = %q, want recovered answer", store.assistantContent)
+	}
+}
+
+func TestStreamMessageStopsAfterToolCallLimit(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	toolCalls := make([]llm.ToolCall, maxToolCallsPerRound+1)
+	for i := range toolCalls {
+		toolCalls[i] = llm.ToolCall{
+			ID: "call_limit",
+			Function: llm.ToolCallFunction{
+				Name:      "search__web",
+				Arguments: `{}`,
+			},
+		}
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  &fakeToolChatClient{results: []llm.StreamResult{{ToolCalls: toolCalls}}},
+		MCP:  fakeMCPService{tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Spark"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "too many tool calls") {
+		t.Fatalf("SSE body missing tool-call-limit error:\n%s", body)
+	}
+	if len(store.messages) != 1 || store.messages[0].Role != chat.RoleUser {
+		t.Fatalf("persisted messages = %#v, want only user message", store.messages)
+	}
+}
+
+func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	results := make([]llm.StreamResult, maxToolRounds)
+	for i := range results {
+		results[i] = llm.StreamResult{ToolCalls: []llm.ToolCall{{
+			ID: "call_round",
+			Function: llm.ToolCallFunction{
+				Name:      "search__web",
+				Arguments: `{}`,
+			},
+		}}}
+	}
+	llmClient := &fakeToolChatClient{results: results, plain: "Final answer without more tools."}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+		MCP: fakeMCPService{
+			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Spark"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "empty assistant response") {
+		t.Fatalf("SSE body returned empty response after round exhaustion:\n%s", body)
+	}
+	if store.assistantContent != "Final answer without more tools." {
+		t.Fatalf("assistantContent = %q, want final no-tool answer", store.assistantContent)
 	}
 }

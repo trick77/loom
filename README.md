@@ -135,8 +135,8 @@ The callback URL configured in authentik must exactly match `SPARK_OIDC_REDIRECT
 
 ## Chat Setup
 
-Phase 3 adds project-less chats, projects, threads, message persistence, starred/recents, SSE
-streaming, and first-exchange thread naming.
+Spark supports project-less chats, projects, threads, message persistence, starred/recents, SSE
+streaming, first-exchange thread naming, and MCP-backed tool calls.
 
 Spark uses an OpenAI-compatible chat endpoint:
 
@@ -150,7 +150,49 @@ The backend calls `POST <SPARK_CHAT_BASE_URL>/chat/completions` with OpenAI-comp
 `messages`, `model`, and `stream` fields. If `SPARK_CHAT_BASE_URL` is empty, the authenticated shell
 still loads but sending a chat message returns a service-unavailable error.
 
-### Current Phase 3 Scope
+### MCP Tools
+
+Spark reads `SPARK_MCP_CONFIG` at startup. The file defaults to `/config/mcp.json`; if it is missing,
+Spark starts without tools. Each configured server is discovered once at boot. Servers that cannot be
+reached are logged and skipped, so one unavailable MCP server does not block startup.
+
+The default `compose.yaml` starts a `searxng-mcp` Streamable HTTP MCP server at
+`http://searxng-mcp:8080/mcp` and points it at the bundled `searxng` service. SearXNG uses
+`searxng/settings.yaml`, which enables JSON output required by MCP search tools.
+
+Remote MCP servers should expose a Streamable HTTP endpoint:
+
+```json
+{
+  "servers": {
+    "search": {
+      "transport": "streamable-http",
+      "url": "http://search-mcp:8080/mcp"
+    }
+  }
+}
+```
+
+Local stdio servers are also supported:
+
+```json
+{
+  "servers": {
+    "fetch": {
+      "transport": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "mcp/fetch"]
+    }
+  }
+}
+```
+
+Discovered MCP tools are exposed to the chat model as OpenAI-compatible function tools named
+`<server>__<tool>`. During a streamed response, Spark pauses when the model emits `tool_calls`, runs
+the requested MCP tools, streams tool status events to the UI, appends tool results to the model
+history, and resumes the assistant stream.
+
+### Current Phase 4 Scope
 
 Implemented now:
 
@@ -159,10 +201,13 @@ Implemented now:
 - Project-less new chats.
 - Starred and recent thread lists.
 - Automatic thread naming after the first completed assistant response.
+- MCP config loading for Streamable HTTP and stdio servers.
+- MCP tool discovery and tool execution.
+- OpenAI-compatible tool schemas and streamed tool-call parsing.
+- Tool progress display while an answer is streaming.
 
 Still planned for later phases:
 
-- MCP tools and agent loop.
 - Document upload, RAG, citations, and Sources population.
 - Artifacts file browser.
 - Memory extraction, storage, and injection.
@@ -177,8 +222,10 @@ Still planned for later phases:
 6. Sign in as a member of `SPARK_OIDC_ADMIN_GROUP` and confirm admin features appear.
 7. Create a new chat.
 8. Send a message and confirm the assistant response streams into the conversation.
-9. Confirm the thread title changes from **New chat** after the first completed response.
-10. Sign out and confirm returning to Spark requires a new authenticated session.
+9. If MCP servers are configured and reachable, ask a question that requires a configured tool and
+   confirm the tool status appears before the final answer.
+10. Confirm the thread title changes from **New chat** after the first completed response.
+11. Sign out and confirm returning to Spark requires a new authenticated session.
 
 ### Logout behavior
 

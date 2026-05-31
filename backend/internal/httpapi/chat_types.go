@@ -40,3 +40,15 @@ type streamMessageRequest struct {
 type streamDeltaResponse struct {
 	Content string `json:"content"`
 }
+
+type toolCallResponse struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type toolResultResponse struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}

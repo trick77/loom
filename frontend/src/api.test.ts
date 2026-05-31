@@ -37,6 +37,31 @@ test("streamMessage parses server-sent events", async () => {
   expect(deltas.join("")).toBe("Hello");
 });
 
+test("streamMessage parses tool events", async () => {
+  const body = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"result"}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  const events: string[] = [];
+
+  await streamMessage("t1", "Hi", {
+    onUserMessage: () => undefined,
+    onDelta: () => undefined,
+    onAssistantMessage: () => undefined,
+    onThread: () => undefined,
+    onToolCall: (event) => events.push(`call:${event.name}`),
+    onToolResult: (event) => events.push(`result:${event.content}`),
+  });
+
+  expect(events).toEqual(["call:search__web", "result:result"]);
+});
+
 test("streamMessage throws server-sent error events", async () => {
   const body = new ReadableStream({
     start(controller) {

@@ -23,6 +23,7 @@ type Deps struct {
 	Users                 UserService
 	Chat                  ChatStore
 	LLM                   ChatClient
+	MCP                   ToolService
 	OIDCAdminGroup        string
 	DevAuthClaims         auth.Claims
 	PostLogoutRedirectURL string
@@ -36,6 +37,7 @@ type server struct {
 	users                 UserService
 	chat                  ChatStore
 	llm                   ChatClient
+	mcp                   ToolService
 	oidcAdminGroup        string
 	devAuthClaims         auth.Claims
 	postLogoutRedirectURL string
@@ -62,7 +64,14 @@ type ChatStore interface {
 // ChatClient is the LLM dependency used by chat stream handlers.
 type ChatClient interface {
 	StreamChat(context.Context, []llm.Message, func(string) error) (string, error)
+	StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error)
 	GenerateTitle(context.Context, string, string) (string, error)
+}
+
+// ToolService exposes configured MCP tools to chat handlers.
+type ToolService interface {
+	Tools() []llm.Tool
+	CallTool(context.Context, string, map[string]any) (string, error)
 }
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.
@@ -97,6 +106,7 @@ func New(d Deps) http.Handler {
 		users:                 d.Users,
 		chat:                  d.Chat,
 		llm:                   d.LLM,
+		mcp:                   d.MCP,
 		oidcAdminGroup:        d.OIDCAdminGroup,
 		devAuthClaims:         d.DevAuthClaims,
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
