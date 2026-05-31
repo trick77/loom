@@ -119,6 +119,40 @@ func TestClient_StreamChatResultCapturesUsageTrailerChunk(t *testing.T) {
 	}
 }
 
+func TestClient_StreamChatResultCapturesReasoningContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"reasoning_content":"I should check "}}]}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"reasoning_content":"the facts."}}]}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"Answer."}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	var events []StreamEvent
+	result, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil, func(event StreamEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if result.Content != "Answer." {
+		t.Fatalf("content = %q, want Answer.", result.Content)
+	}
+	if result.ReasoningContent != "I should check the facts." {
+		t.Fatalf("reasoning content = %q", result.ReasoningContent)
+	}
+	if len(events) != 3 {
+		t.Fatalf("events = %#v, want 3", events)
+	}
+	if events[0].ReasoningDelta != "I should check " || events[1].ReasoningDelta != "the facts." || events[2].Delta != "Answer." {
+		t.Fatalf("events = %#v, want reasoning deltas then content delta", events)
+	}
+}
+
 func TestClient_StreamChatResultLeavesUsageEmptyWhenMissing(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

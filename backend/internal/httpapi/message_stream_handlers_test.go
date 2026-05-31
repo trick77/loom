@@ -56,6 +56,42 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 	}
 }
 
+func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+	}
+	streamText := "Answer."
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM: fakeChatClient{
+			streamText:    &streamText,
+			reasoningText: "I should reason first.",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: assistant_reasoning_delta") {
+		t.Fatalf("body missing assistant_reasoning_delta:\n%s", body)
+	}
+	if !strings.Contains(body, `"content":"I should reason first."`) {
+		t.Fatalf("body missing reasoning content:\n%s", body)
+	}
+	if len(store.messages) == 0 {
+		t.Fatal("no messages persisted")
+	}
+	last := store.messages[len(store.messages)-1]
+	if last.Role != chat.RoleAssistant || last.ReasoningContent != "I should reason first." {
+		t.Fatalf("persisted assistant = %#v", last)
+	}
+}
+
 func TestStreamMessagePersistsAssistantTokenUsage(t *testing.T) {
 	store := &fakeChatStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
@@ -288,14 +324,17 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	}
 	llmClient := &fakeToolChatClient{
 		results: []llm.StreamResult{
-			{ToolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.ToolCallFunction{
-					Name:      "search__web",
-					Arguments: `{"q":"spark"}`,
-				},
-			}}},
+			{
+				ReasoningContent: "I should search first.",
+				ToolCalls: []llm.ToolCall{{
+					ID:   "call_1",
+					Type: "function",
+					Function: llm.ToolCallFunction{
+						Name:      "search__web",
+						Arguments: `{"q":"spark"}`,
+					},
+				}},
+			},
 			{Content: "I found Spark."},
 		},
 	}
@@ -349,6 +388,9 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	}
 	if got := lastHistory[len(lastHistory)-1]; got.Role != "tool" || got.ToolCallID != "call_1" || got.Content != "search result" {
 		t.Fatalf("last history message = %#v, want tool result", got)
+	}
+	if got := lastHistory[len(lastHistory)-2]; got.Role != "assistant" || got.ReasoningContent != "I should search first." {
+		t.Fatalf("assistant tool-call history = %#v, want preserved reasoning content", got)
 	}
 }
 

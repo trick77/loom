@@ -132,6 +132,7 @@ func (f *fakeChatStore) AddMessageWithUsage(ctx context.Context, _ string, threa
 		ThreadID:         threadID,
 		Role:             role,
 		Content:          content,
+		ReasoningContent: usage.ReasoningContent,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,
@@ -152,12 +153,13 @@ func (f *fakeChatStore) ListMessages(context.Context, string, string) ([]chat.Me
 }
 
 type fakeChatClient struct {
-	title       string
-	titleErr    error
-	history     *[]llm.Message
-	streamText  *string
-	usage       llm.TokenUsage
-	afterStream func()
+	title         string
+	titleErr      error
+	history       *[]llm.Message
+	streamText    *string
+	reasoningText string
+	usage         llm.TokenUsage
+	afterStream   func()
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -191,14 +193,36 @@ func (f fakeChatClient) GenerateTitle(context.Context, string, string) (string, 
 	return f.title, nil
 }
 
-func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
-	content, err := f.StreamChat(ctx, history, func(delta string) error {
-		if onEvent == nil {
-			return nil
+func (f fakeChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+	if f.history != nil {
+		*f.history = append((*f.history)[:0], history...)
+	}
+	if f.reasoningText != "" && onEvent != nil {
+		if err := onEvent(llm.StreamEvent{ReasoningDelta: f.reasoningText}); err != nil {
+			return llm.StreamResult{}, err
 		}
-		return onEvent(llm.StreamEvent{Delta: delta})
-	})
-	return llm.StreamResult{Content: content, Usage: f.usage}, err
+	}
+	content := "Hello"
+	if f.streamText != nil {
+		content = *f.streamText
+	}
+	if onEvent != nil {
+		if f.streamText != nil {
+			if err := onEvent(llm.StreamEvent{Delta: content}); err != nil {
+				return llm.StreamResult{}, err
+			}
+		} else {
+			for _, delta := range []string{"Hel", "lo"} {
+				if err := onEvent(llm.StreamEvent{Delta: delta}); err != nil {
+					return llm.StreamResult{}, err
+				}
+			}
+		}
+	}
+	if f.afterStream != nil {
+		f.afterStream()
+	}
+	return llm.StreamResult{Content: content, ReasoningContent: f.reasoningText, Usage: f.usage}, nil
 }
 
 type fakeToolChatClient struct {
@@ -219,11 +243,35 @@ func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, fu
 	return llm.StreamResult{Content: f.plain}, nil
 }
 
-func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	f.histories = append(f.histories, append([]llm.Message(nil), history...))
+	if len(tools) == 0 {
+		result, err := f.StreamChatResult(context.Background(), history, nil)
+		if err != nil {
+			return llm.StreamResult{}, err
+		}
+		if onEvent != nil {
+			if result.ReasoningContent != "" {
+				if err := onEvent(llm.StreamEvent{ReasoningDelta: result.ReasoningContent}); err != nil {
+					return llm.StreamResult{}, err
+				}
+			}
+			if result.Content != "" {
+				if err := onEvent(llm.StreamEvent{Delta: result.Content}); err != nil {
+					return llm.StreamResult{}, err
+				}
+			}
+		}
+		return result, nil
+	}
 	result := f.results[0]
 	f.results = f.results[1:]
 	if onEvent != nil {
+		if result.ReasoningContent != "" {
+			if err := onEvent(llm.StreamEvent{ReasoningDelta: result.ReasoningContent}); err != nil {
+				return llm.StreamResult{}, err
+			}
+		}
 		for _, call := range result.ToolCalls {
 			if err := onEvent(llm.StreamEvent{ToolCall: call}); err != nil {
 				return llm.StreamResult{}, err

@@ -23,7 +23,8 @@ type chatCompletionChoice struct {
 }
 
 type chatCompletionMessage struct {
-	Content string `json:"content"`
+	Content          string `json:"content"`
+	ReasoningContent string `json:"reasoning_content"`
 }
 
 type chatCompletionChunk struct {
@@ -36,8 +37,9 @@ type chatCompletionChunkChoice struct {
 }
 
 type chatCompletionDelta struct {
-	Content   string               `json:"content"`
-	ToolCalls []ToolCallDeltaChunk `json:"tool_calls"`
+	Content          string               `json:"content"`
+	ReasoningContent string               `json:"reasoning_content"`
+	ToolCalls        []ToolCallDeltaChunk `json:"tool_calls"`
 }
 
 type Tool struct {
@@ -75,14 +77,16 @@ type ToolCallDeltaFunc struct {
 }
 
 type StreamEvent struct {
-	Delta    string
-	ToolCall ToolCall
+	Delta          string
+	ReasoningDelta string
+	ToolCall       ToolCall
 }
 
 type StreamResult struct {
-	Content   string
-	ToolCalls []ToolCall
-	Usage     TokenUsage
+	Content          string
+	ReasoningContent string
+	ToolCalls        []ToolCall
+	Usage            TokenUsage
 }
 
 type TokenUsage struct {

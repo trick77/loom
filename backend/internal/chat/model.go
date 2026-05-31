@@ -53,6 +53,7 @@ type Message struct {
 	ThreadID         string          `json:"threadId"`
 	Role             Role            `json:"role"`
 	Content          string          `json:"content"`
+	ReasoningContent string          `json:"reasoningContent,omitempty"`
 	ToolCalls        json.RawMessage `json:"toolCalls"`
 	Citations        json.RawMessage `json:"citations"`
 	PromptTokens     *int            `json:"promptTokens,omitempty"`
@@ -69,6 +70,7 @@ type MessageTokenUsage struct {
 	TotalTokens      *int
 	CachedTokens     *int
 	ReasoningTokens  *int
+	ReasoningContent string
 }
 
 type CreateProjectInput struct {

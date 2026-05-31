@@ -77,6 +77,7 @@ func scanMessage(row rowScanner) (Message, error) {
 		&message.ThreadID,
 		&role,
 		&message.Content,
+		&message.ReasoningContent,
 		&toolCalls,
 		&citations,
 		&promptTokens,

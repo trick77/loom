@@ -34,6 +34,7 @@ export type Message = {
   threadId: string;
   role: "user" | "assistant" | "tool";
   content: string;
+  reasoningContent?: string;
   createdAt: string;
 };
 
@@ -62,6 +63,7 @@ type ThreadResponse = {
 type StreamHandlers = {
   onUserMessage(message: Message): void;
   onDelta(delta: string): void;
+  onReasoningDelta?(delta: string): void;
   onAssistantMessage(message: Message): void;
   onThread(thread: Thread): void;
   onToolCall?(event: ToolCallEvent): void;
@@ -262,6 +264,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "assistant_delta":
       handlers.onDelta((payload as { content: string }).content);
+      break;
+    case "assistant_reasoning_delta":
+      handlers.onReasoningDelta?.((payload as { content: string }).content);
       break;
     case "assistant_message":
       handlers.onAssistantMessage(payload as Message);
