@@ -71,7 +71,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	mcpStatusCh := s.startMCPStatus(r.Context())
 
 	history := buildLLMHistory(user, priorMessages, userMessage)
-	assistantContent, err := s.runAssistantLoop(r.Context(), stream, history)
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
+	assistantResult, err := s.runAssistantLoop(r.Context(), stream, history, inference)
 	if err != nil {
 		message := "stream failed"
 		var userErr streamUserError
@@ -81,13 +82,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		return
 	}
+	assistantContent := assistantResult.Content
 	if strings.TrimSpace(assistantContent) == "" {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
 		return
 	}
 
 	persistCtx := context.WithoutCancel(r.Context())
-	assistantMessage, err := s.chat.AddMessage(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent)
+	assistantMessage, err := s.chat.AddMessageWithUsage(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageUsageFromLLM(assistantResult.Usage))
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
@@ -99,7 +101,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	sendMCPStatus(stream, mcpStatusCh)
 
 	if thread.Title == chat.DefaultThreadTitle {
-		_ = s.generateAndSendThreadTitle(r.Context(), persistCtx, stream, user.ID, threadID, userMessage.Content, assistantMessage.Content)
+		_ = s.generateAndSendThreadTitle(r.Context(), persistCtx, stream, user, threadID, userMessage.Content, assistantMessage.Content)
 	}
 	_ = stream.Send("done", "{}")
 }
@@ -119,19 +121,21 @@ func (e streamUserError) Error() string {
 	return e.message
 }
 
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message) (string, error) {
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata) (llm.StreamResult, error) {
 	tools := []llm.Tool(nil)
 	if s.mcp != nil {
 		tools = s.mcp.Tools()
 	}
 	if len(tools) == 0 {
-		return s.llm.StreamChat(ctx, history, func(delta string) error {
+		callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat", 1))
+		return s.llm.StreamChatResult(callCtx, history, func(delta string) error {
 			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: delta})
 		})
 	}
 
-	for range maxToolRounds {
-		result, err := s.llm.StreamChatWithTools(ctx, history, tools, func(event llm.StreamEvent) error {
+	for round := 1; round <= maxToolRounds; round++ {
+		callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat_tool_round", round))
+		result, err := s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 			if event.Delta != "" {
 				return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
 			}
@@ -145,13 +149,13 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			return nil
 		})
 		if err != nil {
-			return "", err
+			return llm.StreamResult{}, err
 		}
 		if len(result.ToolCalls) == 0 {
-			return result.Content, nil
+			return result, nil
 		}
 		if len(result.ToolCalls) > maxToolCallsPerRound {
-			return "", streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
+			return llm.StreamResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
 		}
 
 		history = append(history, llm.Message{
@@ -162,7 +166,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		for _, call := range result.ToolCalls {
 			output := s.executeToolCall(ctx, call)
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
-				return "", err
+				return llm.StreamResult{}, err
 			}
 			history = append(history, llm.Message{
 				Role:       "tool",
@@ -171,7 +175,8 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			})
 		}
 	}
-	return s.llm.StreamChat(ctx, history, func(delta string) error {
+	callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1))
+	return s.llm.StreamChatResult(callCtx, history, func(delta string) error {
 		return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: delta})
 	})
 }
@@ -197,6 +202,29 @@ func capToolOutput(output string) string {
 	return output[:maxToolResultContentBytes]
 }
 
+func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round int) llm.InferenceMetadata {
+	metadata.Purpose = purpose
+	metadata.Round = round
+	return metadata
+}
+
+func messageUsageFromLLM(usage llm.TokenUsage) chat.MessageTokenUsage {
+	if !usage.Present() {
+		return chat.MessageTokenUsage{}
+	}
+	return chat.MessageTokenUsage{
+		PromptTokens:     intPtr(usage.PromptTokens),
+		CompletionTokens: intPtr(usage.CompletionTokens),
+		TotalTokens:      intPtr(usage.TotalTokens),
+		CachedTokens:     intPtr(usage.PromptTokensDetails.CachedTokens),
+		ReasoningTokens:  intPtr(usage.CompletionTokenDetails.ReasoningTokens),
+	}
+}
+
+func intPtr(value int) *int {
+	return &value
+}
+
 func parseToolArguments(raw string) (map[string]any, error) {
 	if strings.TrimSpace(raw) == "" {
 		return map[string]any{}, nil
@@ -208,12 +236,13 @@ func parseToolArguments(raw string) (map[string]any, error) {
 	return args, nil
 }
 
-func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, userID, threadID, userMessage, assistantMessage string) error {
-	title, err := s.llm.GenerateTitle(requestCtx, userMessage, assistantMessage)
+func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage string) error {
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
+	title, err := s.llm.GenerateTitle(llm.WithInferenceMetadata(requestCtx, inference), userMessage, assistantMessage)
 	if err != nil {
 		return err
 	}
-	thread, found, err := s.chat.UpdateThread(persistCtx, userID, threadID, chat.UpdateThreadInput{Title: &title})
+	thread, found, err := s.chat.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Title: &title})
 	if err != nil {
 		return err
 	}
