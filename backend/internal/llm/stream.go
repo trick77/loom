@@ -34,6 +34,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	defer resp.Body.Close()
 
 	var content strings.Builder
+	var reasoning strings.Builder
 	var usage TokenUsage
 	toolCalls := map[int]*ToolCall{}
 	var toolCallOrder []int
@@ -50,7 +51,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payload == "[DONE]" {
-			result, err := finishStream(content.String(), usage, toolCalls, toolCallOrder, onEvent)
+			result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent)
 			if err != nil {
 				logInferenceFailed(ctx, c.model, time.Since(start), err)
 				return result, err
@@ -63,7 +64,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
 			err := fmt.Errorf("decode chat completion chunk: %w", err)
 			logInferenceFailed(ctx, c.model, time.Since(start), err)
-			return StreamResult{Content: content.String(), Usage: usage}, err
+			return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 		}
 		if chunk.Usage.Present() {
 			usage = chunk.Usage
@@ -73,12 +74,21 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 		delta := chunk.Choices[0].Delta
 
+		if delta.ReasoningContent != "" {
+			reasoning.WriteString(delta.ReasoningContent)
+			if onEvent != nil {
+				if err := onEvent(StreamEvent{ReasoningDelta: delta.ReasoningContent}); err != nil {
+					logInferenceFailed(ctx, c.model, time.Since(start), err)
+					return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+				}
+			}
+		}
 		if delta.Content != "" {
 			content.WriteString(delta.Content)
 			if onEvent != nil {
 				if err := onEvent(StreamEvent{Delta: delta.Content}); err != nil {
 					logInferenceFailed(ctx, c.model, time.Since(start), err)
-					return StreamResult{Content: content.String(), Usage: usage}, err
+					return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 				}
 			}
 		}
@@ -106,9 +116,9 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	if err := scanner.Err(); err != nil {
 		err := fmt.Errorf("read chat completion stream: %w", err)
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
-		return StreamResult{Content: content.String(), Usage: usage}, err
+		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 	}
-	result, err := finishStream(content.String(), usage, toolCalls, toolCallOrder, onEvent)
+	result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent)
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return result, err
@@ -117,8 +127,13 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	return result, nil
 }
 
-func finishStream(content string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error) (StreamResult, error) {
-	result := StreamResult{Content: content, ToolCalls: make([]ToolCall, 0, len(order)), Usage: usage}
+func finishStream(content string, reasoningContent string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error) (StreamResult, error) {
+	result := StreamResult{
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		ToolCalls:        make([]ToolCall, 0, len(order)),
+		Usage:            usage,
+	}
 	for _, index := range order {
 		call := *byIndex[index]
 		result.ToolCalls = append(result.ToolCalls, call)
