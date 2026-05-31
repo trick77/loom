@@ -228,6 +228,15 @@ export function ChatShell({
   async function handleSend() {
     const content = draft.trim();
     if (content === "" || isSending) return;
+    await sendContent(content, { restoreDraftOnError: true });
+  }
+
+  async function handleRetry(content: string) {
+    if (content.trim() === "" || isSending || activeThread === null) return;
+    await sendContent(content, { restoreDraftOnError: false });
+  }
+
+  async function sendContent(content: string, options: { restoreDraftOnError: boolean }) {
     setDraft("");
     setIsSending(true);
     setStreamingText("");
@@ -288,7 +297,7 @@ export function ChatShell({
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
       setToolEvents([]);
-      setDraft(content);
+      if (options.restoreDraftOnError) setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
@@ -446,6 +455,7 @@ export function ChatShell({
             isUpdatingStar={isUpdatingStar}
             onDraftChange={setDraft}
             onSend={handleSend}
+            onRetry={handleRetry}
             onStarChange={handleSetActiveThreadStarred}
           />
         )}
@@ -640,6 +650,7 @@ function ChatPanel({
   isUpdatingStar,
   onDraftChange,
   onSend,
+  onRetry,
   onStarChange,
 }: {
   thread: Thread | null;
@@ -652,6 +663,7 @@ function ChatPanel({
   isUpdatingStar: boolean;
   onDraftChange(value: string): void;
   onSend(): void;
+  onRetry(content: string): void;
   onStarChange(starred: boolean): void;
 }) {
   return (
@@ -676,8 +688,13 @@ function ChatPanel({
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-10">
         <div className="mx-auto w-full max-w-[834px] space-y-5">
-          {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
+          {messages.map((message, index) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
+              onRetry={onRetry}
+            />
           ))}
           {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
           {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
@@ -701,6 +718,14 @@ function ChatPanel({
       </div>
     </section>
   );
+}
+
+function previousUserContent(messages: Message[], beforeIndex: number): string | null {
+  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "user") return message.content;
+  }
+  return null;
 }
 
 function Composer({
@@ -785,24 +810,38 @@ function ToolActivityPanel({ events }: { events: ToolActivity[] }) {
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  retryContent,
+  onRetry,
+}: {
+  message: Message;
+  retryContent: string | null;
+  onRetry(content: string): void;
+}) {
   if (message.role === "user") {
     return (
-      <div className="spark-message-text ml-auto max-w-[40rem] rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
-        {message.content}
+      <div className="group ml-auto max-w-[40rem]">
+        <div className="spark-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
+          {message.content}
+        </div>
+        <MessageActions
+          copyLabel="Copy message"
+          copyText={message.content}
+          retryLabel="Retry message"
+          onRetry={() => onRetry(message.content)}
+        />
       </div>
     );
   }
-  return <AssistantText>{message.content}</AssistantText>;
+  return <AssistantText onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>{message.content}</AssistantText>;
 }
 
-function AssistantText({ children }: { children: string }) {
-  const [copied, setCopied] = useState(false);
+function AssistantText({ children, onRetry }: { children: string; onRetry?: () => void }) {
+  const downloadable = downloadableResponse(children);
 
-  async function handleCopy() {
-    await copyResponse(children);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+  if (downloadable !== null) {
+    return <DownloadResponseBubble artifact={downloadable} />;
   }
 
   return (
@@ -823,22 +862,85 @@ function AssistantText({ children }: { children: string }) {
           {children}
         </Markdown>
       </div>
-      <div className="mt-3 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <MessageActions
+        copyLabel="Copy response"
+        copyText={markdownToPlainText(children)}
+        retryLabel="Retry response"
+        onRetry={onRetry}
+      />
+    </div>
+  );
+}
+
+function MessageActions({
+  copyLabel,
+  copyText,
+  retryLabel,
+  onRetry,
+}: {
+  copyLabel: string;
+  copyText: string;
+  retryLabel: string;
+  onRetry?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    await copyResponse(copyText);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+
+  return (
+    <div className="mt-3 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <button
+        className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
+        onClick={handleCopy}
+        type="button"
+        title="Copy"
+        aria-label={copyLabel}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+      {onRetry !== undefined && (
         <button
           className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
-          onClick={handleCopy}
+          onClick={onRetry}
           type="button"
-          title="Copy"
-          aria-label="Copy response"
+          title="Retry"
+          aria-label={retryLabel}
         >
-          {copied ? <CheckIcon /> : <CopyIcon />}
+          <RetryIcon />
         </button>
+      )}
+    </div>
+  );
+}
+
+type DownloadableResponse = {
+  extension: string;
+  label: string;
+  mimeType: string;
+  content: BlobPart;
+};
+
+function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
+  return (
+    <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
+      <div className="flex items-center gap-3">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
+          <FileIcon />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="spark-message-text truncate">{artifact.label} response</div>
+          <div className="spark-meta-text text-[#aaa79e]">Ready to download</div>
+        </div>
         <button
-          className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
-          onClick={() => downloadResponse(children)}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
+          onClick={() => downloadArtifact(artifact)}
           type="button"
-          title="Download"
-          aria-label="Download response"
+          title={`Download ${artifact.label} response`}
+          aria-label={`Download ${artifact.label} response`}
         >
           <DownloadIcon />
         </button>
@@ -851,21 +953,43 @@ async function copyResponse(content: string) {
   await navigator.clipboard?.writeText(content);
 }
 
-function downloadResponse(content: string) {
-  const url = URL.createObjectURL(new Blob([content], { type: responseMimeType(content) }));
+function downloadArtifact(artifact: DownloadableResponse) {
+  const url = URL.createObjectURL(new Blob([artifact.content], { type: artifact.mimeType }));
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `spark-response.${responseExtension(content)}`;
+  anchor.download = `spark-response.${artifact.extension}`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
 }
 
-function responseMimeType(content: string): string {
+function downloadableResponse(content: string): DownloadableResponse | null {
+  const dataURL = dataURLArtifact(content);
+  if (dataURL !== null) return dataURL;
+
   const extension = responseExtension(content);
+  if (!downloadOnlyExtensions.has(extension)) return null;
+  return {
+    extension,
+    label: extension.toUpperCase(),
+    mimeType: responseMimeType(extension),
+    content,
+  };
+}
+
+const downloadOnlyExtensions = new Set(["csv", "html", "json", "pptx", "svg", "xlsx", "xml"]);
+
+function responseMimeType(extension: string): string {
   if (extension === "html") return "text/html;charset=utf-8";
   if (extension === "json") return "application/json;charset=utf-8";
+  if (extension === "csv") return "text/csv;charset=utf-8";
+  if (extension === "pptx") {
+    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  }
+  if (extension === "xlsx") {
+    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  }
   if (extension === "xml" || extension === "svg") return "application/xml;charset=utf-8";
   if (extension === "md") return "text/markdown;charset=utf-8";
   return "text/plain;charset=utf-8";
@@ -881,8 +1005,27 @@ function responseExtension(content: string): string {
   if (/^(<!doctype\s+html|<html[\s>])/i.test(trimmed)) return "html";
   if (/^<svg[\s>]/i.test(trimmed)) return "svg";
   if (/^<\?xml[\s?>]/i.test(trimmed)) return "xml";
+  if (looksLikeCSV(trimmed)) return "csv";
   if (looksLikeMarkdown(trimmed)) return "md";
   return "txt";
+}
+
+function dataURLArtifact(content: string): DownloadableResponse | null {
+  const match = content.trim().match(/^data:([^;,]+)(;base64)?,([\s\S]+)$/i);
+  if (match === null) return null;
+  const mimeType = match[1].toLowerCase();
+  const extension = extensionForMimeType(mimeType);
+  if (extension === null) return null;
+  const encoded = match[3];
+  const artifactContent = match[2]
+    ? Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
+    : decodeURIComponent(encoded);
+  return {
+    extension,
+    label: extension.toUpperCase(),
+    mimeType,
+    content: artifactContent,
+  };
 }
 
 function isJSON(content: string): boolean {
@@ -895,8 +1038,61 @@ function isJSON(content: string): boolean {
   }
 }
 
+function looksLikeCSV(content: string): boolean {
+  const lines = content.split(/\r?\n/).filter((line) => line.trim() !== "");
+  if (lines.length < 2) return false;
+  const columnCount = csvColumnCount(lines[0]);
+  return columnCount > 1 && lines.slice(1).every((line) => csvColumnCount(line) === columnCount);
+}
+
+function csvColumnCount(line: string): number {
+  let columns = 1;
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"' && line[index + 1] === '"') {
+      index += 1;
+      continue;
+    }
+    if (character === '"') quoted = !quoted;
+    if (character === "," && !quoted) columns += 1;
+  }
+  return columns;
+}
+
+function markdownToPlainText(content: string): string {
+  return content
+    .replace(/\r\n/g, "\n")
+    .replace(/^```[a-z0-9_-]*\n([\s\S]*?)\n```$/gim, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
 function looksLikeMarkdown(content: string): boolean {
   return /(^|\n)(#{1,6}\s|\s*[-*+]\s|\s*\d+\.\s|>\s|```)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)/.test(content);
+}
+
+function extensionForMimeType(mimeType: string): string | null {
+  const extensions: Record<string, string> = {
+    "application/json": "json",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/xml": "xml",
+    "image/svg+xml": "svg",
+    "text/csv": "csv",
+    "text/html": "html",
+    "text/xml": "xml",
+  };
+  return extensions[mimeType] ?? null;
 }
 
 function extensionForLanguage(language: string): string {
@@ -970,6 +1166,45 @@ function DownloadIcon() {
         stroke="currentColor"
         strokeWidth="1.9"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function RetryIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M18.5 9.2A6.5 6.5 0 1 0 19 12"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+      <path
+        d="M18.5 5.5v3.7h-3.7"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M7 4.5h6.2L18 9.3v8.9c0 1-.8 1.8-1.8 1.8H7.8c-1 0-1.8-.8-1.8-1.8V6.3c0-1 .8-1.8 1.8-1.8Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13 4.8V9h4.2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
       />
     </svg>
   );

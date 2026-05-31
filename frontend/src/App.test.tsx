@@ -442,8 +442,67 @@ function mcpStreamFetch(streamBody: string) {
   });
 }
 
+function persistedMarkdownChatFetch() {
+  const retryStreamBody =
+    'event: assistant_message\ndata: {"id":"m4","threadId":"t1","role":"assistant","content":"Retried","createdAt":"2026-05-30T00:00:03Z"}\n\n' +
+    "event: done\ndata: {}\n\n";
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") {
+      return Response.json([
+        { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+      ]);
+    }
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+        messages: [
+          {
+            id: "m1",
+            threadId: "t1",
+            role: "user",
+            content: "Make a short report",
+            createdAt: "2026-05-30T00:00:00Z",
+          },
+          {
+            id: "m2",
+            threadId: "t1",
+            role: "assistant",
+            content: "# Overview\n\nA **short** report.",
+            createdAt: "2026-05-30T00:00:01Z",
+          },
+        ],
+      });
+    }
+    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(retryStreamBody));
+            controller.close();
+          },
+        }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
+
 const assistantMessageEvent =
   'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello","createdAt":"2026-05-30T00:00:01Z"}\n\n';
+
+function assistantEventForContent(content: string) {
+  return `event: assistant_message\ndata: ${JSON.stringify({
+    id: "m2",
+    threadId: "t1",
+    role: "assistant",
+    content,
+    createdAt: "2026-05-30T00:00:01Z",
+  })}\n\n`;
+}
 
 async function sendMessageInExistingChat() {
   render(<App />);
@@ -530,7 +589,107 @@ test("renders assistant markdown without rendering raw HTML", async () => {
   expect(screen.getByText(/<div>raw html<\/div>/)).toBeInTheDocument();
   expect(document.querySelector(".spark-markdown div")).toBeNull();
   expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Download response" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Download response" })).not.toBeInTheDocument();
+});
+
+test("shows copy and retry actions for saved markdown assistant responses", async () => {
+  const fetchMock = persistedMarkdownChatFetch();
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry response" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Download response" })).not.toBeInTheDocument();
+});
+
+test("copying a markdown assistant response writes rendered plain text", async () => {
+  const writeText = vi.fn();
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  vi.stubGlobal("fetch", persistedMarkdownChatFetch());
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Copy response" }));
+
+  expect(writeText).toHaveBeenCalledWith("Overview\n\nA short report.");
+});
+
+test("retrying a markdown assistant response resends the previous user message", async () => {
+  const fetchMock = persistedMarkdownChatFetch();
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Retry response" }));
+
+  expect(await screen.findByText("Retried")).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/threads/t1/messages:stream",
+    expect.objectContaining({
+      body: JSON.stringify({ content: "Make a short report" }),
+      method: "POST",
+    }),
+  );
+});
+
+test("user message actions copy and retry the selected prompt", async () => {
+  const writeText = vi.fn();
+  const fetchMock = persistedMarkdownChatFetch();
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Copy message" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Retry message" }));
+
+  expect(writeText).toHaveBeenCalledWith("Make a short report");
+  expect(await screen.findByText("Retried")).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/threads/t1/messages:stream",
+    expect.objectContaining({
+      body: JSON.stringify({ content: "Make a short report" }),
+      method: "POST",
+    }),
+  );
+});
+
+test("shows file-like assistant output as a dedicated download response", async () => {
+  const content = "<!doctype html>\n<html><body><h1>Report</h1></body></html>";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("HTML response")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
+  expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
+});
+
+test("shows generated data output as a dedicated download response", async () => {
+  const content = "name,score\nAda,42\nGrace,37";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("CSV response")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download CSV response" })).toBeInTheDocument();
+  expect(screen.queryByText(/Ada,42/)).not.toBeInTheDocument();
+});
+
+test("shows generated office artifacts as a dedicated download response", async () => {
+  const content =
+    "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,UEsDBAo=";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("XLSX response")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download XLSX response" })).toBeInTheDocument();
+  expect(screen.queryByText(/openxmlformats/)).not.toBeInTheDocument();
 });
 
 test("ignores stream events after switching threads", async () => {
