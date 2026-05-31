@@ -321,7 +321,7 @@ export function ChatShell({
             activeThreadID={route.view === "chat" ? route.threadID : null}
             onSelect={selectThread}
           />
-          <section className="mt-3">
+          <section className="mt-5">
             <div className="spark-meta-text mb-2 flex items-center justify-between px-1.5 text-[#8f8b82]">
               <span>Projects</span>
               <button
@@ -561,7 +561,7 @@ function SidebarSection({
   onSelect(threadID: string): void;
 }) {
   return (
-    <section className="mt-3">
+    <section className="mt-5">
       <div className="spark-meta-text mb-2 px-1.5 text-[#8f8b82]">{title}</div>
       <div className="space-y-1">
         {threads.map((thread) => (
