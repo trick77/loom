@@ -160,6 +160,11 @@ body {
   }
 }
 
+.spark-markdown {
+  font-family: var(--font-serif);
+  font-weight: 530;
+}
+
 .spark-markdown :where(p, ul, ol, blockquote, pre, table) {
   margin-block: 0.75rem;
 }
