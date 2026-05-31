@@ -1,7 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, test, vi } from "vitest";
+import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
+
+beforeEach(() => {
+  window.history.replaceState({}, "", "/");
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -25,7 +29,9 @@ test("renders authenticated shell for signed-in users", async () => {
   render(<App />);
 
   expect(await screen.findByRole("button", { name: /new chat/i })).toBeInTheDocument();
+  expect(await screen.findByText("Afternoon, Jan")).toBeInTheDocument();
   expect(screen.getByText("Jan")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/new");
 });
 
 test("renders admin user list for admin users", async () => {
@@ -146,29 +152,12 @@ test("creates a project from the sidebar", async () => {
   );
 });
 
-test("does not double-submit new chat creation", async () => {
-  let resolveCreateThread: (response: Response) => void = () => undefined;
-  const createThreadResponse = new Promise<Response>((resolve) => {
-    resolveCreateThread = resolve;
-  });
+test("new chat navigation does not create a thread or sidebar entry", async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([]);
-    if (url === "/api/threads" && init?.method === "POST") return createThreadResponse;
-    if (url === "/api/threads/t1") {
-      return Response.json({
-        thread: {
-          id: "t1",
-          title: "New chat",
-          starred: false,
-          createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        },
-        messages: [],
-      });
-    }
+    if (url === "/api/threads?limit=30") return Response.json([{ ...threadFixture(), id: "existing", title: "Existing chat" }]);
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -177,26 +166,38 @@ test("does not double-submit new chat creation", async () => {
   const button = await screen.findByRole("button", { name: /new chat/i });
   fireEvent.click(button);
   fireEvent.click(button);
-  resolveCreateThread(
-    new Response(
-      JSON.stringify({
-        id: "t1",
-        title: "New chat",
-        starred: false,
-        createdAt: "2026-05-30T00:00:00Z",
-        updatedAt: "2026-05-30T00:00:00Z",
-      }),
-      { status: 201 },
-    ),
-  );
 
-  expect(await screen.findByRole("heading", { name: "New chat" })).toBeInTheDocument();
+  expect(await screen.findByText("Afternoon, jan")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/new");
+  expect(await screen.findByRole("button", { name: "Existing chat" })).toBeInTheDocument();
   expect(
     fetchMock.mock.calls.filter(([url, init]) => String(url) === "/api/threads" && init?.method === "POST"),
-  ).toHaveLength(1);
+  ).toHaveLength(0);
 });
 
-test("creates a new chat from the sidebar", async () => {
+test("creates the sidebar chat only after the first response title event", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"It is hot","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Drink water.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: thread\ndata: {"id":"t1","title":"Weather comfort","starred":false,"createdAt":"2026-05-30T00:00:00Z","updatedAt":"2026-05-30T00:00:02Z","lastMessageAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
@@ -214,39 +215,32 @@ test("creates a new chat from the sidebar", async () => {
         { status: 201 },
       );
     }
-    if (url === "/api/threads/t1") {
-      return Response.json({
-        thread: {
-          id: "t1",
-          title: "New chat",
-          starred: false,
-          createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        },
-        messages: [
-          {
-            id: "m1",
-            threadId: "t1",
-            role: "assistant",
-            content: "Loaded from server",
-            createdAt: "2026-05-30T00:00:01Z",
-          },
-        ],
-      });
-    }
+    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") return new Response(stream, { status: 200 });
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /new chat/i }));
+  fireEvent.change(await screen.findByPlaceholderText("How can I help you today?"), {
+    target: { value: "It is hot" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
-  expect(await screen.findByText("Loaded from server")).toBeInTheDocument();
+  expect(await screen.findByText("Drink water.")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/chat/t1");
+  expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Weather comfort" })).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/threads",
     expect.objectContaining({ method: "POST" }),
   );
-  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1");
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/threads/t1/messages:stream",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ content: "It is hot" }),
+    }),
+  );
 });
 
 test("stars and unstars the active chat", async () => {
@@ -333,8 +327,8 @@ test("starting chat exits the admin panel", async () => {
 
   fireEvent.click(await screen.findByRole("button", { name: /new chat/i }));
 
-  expect(await screen.findByRole("heading", { name: "New chat" })).toBeInTheDocument();
-  expect(screen.getByPlaceholderText(/message/i)).toBeInTheDocument();
+  expect(await screen.findByText("Afternoon, jan")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText("How can I help you today?")).toBeInTheDocument();
 });
 
 test("renders streamed assistant response", async () => {
@@ -555,4 +549,14 @@ function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {
     if (url === "/api/threads?limit=30") return Response.json([]);
     throw new Error(`unexpected fetch ${url}`);
   });
+}
+
+function threadFixture() {
+  return {
+    id: "t1",
+    title: "Existing chat",
+    starred: false,
+    createdAt: "2026-05-30T00:00:00Z",
+    updatedAt: "2026-05-30T00:00:00Z",
+  };
 }
