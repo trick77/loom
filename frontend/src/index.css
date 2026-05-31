@@ -162,7 +162,7 @@ body {
 
 .spark-markdown {
   font-family: var(--font-serif);
-  font-weight: 530;
+  font-weight: 360;
 }
 
 .spark-markdown :where(p, ul, ol, blockquote, pre, table) {
