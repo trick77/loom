@@ -33,14 +33,27 @@ services:
       # per-user volumes are mounted manually under /data/users/<user-id>/
     depends_on:
       - searxng
+      - searxng-mcp
       - tika
 
   searxng:
     image: searxng/searxng:latest
     environment:
       BASE_URL: "http://localhost:8888/"
+    volumes:
+      - ./searxng/settings.yaml:/etc/searxng/settings.yml:ro
     ports:
       - "8888:8080"
+
+  searxng-mcp:
+    image: isokoliuk/mcp-searxng:latest
+    environment:
+      SEARXNG_URL: "http://searxng:8080"
+      MCP_HTTP_PORT: "8080"
+    depends_on:
+      - searxng
+    expose:
+      - "8080"
 
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)

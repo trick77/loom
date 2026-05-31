@@ -1,0 +1,9 @@
+use_default_settings: true
+
+server:
+  secret_key: "spark-searxng-change-me"
+
+search:
+  formats:
+    - html
+    - json

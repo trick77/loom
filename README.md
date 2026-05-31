@@ -156,6 +156,10 @@ Spark reads `SPARK_MCP_CONFIG` at startup. The file defaults to `/config/mcp.jso
 Spark starts without tools. Each configured server is discovered once at boot. Servers that cannot be
 reached are logged and skipped, so one unavailable MCP server does not block startup.
 
+The default `compose.yaml` starts a `searxng-mcp` Streamable HTTP MCP server at
+`http://searxng-mcp:8080/mcp` and points it at the bundled `searxng` service. SearXNG uses
+`searxng/settings.yaml`, which enables JSON output required by MCP search tools.
+
 Remote MCP servers should expose a Streamable HTTP endpoint:
 
 ```json
