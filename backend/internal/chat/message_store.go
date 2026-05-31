@@ -9,10 +9,6 @@ import (
 )
 
 func (s *Store) AddMessage(ctx context.Context, userID, threadID string, role Role, content string) (Message, error) {
-	return s.AddMessageWithUsage(ctx, userID, threadID, role, content, MessageTokenUsage{})
-}
-
-func (s *Store) AddMessageWithUsage(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage) (Message, error) {
 	if role != RoleUser && role != RoleAssistant && role != RoleTool {
 		return Message{}, fmt.Errorf("invalid message role %q", role)
 	}
@@ -37,29 +33,9 @@ func (s *Store) AddMessageWithUsage(ctx context.Context, userID, threadID string
 
 	messageID := newID()
 	_, err = tx.ExecContext(ctx, `
-INSERT INTO messages (
-    id,
-    thread_id,
-    user_id,
-    role,
-    content,
-    prompt_tokens,
-    completion_tokens,
-    total_tokens,
-    cached_tokens,
-    reasoning_tokens
-)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		messageID,
-		threadID,
-		userID,
-		role,
-		content,
-		usage.PromptTokens,
-		usage.CompletionTokens,
-		usage.TotalTokens,
-		usage.CachedTokens,
-		usage.ReasoningTokens,
+INSERT INTO messages (id, thread_id, user_id, role, content)
+VALUES (?, ?, ?, ?, ?)`,
+		messageID, threadID, userID, role, content,
 	)
 	if err != nil {
 		return Message{}, fmt.Errorf("insert message: %w", err)
@@ -97,7 +73,7 @@ func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Me
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, thread_id, role, content, tool_calls, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, created_at
+SELECT id, thread_id, role, content, tool_calls, citations, created_at
 FROM messages
 WHERE user_id = ? AND thread_id = ?
 ORDER BY created_at ASC, id ASC`,
@@ -124,7 +100,7 @@ ORDER BY created_at ASC, id ASC`,
 
 func (s *Store) getMessage(ctx context.Context, userID, messageID string) (Message, bool, error) {
 	message, err := scanMessage(s.db.QueryRowContext(ctx, `
-SELECT id, thread_id, role, content, tool_calls, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, created_at
+SELECT id, thread_id, role, content, tool_calls, citations, created_at
 FROM messages
 WHERE user_id = ? AND id = ?`,
 		userID, messageID,

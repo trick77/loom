@@ -49,26 +49,13 @@ type Thread struct {
 
 // Message is one item in a thread transcript.
 type Message struct {
-	ID               string          `json:"id"`
-	ThreadID         string          `json:"threadId"`
-	Role             Role            `json:"role"`
-	Content          string          `json:"content"`
-	ToolCalls        json.RawMessage `json:"toolCalls"`
-	Citations        json.RawMessage `json:"citations"`
-	PromptTokens     *int            `json:"promptTokens,omitempty"`
-	CompletionTokens *int            `json:"completionTokens,omitempty"`
-	TotalTokens      *int            `json:"totalTokens,omitempty"`
-	CachedTokens     *int            `json:"cachedTokens,omitempty"`
-	ReasoningTokens  *int            `json:"reasoningTokens,omitempty"`
-	CreatedAt        time.Time       `json:"createdAt"`
-}
-
-type MessageTokenUsage struct {
-	PromptTokens     *int
-	CompletionTokens *int
-	TotalTokens      *int
-	CachedTokens     *int
-	ReasoningTokens  *int
+	ID        string          `json:"id"`
+	ThreadID  string          `json:"threadId"`
+	Role      Role            `json:"role"`
+	Content   string          `json:"content"`
+	ToolCalls json.RawMessage `json:"toolCalls"`
+	Citations json.RawMessage `json:"citations"`
+	CreatedAt time.Time       `json:"createdAt"`
 }
 
 type CreateProjectInput struct {

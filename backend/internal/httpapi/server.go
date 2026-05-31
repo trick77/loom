@@ -59,7 +59,6 @@ type ChatStore interface {
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
 	AddMessage(context.Context, string, string, chat.Role, string) (chat.Message, error)
-	AddMessageWithUsage(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage) (chat.Message, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 }
 
@@ -67,7 +66,6 @@ type ChatStore interface {
 type ChatClient interface {
 	StreamChat(context.Context, []llm.Message, func(string) error) (string, error)
 	StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error)
-	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
 	GenerateTitle(context.Context, string, string) (string, error)
 }
 

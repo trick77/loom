@@ -63,17 +63,13 @@ func (c *Client) executeChatRequest(ctx context.Context, messages []Message, str
 }
 
 func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool) (*http.Response, error) {
-	requestBody := chatCompletionRequest{
+	body, err := json.Marshal(chatCompletionRequest{
 		Model:           c.model,
 		Messages:        messages,
 		Stream:          stream,
 		Tools:           tools,
 		ReasoningEffort: c.reasoningEffort,
-	}
-	if stream {
-		requestBody.StreamOptions = &streamOptions{IncludeUsage: true}
-	}
-	body, err := json.Marshal(requestBody)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completion request: %w", err)
 	}

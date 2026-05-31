@@ -123,21 +123,7 @@ func (f *fakeChatStore) DeleteThread(context.Context, string, string) (bool, err
 }
 
 func (f *fakeChatStore) AddMessage(ctx context.Context, _ string, threadID string, role chat.Role, content string) (chat.Message, error) {
-	return f.AddMessageWithUsage(ctx, "", threadID, role, content, chat.MessageTokenUsage{})
-}
-
-func (f *fakeChatStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
-	message := chat.Message{
-		ID:               "msg_1",
-		ThreadID:         threadID,
-		Role:             role,
-		Content:          content,
-		PromptTokens:     usage.PromptTokens,
-		CompletionTokens: usage.CompletionTokens,
-		TotalTokens:      usage.TotalTokens,
-		CachedTokens:     usage.CachedTokens,
-		ReasoningTokens:  usage.ReasoningTokens,
-	}
+	message := chat.Message{ID: "msg_1", ThreadID: threadID, Role: role, Content: content}
 	if role == chat.RoleAssistant {
 		f.assistantContent = content
 		f.assistantContextErr = ctx.Err()
@@ -156,32 +142,26 @@ type fakeChatClient struct {
 	titleErr    error
 	history     *[]llm.Message
 	streamText  *string
-	usage       llm.TokenUsage
 	afterStream func()
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
-	result, err := f.StreamChatResult(context.Background(), history, onDelta)
-	return result.Content, err
-}
-
-func (f fakeChatClient) StreamChatResult(_ context.Context, history []llm.Message, onDelta func(string) error) (llm.StreamResult, error) {
 	if f.history != nil {
 		*f.history = append((*f.history)[:0], history...)
 	}
 	if err := onDelta("Hel"); err != nil {
-		return llm.StreamResult{}, err
+		return "", err
 	}
 	if err := onDelta("lo"); err != nil {
-		return llm.StreamResult{}, err
+		return "", err
 	}
 	if f.afterStream != nil {
 		f.afterStream()
 	}
 	if f.streamText != nil {
-		return llm.StreamResult{Content: *f.streamText, Usage: f.usage}, nil
+		return *f.streamText, nil
 	}
-	return llm.StreamResult{Content: "Hello", Usage: f.usage}, nil
+	return "Hello", nil
 }
 
 func (f fakeChatClient) GenerateTitle(context.Context, string, string) (string, error) {
@@ -198,7 +178,7 @@ func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.M
 		}
 		return onEvent(llm.StreamEvent{Delta: delta})
 	})
-	return llm.StreamResult{Content: content, Usage: f.usage}, err
+	return llm.StreamResult{Content: content}, err
 }
 
 type fakeToolChatClient struct {
@@ -208,15 +188,10 @@ type fakeToolChatClient struct {
 }
 
 func (f *fakeToolChatClient) StreamChat(context.Context, []llm.Message, func(string) error) (string, error) {
-	result, err := f.StreamChatResult(context.Background(), nil, nil)
-	return result.Content, err
-}
-
-func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error) {
 	if f.plain == "" {
-		return llm.StreamResult{}, nil
+		return "", nil
 	}
-	return llm.StreamResult{Content: f.plain}, nil
+	return f.plain, nil
 }
 
 func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {

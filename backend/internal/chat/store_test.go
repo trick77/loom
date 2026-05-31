@@ -33,17 +33,6 @@ VALUES (?, ?, ?, 'user')`,
 	return id
 }
 
-func ptr(value int) *int {
-	return &value
-}
-
-func intValue(value *int) int {
-	if value == nil {
-		return 0
-	}
-	return *value
-}
-
 func TestStore_CreateProjectAndThreadScopesByUser(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -176,42 +165,6 @@ END`); err != nil {
 	}
 	if len(messages) != 0 {
 		t.Fatalf("len(messages) = %d, want rollback to leave 0", len(messages))
-	}
-}
-
-func TestStore_AddMessageWithUsagePersistsTokenStats(t *testing.T) {
-	ctx := context.Background()
-	db := openTestDB(t)
-	userID := insertTestUser(t, db, "alice")
-	store := NewStore(db)
-	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Usage"})
-	if err != nil {
-		t.Fatalf("CreateThread() error: %v", err)
-	}
-	message, err := store.AddMessageWithUsage(ctx, userID, thread.ID, RoleAssistant, "answer", MessageTokenUsage{
-		PromptTokens:     ptr(7),
-		CompletionTokens: ptr(3),
-		TotalTokens:      ptr(10),
-		CachedTokens:     ptr(5),
-		ReasoningTokens:  ptr(2),
-	})
-	if err != nil {
-		t.Fatalf("AddMessageWithUsage() error: %v", err)
-	}
-	if got := intValue(message.PromptTokens); got != 7 {
-		t.Fatalf("PromptTokens = %d, want 7", got)
-	}
-	if got := intValue(message.CompletionTokens); got != 3 {
-		t.Fatalf("CompletionTokens = %d, want 3", got)
-	}
-	if got := intValue(message.TotalTokens); got != 10 {
-		t.Fatalf("TotalTokens = %d, want 10", got)
-	}
-	if got := intValue(message.CachedTokens); got != 5 {
-		t.Fatalf("CachedTokens = %d, want 5", got)
-	}
-	if got := intValue(message.ReasoningTokens); got != 2 {
-		t.Fatalf("ReasoningTokens = %d, want 2", got)
 	}
 }
 
