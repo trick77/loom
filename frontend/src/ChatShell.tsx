@@ -821,7 +821,10 @@ function ThinkingPanel({ content, complete }: { content: string; complete: boole
         type="button"
         onClick={() => setExpanded((current) => !current)}
       >
-        <span>{complete ? "Thinking" : "Thinking..."}</span>
+        <span className="spark-thinking-panel-label">
+          <span className={complete ? "spark-thinking-status-complete" : "spark-thinking-status-active"} aria-hidden="true" />
+          <span>{complete ? "Thinking" : "Thinking..."}</span>
+        </span>
         <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"}>
           ^
         </span>

@@ -152,21 +152,67 @@ body {
 
 .spark-thinking-panel {
   max-width: 46rem;
-  border: 1px solid #3e3d39;
-  border-radius: 8px;
-  background: #282826;
-  color: #aaa79e;
+  color: #9b9790;
+  font-family: var(--font-sans);
   font-size: 0.8125rem;
+  line-height: 1.45rem;
 }
 
 .spark-thinking-panel-toggle {
   display: flex;
-  width: 100%;
+  width: fit-content;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.625rem 0.75rem;
-  color: #d8d4ca;
+  gap: 0.45rem;
+  padding: 0.125rem 0;
+  color: #9b9790;
+  transition: color 0.16s ease;
+}
+
+.spark-thinking-panel-toggle:hover {
+  color: #c7c5bd;
+}
+
+.spark-thinking-panel-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.spark-thinking-status-active,
+.spark-thinking-status-complete {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 9999px;
+}
+
+.spark-thinking-status-active {
+  position: relative;
+}
+
+.spark-thinking-status-active::after {
+  position: absolute;
+  inset: 0.25rem;
+  border-radius: 9999px;
+  background: currentColor;
+  content: "";
+}
+
+.spark-thinking-status-complete {
+  position: relative;
+}
+
+.spark-thinking-status-complete::after {
+  position: absolute;
+  left: 0.25rem;
+  top: 0.2rem;
+  width: 0.42rem;
+  height: 0.24rem;
+  border-bottom: 1.5px solid currentColor;
+  border-left: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
 }
 
 .spark-thinking-chevron,
@@ -185,9 +231,15 @@ body {
 }
 
 .spark-thinking-panel-body {
-  border-top: 1px solid #3e3d39;
-  padding: 0.75rem;
-  color: #c7c5bd;
+  margin-left: 0.5rem;
+  margin-top: 0.45rem;
+  border-left: 1px solid #4a4741;
+  padding: 0.2rem 0 0.35rem 1.25rem;
+  color: #b8b3aa;
+}
+
+.spark-thinking-panel-body :where(p, ul, ol, blockquote, pre, table) {
+  margin-block: 0.45rem;
 }
 
 @keyframes spark-thinking-dot {
