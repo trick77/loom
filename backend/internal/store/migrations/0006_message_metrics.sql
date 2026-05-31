@@ -1,0 +1,2 @@
+ALTER TABLE messages ADD COLUMN duration_ms INTEGER;
+ALTER TABLE messages ADD COLUMN model TEXT;

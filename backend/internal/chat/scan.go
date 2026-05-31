@@ -70,7 +70,8 @@ func scanMessage(row rowScanner) (Message, error) {
 	var message Message
 	var role string
 	var toolCalls, citations string
-	var promptTokens, completionTokens, totalTokens, cachedTokens, reasoningTokens sql.NullInt64
+	var promptTokens, completionTokens, totalTokens, cachedTokens, reasoningTokens, durationMs sql.NullInt64
+	var model sql.NullString
 	var createdAt string
 	if err := row.Scan(
 		&message.ID,
@@ -85,6 +86,8 @@ func scanMessage(row rowScanner) (Message, error) {
 		&totalTokens,
 		&cachedTokens,
 		&reasoningTokens,
+		&durationMs,
+		&model,
 		&createdAt,
 	); err != nil {
 		return Message{}, err
@@ -97,6 +100,8 @@ func scanMessage(row rowScanner) (Message, error) {
 	message.TotalTokens = nullableInt(totalTokens)
 	message.CachedTokens = nullableInt(cachedTokens)
 	message.ReasoningTokens = nullableInt(reasoningTokens)
+	message.DurationMs = nullableInt(durationMs)
+	message.Model = nullableString(model)
 	var err error
 	message.CreatedAt, err = parseSQLiteTime(createdAt)
 	if err != nil {
@@ -110,6 +115,14 @@ func nullableInt(value sql.NullInt64) *int {
 		return nil
 	}
 	v := int(value.Int64)
+	return &v
+}
+
+func nullableString(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	v := value.String
 	return &v
 }
 

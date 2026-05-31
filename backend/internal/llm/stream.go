@@ -56,7 +56,9 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 				logInferenceFailed(ctx, c.model, time.Since(start), err)
 				return result, err
 			}
-			logInferenceCompleted(ctx, c.model, time.Since(start), result.Usage)
+			result.Duration = time.Since(start)
+			result.Model = c.model
+			logInferenceCompleted(ctx, c.model, result.Duration, result.Usage)
 			return result, nil
 		}
 
@@ -123,7 +125,9 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return result, err
 	}
-	logInferenceCompleted(ctx, c.model, time.Since(start), result.Usage)
+	result.Duration = time.Since(start)
+	result.Model = c.model
+	logInferenceCompleted(ctx, c.model, result.Duration, result.Usage)
 	return result, nil
 }
 
