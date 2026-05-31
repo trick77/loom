@@ -4,21 +4,27 @@
    entry plus the theme. (Avoid bare "* slash" glob examples in comments here:
    a literal close-comment sequence ends the comment early and breaks parsing.) */
 
-/* UI direction A — Warm Editorial. These tokens drive the Tailwind v4 theme,
-   generating the bg, text, border, font, and rounded-spark utilities.
-   SWAP POINT: replace --font-sans / --font-serif with the real Anthropic font
-   package once its npm name is confirmed. */
+/* UI direction A — Warm Editorial, dark. These tokens drive the Tailwind v4
+   theme, generating the bg, text, border, font, and rounded-spark utilities.
+   Palette: warm charcoal surfaces, off-white ink, clay accent.
+   SWAP POINT: replace --font-sans / --font-serif once the licensed display
+   font package name is confirmed. */
 @theme {
-  --color-bg: #faf7f2;
-  --color-panel: #f1ebe1;
-  --color-active: #e9dfce;
-  --color-border: #e3dccf;
-  --color-ink: #2b2520;
-  --color-muted: #9a8f7e;
-  --color-accent: #cc785c;
+  --color-bg: #1f1f1e;
+  --color-panel: #171716;
+  --color-active: #2c2c2a;
+  --color-border: #323230;
+  --color-ink: #faf9f5;
+  --color-muted: #9c9a92;
+  --color-accent: #d97757;
+  --color-accent-strong: #c6613f;
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Fraunces", Georgia, serif;
-  --radius-spark: 12px;
+  --radius-spark: 10px;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
@@ -26,4 +32,8 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
