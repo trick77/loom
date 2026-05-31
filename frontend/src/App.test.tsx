@@ -883,6 +883,17 @@ test("shows a fenced HTML artifact with surrounding prose as a dedicated downloa
   expect(screen.queryByText(/Here is the HTML/i)).not.toBeInTheDocument();
 });
 
+test("renders inline triple backticks without treating them as a download fence", async () => {
+  const content = "Keep this inline: ```html\n<strong>not an artifact</strong>\n```";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText(/Keep this inline/)).toBeInTheDocument();
+  expect(screen.queryByText("HTML response")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Download HTML response" })).not.toBeInTheDocument();
+});
+
 test("downloads fenced generated data without markdown fences", async () => {
   const objectURL = "blob:spark-response";
   let downloadedBlob: Blob | undefined;

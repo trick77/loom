@@ -1053,7 +1053,7 @@ function downloadableResponse(content: string): DownloadableResponse | null {
 }
 
 function fencedArtifact(content: string): DownloadableResponse | null {
-  const matches = [...content.matchAll(/```([a-z0-9_-]+)\n([\s\S]*?)\n```/gi)];
+  const matches = [...content.matchAll(/(?:^|\n)```([a-z0-9_-]+)[ \t]*\n([\s\S]*?)\n```(?=\n|$)/gi)];
   const downloadableMatches = matches
     .map((match) => ({
       extension: extensionForLanguage(match[1].trim().toLowerCase()),
