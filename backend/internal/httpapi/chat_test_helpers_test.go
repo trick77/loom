@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/llm"
+	"github.com/trick77/spark/internal/mcp"
 )
 
 var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
@@ -217,9 +218,10 @@ func (f *fakeToolChatClient) GenerateTitle(context.Context, string, string) (str
 }
 
 type fakeMCPService struct {
-	tools  []llm.Tool
-	result string
-	err    error
+	tools    []llm.Tool
+	result   string
+	err      error
+	statuses []mcp.ServerStatus
 }
 
 func (f fakeMCPService) Tools() []llm.Tool {
@@ -231,6 +233,10 @@ func (f fakeMCPService) CallTool(context.Context, string, map[string]any) (strin
 		return "", f.err
 	}
 	return f.result, nil
+}
+
+func (f fakeMCPService) ServerStatus(context.Context) []mcp.ServerStatus {
+	return f.statuses
 }
 
 var errFakeTool = errors.New("fake tool failed")

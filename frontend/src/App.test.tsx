@@ -413,6 +413,88 @@ test("renders streamed assistant response", async () => {
   expect(await screen.findByText("Hello")).toBeInTheDocument();
 });
 
+function mcpStreamFetch(streamBody: string) {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(streamBody));
+      controller.close();
+    },
+  });
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") {
+      return Response.json([
+        { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+      ]);
+    }
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+        messages: [],
+      });
+    }
+    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      return new Response(stream, { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
+
+const assistantMessageEvent =
+  'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello","createdAt":"2026-05-30T00:00:01Z"}\n\n';
+
+async function sendMessageInExistingChat() {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+}
+
+test("shows a red MCP indicator when not all servers are active", async () => {
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantMessageEvent +
+        'event: mcp_status\ndata: {"active":2,"configured":3}\n\n' +
+        "event: done\ndata: {}\n\n",
+    ),
+  );
+
+  await sendMessageInExistingChat();
+
+  const indicator = await screen.findByTitle("2 of 3 MCP servers active");
+  expect(indicator).toHaveTextContent("2");
+  expect(indicator.querySelector(".border-danger")).not.toBeNull();
+});
+
+test("shows a green MCP indicator when all servers are active", async () => {
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantMessageEvent +
+        'event: mcp_status\ndata: {"active":3,"configured":3}\n\n' +
+        "event: done\ndata: {}\n\n",
+    ),
+  );
+
+  await sendMessageInExistingChat();
+
+  const indicator = await screen.findByTitle("3 of 3 MCP servers active");
+  expect(indicator).toHaveTextContent("3");
+  expect(indicator.querySelector(".border-success")).not.toBeNull();
+});
+
+test("hides the MCP indicator when no mcp_status event arrives", async () => {
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantMessageEvent + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("Hello")).toBeInTheDocument();
+  expect(screen.queryByTitle(/MCP servers active/)).toBeNull();
+});
+
 test("ignores stream events after switching threads", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
