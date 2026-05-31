@@ -80,7 +80,7 @@ func Load() (Config, error) {
 		ChatBaseURL:          env("SPARK_CHAT_BASE_URL", ""),
 		ChatAPIKey:           env("SPARK_CHAT_API_KEY", ""),
 		ChatModel:            env("SPARK_CHAT_MODEL", "MiMo"),
-		ChatReasoningEffort:  env("SPARK_CHAT_REASONING_EFFORT", ""),
+		ChatReasoningEffort:  env("SPARK_CHAT_REASONING_EFFORT", "high"),
 		ChatLogDir:           env("SPARK_CHAT_LOG_DIR", "logs/llm-responses"),
 		EmbedBaseURL:         env("SPARK_EMBED_BASE_URL", ""),
 		EmbedAPIKey:          env("SPARK_EMBED_API_KEY", ""),

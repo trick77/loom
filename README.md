@@ -149,9 +149,9 @@ SPARK_CHAT_REASONING_EFFORT=high
 ```
 
 The backend calls `POST <SPARK_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
-`messages`, `model`, `stream`, and optional `reasoning_effort` fields. If `SPARK_CHAT_BASE_URL` is
-empty, the authenticated shell still loads but sending a chat message returns a service-unavailable
-error.
+`messages`, `model`, `stream`, and `reasoning_effort` fields. `SPARK_CHAT_REASONING_EFFORT`
+defaults to `high` when unset. If `SPARK_CHAT_BASE_URL` is empty, the authenticated shell still loads
+but sending a chat message returns a service-unavailable error.
 
 ### MCP Tools
 

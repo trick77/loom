@@ -21,8 +21,8 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatLogDir != "logs/llm-responses" {
 		t.Errorf("ChatLogDir default = %q, want logs/llm-responses", cfg.ChatLogDir)
 	}
-	if cfg.ChatReasoningEffort != "" {
-		t.Errorf("ChatReasoningEffort default = %q, want empty", cfg.ChatReasoningEffort)
+	if cfg.ChatReasoningEffort != "high" {
+		t.Errorf("ChatReasoningEffort default = %q, want high", cfg.ChatReasoningEffort)
 	}
 }
 
