@@ -740,12 +740,14 @@ function Composer({
         </button>
         <div className="spark-meta-text flex items-center text-[#d8d4ca]">
           <button
-            className="grid h-7 w-7 place-items-center rounded-md text-xl leading-none text-accent transition-colors hover:bg-[#343431] hover:text-accent-strong disabled:cursor-not-allowed disabled:text-[#77746d]"
+            className="grid h-7 w-7 place-items-center rounded-md bg-accent text-[#1f1f1d] transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-[#343431] disabled:text-[#77746d]"
             disabled={disabled || draft.trim() === ""}
             type="submit"
             aria-label="Send message"
           >
-            ↑
+            <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+              <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
         </div>
       </div>
