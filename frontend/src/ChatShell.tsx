@@ -16,6 +16,7 @@ import {
   type ToolResultEvent,
   type User,
 } from "./api";
+import logoImage from "./assets/logo.png";
 
 type ChatShellProps = {
   user: User;
@@ -598,9 +599,7 @@ function StartPanel({
   return (
     <section className="flex h-screen min-h-0 flex-col items-center justify-center px-8 pb-[14vh]">
       <h1 className="mb-8 flex items-center gap-4 font-serif text-[44px] font-light leading-none text-[#d8d4ca]">
-        <span className="font-sans text-[36px] text-[#e27757]" aria-hidden="true">
-          ✺
-        </span>
+        <img className="h-11 w-11 shrink-0" src={logoImage} alt="" aria-hidden="true" />
         {greetingForNow()}, {displayName}
       </h1>
       <div className="w-full max-w-[676px]">
