@@ -413,6 +413,30 @@ test("renders streamed assistant response", async () => {
   expect(await screen.findByText("Hello")).toBeInTheDocument();
 });
 
+test("renders streamed reasoning in a collapsed thinking panel", async () => {
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n' +
+        'event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n' +
+        'event: assistant_delta\ndata: {"content":"Answer."}\n\n' +
+        'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Answer.","reasoningContent":"I checked the source first.","createdAt":"2026-05-30T00:00:01Z"}\n\n' +
+        "event: done\ndata: {}\n\n",
+    ),
+  );
+
+  await sendMessageInExistingChat();
+
+  const toggle = await screen.findByRole("button", { name: /show thinking/i });
+  expect(toggle).toBeInTheDocument();
+  expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
+
+  fireEvent.click(toggle);
+
+  expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
+  expect(screen.getByText("Answer.")).toBeInTheDocument();
+});
+
 test("shows a thinking indicator while waiting for the first assistant output", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({

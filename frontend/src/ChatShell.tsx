@@ -63,6 +63,7 @@ export function ChatShell({
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [streamingReasoning, setStreamingReasoning] = useState("");
   const [toolEvents, setToolEvents] = useState<ToolActivity[]>([]);
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
@@ -240,6 +241,7 @@ export function ChatShell({
     setDraft("");
     setIsSending(true);
     setStreamingText("");
+    setStreamingReasoning("");
     setToolEvents([]);
     setSendError("");
     let abortController: AbortController | null = null;
@@ -268,6 +270,9 @@ export function ChatShell({
         onDelta: (delta) => {
           if (isCurrentThread()) setStreamingText((current) => current + delta);
         },
+        onReasoningDelta: (delta) => {
+          if (isCurrentThread()) setStreamingReasoning((current) => current + delta);
+        },
         onToolCall: (event) => {
           if (!isCurrentThread()) return;
           setToolEvents((current) => upsertToolCall(current, event));
@@ -280,6 +285,7 @@ export function ChatShell({
           if (!isCurrentThread()) return;
           setMessages((current) => [...current, message]);
           setStreamingText("");
+          setStreamingReasoning("");
           setToolEvents([]);
         },
         onThread: (updatedThread) => {
@@ -296,6 +302,7 @@ export function ChatShell({
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
+      setStreamingReasoning("");
       setToolEvents([]);
       if (options.restoreDraftOnError) setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
@@ -449,6 +456,7 @@ export function ChatShell({
             messages={messages}
             draft={draft}
             streamingText={streamingText}
+            streamingReasoning={streamingReasoning}
             toolEvents={toolEvents}
             sendError={sendError}
             isSending={isSending}
@@ -644,6 +652,7 @@ function ChatPanel({
   messages,
   draft,
   streamingText,
+  streamingReasoning,
   toolEvents,
   sendError,
   isSending,
@@ -657,6 +666,7 @@ function ChatPanel({
   messages: Message[];
   draft: string;
   streamingText: string;
+  streamingReasoning: string;
   toolEvents: ToolActivity[];
   sendError: string;
   isSending: boolean;
@@ -669,7 +679,7 @@ function ChatPanel({
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const showThinkingIndicator = isSending && streamingText === "" && toolEvents.length === 0 && sendError === "";
+  const showThinkingIndicator = isSending && streamingText === "" && streamingReasoning === "" && toolEvents.length === 0 && sendError === "";
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -699,7 +709,7 @@ function ChatPanel({
       return;
     }
     refreshScrollState();
-  }, [messages.length, refreshScrollState, scrollToLatest, sendError, showThinkingIndicator, streamingText, toolEvents.length]);
+  }, [messages.length, refreshScrollState, scrollToLatest, sendError, showThinkingIndicator, streamingReasoning, streamingText, toolEvents.length]);
 
   return (
     <section className="flex h-screen min-h-0 flex-col">
@@ -740,6 +750,7 @@ function ChatPanel({
             ))}
             {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
             {showThinkingIndicator && <ThinkingIndicator />}
+            {streamingReasoning !== "" && <ThinkingPanel content={streamingReasoning} complete={streamingText !== ""} />}
             {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
@@ -793,6 +804,33 @@ function ThinkingIndicator() {
       <span className="spark-thinking-dot" aria-hidden="true" />
       <span className="spark-thinking-dot" aria-hidden="true" />
       <span className="spark-thinking-dot" aria-hidden="true" />
+    </div>
+  );
+}
+
+function ThinkingPanel({ content, complete }: { content: string; complete: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const trimmed = content.trim();
+  if (trimmed === "") return null;
+  return (
+    <div className="spark-thinking-panel">
+      <button
+        aria-expanded={expanded}
+        aria-label={expanded ? "Hide thinking" : "Show thinking"}
+        className="spark-thinking-panel-toggle"
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span>{complete ? "Thinking" : "Thinking..."}</span>
+        <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"}>
+          ^
+        </span>
+      </button>
+      {expanded && (
+        <div className="spark-thinking-panel-body">
+          <Markdown remarkPlugins={[remarkGfm]}>{trimmed}</Markdown>
+        </div>
+      )}
     </div>
   );
 }
@@ -916,7 +954,12 @@ function MessageBubble({
       </div>
     );
   }
-  return <AssistantText onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>{message.content}</AssistantText>;
+  return (
+    <div className="max-w-[46rem] space-y-3">
+      {message.reasoningContent && <ThinkingPanel content={message.reasoningContent} complete={true} />}
+      <AssistantText onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>{message.content}</AssistantText>
+    </div>
+  );
 }
 
 function ProseMarkdown({ children }: { children: string }) {

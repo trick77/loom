@@ -150,6 +150,46 @@ body {
   animation-delay: 0.32s;
 }
 
+.spark-thinking-panel {
+  max-width: 46rem;
+  border: 1px solid #3e3d39;
+  border-radius: 8px;
+  background: #282826;
+  color: #aaa79e;
+  font-size: 0.8125rem;
+}
+
+.spark-thinking-panel-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  color: #d8d4ca;
+}
+
+.spark-thinking-chevron,
+.spark-thinking-chevron-expanded {
+  display: inline-block;
+  line-height: 1;
+  transition: transform 0.16s ease;
+}
+
+.spark-thinking-chevron {
+  transform: rotate(180deg);
+}
+
+.spark-thinking-chevron-expanded {
+  transform: rotate(0deg);
+}
+
+.spark-thinking-panel-body {
+  border-top: 1px solid #3e3d39;
+  padding: 0.75rem;
+  color: #c7c5bd;
+}
+
 @keyframes spark-thinking-dot {
   0%,
   80%,
