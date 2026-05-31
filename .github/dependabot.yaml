@@ -34,5 +34,13 @@ updates:
       actions:
         patterns: ["*"]
 
-# Note: the image uses backend/Containerfile (Podman naming), which Dependabot's
-# docker ecosystem does not auto-detect; base-image bumps are handled manually.
+  # Container base image. Dependabot's docker ecosystem matches backend/Containerfile
+  # via /dockerfile|containerfile/i (Containerfile support landed when dependabot-core
+  # closed #6067), so base-image bumps come as a grouped PR.
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns: ["*"]
