@@ -677,7 +677,6 @@ function ChatPanel({
   onStarChange(starred: boolean): void;
 }) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
-  const transcriptBottomRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -695,7 +694,6 @@ function ChatPanel({
     const transcript = transcriptRef.current;
     if (transcript === null) return;
     const scroll = () => {
-      transcriptBottomRef.current?.scrollIntoView?.({ block: "end" });
       transcript.scrollTop = transcript.scrollHeight;
     };
     scroll();
@@ -732,12 +730,6 @@ function ChatPanel({
     setShowJumpToBottom(false);
     scrollToLatest();
   }, [scrollToLatest, thread?.id]);
-
-  useLayoutEffect(() => {
-    if (!isSending) return;
-    shouldStickToBottomRef.current = true;
-    scrollToLatest();
-  }, [isSending, scrollToLatest]);
 
   useLayoutEffect(() => {
     if (shouldStickToBottomRef.current) {
@@ -795,7 +787,6 @@ function ChatPanel({
             {streamingReasoning !== "" && <ThinkingPanel content={streamingReasoning} complete={streamingText !== ""} />}
             {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-            <div ref={transcriptBottomRef} aria-hidden="true" />
           </div>
           <div
             aria-label="Message composer dock"
