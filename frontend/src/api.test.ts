@@ -45,6 +45,33 @@ test("streamMessage parses server-sent events", async () => {
   expect(deltas.join("")).toBe("Hello");
 });
 
+test("streamMessage parses assistant reasoning deltas", async () => {
+  const body = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"I checked "}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"first."}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_delta\ndata: {"content":"Answer."}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  const reasoning: string[] = [];
+  const deltas: string[] = [];
+
+  await streamMessage("t1", "Hi", {
+    onUserMessage: () => undefined,
+    onDelta: (delta) => deltas.push(delta),
+    onReasoningDelta: (delta) => reasoning.push(delta),
+    onAssistantMessage: () => undefined,
+    onThread: () => undefined,
+  });
+
+  expect(reasoning.join("")).toBe("I checked first.");
+  expect(deltas.join("")).toBe("Answer.");
+});
+
 test("streamMessage parses tool events", async () => {
   const body = new ReadableStream({
     start(controller) {
