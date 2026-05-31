@@ -413,6 +413,61 @@ test("renders streamed assistant response", async () => {
   expect(await screen.findByText("Hello")).toBeInTheDocument();
 });
 
+test("shows a thinking indicator while waiting for the first assistant output", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByRole("status", { name: /spark is thinking/i })).toBeInTheDocument();
+
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
+
+  expect(await screen.findByText("Hel")).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole("status", { name: /spark is thinking/i })).not.toBeInTheDocument());
+});
+
+test("hides the thinking indicator when the stream fails", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByRole("status", { name: /spark is thinking/i })).toBeInTheDocument();
+
+  streamController.current?.enqueue(new TextEncoder().encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
+  streamController.current?.close();
+
+  expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /spark is thinking/i })).not.toBeInTheDocument();
+});
+
 test("keeps the transcript pinned while an assistant response streams at the bottom", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({

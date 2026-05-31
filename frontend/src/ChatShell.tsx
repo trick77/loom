@@ -669,6 +669,7 @@ function ChatPanel({
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const showThinkingIndicator = isSending && streamingText === "" && toolEvents.length === 0 && sendError === "";
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -698,7 +699,7 @@ function ChatPanel({
       return;
     }
     refreshScrollState();
-  }, [messages.length, refreshScrollState, scrollToLatest, sendError, streamingText, toolEvents.length]);
+  }, [messages.length, refreshScrollState, scrollToLatest, sendError, showThinkingIndicator, streamingText, toolEvents.length]);
 
   return (
     <section className="flex h-screen min-h-0 flex-col">
@@ -738,6 +739,7 @@ function ChatPanel({
               />
             ))}
             {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
+            {showThinkingIndicator && <ThinkingIndicator />}
             {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
@@ -778,6 +780,16 @@ function ChatPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function ThinkingIndicator() {
+  return (
+    <div className="spark-thinking-indicator" role="status" aria-label="Spark is thinking">
+      <span className="spark-thinking-dot" aria-hidden="true" />
+      <span className="spark-thinking-dot" aria-hidden="true" />
+      <span className="spark-thinking-dot" aria-hidden="true" />
+    </div>
   );
 }
 
