@@ -70,7 +70,6 @@ export function ChatShell({
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
-  const [sendScrollRequest, setSendScrollRequest] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
 
@@ -240,7 +239,6 @@ export function ChatShell({
 
   async function sendContent(content: string, options: { restoreDraftOnError: boolean }) {
     setDraft("");
-    setSendScrollRequest((current) => current + 1);
     setIsSending(true);
     setStreamingText("");
     setStreamingReasoning("");
@@ -461,7 +459,6 @@ export function ChatShell({
             streamingReasoning={streamingReasoning}
             toolEvents={toolEvents}
             sendError={sendError}
-            sendScrollRequest={sendScrollRequest}
             isSending={isSending}
             isUpdatingStar={isUpdatingStar}
             onDraftChange={setDraft}
@@ -658,7 +655,6 @@ function ChatPanel({
   streamingReasoning,
   toolEvents,
   sendError,
-  sendScrollRequest,
   isSending,
   isUpdatingStar,
   onDraftChange,
@@ -673,7 +669,6 @@ function ChatPanel({
   streamingReasoning: string;
   toolEvents: ToolActivity[];
   sendError: string;
-  sendScrollRequest: number;
   isSending: boolean;
   isUpdatingStar: boolean;
   onDraftChange(value: string): void;
@@ -711,16 +706,30 @@ function ChatPanel({
     setShowJumpToBottom(false);
   }, []);
 
+  const pinToLatest = useCallback(() => {
+    shouldStickToBottomRef.current = true;
+    setShowJumpToBottom(false);
+    scrollToLatest();
+  }, [scrollToLatest]);
+
+  const handleSendRequest = useCallback(() => {
+    pinToLatest();
+    onSend();
+  }, [onSend, pinToLatest]);
+
+  const handleRetryRequest = useCallback(
+    (content: string) => {
+      pinToLatest();
+      onRetry(content);
+    },
+    [onRetry, pinToLatest],
+  );
+
   useLayoutEffect(() => {
     shouldStickToBottomRef.current = true;
     setShowJumpToBottom(false);
     scrollToLatest();
   }, [scrollToLatest, thread?.id]);
-
-  useLayoutEffect(() => {
-    if (sendScrollRequest === 0) return;
-    scrollToLatest();
-  }, [scrollToLatest, sendScrollRequest]);
 
   useLayoutEffect(() => {
     if (shouldStickToBottomRef.current) {
@@ -770,7 +779,7 @@ function ChatPanel({
                 key={message.id}
                 message={message}
                 retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
-                onRetry={onRetry}
+                onRetry={handleRetryRequest}
               />
             ))}
             {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
@@ -791,7 +800,7 @@ function ChatPanel({
                 disabled={isSending}
                 placeholder="Write a message..."
                 onDraftChange={onDraftChange}
-                onSend={onSend}
+                onSend={handleSendRequest}
               />
               <div className="spark-meta-text mt-2 text-center text-[#858178]">
                 Spark can make mistakes. Please double-check responses.
