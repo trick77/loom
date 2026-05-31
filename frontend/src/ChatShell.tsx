@@ -729,7 +729,7 @@ function ChatPanel({
           onScroll={refreshScrollState}
           role="region"
         >
-          <div className="mx-auto w-full max-w-[834px] flex-1 space-y-5">
+          <div className="mx-auto w-full max-w-[754px] flex-1 space-y-5">
             {messages.map((message, index) => (
               <MessageBubble
                 key={message.id}
