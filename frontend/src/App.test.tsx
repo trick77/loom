@@ -657,8 +657,38 @@ test("user message actions copy and retry the selected prompt", async () => {
   );
 });
 
-test("shows file-like assistant output as a dedicated download response", async () => {
+test("renders raw file-like assistant output inline", async () => {
   const content = "<!doctype html>\n<html><body><h1>Report</h1></body></html>";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(
+    await screen.findByText(
+      (_, element) =>
+        element !== null &&
+        element.classList.contains("spark-markdown") &&
+        element.textContent?.includes("<!doctype html>") === true,
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/<html><body><h1>Report/)).toBeInTheDocument();
+  expect(screen.queryByText("HTML response")).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
+});
+
+test("renders raw generated data output inline", async () => {
+  const content = "name,score\nAda,42\nGrace,37";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText(/Ada,42/)).toBeInTheDocument();
+  expect(screen.getByText(/Grace,37/)).toBeInTheDocument();
+  expect(screen.queryByText("CSV response")).not.toBeInTheDocument();
+});
+
+test("shows fenced file-like assistant output as a dedicated download response", async () => {
+  const content = "```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
   vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
 
   await sendMessageInExistingChat();
@@ -669,15 +699,37 @@ test("shows file-like assistant output as a dedicated download response", async 
   expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
 });
 
-test("shows generated data output as a dedicated download response", async () => {
-  const content = "name,score\nAda,42\nGrace,37";
+test("downloads fenced generated data without markdown fences", async () => {
+  const objectURL = "blob:spark-response";
+  let downloadedBlob: Blob | undefined;
+  const createObjectURL = vi.fn((blob: Blob) => {
+    downloadedBlob = blob;
+    return objectURL;
+  });
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+  const content = "```csv\nname,score\nAda,42\nGrace,37\n```";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+  fireEvent.click(await screen.findByRole("button", { name: "Download CSV response" }));
+
+  expect(createObjectURL).toHaveBeenCalledTimes(1);
+  expect(revokeObjectURL).toHaveBeenCalledWith(objectURL);
+  const blob = downloadedBlob;
+  expect(blob).toBeInstanceOf(Blob);
+  if (blob === undefined) throw new Error("expected download blob");
+  await expect(blob.text()).resolves.toBe("name,score\nAda,42\nGrace,37");
+});
+
+test("renders invalid streaming data URLs inline until they can be decoded", async () => {
+  const content = "data:text/html;base64,%%%";
   vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
 
   await sendMessageInExistingChat();
 
-  expect(await screen.findByText("CSV response")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Download CSV response" })).toBeInTheDocument();
-  expect(screen.queryByText(/Ada,42/)).not.toBeInTheDocument();
+  expect(await screen.findByText(/data:text\/html;base64/)).toBeInTheDocument();
+  expect(screen.queryByText("HTML response")).not.toBeInTheDocument();
 });
 
 test("shows generated office artifacts as a dedicated download response", async () => {

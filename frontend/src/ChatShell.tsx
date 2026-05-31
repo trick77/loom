@@ -968,13 +968,20 @@ function downloadableResponse(content: string): DownloadableResponse | null {
   const dataURL = dataURLArtifact(content);
   if (dataURL !== null) return dataURL;
 
-  const extension = responseExtension(content);
+  return fencedArtifact(content);
+}
+
+function fencedArtifact(content: string): DownloadableResponse | null {
+  const match = content.trim().match(/^```([a-z0-9_-]+)\n([\s\S]*)\n```$/i);
+  if (match === null) return null;
+
+  const extension = extensionForLanguage(match[1].trim().toLowerCase());
   if (!downloadOnlyExtensions.has(extension)) return null;
   return {
     extension,
     label: extension.toUpperCase(),
     mimeType: responseMimeType(extension),
-    content,
+    content: match[2],
   };
 }
 
@@ -995,21 +1002,6 @@ function responseMimeType(extension: string): string {
   return "text/plain;charset=utf-8";
 }
 
-function responseExtension(content: string): string {
-  const trimmed = content.trim();
-  if (trimmed === "") return "txt";
-  if (isJSON(trimmed)) return "json";
-  if (/^```[a-z0-9_-]+\n[\s\S]*\n```$/i.test(trimmed)) {
-    return extensionForLanguage(trimmed.slice(3, trimmed.indexOf("\n")).trim().toLowerCase());
-  }
-  if (/^(<!doctype\s+html|<html[\s>])/i.test(trimmed)) return "html";
-  if (/^<svg[\s>]/i.test(trimmed)) return "svg";
-  if (/^<\?xml[\s?>]/i.test(trimmed)) return "xml";
-  if (looksLikeCSV(trimmed)) return "csv";
-  if (looksLikeMarkdown(trimmed)) return "md";
-  return "txt";
-}
-
 function dataURLArtifact(content: string): DownloadableResponse | null {
   const match = content.trim().match(/^data:([^;,]+)(;base64)?,([\s\S]+)$/i);
   if (match === null) return null;
@@ -1017,47 +1009,20 @@ function dataURLArtifact(content: string): DownloadableResponse | null {
   const extension = extensionForMimeType(mimeType);
   if (extension === null) return null;
   const encoded = match[3];
-  const artifactContent = match[2]
-    ? Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
-    : decodeURIComponent(encoded);
+  let artifactContent: BlobPart;
+  try {
+    artifactContent = match[2]
+      ? Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
+      : decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
   return {
     extension,
     label: extension.toUpperCase(),
     mimeType,
     content: artifactContent,
   };
-}
-
-function isJSON(content: string): boolean {
-  if (!content.startsWith("{") && !content.startsWith("[")) return false;
-  try {
-    JSON.parse(content);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function looksLikeCSV(content: string): boolean {
-  const lines = content.split(/\r?\n/).filter((line) => line.trim() !== "");
-  if (lines.length < 2) return false;
-  const columnCount = csvColumnCount(lines[0]);
-  return columnCount > 1 && lines.slice(1).every((line) => csvColumnCount(line) === columnCount);
-}
-
-function csvColumnCount(line: string): number {
-  let columns = 1;
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    if (character === '"' && line[index + 1] === '"') {
-      index += 1;
-      continue;
-    }
-    if (character === '"') quoted = !quoted;
-    if (character === "," && !quoted) columns += 1;
-  }
-  return columns;
 }
 
 function markdownToPlainText(content: string): string {
@@ -1075,10 +1040,6 @@ function markdownToPlainText(content: string): string {
     .replace(/~~(.*?)~~/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .trim();
-}
-
-function looksLikeMarkdown(content: string): boolean {
-  return /(^|\n)(#{1,6}\s|\s*[-*+]\s|\s*\d+\.\s|>\s|```)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)/.test(content);
 }
 
 function extensionForMimeType(mimeType: string): string | null {
@@ -1099,6 +1060,7 @@ function extensionForLanguage(language: string): string {
   const extensions: Record<string, string> = {
     bash: "sh",
     css: "css",
+    csv: "csv",
     html: "html",
     javascript: "js",
     js: "js",
