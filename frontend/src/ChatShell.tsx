@@ -31,6 +31,7 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [sendError, setSendError] = useState("");
   const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
     setActiveThread(response.thread);
     setMessages(response.messages);
     setStreamingText("");
+    setSendError("");
   }
 
   async function handleNewChat() {
@@ -82,6 +84,7 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
     setDraft("");
     setIsSending(true);
     setStreamingText("");
+    setSendError("");
     try {
       let targetThread = activeThread;
       if (targetThread === null) {
@@ -108,6 +111,9 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
           );
         },
       });
+    } catch {
+      setStreamingText("");
+      setSendError("Message failed to send.");
     } finally {
       setIsSending(false);
     }
@@ -207,6 +213,7 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
             messages={messages}
             draft={draft}
             streamingText={streamingText}
+            sendError={sendError}
             isSending={isSending}
             onDraftChange={setDraft}
             onSend={handleSend}
@@ -253,6 +260,7 @@ function ChatPanel({
   messages,
   draft,
   streamingText,
+  sendError,
   isSending,
   onDraftChange,
   onSend,
@@ -261,6 +269,7 @@ function ChatPanel({
   messages: Message[];
   draft: string;
   streamingText: string;
+  sendError: string;
   isSending: boolean;
   onDraftChange(value: string): void;
   onSend(): void;
@@ -279,6 +288,11 @@ function ChatPanel({
         {streamingText !== "" && (
           <div className="max-w-3xl rounded-spark border border-border bg-panel px-4 py-3 text-sm">
             {streamingText}
+          </div>
+        )}
+        {sendError !== "" && (
+          <div className="max-w-3xl rounded-spark border border-accent bg-panel px-4 py-3 text-sm text-accent">
+            {sendError}
           </div>
         )}
       </div>

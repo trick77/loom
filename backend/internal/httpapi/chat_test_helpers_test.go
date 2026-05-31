@@ -36,13 +36,14 @@ func authenticatedRequest(method, target, body string) *http.Request {
 }
 
 type fakeChatStore struct {
-	thread             chat.Thread
-	project            chat.Project
-	messages           []chat.Message
-	listThreadsUserID  string
-	listThreadsOptions chat.ListThreadsOptions
-	assistantContent   string
-	createThreadErr    error
+	thread              chat.Thread
+	project             chat.Project
+	messages            []chat.Message
+	listThreadsUserID   string
+	listThreadsOptions  chat.ListThreadsOptions
+	assistantContent    string
+	assistantContextErr error
+	createThreadErr     error
 }
 
 func (f *fakeChatStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
@@ -119,10 +120,11 @@ func (f *fakeChatStore) DeleteThread(context.Context, string, string) (bool, err
 	return true, nil
 }
 
-func (f *fakeChatStore) AddMessage(_ context.Context, _ string, threadID string, role chat.Role, content string) (chat.Message, error) {
+func (f *fakeChatStore) AddMessage(ctx context.Context, _ string, threadID string, role chat.Role, content string) (chat.Message, error) {
 	message := chat.Message{ID: "msg_1", ThreadID: threadID, Role: role, Content: content}
 	if role == chat.RoleAssistant {
 		f.assistantContent = content
+		f.assistantContextErr = ctx.Err()
 		message.ID = "msg_2"
 	}
 	f.messages = append(f.messages, message)
@@ -134,9 +136,10 @@ func (f *fakeChatStore) ListMessages(context.Context, string, string) ([]chat.Me
 }
 
 type fakeChatClient struct {
-	title    string
-	titleErr error
-	history  *[]llm.Message
+	title       string
+	titleErr    error
+	history     *[]llm.Message
+	afterStream func()
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -148,6 +151,9 @@ func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onD
 	}
 	if err := onDelta("lo"); err != nil {
 		return "", err
+	}
+	if f.afterStream != nil {
+		f.afterStream()
 	}
 	return "Hello", nil
 }

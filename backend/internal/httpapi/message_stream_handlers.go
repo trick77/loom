@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -71,7 +72,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	assistantMessage, err := s.chat.AddMessage(r.Context(), user.ID, threadID, chat.RoleAssistant, assistantContent)
+	persistCtx := context.WithoutCancel(r.Context())
+	assistantMessage, err := s.chat.AddMessage(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
@@ -81,22 +83,22 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if thread.Title == chat.DefaultThreadTitle {
-		_ = s.generateAndSendThreadTitle(r, stream, user.ID, threadID, userMessage.Content, assistantMessage.Content)
+		_ = s.generateAndSendThreadTitle(r.Context(), persistCtx, stream, user.ID, threadID, userMessage.Content, assistantMessage.Content)
 	}
 	_ = stream.Send("done", "{}")
 }
 
-func (s *server) generateAndSendThreadTitle(r *http.Request, stream *sse.Writer, userID, threadID, userMessage, assistantMessage string) error {
-	title, err := s.llm.GenerateTitle(r.Context(), userMessage, assistantMessage)
+func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, userID, threadID, userMessage, assistantMessage string) error {
+	title, err := s.llm.GenerateTitle(requestCtx, userMessage, assistantMessage)
 	if err != nil {
 		return err
 	}
-	thread, found, err := s.chat.UpdateThread(r.Context(), userID, threadID, chat.UpdateThreadInput{Title: &title})
+	thread, found, err := s.chat.UpdateThread(persistCtx, userID, threadID, chat.UpdateThreadInput{Title: &title})
 	if err != nil {
 		return err
 	}
 	if !found {
-		return http.ErrMissingFile
+		return nil
 	}
 	return sendSSEJSON(stream, "thread", thread)
 }

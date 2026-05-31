@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -51,6 +52,33 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 	}
 	if store.messages[1].Role != chat.RoleAssistant || store.messages[1].Content != "Hello" {
 		t.Fatalf("second persisted message = %#v, want assistant Hello", store.messages[1])
+	}
+}
+
+func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	var cancel context.CancelFunc
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM: fakeChatClient{afterStream: func() {
+			cancel()
+		}},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+	ctx, cancelRequest := context.WithCancel(req.Context())
+	cancel = cancelRequest
+	req = req.WithContext(ctx)
+
+	srv.ServeHTTP(rec, req)
+
+	if store.assistantContent != "Hello" {
+		t.Fatalf("assistantContent = %q, want Hello", store.assistantContent)
+	}
+	if store.assistantContextErr != nil {
+		t.Fatalf("assistant AddMessage context error = %v, want nil", store.assistantContextErr)
 	}
 }
 
