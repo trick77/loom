@@ -585,9 +585,11 @@ test("scrolls to the latest message when sending from above the bottom", async (
     start(controller) {
       controller.enqueue(
         new TextEncoder().encode(
-          'event: user_message\ndata: {"id":"m2","threadId":"t1","role":"user","content":"Continue","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+          'event: user_message\ndata: {"id":"m2","threadId":"t1","role":"user","content":"Continue","createdAt":"2026-05-30T00:00:01Z"}\n\n' +
+            'event: assistant_message\ndata: {"id":"m3","threadId":"t1","role":"assistant","content":"Immediate answer","createdAt":"2026-05-30T00:00:02Z"}\n\n',
         ),
       );
+      controller.close();
     },
   });
   vi.stubGlobal("fetch", chatThreadFetch(stream, [{ id: "m1", role: "assistant", content: "Earlier answer" }]));
@@ -614,6 +616,7 @@ test("scrolls to the latest message when sending from above the bottom", async (
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   await screen.findByText("Continue");
+  await screen.findByText("Immediate answer");
   await waitFor(() => expect(scrollTop).toBe(900));
 });
 
