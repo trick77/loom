@@ -21,9 +21,10 @@ Full design: `docs/superpowers/specs/2026-05-30-spark-design.md`. Per-phase plan
 
 ## Locked technical choices (do not change without explicit agreement)
 - Module path `github.com/trick77/spark`. Go 1.25 (`go.mod`; Containerfile uses `golang:1.25-alpine`).
-- **Pure-Go SQLite**: `ncruces/go-sqlite3` pinned to **`v0.20.0`** + `sqlite-vec-go-bindings/ncruces`.
+- **Pure-Go SQLite**: `ncruces/go-sqlite3` pinned to **`v0.23.3`** + `sqlite-vec-go-bindings/ncruces`
+  pinned to **`v0.1.7-alpha.2`**.
   `CGO_ENABLED=0` everywhere. Do NOT switch to `mattn/go-sqlite3` — the pin matches the sqlite-vec
-  binding's ABI; bumping ncruces breaks `sqlite-vec`.
+  binding's ABI; `ncruces/go-sqlite3` v0.24+ breaks the current sqlite-vec binding.
 - One SQLite file; `sqlite-vec` for vectors. No separate DB service.
 - HTTP: stdlib `net/http` (Go 1.22 method routing), no web framework. Streaming: **SSE**.
 - One OpenAI-compatible client for chat (MiMo) + embeddings (OpenAI). Extraction: Apache **Tika** sidecar.
