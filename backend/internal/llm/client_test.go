@@ -219,6 +219,34 @@ func TestClient_StreamChatOmitsReasoningEffortForNonMiMoModel(t *testing.T) {
 	}
 }
 
+func TestClient_StreamChatUsesConfiguredReasoningEffort(t *testing.T) {
+	var gotBody struct {
+		ReasoningEffort string `json:"reasoning_effort"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{
+		BaseURL:         server.URL,
+		Model:           "mimo",
+		ReasoningEffort: "low",
+	}, server.Client())
+
+	if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
+		t.Fatalf("StreamChat() error: %v", err)
+	}
+	if gotBody.ReasoningEffort != "low" {
+		t.Fatalf("reasoning_effort = %q, want low", gotBody.ReasoningEffort)
+	}
+}
+
 func TestClient_StreamChatWithToolsSendsToolSchemas(t *testing.T) {
 	var gotBody struct {
 		Model string `json:"model"`

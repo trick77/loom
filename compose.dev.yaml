@@ -30,6 +30,7 @@ services:
       SPARK_CHAT_BASE_URL: "${SPARK_CHAT_BASE_URL:-}"
       SPARK_CHAT_API_KEY: "${SPARK_CHAT_API_KEY:-}"
       SPARK_CHAT_MODEL: "${SPARK_CHAT_MODEL:-MiMo}"
+      SPARK_CHAT_REASONING_EFFORT: "${SPARK_CHAT_REASONING_EFFORT:-high}"
     volumes:
       - spark-dev-data:/data
     depends_on:

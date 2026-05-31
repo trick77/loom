@@ -24,13 +24,14 @@ type Config struct {
 	UsersDir  string // root for per-user volumes: <UsersDir>/<user-id>/
 	PublicURL string // externally reachable base URL
 
-	ChatBaseURL  string // OpenAI-compatible chat endpoint (MiMo)
-	ChatAPIKey   string
-	ChatModel    string
-	ChatLogDir   string
-	EmbedBaseURL string // OpenAI embeddings endpoint
-	EmbedAPIKey  string
-	EmbedModel   string
+	ChatBaseURL         string // OpenAI-compatible chat endpoint (MiMo)
+	ChatAPIKey          string
+	ChatModel           string
+	ChatReasoningEffort string
+	ChatLogDir          string
+	EmbedBaseURL        string // OpenAI embeddings endpoint
+	EmbedAPIKey         string
+	EmbedModel          string
 
 	TikaURL       string
 	SearxngURL    string
@@ -79,6 +80,7 @@ func Load() (Config, error) {
 		ChatBaseURL:          env("SPARK_CHAT_BASE_URL", ""),
 		ChatAPIKey:           env("SPARK_CHAT_API_KEY", ""),
 		ChatModel:            env("SPARK_CHAT_MODEL", "MiMo"),
+		ChatReasoningEffort:  env("SPARK_CHAT_REASONING_EFFORT", ""),
 		ChatLogDir:           env("SPARK_CHAT_LOG_DIR", "logs/llm-responses"),
 		EmbedBaseURL:         env("SPARK_EMBED_BASE_URL", ""),
 		EmbedAPIKey:          env("SPARK_EMBED_API_KEY", ""),
