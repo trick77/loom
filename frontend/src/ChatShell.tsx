@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AuthExpiredError,
   createProject,
   createThread,
   getThread,
@@ -19,9 +20,18 @@ type ChatShellProps = {
   onAdmin(): void;
   onChat(): void;
   onLogout(): void;
+  onSessionExpired(): void;
 };
 
-export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogout }: ChatShellProps) {
+export function ChatShell({
+  user,
+  adminPanel,
+  showAdmin,
+  onAdmin,
+  onChat,
+  onLogout,
+  onSessionExpired,
+}: ChatShellProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
@@ -32,36 +42,69 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [sendError, setSendError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const activeThreadIDRef = useRef<string | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+
+  function handleActionError(error: unknown, fallback: string, setError: (message: string) => void) {
+    if (error instanceof AuthExpiredError) {
+      onSessionExpired();
+      return;
+    }
+    setError(fallback);
+  }
 
   useEffect(() => {
     let active = true;
-    Promise.all([listProjects(), listThreads({ limit: 30 })]).then(([nextProjects, nextThreads]) => {
-      if (!active) return;
-      setProjects(nextProjects);
-      setThreads(nextThreads);
-    });
+    Promise.all([listProjects(), listThreads({ limit: 30 })])
+      .then(([nextProjects, nextThreads]) => {
+        if (!active) return;
+        setProjects(nextProjects);
+        setThreads(nextThreads);
+        setLoadError("");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof AuthExpiredError) {
+          onSessionExpired();
+          return;
+        }
+        setLoadError("Chat data failed to load.");
+      });
     return () => {
       active = false;
+      streamAbortRef.current?.abort();
     };
-  }, []);
+  }, [onSessionExpired]);
 
   const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
 
   async function selectThread(threadID: string) {
     onChat();
+    streamAbortRef.current?.abort();
     const response = await getThread(threadID);
     setActiveThread(response.thread);
+    activeThreadIDRef.current = response.thread.id;
     setMessages(response.messages);
     setStreamingText("");
     setSendError("");
   }
 
   async function handleNewChat() {
+    if (isCreatingThread) return;
     onChat();
-    const thread = await createThread();
-    setThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
-    await selectThread(thread.id);
+    setIsCreatingThread(true);
+    try {
+      const thread = await createThread();
+      setThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
+      await selectThread(thread.id);
+    } catch (error) {
+      handleActionError(error, "Message failed to send.", setSendError);
+    } finally {
+      setIsCreatingThread(false);
+    }
   }
 
   async function handleCreateProject() {
@@ -73,6 +116,8 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
       setProjects((current) => [project, ...current.filter((item) => item.id !== project.id)]);
       setProjectName("");
       setIsProjectFormOpen(false);
+    } catch (error) {
+      handleActionError(error, "Project failed to create.", setLoadError);
     } finally {
       setIsCreatingProject(false);
     }
@@ -85,6 +130,7 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
     setIsSending(true);
     setStreamingText("");
     setSendError("");
+    let abortController: AbortController | null = null;
     try {
       let targetThread = activeThread;
       if (targetThread === null) {
@@ -94,28 +140,44 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
           ...current.filter((item) => item.id !== createdThread.id),
         ]);
         setActiveThread(createdThread);
+        activeThreadIDRef.current = createdThread.id;
         setMessages([]);
         targetThread = createdThread;
       }
-      await streamMessage(targetThread.id, content, {
-        onUserMessage: (message) => setMessages((current) => [...current, message]),
-        onDelta: (delta) => setStreamingText((current) => current + delta),
+      const targetThreadID = targetThread.id;
+      activeThreadIDRef.current = targetThreadID;
+      abortController = new AbortController();
+      streamAbortRef.current?.abort();
+      streamAbortRef.current = abortController;
+      const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
+      await streamMessage(targetThreadID, content, {
+        onUserMessage: (message) => {
+          if (isCurrentThread()) setMessages((current) => [...current, message]);
+        },
+        onDelta: (delta) => {
+          if (isCurrentThread()) setStreamingText((current) => current + delta);
+        },
         onAssistantMessage: (message) => {
+          if (!isCurrentThread()) return;
           setMessages((current) => [...current, message]);
           setStreamingText("");
         },
         onThread: (updatedThread) => {
-          setActiveThread(updatedThread);
+          if (isCurrentThread()) setActiveThread(updatedThread);
           setThreads((current) =>
             current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
           );
         },
-      });
-    } catch {
+      }, abortController.signal);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
-      setSendError("Message failed to send.");
+      handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
+      if (abortController !== null && streamAbortRef.current === abortController) {
+        streamAbortRef.current = null;
+      }
     }
   }
 
@@ -127,10 +189,12 @@ export function ChatShell({ user, adminPanel, showAdmin, onAdmin, onChat, onLogo
         </div>
         <button
           className="rounded-spark bg-accent px-3 py-2 text-left text-sm font-medium text-white transition-colors hover:bg-accent-strong"
+          disabled={isCreatingThread}
           onClick={handleNewChat}
         >
           + New chat
         </button>
+        {loadError !== "" && <div className="rounded-spark border border-accent p-2 text-xs text-accent">{loadError}</div>}
         <SidebarSection title="Starred" threads={starredThreads} onSelect={selectThread} />
         <SidebarSection title="Recents" threads={threads} onSelect={selectThread} />
         <section>

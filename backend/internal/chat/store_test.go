@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/trick77/spark/internal/store"
@@ -129,6 +130,62 @@ func TestStore_ListMethodsReturnEmptySlices(t *testing.T) {
 	}
 	if len(messages) != 0 {
 		t.Fatalf("len(messages) = %d, want 0", len(messages))
+	}
+}
+
+func TestStore_AddMessageRollsBackWhenThreadTimestampUpdateFails(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Atomic"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+CREATE TRIGGER fail_thread_timestamp_update
+BEFORE UPDATE OF last_message_at ON threads
+BEGIN
+	SELECT RAISE(ABORT, 'timestamp update failed');
+END`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, "hello"); err == nil {
+		t.Fatal("AddMessage() error = nil, want timestamp update failure")
+	}
+
+	messages, ok, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatalf("ListMessages() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("ListMessages() ok = false, want true")
+	}
+	if len(messages) != 0 {
+		t.Fatalf("len(messages) = %d, want rollback to leave 0", len(messages))
+	}
+}
+
+func TestStore_RejectsOverlongInputs(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	if _, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: strings.Repeat("p", MaxProjectNameLength+1)}); err == nil {
+		t.Fatal("CreateProject() error = nil, want overlong name error")
+	}
+	if _, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: strings.Repeat("t", MaxThreadTitleLength+1)}); err == nil {
+		t.Fatal("CreateThread() error = nil, want overlong title error")
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Length"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, strings.Repeat("m", MaxMessageContentLength+1)); err == nil {
+		t.Fatal("AddMessage() error = nil, want overlong content error")
 	}
 }
 

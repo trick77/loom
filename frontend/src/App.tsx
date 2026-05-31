@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChatShell } from "./ChatShell";
 import sparkImage from "./assets/spark.png";
 import { getMe, listUsers, logout, type User } from "./api";
@@ -29,20 +29,35 @@ export default function App() {
   }, []);
 
   async function handleLogout() {
-    const redirectUrl = await logout();
-    window.location.assign(redirectUrl);
+    try {
+      const redirectUrl = await logout();
+      window.location.assign(redirectUrl);
+    } catch {
+      setStatus("signed-out");
+      setUser(null);
+    }
   }
 
   async function handleAdmin() {
     setShowAdmin(true);
     if (adminUsers.length === 0) {
-      setAdminUsers(await listUsers());
+      try {
+        setAdminUsers(await listUsers());
+      } catch {
+        setStatus("signed-out");
+        setUser(null);
+      }
     }
   }
 
   function handleChat() {
     setShowAdmin(false);
   }
+
+  const handleSessionExpired = useCallback(() => {
+    setStatus("signed-out");
+    setUser(null);
+  }, []);
 
   if (status === "loading") {
     return (
@@ -83,6 +98,7 @@ export default function App() {
       onAdmin={handleAdmin}
       onChat={handleChat}
       onLogout={handleLogout}
+      onSessionExpired={handleSessionExpired}
       adminPanel={
         <section className="p-6">
           <h1 className="font-serif text-2xl font-light tracking-tight">Admin</h1>

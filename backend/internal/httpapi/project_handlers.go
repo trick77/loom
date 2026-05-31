@@ -30,7 +30,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body createProjectRequest
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -39,7 +39,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		Description: body.Description,
 	})
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "project name is required")
+		writeChatStoreError(w, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
 		return
 	}
 	writeJSONStatus(w, http.StatusCreated, project)
@@ -51,13 +51,13 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body updateProjectRequest
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	project, found, err := s.chat.UpdateProject(r.Context(), user.ID, r.PathValue("projectID"), body.chatInput())
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "project name is required")
+		writeChatStoreError(w, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
 		return
 	}
 	if !found {

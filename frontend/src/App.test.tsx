@@ -92,6 +92,23 @@ test("loads projects and recent threads after sign in", async () => {
   expect(screen.getByText("Algebra")).toBeInTheDocument();
 });
 
+test("shows chat data load errors", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return new Response("", { status: 500 });
+      if (url === "/api/threads?limit=30") return Response.json([]);
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+
+  expect(await screen.findByText("Chat data failed to load.")).toBeInTheDocument();
+});
+
 test("creates a project from the sidebar", async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -127,6 +144,56 @@ test("creates a project from the sidebar", async () => {
       body: JSON.stringify({ name: "School" }),
     }),
   );
+});
+
+test("does not double-submit new chat creation", async () => {
+  let resolveCreateThread: (response: Response) => void = () => undefined;
+  const createThreadResponse = new Promise<Response>((resolve) => {
+    resolveCreateThread = resolve;
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json([]);
+    if (url === "/api/threads" && init?.method === "POST") return createThreadResponse;
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: {
+          id: "t1",
+          title: "New chat",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        },
+        messages: [],
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  const button = await screen.findByRole("button", { name: /new chat/i });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  resolveCreateThread(
+    new Response(
+      JSON.stringify({
+        id: "t1",
+        title: "New chat",
+        starred: false,
+        createdAt: "2026-05-30T00:00:00Z",
+        updatedAt: "2026-05-30T00:00:00Z",
+      }),
+      { status: 201 },
+    ),
+  );
+
+  expect(await screen.findByRole("heading", { name: "New chat" })).toBeInTheDocument();
+  expect(
+    fetchMock.mock.calls.filter(([url, init]) => String(url) === "/api/threads" && init?.method === "POST"),
+  ).toHaveLength(1);
 });
 
 test("creates a new chat from the sidebar", async () => {
@@ -293,6 +360,85 @@ test("renders streamed assistant response", async () => {
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("Hello")).toBeInTheDocument();
+});
+
+test("ignores stream events after switching threads", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json([
+          {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+        ]);
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t2") {
+        return Response.json({
+          thread: {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
+  const encoder = new TextEncoder();
+  streamController.current?.enqueue(
+    encoder.encode(
+      'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Wrong thread answer","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+    ),
+  );
+  streamController.current?.close();
+
+  expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
+  expect(screen.queryByText("Wrong thread answer")).not.toBeInTheDocument();
 });
 
 test("shows an error when message streaming fails", async () => {

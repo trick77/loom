@@ -30,7 +30,7 @@ func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body createThreadRequest
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -39,7 +39,10 @@ func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		Title:     body.Title,
 	})
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusNotFound, "project not found")
+		writeMappedChatStoreError(w, err, map[string]int{
+			"project not found":        http.StatusNotFound,
+			"thread title is too long": http.StatusBadRequest,
+		})
 		return
 	}
 	writeJSONStatus(w, http.StatusCreated, thread)
@@ -78,13 +81,13 @@ func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body updateThreadRequest
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	thread, found, err := s.chat.UpdateThread(r.Context(), user.ID, r.PathValue("threadID"), chat.UpdateThreadInput{Title: body.Title})
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "thread title is required")
+		writeChatStoreError(w, err, http.StatusBadRequest, "thread title is required", "thread title is too long")
 		return
 	}
 	if !found {

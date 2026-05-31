@@ -139,6 +139,7 @@ type fakeChatClient struct {
 	title       string
 	titleErr    error
 	history     *[]llm.Message
+	streamText  *string
 	afterStream func()
 }
 
@@ -154,6 +155,9 @@ func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onD
 	}
 	if f.afterStream != nil {
 		f.afterStream()
+	}
+	if f.streamText != nil {
+		return *f.streamText, nil
 	}
 	return "Hello", nil
 }

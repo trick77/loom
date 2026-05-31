@@ -1,14 +1,18 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
+	"github.com/trick77/spark/internal/store"
 )
 
 func TestCreateThreadRequiresAuth(t *testing.T) {
@@ -89,6 +93,40 @@ func TestGetThreadNotFoundReturns404(t *testing.T) {
 	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/threads/missing", "")
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetThreadReturns404ForAnotherUsersThread(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	for _, userID := range []string{"alice", "bob"} {
+		_, err := db.ExecContext(ctx, `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES (?, ?, ?, 'user')`,
+			userID, "subject-"+userID, userID,
+		)
+		if err != nil {
+			t.Fatalf("insert user %s: %v", userID, err)
+		}
+	}
+	chatStore := chat.NewStore(db)
+	bobThread, err := chatStore.CreateThread(ctx, "bob", chat.CreateThreadInput{Title: "Bob private thread"})
+	if err != nil {
+		t.Fatalf("create bob thread: %v", err)
+	}
+	alice := auth.User{ID: "alice", Username: "alice", Role: auth.RoleUser, ResponseLanguage: "auto"}
+	srv := newAuthenticatedChatServerForUser(t, alice, Deps{Chat: chatStore})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodGet, "/api/threads/"+bobThread.ID, "")
 
 	srv.ServeHTTP(rec, req)
 

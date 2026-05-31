@@ -82,6 +82,29 @@ func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
 	}
 }
 
+func TestStreamMessageRejectsEmptyAssistantResponse(t *testing.T) {
+	empty := ""
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{streamText: &empty},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"empty assistant response"`) {
+		t.Fatalf("SSE body missing empty response error:\n%s", body)
+	}
+	if len(store.messages) != 1 || store.messages[0].Role != chat.RoleUser {
+		t.Fatalf("persisted messages = %#v, want only user message", store.messages)
+	}
+}
+
 func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 	var history []llm.Message
 	store := &fakeChatStore{

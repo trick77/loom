@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/trick77/spark/internal/chat"
@@ -26,6 +27,19 @@ func TestCreateProjectReturns201(t *testing.T) {
 	}
 	if body.Name != "School" {
 		t.Fatalf("name = %q, want School", body.Name)
+	}
+}
+
+func TestCreateProjectRejectsOversizedRequestBody(t *testing.T) {
+	store := &fakeChatStore{}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/projects", strings.Repeat(" ", maxJSONBodyBytes+1))
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
 	}
 }
 

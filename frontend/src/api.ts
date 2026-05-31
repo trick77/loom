@@ -49,6 +49,12 @@ type StreamHandlers = {
   onThread(thread: Thread): void;
 };
 
+export class AuthExpiredError extends Error {
+  constructor() {
+    super("auth expired");
+  }
+}
+
 export async function getMe(): Promise<User | null> {
   const response = await fetch("/api/me");
   if (response.status === 401) {
@@ -141,12 +147,17 @@ export async function streamMessage(
   threadId: string,
   content: string,
   handlers: StreamHandlers,
+  signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
+    signal,
   });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
   if (!response.ok) {
     throw new Error("failed to stream message");
   }
@@ -157,19 +168,26 @@ export async function streamMessage(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      buffer = drainSSEBuffer(buffer, handlers);
     }
-    buffer += decoder.decode(value, { stream: true });
-    buffer = drainSSEBuffer(buffer, handlers);
+    buffer += decoder.decode();
+    drainSSEBuffer(buffer, handlers);
+  } finally {
+    reader.releaseLock();
   }
-  buffer += decoder.decode();
-  drainSSEBuffer(buffer, handlers);
 }
 
 async function expectJSON<T>(response: Response, errorMessage: string): Promise<T> {
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
   if (!response.ok) {
     throw new Error(errorMessage);
   }

@@ -11,6 +11,8 @@ import (
 	"github.com/trick77/spark/internal/auth"
 )
 
+const maxJSONBodyBytes = 64 * 1024
+
 func writeChatStoreError(w http.ResponseWriter, err error, validationStatus int, validationMessages ...string) {
 	message := err.Error()
 	for _, validationMessage := range validationMessages {
@@ -18,6 +20,15 @@ func writeChatStoreError(w http.ResponseWriter, err error, validationStatus int,
 			writeJSONError(w, validationStatus, message)
 			return
 		}
+	}
+	writeJSONError(w, http.StatusInternalServerError, "chat store failed")
+}
+
+func writeMappedChatStoreError(w http.ResponseWriter, err error, statuses map[string]int) {
+	message := err.Error()
+	if status, ok := statuses[message]; ok {
+		writeJSONError(w, status, message)
+		return
 	}
 	writeJSONError(w, http.StatusInternalServerError, "chat store failed")
 }
@@ -39,10 +50,11 @@ func requireChat(w http.ResponseWriter, s *server) bool {
 	return true
 }
 
-func decodeJSONBody(r *http.Request, dst any) error {
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) error {
 	if r.Body == nil {
 		return nil
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {

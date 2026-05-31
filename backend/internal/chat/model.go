@@ -16,6 +16,13 @@ const (
 
 const DefaultThreadTitle = "New chat"
 
+const (
+	MaxProjectNameLength        = 120
+	MaxProjectDescriptionLength = 2000
+	MaxThreadTitleLength        = 200
+	MaxMessageContentLength     = 32000
+)
+
 // Project groups related chat threads for one user.
 type Project struct {
 	ID          string     `json:"id"`

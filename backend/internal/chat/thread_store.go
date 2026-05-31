@@ -13,6 +13,9 @@ func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThread
 	if title == "" {
 		title = DefaultThreadTitle
 	}
+	if len(title) > MaxThreadTitleLength {
+		return Thread{}, errors.New("thread title is too long")
+	}
 
 	var projectID any
 	if in.ProjectID != nil {
@@ -116,6 +119,9 @@ func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in Up
 		title = strings.TrimSpace(*in.Title)
 		if title == "" {
 			return Thread{}, false, errors.New("thread title is required")
+		}
+		if len(title) > MaxThreadTitleLength {
+			return Thread{}, false, errors.New("thread title is too long")
 		}
 	}
 

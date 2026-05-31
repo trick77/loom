@@ -7,6 +7,7 @@ import (
 
 // DBTX is the subset of *sql.DB used by chat stores.
 type DBTX interface {
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row

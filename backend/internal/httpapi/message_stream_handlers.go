@@ -24,7 +24,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body streamMessageRequest
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -50,7 +50,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	userMessage, err := s.chat.AddMessage(r.Context(), user.ID, threadID, chat.RoleUser, body.Content)
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "message content is required")
+		writeChatStoreError(w, err, http.StatusBadRequest, "message content is required", "message content is too long")
 		return
 	}
 
@@ -69,6 +69,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "stream failed"})
+		return
+	}
+	if strings.TrimSpace(assistantContent) == "" {
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
 		return
 	}
 

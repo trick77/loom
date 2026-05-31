@@ -13,7 +13,13 @@ func (s *Store) CreateProject(ctx context.Context, userID string, in CreateProje
 	if name == "" {
 		return Project{}, errors.New("project name is required")
 	}
+	if len(name) > MaxProjectNameLength {
+		return Project{}, errors.New("project name is too long")
+	}
 	description := strings.TrimSpace(in.Description)
+	if len(description) > MaxProjectDescriptionLength {
+		return Project{}, errors.New("project description is too long")
+	}
 	projectID := newID()
 
 	_, err := s.db.ExecContext(ctx, `
@@ -78,10 +84,16 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 		if name == "" {
 			return Project{}, false, errors.New("project name is required")
 		}
+		if len(name) > MaxProjectNameLength {
+			return Project{}, false, errors.New("project name is too long")
+		}
 	}
 	description := project.Description
 	if in.Description != nil {
 		description = strings.TrimSpace(*in.Description)
+		if len(description) > MaxProjectDescriptionLength {
+			return Project{}, false, errors.New("project description is too long")
+		}
 	}
 
 	_, err = s.db.ExecContext(ctx, `

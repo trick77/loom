@@ -16,14 +16,23 @@ func (s *Store) AddMessage(ctx context.Context, userID, threadID string, role Ro
 	if content == "" {
 		return Message{}, errors.New("message content is required")
 	}
+	if len(content) > MaxMessageContentLength {
+		return Message{}, errors.New("message content is too long")
+	}
 	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
 		return Message{}, err
 	} else if !ok {
 		return Message{}, errors.New("thread not found")
 	}
 
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, fmt.Errorf("begin message transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	messageID := newID()
-	_, err := s.db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO messages (id, thread_id, user_id, role, content)
 VALUES (?, ?, ?, ?, ?)`,
 		messageID, threadID, userID, role, content,
@@ -32,7 +41,7 @@ VALUES (?, ?, ?, ?, ?)`,
 		return Message{}, fmt.Errorf("insert message: %w", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 UPDATE threads
 SET last_message_at = (SELECT created_at FROM messages WHERE user_id = ? AND id = ?),
     updated_at = datetime('now')
@@ -41,6 +50,9 @@ WHERE user_id = ? AND id = ?`,
 	)
 	if err != nil {
 		return Message{}, fmt.Errorf("update thread message timestamp: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Message{}, fmt.Errorf("commit message transaction: %w", err)
 	}
 
 	message, ok, err := s.getMessage(ctx, userID, messageID)
