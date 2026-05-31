@@ -904,7 +904,7 @@ function MessageBubble({
   if (message.role === "user") {
     return (
       <div className="spark-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
-        <div className="spark-message-text spark-user-message-text rounded-xl bg-[#111110] px-4 py-2.5 text-[#f3f0e8]">
+        <div className="spark-message-text spark-user-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
           {message.content}
         </div>
         <MessageActions
