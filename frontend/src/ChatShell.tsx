@@ -767,7 +767,8 @@ function ChatPanel({
           aria-label="Message composer dock"
           className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-bg px-8 pb-5 pt-4"
         >
-          <div className="pointer-events-auto mx-auto w-full max-w-[756px]">
+          <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
+          <div className="pointer-events-auto mx-auto w-full max-w-[834px]">
             <Composer
               variant="chat"
               draft={draft}
