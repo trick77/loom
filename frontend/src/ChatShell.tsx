@@ -20,6 +20,7 @@ import {
   type User,
 } from "./api";
 import logoImage from "./assets/logo.png";
+import { MessageMetrics, MetricsProvider } from "./MessageMetrics";
 
 type ChatShellProps = {
   user: User;
@@ -773,21 +774,23 @@ function ChatPanel({
           onScroll={refreshScrollState}
           role="region"
         >
-          <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6">
-            {messages.map((message, index) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
-                onRetry={handleRetryRequest}
-              />
-            ))}
-            {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
-            {showThinkingIndicator && <ThinkingIndicator />}
-            {streamingReasoning !== "" && <ThinkingPanel content={streamingReasoning} complete={streamingText !== ""} />}
-            {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
-            {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-          </div>
+          <MetricsProvider>
+            <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6">
+              {messages.map((message, index) => (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
+                  onRetry={handleRetryRequest}
+                />
+              ))}
+              {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
+              {showThinkingIndicator && <ThinkingIndicator />}
+              {streamingReasoning !== "" && <ThinkingPanel content={streamingReasoning} complete={streamingText !== ""} />}
+              {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
+              {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+            </div>
+          </MetricsProvider>
           <div
             aria-label="Message composer dock"
             className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
@@ -994,7 +997,9 @@ function MessageBubble({
   return (
     <div className="max-w-[46rem] space-y-3">
       {message.reasoningContent && <ThinkingPanel content={message.reasoningContent} complete={true} />}
-      <AssistantText onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>{message.content}</AssistantText>
+      <AssistantText metricsMessage={message} onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>
+        {message.content}
+      </AssistantText>
     </div>
   );
 }
@@ -1020,7 +1025,15 @@ function ProseMarkdown({ children }: { children: string }) {
   );
 }
 
-function AssistantText({ children, onRetry }: { children: string; onRetry?: () => void }) {
+function AssistantText({
+  children,
+  onRetry,
+  metricsMessage,
+}: {
+  children: string;
+  onRetry?: () => void;
+  metricsMessage?: Message;
+}) {
   const downloadable = downloadableResponse(children);
 
   if (downloadable !== null) {
@@ -1039,6 +1052,7 @@ function AssistantText({ children, onRetry }: { children: string; onRetry?: () =
           retryLabel="Retry response"
           onRetry={onRetry}
         />
+        {metricsMessage && <MessageMetrics message={metricsMessage} />}
       </div>
     );
   }
@@ -1052,6 +1066,7 @@ function AssistantText({ children, onRetry }: { children: string; onRetry?: () =
         retryLabel="Retry response"
         onRetry={onRetry}
       />
+      {metricsMessage && <MessageMetrics message={metricsMessage} />}
     </div>
   );
 }
