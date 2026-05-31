@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AuthExpiredError,
   createProject,
@@ -27,6 +27,17 @@ type ChatShellProps = {
   onSessionExpired(): void;
 };
 
+type RouteState =
+  | { view: "new" }
+  | { view: "chat"; threadID: string };
+
+type ToolActivity = {
+  id: string;
+  name: string;
+  status: "running" | "done";
+  content?: string;
+};
+
 export function ChatShell({
   user,
   adminPanel,
@@ -38,6 +49,7 @@ export function ChatShell({
 }: ChatShellProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -50,7 +62,6 @@ export function ChatShell({
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -62,6 +73,20 @@ export function ChatShell({
     }
     setError(error instanceof Error && error.message !== "" ? error.message : fallback);
   }
+
+  useEffect(() => {
+    if (window.location.pathname === "/") {
+      window.history.replaceState({}, "", "/new");
+      setRoute({ view: "new" });
+    }
+    function handlePopState() {
+      setRoute(routeFromLocation());
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -86,33 +111,58 @@ export function ChatShell({
     };
   }, [onSessionExpired]);
 
+  useEffect(() => {
+    if (route.view !== "chat") {
+      activeThreadIDRef.current = null;
+      setActiveThread(null);
+      setMessages([]);
+      setStreamingText("");
+      setToolEvents([]);
+      setSendError("");
+      return;
+    }
+    if (activeThreadIDRef.current === route.threadID) return;
+    let active = true;
+    streamAbortRef.current?.abort();
+    getThread(route.threadID)
+      .then((response) => {
+        if (!active) return;
+        setActiveThread(response.thread);
+        activeThreadIDRef.current = response.thread.id;
+        setMessages(response.messages);
+        setStreamingText("");
+        setToolEvents([]);
+        setSendError("");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        handleActionError(error, "Chat failed to load.", setLoadError);
+      });
+    return () => {
+      active = false;
+    };
+  }, [route]);
+
+  const displayName = user.displayName || user.username;
   const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
 
-  async function selectThread(threadID: string) {
+  const navigateToNew = useCallback(() => {
     onChat();
     streamAbortRef.current?.abort();
-    const response = await getThread(threadID);
-    setActiveThread(response.thread);
-    activeThreadIDRef.current = response.thread.id;
-    setMessages(response.messages);
+    activeThreadIDRef.current = null;
+    setActiveThread(null);
+    setMessages([]);
     setStreamingText("");
     setToolEvents([]);
     setSendError("");
-  }
+    navigate({ view: "new" });
+    setRoute({ view: "new" });
+  }, [onChat]);
 
-  async function handleNewChat() {
-    if (isCreatingThread) return;
+  async function selectThread(threadID: string) {
     onChat();
-    setIsCreatingThread(true);
-    try {
-      const thread = await createThread();
-      setThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
-      await selectThread(thread.id);
-    } catch (error) {
-      handleActionError(error, "Message failed to send.", setSendError);
-    } finally {
-      setIsCreatingThread(false);
-    }
+    navigate({ view: "chat", threadID });
+    setRoute({ view: "chat", threadID });
   }
 
   async function handleCreateProject() {
@@ -160,18 +210,17 @@ export function ChatShell({
     setToolEvents([]);
     setSendError("");
     let abortController: AbortController | null = null;
+    let createdThreadForFallback: Thread | null = null;
+    let receivedThreadEvent = false;
     try {
       let targetThread = activeThread;
       if (targetThread === null) {
-        const createdThread = await createThread();
-        setThreads((current) => [
-          createdThread,
-          ...current.filter((item) => item.id !== createdThread.id),
-        ]);
-        setActiveThread(createdThread);
-        activeThreadIDRef.current = createdThread.id;
+        targetThread = await createThread();
+        createdThreadForFallback = targetThread;
+        setActiveThread(targetThread);
         setMessages([]);
-        targetThread = createdThread;
+        navigate({ view: "chat", threadID: targetThread.id });
+        setRoute({ view: "chat", threadID: targetThread.id });
       }
       const targetThreadID = targetThread.id;
       activeThreadIDRef.current = targetThreadID;
@@ -201,13 +250,16 @@ export function ChatShell({
           setToolEvents([]);
         },
         onThread: (updatedThread) => {
+          receivedThreadEvent = true;
           if (isCurrentThread()) setActiveThread(updatedThread);
-          setThreads((current) =>
-            current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
-          );
+          setThreads((current) => upsertThread(current, updatedThread));
         },
         onMcpStatus: (event) => setMcpStatus(event),
       }, abortController.signal);
+      const fallbackThread = createdThreadForFallback;
+      if (!receivedThreadEvent && fallbackThread !== null) {
+        setThreads((current) => upsertThread(current, fallbackThread));
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
@@ -223,96 +275,146 @@ export function ChatShell({
   }
 
   return (
-    <div className="grid h-screen grid-cols-[240px_1fr_300px] font-sans text-ink">
-      <aside className="flex min-h-0 flex-col gap-3 border-r border-border bg-panel p-3">
-        <div className="flex items-center px-1">
-          <div className="font-serif text-xl font-medium tracking-tight">Spark</div>
+    <div className="grid h-screen grid-cols-[282px_1fr] bg-bg font-sans text-ink">
+      <aside className="flex min-h-0 flex-col border-r border-[#343432] bg-[#181817] text-sm text-[#c7c5bd]">
+        <div className="flex h-11 items-center justify-between px-3">
+          <div className="font-serif text-2xl font-medium text-[#f4f0e8]">Spark</div>
+          <div className="flex items-center gap-3 text-[#aaa79e]" aria-hidden="true">
+            <span className="text-base">⌕</span>
+            <span className="text-sm">▯</span>
+          </div>
         </div>
-        <button
-          className="rounded-spark bg-accent px-3 py-2 text-left text-sm font-medium text-white transition-colors hover:bg-accent-strong"
-          disabled={isCreatingThread}
-          onClick={handleNewChat}
-        >
-          + New chat
-        </button>
-        {loadError !== "" && <div className="rounded-spark border border-accent p-2 text-xs text-accent">{loadError}</div>}
-        <SidebarSection title="Starred" threads={starredThreads} onSelect={selectThread} />
-        <SidebarSection title="Recents" threads={threads} onSelect={selectThread} />
-        <section>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase text-muted">Projects</div>
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-3">
+          <button
+            className={`flex h-9 w-full items-center gap-3 rounded-md px-2 text-left transition-colors hover:bg-[#2a2a28] ${
+              route.view === "new" && !showAdmin ? "bg-[#111110] text-white" : ""
+            }`}
+            onClick={navigateToNew}
+            type="button"
+          >
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-[#30302e] text-base leading-none text-[#d5d2c9]">
+              +
+            </span>
+            <span>New chat</span>
+          </button>
+          <SidebarPrimaryItem label="Chats" icon="◔" />
+          <SidebarPrimaryItem label="Projects" icon="▱" />
+          <SidebarPrimaryItem label="Artifacts" icon="⌘" />
+          <SidebarPrimaryItem label="Customize" icon="▤" />
+          <SidebarLabel>Products</SidebarLabel>
+          <SidebarPrimaryItem label="Code" icon="‹/›" />
+          <SidebarPrimaryItem label="Design" icon="✾" />
+          {loadError !== "" && (
+            <div className="mx-2 mt-3 rounded-md border border-accent px-2 py-2 text-xs text-accent">
+              {loadError}
+            </div>
+          )}
+          <SidebarSection
+            title="Starred"
+            threads={starredThreads}
+            activeThreadID={route.view === "chat" ? route.threadID : null}
+            onSelect={selectThread}
+          />
+          <SidebarSection
+            title="Recents"
+            threads={threads}
+            activeThreadID={route.view === "chat" ? route.threadID : null}
+            onSelect={selectThread}
+          />
+          <section className="mt-4">
+            <div className="mb-2 flex items-center justify-between px-2 text-xs text-[#8f8b82]">
+              <span>Projects</span>
+              <button
+                className="rounded px-1 text-[#aaa79e] transition-colors hover:text-white"
+                onClick={() => setIsProjectFormOpen(true)}
+                type="button"
+                aria-label="New project"
+              >
+                +
+              </button>
+            </div>
+            {isProjectFormOpen && (
+              <form
+                className="mx-2 mb-2 space-y-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleCreateProject();
+                }}
+              >
+                <input
+                  autoFocus
+                  className="w-full rounded-md border border-[#3b3b38] bg-[#20201f] px-2 py-1.5 text-sm text-ink outline-none placeholder:text-muted focus:border-[#69665f]"
+                  placeholder="Project name"
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                />
+                <div className="flex gap-2">
+                  <button
+                    className="rounded-md bg-[#393936] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    disabled={projectName.trim() === "" || isCreatingProject}
+                    type="submit"
+                  >
+                    Create
+                  </button>
+                  <button
+                    className="px-2 py-1.5 text-xs text-muted transition-colors hover:text-ink"
+                    onClick={() => {
+                      setProjectName("");
+                      setIsProjectFormOpen(false);
+                    }}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+            <div className="space-y-1">
+              {projects.map((project) => (
+                <div key={project.id} className="truncate rounded-md px-2 py-1.5 text-sm">
+                  {project.name}
+                </div>
+              ))}
+            </div>
+          </section>
+          {user.role === "admin" && (
             <button
-              className="text-xs font-medium text-muted transition-colors hover:text-ink"
-              onClick={() => setIsProjectFormOpen(true)}
+              className="mt-4 flex h-8 w-full items-center rounded-md px-2 text-left text-sm transition-colors hover:bg-[#2a2a28]"
+              onClick={onAdmin}
               type="button"
             >
-              New project
+              Admin
+            </button>
+          )}
+        </nav>
+        <div className="border-t border-[#343432] px-3 py-3">
+          <div className="flex items-center gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#dedbd0] text-sm font-semibold text-[#1d1d1b]">
+              {initialsFor(displayName)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm text-[#f4f0e8]">{displayName}</div>
+              <div className="truncate text-xs text-[#8f8b82]">{user.role}</div>
+            </div>
+            <button className="rounded-md px-2 py-1 text-xs text-[#aaa79e] hover:bg-[#2a2a28]" onClick={onLogout}>
+              Logout
             </button>
           </div>
-          {isProjectFormOpen && (
-            <form
-              className="mb-2 space-y-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleCreateProject();
-              }}
-            >
-              <input
-                autoFocus
-                className="w-full rounded-spark border border-border bg-bg px-2 py-1.5 text-sm text-ink outline-none placeholder:text-muted focus:border-accent"
-                placeholder="Project name"
-                value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
-              />
-              <div className="flex gap-2">
-                <button
-                  className="rounded-spark bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-strong disabled:opacity-50"
-                  disabled={projectName.trim() === "" || isCreatingProject}
-                  type="submit"
-                >
-                  Create
-                </button>
-                <button
-                  className="px-2 py-1.5 text-xs text-muted transition-colors hover:text-ink"
-                  onClick={() => {
-                    setProjectName("");
-                    setIsProjectFormOpen(false);
-                  }}
-                  type="button"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )}
-          <div className="space-y-1">
-            {projects.map((project) => (
-              <div key={project.id} className="rounded-spark px-2 py-1 text-sm">
-                {project.name}
-              </div>
-            ))}
-          </div>
-        </section>
-        {user.role === "admin" && (
-          <button
-            className="rounded-spark bg-active px-3 py-2 text-left text-sm transition-colors hover:bg-border"
-            onClick={onAdmin}
-          >
-            Admin
-          </button>
-        )}
-        <div className="mt-auto border-t border-border pt-3">
-          <div className="text-sm font-medium">{user.displayName || user.username}</div>
-          <div className="text-xs text-muted">{user.role}</div>
           {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator status={mcpStatus} />}
-          <button className="mt-2 text-sm text-muted" onClick={onLogout}>
-            Logout
-          </button>
         </div>
       </aside>
-      <main className="flex min-h-0 flex-col bg-bg">
+      <main className="min-w-0 bg-[#1f1f1d]">
         {showAdmin ? (
           adminPanel
+        ) : route.view === "new" ? (
+          <StartPanel
+            displayName={displayName}
+            draft={draft}
+            isSending={isSending}
+            sendError={sendError}
+            onDraftChange={setDraft}
+            onSend={handleSend}
+          />
         ) : (
           <ChatPanel
             thread={activeThread}
@@ -329,30 +431,58 @@ export function ChatShell({
           />
         )}
       </main>
-      <aside className="border-l border-border bg-panel p-3 text-sm text-muted">
-        <div className="font-medium text-ink">Sources</div>
-        <p className="mt-2">Sources will appear with document and web answers.</p>
-      </aside>
     </div>
   );
 }
 
-type ToolActivity = {
-  id: string;
-  name: string;
-  status: "running" | "done";
-  content?: string;
-};
-
-function upsertToolCall(current: ToolActivity[], event: ToolCallEvent): ToolActivity[] {
-  const next = current.filter((item) => item.id !== event.id);
-  return [...next, { id: event.id, name: event.name, status: "running" }];
+function routeFromLocation(): RouteState {
+  const path = window.location.pathname;
+  if (path.startsWith("/chat/")) {
+    const threadID = decodeURIComponent(path.slice("/chat/".length));
+    if (threadID !== "") return { view: "chat", threadID };
+  }
+  return { view: "new" };
 }
 
-function upsertToolResult(current: ToolActivity[], event: ToolResultEvent): ToolActivity[] {
-  return current.map((item) =>
-    item.id === event.id ? { ...item, status: "done", content: event.content } : item,
+function navigate(route: RouteState) {
+  const path = route.view === "new" ? "/new" : `/chat/${encodeURIComponent(route.threadID)}`;
+  if (window.location.pathname !== path) {
+    window.history.pushState({}, "", path);
+  }
+}
+
+function upsertThread(current: Thread[], thread: Thread): Thread[] {
+  return [thread, ...current.filter((item) => item.id !== thread.id)];
+}
+
+function initialsFor(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed === "") return "S";
+  return trimmed
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Morning";
+  if (hour < 18) return "Afternoon";
+  return "Evening";
+}
+
+function SidebarPrimaryItem({ icon, label }: { icon: string; label: string }) {
+  return (
+    <div className="mt-1 flex h-8 items-center gap-3 rounded-md px-2 text-[#c7c5bd]">
+      <span className="w-5 shrink-0 text-center text-sm text-white">{icon}</span>
+      <span className="truncate">{label}</span>
+    </div>
   );
+}
+
+function SidebarLabel({ children }: { children: React.ReactNode }) {
+  return <div className="px-2 pb-1 pt-7 text-xs text-[#8f8b82]">{children}</div>;
 }
 
 function McpStatusIndicator({ status }: { status: McpStatusEvent }) {
@@ -375,25 +505,75 @@ function McpStatusIndicator({ status }: { status: McpStatusEvent }) {
 function SidebarSection({
   title,
   threads,
+  activeThreadID,
   onSelect,
 }: {
   title: string;
   threads: Thread[];
+  activeThreadID: string | null;
   onSelect(threadID: string): void;
 }) {
   return (
-    <section>
-      <div className="mb-2 text-xs font-semibold uppercase text-muted">{title}</div>
+    <section className="mt-4">
+      <div className="mb-2 px-2 text-xs text-[#8f8b82]">{title}</div>
       <div className="space-y-1">
         {threads.map((thread) => (
           <button
             key={thread.id}
-            className="block w-full truncate rounded-spark px-2 py-1 text-left text-sm transition-colors hover:bg-active"
+            className={`block h-8 w-full truncate rounded-md px-2 text-left text-sm transition-colors hover:bg-[#2a2a28] ${
+              activeThreadID === thread.id ? "bg-[#10100f] text-white" : ""
+            }`}
             onClick={() => onSelect(thread.id)}
+            type="button"
           >
             {thread.title}
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function StartPanel({
+  displayName,
+  draft,
+  isSending,
+  sendError,
+  onDraftChange,
+  onSend,
+}: {
+  displayName: string;
+  draft: string;
+  isSending: boolean;
+  sendError: string;
+  onDraftChange(value: string): void;
+  onSend(): void;
+}) {
+  return (
+    <section className="flex h-screen min-h-0 flex-col items-center justify-center px-8 pb-[14vh]">
+      <h1 className="mb-8 flex items-center gap-4 font-serif text-[44px] font-light leading-none text-[#d8d4ca]">
+        <span className="font-sans text-[36px] text-[#e27757]" aria-hidden="true">
+          ✺
+        </span>
+        {greetingForNow()}, {displayName}
+      </h1>
+      <div className="w-full max-w-[676px]">
+        <Composer
+          variant="start"
+          draft={draft}
+          disabled={isSending}
+          placeholder="How can I help you today?"
+          onDraftChange={onDraftChange}
+          onSend={onSend}
+        />
+        {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+        <div className="mt-4 flex justify-center gap-2 text-sm text-[#e8e4da]">
+          <PromptChip icon="◇" label="Write" />
+          <PromptChip icon="▱" label="Learn" />
+          <PromptChip icon="‹/›" label="Code" />
+          <PromptChip icon="☕" label="Life stuff" />
+          <PromptChip icon="◌" label="Spark's choice" />
+        </div>
       </div>
     </section>
   );
@@ -425,14 +605,17 @@ function ChatPanel({
   onStarChange(starred: boolean): void;
 }) {
   return (
-    <>
-      <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
-        <h1 className="min-w-0 truncate font-serif text-2xl font-light tracking-tight">
+    <section className="flex h-screen min-h-0 flex-col">
+      <header className="flex h-9 shrink-0 items-center justify-between border-b border-[#252523] px-4 text-sm text-[#d5d2c9]">
+        <h1 className="min-w-0 truncate font-sans text-sm font-normal">
           {thread?.title ?? "New chat"}
+          <span className="ml-2 text-[#88857d]" aria-hidden="true">
+            ⌄
+          </span>
         </h1>
         {thread !== null && (
           <button
-            className="shrink-0 rounded-spark border border-border px-3 py-1.5 text-sm text-muted transition-colors hover:text-ink disabled:opacity-50"
+            className="rounded-md px-2 py-1 text-xs text-[#aaa79e] transition-colors hover:bg-[#2a2a28] hover:text-white disabled:opacity-50"
             disabled={isUpdatingStar}
             onClick={() => onStarChange(!thread.starred)}
             type="button"
@@ -441,53 +624,109 @@ function ChatPanel({
           </button>
         )}
       </header>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
-        ))}
-        {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
-        {streamingText !== "" && (
-          <div className="max-w-3xl rounded-spark border border-border bg-panel px-4 py-3 text-sm">
-            {streamingText}
-          </div>
-        )}
-        {sendError !== "" && (
-          <div className="max-w-3xl rounded-spark border border-accent bg-panel px-4 py-3 text-sm text-accent">
-            {sendError}
-          </div>
-        )}
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-10">
+        <div className="mx-auto w-full max-w-[834px] space-y-5">
+          {messages.map((message) => (
+            <MessageBubble key={message.id} message={message} />
+          ))}
+          {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
+          {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
+          {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+        </div>
       </div>
-      <form
-        className="border-t border-border p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSend();
-        }}
-      >
-        <div className="flex gap-2">
-          <input
-            className="min-w-0 flex-1 rounded-spark border border-border bg-panel px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-accent"
-            placeholder="Message"
-            value={draft}
-            onChange={(event) => onDraftChange(event.target.value)}
+      <div className="shrink-0 px-8 pb-5">
+        <div className="mx-auto w-full max-w-[756px]">
+          <Composer
+            variant="chat"
+            draft={draft}
+            disabled={isSending}
+            placeholder="Write a message..."
+            onDraftChange={onDraftChange}
+            onSend={onSend}
           />
+          <div className="mt-2 text-center text-xs text-[#858178]">
+            Spark can make mistakes. Please double-check responses.
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Composer({
+  variant,
+  draft,
+  disabled,
+  placeholder,
+  onDraftChange,
+  onSend,
+}: {
+  variant: "start" | "chat";
+  draft: string;
+  disabled: boolean;
+  placeholder: string;
+  onDraftChange(value: string): void;
+  onSend(): void;
+}) {
+  const height = variant === "start" ? "h-[122px]" : "h-[104px]";
+  return (
+    <form
+      className={`${height} rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSend();
+      }}
+    >
+      <textarea
+        className="h-[58px] w-full resize-none bg-transparent px-6 pt-5 text-base text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]"
+        placeholder={placeholder}
+        value={draft}
+        onChange={(event) => onDraftChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            onSend();
+          }
+        }}
+      />
+      <div className="flex h-11 items-center justify-between px-6 text-[#d8d4ca]">
+        <button className="text-2xl leading-none" type="button" aria-label="Add attachment">
+          +
+        </button>
+        <div className="flex items-center gap-4 text-sm text-[#d8d4ca]">
+          <span aria-hidden="true">Opus 4.8</span>
+          <span className="text-[#aaa79e]" aria-hidden="true">
+            High⌄
+          </span>
+          <span aria-hidden="true">♙</span>
+          <span aria-hidden="true">▥</span>
           <button
-            className="rounded-spark bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-strong disabled:opacity-50"
-            disabled={isSending || draft.trim() === ""}
+            className="grid h-8 w-8 place-items-center rounded-full bg-[#d8d4ca] text-base font-medium text-[#1f1f1d] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
+            disabled={disabled || draft.trim() === ""}
             type="submit"
+            aria-label="Send message"
           >
-            Send
+            ↑
           </button>
         </div>
-      </form>
-    </>
+      </div>
+    </form>
+  );
+}
+
+function PromptChip({ icon, label }: { icon: string; label: string }) {
+  return (
+    <button className="flex h-8 items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 text-sm text-[#eeeae2]" type="button">
+      <span className="text-[#aaa79e]">{icon}</span>
+      {label}
+    </button>
   );
 }
 
 function ToolActivityPanel({ events }: { events: ToolActivity[] }) {
   return (
-    <div className="max-w-3xl rounded-spark border border-border bg-panel px-4 py-3 text-sm text-muted">
-      <div className="font-medium text-ink">Tools</div>
+    <div className="max-w-3xl rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-sm text-[#aaa79e]">
+      <div className="font-medium text-[#f3f0e8]">Tools</div>
       <div className="mt-2 space-y-1">
         {events.map((event) => (
           <div key={event.id} className="flex items-center justify-between gap-3">
@@ -501,14 +740,35 @@ function ToolActivityPanel({ events }: { events: ToolActivity[] }) {
 }
 
 function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === "user";
+  if (message.role === "user") {
+    return (
+      <div className="ml-auto max-w-[40rem] rounded-xl bg-[#111110] px-4 py-3 text-base leading-relaxed text-[#f3f0e8]">
+        {message.content}
+      </div>
+    );
+  }
+  return <AssistantText>{message.content}</AssistantText>;
+}
+
+function AssistantText({ children }: { children: React.ReactNode }) {
+  return <div className="max-w-[46rem] text-base leading-7 text-[#f3f0e8]">{children}</div>;
+}
+
+function ErrorText({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className={`max-w-3xl rounded-spark border border-border px-4 py-3 text-sm ${
-        isUser ? "ml-auto bg-active" : "bg-panel"
-      }`}
-    >
-      {message.content}
+    <div className="mt-3 max-w-3xl rounded-lg border border-accent bg-[#282826] px-4 py-3 text-sm text-accent">
+      {children}
     </div>
+  );
+}
+
+function upsertToolCall(current: ToolActivity[], event: ToolCallEvent): ToolActivity[] {
+  const next = current.filter((item) => item.id !== event.id);
+  return [...next, { id: event.id, name: event.name, status: "running" }];
+}
+
+function upsertToolResult(current: ToolActivity[], event: ToolResultEvent): ToolActivity[] {
+  return current.map((item) =>
+    item.id === event.id ? { ...item, status: "done", content: event.content } : item,
   );
 }
