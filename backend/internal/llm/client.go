@@ -7,7 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 const maxErrorBodyBytes = 4096
@@ -18,6 +23,7 @@ type Config struct {
 	APIKey          string
 	Model           string
 	ReasoningEffort string
+	ResponseLogDir  string
 }
 
 // Message is one OpenAI-compatible chat message.
@@ -35,7 +41,10 @@ type Client struct {
 	model           string
 	reasoningEffort string
 	httpClient      *http.Client
+	responseLogDir  string
 }
+
+var responseLogSequence uint64
 
 func NewClient(cfg Config, httpClient *http.Client) *Client {
 	if httpClient == nil {
@@ -51,6 +60,7 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 		model:           cfg.Model,
 		reasoningEffort: reasoningEffort,
 		httpClient:      httpClient,
+		responseLogDir:  cfg.ResponseLogDir,
 	}
 }
 
@@ -91,6 +101,7 @@ func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Mes
 	if err != nil {
 		return nil, fmt.Errorf("chat completion request: %w", err)
 	}
+	c.wrapResponseLogger(resp)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
@@ -100,4 +111,62 @@ func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Mes
 		return nil, fmt.Errorf("chat completion failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return resp, nil
+}
+
+func (c *Client) wrapResponseLogger(resp *http.Response) {
+	if c.responseLogDir == "" || resp == nil || resp.Body == nil {
+		return
+	}
+	resp.Body = &responseLoggingBody{
+		ReadCloser: resp.Body,
+		resp:       resp,
+		logDir:     c.responseLogDir,
+	}
+}
+
+type responseLoggingBody struct {
+	io.ReadCloser
+	resp   *http.Response
+	logDir string
+	body   bytes.Buffer
+	once   sync.Once
+}
+
+func (b *responseLoggingBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if n > 0 {
+		_, _ = b.body.Write(p[:n])
+	}
+	return n, err
+}
+
+func (b *responseLoggingBody) Close() error {
+	closeErr := b.ReadCloser.Close()
+	b.once.Do(func() {
+		if err := b.writeLog(); err != nil {
+			// Response logs are a local-dev diagnostic aid; never fail chat delivery because logging failed.
+		}
+	})
+	return closeErr
+}
+
+func (b *responseLoggingBody) writeLog() error {
+	if err := os.MkdirAll(b.logDir, 0o700); err != nil {
+		return err
+	}
+	var out bytes.Buffer
+	proto := b.resp.Proto
+	if proto == "" {
+		proto = "HTTP/1.1"
+	}
+	_, _ = fmt.Fprintf(&out, "%s %s\n", proto, b.resp.Status)
+	if err := b.resp.Header.Write(&out); err != nil {
+		return err
+	}
+	_, _ = out.WriteString("\n")
+	_, _ = b.body.WriteTo(&out)
+
+	seq := atomic.AddUint64(&responseLogSequence, 1)
+	name := fmt.Sprintf("%s-%06d.http", time.Now().UTC().Format("20060102T150405.000000000Z"), seq)
+	return os.WriteFile(filepath.Join(b.logDir, name), out.Bytes(), 0o600)
 }

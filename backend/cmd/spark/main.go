@@ -54,9 +54,10 @@ func run() error {
 	var chatClient httpapi.ChatClient
 	if cfg.ChatBaseURL != "" {
 		chatClient = llm.NewClient(llm.Config{
-			BaseURL: cfg.ChatBaseURL,
-			APIKey:  cfg.ChatAPIKey,
-			Model:   cfg.ChatModel,
+			BaseURL:        cfg.ChatBaseURL,
+			APIKey:         cfg.ChatAPIKey,
+			Model:          cfg.ChatModel,
+			ResponseLogDir: responseLogDirForConfig(cfg),
 		}, http.DefaultClient)
 	}
 	var toolService httpapi.ToolService
@@ -135,4 +136,11 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+func responseLogDirForConfig(cfg config.Config) string {
+	if cfg.AuthMode != config.AuthModeDev {
+		return ""
+	}
+	return cfg.ChatLogDir
 }

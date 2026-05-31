@@ -27,6 +27,7 @@ type Config struct {
 	ChatBaseURL  string // OpenAI-compatible chat endpoint (MiMo)
 	ChatAPIKey   string
 	ChatModel    string
+	ChatLogDir   string
 	EmbedBaseURL string // OpenAI embeddings endpoint
 	EmbedAPIKey  string
 	EmbedModel   string
@@ -78,6 +79,7 @@ func Load() (Config, error) {
 		ChatBaseURL:          env("SPARK_CHAT_BASE_URL", ""),
 		ChatAPIKey:           env("SPARK_CHAT_API_KEY", ""),
 		ChatModel:            env("SPARK_CHAT_MODEL", "MiMo"),
+		ChatLogDir:           env("SPARK_CHAT_LOG_DIR", "logs/llm-responses"),
 		EmbedBaseURL:         env("SPARK_EMBED_BASE_URL", ""),
 		EmbedAPIKey:          env("SPARK_EMBED_API_KEY", ""),
 		EmbedModel:           env("SPARK_EMBED_MODEL", "text-embedding-3-small"),
