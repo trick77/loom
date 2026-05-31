@@ -215,6 +215,38 @@ func TestStore_AddMessageWithUsagePersistsTokenStats(t *testing.T) {
 	}
 }
 
+func TestStore_AddMessageWithUsagePersistsReasoningContent(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Reasoning"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	message, err := store.AddMessageWithUsage(ctx, userID, thread.ID, RoleAssistant, "answer", MessageTokenUsage{
+		ReasoningContent: "I checked the inputs first.",
+	})
+	if err != nil {
+		t.Fatalf("AddMessageWithUsage() error: %v", err)
+	}
+	if message.ReasoningContent != "I checked the inputs first." {
+		t.Fatalf("message.ReasoningContent = %q", message.ReasoningContent)
+	}
+
+	messages, found, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatalf("ListMessages() error: %v", err)
+	}
+	if !found || len(messages) != 1 {
+		t.Fatalf("messages found=%v len=%d", found, len(messages))
+	}
+	if messages[0].ReasoningContent != "I checked the inputs first." {
+		t.Fatalf("listed reasoning content = %q", messages[0].ReasoningContent)
+	}
+}
+
 func TestStore_RejectsOverlongInputs(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
