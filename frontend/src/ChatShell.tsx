@@ -738,13 +738,7 @@ function Composer({
         <button className="text-2xl leading-none" type="button" aria-label="Add attachment">
           +
         </button>
-        <div className="flex items-center gap-4 text-sm text-[#d8d4ca]">
-          <span aria-hidden="true">Opus 4.8</span>
-          <span className="text-[#aaa79e]" aria-hidden="true">
-            High⌄
-          </span>
-          <span aria-hidden="true">♙</span>
-          <span aria-hidden="true">▥</span>
+        <div className="flex items-center text-sm text-[#d8d4ca]">
           <button
             className="grid h-8 w-8 place-items-center rounded-full bg-[#d8d4ca] text-base font-medium text-[#1f1f1d] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
             disabled={disabled || draft.trim() === ""}
