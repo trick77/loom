@@ -462,3 +462,66 @@ func TestClient_StreamChatPropagatesDeltaCallbackError(t *testing.T) {
 		t.Fatalf("StreamChat() error = %v, want sentinel", err)
 	}
 }
+
+func TestClient_GenerateTitleOmitsEmptyAssistantMessage(t *testing.T) {
+	var gotMessages []Message
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []Message `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode request body: %v", err)
+		}
+		gotMessages = body.Messages
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Greeting"}}]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	title, err := client.GenerateTitle(context.Background(), "Hi", "")
+	if err != nil {
+		t.Fatalf("GenerateTitle() error: %v", err)
+	}
+	if title != "Greeting" {
+		t.Fatalf("title = %q, want Greeting", title)
+	}
+	if len(gotMessages) != 2 {
+		t.Fatalf("messages = %#v, want only system and user message", gotMessages)
+	}
+	for _, message := range gotMessages {
+		if message.Role == "assistant" {
+			t.Fatalf("messages include contentless assistant message: %#v", gotMessages)
+		}
+	}
+}
+
+func TestClient_GenerateTitleIncludesAssistantMessageWhenPresent(t *testing.T) {
+	var gotMessages []Message
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []Message `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode request body: %v", err)
+		}
+		gotMessages = body.Messages
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Greeting"}}]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	if _, err := client.GenerateTitle(context.Background(), "Hi", "Hi there"); err != nil {
+		t.Fatalf("GenerateTitle() error: %v", err)
+	}
+	if len(gotMessages) != 3 {
+		t.Fatalf("messages = %#v, want system, user and assistant message", gotMessages)
+	}
+	last := gotMessages[2]
+	if last.Role != "assistant" || last.Content != "Hi there" {
+		t.Fatalf("last message = %#v, want assistant with content", last)
+	}
+}
