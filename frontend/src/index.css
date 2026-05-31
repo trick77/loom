@@ -39,3 +39,25 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+.spark-wordmark {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
+.spark-sidebar-text,
+.spark-meta-text {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.spark-control-text,
+.spark-composer-text {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.spark-message-text {
+  font-size: 1rem;
+  line-height: 1.75rem;
+}
