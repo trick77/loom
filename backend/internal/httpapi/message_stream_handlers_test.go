@@ -56,6 +56,57 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 	}
 }
 
+func TestStreamMessagePersistsAssistantTokenUsage(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM: fakeChatClient{usage: llm.TokenUsage{
+			PromptTokens:     7,
+			CompletionTokens: 3,
+			TotalTokens:      10,
+			PromptTokensDetails: llm.PromptTokenDetails{
+				CachedTokens: 5,
+			},
+			CompletionTokenDetails: llm.CompletionTokenDetails{
+				ReasoningTokens: 2,
+			},
+		}},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if len(store.messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	}
+	assistant := store.messages[1]
+	if got := derefInt(assistant.PromptTokens); got != 7 {
+		t.Fatalf("PromptTokens = %d, want 7", got)
+	}
+	if got := derefInt(assistant.CompletionTokens); got != 3 {
+		t.Fatalf("CompletionTokens = %d, want 3", got)
+	}
+	if got := derefInt(assistant.TotalTokens); got != 10 {
+		t.Fatalf("TotalTokens = %d, want 10", got)
+	}
+	if got := derefInt(assistant.CachedTokens); got != 5 {
+		t.Fatalf("CachedTokens = %d, want 5", got)
+	}
+	if got := derefInt(assistant.ReasoningTokens); got != 2 {
+		t.Fatalf("ReasoningTokens = %d, want 2", got)
+	}
+}
+
+func derefInt(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
 func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
 	store := &fakeChatStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},

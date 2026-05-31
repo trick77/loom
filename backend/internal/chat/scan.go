@@ -70,19 +70,46 @@ func scanMessage(row rowScanner) (Message, error) {
 	var message Message
 	var role string
 	var toolCalls, citations string
+	var promptTokens, completionTokens, totalTokens, cachedTokens, reasoningTokens sql.NullInt64
 	var createdAt string
-	if err := row.Scan(&message.ID, &message.ThreadID, &role, &message.Content, &toolCalls, &citations, &createdAt); err != nil {
+	if err := row.Scan(
+		&message.ID,
+		&message.ThreadID,
+		&role,
+		&message.Content,
+		&toolCalls,
+		&citations,
+		&promptTokens,
+		&completionTokens,
+		&totalTokens,
+		&cachedTokens,
+		&reasoningTokens,
+		&createdAt,
+	); err != nil {
 		return Message{}, err
 	}
 	message.Role = Role(role)
 	message.ToolCalls = defaultJSON(toolCalls)
 	message.Citations = defaultJSON(citations)
+	message.PromptTokens = nullableInt(promptTokens)
+	message.CompletionTokens = nullableInt(completionTokens)
+	message.TotalTokens = nullableInt(totalTokens)
+	message.CachedTokens = nullableInt(cachedTokens)
+	message.ReasoningTokens = nullableInt(reasoningTokens)
 	var err error
 	message.CreatedAt, err = parseSQLiteTime(createdAt)
 	if err != nil {
 		return Message{}, fmt.Errorf("parse created_at: %w", err)
 	}
 	return message, nil
+}
+
+func nullableInt(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+	v := int(value.Int64)
+	return &v
 }
 
 func nullableTime(value sql.NullString) (*time.Time, error) {

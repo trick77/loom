@@ -1,15 +1,21 @@
 package llm
 
 type chatCompletionRequest struct {
-	Model           string    `json:"model"`
-	Messages        []Message `json:"messages"`
-	Stream          bool      `json:"stream"`
-	Tools           []Tool    `json:"tools,omitempty"`
-	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
+	Model           string         `json:"model"`
+	Messages        []Message      `json:"messages"`
+	Stream          bool           `json:"stream"`
+	Tools           []Tool         `json:"tools,omitempty"`
+	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
+	StreamOptions   *streamOptions `json:"stream_options,omitempty"`
+}
+
+type streamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type chatCompletionResponse struct {
 	Choices []chatCompletionChoice `json:"choices"`
+	Usage   TokenUsage             `json:"usage"`
 }
 
 type chatCompletionChoice struct {
@@ -22,6 +28,7 @@ type chatCompletionMessage struct {
 
 type chatCompletionChunk struct {
 	Choices []chatCompletionChunkChoice `json:"choices"`
+	Usage   TokenUsage                  `json:"usage"`
 }
 
 type chatCompletionChunkChoice struct {
@@ -75,4 +82,29 @@ type StreamEvent struct {
 type StreamResult struct {
 	Content   string
 	ToolCalls []ToolCall
+	Usage     TokenUsage
+}
+
+type TokenUsage struct {
+	PromptTokens           int                    `json:"prompt_tokens"`
+	CompletionTokens       int                    `json:"completion_tokens"`
+	TotalTokens            int                    `json:"total_tokens"`
+	PromptTokensDetails    PromptTokenDetails     `json:"prompt_tokens_details"`
+	CompletionTokenDetails CompletionTokenDetails `json:"completion_tokens_details"`
+}
+
+type PromptTokenDetails struct {
+	CachedTokens int `json:"cached_tokens"`
+}
+
+type CompletionTokenDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens"`
+}
+
+func (u TokenUsage) Present() bool {
+	return u.PromptTokens != 0 ||
+		u.CompletionTokens != 0 ||
+		u.TotalTokens != 0 ||
+		u.PromptTokensDetails.CachedTokens != 0 ||
+		u.CompletionTokenDetails.ReasoningTokens != 0
 }
