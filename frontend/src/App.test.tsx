@@ -545,6 +545,16 @@ test("shows a bottom jump control when the transcript is scrolled above the late
   await waitFor(() => expect(screen.queryByRole("button", { name: /jump to latest message/i })).not.toBeInTheDocument());
 });
 
+test("masks transcript content behind the overlaid composer dock", async () => {
+  vi.stubGlobal("fetch", chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  const dock = await screen.findByLabelText("Message composer dock");
+  expect(dock).toHaveClass("bg-bg");
+});
+
 function mcpStreamFetch(streamBody: string) {
   const stream = new ReadableStream({
     start(controller) {
@@ -859,6 +869,18 @@ test("shows fenced file-like assistant output as a dedicated download response",
   expect(screen.getByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
+});
+
+test("shows a fenced HTML artifact with surrounding prose as a dedicated download response", async () => {
+  const content = "Here is the HTML:\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("HTML response")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
+  expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Here is the HTML/i)).not.toBeInTheDocument();
 });
 
 test("downloads fenced generated data without markdown fences", async () => {

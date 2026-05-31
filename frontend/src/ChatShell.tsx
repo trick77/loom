@@ -763,7 +763,10 @@ function ChatPanel({
             </svg>
           </button>
         )}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">
+        <div
+          aria-label="Message composer dock"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-bg px-8 pb-5 pt-4"
+        >
           <div className="pointer-events-auto mx-auto w-full max-w-[756px]">
             <Composer
               variant="chat"
@@ -821,6 +824,7 @@ function Composer({
   onSend(): void;
 }) {
   const height = variant === "start" ? "h-[122px]" : "h-[104px]";
+  const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   return (
     <form
       className={`${height} rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
@@ -852,7 +856,7 @@ function Composer({
             type="submit"
             aria-label="Send message"
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+            <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
               <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
@@ -1049,16 +1053,22 @@ function downloadableResponse(content: string): DownloadableResponse | null {
 }
 
 function fencedArtifact(content: string): DownloadableResponse | null {
-  const match = content.trim().match(/^```([a-z0-9_-]+)\n([\s\S]*)\n```$/i);
-  if (match === null) return null;
+  const matches = [...content.matchAll(/```([a-z0-9_-]+)\n([\s\S]*?)\n```/gi)];
+  const downloadableMatches = matches
+    .map((match) => ({
+      extension: extensionForLanguage(match[1].trim().toLowerCase()),
+      content: match[2],
+    }))
+    .filter((artifact) => downloadOnlyExtensions.has(artifact.extension));
 
-  const extension = extensionForLanguage(match[1].trim().toLowerCase());
-  if (!downloadOnlyExtensions.has(extension)) return null;
+  if (downloadableMatches.length !== 1) return null;
+
+  const artifact = downloadableMatches[0];
   return {
-    extension,
-    label: extension.toUpperCase(),
-    mimeType: responseMimeType(extension),
-    content: match[2],
+    extension: artifact.extension,
+    label: artifact.extension.toUpperCase(),
+    mimeType: responseMimeType(artifact.extension),
+    content: artifact.content,
   };
 }
 
