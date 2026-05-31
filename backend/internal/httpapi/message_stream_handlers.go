@@ -89,7 +89,9 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	persistCtx := context.WithoutCancel(r.Context())
-	assistantMessage, err := s.chat.AddMessageWithUsage(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageUsageFromLLM(assistantResult.Usage))
+	usage := messageUsageFromLLM(assistantResult.Usage)
+	usage.ReasoningContent = assistantResult.ReasoningContent
+	assistantMessage, err := s.chat.AddMessageWithUsage(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, usage)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
@@ -128,14 +130,23 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 	}
 	if len(tools) == 0 {
 		callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat", 1))
-		return s.llm.StreamChatResult(callCtx, history, func(delta string) error {
-			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: delta})
+		return s.llm.StreamChatWithTools(callCtx, history, nil, func(event llm.StreamEvent) error {
+			if event.ReasoningDelta != "" {
+				return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
+			}
+			if event.Delta != "" {
+				return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
+			}
+			return nil
 		})
 	}
 
 	for round := 1; round <= maxToolRounds; round++ {
 		callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat_tool_round", round))
 		result, err := s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
+			if event.ReasoningDelta != "" {
+				return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
+			}
 			if event.Delta != "" {
 				return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
 			}
@@ -159,9 +170,10 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		}
 
 		history = append(history, llm.Message{
-			Role:      "assistant",
-			Content:   result.Content,
-			ToolCalls: result.ToolCalls,
+			Role:             "assistant",
+			Content:          result.Content,
+			ReasoningContent: result.ReasoningContent,
+			ToolCalls:        result.ToolCalls,
 		})
 		for _, call := range result.ToolCalls {
 			output := s.executeToolCall(ctx, call)
@@ -176,8 +188,14 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		}
 	}
 	callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1))
-	return s.llm.StreamChatResult(callCtx, history, func(delta string) error {
-		return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: delta})
+	return s.llm.StreamChatWithTools(callCtx, history, nil, func(event llm.StreamEvent) error {
+		if event.ReasoningDelta != "" {
+			return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
+		}
+		if event.Delta != "" {
+			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
+		}
+		return nil
 	})
 }
 
@@ -286,7 +304,11 @@ func buildLLMHistory(user auth.User, messages []chat.Message, newUserMessage cha
 	for _, message := range messages {
 		switch message.Role {
 		case chat.RoleUser, chat.RoleAssistant:
-			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
+			history = append(history, llm.Message{
+				Role:             string(message.Role),
+				Content:          message.Content,
+				ReasoningContent: message.ReasoningContent,
+			})
 		}
 	}
 	history = append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
