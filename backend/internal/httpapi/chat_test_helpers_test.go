@@ -243,8 +243,27 @@ func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, fu
 	return llm.StreamResult{Content: f.plain}, nil
 }
 
-func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	f.histories = append(f.histories, append([]llm.Message(nil), history...))
+	if len(tools) == 0 {
+		result, err := f.StreamChatResult(context.Background(), history, nil)
+		if err != nil {
+			return llm.StreamResult{}, err
+		}
+		if onEvent != nil {
+			if result.ReasoningContent != "" {
+				if err := onEvent(llm.StreamEvent{ReasoningDelta: result.ReasoningContent}); err != nil {
+					return llm.StreamResult{}, err
+				}
+			}
+			if result.Content != "" {
+				if err := onEvent(llm.StreamEvent{Delta: result.Content}); err != nil {
+					return llm.StreamResult{}, err
+				}
+			}
+		}
+		return result, nil
+	}
 	result := f.results[0]
 	f.results = f.results[1:]
 	if onEvent != nil {
