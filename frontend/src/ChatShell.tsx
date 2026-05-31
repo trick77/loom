@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -666,6 +666,40 @@ function ChatPanel({
   onRetry(content: string): void;
   onStarChange(starred: boolean): void;
 }) {
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  const refreshScrollState = useCallback(() => {
+    const transcript = transcriptRef.current;
+    if (transcript === null) return;
+    const isAtBottom = isNearBottom(transcript);
+    shouldStickToBottomRef.current = isAtBottom;
+    setShowJumpToBottom(!isAtBottom);
+  }, []);
+
+  const scrollToLatest = useCallback(() => {
+    const transcript = transcriptRef.current;
+    if (transcript === null) return;
+    transcript.scrollTop = transcript.scrollHeight;
+    shouldStickToBottomRef.current = true;
+    setShowJumpToBottom(false);
+  }, []);
+
+  useLayoutEffect(() => {
+    shouldStickToBottomRef.current = true;
+    setShowJumpToBottom(false);
+    scrollToLatest();
+  }, [scrollToLatest, thread?.id]);
+
+  useLayoutEffect(() => {
+    if (shouldStickToBottomRef.current) {
+      scrollToLatest();
+      return;
+    }
+    refreshScrollState();
+  }, [messages.length, refreshScrollState, scrollToLatest, sendError, streamingText, toolEvents.length]);
+
   return (
     <section className="flex h-screen min-h-0 flex-col">
       <header className="spark-control-text flex h-9 shrink-0 items-center justify-between border-b border-[#252523] px-4 text-[#d5d2c9]">
@@ -686,38 +720,69 @@ function ChatPanel({
           </button>
         )}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-10">
-        <div className="mx-auto w-full max-w-[834px] space-y-5">
-          {messages.map((message, index) => (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
-              onRetry={onRetry}
-            />
-          ))}
-          {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
-          {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
-          {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={transcriptRef}
+          aria-label="Conversation transcript"
+          className="h-full overflow-y-auto px-8 pb-44 pt-10"
+          onScroll={refreshScrollState}
+          role="region"
+        >
+          <div className="mx-auto w-full max-w-[834px] space-y-5">
+            {messages.map((message, index) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
+                onRetry={onRetry}
+              />
+            ))}
+            {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
+            {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
+            {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+          </div>
         </div>
-      </div>
-      <div className="shrink-0 px-8 pb-5">
-        <div className="mx-auto w-full max-w-[756px]">
-          <Composer
-            variant="chat"
-            draft={draft}
-            disabled={isSending}
-            placeholder="Write a message..."
-            onDraftChange={onDraftChange}
-            onSend={onSend}
-          />
-          <div className="spark-meta-text mt-2 text-center text-[#858178]">
-            Spark can make mistakes. Please double-check responses.
+        {showJumpToBottom && (
+          <button
+            aria-label="Jump to latest message"
+            className="absolute bottom-40 left-1/2 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border border-[#4b4a46] bg-[#2a2a28] text-[#f3f0e8] shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-colors hover:bg-[#343432]"
+            onClick={scrollToLatest}
+            title="Jump to latest"
+            type="button"
+          >
+            <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <path
+                d="M12 5v14M6.5 13.5 12 19l5.5-5.5"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.2"
+              />
+            </svg>
+          </button>
+        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">
+          <div className="pointer-events-auto mx-auto w-full max-w-[756px]">
+            <Composer
+              variant="chat"
+              draft={draft}
+              disabled={isSending}
+              placeholder="Write a message..."
+              onDraftChange={onDraftChange}
+              onSend={onSend}
+            />
+            <div className="spark-meta-text mt-2 text-center text-[#858178]">
+              Spark can make mistakes. Please double-check responses.
+            </div>
           </div>
         </div>
       </div>
     </section>
   );
+}
+
+function isNearBottom(element: HTMLElement): boolean {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
 }
 
 function previousUserContent(messages: Message[], beforeIndex: number): string | null {

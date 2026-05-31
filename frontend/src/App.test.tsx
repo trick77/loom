@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
 
@@ -413,6 +413,83 @@ test("renders streamed assistant response", async () => {
   expect(await screen.findByText("Hello")).toBeInTheDocument();
 });
 
+test("keeps the transcript pinned while an assistant response streams at the bottom", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  await screen.findByText("Hi");
+  const transcript = screen.getByRole("region", { name: /conversation transcript/i });
+  let scrollHeight = 1000;
+  let scrollTop = 900;
+  Object.defineProperties(transcript, {
+    clientHeight: { configurable: true, value: 100 },
+    scrollHeight: {
+      configurable: true,
+      get: () => scrollHeight,
+    },
+    scrollTop: {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    },
+  });
+
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
+  await screen.findByText("Hel");
+  await waitFor(() => expect(scrollTop).toBe(1000));
+
+  scrollHeight = 1200;
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"lo"}\n\n'));
+  await screen.findByText("Hello");
+  await waitFor(() => expect(scrollTop).toBe(1200));
+});
+
+test("shows a bottom jump control when the transcript is scrolled above the latest message", async () => {
+  vi.stubGlobal("fetch", chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  const transcript = await screen.findByRole("region", { name: /conversation transcript/i });
+  let scrollTop = 100;
+  Object.defineProperties(transcript, {
+    clientHeight: { configurable: true, value: 300 },
+    scrollHeight: { configurable: true, value: 900 },
+    scrollTop: {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    },
+  });
+
+  fireEvent.scroll(transcript);
+
+  const jumpButton = await screen.findByRole("button", { name: /jump to latest message/i });
+  fireEvent.click(jumpButton);
+
+  expect(scrollTop).toBe(900);
+  await waitFor(() => expect(screen.queryByRole("button", { name: /jump to latest message/i })).not.toBeInTheDocument());
+});
+
 function mcpStreamFetch(streamBody: string) {
   const stream = new ReadableStream({
     start(controller) {
@@ -436,6 +513,36 @@ function mcpStreamFetch(streamBody: string) {
       });
     }
     if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      return new Response(stream, { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
+
+function chatThreadFetch(
+  stream: ReadableStream<Uint8Array> | null,
+  messages: Array<{ id: string; role: "assistant" | "user"; content: string }> = [],
+) {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") {
+      return Response.json([
+        { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+      ]);
+    }
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+        messages: messages.map((message, index) => ({
+          ...message,
+          threadId: "t1",
+          createdAt: `2026-05-30T00:00:0${index}Z`,
+        })),
+      });
+    }
+    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST" && stream !== null) {
       return new Response(stream, { status: 200 });
     }
     throw new Error(`unexpected fetch ${url}`);
