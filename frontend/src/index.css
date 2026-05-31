@@ -105,9 +105,9 @@ body {
 
 .spark-sidebar-text,
 .spark-meta-text {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 400;
-  line-height: 1rem;
+  line-height: 1.125rem;
 }
 
 .spark-control-text,
@@ -117,8 +117,8 @@ body {
 }
 
 .spark-message-text {
-  font-size: 1rem;
-  line-height: 1.5rem;
+  font-size: 0.9375rem;
+  line-height: 1.45rem;
 }
 
 .spark-user-message-text {
