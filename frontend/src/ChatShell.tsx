@@ -1082,22 +1082,20 @@ function downloadableResponse(content: string): EmbeddedArtifact | null {
 
 function fencedArtifact(content: string): EmbeddedArtifact | null {
   const matches = [...content.matchAll(/(?:^|\n)```([a-z0-9_-]+)[ \t]*\n([\s\S]*?)\n```(?=\n|$)/gi)];
-  const downloadableMatches = matches
-    .map((match) => ({
-      match,
-      extension: extensionForLanguage(match[1].trim().toLowerCase()),
-    }))
-    .filter((candidate) => downloadOnlyExtensions.has(candidate.extension));
+  const downloadable = matches.flatMap((match) => {
+    const extension = extensionByLanguage.get(match[1].trim().toLowerCase());
+    return extension === undefined ? [] : [{ match, extension }];
+  });
 
-  if (downloadableMatches.length !== 1) return null;
+  if (downloadable.length !== 1) return null;
 
-  const { match, extension } = downloadableMatches[0];
+  const { match, extension } = downloadable[0];
   const start = match.index ?? 0;
   return {
     artifact: {
       extension,
       label: extension.toUpperCase(),
-      mimeType: responseMimeType(extension),
+      mimeType: DOWNLOAD_FORMATS[extension].mimeType,
       content: match[2],
     },
     before: content.slice(0, start).trim(),
@@ -1105,29 +1103,47 @@ function fencedArtifact(content: string): EmbeddedArtifact | null {
   };
 }
 
-const downloadOnlyExtensions = new Set(["csv", "html", "json", "pptx", "svg", "xlsx", "xml"]);
+// Single source of truth for downloadable artifact formats. Keyed by file
+// extension; `languages` are the fenced code-block tags and `mimeTypes` the
+// data: URL types that map onto each format. New format = one entry here.
+type DownloadFormat = { mimeType: string; languages: string[]; mimeTypes: string[] };
 
-function responseMimeType(extension: string): string {
-  if (extension === "html") return "text/html;charset=utf-8";
-  if (extension === "json") return "application/json;charset=utf-8";
-  if (extension === "csv") return "text/csv;charset=utf-8";
-  if (extension === "pptx") {
-    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-  }
-  if (extension === "xlsx") {
-    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  }
-  if (extension === "xml" || extension === "svg") return "application/xml;charset=utf-8";
-  if (extension === "md") return "text/markdown;charset=utf-8";
-  return "text/plain;charset=utf-8";
-}
+const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
+  csv: { mimeType: "text/csv;charset=utf-8", languages: ["csv"], mimeTypes: ["text/csv"] },
+  html: { mimeType: "text/html;charset=utf-8", languages: ["html"], mimeTypes: ["text/html"] },
+  json: { mimeType: "application/json;charset=utf-8", languages: ["json"], mimeTypes: ["application/json"] },
+  svg: { mimeType: "application/xml;charset=utf-8", languages: ["svg"], mimeTypes: ["image/svg+xml"] },
+  xml: { mimeType: "application/xml;charset=utf-8", languages: ["xml"], mimeTypes: ["application/xml", "text/xml"] },
+  pptx: {
+    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    languages: [],
+    mimeTypes: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  },
+  xlsx: {
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    languages: [],
+    mimeTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  },
+};
+
+const extensionByLanguage = new Map<string, string>(
+  Object.entries(DOWNLOAD_FORMATS).flatMap(([extension, format]) =>
+    format.languages.map((language) => [language, extension] as const),
+  ),
+);
+
+const extensionByMimeType = new Map<string, string>(
+  Object.entries(DOWNLOAD_FORMATS).flatMap(([extension, format]) =>
+    format.mimeTypes.map((mimeType) => [mimeType, extension] as const),
+  ),
+);
 
 function dataURLArtifact(content: string): DownloadableResponse | null {
   const match = content.trim().match(/^data:([^;,]+)(;base64)?,([\s\S]+)$/i);
   if (match === null) return null;
   const mimeType = match[1].toLowerCase();
-  const extension = extensionForMimeType(mimeType);
-  if (extension === null) return null;
+  const extension = extensionByMimeType.get(mimeType);
+  if (extension === undefined) return null;
   const encoded = match[3];
   let artifactContent: BlobPart;
   try {
@@ -1160,43 +1176,6 @@ function markdownToPlainText(content: string): string {
     .replace(/~~(.*?)~~/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .trim();
-}
-
-function extensionForMimeType(mimeType: string): string | null {
-  const extensions: Record<string, string> = {
-    "application/json": "json",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    "application/xml": "xml",
-    "image/svg+xml": "svg",
-    "text/csv": "csv",
-    "text/html": "html",
-    "text/xml": "xml",
-  };
-  return extensions[mimeType] ?? null;
-}
-
-function extensionForLanguage(language: string): string {
-  const extensions: Record<string, string> = {
-    bash: "sh",
-    css: "css",
-    csv: "csv",
-    html: "html",
-    javascript: "js",
-    js: "js",
-    json: "json",
-    markdown: "md",
-    md: "md",
-    python: "py",
-    sh: "sh",
-    svg: "svg",
-    ts: "ts",
-    typescript: "ts",
-    xml: "xml",
-    yaml: "yaml",
-    yml: "yaml",
-  };
-  return extensions[language] ?? "txt";
 }
 
 function CopyIcon() {
