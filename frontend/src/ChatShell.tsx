@@ -70,6 +70,7 @@ export function ChatShell({
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
+  const [sendScrollRequest, setSendScrollRequest] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
 
@@ -239,6 +240,7 @@ export function ChatShell({
 
   async function sendContent(content: string, options: { restoreDraftOnError: boolean }) {
     setDraft("");
+    setSendScrollRequest((current) => current + 1);
     setIsSending(true);
     setStreamingText("");
     setStreamingReasoning("");
@@ -459,6 +461,7 @@ export function ChatShell({
             streamingReasoning={streamingReasoning}
             toolEvents={toolEvents}
             sendError={sendError}
+            sendScrollRequest={sendScrollRequest}
             isSending={isSending}
             isUpdatingStar={isUpdatingStar}
             onDraftChange={setDraft}
@@ -655,6 +658,7 @@ function ChatPanel({
   streamingReasoning,
   toolEvents,
   sendError,
+  sendScrollRequest,
   isSending,
   isUpdatingStar,
   onDraftChange,
@@ -669,6 +673,7 @@ function ChatPanel({
   streamingReasoning: string;
   toolEvents: ToolActivity[];
   sendError: string;
+  sendScrollRequest: number;
   isSending: boolean;
   isUpdatingStar: boolean;
   onDraftChange(value: string): void;
@@ -678,6 +683,7 @@ function ChatPanel({
 }) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
+  const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const showThinkingIndicator = isSending && streamingText === "" && streamingReasoning === "" && toolEvents.length === 0 && sendError === "";
 
@@ -692,7 +698,15 @@ function ChatPanel({
   const scrollToLatest = useCallback(() => {
     const transcript = transcriptRef.current;
     if (transcript === null) return;
-    transcript.scrollTop = transcript.scrollHeight;
+    const scroll = () => {
+      transcript.scrollTop = transcript.scrollHeight;
+    };
+    scroll();
+    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      scroll();
+    });
     shouldStickToBottomRef.current = true;
     setShowJumpToBottom(false);
   }, []);
@@ -704,9 +718,9 @@ function ChatPanel({
   }, [scrollToLatest, thread?.id]);
 
   useLayoutEffect(() => {
-    if (!isSending) return;
+    if (sendScrollRequest === 0) return;
     scrollToLatest();
-  }, [isSending, scrollToLatest]);
+  }, [scrollToLatest, sendScrollRequest]);
 
   useLayoutEffect(() => {
     if (shouldStickToBottomRef.current) {
@@ -715,6 +729,12 @@ function ChatPanel({
     }
     refreshScrollState();
   }, [messages.length, refreshScrollState, scrollToLatest, sendError, showThinkingIndicator, streamingReasoning, streamingText, toolEvents.length]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+    };
+  }, []);
 
   return (
     <section className="flex h-screen min-h-0 flex-col">
