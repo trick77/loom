@@ -97,13 +97,16 @@ body {
 }
 
 .spark-greeting-text {
+  color: #c3c2b7;
   font-size: 2.125rem;
+  font-weight: 300;
   line-height: 1;
 }
 
 .spark-sidebar-text,
 .spark-meta-text {
   font-size: 0.75rem;
+  font-weight: 400;
   line-height: 1rem;
 }
 

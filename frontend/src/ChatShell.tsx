@@ -598,7 +598,7 @@ function StartPanel({
 }) {
   return (
     <section className="flex h-screen min-h-0 flex-col items-center justify-center px-8 pb-[14vh]">
-      <h1 className="spark-greeting-text mb-8 flex items-center gap-4 font-serif font-light text-[#d8d4ca]">
+      <h1 className="spark-greeting-text mb-8 flex items-center gap-4 font-serif">
         <img className="h-10 w-10 shrink-0" src={logoImage} alt="" aria-hidden="true" />
         {greetingForNow()}, {displayName}
       </h1>
