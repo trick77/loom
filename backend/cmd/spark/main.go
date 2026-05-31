@@ -53,12 +53,7 @@ func run() error {
 	chatStore := chat.NewStore(db)
 	var chatClient httpapi.ChatClient
 	if cfg.ChatBaseURL != "" {
-		chatClient = llm.NewClient(llm.Config{
-			BaseURL:        cfg.ChatBaseURL,
-			APIKey:         cfg.ChatAPIKey,
-			Model:          cfg.ChatModel,
-			ResponseLogDir: responseLogDirForConfig(cfg),
-		}, http.DefaultClient)
+		chatClient = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
 	}
 	var toolService httpapi.ToolService
 	if cfg.MCPConfigPath != "" {
@@ -143,4 +138,14 @@ func responseLogDirForConfig(cfg config.Config) string {
 		return ""
 	}
 	return cfg.ChatLogDir
+}
+
+func chatClientConfigFromConfig(cfg config.Config) llm.Config {
+	return llm.Config{
+		BaseURL:         cfg.ChatBaseURL,
+		APIKey:          cfg.ChatAPIKey,
+		Model:           cfg.ChatModel,
+		ReasoningEffort: cfg.ChatReasoningEffort,
+		ResponseLogDir:  responseLogDirForConfig(cfg),
+	}
 }

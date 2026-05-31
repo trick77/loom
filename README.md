@@ -111,6 +111,7 @@ SPARK_OIDC_ADMIN_GROUP=spark-admins
 SPARK_CHAT_BASE_URL=http://your-mimo-host/v1
 SPARK_CHAT_API_KEY=replace-with-chat-api-key
 SPARK_CHAT_MODEL=MiMo
+SPARK_CHAT_REASONING_EFFORT=high
 ```
 
 Keep secrets in environment variables or an uncommitted `.env` file. Do not commit client secrets or
@@ -144,11 +145,13 @@ Spark uses an OpenAI-compatible chat endpoint:
 SPARK_CHAT_BASE_URL=http://your-mimo-host/v1
 SPARK_CHAT_API_KEY=replace-with-chat-api-key
 SPARK_CHAT_MODEL=MiMo
+SPARK_CHAT_REASONING_EFFORT=high
 ```
 
 The backend calls `POST <SPARK_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
-`messages`, `model`, and `stream` fields. If `SPARK_CHAT_BASE_URL` is empty, the authenticated shell
-still loads but sending a chat message returns a service-unavailable error.
+`messages`, `model`, `stream`, and `reasoning_effort` fields. `SPARK_CHAT_REASONING_EFFORT`
+defaults to `high` when unset. If `SPARK_CHAT_BASE_URL` is empty, the authenticated shell still loads
+but sending a chat message returns a service-unavailable error.
 
 ### MCP Tools
 
