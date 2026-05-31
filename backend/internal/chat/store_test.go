@@ -85,6 +85,53 @@ func TestStore_CreateProjectAndThreadScopesByUser(t *testing.T) {
 	}
 }
 
+func TestStore_ListMethodsReturnEmptySlices(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	projects, err := store.ListProjects(ctx, userID, false)
+	if err != nil {
+		t.Fatalf("ListProjects() error: %v", err)
+	}
+	if projects == nil {
+		t.Fatal("ListProjects() = nil, want empty slice")
+	}
+	if len(projects) != 0 {
+		t.Fatalf("len(projects) = %d, want 0", len(projects))
+	}
+
+	threads, err := store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads() error: %v", err)
+	}
+	if threads == nil {
+		t.Fatal("ListThreads() = nil, want empty slice")
+	}
+	if len(threads) != 0 {
+		t.Fatalf("len(threads) = %d, want 0", len(threads))
+	}
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Empty messages"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	messages, ok, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatalf("ListMessages() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("ListMessages() ok = false, want true")
+	}
+	if messages == nil {
+		t.Fatal("ListMessages() = nil, want empty slice")
+	}
+	if len(messages) != 0 {
+		t.Fatalf("len(messages) = %d, want 0", len(messages))
+	}
+}
+
 func TestStore_ListThreadsSupportsRecentsAndStarred(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

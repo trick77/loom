@@ -52,7 +52,7 @@ ORDER BY updated_at DESC, id DESC`, archiveFilter),
 	}
 	defer rows.Close()
 
-	var projects []Project
+	projects := make([]Project, 0)
 	for rows.Next() {
 		project, err := scanProject(rows)
 		if err != nil {

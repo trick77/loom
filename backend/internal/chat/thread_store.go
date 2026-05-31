@@ -91,7 +91,7 @@ LIMIT ?`, strings.Join(filters, " AND "))
 	}
 	defer rows.Close()
 
-	var threads []Thread
+	threads := make([]Thread, 0)
 	for rows.Next() {
 		thread, err := scanThread(rows)
 		if err != nil {

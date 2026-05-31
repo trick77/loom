@@ -72,7 +72,7 @@ ORDER BY created_at ASC, id ASC`,
 	}
 	defer rows.Close()
 
-	var messages []Message
+	messages := make([]Message, 0)
 	for rows.Next() {
 		message, err := scanMessage(rows)
 		if err != nil {
