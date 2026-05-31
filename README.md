@@ -108,6 +108,9 @@ SPARK_OIDC_CLIENT_SECRET=replace-with-authentik-client-secret
 SPARK_OIDC_REDIRECT_URL=https://spark.example.com/api/auth/callback
 SPARK_OIDC_POST_LOGOUT_REDIRECT_URL=https://spark.example.com/
 SPARK_OIDC_ADMIN_GROUP=spark-admins
+SPARK_CHAT_BASE_URL=http://your-mimo-host/v1
+SPARK_CHAT_API_KEY=replace-with-chat-api-key
+SPARK_CHAT_MODEL=MiMo
 ```
 
 Keep secrets in environment variables or an uncommitted `.env` file. Do not commit client secrets or
@@ -125,10 +128,46 @@ Required externally reachable paths:
 - `/api/auth/callback`
 - `/api/auth/logout`
 - `/api/me`
+- `/api/projects`
+- `/api/threads`
 
 The callback URL configured in authentik must exactly match `SPARK_OIDC_REDIRECT_URL`.
 
-### 6. Smoke test
+## Chat Setup
+
+Phase 3 adds project-less chats, projects, threads, message persistence, starred/recents, SSE
+streaming, and first-exchange thread naming.
+
+Spark uses an OpenAI-compatible chat endpoint:
+
+```bash
+SPARK_CHAT_BASE_URL=http://your-mimo-host/v1
+SPARK_CHAT_API_KEY=replace-with-chat-api-key
+SPARK_CHAT_MODEL=MiMo
+```
+
+The backend calls `POST <SPARK_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
+`messages`, `model`, and `stream` fields. If `SPARK_CHAT_BASE_URL` is empty, the authenticated shell
+still loads but sending a chat message returns a service-unavailable error.
+
+### Current Phase 3 Scope
+
+Implemented now:
+
+- Authenticated project/thread/message API.
+- OpenAI-compatible streaming chat.
+- Project-less new chats.
+- Starred and recent thread lists.
+- Automatic thread naming after the first completed assistant response.
+
+Still planned for later phases:
+
+- MCP tools and agent loop.
+- Document upload, RAG, citations, and Sources population.
+- Artifacts file browser.
+- Memory extraction, storage, and injection.
+
+### Smoke Test
 
 1. Start Spark with the environment above.
 2. Open `https://spark.example.com/`.
@@ -136,7 +175,10 @@ The callback URL configured in authentik must exactly match `SPARK_OIDC_REDIRECT
 4. Complete authentik login.
 5. Confirm Spark opens the authenticated app shell.
 6. Sign in as a member of `SPARK_OIDC_ADMIN_GROUP` and confirm admin features appear.
-7. Sign out and confirm returning to Spark requires a new authenticated session.
+7. Create a new chat.
+8. Send a message and confirm the assistant response streams into the conversation.
+9. Confirm the thread title changes from **New chat** after the first completed response.
+10. Sign out and confirm returning to Spark requires a new authenticated session.
 
 ### Logout behavior
 
