@@ -40,7 +40,7 @@ type ToolActivity = {
   content?: string;
 };
 
-type SidebarIconName = "chats" | "projects" | "artifacts" | "customize";
+type SidebarIconName = "chats" | "projects";
 
 export function ChatShell({
   user,
@@ -321,8 +321,6 @@ export function ChatShell({
           </button>
           <SidebarPrimaryItem label="Chats" icon="chats" />
           <SidebarPrimaryItem label="Projects" icon="projects" />
-          <SidebarPrimaryItem label="Artifacts" icon="artifacts" />
-          <SidebarPrimaryItem label="Customize" icon="customize" />
           {loadError !== "" && (
             <div className="spark-meta-text mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-accent">
               {loadError}
@@ -534,21 +532,7 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
       </svg>
     );
   }
-  if (name === "artifacts") {
-    return (
-      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-        <path d="M12 4.5v5.2M7.5 12.3 12 9.7l4.5 2.6M7.5 17.5v-5.2M16.5 17.5v-5.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M12 2.8 9.7 4.1v2.6L12 8l2.3-1.3V4.1L12 2.8ZM7.5 10.2l-2.3 1.3v2.6l2.3 1.3 2.3-1.3v-2.6l-2.3-1.3ZM16.5 10.2l-2.3 1.3v2.6l2.3 1.3 2.3-1.3v-2.6l-2.3-1.3ZM7.5 16.2l-2.3 1.3v2.6l2.3 1.3 2.3-1.3v-2.6l-2.3-1.3ZM16.5 16.2l-2.3 1.3v2.6l2.3 1.3 2.3-1.3v-2.6l-2.3-1.3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  return (
-    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <path d="M8.5 7V5.7c0-1 .7-1.7 1.8-1.7h3.4c1.1 0 1.8.7 1.8 1.7V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M5 7h14c1.2 0 2 .8 2 2v8.5c0 1.3-.8 2-2 2H5c-1.2 0-2-.7-2-2V9c0-1.2.8-2 2-2Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="M3.5 12h17M10 12.2v1.2h4v-1.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return null;
 }
 
 function McpStatusIndicator({ status }: { status: McpStatusEvent }) {
