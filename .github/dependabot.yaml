@@ -10,8 +10,8 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
-      # Pinned to v0.20.0 for sqlite-vec ABI compatibility (see AGENTS.md);
-      # only change this manually after validating sqlite-vec on Linux.
+      # Pinned at v0.23.x for sqlite-vec ABI compatibility (see AGENTS.md);
+      # bumping to v0.24+ breaks the current sqlite-vec binding.
       - dependency-name: github.com/ncruces/go-sqlite3
 
   # React frontend
