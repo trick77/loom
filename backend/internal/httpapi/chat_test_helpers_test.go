@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -182,10 +183,14 @@ func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.M
 type fakeToolChatClient struct {
 	results   []llm.StreamResult
 	histories [][]llm.Message
+	plain     string
 }
 
 func (f *fakeToolChatClient) StreamChat(context.Context, []llm.Message, func(string) error) (string, error) {
-	return "", nil
+	if f.plain == "" {
+		return "", nil
+	}
+	return f.plain, nil
 }
 
 func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
@@ -214,6 +219,7 @@ func (f *fakeToolChatClient) GenerateTitle(context.Context, string, string) (str
 type fakeMCPService struct {
 	tools  []llm.Tool
 	result string
+	err    error
 }
 
 func (f fakeMCPService) Tools() []llm.Tool {
@@ -221,5 +227,10 @@ func (f fakeMCPService) Tools() []llm.Tool {
 }
 
 func (f fakeMCPService) CallTool(context.Context, string, map[string]any) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
 	return f.result, nil
 }
+
+var errFakeTool = errors.New("fake tool failed")

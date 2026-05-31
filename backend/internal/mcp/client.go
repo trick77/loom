@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,13 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
+)
+
+const (
+	defaultHTTPTimeout  = 15 * time.Second
+	maxRPCResponseBytes = 4 << 20
+	maxToolOutputBytes  = 32 << 10
 )
 
 type Tool struct {
@@ -78,7 +86,7 @@ type remoteClient struct {
 
 func NewRemoteClient(serverName string, cfg ServerConfig, httpClient *http.Client) Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	return &remoteClient{serverName: serverName, cfg: cfg, httpClient: httpClient}
 }
@@ -146,7 +154,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 		return fmt.Errorf("MCP %s failed with status %d: %s", method, resp.StatusCode, strings.TrimSpace(string(bytes)))
 	}
 	var rpcResp rpcResponse
-	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRPCResponseBytes)).Decode(&rpcResp); err != nil {
 		return err
 	}
 	if rpcResp.Error != nil {
@@ -177,6 +185,7 @@ type stdioClient struct {
 	cfg        ServerConfig
 	nextID     atomic.Int64
 	mu         sync.Mutex
+	callMu     sync.Mutex
 	cmd        *exec.Cmd
 	stdin      io.WriteCloser
 	scanner    *bufio.Scanner
@@ -226,13 +235,19 @@ func (c *stdioClient) CallTool(ctx context.Context, name string, arguments map[s
 
 func (c *stdioClient) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.stdin != nil {
-		_ = c.stdin.Close()
+	stdin := c.stdin
+	cmd := c.cmd
+	c.stdin = nil
+	c.scanner = nil
+	c.cmd = nil
+	c.mu.Unlock()
+
+	if stdin != nil {
+		_ = stdin.Close()
 	}
-	if c.cmd != nil && c.cmd.Process != nil {
-		_ = c.cmd.Process.Kill()
-		_, _ = c.cmd.Process.Wait()
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
 	}
 	return nil
 }
@@ -257,7 +272,8 @@ func (c *stdioClient) start(ctx context.Context) error {
 	if c.cmd != nil || c.startErr != nil {
 		return c.startErr
 	}
-	cmd := exec.CommandContext(ctx, c.cfg.Command, c.cfg.Args...)
+	_ = ctx
+	cmd := exec.Command(c.cfg.Command, c.cfg.Args...)
 	cmd.Env = os.Environ()
 	for key, value := range c.cfg.Env {
 		cmd.Env = append(cmd.Env, key+"="+value)
@@ -284,20 +300,44 @@ func (c *stdioClient) start(ctx context.Context) error {
 }
 
 func (c *stdioClient) call(ctx context.Context, method string, params any, out any) error {
-	_ = ctx
+	done := make(chan error, 1)
+	go func() {
+		done <- c.doCall(method, params, out)
+	}()
+	select {
+	case err := <-done:
+		if ctx.Err() != nil && (errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe)) {
+			return ctx.Err()
+		}
+		return err
+	case <-ctx.Done():
+		_ = c.Close()
+		<-done
+		return ctx.Err()
+	}
+}
+
+func (c *stdioClient) doCall(method string, params any, out any) error {
+	c.callMu.Lock()
+	defer c.callMu.Unlock()
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	stdin := c.stdin
+	scanner := c.scanner
+	c.mu.Unlock()
+	if stdin == nil || scanner == nil {
+		return io.ErrClosedPipe
+	}
 	id := c.nextID.Add(1)
 	payload, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params})
 	if err != nil {
 		return err
 	}
-	if _, err := c.stdin.Write(append(payload, '\n')); err != nil {
+	if _, err := stdin.Write(append(payload, '\n')); err != nil {
 		return err
 	}
-	for c.scanner.Scan() {
+	for scanner.Scan() {
 		var resp rpcResponse
-		if err := json.Unmarshal(c.scanner.Bytes(), &resp); err != nil {
+		if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
 			return err
 		}
 		if resp.ID != id {
@@ -311,18 +351,29 @@ func (c *stdioClient) call(ctx context.Context, method string, params any, out a
 		}
 		return json.Unmarshal(resp.Result, out)
 	}
-	if err := c.scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil {
 		return err
 	}
 	return io.ErrUnexpectedEOF
 }
 
 func toolContentText(content []toolContent) string {
-	var parts []string
+	var builder strings.Builder
 	for _, item := range content {
 		if item.Type == "text" && item.Text != "" {
-			parts = append(parts, item.Text)
+			if builder.Len() > 0 {
+				builder.WriteByte('\n')
+			}
+			remaining := maxToolOutputBytes - builder.Len()
+			if remaining <= 0 {
+				break
+			}
+			if len(item.Text) > remaining {
+				builder.WriteString(item.Text[:remaining])
+				break
+			}
+			builder.WriteString(item.Text)
 		}
 	}
-	return strings.Join(parts, "\n")
+	return builder.String()
 }

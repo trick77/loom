@@ -208,6 +208,7 @@ export function ChatShell({
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
+      setToolEvents([]);
       setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {

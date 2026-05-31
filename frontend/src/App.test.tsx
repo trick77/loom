@@ -481,6 +481,18 @@ test("ignores stream events after switching threads", async () => {
 });
 
 test("surfaces the server error and keeps the draft when sending fails", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n',
+        ),
+      );
+      controller.enqueue(encoder.encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
+      controller.close();
+    },
+  });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -511,7 +523,7 @@ test("surfaces the server error and keeps the draft when sending fails", async (
         });
       }
       if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
-        return Response.json({ error: "llm is not configured" }, { status: 503 });
+        return new Response(stream, { status: 200 });
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -524,6 +536,8 @@ test("surfaces the server error and keeps the draft when sending fails", async (
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
+  expect(screen.queryByText("search__web")).not.toBeInTheDocument();
+  expect(screen.queryByText("Running")).not.toBeInTheDocument();
 });
 
 function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {

@@ -68,7 +68,9 @@ func run() error {
 			}
 			slog.Warn("MCP config not found; tools disabled", "path", cfg.MCPConfigPath)
 		} else {
-			discovered, err := mcp.NewBestEffortServiceFromConfig(context.Background(), mcpConfig, http.DefaultClient, slog.Default())
+			discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			discovered, err := mcp.NewBestEffortServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 15 * time.Second}, slog.Default())
+			cancel()
 			if err != nil {
 				return err
 			}

@@ -3,8 +3,11 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
@@ -66,7 +69,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	history := buildLLMHistory(user, priorMessages, userMessage)
 	assistantContent, err := s.runAssistantLoop(r.Context(), stream, history)
 	if err != nil {
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": "stream failed"})
+		message := "stream failed"
+		var userErr streamUserError
+		if errors.As(err, &userErr) {
+			message = userErr.message
+		}
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		return
 	}
 	if strings.TrimSpace(assistantContent) == "" {
@@ -90,7 +98,20 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	_ = stream.Send("done", "{}")
 }
 
-const maxToolRounds = 4
+const (
+	maxToolRounds             = 4
+	maxToolCallsPerRound      = 8
+	maxToolCallDuration       = 30 * time.Second
+	maxToolResultContentBytes = 32 << 10
+)
+
+type streamUserError struct {
+	message string
+}
+
+func (e streamUserError) Error() string {
+	return e.message
+}
 
 func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message) (string, error) {
 	tools := []llm.Tool(nil)
@@ -108,7 +129,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			if event.Delta != "" {
 				return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
 			}
-			if event.ToolCall.ID != "" {
+			if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
 				return sendSSEJSON(stream, "tool_call", toolCallResponse{
 					ID:        event.ToolCall.ID,
 					Name:      event.ToolCall.Function.Name,
@@ -123,6 +144,9 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		if len(result.ToolCalls) == 0 {
 			return result.Content, nil
 		}
+		if len(result.ToolCalls) > maxToolCallsPerRound {
+			return "", streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
+		}
 
 		history = append(history, llm.Message{
 			Role:      "assistant",
@@ -130,14 +154,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			ToolCalls: result.ToolCalls,
 		})
 		for _, call := range result.ToolCalls {
-			arguments, err := parseToolArguments(call.Function.Arguments)
-			if err != nil {
-				return "", err
-			}
-			output, err := s.mcp.CallTool(ctx, call.Function.Name, arguments)
-			if err != nil {
-				return "", err
-			}
+			output := s.executeToolCall(ctx, call)
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				return "", err
 			}
@@ -148,7 +165,30 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			})
 		}
 	}
-	return "", nil
+	return s.llm.StreamChat(ctx, history, func(delta string) error {
+		return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: delta})
+	})
+}
+
+func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall) string {
+	arguments, err := parseToolArguments(call.Function.Arguments)
+	if err != nil {
+		return capToolOutput("tool failed: invalid arguments: " + err.Error())
+	}
+	callCtx, cancel := context.WithTimeout(ctx, maxToolCallDuration)
+	defer cancel()
+	output, err := s.mcp.CallTool(callCtx, call.Function.Name, arguments)
+	if err != nil {
+		return capToolOutput("tool failed: " + err.Error())
+	}
+	return capToolOutput(output)
+}
+
+func capToolOutput(output string) string {
+	if len(output) <= maxToolResultContentBytes {
+		return output
+	}
+	return output[:maxToolResultContentBytes]
 }
 
 func parseToolArguments(raw string) (map[string]any, error) {

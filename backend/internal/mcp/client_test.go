@@ -4,12 +4,15 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestRemoteClientListsAndCallsTools(t *testing.T) {
@@ -69,6 +72,33 @@ func TestRemoteClientListsAndCallsTools(t *testing.T) {
 	}
 	if !reflect.DeepEqual(methods, []string{"initialize", "tools/list", "tools/call"}) {
 		t.Fatalf("methods = %#v", methods)
+	}
+}
+
+func TestRemoteClientRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		switch req.Method {
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":`))
+			_, _ = w.Write([]byte("2"))
+			_, _ = w.Write([]byte(`,"result":{"tools":[{"name":"huge","description":"`))
+			_, _ = w.Write([]byte(strings.Repeat("x", maxRPCResponseBytes)))
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewRemoteClient("search", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, server.Client())
+
+	if _, err := client.ListTools(context.Background()); err == nil {
+		t.Fatal("ListTools() error = nil, want oversized response error")
 	}
 }
 
@@ -143,6 +173,38 @@ func TestStdioClientCommandFailure(t *testing.T) {
 
 	if _, err := client.ListTools(context.Background()); err == nil {
 		t.Fatal("ListTools() error = nil, want command failure")
+	}
+}
+
+func TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock(t *testing.T) {
+	if os.Getenv("SPARK_MCP_HANG_HELPER") == "1" {
+		time.Sleep(10 * time.Second)
+		return
+	}
+	client := NewStdioClient("hang", ServerConfig{
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock"},
+		Env:       map[string]string{"SPARK_MCP_HANG_HELPER": "1"},
+	})
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := client.ListTools(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("ListTools() error = %v, want context deadline exceeded", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		_ = client.Close()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Close() did not return")
 	}
 }
 
