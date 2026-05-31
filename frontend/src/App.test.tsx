@@ -580,6 +580,43 @@ test("shows a bottom jump control when the transcript is scrolled above the late
   await waitFor(() => expect(screen.queryByRole("button", { name: /jump to latest message/i })).not.toBeInTheDocument());
 });
 
+test("scrolls to the latest message when sending from above the bottom", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m2","threadId":"t1","role":"user","content":"Continue","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream, [{ id: "m1", role: "assistant", content: "Earlier answer" }]));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  const transcript = await screen.findByRole("region", { name: /conversation transcript/i });
+  let scrollTop = 100;
+  Object.defineProperties(transcript, {
+    clientHeight: { configurable: true, value: 300 },
+    scrollHeight: { configurable: true, value: 900 },
+    scrollTop: {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    },
+  });
+  fireEvent.scroll(transcript);
+
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Continue" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  await screen.findByText("Continue");
+  await waitFor(() => expect(scrollTop).toBe(900));
+});
+
 test("masks transcript content behind the overlaid composer dock", async () => {
   vi.stubGlobal("fetch", chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]));
 

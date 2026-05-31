@@ -704,6 +704,11 @@ function ChatPanel({
   }, [scrollToLatest, thread?.id]);
 
   useLayoutEffect(() => {
+    if (!isSending) return;
+    scrollToLatest();
+  }, [isSending, scrollToLatest]);
+
+  useLayoutEffect(() => {
     if (shouldStickToBottomRef.current) {
       scrollToLatest();
       return;
