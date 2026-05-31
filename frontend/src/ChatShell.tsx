@@ -725,11 +725,11 @@ function ChatPanel({
         <div
           ref={transcriptRef}
           aria-label="Conversation transcript"
-          className="flex h-full flex-col overflow-y-auto px-8 pt-10"
+          className="flex h-full flex-col overflow-y-auto px-6 pt-10 md:px-8"
           onScroll={refreshScrollState}
           role="region"
         >
-          <div className="mx-auto w-full max-w-[754px] flex-1 space-y-5">
+          <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6">
             {messages.map((message, index) => (
               <MessageBubble
                 key={message.id}
@@ -745,10 +745,10 @@ function ChatPanel({
           </div>
           <div
             aria-label="Message composer dock"
-            className="pointer-events-none sticky bottom-0 -mx-8 bg-bg px-8 pb-5 pt-4"
+            className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
-            <div className="pointer-events-auto mx-auto w-full max-w-[754px]">
+            <div className="spark-chat-rail pointer-events-auto mx-auto w-full max-w-[720px]">
               <Composer
                 variant="chat"
                 draft={draft}
@@ -828,14 +828,14 @@ function Composer({
   const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   return (
     <form
-      className={`${height} rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
+      className={`spark-composer ${height} relative rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
       onSubmit={(event) => {
         event.preventDefault();
         onSend();
       }}
     >
       <textarea
-        className="spark-composer-text h-[58px] w-full resize-none overflow-hidden bg-transparent px-6 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]"
+        className="spark-composer-text h-full w-full resize-none overflow-hidden bg-transparent px-6 pb-14 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]"
         placeholder={placeholder}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
@@ -846,13 +846,13 @@ function Composer({
           }
         }}
       />
-      <div className="flex h-11 items-center justify-between px-6 text-[#d8d4ca]">
+      <div className="absolute inset-x-0 bottom-0 flex h-11 items-center justify-between px-6 text-[#d8d4ca]">
         <button className="text-2xl leading-none" type="button" aria-label="Add attachment">
           +
         </button>
         <div className="spark-meta-text flex items-center text-[#d8d4ca]">
           <button
-            className="grid h-7 w-7 place-items-center rounded-md bg-accent text-[#eeeae2] transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-45"
+            className="spark-composer-send grid h-7 w-7 place-items-center rounded-md bg-accent text-[#eeeae2] transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-45"
             disabled={disabled || draft.trim() === ""}
             type="submit"
             aria-label="Send message"
@@ -903,8 +903,8 @@ function MessageBubble({
 }) {
   if (message.role === "user") {
     return (
-      <div className="group ml-auto max-w-[40rem]">
-        <div className="spark-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
+      <div className="spark-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
+        <div className="spark-message-text spark-user-message-text rounded-xl bg-[#111110] px-4 py-2.5 text-[#f3f0e8]">
           {message.content}
         </div>
         <MessageActions
@@ -949,7 +949,7 @@ function AssistantText({ children, onRetry }: { children: string; onRetry?: () =
       return <DownloadResponseBubble artifact={artifact} />;
     }
     return (
-      <div className="group max-w-[46rem] space-y-3">
+      <div className="spark-assistant-message group w-full space-y-3">
         {before !== "" && <ProseMarkdown>{before}</ProseMarkdown>}
         <DownloadResponseBubble artifact={artifact} />
         {after !== "" && <ProseMarkdown>{after}</ProseMarkdown>}
@@ -964,7 +964,7 @@ function AssistantText({ children, onRetry }: { children: string; onRetry?: () =
   }
 
   return (
-    <div className="group max-w-[46rem]">
+    <div className="spark-assistant-message group w-full">
       <ProseMarkdown>{children}</ProseMarkdown>
       <MessageActions
         copyLabel="Copy response"
