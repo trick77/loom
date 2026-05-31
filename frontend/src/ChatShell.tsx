@@ -740,7 +740,7 @@ function Composer({
         </button>
         <div className="spark-meta-text flex items-center text-[#d8d4ca]">
           <button
-            className="grid h-7 w-7 place-items-center rounded-md text-xl leading-none text-[#d8d4ca] transition-colors hover:bg-[#343431] hover:text-[#f3f0e8] disabled:cursor-not-allowed disabled:text-[#77746d]"
+            className="grid h-7 w-7 place-items-center rounded-md text-xl leading-none text-accent transition-colors hover:bg-[#343431] hover:text-accent-strong disabled:cursor-not-allowed disabled:text-[#77746d]"
             disabled={disabled || draft.trim() === ""}
             type="submit"
             aria-label="Send message"
