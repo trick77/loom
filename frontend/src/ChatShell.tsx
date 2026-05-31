@@ -725,11 +725,11 @@ function ChatPanel({
         <div
           ref={transcriptRef}
           aria-label="Conversation transcript"
-          className="h-full overflow-y-auto px-8 pb-44 pt-10"
+          className="flex h-full flex-col overflow-y-auto px-8 pt-10"
           onScroll={refreshScrollState}
           role="region"
         >
-          <div className="mx-auto w-full max-w-[834px] space-y-5">
+          <div className="mx-auto w-full max-w-[834px] flex-1 space-y-5">
             {messages.map((message, index) => (
               <MessageBubble
                 key={message.id}
@@ -742,6 +742,25 @@ function ChatPanel({
             {showThinkingIndicator && <ThinkingIndicator />}
             {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+          </div>
+          <div
+            aria-label="Message composer dock"
+            className="pointer-events-none sticky bottom-0 -mx-8 bg-bg px-8 pb-5 pt-4"
+          >
+            <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
+            <div className="pointer-events-auto mx-auto w-full max-w-[834px]">
+              <Composer
+                variant="chat"
+                draft={draft}
+                disabled={isSending}
+                placeholder="Write a message..."
+                onDraftChange={onDraftChange}
+                onSend={onSend}
+              />
+              <div className="spark-meta-text mt-2 text-center text-[#858178]">
+                Spark can make mistakes. Please double-check responses.
+              </div>
+            </div>
           </div>
         </div>
         {showJumpToBottom && (
@@ -763,25 +782,6 @@ function ChatPanel({
             </svg>
           </button>
         )}
-        <div
-          aria-label="Message composer dock"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-bg px-8 pb-5 pt-4"
-        >
-          <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
-          <div className="pointer-events-auto mx-auto w-full max-w-[834px]">
-            <Composer
-              variant="chat"
-              draft={draft}
-              disabled={isSending}
-              placeholder="Write a message..."
-              onDraftChange={onDraftChange}
-              onSend={onSend}
-            />
-            <div className="spark-meta-text mt-2 text-center text-[#858178]">
-              Spark can make mistakes. Please double-check responses.
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   );
