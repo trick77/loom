@@ -680,12 +680,12 @@ function Composer({
           <span aria-hidden="true">♙</span>
           <span aria-hidden="true">▥</span>
           <button
-            className="sr-only"
+            className="grid h-8 w-8 place-items-center rounded-full bg-[#d8d4ca] text-base font-medium text-[#1f1f1d] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
             disabled={disabled || draft.trim() === ""}
             type="submit"
             aria-label="Send message"
           >
-            Send message
+            ↑
           </button>
         </div>
       </div>

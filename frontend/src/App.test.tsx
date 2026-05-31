@@ -29,9 +29,27 @@ test("renders authenticated shell for signed-in users", async () => {
   render(<App />);
 
   expect(await screen.findByRole("button", { name: /new chat/i })).toBeInTheDocument();
-  expect(await screen.findByText("Afternoon, Jan")).toBeInTheDocument();
+  expect(await screen.findByText(greetingPattern("Jan"))).toBeInTheDocument();
   expect(screen.getByText("Jan")).toBeInTheDocument();
   expect(window.location.pathname).toBe("/new");
+});
+
+test("shows a visible send control in the new chat composer", async () => {
+  vi.stubGlobal("fetch", basicSignedInFetch());
+
+  render(<App />);
+
+  await screen.findByPlaceholderText("How can I help you today?");
+  const sendButton = screen.getByRole("button", { name: /send message/i });
+
+  expect(sendButton).not.toHaveClass("sr-only");
+  expect(sendButton).toBeDisabled();
+
+  fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {
+    target: { value: "Hello" },
+  });
+
+  expect(sendButton).toBeEnabled();
 });
 
 test("renders admin user list for admin users", async () => {
@@ -167,7 +185,7 @@ test("new chat navigation does not create a thread or sidebar entry", async () =
   fireEvent.click(button);
   fireEvent.click(button);
 
-  expect(await screen.findByText("Afternoon, jan")).toBeInTheDocument();
+  expect(await screen.findByText(greetingPattern("jan"))).toBeInTheDocument();
   expect(window.location.pathname).toBe("/new");
   expect(await screen.findByRole("button", { name: "Existing chat" })).toBeInTheDocument();
   expect(
@@ -327,7 +345,7 @@ test("starting chat exits the admin panel", async () => {
 
   fireEvent.click(await screen.findByRole("button", { name: /new chat/i }));
 
-  expect(await screen.findByText("Afternoon, jan")).toBeInTheDocument();
+  expect(await screen.findByText(greetingPattern("jan"))).toBeInTheDocument();
   expect(screen.getByPlaceholderText("How can I help you today?")).toBeInTheDocument();
 });
 
@@ -559,4 +577,8 @@ function threadFixture() {
     createdAt: "2026-05-30T00:00:00Z",
     updatedAt: "2026-05-30T00:00:00Z",
   };
+}
+
+function greetingPattern(name: string) {
+  return new RegExp(`^(Morning|Afternoon|Evening), ${name}$`);
 }
