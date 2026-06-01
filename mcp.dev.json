@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "searxng": {
+      "transport": "streamable-http",
+      "url": "http://localhost:8765/mcp"
+    }
+  }
+}
