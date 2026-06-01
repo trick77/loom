@@ -1,0 +1,6 @@
+# Bot-detection / rate-limit configuration for the internal SearXNG instance.
+# Providing this file (even with the limiter disabled in settings.yaml) avoids
+# the "missing config file: /etc/searxng/limiter.toml" startup warning.
+# This is a private instance, so no link token is required.
+[botdetection.ip_limit]
+link_token = false

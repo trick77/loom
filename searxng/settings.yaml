@@ -1,7 +1,24 @@
-use_default_settings: true
+# Start from SearXNG's bundled defaults, but drop engines that fail to
+# initialise in this internal instance:
+#   - ahmia / torch: darknet (onion) engines that require a Tor proxy and
+#     are auto-deactivated on startup ("set engine to inactive!"). Tor-based
+#     search is not wanted here, so these are removed outright.
+#   - radio browser: relies on the engines SQLite cache, which errors out
+#     here ("no such table: properties").
+use_default_settings:
+  engines:
+    remove:
+      - ahmia
+      - torch
+      - radio browser
 
 server:
   secret_key: "spark-searxng-change-me"
+  # Internal-only instance reached by the MCP server / localhost, so the
+  # bot-detection limiter is unnecessary. Disabling it also avoids the
+  # "missing config file: /etc/searxng/limiter.toml" warning.
+  limiter: false
+  public_instance: false
 
 search:
   formats:

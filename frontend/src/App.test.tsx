@@ -34,6 +34,52 @@ test("renders authenticated shell for signed-in users", async () => {
   expect(window.location.pathname).toBe("/new");
 });
 
+test("bounds the active chat title in the top header", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") {
+        return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
+      }
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json([
+          {
+            ...threadFixture(),
+            title: "Albert Einstein The legendary physicist who revolutionized modern physics",
+          },
+        ]);
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            ...threadFixture(),
+            title: "Albert Einstein The legendary physicist who revolutionized modern physics",
+          },
+          messages: [],
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Albert Einstein The legendary physicist who revolutionized modern physics",
+    }),
+  );
+
+  const heading = await screen.findByRole("heading", {
+    name: /Albert Einstein The legendary physicist/,
+  });
+  expect(heading).toHaveClass("truncate");
+  expect(heading).toHaveClass("max-w-[28ch]");
+  expect(heading).toHaveClass("sm:max-w-[48ch]");
+});
+
 test("shows a visible send control in the new chat composer", async () => {
   vi.stubGlobal("fetch", basicSignedInFetch());
 

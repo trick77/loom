@@ -76,7 +76,7 @@ func (f *fakeChatStore) CreateThread(_ context.Context, userID string, in chat.C
 	if f.createThreadErr != nil {
 		return chat.Thread{}, f.createThreadErr
 	}
-	title := in.Title
+	title := chat.NormalizeThreadTitle(in.Title)
 	if title == "" {
 		title = chat.DefaultThreadTitle
 	}
@@ -105,7 +105,11 @@ func (f *fakeChatStore) UpdateThread(_ context.Context, userID, threadID string,
 		f.thread = chat.Thread{ID: threadID, UserID: userID, Title: chat.DefaultThreadTitle}
 	}
 	if in.Title != nil {
-		f.thread.Title = *in.Title
+		title := chat.NormalizeThreadTitle(*in.Title)
+		if title == "" {
+			return chat.Thread{}, false, errors.New("thread title is required")
+		}
+		f.thread.Title = title
 	}
 	return f.thread, true, nil
 }

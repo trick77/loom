@@ -9,12 +9,9 @@ import (
 )
 
 func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThreadInput) (Thread, error) {
-	title := strings.TrimSpace(in.Title)
+	title := NormalizeThreadTitle(in.Title)
 	if title == "" {
 		title = DefaultThreadTitle
-	}
-	if len(title) > MaxThreadTitleLength {
-		return Thread{}, errors.New("thread title is too long")
 	}
 
 	var projectID any
@@ -116,12 +113,9 @@ func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in Up
 
 	title := thread.Title
 	if in.Title != nil {
-		title = strings.TrimSpace(*in.Title)
+		title = NormalizeThreadTitle(*in.Title)
 		if title == "" {
 			return Thread{}, false, errors.New("thread title is required")
-		}
-		if len(title) > MaxThreadTitleLength {
-			return Thread{}, false, errors.New("thread title is too long")
 		}
 	}
 
