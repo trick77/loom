@@ -1239,6 +1239,82 @@ test("surfaces the server error and keeps the draft when sending fails", async (
   expect(screen.queryByText("Running")).not.toBeInTheDocument();
 });
 
+test("keeps completed tool activity visible with the assistant answer", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Search for updates","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"result"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"I found the update.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json([
+          {
+            id: "t1",
+            title: "Existing chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+        ]);
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            id: "t1",
+            title: "Existing chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Search for updates" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByText("I found the update.")).toBeInTheDocument();
+  expect(screen.getByText("search__web")).toBeInTheDocument();
+  expect(screen.getByText("Done")).toBeInTheDocument();
+});
+
 function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
