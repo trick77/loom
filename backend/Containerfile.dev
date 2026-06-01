@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+#
+# Dev-only backend image. Builds JUST the Go binary and skips the frontend build
+# stage of backend/Containerfile. The committed backend/web/dist/index.html
+# placeholder satisfies //go:embed all:dist, so the binary compiles and serves a
+# stub UI on :8080 — the real UI runs separately via Vite/HMR:
+#
+#   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build
+#   cd frontend && npm run dev        # real UI with hot-reload on http://localhost:5173
+#
+# The full-stack image with the real embedded UI stays in backend/Containerfile
+# (used by hack/refresh.sh and prod compose.yaml).
+
+# --- Stage 1: build the Go binary (pure-Go, no cgo) ---
+FROM golang:1.25-alpine AS build
+ARG SPARK_VERSION=dev
+WORKDIR /app/backend
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ ./
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${SPARK_VERSION}" -o /out/spark ./cmd/spark
+
+# --- Stage 2: minimal runtime ---
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/spark /spark
+EXPOSE 8080
+ENTRYPOINT ["/spark"]
