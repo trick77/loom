@@ -7,10 +7,8 @@
 # SPARK_ADDR, which is why this uses network_mode: host instead of published ports
 # (a 127.0.0.1 bind inside a bridge-network container is unreachable via -p).
 #
-# MCP agent tools (SearXNG): searxng + searxng-mcp run on the default bridge network and
-# resolve each other by service name. Because spark is host-networked it cannot reach those
-# service names, so searxng-mcp publishes its port to the host and spark talks to it via
-# localhost (see mcp.dev.json). Prod wiring lives in compose.yaml; this is its dev mirror.
+# Built-in SearXNG search: Spark is host-networked and reaches the SearXNG service through
+# its published localhost port. External MCP tools can still be configured via mcp.dev.json.
 services:
   # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
   spark-init:
@@ -31,6 +29,7 @@ services:
       SPARK_SESSION_SECRET: dev-secret-please-change
       SPARK_DB_PATH: /data/spark.db
       SPARK_USERS_DIR: /data/users
+      SPARK_SEARXNG_URL: http://localhost:8888
       SPARK_MCP_CONFIG: /config/mcp.json
       # Optional: point at a real OpenAI-compatible endpoint to actually chat.
       SPARK_CHAT_BASE_URL: "${SPARK_CHAT_BASE_URL:-}"
@@ -43,7 +42,7 @@ services:
     depends_on:
       spark-init:
         condition: service_completed_successfully
-      searxng-mcp:
+      searxng:
         condition: service_started
 
   searxng:
@@ -55,17 +54,6 @@ services:
       - ./searxng/limiter.toml:/etc/searxng/limiter.toml:ro
     ports:
       - "8888:8080"
-
-  searxng-mcp:
-    image: isokoliuk/mcp-searxng:latest
-    environment:
-      SEARXNG_URL: "http://searxng:8080"
-      MCP_HTTP_PORT: "8080"
-    # spark is host-networked and reaches this via localhost:8765 (see mcp.dev.json).
-    ports:
-      - "8765:8080"
-    depends_on:
-      - searxng
 
 volumes:
   spark-dev-data:

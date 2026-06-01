@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/trick77/spark/internal/config"
+	"github.com/trick77/spark/internal/mcp"
 )
 
 func TestResponseLogDirForConfigOnlyEnablesDevMode(t *testing.T) {
@@ -43,5 +44,28 @@ func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
 	}
 	if got.ResponseLogDir != cfg.ChatLogDir {
 		t.Fatalf("ResponseLogDir = %q, want %q", got.ResponseLogDir, cfg.ChatLogDir)
+	}
+}
+
+func TestToolConfigForConfigAddsBuiltInSearxng(t *testing.T) {
+	base := mcp.Config{Servers: map[string]mcp.ServerConfig{
+		"fetch": {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch-mcp:8080/mcp"},
+	}}
+	cfg := config.Config{SearxngURL: "http://searxng:8080"}
+
+	got := toolConfigForConfig(cfg, base)
+	if got.Servers["fetch"].URL != "http://fetch-mcp:8080/mcp" {
+		t.Fatalf("fetch config = %#v", got.Servers["fetch"])
+	}
+	searxng := got.Servers["searxng"]
+	if searxng.URL != "http://searxng:8080" {
+		t.Fatalf("searxng URL = %q, want configured URL", searxng.URL)
+	}
+}
+
+func TestToolConfigForConfigLeavesSearxngDisabledWhenURLIsEmpty(t *testing.T) {
+	got := toolConfigForConfig(config.Config{}, mcp.Config{})
+	if _, exists := got.Servers["searxng"]; exists {
+		t.Fatalf("searxng server exists when SPARK_SEARXNG_URL is empty: %#v", got.Servers["searxng"])
 	}
 }

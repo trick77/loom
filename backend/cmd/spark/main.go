@@ -56,23 +56,28 @@ func run() error {
 		chatClient = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
 	}
 	var toolService httpapi.ToolService
+	mcpConfig := mcp.Config{}
 	if cfg.MCPConfigPath != "" {
-		mcpConfig, err := mcp.LoadConfig(cfg.MCPConfigPath)
+		loadedMCPConfig, err := mcp.LoadConfig(cfg.MCPConfigPath)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
-			slog.Warn("MCP config not found; tools disabled", "path", cfg.MCPConfigPath)
+			slog.Warn("MCP config not found; external MCP tools disabled", "path", cfg.MCPConfigPath)
 		} else {
-			discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			discovered, err := mcp.NewBestEffortServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 15 * time.Second}, slog.Default())
-			cancel()
-			if err != nil {
-				return err
-			}
-			toolService = discovered
-			slog.Info("MCP tools discovered", "count", len(discovered.Tools()))
+			mcpConfig = loadedMCPConfig
 		}
+	}
+	mcpConfig = toolConfigForConfig(cfg, mcpConfig)
+	if len(mcpConfig.Servers) > 0 {
+		discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		discovered, err := mcp.NewBestEffortServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 15 * time.Second}, slog.Default())
+		cancel()
+		if err != nil {
+			return err
+		}
+		toolService = discovered
+		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
@@ -148,4 +153,15 @@ func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 		ReasoningEffort: cfg.ChatReasoningEffort,
 		ResponseLogDir:  responseLogDirForConfig(cfg),
 	}
+}
+
+func toolConfigForConfig(cfg config.Config, base mcp.Config) mcp.Config {
+	out := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
+	for name, server := range base.Servers {
+		out.Servers[name] = server
+	}
+	if strings.TrimSpace(cfg.SearxngURL) != "" {
+		out.Servers["searxng"] = mcp.SearxngServerConfig(cfg.SearxngURL)
+	}
+	return out
 }

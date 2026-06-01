@@ -65,6 +65,9 @@ func (s *Service) probeServer(ctx context.Context, name string) bool {
 	defer func() { _ = client.Close() }()
 	probeCtx, cancel := context.WithTimeout(ctx, statusProbeTimeout)
 	defer cancel()
+	if probe, ok := client.(interface{ Probe(context.Context) error }); ok {
+		return probe.Probe(probeCtx) == nil
+	}
 	_, err := client.ListTools(probeCtx)
 	return err == nil
 }
@@ -150,6 +153,9 @@ func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient 
 }
 
 func clientForServer(name string, server ServerConfig, httpClient *http.Client) Client {
+	if server.Transport == transportSearxng {
+		return NewSearxngClient(name, server.URL, httpClient)
+	}
 	if server.Transport == TransportStdio {
 		return NewStdioClient(name, server)
 	}

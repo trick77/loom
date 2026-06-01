@@ -155,13 +155,14 @@ but sending a chat message returns a service-unavailable error.
 
 ### MCP Tools
 
-Spark reads `SPARK_MCP_CONFIG` at startup. The file defaults to `/config/mcp.json`; if it is missing,
-Spark starts without tools. Each configured server is discovered once at boot. Servers that cannot be
-reached are logged and skipped, so one unavailable MCP server does not block startup.
+Spark exposes built-in SearXNG web search when `SPARK_SEARXNG_URL` is set. The bundled
+`compose.yaml` points this at the `searxng` service directly. SearXNG uses
+`searxng/settings.yaml`, which enables JSON output required by Spark's search adapter.
 
-The default `compose.yaml` starts a `searxng-mcp` Streamable HTTP MCP server at
-`http://searxng-mcp:8080/mcp` and points it at the bundled `searxng` service. SearXNG uses
-`searxng/settings.yaml`, which enables JSON output required by MCP search tools.
+Spark also reads `SPARK_MCP_CONFIG` at startup for external MCP tools. The file defaults to
+`/config/mcp.json`; if it is missing, Spark starts with only built-in tools. Each configured external
+server is discovered once at boot. Servers that cannot be reached are logged and skipped, so one
+unavailable MCP server does not block startup.
 
 Remote MCP servers should expose a Streamable HTTP endpoint:
 
@@ -190,10 +191,10 @@ Local stdio servers are also supported:
 }
 ```
 
-Discovered MCP tools are exposed to the chat model as OpenAI-compatible function tools named
-`<server>__<tool>`. During a streamed response, Spark pauses when the model emits `tool_calls`, runs
-the requested MCP tools, streams tool status events to the UI, appends tool results to the model
-history, and resumes the assistant stream.
+Built-in and discovered MCP tools are exposed to the chat model as OpenAI-compatible function tools
+named `<server>__<tool>`, such as `searxng__web_search`. During a streamed response, Spark pauses
+when the model emits `tool_calls`, runs the requested tools, streams tool status events to the UI,
+appends tool results to the model history, and resumes the assistant stream.
 
 ### Current Phase 4 Scope
 

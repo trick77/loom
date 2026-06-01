@@ -143,8 +143,8 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	// The Streamable HTTP transport mandates that clients accept both content
-	// types; spec-compliant servers (e.g. mcp-searxng) answer 406 otherwise and
-	// may reply with an SSE stream instead of a bare JSON body.
+	// types; spec-compliant servers answer 406 otherwise and may reply with an
+	// SSE stream instead of a bare JSON body.
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	c.mu.Lock()
 	sessionID := c.sessionID

@@ -76,10 +76,10 @@ func TestRemoteClientListsAndCallsTools(t *testing.T) {
 }
 
 // TestRemoteClientHandlesStreamableHTTPSessionAndSSE mirrors a spec-compliant
-// Streamable HTTP server (e.g. the mcp-searxng image): it rejects requests that
-// do not accept text/event-stream (406), hands out a session id on initialize
-// that every later request must echo back (400 otherwise), and replies with SSE
-// framing rather than a bare JSON body.
+// Streamable HTTP server: it rejects requests that do not accept
+// text/event-stream (406), hands out a session id on initialize that every later
+// request must echo back (400 otherwise), and replies with SSE framing rather
+// than a bare JSON body.
 func TestRemoteClientHandlesStreamableHTTPSessionAndSSE(t *testing.T) {
 	const sessionID = "sess-123"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

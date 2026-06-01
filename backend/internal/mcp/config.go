@@ -11,6 +11,7 @@ import (
 const (
 	TransportStreamableHTTP = "streamable-http"
 	TransportStdio          = "stdio"
+	transportSearxng        = "searxng"
 )
 
 // Config is the on-disk MCP server configuration loaded from mcp.json.
@@ -86,4 +87,8 @@ func SplitExposedToolName(name string) (string, string, bool) {
 		return "", "", false
 	}
 	return server, tool, true
+}
+
+func SearxngServerConfig(baseURL string) ServerConfig {
+	return ServerConfig{Transport: transportSearxng, URL: baseURL}
 }
