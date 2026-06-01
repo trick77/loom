@@ -591,7 +591,7 @@ function SidebarSection({
         {threads.map((thread) => (
           <button
             key={thread.id}
-            className={`block h-7 w-full truncate rounded-md px-1.5 text-left text-xs transition-colors hover:bg-[#2a2a28] ${
+            className={`block h-7 w-full truncate rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
               activeThreadID === thread.id ? "bg-[#10100f] text-white" : ""
             }`}
             onClick={() => onSelect(thread.id)}
