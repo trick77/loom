@@ -75,6 +75,67 @@ func TestRemoteClientListsAndCallsTools(t *testing.T) {
 	}
 }
 
+// TestRemoteClientHandlesStreamableHTTPSessionAndSSE mirrors a spec-compliant
+// Streamable HTTP server (e.g. the mcp-searxng image): it rejects requests that
+// do not accept text/event-stream (406), hands out a session id on initialize
+// that every later request must echo back (400 otherwise), and replies with SSE
+// framing rather than a bare JSON body.
+func TestRemoteClientHandlesStreamableHTTPSessionAndSSE(t *testing.T) {
+	const sessionID = "sess-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		accept := r.Header.Get("Accept")
+		if !strings.Contains(accept, "application/json") || !strings.Contains(accept, "text/event-stream") {
+			http.Error(w, `{"error":"must accept both application/json and text/event-stream"}`, http.StatusNotAcceptable)
+			return
+		}
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		if req.Method != "initialize" && r.Header.Get("Mcp-Session-Id") != sessionID {
+			http.Error(w, `{"error":"No valid session ID provided"}`, http.StatusBadRequest)
+			return
+		}
+		switch req.Method {
+		case "initialize":
+			w.Header().Set("Mcp-Session-Id", sessionID)
+			writeSSEResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			writeSSEResult(t, w, req.ID, map[string]any{
+				"tools": []map[string]any{{
+					"name":        "web_search",
+					"description": "Search the web",
+					"inputSchema": map[string]any{"type": "object"},
+				}},
+			})
+		case "tools/call":
+			writeSSEResult(t, w, req.ID, map[string]any{
+				"content": []map[string]any{{"type": "text", "text": "result text"}},
+			})
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewRemoteClient("search", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, server.Client())
+
+	tools, err := client.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("ListTools() error: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "search__web_search" {
+		t.Fatalf("tools = %#v", tools)
+	}
+	got, err := client.CallTool(context.Background(), "web_search", map[string]any{"query": "spark"})
+	if err != nil {
+		t.Fatalf("CallTool() error: %v", err)
+	}
+	if got != "result text" {
+		t.Fatalf("CallTool() = %q, want result text", got)
+	}
+}
+
 func TestRemoteClientRejectsOversizedResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req rpcRequest
@@ -129,6 +190,18 @@ func TestStdioClientListsTools(t *testing.T) {
 	}
 	if got != "echo result" {
 		t.Fatalf("CallTool() = %q, want echo result", got)
+	}
+}
+
+func writeSSEResult(t *testing.T, w http.ResponseWriter, id int64, result any) {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+	if err != nil {
+		t.Fatalf("Marshal SSE payload: %v", err)
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	if _, err := w.Write([]byte("event: message\ndata: " + string(payload) + "\n\n")); err != nil {
+		t.Fatalf("write SSE: %v", err)
 	}
 }
 
