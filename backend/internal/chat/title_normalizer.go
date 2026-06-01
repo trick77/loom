@@ -13,10 +13,25 @@ func NormalizeThreadTitle(title string) string {
 		title = strings.Trim(title, `"'`)
 		title = strings.TrimSpace(title)
 	}
+	title = firstNonEmptyLine(title)
 	title = trimMarkdownTitleSyntax(title)
 	title = stripEmoji(title)
 	title = strings.Join(strings.Fields(title), " ")
 	return truncateThreadTitle(title)
+}
+
+// firstNonEmptyLine returns the first line that has non-whitespace content.
+// Title models sometimes ignore the "2 to 6 words" instruction and return a
+// full markdown answer (a heading line followed by body paragraphs); only that
+// first line is a usable title. Collapsing the whole response with
+// strings.Fields instead would mash the heading and body into one long title.
+func firstNonEmptyLine(title string) string {
+	for _, line := range strings.Split(title, "\n") {
+		if strings.TrimSpace(line) != "" {
+			return line
+		}
+	}
+	return title
 }
 
 func trimMarkdownTitleSyntax(title string) string {
