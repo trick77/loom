@@ -748,8 +748,8 @@ function ChatPanel({
 
   return (
     <section className="flex h-screen min-h-0 flex-col">
-      <header className="spark-control-text flex h-9 shrink-0 items-center justify-between border-b border-[#252523] px-4 text-[#d5d2c9]">
-        <h1 className="min-w-0 truncate font-sans font-normal">
+      <header className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]">
+        <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">
           {thread?.title ?? "New chat"}
           <span className="ml-2 text-[#88857d]" aria-hidden="true">
             ⌄

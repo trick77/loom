@@ -256,15 +256,77 @@ func TestStore_RejectsOverlongInputs(t *testing.T) {
 	if _, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: strings.Repeat("p", MaxProjectNameLength+1)}); err == nil {
 		t.Fatal("CreateProject() error = nil, want overlong name error")
 	}
-	if _, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: strings.Repeat("t", MaxThreadTitleLength+1)}); err == nil {
-		t.Fatal("CreateThread() error = nil, want overlong title error")
-	}
 	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Length"})
 	if err != nil {
 		t.Fatalf("CreateThread() error: %v", err)
 	}
 	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, strings.Repeat("m", MaxMessageContentLength+1)); err == nil {
 		t.Fatal("AddMessage() error = nil, want overlong content error")
+	}
+}
+
+func TestStore_NormalizesThreadTitles(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{
+		Title: "  # Albert Einstein 🧠⚛️ The legendary physicist  ",
+	})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if thread.Title != "Albert Einstein The legendary physicist" {
+		t.Fatalf("thread.Title = %q, want normalized title", thread.Title)
+	}
+
+	updatedTitle := ` **Quantum notes** `
+	updated, ok, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{Title: &updatedTitle})
+	if err != nil {
+		t.Fatalf("UpdateThread() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateThread() ok = false, want true")
+	}
+	if updated.Title != "Quantum notes" {
+		t.Fatalf("updated.Title = %q, want normalized markdown title", updated.Title)
+	}
+}
+
+func TestStore_TruncatesNormalizedThreadTitlesWithEllipsis(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: strings.Repeat("t", MaxThreadTitleLength+10)})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	runes := []rune(thread.Title)
+	if len(runes) != MaxThreadTitleLength {
+		t.Fatalf("len([]rune(thread.Title)) = %d, want %d", len(runes), MaxThreadTitleLength)
+	}
+	if !strings.HasSuffix(thread.Title, "…") {
+		t.Fatalf("thread.Title = %q, want ellipsis suffix", thread.Title)
+	}
+}
+
+func TestStore_RejectsThreadTitleThatNormalizesToEmpty(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Existing"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	title := " # 🧠 "
+	if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{Title: &title}); err == nil {
+		t.Fatal("UpdateThread() error = nil, want required title error")
 	}
 }
 

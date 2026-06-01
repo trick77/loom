@@ -19,7 +19,7 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 	}
 	srv := newAuthenticatedChatServer(t, Deps{
 		Chat: store,
-		LLM:  fakeChatClient{title: "Greeting"},
+		LLM:  fakeChatClient{title: "# Albert Einstein 🧠⚛️ The legendary physicist"},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -36,6 +36,7 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 		`data: {"content":"Hel"}`,
 		"event: assistant_message",
 		"event: thread",
+		`"title":"Albert Einstein The legendary physicist"`,
 		"event: done",
 	} {
 		if !strings.Contains(body, want) {
