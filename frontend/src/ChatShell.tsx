@@ -358,7 +358,7 @@ export function ChatShell({
             onSelect={selectThread}
           />
           <section className="mt-5">
-            <div className="spark-meta-text mb-2 flex items-center justify-between px-1.5 text-[#8f8b82]">
+            <div className="spark-meta-text mb-2 flex items-center justify-between px-1.5 text-[#97958c]">
               <span>Projects</span>
               <button
                 className="rounded px-1 text-[#aaa79e] transition-colors hover:text-white"
@@ -407,7 +407,7 @@ export function ChatShell({
             )}
             <div className="space-y-1">
               {projects.map((project) => (
-                <div key={project.id} className="truncate rounded-md px-1.5 py-1.5">
+                <div key={project.id} className="truncate rounded-md px-1.5 py-1.5 text-xs">
                   {project.name}
                 </div>
               ))}
@@ -586,12 +586,12 @@ function SidebarSection({
 }) {
   return (
     <section className="mt-5">
-      <div className="spark-meta-text mb-2 px-1.5 text-[#8f8b82]">{title}</div>
+      <div className="spark-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
       <div className="space-y-1">
         {threads.map((thread) => (
           <button
             key={thread.id}
-            className={`block h-7 w-full truncate rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
+            className={`block h-7 w-full truncate rounded-md px-1.5 text-left text-xs transition-colors hover:bg-[#2a2a28] ${
               activeThreadID === thread.id ? "bg-[#10100f] text-white" : ""
             }`}
             onClick={() => onSelect(thread.id)}

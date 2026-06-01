@@ -1,57 +1,35 @@
 @import "tailwindcss";
 
+/* Self-hosted Variable Fonts (freie, offene Entsprechungen der Anthropic-Webfonts).
+   Family-Namen, Gewichts-Ranges, Rollen und font-display wie auf claude.ai. */
 @font-face {
   font-family: "Anthropic Sans";
-  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSans@300.woff2") format("woff2");
-  font-weight: 300;
+  src: url("./fonts/SansWebVariable-TextRegular.woff2") format("woff2");
+  font-weight: 300 800;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Anthropic Sans";
-  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSans@400.woff2") format("woff2");
+  font-family: "Anthropic Serif";
+  src: url("./fonts/SerifWebVariable-TextRegular.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Serif";
+  src: url("./fonts/SerifWebVariable-TextRegularItalic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Anthropic Mono";
+  src: url("./fonts/MonoVariableVariable-Regular.woff2") format("woff2");
   font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSans@500.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Sans";
-  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSans@600.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSerif@300.woff2") format("woff2");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSerif@400.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Anthropic Serif";
-  src: url("../node_modules/anthropic-fonts/cdn/v1/fonts/AnthropicSerif@500.woff2") format("woff2");
-  font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
@@ -59,7 +37,7 @@
 /* UI direction A — Warm Editorial, dark. These tokens drive the Tailwind v4
    theme, generating the bg, text, border, font, and rounded-spark utilities.
    Palette: warm charcoal surfaces, off-white ink, clay accent.
-   Fonts are self-hosted from the anthropic-fonts npm package. */
+   Fonts are self-hosted Variable Fonts under src/fonts/. */
 @theme {
   --color-bg: #1f1e1b;
   --color-panel: #1b1a18;
@@ -71,8 +49,9 @@
   --color-accent-strong: #d97757;
   --color-success: #5fa97a;
   --color-danger: #d9534f;
-  --font-sans: "Anthropic Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Anthropic Serif", Georgia, serif;
+  --font-sans: "Anthropic Sans", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: "Anthropic Serif", Georgia, "Times New Roman", Times, serif;
+  --font-mono: "Anthropic Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --radius-spark: 10px;
 }
 
@@ -103,21 +82,30 @@ body {
   line-height: 1;
 }
 
-.spark-sidebar-text,
+.spark-sidebar-text {
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
+}
+
 .spark-meta-text {
   font-size: 0.75rem;
   font-weight: 400;
   line-height: 1rem;
 }
 
-.spark-control-text,
-.spark-composer-text {
+.spark-control-text {
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
 
+.spark-composer-text {
+  font-size: 1rem;
+  line-height: 1.4rem;
+}
+
 .spark-message-text {
-  font-size: 0.875rem;
+  font-size: 1rem;
   line-height: 1.4rem;
 }
 
@@ -258,7 +246,7 @@ body {
 
 .spark-markdown {
   font-family: var(--font-serif);
-  font-weight: 300;
+  font-weight: 360;
   line-height: 1.5;
   padding-left: 0.5rem;
   padding-right: 2rem;
@@ -279,8 +267,8 @@ body {
 .spark-markdown :where(h1, h2, h3, h4) {
   margin: 1.1rem 0 0.45rem;
   color: #f3f0e8;
-  font-weight: 500;
-  line-height: 1.35;
+  font-weight: 530;
+  line-height: 1.3;
 }
 
 .spark-markdown :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
@@ -288,11 +276,19 @@ body {
 }
 
 .spark-markdown h1 {
-  font-size: 1rem;
+  font-size: 1.5rem;
 }
 
-.spark-markdown :where(h2, h3, h4) {
-  font-size: 0.875rem;
+.spark-markdown h2 {
+  font-size: 1.375rem;
+}
+
+.spark-markdown h3 {
+  font-size: 1.125rem;
+}
+
+.spark-markdown h4 {
+  font-size: 1rem;
 }
 
 .spark-markdown :where(ul, ol) {
@@ -313,7 +309,7 @@ body {
 
 .spark-markdown strong {
   color: #faf9f5;
-  font-weight: 500;
+  font-weight: 530;
 }
 
 .spark-markdown em {
@@ -335,8 +331,9 @@ body {
 .spark-markdown code {
   border-radius: 0.25rem;
   background: #2a2a28;
+  font-family: var(--font-mono);
   color: #f3f0e8;
-  font-size: 0.875em;
+  font-size: 0.9em;
   padding: 0.1rem 0.28rem;
 }
 
