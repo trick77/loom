@@ -53,7 +53,10 @@ func TestToolConfigForConfigAddsBuiltInSearxng(t *testing.T) {
 	}}
 	cfg := config.Config{SearxngURL: "http://searxng:8080"}
 
-	got := toolConfigForConfig(cfg, base)
+	got, collision := toolConfigForConfig(cfg, base)
+	if collision {
+		t.Fatal("toolConfigForConfig() collision = true, want false")
+	}
 	if got.Servers["fetch"].URL != "http://fetch-mcp:8080/mcp" {
 		t.Fatalf("fetch config = %#v", got.Servers["fetch"])
 	}
@@ -64,8 +67,26 @@ func TestToolConfigForConfigAddsBuiltInSearxng(t *testing.T) {
 }
 
 func TestToolConfigForConfigLeavesSearxngDisabledWhenURLIsEmpty(t *testing.T) {
-	got := toolConfigForConfig(config.Config{}, mcp.Config{})
+	got, collision := toolConfigForConfig(config.Config{}, mcp.Config{})
+	if collision {
+		t.Fatal("toolConfigForConfig() collision = true, want false")
+	}
 	if _, exists := got.Servers["searxng"]; exists {
 		t.Fatalf("searxng server exists when SPARK_SEARXNG_URL is empty: %#v", got.Servers["searxng"])
+	}
+}
+
+func TestToolConfigForConfigPreservesExternalSearxngOnCollision(t *testing.T) {
+	base := mcp.Config{Servers: map[string]mcp.ServerConfig{
+		"searxng": {Transport: mcp.TransportStreamableHTTP, URL: "http://custom-searxng-mcp:8080/mcp"},
+	}}
+	cfg := config.Config{SearxngURL: "http://searxng:8080"}
+
+	got, collision := toolConfigForConfig(cfg, base)
+	if !collision {
+		t.Fatal("toolConfigForConfig() collision = false, want true")
+	}
+	if got.Servers["searxng"].URL != "http://custom-searxng-mcp:8080/mcp" {
+		t.Fatalf("searxng config = %#v, want external config preserved", got.Servers["searxng"])
 	}
 }

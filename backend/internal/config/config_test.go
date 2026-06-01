@@ -24,6 +24,9 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatReasoningEffort != "high" {
 		t.Errorf("ChatReasoningEffort default = %q, want high", cfg.ChatReasoningEffort)
 	}
+	if cfg.SearxngURL != "" {
+		t.Errorf("SearxngURL default = %q, want empty opt-in value", cfg.SearxngURL)
+	}
 }
 
 func TestLoad_overrides_and_required(t *testing.T) {

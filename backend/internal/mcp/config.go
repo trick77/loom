@@ -11,7 +11,9 @@ import (
 const (
 	TransportStreamableHTTP = "streamable-http"
 	TransportStdio          = "stdio"
-	transportSearxng        = "searxng"
+	// transportSearxng is reserved for Spark's in-process SearXNG adapter.
+	// It is not accepted by LoadConfig and should not appear in mcp.json.
+	transportSearxng = "searxng"
 )
 
 // Config is the on-disk MCP server configuration loaded from mcp.json.

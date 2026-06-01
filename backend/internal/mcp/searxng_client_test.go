@@ -117,6 +117,12 @@ func TestSearxngClientRejectsBadInputsAndResponses(t *testing.T) {
 	if _, err := client.CallTool(context.Background(), "web_search", map[string]any{}); err == nil {
 		t.Fatal("CallTool() missing q error = nil")
 	}
+	if _, err := client.CallTool(context.Background(), "web_search", map[string]any{"q": "spark", "pageno": 0}); err == nil {
+		t.Fatal("CallTool() invalid pageno error = nil")
+	}
+	if _, err := client.CallTool(context.Background(), "web_search", map[string]any{"q": "spark", "safesearch": 9}); err == nil {
+		t.Fatal("CallTool() invalid safesearch error = nil")
+	}
 
 	badStatus := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad upstream", http.StatusBadGateway)

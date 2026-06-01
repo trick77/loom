@@ -141,6 +141,9 @@ func (c *searxngClient) searchURL(arguments map[string]any, query string) (strin
 	}
 	for _, key := range []string{"pageno", "safesearch"} {
 		if value, ok := intArg(arguments, key); ok {
+			if err := validateSearxngIntArg(key, value); err != nil {
+				return "", 0, err
+			}
 			values.Set(key, strconv.Itoa(value))
 		}
 	}
@@ -156,6 +159,20 @@ func (c *searxngClient) searchURL(arguments map[string]any, query string) (strin
 	}
 	base.RawQuery = values.Encode()
 	return base.String(), maxResults, nil
+}
+
+func validateSearxngIntArg(key string, value int) error {
+	switch key {
+	case "pageno":
+		if value < 1 {
+			return fmt.Errorf("SearXNG pageno must be at least 1")
+		}
+	case "safesearch":
+		if value < 0 || value > 2 {
+			return fmt.Errorf("SearXNG safesearch must be 0, 1, or 2")
+		}
+	}
+	return nil
 }
 
 func formatSearxngResults(query string, results []searxngResult, maxResults int) string {

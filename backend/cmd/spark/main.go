@@ -68,7 +68,11 @@ func run() error {
 			mcpConfig = loadedMCPConfig
 		}
 	}
-	mcpConfig = toolConfigForConfig(cfg, mcpConfig)
+	var searxngNameCollision bool
+	mcpConfig, searxngNameCollision = toolConfigForConfig(cfg, mcpConfig)
+	if searxngNameCollision {
+		slog.Warn("built-in SearXNG tool disabled because MCP config already defines server name searxng")
+	}
 	if len(mcpConfig.Servers) > 0 {
 		discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		discovered, err := mcp.NewBestEffortServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 15 * time.Second}, slog.Default())
@@ -155,13 +159,16 @@ func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 	}
 }
 
-func toolConfigForConfig(cfg config.Config, base mcp.Config) mcp.Config {
+func toolConfigForConfig(cfg config.Config, base mcp.Config) (mcp.Config, bool) {
 	out := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
 	for name, server := range base.Servers {
 		out.Servers[name] = server
 	}
 	if strings.TrimSpace(cfg.SearxngURL) != "" {
+		if _, exists := out.Servers["searxng"]; exists {
+			return out, true
+		}
 		out.Servers["searxng"] = mcp.SearxngServerConfig(cfg.SearxngURL)
 	}
-	return out
+	return out, false
 }
