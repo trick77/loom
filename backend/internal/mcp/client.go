@@ -82,6 +82,8 @@ type remoteClient struct {
 	nextID     atomic.Int64
 	initOnce   sync.Once
 	initErr    error
+	mu         sync.Mutex
+	sessionID  string
 }
 
 func NewRemoteClient(serverName string, cfg ServerConfig, httpClient *http.Client) Client {
@@ -140,7 +142,16 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	// The Streamable HTTP transport mandates that clients accept both content
+	// types; spec-compliant servers (e.g. mcp-searxng) answer 406 otherwise and
+	// may reply with an SSE stream instead of a bare JSON body.
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	c.mu.Lock()
+	sessionID := c.sessionID
+	c.mu.Unlock()
+	if sessionID != "" {
+		req.Header.Set("Mcp-Session-Id", sessionID)
+	}
 	for key, value := range c.cfg.Headers {
 		req.Header.Set(key, value)
 	}
@@ -149,12 +160,17 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 		return err
 	}
 	defer resp.Body.Close()
+	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
+		c.mu.Lock()
+		c.sessionID = id
+		c.mu.Unlock()
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("MCP %s failed with status %d: %s", method, resp.StatusCode, strings.TrimSpace(string(bytes)))
 	}
-	var rpcResp rpcResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRPCResponseBytes)).Decode(&rpcResp); err != nil {
+	rpcResp, err := decodeRPCResponse(resp, id)
+	if err != nil {
 		return err
 	}
 	if rpcResp.Error != nil {
@@ -164,6 +180,59 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 		return nil
 	}
 	return json.Unmarshal(rpcResp.Result, out)
+}
+
+// decodeRPCResponse reads a JSON-RPC reply from either a bare JSON body or a
+// text/event-stream body, returning the response whose id matches the request.
+func decodeRPCResponse(resp *http.Response, id int64) (rpcResponse, error) {
+	limited := io.LimitReader(resp.Body, maxRPCResponseBytes)
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
+		return decodeSSEResponse(limited, id)
+	}
+	var rpcResp rpcResponse
+	if err := json.NewDecoder(limited).Decode(&rpcResp); err != nil {
+		return rpcResponse{}, err
+	}
+	return rpcResp, nil
+}
+
+// decodeSSEResponse scans an SSE stream and returns the first JSON-RPC message
+// whose id matches the request, skipping unrelated events such as notifications.
+func decodeSSEResponse(r io.Reader, id int64) (rpcResponse, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxRPCResponseBytes)
+	var data strings.Builder
+	flush := func() (rpcResponse, bool) {
+		if data.Len() == 0 {
+			return rpcResponse{}, false
+		}
+		raw := data.String()
+		data.Reset()
+		var rpcResp rpcResponse
+		if err := json.Unmarshal([]byte(raw), &rpcResp); err != nil {
+			return rpcResponse{}, false
+		}
+		return rpcResp, rpcResp.ID == id
+	}
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			if rpcResp, ok := flush(); ok {
+				return rpcResp, nil
+			}
+			continue
+		}
+		if value, found := strings.CutPrefix(line, "data:"); found {
+			data.WriteString(strings.TrimPrefix(value, " "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return rpcResponse{}, err
+	}
+	if rpcResp, ok := flush(); ok {
+		return rpcResp, nil
+	}
+	return rpcResponse{}, fmt.Errorf("MCP response: no JSON-RPC message with id %d in SSE stream", id)
 }
 
 func (c *remoteClient) exposeTools(tools []toolResult) []Tool {
