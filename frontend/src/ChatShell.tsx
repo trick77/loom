@@ -43,6 +43,10 @@ type ToolActivity = {
   content?: string;
 };
 
+type MessageWithToolActivity = Message & {
+  toolEvents?: ToolActivity[];
+};
+
 type SidebarIconName = "chats" | "projects";
 
 export function ChatShell({
@@ -58,7 +62,7 @@ export function ChatShell({
   const [threads, setThreads] = useState<Thread[]>([]);
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<MessageWithToolActivity[]>([]);
   const [draft, setDraft] = useState("");
   const [projectName, setProjectName] = useState("");
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
@@ -73,6 +77,18 @@ export function ChatShell({
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const toolEventsRef = useRef<ToolActivity[]>([]);
+
+  const updateToolEvents = useCallback((updater: (current: ToolActivity[]) => ToolActivity[]) => {
+    const next = updater(toolEventsRef.current);
+    toolEventsRef.current = next;
+    setToolEvents(next);
+  }, []);
+
+  const clearToolEvents = useCallback(() => {
+    toolEventsRef.current = [];
+    setToolEvents([]);
+  }, []);
 
   function handleActionError(error: unknown, fallback: string, setError: (message: string) => void) {
     if (error instanceof AuthExpiredError) {
@@ -143,7 +159,7 @@ export function ChatShell({
       setActiveThread(null);
       setMessages([]);
       setStreamingText("");
-      setToolEvents([]);
+      clearToolEvents();
       setSendError("");
       return;
     }
@@ -157,7 +173,7 @@ export function ChatShell({
         activeThreadIDRef.current = response.thread.id;
         setMessages(response.messages);
         setStreamingText("");
-        setToolEvents([]);
+        clearToolEvents();
         setSendError("");
       })
       .catch((error: unknown) => {
@@ -179,11 +195,11 @@ export function ChatShell({
     setActiveThread(null);
     setMessages([]);
     setStreamingText("");
-    setToolEvents([]);
+    clearToolEvents();
     setSendError("");
     navigate({ view: "new" });
     setRoute({ view: "new" });
-  }, [onChat]);
+  }, [clearToolEvents, onChat]);
 
   async function selectThread(threadID: string) {
     onChat();
@@ -243,7 +259,7 @@ export function ChatShell({
     setIsSending(true);
     setStreamingText("");
     setStreamingReasoning("");
-    setToolEvents([]);
+    clearToolEvents();
     setSendError("");
     let abortController: AbortController | null = null;
     let createdThreadForFallback: Thread | null = null;
@@ -276,18 +292,22 @@ export function ChatShell({
         },
         onToolCall: (event) => {
           if (!isCurrentThread()) return;
-          setToolEvents((current) => upsertToolCall(current, event));
+          updateToolEvents((current) => upsertToolCall(current, event));
         },
         onToolResult: (event) => {
           if (!isCurrentThread()) return;
-          setToolEvents((current) => upsertToolResult(current, event));
+          updateToolEvents((current) => upsertToolResult(current, event));
         },
         onAssistantMessage: (message) => {
           if (!isCurrentThread()) return;
-          setMessages((current) => [...current, message]);
+          const completedToolEvents = toolEventsRef.current;
+          setMessages((current) => [
+            ...current,
+            completedToolEvents.length > 0 ? { ...message, toolEvents: completedToolEvents } : message,
+          ]);
           setStreamingText("");
           setStreamingReasoning("");
-          setToolEvents([]);
+          clearToolEvents();
         },
         onThread: (updatedThread) => {
           receivedThreadEvent = true;
@@ -304,7 +324,7 @@ export function ChatShell({
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
       setStreamingReasoning("");
-      setToolEvents([]);
+      clearToolEvents();
       if (options.restoreDraftOnError) setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
@@ -664,7 +684,7 @@ function ChatPanel({
   onStarChange,
 }: {
   thread: Thread | null;
-  messages: Message[];
+  messages: MessageWithToolActivity[];
   draft: string;
   streamingText: string;
   streamingReasoning: string;
@@ -777,12 +797,16 @@ function ChatPanel({
           <MetricsProvider>
             <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6">
               {messages.map((message, index) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
-                  onRetry={handleRetryRequest}
-                />
+                <div key={message.id} className="space-y-6">
+                  {message.role === "assistant" && message.toolEvents !== undefined && (
+                    <ToolActivityPanel events={message.toolEvents} />
+                  )}
+                  <MessageBubble
+                    message={message}
+                    retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
+                    onRetry={handleRetryRequest}
+                  />
+                </div>
               ))}
               {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
               {showThinkingIndicator && <ThinkingIndicator />}
