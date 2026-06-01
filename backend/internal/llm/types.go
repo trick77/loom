@@ -1,5 +1,7 @@
 package llm
 
+import "time"
+
 type chatCompletionRequest struct {
 	Model           string         `json:"model"`
 	Messages        []Message      `json:"messages"`
@@ -87,6 +89,8 @@ type StreamResult struct {
 	ReasoningContent string
 	ToolCalls        []ToolCall
 	Usage            TokenUsage
+	Duration         time.Duration
+	Model            string
 }
 
 type TokenUsage struct {

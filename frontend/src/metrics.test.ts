@@ -1,0 +1,42 @@
+import { expect, test } from "vitest";
+import { formatDuration, formatTps, buildMetricsString, hasRenderableMetrics } from "./metrics";
+import type { Message } from "./api";
+
+function assistant(extra: Partial<Message>): Message {
+  return { id: "m1", threadId: "t1", role: "assistant", content: "hi", createdAt: "2026-05-31T14:32:00Z", ...extra };
+}
+
+test("formatDuration scales by magnitude", () => {
+  expect(formatDuration(250)).toBe("250ms");
+  expect(formatDuration(5200)).toBe("5.2s");
+  expect(formatDuration(90000)).toBe("1m 30s");
+  expect(formatDuration(3_661_000)).toBe("1h 1m 1s");
+});
+
+test("formatTps uses 2 decimals below 1000 and grouping above", () => {
+  expect(formatTps(42.125)).toBe("42.13");
+  expect(formatTps(1234)).toBe("1 234");
+});
+
+test("hasRenderableMetrics requires duration and completion tokens", () => {
+  expect(hasRenderableMetrics(assistant({ durationMs: 2000, completionTokens: 100 }))).toBe(true);
+  expect(hasRenderableMetrics(assistant({ completionTokens: 100 }))).toBe(false);
+  expect(hasRenderableMetrics(assistant({ durationMs: 2000 }))).toBe(false);
+  expect(hasRenderableMetrics(assistant({ durationMs: 0, completionTokens: 100 }))).toBe(false);
+});
+
+test("buildMetricsString assembles model, duration, tps and token counts", () => {
+  const line = buildMetricsString(
+    assistant({ model: "mimo", durationMs: 5000, promptTokens: 1234, completionTokens: 500, totalTokens: 1734, cachedTokens: 128, reasoningTokens: 64 }),
+  );
+  expect(line).toBe("mimo · 5.0s (100.00 tok/s) · 1 234 → 500 (1 734 tok) · cached 128 · reasoning 64");
+});
+
+test("buildMetricsString omits absent segments", () => {
+  const line = buildMetricsString(assistant({ durationMs: 2000, completionTokens: 100 }));
+  expect(line).toBe("2.0s (50.00 tok/s)");
+});
+
+test("buildMetricsString returns null without renderable metrics", () => {
+  expect(buildMetricsString(assistant({ completionTokens: 100 }))).toBeNull();
+});

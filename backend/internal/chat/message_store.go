@@ -48,9 +48,11 @@ INSERT INTO messages (
     completion_tokens,
     total_tokens,
     cached_tokens,
-    reasoning_tokens
+    reasoning_tokens,
+    duration_ms,
+    model
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		messageID,
 		threadID,
 		userID,
@@ -62,6 +64,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		usage.TotalTokens,
 		usage.CachedTokens,
 		usage.ReasoningTokens,
+		usage.DurationMs,
+		usage.Model,
 	)
 	if err != nil {
 		return Message{}, fmt.Errorf("insert message: %w", err)
@@ -99,7 +103,7 @@ func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Me
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, created_at
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, created_at
 FROM messages
 WHERE user_id = ? AND thread_id = ?
 ORDER BY created_at ASC, id ASC`,
@@ -126,7 +130,7 @@ ORDER BY created_at ASC, id ASC`,
 
 func (s *Store) getMessage(ctx context.Context, userID, messageID string) (Message, bool, error) {
 	message, err := scanMessage(s.db.QueryRowContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, created_at
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, created_at
 FROM messages
 WHERE user_id = ? AND id = ?`,
 		userID, messageID,

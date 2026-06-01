@@ -93,9 +93,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	persistCtx := context.WithoutCancel(r.Context())
-	usage := messageUsageFromLLM(assistantResult.Usage)
-	usage.ReasoningContent = assistantResult.ReasoningContent
-	assistantMessage, err := s.chat.AddMessageWithUsage(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, usage)
+	assistantMessage, err := s.chat.AddMessageWithUsage(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromResult(assistantResult))
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
@@ -226,20 +224,29 @@ func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round 
 	return metadata
 }
 
-func messageUsageFromLLM(usage llm.TokenUsage) chat.MessageTokenUsage {
-	if !usage.Present() {
-		return chat.MessageTokenUsage{}
+func messageMetricsFromResult(result llm.StreamResult) chat.MessageTokenUsage {
+	metrics := chat.MessageTokenUsage{ReasoningContent: result.ReasoningContent}
+	if result.Model != "" {
+		metrics.Model = strPtr(result.Model)
 	}
-	return chat.MessageTokenUsage{
-		PromptTokens:     intPtr(usage.PromptTokens),
-		CompletionTokens: intPtr(usage.CompletionTokens),
-		TotalTokens:      intPtr(usage.TotalTokens),
-		CachedTokens:     intPtr(usage.PromptTokensDetails.CachedTokens),
-		ReasoningTokens:  intPtr(usage.CompletionTokenDetails.ReasoningTokens),
+	if result.Duration > 0 {
+		metrics.DurationMs = intPtr(int(result.Duration.Milliseconds()))
 	}
+	if result.Usage.Present() {
+		metrics.PromptTokens = intPtr(result.Usage.PromptTokens)
+		metrics.CompletionTokens = intPtr(result.Usage.CompletionTokens)
+		metrics.TotalTokens = intPtr(result.Usage.TotalTokens)
+		metrics.CachedTokens = intPtr(result.Usage.PromptTokensDetails.CachedTokens)
+		metrics.ReasoningTokens = intPtr(result.Usage.CompletionTokenDetails.ReasoningTokens)
+	}
+	return metrics
 }
 
 func intPtr(value int) *int {
+	return &value
+}
+
+func strPtr(value string) *string {
 	return &value
 }
 

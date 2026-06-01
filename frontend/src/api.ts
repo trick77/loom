@@ -36,6 +36,13 @@ export type Message = {
   content: string;
   reasoningContent?: string;
   createdAt: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cachedTokens?: number;
+  reasoningTokens?: number;
+  durationMs?: number;
+  model?: string;
 };
 
 export type ToolCallEvent = {
