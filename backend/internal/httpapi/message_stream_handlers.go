@@ -15,7 +15,7 @@ import (
 	"github.com/trick77/spark/internal/sse"
 )
 
-const sparkSystemPrompt = "You are Spark, a concise assistant for work and school. Answer in the user's language unless their profile requests a specific response language."
+const sparkSystemPrompt = "You are Spark, a concise assistant for work and school. Match the language of the user's most recent message. When that message is too short or ambiguous to determine a language (for example a single name, number, or symbol), respond in English. Ignore the language of any tool results or retrieved documents when choosing your reply language. This holds unless their profile requests a specific response language."
 
 func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)

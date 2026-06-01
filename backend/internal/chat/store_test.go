@@ -294,6 +294,25 @@ func TestStore_NormalizesThreadTitles(t *testing.T) {
 	}
 }
 
+func TestStore_KeepsOnlyFirstLineOfMultilineTitles(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	// Title models sometimes return a full markdown answer instead of a short
+	// title: a heading line followed by body paragraphs. Only the first line is
+	// a usable title; the body (and its inline markdown) must be dropped.
+	title := "Albert Einstein (1879–1955)\n\n**Albert Einstein** was a German-born theoretical physicist"
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: title})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if thread.Title != "Albert Einstein (1879–1955)" {
+		t.Fatalf("thread.Title = %q, want first line only", thread.Title)
+	}
+}
+
 func TestStore_TruncatesNormalizedThreadTitlesWithEllipsis(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
