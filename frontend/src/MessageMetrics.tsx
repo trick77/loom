@@ -1,9 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import type { Message } from "./api";
 import { buildMetricsString } from "./metrics";
 
 export const SHOW_METRICS_KEY = "spark_show_chat_metrics";
-const SHOW_METRICS_EVENT = "spark_show_metrics_change";
 
 const MetricsContext = createContext<{
   showAlways: boolean;
@@ -26,23 +25,17 @@ function writeShowAlways(value: boolean) {
   }
 }
 
-/** Shares the "always show metrics" preference across every bubble. */
+/**
+ * Shares the "always show metrics" preference across every bubble. A single
+ * provider wraps the whole transcript, so updating its state already re-renders
+ * every consuming bubble — no cross-instance event plumbing is needed.
+ */
 export function MetricsProvider({ children }: { children: ReactNode }) {
   const [showAlways, setShowAlways] = useState(readShowAlways);
 
-  useEffect(() => {
-    function handle(event: Event) {
-      const detail = (event as CustomEvent<{ showAlways: boolean }>).detail;
-      if (detail && typeof detail.showAlways === "boolean") setShowAlways(detail.showAlways);
-    }
-    window.addEventListener(SHOW_METRICS_EVENT, handle);
-    return () => window.removeEventListener(SHOW_METRICS_EVENT, handle);
-  }, []);
-
   function toggle() {
-    const next = !readShowAlways();
+    const next = !showAlways;
     writeShowAlways(next);
-    window.dispatchEvent(new CustomEvent(SHOW_METRICS_EVENT, { detail: { showAlways: next } }));
     setShowAlways(next);
   }
 
