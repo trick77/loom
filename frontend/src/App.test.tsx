@@ -1019,6 +1019,48 @@ test("shows fenced file-like assistant output as a dedicated download response",
   expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
 });
 
+test("does not render partial streamed HTML artifact content inline", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const encoder = new TextEncoder();
+  const content = "```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(encoder.encode('event: assistant_delta\ndata: {"content":"```html\\n<!doctype html>\\n<html>"}\n\n'));
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("HTML response")).toBeInTheDocument();
+  expect(screen.getByText("Receiving file...")).toBeInTheDocument();
+  expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
+
+  streamController.current?.enqueue(
+    encoder.encode(
+      `event: assistant_message\ndata: ${JSON.stringify({
+        id: "m2",
+        threadId: "t1",
+        role: "assistant",
+        content,
+        createdAt: "2026-05-30T00:00:01Z",
+      })}\n\n`,
+    ),
+  );
+  streamController.current?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
+
+  expect(await screen.findByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
+  expect(screen.queryByText("Receiving file...")).not.toBeInTheDocument();
+  expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
+});
+
 test("shows a fenced HTML artifact as a download while keeping the surrounding prose", async () => {
   const content = "Here is the HTML:\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
   vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
