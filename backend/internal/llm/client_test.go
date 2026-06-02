@@ -119,6 +119,28 @@ func TestClient_StreamChatResultCapturesUsageTrailerChunk(t *testing.T) {
 	}
 }
 
+func TestClient_StreamChatResultCapturesModelAndReasoningEffortOnDonePath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", ReasoningEffort: "low"}, server.Client())
+
+	result, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
+	if err != nil {
+		t.Fatalf("StreamChatResult() error: %v", err)
+	}
+	if result.Model != "mimo" {
+		t.Fatalf("model = %q, want mimo", result.Model)
+	}
+	if result.ReasoningEffort != "low" {
+		t.Fatalf("reasoning effort = %q, want low", result.ReasoningEffort)
+	}
+}
+
 func TestClient_StreamChatResultCapturesReasoningContent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
