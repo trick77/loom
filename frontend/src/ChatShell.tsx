@@ -1013,6 +1013,7 @@ function MessageBubble({
           copyText={message.content}
           retryLabel="Retry message"
           onRetry={() => onRetry(message.content)}
+          alignRight
         />
       </div>
     );
@@ -1075,6 +1076,7 @@ function AssistantText({
           retryLabel="Retry response"
           onRetry={onRetry}
           metricsMessage={metricsMessage}
+          speakable
         />
       </div>
     );
@@ -1103,6 +1105,7 @@ function AssistantText({
         retryLabel="Retry response"
         onRetry={onRetry}
         metricsMessage={metricsMessage}
+        speakable
       />
     </div>
   );
@@ -1114,12 +1117,16 @@ function MessageActions({
   retryLabel,
   onRetry,
   metricsMessage,
+  speakable = false,
+  alignRight = false,
 }: {
   copyLabel: string;
   copyText: string;
   retryLabel: string;
   onRetry?: () => void;
   metricsMessage?: Message;
+  speakable?: boolean;
+  alignRight?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -1159,18 +1166,20 @@ function MessageActions({
   const hoverReveal = "opacity-0 transition-all duration-300 group-hover:opacity-100";
 
   return (
-    <div className="mt-3 flex items-center gap-2">
-      <button
-        className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
-          speaking ? "text-[#f3f0e8]" : "text-[#c7c5bd]"
-        }`}
-        onClick={handleSpeak}
-        type="button"
-        title={speaking ? "Stop" : "Read aloud"}
-        aria-label={speaking ? "Stop reading" : "Read aloud"}
-      >
-        <SpeakerIcon />
-      </button>
+    <div className={`mt-2 flex items-center gap-2 ${alignRight ? "justify-end" : ""}`}>
+      {speakable && (
+        <button
+          className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
+            speaking ? "text-[#f3f0e8]" : "text-[#c7c5bd]"
+          }`}
+          onClick={handleSpeak}
+          type="button"
+          title={speaking ? "Stop" : "Read aloud"}
+          aria-label={speaking ? "Stop reading" : "Read aloud"}
+        >
+          <SpeakerIcon />
+        </button>
+      )}
       <button
         className={`grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8] ${hoverReveal}`}
         onClick={handleCopy}
