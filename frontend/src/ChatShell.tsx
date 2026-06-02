@@ -1188,7 +1188,7 @@ function MessageActions({
   const hoverReveal = `transition-opacity duration-300 ${hovered ? "opacity-100" : "opacity-0"}`;
 
   return (
-    <div ref={rootRef} className={`mt-2 flex items-center gap-2 ${alignRight ? "justify-end" : ""}`}>
+    <div ref={rootRef} className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
       {speakable && (
         <button
           className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
