@@ -207,8 +207,6 @@ body {
 .spark-thinking-chevron-expanded {
   display: inline-block;
   line-height: 1;
-  font-size: 1.125rem;
-  font-weight: 600;
   transition: transform 0.16s ease;
 }
 
