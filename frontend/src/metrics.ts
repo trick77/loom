@@ -31,7 +31,7 @@ export function hasRenderableMetrics(message: Message): boolean {
 }
 
 /**
- * Build the metrics line (model (effort) · duration · ↑in (cached/c) ↓out (reasoning/r)),
+ * Build the metrics line (model (effort) · duration · ↑in (cached/c) · ↓out (reasoning/r)),
  * or null when there is nothing renderable.
  */
 export function buildMetricsString(message: Message): string | null {
@@ -48,7 +48,7 @@ export function buildMetricsString(message: Message): string | null {
     const reasoning = message.reasoningTokens && message.reasoningTokens > 0 ? ` (${groupThousands(message.reasoningTokens)}/r)` : "";
     const up = `↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cached}`;
     const down = `↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoning}`;
-    segments.push(`${up} ${down}`);
+    segments.push(`${up} · ${down}`);
   }
   return segments.join(" · ");
 }

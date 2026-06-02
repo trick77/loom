@@ -1132,6 +1132,9 @@ function MessageActions({
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   speakingRef.current = speaking;
+  // Safari garbage-collects the utterance mid-speech if nothing references it,
+  // which silently stops/prevents playback. Keep it alive here.
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [hovered, setHovered] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -1171,6 +1174,7 @@ function MessageActions({
     // Note: no cancel() right before speak() — Safari drops the freshly queued
     // utterance if you do. resume() unsticks an engine Safari/Chrome silently paused.
     const utterance = new SpeechSynthesisUtterance(copyText);
+    utteranceRef.current = utterance; // hold a reference so Safari doesn't GC it mid-speech
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
     setSpeaking(true);
