@@ -820,7 +820,7 @@ function ChatPanel({
             className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
-            <div className="spark-chat-rail pointer-events-auto mx-auto w-full max-w-[720px]">
+            <div className="spark-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
               <Composer
                 variant="chat"
                 draft={draft}
@@ -928,6 +928,9 @@ function Composer({
 }) {
   const height = variant === "start" ? "h-[122px]" : "h-[102px]";
   const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
+  // Chat composer box is 34px wider than the 720px message rail; add 17px of
+  // horizontal padding per side so the typed text stays within a 720px field.
+  const padX = variant === "chat" ? "px-[41px]" : "px-6";
   return (
     <form
       className={`spark-composer ${height} relative rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
@@ -937,7 +940,7 @@ function Composer({
       }}
     >
       <textarea
-        className="spark-composer-text h-full w-full resize-none overflow-hidden bg-transparent px-6 pb-14 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]"
+        className={`spark-composer-text h-full w-full resize-none overflow-hidden bg-transparent ${padX} pb-14 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]`}
         placeholder={placeholder}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
@@ -948,7 +951,7 @@ function Composer({
           }
         }}
       />
-      <div className="absolute inset-x-0 bottom-0 flex h-11 items-center justify-between px-6 text-[#d8d4ca]">
+      <div className={`absolute inset-x-0 bottom-0 flex h-11 items-center justify-between ${padX} text-[#d8d4ca]`}>
         <button className="text-2xl leading-none" type="button" aria-label="Add attachment">
           +
         </button>

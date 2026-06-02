@@ -37,6 +37,10 @@ func ptr(value int) *int {
 	return &value
 }
 
+func strptr(value string) *string {
+	return &value
+}
+
 func intValue(value *int) int {
 	if value == nil {
 		return 0
@@ -194,6 +198,7 @@ func TestStore_AddMessageWithUsagePersistsTokenStats(t *testing.T) {
 		TotalTokens:      ptr(10),
 		CachedTokens:     ptr(5),
 		ReasoningTokens:  ptr(2),
+		ReasoningEffort:  strptr("high"),
 	})
 	if err != nil {
 		t.Fatalf("AddMessageWithUsage() error: %v", err)
@@ -212,6 +217,9 @@ func TestStore_AddMessageWithUsagePersistsTokenStats(t *testing.T) {
 	}
 	if got := intValue(message.ReasoningTokens); got != 2 {
 		t.Fatalf("ReasoningTokens = %d, want 2", got)
+	}
+	if message.ReasoningEffort == nil || *message.ReasoningEffort != "high" {
+		t.Fatalf("ReasoningEffort = %v, want \"high\"", message.ReasoningEffort)
 	}
 }
 

@@ -43,6 +43,7 @@ export type Message = {
   reasoningTokens?: number;
   durationMs?: number;
   model?: string;
+  reasoningEffort?: string;
 };
 
 export type ToolCallEvent = {

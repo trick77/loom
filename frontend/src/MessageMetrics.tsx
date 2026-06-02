@@ -42,20 +42,11 @@ export function MetricsProvider({ children }: { children: ReactNode }) {
   return <MetricsContext.Provider value={{ showAlways, toggle }}>{children}</MetricsContext.Provider>;
 }
 
-function formatTimestamp(createdAt: string): string {
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-
 /** Renders the hover-only (or always-on) stats line under an assistant bubble. */
 export function MessageMetrics({ message }: { message: Message }) {
   const { showAlways, toggle } = useContext(MetricsContext);
   const line = buildMetricsString(message);
   if (line === null) return null;
-
-  const timestamp = formatTimestamp(message.createdAt);
-  const full = [line, timestamp].filter(Boolean).join(" · ");
 
   return (
     <button
@@ -66,7 +57,7 @@ export function MessageMetrics({ message }: { message: Message }) {
         showAlways ? "opacity-100" : "opacity-0 group-hover:opacity-100"
       }`}
     >
-      {full}
+      {line}
     </button>
   );
 }

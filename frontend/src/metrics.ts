@@ -33,8 +33,8 @@ export function hasRenderableMetrics(message: Message): boolean {
 }
 
 /**
- * Build the metrics line (model · duration (tok/s) · tokens · cached · reasoning),
- * or null when there is nothing renderable. Timestamp is appended by the caller.
+ * Build the metrics line (model (effort) · duration (tok/s) · ↑in ↓out (total tok) · cached · reasoning),
+ * or null when there is nothing renderable.
  */
 export function buildMetricsString(message: Message): string | null {
   if (!hasRenderableMetrics(message)) return null;
@@ -43,7 +43,9 @@ export function buildMetricsString(message: Message): string | null {
   const outputTps = completionTokens / (durationMs / 1000);
 
   const segments: string[] = [];
-  if (message.model) segments.push(message.model);
+  if (message.model) {
+    segments.push(message.reasoningEffort ? `${message.model} (${message.reasoningEffort})` : message.model);
+  }
   segments.push(`${formatDuration(durationMs)} (${formatTps(outputTps)} tok/s)`);
   if (
     message.promptTokens !== undefined &&
@@ -51,7 +53,7 @@ export function buildMetricsString(message: Message): string | null {
     message.totalTokens !== undefined
   ) {
     segments.push(
-      `${groupThousands(message.promptTokens)} → ${groupThousands(message.completionTokens)} (${groupThousands(message.totalTokens)} tok)`,
+      `↑${groupThousands(message.promptTokens)} ↓${groupThousands(message.completionTokens)} (${groupThousands(message.totalTokens)} tok)`,
     );
   }
   if (message.cachedTokens && message.cachedTokens > 0) segments.push(`cached ${groupThousands(message.cachedTokens)}`);
