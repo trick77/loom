@@ -1020,12 +1020,12 @@ test("shows fenced file-like assistant output as a dedicated download response",
 });
 
 test("does not render partial streamed HTML artifact content inline", async () => {
-  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const encoder = new TextEncoder();
   const content = "```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      streamController = controller;
+      streamController.current = controller;
       controller.enqueue(
         encoder.encode(
           'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
@@ -1042,7 +1042,7 @@ test("does not render partial streamed HTML artifact content inline", async () =
   expect(screen.getByText("Receiving file...")).toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
 
-  streamController?.enqueue(
+  streamController.current?.enqueue(
     encoder.encode(
       `event: assistant_message\ndata: ${JSON.stringify({
         id: "m2",
@@ -1053,8 +1053,8 @@ test("does not render partial streamed HTML artifact content inline", async () =
       })}\n\n`,
     ),
   );
-  streamController?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
-  streamController?.close();
+  streamController.current?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
 
   expect(await screen.findByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
   expect(screen.queryByText("Receiving file...")).not.toBeInTheDocument();
