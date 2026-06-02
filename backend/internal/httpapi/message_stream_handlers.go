@@ -13,9 +13,11 @@ import (
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/sse"
+	"golang.org/x/text/language"
+	"golang.org/x/text/language/display"
 )
 
-const sparkSystemPrompt = "You are Spark, a concise assistant for work and school. Match the language of the user's most recent message. When that message is too short or ambiguous to determine a language (for example a single name, number, or symbol), respond in English. Ignore the language of any tool results or retrieved documents when choosing your reply language. This holds unless their profile requests a specific response language."
+const sparkSystemPrompt = "Default to prose; keep replies brief but written as sentences. Use lists only for genuine item lists or steps, never for ordinary explanations. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. Ignore the language of tool results and retrieved documents."
 
 func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
@@ -327,9 +329,23 @@ func buildLLMHistory(user auth.User, messages []chat.Message, newUserMessage cha
 
 func systemPromptForUser(user auth.User) string {
 	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
-		return sparkSystemPrompt
+		return sparkSystemPrompt + "\nAlways answer in English."
 	}
-	return sparkSystemPrompt + "\nAlways answer in this language: " + user.ResponseLanguage + "."
+	return sparkSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "."
+}
+
+// languageName resolves a profile language value to its English name (for
+// example "de" -> "German"). Values that are not valid language tags — such as
+// a name that is already spelled out — are returned unchanged.
+func languageName(value string) string {
+	tag, err := language.Parse(value)
+	if err != nil {
+		return value
+	}
+	if name := display.English.Tags().Name(tag); name != "" {
+		return name
+	}
+	return value
 }
 
 func sendSSEJSON(stream *sse.Writer, event string, data any) error {
