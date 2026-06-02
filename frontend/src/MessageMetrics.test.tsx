@@ -9,7 +9,7 @@ function assistant(extra: Partial<Message>): Message {
 }
 
 test("renders nothing without renderable metrics", () => {
-  const { container } = render(<MessageMetrics message={assistant({ completionTokens: 100 })} visible={true} />);
+  const { container } = render(<MessageMetrics message={assistant({ completionTokens: 100 })} />);
   expect(container).toBeEmptyDOMElement();
 });
 
@@ -17,7 +17,6 @@ test("renders the metrics line when data is present", () => {
   render(
     <MessageMetrics
       message={assistant({ model: "mimo", durationMs: 5000, promptTokens: 10, completionTokens: 500, totalTokens: 510 })}
-      visible={true}
     />,
   );
   expect(screen.getByText(/^mimo · 5\.0s · ↑/)).toBeInTheDocument();

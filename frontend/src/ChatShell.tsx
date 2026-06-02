@@ -1132,27 +1132,9 @@ function MessageActions({
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   speakingRef.current = speaking;
-  const [hovered, setHovered] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
 
   // Stop any in-progress narration started here when the bubble unmounts.
   useEffect(() => () => void (speakingRef.current && window.speechSynthesis?.cancel()), []);
-
-  // Reveal copy/retry/stats while the pointer is over the message group. Driven by
-  // JS pointer events on the `.group` ancestor — CSS :hover/group-hover sticks "on"
-  // in Safari after the first hover, leaving the icons permanently visible.
-  useEffect(() => {
-    const group = rootRef.current?.closest(".group");
-    if (!group) return;
-    const enter = () => setHovered(true);
-    const leave = () => setHovered(false);
-    group.addEventListener("pointerenter", enter);
-    group.addEventListener("pointerleave", leave);
-    return () => {
-      group.removeEventListener("pointerenter", enter);
-      group.removeEventListener("pointerleave", leave);
-    };
-  }, []);
 
   async function handleCopy() {
     await copyResponse(copyText);
@@ -1184,11 +1166,13 @@ function MessageActions({
     setSpeaking(true);
   }
 
-  // Reveal class for the hover-only controls. The loudspeaker is excluded (always shown).
-  const hoverReveal = `transition-opacity duration-300 ${hovered ? "opacity-100" : "opacity-0"}`;
+  // Reveal class copied verbatim from AnythingLLM's actions (works in Safari):
+  // pure CSS group-hover on the message wrapper, gated to md+ (mobile shows them
+  // always). The loudspeaker is excluded — always visible.
+  const hoverReveal = "md:opacity-0 md:group-hover:opacity-100 transition-all duration-300";
 
   return (
-    <div ref={rootRef} className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
+    <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
       {speakable && (
         <button
           className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
@@ -1222,7 +1206,7 @@ function MessageActions({
           <RetryIcon />
         </button>
       )}
-      {metricsMessage && <MessageMetrics message={metricsMessage} visible={hovered} />}
+      {metricsMessage && <MessageMetrics message={metricsMessage} />}
     </div>
   );
 }
