@@ -38,6 +38,21 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	var usage TokenUsage
 	toolCalls := map[int]*ToolCall{}
 	var toolCallOrder []int
+	// MiMo emits tool calls as inline XML in the content; gate the streamed
+	// deltas so the raw <tool_call> markup never reaches the client.
+	var gate *toolCallStreamGate
+	if isMiMoModel(c.model) {
+		gate = &toolCallStreamGate{}
+	}
+	flushGate := func() error {
+		if gate == nil || onEvent == nil {
+			return nil
+		}
+		if leftover := gate.flush(); leftover != "" {
+			return onEvent(StreamEvent{Delta: leftover})
+		}
+		return nil
+	}
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -51,7 +66,11 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payload == "[DONE]" {
-			result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent)
+			if err := flushGate(); err != nil {
+				logInferenceFailed(ctx, c.model, time.Since(start), err)
+				return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+			}
+			result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, isMiMoModel(c.model))
 			if err != nil {
 				logInferenceFailed(ctx, c.model, time.Since(start), err)
 				return result, err
@@ -89,9 +108,15 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		if delta.Content != "" {
 			content.WriteString(delta.Content)
 			if onEvent != nil {
-				if err := onEvent(StreamEvent{Delta: delta.Content}); err != nil {
-					logInferenceFailed(ctx, c.model, time.Since(start), err)
-					return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+				emit := delta.Content
+				if gate != nil {
+					emit = gate.push(delta.Content)
+				}
+				if emit != "" {
+					if err := onEvent(StreamEvent{Delta: emit}); err != nil {
+						logInferenceFailed(ctx, c.model, time.Since(start), err)
+						return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+					}
 				}
 			}
 		}
@@ -121,7 +146,11 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 	}
-	result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent)
+	if err := flushGate(); err != nil {
+		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+	}
+	result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, isMiMoModel(c.model))
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return result, err
@@ -133,7 +162,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	return result, nil
 }
 
-func finishStream(content string, reasoningContent string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error) (StreamResult, error) {
+func finishStream(content string, reasoningContent string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error, parseInlineTools bool) (StreamResult, error) {
 	result := StreamResult{
 		Content:          content,
 		ReasoningContent: reasoningContent,
@@ -147,6 +176,22 @@ func finishStream(content string, reasoningContent string, usage TokenUsage, byI
 			if err := onEvent(StreamEvent{ToolCall: call}); err != nil {
 				return result, err
 			}
+		}
+	}
+	// Models that lack native tool_calls (e.g. MiMo) emit the call as inline XML
+	// in the content. Recover those only when the API returned no native calls.
+	if parseInlineTools && len(result.ToolCalls) == 0 {
+		inlineCalls, cleaned := parseInlineToolCalls(result.Content)
+		for _, call := range inlineCalls {
+			result.ToolCalls = append(result.ToolCalls, call)
+			if onEvent != nil {
+				if err := onEvent(StreamEvent{ToolCall: call}); err != nil {
+					return result, err
+				}
+			}
+		}
+		if len(inlineCalls) > 0 {
+			result.Content = cleaned
 		}
 	}
 	return result, nil

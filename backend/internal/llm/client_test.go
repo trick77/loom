@@ -374,6 +374,126 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	}
 }
 
+func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
+	xml := "<tool_call><function=searxng__web_search><parameter=q>colossus</parameter></function></tool_call>"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	var events []StreamEvent
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, nil, func(event StreamEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if len(final.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %#v, want 1", final.ToolCalls)
+	}
+	call := final.ToolCalls[0]
+	if call.Function.Name != "searxng__web_search" || call.Function.Arguments != `{"q":"colossus"}` {
+		t.Fatalf("tool call = %#v", call)
+	}
+	if final.Content != "" {
+		t.Fatalf("final content = %q, want empty (XML stripped)", final.Content)
+	}
+	sawToolCall := false
+	for _, e := range events {
+		if e.ToolCall.Function.Name == "searxng__web_search" {
+			sawToolCall = true
+		}
+	}
+	if !sawToolCall {
+		t.Fatalf("events = %#v, want a tool_call event", events)
+	}
+}
+
+func TestClient_StreamChatWithToolsDoesNotStreamMiMoInlineXML(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		// Inline tool call arriving as several content chunks, marker split across two.
+		for _, c := range []string{"<tool", "_call><function=searxng__web_search>", "<parameter=q>x</parameter></function></tool_call>"} {
+			_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + c + `"}}]}` + "\n\n"))
+		}
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	var deltas string
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, nil, func(event StreamEvent) error {
+		deltas += event.Delta
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if deltas != "" {
+		t.Fatalf("streamed deltas = %q, want none (XML suppressed)", deltas)
+	}
+	if len(final.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %#v, want 1", final.ToolCalls)
+	}
+}
+
+func TestClient_StreamChatWithToolsStreamsNormalMiMoContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, c := range []string{"Colossus ", "is a 1970 ", "film."} {
+			_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + c + `"}}]}` + "\n\n"))
+		}
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	var deltas string
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil, func(event StreamEvent) error {
+		deltas += event.Delta
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if deltas != "Colossus is a 1970 film." {
+		t.Fatalf("streamed deltas = %q, want full content", deltas)
+	}
+	if final.Content != "Colossus is a 1970 film." {
+		t.Fatalf("final content = %q", final.Content)
+	}
+}
+
+func TestClient_StreamChatWithToolsKeepsInlineXMLForNonMiMoModel(t *testing.T) {
+	xml := "<tool_call><function=searxng__web_search><parameter=q>colossus</parameter></function></tool_call>"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "gpt-4o"}, server.Client())
+
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, nil, nil)
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if len(final.ToolCalls) != 0 {
+		t.Fatalf("tool calls = %#v, want 0 for non-MiMo model", final.ToolCalls)
+	}
+	if final.Content != xml {
+		t.Fatalf("final content = %q, want unchanged XML", final.Content)
+	}
+}
+
 func TestClient_StreamChatParsesDataLinesWithoutSpace(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
