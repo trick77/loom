@@ -63,6 +63,7 @@ type Message struct {
 	ReasoningTokens  *int            `json:"reasoningTokens,omitempty"`
 	DurationMs       *int            `json:"durationMs,omitempty"`
 	Model            *string         `json:"model,omitempty"`
+	ReasoningEffort  *string         `json:"reasoningEffort,omitempty"`
 	CreatedAt        time.Time       `json:"createdAt"`
 }
 
@@ -74,6 +75,7 @@ type MessageTokenUsage struct {
 	ReasoningTokens  *int
 	DurationMs       *int
 	Model            *string
+	ReasoningEffort  *string
 	ReasoningContent string
 }
 

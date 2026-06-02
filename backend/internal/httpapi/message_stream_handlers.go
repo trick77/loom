@@ -229,6 +229,9 @@ func messageMetricsFromResult(result llm.StreamResult) chat.MessageTokenUsage {
 	if result.Model != "" {
 		metrics.Model = strPtr(result.Model)
 	}
+	if result.ReasoningEffort != "" {
+		metrics.ReasoningEffort = strPtr(result.ReasoningEffort)
+	}
 	if result.Duration > 0 {
 		metrics.DurationMs = intPtr(int(result.Duration.Milliseconds()))
 	}

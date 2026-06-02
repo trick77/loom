@@ -29,7 +29,14 @@ test("buildMetricsString assembles model, duration, tps and token counts", () =>
   const line = buildMetricsString(
     assistant({ model: "mimo", durationMs: 5000, promptTokens: 1234, completionTokens: 500, totalTokens: 1734, cachedTokens: 128, reasoningTokens: 64 }),
   );
-  expect(line).toBe("mimo · 5.0s (100.00 tok/s) · 1 234 → 500 (1 734 tok) · cached 128 · reasoning 64");
+  expect(line).toBe("mimo · 5.0s (100.00 tok/s) · ↑1 234 ↓500 (1 734 tok) · cached 128 · reasoning 64");
+});
+
+test("buildMetricsString appends the reasoning effort level to the model", () => {
+  const line = buildMetricsString(
+    assistant({ model: "mimo-v2.5-pro", reasoningEffort: "high", durationMs: 5000, promptTokens: 10, completionTokens: 500, totalTokens: 510 }),
+  );
+  expect(line).toBe("mimo-v2.5-pro (high) · 5.0s (100.00 tok/s) · ↑10 ↓500 (510 tok)");
 });
 
 test("buildMetricsString omits absent segments", () => {

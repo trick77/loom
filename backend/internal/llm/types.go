@@ -91,6 +91,7 @@ type StreamResult struct {
 	Usage            TokenUsage
 	Duration         time.Duration
 	Model            string
+	ReasoningEffort  string
 }
 
 type TokenUsage struct {
