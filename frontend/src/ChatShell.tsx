@@ -1120,23 +1120,43 @@ let messageHoverTrackerInstalled = false;
 function installMessageHoverTracker(): void {
   if (messageHoverTrackerInstalled || typeof document === "undefined") return;
   messageHoverTrackerInstalled = true;
-  let target: Element | null = null;
+  let x = -1;
+  let y = -1;
   let scheduled = false;
-  const apply = () => {
+  const recompute = () => {
     scheduled = false;
-    const msg = target?.closest(".spark-assistant-message, .spark-user-message") ?? null;
-    document.querySelectorAll(".spark-assistant-message.is-hovered, .spark-user-message.is-hovered").forEach((el) => {
-      if (el !== msg) el.classList.remove("is-hovered");
+    const el = x >= 0 && y >= 0 ? document.elementFromPoint(x, y) : null;
+    const msg = el?.closest(".spark-assistant-message, .spark-user-message") ?? null;
+    document.querySelectorAll(".spark-assistant-message.is-hovered, .spark-user-message.is-hovered").forEach((m) => {
+      if (m !== msg) m.classList.remove("is-hovered");
     });
     if (msg) msg.classList.add("is-hovered");
   };
-  document.addEventListener("mousemove", (event) => {
-    target = event.target as Element;
+  const schedule = () => {
     if (!scheduled) {
       scheduled = true;
-      requestAnimationFrame(apply);
+      requestAnimationFrame(recompute);
+    }
+  };
+  // Track the cursor and re-resolve the message under it on every relevant change:
+  // - mousemove: normal pointer movement
+  // - scroll (capture, any scroller): content moves under a stationary cursor, so
+  //   resolve by coordinates via elementFromPoint, not the last mouse target
+  // - mouseout with no relatedTarget: the pointer left the window entirely → clear
+  // This makes a missed/absent event self-heal and stops icons sticking in Safari.
+  document.addEventListener("mousemove", (event) => {
+    x = event.clientX;
+    y = event.clientY;
+    schedule();
+  });
+  document.addEventListener("mouseout", (event) => {
+    if (!event.relatedTarget) {
+      x = -1;
+      y = -1;
+      schedule();
     }
   });
+  window.addEventListener("scroll", schedule, true);
 }
 
 function MessageActions({
