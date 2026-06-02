@@ -1084,14 +1084,14 @@ function AssistantText({
 
   const pendingArtifact = pendingFencedArtifact(children);
   if (pendingArtifact !== null) {
-    const { before, label } = pendingArtifact;
+    const { before, label, receivedBytes } = pendingArtifact;
     if (before === "") {
-      return <PendingDownloadResponseBubble label={label} />;
+      return <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />;
     }
     return (
       <div className="spark-assistant-message group w-full space-y-3">
         <ProseMarkdown>{before}</ProseMarkdown>
-        <PendingDownloadResponseBubble label={label} />
+        <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />
       </div>
     );
   }
@@ -1244,7 +1244,9 @@ function MessageActions({
   );
 }
 
-function PendingDownloadResponseBubble({ label }: { label: string }) {
+function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string; receivedBytes: number }) {
+  const progressText =
+    receivedBytes > 0 ? `Receiving file... ${formatReceivedKB(receivedBytes)} received` : "Receiving file...";
   return (
     <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
       <div className="flex items-center gap-3">
@@ -1253,7 +1255,7 @@ function PendingDownloadResponseBubble({ label }: { label: string }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="spark-message-text truncate">{label} response</div>
-          <div className="spark-meta-text text-[#aaa79e]">Receiving file...</div>
+          <div className="spark-meta-text text-[#aaa79e]">{progressText}</div>
         </div>
       </div>
     </div>
@@ -1316,6 +1318,7 @@ type EmbeddedArtifact = {
 type PendingArtifact = {
   label: string;
   before: string;
+  receivedBytes: number;
 };
 
 function downloadableResponse(content: string): EmbeddedArtifact | null {
@@ -1340,7 +1343,18 @@ function pendingFencedArtifact(content: string): PendingArtifact | null {
   return {
     label: extension.toUpperCase(),
     before: content.slice(0, start).trim(),
+    receivedBytes: utf8ByteLength(content.slice(artifactStart)),
   };
+}
+
+function utf8ByteLength(content: string): number {
+  return new TextEncoder().encode(content).length;
+}
+
+function formatReceivedKB(bytes: number): string {
+  const kb = bytes / 1024;
+  const rounded = kb >= 10 ? Math.round(kb).toString() : kb.toFixed(1);
+  return `${rounded} KB`;
 }
 
 function fencedArtifact(content: string): EmbeddedArtifact | null {

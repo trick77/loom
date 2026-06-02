@@ -1039,7 +1039,7 @@ test("does not render partial streamed HTML artifact content inline", async () =
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("HTML response")).toBeInTheDocument();
-  expect(screen.getByText("Receiving file...")).toBeInTheDocument();
+  expect(screen.getByText(/Receiving file\.\.\. \d+\.\d KB received/)).toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
 
   streamController.current?.enqueue(
@@ -1057,8 +1057,35 @@ test("does not render partial streamed HTML artifact content inline", async () =
   streamController.current?.close();
 
   expect(await screen.findByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
-  expect(screen.queryByText("Receiving file...")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Receiving file/)).not.toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
+});
+
+test("shows received KB while a fenced HTML artifact is streaming", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const encoder = new TextEncoder();
+  const htmlChunk = "<!doctype html>\n" + "a".repeat(1536);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(`event: assistant_delta\ndata: ${JSON.stringify({ content: `\`\`\`html\n${htmlChunk}` })}\n\n`),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("HTML response")).toBeInTheDocument();
+  expect(screen.getByText("Receiving file... 1.5 KB received")).toBeInTheDocument();
+
+  streamController.current?.close();
 });
 
 test("shows a fenced HTML artifact as a download while keeping the surrounding prose", async () => {
