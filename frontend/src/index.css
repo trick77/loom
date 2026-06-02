@@ -239,14 +239,13 @@ body {
 .spark-action-reveal {
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+  transition: opacity 0.2s ease;
 }
 
 .spark-assistant-message.is-hovered .spark-action-reveal,
 .spark-user-message.is-hovered .spark-action-reveal {
   opacity: 1;
   visibility: visible;
-  transition: opacity 0.3s ease;
 }
 
 .spark-thinking-panel-body {
