@@ -795,7 +795,7 @@ function ChatPanel({
           role="region"
         >
           <MetricsProvider>
-            <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6">
+            <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
               {messages.map((message, index) => (
                 <div key={message.id} className="space-y-6">
                   {message.role === "assistant" && message.toolEvents !== undefined && (
