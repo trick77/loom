@@ -1084,6 +1084,20 @@ function AssistantText({
     );
   }
 
+  const pendingArtifact = pendingFencedArtifact(children);
+  if (pendingArtifact !== null) {
+    const { before, label } = pendingArtifact;
+    if (before === "") {
+      return <PendingDownloadResponseBubble label={label} />;
+    }
+    return (
+      <div className="spark-assistant-message group w-full space-y-3">
+        <ProseMarkdown>{before}</ProseMarkdown>
+        <PendingDownloadResponseBubble label={label} />
+      </div>
+    );
+  }
+
   return (
     <div className="spark-assistant-message group w-full">
       <ProseMarkdown>{children}</ProseMarkdown>
@@ -1143,6 +1157,22 @@ function MessageActions({
   );
 }
 
+function PendingDownloadResponseBubble({ label }: { label: string }) {
+  return (
+    <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
+      <div className="flex items-center gap-3">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
+          <FileIcon />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="spark-message-text truncate">{label} response</div>
+          <div className="spark-meta-text text-[#aaa79e]">Receiving file...</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type DownloadableResponse = {
   extension: string;
   label: string;
@@ -1196,11 +1226,34 @@ type EmbeddedArtifact = {
   after: string;
 };
 
+type PendingArtifact = {
+  label: string;
+  before: string;
+};
+
 function downloadableResponse(content: string): EmbeddedArtifact | null {
   const dataURL = dataURLArtifact(content);
   if (dataURL !== null) return { artifact: dataURL, before: "", after: "" };
 
   return fencedArtifact(content);
+}
+
+function pendingFencedArtifact(content: string): PendingArtifact | null {
+  const matches = [...content.matchAll(/(?:^|\n)```([a-z0-9_-]+)[ \t]*\n/gi)];
+  if (matches.length !== 1) return null;
+
+  const match = matches[0];
+  const extension = extensionByLanguage.get(match[1].trim().toLowerCase());
+  if (extension === undefined) return null;
+
+  const start = match.index ?? 0;
+  const artifactStart = start + match[0].length;
+  if (content.slice(artifactStart).includes("\n```")) return null;
+
+  return {
+    label: extension.toUpperCase(),
+    before: content.slice(0, start).trim(),
+  };
 }
 
 function fencedArtifact(content: string): EmbeddedArtifact | null {
