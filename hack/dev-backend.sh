@@ -1,9 +1,9 @@
 #!/bin/sh
 #
-# Start the backend + all MCP plumbing (searxng + searxng-mcp) for UI development,
+# Start the backend + SearXNG search (searxng) for UI development,
 # WITHOUT building the embedded frontend. Run the UI separately with Vite/HMR:
 #
-#   ./hack/dev-backend.sh                 # backend + MCP on http://localhost:8080
+#   ./hack/dev-backend.sh                 # backend + searxng on http://localhost:8080
 #   cd frontend && npm run dev            # UI with hot-reload on http://localhost:5173
 #
 # Open http://localhost:5173 (NOT :8080). The Vite proxy forwards /api to the
