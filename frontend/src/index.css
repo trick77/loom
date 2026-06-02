@@ -229,18 +229,13 @@ body {
  * this mirrors that exactly. The loudspeaker is excluded (always visible).
  */
 .spark-action-reveal {
+  opacity: 0;
   transition: opacity 0.3s ease;
 }
 
-@media (min-width: 768px) {
-  .spark-action-reveal {
-    opacity: 0;
-  }
-
-  .spark-assistant-message:hover .spark-action-reveal,
-  .spark-user-message:hover .spark-action-reveal {
-    opacity: 1;
-  }
+.spark-assistant-message:hover .spark-action-reveal,
+.spark-user-message:hover .spark-action-reveal {
+  opacity: 1;
 }
 
 .spark-thinking-panel-body {
