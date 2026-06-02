@@ -790,7 +790,7 @@ function ChatPanel({
         <div
           ref={transcriptRef}
           aria-label="Conversation transcript"
-          className="flex h-full flex-col overflow-y-auto px-6 pt-10 md:px-8"
+          className="flex h-full flex-col overflow-y-auto px-6 pt-10 [scrollbar-gutter:stable_both-edges] md:px-8"
           onScroll={refreshScrollState}
           role="region"
         >
