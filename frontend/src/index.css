@@ -211,11 +211,11 @@ body {
 }
 
 .spark-thinking-chevron {
-  transform: rotate(180deg);
+  transform: rotate(0deg);
 }
 
 .spark-thinking-chevron-expanded {
-  transform: rotate(0deg);
+  transform: rotate(90deg);
 }
 
 .spark-thinking-panel-body {

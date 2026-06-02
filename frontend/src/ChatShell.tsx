@@ -20,7 +20,7 @@ import {
   type User,
 } from "./api";
 import logoImage from "./assets/logo.png";
-import { MessageMetrics, MetricsProvider } from "./MessageMetrics";
+import { MessageMetrics } from "./MessageMetrics";
 
 type ChatShellProps = {
   user: User;
@@ -794,27 +794,25 @@ function ChatPanel({
           onScroll={refreshScrollState}
           role="region"
         >
-          <MetricsProvider>
-            <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
-              {messages.map((message, index) => (
-                <div key={message.id} className="space-y-6">
-                  {message.role === "assistant" && message.toolEvents !== undefined && (
-                    <ToolActivityPanel events={message.toolEvents} />
-                  )}
-                  <MessageBubble
-                    message={message}
-                    retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
-                    onRetry={handleRetryRequest}
-                  />
-                </div>
-              ))}
-              {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
-              {showThinkingIndicator && <ThinkingIndicator />}
-              {streamingReasoning !== "" && <ThinkingPanel content={streamingReasoning} complete={streamingText !== ""} />}
-              {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
-              {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-            </div>
-          </MetricsProvider>
+          <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
+            {messages.map((message, index) => (
+              <div key={message.id} className="space-y-6">
+                {message.role === "assistant" && message.toolEvents !== undefined && (
+                  <ToolActivityPanel events={message.toolEvents} />
+                )}
+                <MessageBubble
+                  message={message}
+                  retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
+                  onRetry={handleRetryRequest}
+                />
+              </div>
+            ))}
+            {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
+            {showThinkingIndicator && <ThinkingIndicator />}
+            {streamingReasoning !== "" && <ThinkingPanel content={streamingReasoning} complete={streamingText !== ""} />}
+            {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
+            {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+          </div>
           <div
             aria-label="Message composer dock"
             className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
@@ -887,7 +885,7 @@ function ThinkingPanel({ content, complete }: { content: string; complete: boole
           <span>{complete ? "Thinking" : "Thinking..."}</span>
         </span>
         <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"}>
-          ^
+          ›
         </span>
       </button>
       {expanded && (
@@ -1078,8 +1076,8 @@ function AssistantText({
           copyText={markdownToPlainText(children)}
           retryLabel="Retry response"
           onRetry={onRetry}
+          metricsMessage={metricsMessage}
         />
-        {metricsMessage && <MessageMetrics message={metricsMessage} />}
       </div>
     );
   }
@@ -1106,8 +1104,8 @@ function AssistantText({
         copyText={markdownToPlainText(children)}
         retryLabel="Retry response"
         onRetry={onRetry}
+        metricsMessage={metricsMessage}
       />
-      {metricsMessage && <MessageMetrics message={metricsMessage} />}
     </div>
   );
 }
@@ -1117,11 +1115,13 @@ function MessageActions({
   copyText,
   retryLabel,
   onRetry,
+  metricsMessage,
 }: {
   copyLabel: string;
   copyText: string;
   retryLabel: string;
   onRetry?: () => void;
+  metricsMessage?: Message;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -1153,6 +1153,7 @@ function MessageActions({
           <RetryIcon />
         </button>
       )}
+      {metricsMessage && <MessageMetrics message={metricsMessage} />}
     </div>
   );
 }
