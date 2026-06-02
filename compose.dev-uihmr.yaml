@@ -1,10 +1,10 @@
 # UI-development overlay for compose.dev.yaml.
 #
-# Starts the backend + all MCP plumbing (searxng + searxng-mcp) from compose.dev.yaml,
+# Starts the backend + SearXNG search (searxng) from compose.dev.yaml,
 # but builds the spark image WITHOUT the frontend (backend/Containerfile.dev), so the
 # UI is developed separately with Vite/HMR instead of the slow embedded build.
 #
-#   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build   # backend + MCP on :8080
+#   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build   # backend + searxng on :8080
 #   cd frontend && npm run dev                                                # UI with hot-reload on :5173
 #
 # Open http://localhost:5173 (NOT :8080). The Vite proxy (frontend/vite.config.ts)
