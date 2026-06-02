@@ -1111,6 +1111,34 @@ function AssistantText({
   );
 }
 
+// Installed once. A single document-level pointer tracker drives the action-row
+// reveal: on every move it marks the message under the cursor `.is-hovered` and
+// clears it from all others. This self-heals the intermittent mouseenter/mouseleave
+// drops Safari produces on fast moves / direct message-to-message transitions
+// (which otherwise left icons stuck visible). Throttled to one update per frame.
+let messageHoverTrackerInstalled = false;
+function installMessageHoverTracker(): void {
+  if (messageHoverTrackerInstalled || typeof document === "undefined") return;
+  messageHoverTrackerInstalled = true;
+  let target: Element | null = null;
+  let scheduled = false;
+  const apply = () => {
+    scheduled = false;
+    const msg = target?.closest(".spark-assistant-message, .spark-user-message") ?? null;
+    document.querySelectorAll(".spark-assistant-message.is-hovered, .spark-user-message.is-hovered").forEach((el) => {
+      if (el !== msg) el.classList.remove("is-hovered");
+    });
+    if (msg) msg.classList.add("is-hovered");
+  };
+  document.addEventListener("mousemove", (event) => {
+    target = event.target as Element;
+    if (!scheduled) {
+      scheduled = true;
+      requestAnimationFrame(apply);
+    }
+  });
+}
+
 function MessageActions({
   copyLabel,
   copyText,
@@ -1132,26 +1160,14 @@ function MessageActions({
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   speakingRef.current = speaking;
-  const rootRef = useRef<HTMLDivElement>(null);
 
   // Stop any in-progress narration started here when the bubble unmounts.
   useEffect(() => () => void (speakingRef.current && window.speechSynthesis?.cancel()), []);
 
-  // Toggle `.is-hovered` on the message wrapper via mouseenter/mouseleave. We do
-  // NOT use CSS :hover/group-hover for the reveal: Safari leaves it stuck "on"
-  // after the first hover, so the icons never hide. mouseleave fires reliably.
-  useEffect(() => {
-    const wrapper = rootRef.current?.closest(".spark-assistant-message, .spark-user-message");
-    if (!wrapper) return;
-    const on = () => wrapper.classList.add("is-hovered");
-    const off = () => wrapper.classList.remove("is-hovered");
-    wrapper.addEventListener("mouseenter", on);
-    wrapper.addEventListener("mouseleave", off);
-    return () => {
-      wrapper.removeEventListener("mouseenter", on);
-      wrapper.removeEventListener("mouseleave", off);
-    };
-  }, []);
+  // Hover reveal is driven by a single self-healing document-level tracker (see
+  // installMessageHoverTracker) rather than CSS :hover / per-message events, both
+  // of which Safari handles unreliably.
+  useEffect(() => installMessageHoverTracker(), []);
 
   async function handleCopy() {
     await copyResponse(copyText);
@@ -1189,7 +1205,7 @@ function MessageActions({
   const hoverReveal = "spark-action-reveal";
 
   return (
-    <div ref={rootRef} className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
+    <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
       {speakable && (
         <button
           className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
