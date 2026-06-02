@@ -1166,10 +1166,10 @@ function MessageActions({
     setSpeaking(true);
   }
 
-  // Reveal class copied verbatim from AnythingLLM's actions (works in Safari):
-  // pure CSS group-hover on the message wrapper, gated to md+ (mobile shows them
-  // always). The loudspeaker is excluded — always visible.
-  const hoverReveal = "md:opacity-0 md:group-hover:opacity-100 transition-all duration-300";
+  // Plain-CSS reveal (see `.spark-action-reveal` in index.css). NOT Tailwind's
+  // group-hover — v4 gates that behind `@media (hover: hover)`, which breaks in
+  // Safari. The loudspeaker is excluded — always visible.
+  const hoverReveal = "spark-action-reveal";
 
   return (
     <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>

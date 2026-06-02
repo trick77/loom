@@ -221,6 +221,28 @@ body {
   transform: rotate(45deg);
 }
 
+/*
+ * Hover reveal for message action icons + stats. Written as plain CSS on purpose:
+ * Tailwind v4 wraps `group-hover:` in `@media (hover: hover)`, which Safari
+ * mishandles (reveal doesn't work / sticks). AnythingLLM (Tailwind v3) emits a
+ * plain `.wrapper:hover .child` with no hover-media gating and works in Safari —
+ * this mirrors that exactly. The loudspeaker is excluded (always visible).
+ */
+.spark-action-reveal {
+  transition: opacity 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .spark-action-reveal {
+    opacity: 0;
+  }
+
+  .spark-assistant-message:hover .spark-action-reveal,
+  .spark-user-message:hover .spark-action-reveal {
+    opacity: 1;
+  }
+}
+
 .spark-thinking-panel-body {
   margin-left: 0.5rem;
   margin-top: 0.45rem;
