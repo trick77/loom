@@ -206,16 +206,19 @@ body {
 .spark-thinking-chevron,
 .spark-thinking-chevron-expanded {
   display: inline-block;
-  line-height: 1;
+  padding: 0.18rem;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
   transition: transform 0.16s ease;
 }
 
+/* Border-drawn chevron: points right when collapsed, rotates down when expanded. */
 .spark-thinking-chevron {
-  transform: rotate(0deg);
+  transform: rotate(-45deg);
 }
 
 .spark-thinking-chevron-expanded {
-  transform: rotate(90deg);
+  transform: rotate(45deg);
 }
 
 .spark-thinking-panel-body {

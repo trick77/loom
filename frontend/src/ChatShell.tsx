@@ -540,7 +540,7 @@ function SidebarPrimaryItem({ icon, label }: { icon: SidebarIconName; label: str
 }
 
 function SidebarIcon({ name }: { name: SidebarIconName }) {
-  const className = "h-[18px] w-[18px] shrink-0 text-[#f0eee7]";
+  const className = "h-5 w-5 shrink-0 text-[#f0eee7]";
   if (name === "chats") {
     return (
       <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
@@ -884,9 +884,7 @@ function ThinkingPanel({ content, complete }: { content: string; complete: boole
           <span className={complete ? "spark-thinking-status-complete" : "spark-thinking-status-active"} aria-hidden="true" />
           <span>{complete ? "Thinking" : "Thinking..."}</span>
         </span>
-        <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"}>
-          ›
-        </span>
+        <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
       </button>
       {expanded && (
         <div className="spark-thinking-panel-body">
@@ -1124,6 +1122,12 @@ function MessageActions({
   metricsMessage?: Message;
 }) {
   const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const speakingRef = useRef(false);
+  speakingRef.current = speaking;
+
+  // Stop any in-progress narration started here when the bubble unmounts.
+  useEffect(() => () => void (speakingRef.current && window.speechSynthesis?.cancel()), []);
 
   async function handleCopy() {
     await copyResponse(copyText);
@@ -1131,10 +1135,44 @@ function MessageActions({
     window.setTimeout(() => setCopied(false), 1200);
   }
 
+  function handleSpeak() {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    if (speakingRef.current) {
+      synth.cancel();
+      setSpeaking(false);
+      return;
+    }
+    // Note: no cancel() right before speak() — Safari drops the freshly queued
+    // utterance if you do. resume() unsticks an engine Safari/Chrome silently paused.
+    const utterance = new SpeechSynthesisUtterance(copyText);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    setSpeaking(true);
+    synth.resume();
+    synth.speak(utterance);
+  }
+
+  // Hover reveal, AnythingLLM-style: a plain CSS group-hover on the stable
+  // message wrapper (which carries `.group`). Not element :hover and not JS —
+  // both of which Safari mishandles. The loudspeaker is excluded: always shown.
+  const hoverReveal = "opacity-0 transition-all duration-300 group-hover:opacity-100";
+
   return (
-    <div className="mt-3 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+    <div className="mt-3 flex items-center gap-2">
       <button
-        className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
+        className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
+          speaking ? "text-[#f3f0e8]" : "text-[#c7c5bd]"
+        }`}
+        onClick={handleSpeak}
+        type="button"
+        title={speaking ? "Stop" : "Read aloud"}
+        aria-label={speaking ? "Stop reading" : "Read aloud"}
+      >
+        <SpeakerIcon />
+      </button>
+      <button
+        className={`grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8] ${hoverReveal}`}
         onClick={handleCopy}
         type="button"
         title="Copy"
@@ -1144,7 +1182,7 @@ function MessageActions({
       </button>
       {onRetry !== undefined && (
         <button
-          className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
+          className={`grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8] ${hoverReveal}`}
           onClick={onRetry}
           type="button"
           title="Retry"
@@ -1357,7 +1395,7 @@ function markdownToPlainText(content: string): string {
 
 function CopyIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M8 8.5V6.8c0-1 .8-1.8 1.8-1.8h7.4c1 0 1.8.8 1.8 1.8v7.4c0 1-.8 1.8-1.8 1.8h-1.7"
         stroke="currentColor"
@@ -1375,9 +1413,24 @@ function CopyIcon() {
   );
 }
 
+function SpeakerIcon() {
+  return (
+    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 9.5h3l4-3.3v11.6l-4-3.3H4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M15 9.2a4 4 0 0 1 0 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M17.6 6.6a7.5 7.5 0 0 1 0 10.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function CheckIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="m5 12.5 4.2 4.2L19 7"
         stroke="currentColor"
@@ -1411,7 +1464,7 @@ function DownloadIcon() {
 
 function RetryIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M18.5 9.2A6.5 6.5 0 1 0 19 12"
         stroke="currentColor"
