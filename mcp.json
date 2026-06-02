@@ -1,8 +1,8 @@
 {
   "servers": {
-    "fetch": {
+    "obscura": {
       "transport": "streamable-http",
-      "url": "http://fetch-mcp:8080/mcp"
+      "url": "http://obscura:8090/mcp"
     }
   }
 }

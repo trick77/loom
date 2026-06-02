@@ -49,7 +49,7 @@ func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
 
 func TestToolConfigForConfigAddsBuiltInSearxng(t *testing.T) {
 	base := mcp.Config{Servers: map[string]mcp.ServerConfig{
-		"fetch": {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch-mcp:8080/mcp"},
+		"obscura": {Transport: mcp.TransportStreamableHTTP, URL: "http://obscura:8090/mcp"},
 	}}
 	cfg := config.Config{SearxngURL: "http://searxng:8080"}
 
@@ -57,8 +57,8 @@ func TestToolConfigForConfigAddsBuiltInSearxng(t *testing.T) {
 	if collision {
 		t.Fatal("toolConfigForConfig() collision = true, want false")
 	}
-	if got.Servers["fetch"].URL != "http://fetch-mcp:8080/mcp" {
-		t.Fatalf("fetch config = %#v", got.Servers["fetch"])
+	if got.Servers["obscura"].URL != "http://obscura:8090/mcp" {
+		t.Fatalf("obscura config = %#v", got.Servers["obscura"])
 	}
 	searxng := got.Servers["searxng"]
 	if searxng.URL != "http://searxng:8080" {

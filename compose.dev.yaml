@@ -44,6 +44,8 @@ services:
         condition: service_completed_successfully
       searxng:
         condition: service_started
+      obscura:
+        condition: service_started
 
   searxng:
     image: searxng/searxng:latest
@@ -54,6 +56,18 @@ services:
       - ./searxng/limiter.toml:/etc/searxng/limiter.toml:ro
     ports:
       - "8888:8080"
+
+  obscura:
+    # Headless-browser MCP. Spark is host-networked here, so the bridge is
+    # published on a localhost port and reached via mcp.dev.json at
+    # http://localhost:8090/mcp.
+    # Obscura is amd64-only (emulated on arm64 hosts).
+    platform: linux/amd64
+    build:
+      context: ./obscura
+      dockerfile: Containerfile
+    ports:
+      - "127.0.0.1:8090:8090"
 
 volumes:
   spark-dev-data:
