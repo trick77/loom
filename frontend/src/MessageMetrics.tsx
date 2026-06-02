@@ -3,16 +3,20 @@ import { buildMetricsString } from "./metrics";
 
 /**
  * Renders the stats line for an assistant message, right-aligned via `ml-auto`
- * within the actions row. Hover-only (AnythingLLM-style): hidden by default and
- * revealed via the message wrapper's `group-hover` — same as the copy/retry
- * buttons. The loudspeaker stays always visible.
+ * within the actions row. Hover-only: visibility comes from the parent's JS hover
+ * state (`visible`), toggling a plain opacity class. Not CSS :hover/group-hover —
+ * that sticks "on" in Safari after the first hover.
  */
-export function MessageMetrics({ message }: { message: Message }) {
+export function MessageMetrics({ message, visible }: { message: Message; visible: boolean }) {
   const line = buildMetricsString(message);
   if (line === null) return null;
 
   return (
-    <span className="ml-auto font-mono text-xs text-[#88857d] opacity-0 transition-all duration-300 group-hover:opacity-100">
+    <span
+      className={`ml-auto font-mono text-xs text-[#88857d] transition-opacity duration-300 ${
+        visible ? "opacity-100" : "opacity-0"
+      }`}
+    >
       {line}
     </span>
   );
