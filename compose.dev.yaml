@@ -45,7 +45,8 @@ services:
       searxng:
         condition: service_started
       obscura:
-        condition: service_started
+        # one-shot MCP discovery at startup → wait for the bridge to be ready
+        condition: service_healthy
 
   searxng:
     image: searxng/searxng:latest

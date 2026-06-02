@@ -33,9 +33,13 @@ services:
       - ./mcp.json:/config/mcp.json:ro
       # per-user volumes are mounted manually under /data/users/<user-id>/
     depends_on:
-      - searxng
-      - tika
-      - obscura
+      searxng:
+        condition: service_started
+      tika:
+        condition: service_started
+      obscura:
+        # one-shot MCP discovery at startup → wait for the bridge to be ready
+        condition: service_healthy
 
   searxng:
     image: searxng/searxng:latest
