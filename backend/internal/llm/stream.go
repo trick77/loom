@@ -38,6 +38,21 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	var usage TokenUsage
 	toolCalls := map[int]*ToolCall{}
 	var toolCallOrder []int
+	// MiMo emits tool calls as inline XML in the content; gate the streamed
+	// deltas so the raw <tool_call> markup never reaches the client.
+	var gate *toolCallStreamGate
+	if isMiMoModel(c.model) {
+		gate = &toolCallStreamGate{}
+	}
+	flushGate := func() error {
+		if gate == nil || onEvent == nil {
+			return nil
+		}
+		if leftover := gate.flush(); leftover != "" {
+			return onEvent(StreamEvent{Delta: leftover})
+		}
+		return nil
+	}
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -51,6 +66,10 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payload == "[DONE]" {
+			if err := flushGate(); err != nil {
+				logInferenceFailed(ctx, c.model, time.Since(start), err)
+				return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+			}
 			result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, isMiMoModel(c.model))
 			if err != nil {
 				logInferenceFailed(ctx, c.model, time.Since(start), err)
@@ -88,9 +107,15 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		if delta.Content != "" {
 			content.WriteString(delta.Content)
 			if onEvent != nil {
-				if err := onEvent(StreamEvent{Delta: delta.Content}); err != nil {
-					logInferenceFailed(ctx, c.model, time.Since(start), err)
-					return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+				emit := delta.Content
+				if gate != nil {
+					emit = gate.push(delta.Content)
+				}
+				if emit != "" {
+					if err := onEvent(StreamEvent{Delta: emit}); err != nil {
+						logInferenceFailed(ctx, c.model, time.Since(start), err)
+						return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+					}
 				}
 			}
 		}
@@ -117,6 +142,10 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	}
 	if err := scanner.Err(); err != nil {
 		err := fmt.Errorf("read chat completion stream: %w", err)
+		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+	}
+	if err := flushGate(); err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 	}
