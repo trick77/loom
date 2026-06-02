@@ -1132,9 +1132,26 @@ function MessageActions({
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   speakingRef.current = speaking;
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // Stop any in-progress narration started here when the bubble unmounts.
   useEffect(() => () => void (speakingRef.current && window.speechSynthesis?.cancel()), []);
+
+  // Toggle `.is-hovered` on the message wrapper via mouseenter/mouseleave. We do
+  // NOT use CSS :hover/group-hover for the reveal: Safari leaves it stuck "on"
+  // after the first hover, so the icons never hide. mouseleave fires reliably.
+  useEffect(() => {
+    const wrapper = rootRef.current?.closest(".spark-assistant-message, .spark-user-message");
+    if (!wrapper) return;
+    const on = () => wrapper.classList.add("is-hovered");
+    const off = () => wrapper.classList.remove("is-hovered");
+    wrapper.addEventListener("mouseenter", on);
+    wrapper.addEventListener("mouseleave", off);
+    return () => {
+      wrapper.removeEventListener("mouseenter", on);
+      wrapper.removeEventListener("mouseleave", off);
+    };
+  }, []);
 
   async function handleCopy() {
     await copyResponse(copyText);
@@ -1172,7 +1189,7 @@ function MessageActions({
   const hoverReveal = "spark-action-reveal";
 
   return (
-    <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
+    <div ref={rootRef} className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
       {speakable && (
         <button
           className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${

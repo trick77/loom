@@ -233,8 +233,13 @@ body {
   transition: opacity 0.3s ease;
 }
 
-.spark-assistant-message:hover .spark-action-reveal,
-.spark-user-message:hover .spark-action-reveal {
+/*
+ * Toggled by JS (mouseenter/mouseleave) on the message wrapper rather than CSS
+ * :hover — Safari leaves CSS :hover stuck "on" after the first hover here, so the
+ * icons never hide. mouseleave fires reliably and clears the class.
+ */
+.spark-assistant-message.is-hovered .spark-action-reveal,
+.spark-user-message.is-hovered .spark-action-reveal {
   opacity: 1;
 }
 
