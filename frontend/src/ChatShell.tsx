@@ -1132,9 +1132,6 @@ function MessageActions({
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   speakingRef.current = speaking;
-  // Safari garbage-collects the utterance mid-speech if nothing references it,
-  // which silently stops/prevents playback. Keep it alive here.
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [hovered, setHovered] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -1163,23 +1160,28 @@ function MessageActions({
     window.setTimeout(() => setCopied(false), 1200);
   }
 
+  function endSpeech() {
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
+  }
+
+  // Replicates AnythingLLM's native TTS exactly (it works reliably in Safari):
+  // guard on the engine's own `speaking` flag, no cancel()/resume() before speak,
+  // attach an `end` listener, then speak and flag speaking.
   function handleSpeak() {
     const synth = window.speechSynthesis;
     if (!synth) return;
-    if (speakingRef.current) {
-      synth.cancel();
-      setSpeaking(false);
+    // Pausing this message while it speaks ends it; if another message is
+    // speaking, ignore the click until that one is paused.
+    if (synth.speaking && speakingRef.current) {
+      endSpeech();
       return;
     }
-    // Note: no cancel() right before speak() — Safari drops the freshly queued
-    // utterance if you do. resume() unsticks an engine Safari/Chrome silently paused.
+    if (synth.speaking && !speakingRef.current) return;
     const utterance = new SpeechSynthesisUtterance(copyText);
-    utteranceRef.current = utterance; // hold a reference so Safari doesn't GC it mid-speech
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    setSpeaking(true);
-    synth.resume();
+    utterance.addEventListener("end", endSpeech);
     synth.speak(utterance);
+    setSpeaking(true);
   }
 
   // Reveal class for the hover-only controls. The loudspeaker is excluded (always shown).
