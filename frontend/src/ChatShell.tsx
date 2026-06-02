@@ -1111,54 +1111,6 @@ function AssistantText({
   );
 }
 
-// Installed once. A single document-level pointer tracker drives the action-row
-// reveal: on every move it marks the message under the cursor `.is-hovered` and
-// clears it from all others. This self-heals the intermittent mouseenter/mouseleave
-// drops Safari produces on fast moves / direct message-to-message transitions
-// (which otherwise left icons stuck visible). Throttled to one update per frame.
-let messageHoverTrackerInstalled = false;
-function installMessageHoverTracker(): void {
-  if (messageHoverTrackerInstalled || typeof document === "undefined") return;
-  messageHoverTrackerInstalled = true;
-  let x = -1;
-  let y = -1;
-  let scheduled = false;
-  const recompute = () => {
-    scheduled = false;
-    const el = x >= 0 && y >= 0 ? document.elementFromPoint(x, y) : null;
-    const msg = el?.closest(".spark-assistant-message, .spark-user-message") ?? null;
-    document.querySelectorAll(".spark-assistant-message.is-hovered, .spark-user-message.is-hovered").forEach((m) => {
-      if (m !== msg) m.classList.remove("is-hovered");
-    });
-    if (msg) msg.classList.add("is-hovered");
-  };
-  const schedule = () => {
-    if (!scheduled) {
-      scheduled = true;
-      requestAnimationFrame(recompute);
-    }
-  };
-  // Track the cursor and re-resolve the message under it on every relevant change:
-  // - mousemove: normal pointer movement
-  // - scroll (capture, any scroller): content moves under a stationary cursor, so
-  //   resolve by coordinates via elementFromPoint, not the last mouse target
-  // - mouseout with no relatedTarget: the pointer left the window entirely → clear
-  // This makes a missed/absent event self-heal and stops icons sticking in Safari.
-  document.addEventListener("mousemove", (event) => {
-    x = event.clientX;
-    y = event.clientY;
-    schedule();
-  });
-  document.addEventListener("mouseout", (event) => {
-    if (!event.relatedTarget) {
-      x = -1;
-      y = -1;
-      schedule();
-    }
-  });
-  window.addEventListener("scroll", schedule, true);
-}
-
 function MessageActions({
   copyLabel,
   copyText,
@@ -1183,11 +1135,6 @@ function MessageActions({
 
   // Stop any in-progress narration started here when the bubble unmounts.
   useEffect(() => () => void (speakingRef.current && window.speechSynthesis?.cancel()), []);
-
-  // Hover reveal is driven by a single self-healing document-level tracker (see
-  // installMessageHoverTracker) rather than CSS :hover / per-message events, both
-  // of which Safari handles unreliably.
-  useEffect(() => installMessageHoverTracker(), []);
 
   async function handleCopy() {
     await copyResponse(copyText);
@@ -1219,11 +1166,6 @@ function MessageActions({
     setSpeaking(true);
   }
 
-  // Plain-CSS reveal (see `.spark-action-reveal` in index.css). NOT Tailwind's
-  // group-hover — v4 gates that behind `@media (hover: hover)`, which breaks in
-  // Safari. The loudspeaker is excluded — always visible.
-  const hoverReveal = "spark-action-reveal";
-
   return (
     <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
       {speakable && (
@@ -1240,7 +1182,7 @@ function MessageActions({
         </button>
       )}
       <button
-        className={`grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8] ${hoverReveal}`}
+        className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
         onClick={handleCopy}
         type="button"
         title="Copy"
@@ -1250,7 +1192,7 @@ function MessageActions({
       </button>
       {onRetry !== undefined && (
         <button
-          className={`grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8] ${hoverReveal}`}
+          className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
           onClick={onRetry}
           type="button"
           title="Retry"

@@ -228,25 +228,6 @@ body {
  * plain `.wrapper:hover .child` with no hover-media gating and works in Safari —
  * this mirrors that exactly. The loudspeaker is excluded (always visible).
  */
-/*
- * Reveal toggled by JS (mouseenter/mouseleave -> `.is-hovered`) on the message
- * wrapper, NOT CSS :hover (Safari leaves that stuck "on"). We also toggle
- * `visibility`, not just `opacity`: Safari leaves a composited `opacity: 0`
- * element painted on screen (stale frame) even though its computed opacity is 0;
- * flipping `visibility` forces the repaint that actually hides it. The delayed
- * `visibility` transition on hide keeps the fade-out animation intact.
- */
-.spark-action-reveal {
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s ease;
-}
-
-.spark-assistant-message.is-hovered .spark-action-reveal,
-.spark-user-message.is-hovered .spark-action-reveal {
-  opacity: 1;
-  visibility: visible;
-}
 
 .spark-thinking-panel-body {
   margin-left: 0.5rem;
