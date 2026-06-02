@@ -35,8 +35,8 @@ personal file area (Artifacts) and a persistent memory.
 - **Archive & delete** for both threads and projects: archive (soft, reversible, hidden from active
   lists) and delete (hard, confirmed). Deleting a project cascades to all of its threads + messages
   and its RAG index.
-- **Agents/tools via MCP** (config-driven, all provided at startup), incl. **SearXNG** (web search)
-  and **Fetch**. Native agent loop via OpenAI tool-calling.
+- **Agents/tools** provided at startup: built-in **SearXNG** web search plus config-driven **MCP** tools
+  such as **Fetch**. Native agent loop via OpenAI tool-calling.
 - **Document RAG**: upload → extraction (Tika) → chunking → OpenAI embeddings → `sqlite-vec`.
   Layered scope (user-global + per project).
 - **Memory RAG**: a persistent, per-user memory store (auto-extracted + manually editable),
@@ -69,8 +69,9 @@ Docker volume** per user.
 - **searxng** — its own service (web-search backend).
 - **tika** — Apache Tika server (document extraction). OCR only with the **`-full` image variant**
   (bundles Tesseract) — pin and verify the image tag, otherwise drop the OCR claim.
-- **MCP servers** — as **separate HTTP/SSE containers** (SearXNG MCP, Fetch, others). The MCP client
-  also supports stdio, but the deployment uses dedicated containers (spark image stays lean).
+- **MCP servers** — as **separate HTTP/SSE containers** for external tools (Fetch, others). SearXNG is
+  a built-in Spark adapter that talks directly to `SPARK_SEARXNG_URL` and exposes
+  `searxng__web_search`.
 
 ### Tech decisions (settled)
 

@@ -86,7 +86,7 @@ func Load() (Config, error) {
 		EmbedAPIKey:          env("SPARK_EMBED_API_KEY", ""),
 		EmbedModel:           env("SPARK_EMBED_MODEL", "text-embedding-3-small"),
 		TikaURL:              env("SPARK_TIKA_URL", "http://tika:9998"),
-		SearxngURL:           env("SPARK_SEARXNG_URL", "http://searxng:8080"),
+		SearxngURL:           env("SPARK_SEARXNG_URL", ""),
 		MCPConfigPath:        env("SPARK_MCP_CONFIG", "/config/mcp.json"),
 		AdminInitialPassword: env("SPARK_ADMIN_INITIAL_PASSWORD", ""),
 		SessionSecret:        env("SPARK_SESSION_SECRET", ""),
