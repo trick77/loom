@@ -2,6 +2,21 @@ package llm
 
 import "testing"
 
+func TestIsMiMoModel_MatchesDeployVariants(t *testing.T) {
+	matches := []string{"mimo", "MiMo", "  MiMo  ", "MiMo-7B", "mimo-vl", "MiMo-7B-RL"}
+	for _, name := range matches {
+		if !isMiMoModel(name) {
+			t.Errorf("isMiMoModel(%q) = false, want true", name)
+		}
+	}
+	nonMatches := []string{"", "gpt-4o", "claude-opus", "llama-3"}
+	for _, name := range nonMatches {
+		if isMiMoModel(name) {
+			t.Errorf("isMiMoModel(%q) = true, want false", name)
+		}
+	}
+}
+
 func TestParseInlineToolCalls_SingleMiMoCall(t *testing.T) {
 	content := "<tool_call>\n<function=searxng__web_search>\n<parameter=q>colossus forbin project</parameter>\n</function>\n</tool_call>"
 

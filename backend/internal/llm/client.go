@@ -65,8 +65,11 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 	}
 }
 
+// isMiMoModel reports whether the configured model is a MiMo variant. It uses a
+// substring match so deploy names like "MiMo-7B" or "mimo-vl" are recognized,
+// not just the bare "mimo".
 func isMiMoModel(model string) bool {
-	return strings.EqualFold(strings.TrimSpace(model), "mimo")
+	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "mimo")
 }
 
 func (c *Client) executeChatRequest(ctx context.Context, messages []Message, stream bool) (*http.Response, error) {
