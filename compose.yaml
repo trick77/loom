@@ -33,8 +33,13 @@ services:
       - ./mcp.json:/config/mcp.json:ro
       # per-user volumes are mounted manually under /data/users/<user-id>/
     depends_on:
-      - searxng
-      - tika
+      searxng:
+        condition: service_started
+      tika:
+        condition: service_started
+      obscura:
+        # one-shot MCP discovery at startup → wait for the bridge to be ready
+        condition: service_healthy
 
   searxng:
     image: searxng/searxng:latest
@@ -49,6 +54,16 @@ services:
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
     image: apache/tika:2.9.2.1-full
+
+  obscura:
+    # Headless-browser MCP (Obscura) bridged to streamable-HTTP by supergateway.
+    # Spark discovers it via mcp.json at http://obscura:8090/mcp; tools are
+    # surfaced to the LLM as obscura__<tool>.
+    # Obscura is amd64-only (emulated on arm64 hosts).
+    platform: linux/amd64
+    build:
+      context: ./obscura
+      dockerfile: Containerfile
 
 volumes:
   spark-data:

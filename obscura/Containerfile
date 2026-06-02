@@ -1,0 +1,53 @@
+# Obscura headless-browser MCP, bridged to streamable-HTTP for Spark.
+#
+# Obscura's native `mcp --http` transport hardcodes a 127.0.0.1 bind
+# (crates/obscura-mcp/src/http.rs) and has no --host flag, so it is unreachable
+# as a bridge container. Instead we run its stdio MCP transport (`obscura mcp`,
+# browser runs in-process via V8 — no obscura-worker needed) and let
+# supergateway expose it as streamable-HTTP on 0.0.0.0:8090/mcp.
+#
+# Thin wrapper, no compilation: the glibc obscura binary is copied from the
+# official image onto a glibc node base (debian bookworm) that also runs
+# supergateway. Obscura sends no telemetry of its own.
+#
+# SSRF: Obscura denies private/loopback/link-local network targets by default
+# (the --allow-private-network flag is off — we never set it), so the LLM
+# cannot reach internal services (tika, searxng) or cloud metadata
+# (169.254.169.254) through this tool.
+
+# Obscura ships amd64-only, so pin the whole image to linux/amd64: native on
+# amd64 hosts, emulated (Rosetta/qemu) on arm64 dev machines.
+FROM --platform=linux/amd64 h4ckf0r0day/obscura:0.1.6 AS obscura
+
+FROM --platform=linux/amd64 node:22-bookworm-slim
+
+# CA certificates for Obscura's HTTPS fetches (slim base ships without them).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# glibc-linked Obscura binary (built for distroless/cc-debian12, ABI-compatible
+# with this debian bookworm base).
+COPY --from=obscura /obscura /usr/local/bin/obscura
+
+# Pin the stdio<->streamable-HTTP bridge.
+RUN npm install -g supergateway@3.4.3
+
+EXPOSE 8090
+
+# Readiness probe: Spark discovers MCP tools exactly once at startup (best-effort,
+# 5s window) and never re-discovers, so the bridge must be listening before Spark
+# boots. A leak-free TCP connect to the supergateway port (node is already present)
+# lets compose gate Spark on `condition: service_healthy`. start-period covers the
+# slow cold start under amd64 emulation on arm64 dev hosts.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=6 \
+  CMD node -e "const s=require('net').connect(8090,'127.0.0.1');s.setTimeout(3000);s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"
+
+# Spawn `obscura mcp` (stdio) and serve it over streamable-HTTP, bound to all
+# interfaces so Spark can reach it at http://obscura:8090/mcp.
+CMD ["supergateway", \
+     "--stdio", "obscura mcp", \
+     "--outputTransport", "streamableHttp", \
+     "--stateful", "--sessionTimeout", "180000", \
+     "--port", "8090", \
+     "--streamableHttpPath", "/mcp"]
