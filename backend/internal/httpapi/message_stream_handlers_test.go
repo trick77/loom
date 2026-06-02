@@ -222,7 +222,7 @@ func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 	if len(history) != 3 {
 		t.Fatalf("history len = %d, want 3: %#v", len(history), history)
 	}
-	if !strings.Contains(history[0].Content, "Always answer in this language: de.") {
+	if !strings.Contains(history[0].Content, "Always answer in this language: German.") {
 		t.Fatalf("system prompt = %q, want response-language directive", history[0].Content)
 	}
 	if history[1].Role != "assistant" || history[1].Content != "Earlier answer" {

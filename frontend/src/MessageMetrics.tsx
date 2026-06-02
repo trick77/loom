@@ -2,9 +2,8 @@ import type { Message } from "./api";
 import { buildMetricsString } from "./metrics";
 
 /**
- * Renders the stats line for an assistant message. Visibility is controlled by
- * the surrounding actions row (revealed on hover), so this just emits the text,
- * right-aligned via `ml-auto` within that flex row.
+ * Renders the stats line for an assistant message, right-aligned via `ml-auto`
+ * within the actions row. Always visible.
  */
 export function MessageMetrics({ message }: { message: Message }) {
   const line = buildMetricsString(message);

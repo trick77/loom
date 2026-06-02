@@ -540,7 +540,7 @@ function SidebarPrimaryItem({ icon, label }: { icon: SidebarIconName; label: str
 }
 
 function SidebarIcon({ name }: { name: SidebarIconName }) {
-  const className = "h-[18px] w-[18px] shrink-0 text-[#f0eee7]";
+  const className = "h-5 w-5 shrink-0 text-[#f0eee7]";
   if (name === "chats") {
     return (
       <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
@@ -884,9 +884,7 @@ function ThinkingPanel({ content, complete }: { content: string; complete: boole
           <span className={complete ? "spark-thinking-status-complete" : "spark-thinking-status-active"} aria-hidden="true" />
           <span>{complete ? "Thinking" : "Thinking..."}</span>
         </span>
-        <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"}>
-          ›
-        </span>
+        <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
       </button>
       {expanded && (
         <div className="spark-thinking-panel-body">
@@ -1015,6 +1013,7 @@ function MessageBubble({
           copyText={message.content}
           retryLabel="Retry message"
           onRetry={() => onRetry(message.content)}
+          alignRight
         />
       </div>
     );
@@ -1077,6 +1076,7 @@ function AssistantText({
           retryLabel="Retry response"
           onRetry={onRetry}
           metricsMessage={metricsMessage}
+          speakable
         />
       </div>
     );
@@ -1084,14 +1084,14 @@ function AssistantText({
 
   const pendingArtifact = pendingFencedArtifact(children);
   if (pendingArtifact !== null) {
-    const { before, label } = pendingArtifact;
+    const { before, label, receivedBytes } = pendingArtifact;
     if (before === "") {
-      return <PendingDownloadResponseBubble label={label} />;
+      return <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />;
     }
     return (
       <div className="spark-assistant-message group w-full space-y-3">
         <ProseMarkdown>{before}</ProseMarkdown>
-        <PendingDownloadResponseBubble label={label} />
+        <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />
       </div>
     );
   }
@@ -1105,6 +1105,7 @@ function AssistantText({
         retryLabel="Retry response"
         onRetry={onRetry}
         metricsMessage={metricsMessage}
+        speakable
       />
     </div>
   );
@@ -1116,14 +1117,24 @@ function MessageActions({
   retryLabel,
   onRetry,
   metricsMessage,
+  speakable = false,
+  alignRight = false,
 }: {
   copyLabel: string;
   copyText: string;
   retryLabel: string;
   onRetry?: () => void;
   metricsMessage?: Message;
+  speakable?: boolean;
+  alignRight?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const speakingRef = useRef(false);
+  speakingRef.current = speaking;
+
+  // Stop any in-progress narration started here when the bubble unmounts.
+  useEffect(() => () => void (speakingRef.current && window.speechSynthesis?.cancel()), []);
 
   async function handleCopy() {
     await copyResponse(copyText);
@@ -1131,10 +1142,47 @@ function MessageActions({
     window.setTimeout(() => setCopied(false), 1200);
   }
 
+  function endSpeech() {
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
+  }
+
+  // Replicates AnythingLLM's native TTS exactly (it works reliably in Safari):
+  // guard on the engine's own `speaking` flag, no cancel()/resume() before speak,
+  // attach an `end` listener, then speak and flag speaking.
+  function handleSpeak() {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    // Pausing this message while it speaks ends it; if another message is
+    // speaking, ignore the click until that one is paused.
+    if (synth.speaking && speakingRef.current) {
+      endSpeech();
+      return;
+    }
+    if (synth.speaking && !speakingRef.current) return;
+    const utterance = new SpeechSynthesisUtterance(copyText);
+    utterance.addEventListener("end", endSpeech);
+    synth.speak(utterance);
+    setSpeaking(true);
+  }
+
   return (
-    <div className="mt-3 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+    <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
+      {speakable && (
+        <button
+          className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
+            speaking ? "text-[#f3f0e8]" : "text-[#c7c5bd]"
+          }`}
+          onClick={handleSpeak}
+          type="button"
+          title={speaking ? "Stop" : "Read aloud"}
+          aria-label={speaking ? "Stop reading" : "Read aloud"}
+        >
+          <SpeakerIcon />
+        </button>
+      )}
       <button
-        className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
+        className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
         onClick={handleCopy}
         type="button"
         title="Copy"
@@ -1144,7 +1192,7 @@ function MessageActions({
       </button>
       {onRetry !== undefined && (
         <button
-          className="grid h-5 w-5 place-items-center text-[#c7c5bd] transition-colors hover:text-[#f3f0e8]"
+          className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
           onClick={onRetry}
           type="button"
           title="Retry"
@@ -1158,7 +1206,9 @@ function MessageActions({
   );
 }
 
-function PendingDownloadResponseBubble({ label }: { label: string }) {
+function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string; receivedBytes: number }) {
+  const progressText =
+    receivedBytes > 0 ? `Receiving file... ${formatReceivedKB(receivedBytes)} received` : "Receiving file...";
   return (
     <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
       <div className="flex items-center gap-3">
@@ -1167,7 +1217,7 @@ function PendingDownloadResponseBubble({ label }: { label: string }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="spark-message-text truncate">{label} response</div>
-          <div className="spark-meta-text text-[#aaa79e]">Receiving file...</div>
+          <div className="spark-meta-text text-[#aaa79e]">{progressText}</div>
         </div>
       </div>
     </div>
@@ -1230,6 +1280,7 @@ type EmbeddedArtifact = {
 type PendingArtifact = {
   label: string;
   before: string;
+  receivedBytes: number;
 };
 
 function downloadableResponse(content: string): EmbeddedArtifact | null {
@@ -1254,7 +1305,18 @@ function pendingFencedArtifact(content: string): PendingArtifact | null {
   return {
     label: extension.toUpperCase(),
     before: content.slice(0, start).trim(),
+    receivedBytes: utf8ByteLength(content.slice(artifactStart)),
   };
+}
+
+function utf8ByteLength(content: string): number {
+  return new TextEncoder().encode(content).length;
+}
+
+function formatReceivedKB(bytes: number): string {
+  const kb = bytes / 1024;
+  const rounded = kb >= 10 ? Math.round(kb).toString() : kb.toFixed(1);
+  return `${rounded} KB`;
 }
 
 function fencedArtifact(content: string): EmbeddedArtifact | null {
@@ -1357,7 +1419,7 @@ function markdownToPlainText(content: string): string {
 
 function CopyIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M8 8.5V6.8c0-1 .8-1.8 1.8-1.8h7.4c1 0 1.8.8 1.8 1.8v7.4c0 1-.8 1.8-1.8 1.8h-1.7"
         stroke="currentColor"
@@ -1375,9 +1437,24 @@ function CopyIcon() {
   );
 }
 
+function SpeakerIcon() {
+  return (
+    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 9.5h3l4-3.3v11.6l-4-3.3H4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M15 9.2a4 4 0 0 1 0 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M17.6 6.6a7.5 7.5 0 0 1 0 10.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function CheckIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="m5 12.5 4.2 4.2L19 7"
         stroke="currentColor"
@@ -1411,7 +1488,7 @@ function DownloadIcon() {
 
 function RetryIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M18.5 9.2A6.5 6.5 0 1 0 19 12"
         stroke="currentColor"
