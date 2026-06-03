@@ -178,6 +178,27 @@ export async function setThreadStarred(threadId: string, starred: boolean): Prom
   return expectJSON<Thread>(response, "failed to update thread");
 }
 
+export async function updateThread(threadId: string, input: { title?: string }): Promise<Thread> {
+  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return expectJSON<Thread>(response, "failed to update thread");
+}
+
+export async function deleteThread(threadId: string): Promise<void> {
+  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
+    method: "DELETE",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to delete thread");
+  }
+}
+
 export async function streamMessage(
   threadId: string,
   content: string,
