@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const titleSystemPrompt = "Name this chat in 2 to 6 words. Return only the title."
+const titleSystemPrompt = "Name this chat topic in 2 to 6 words. Do not answer the user. If unsure, use the user's own subject words. Return only the title."
 
 func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
 	start := time.Now()
@@ -54,10 +54,35 @@ func cleanTitle(title string) string {
 	if title == "" {
 		return "New chat"
 	}
+	if isAnswerLikeTitle(title) {
+		return "New chat"
+	}
 
 	runes := []rune(title)
 	if len(runes) > 80 {
 		title = string(runes[:80])
 	}
 	return title
+}
+
+func isAnswerLikeTitle(title string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(title), " "))
+	answerPrefixes := []string{
+		"i don't have ",
+		"i do not have ",
+		"i don't know",
+		"i do not know",
+		"i'm sorry",
+		"i am sorry",
+		"sorry,",
+		"as an ai",
+		"i can't ",
+		"i cannot ",
+	}
+	for _, prefix := range answerPrefixes {
+		if strings.HasPrefix(normalized, prefix) {
+			return true
+		}
+	}
+	return false
 }
