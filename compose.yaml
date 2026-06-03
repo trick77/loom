@@ -12,7 +12,8 @@ services:
       SPARK_PUBLIC_URL: "${SPARK_PUBLIC_URL}"
       SPARK_AUTH_MODE: "${SPARK_AUTH_MODE:-oidc}"
       SPARK_TIKA_URL: "http://tika:9998"
-      SPARK_SEARXNG_URL: "http://searxng:8080"
+      SPARK_TAVILY_URL: "${SPARK_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
+      SPARK_TAVILY_API_KEY: "${SPARK_TAVILY_API_KEY}"
       SPARK_MCP_CONFIG: "/config/mcp.json"
       SPARK_OIDC_ISSUER: "${SPARK_OIDC_ISSUER}"
       SPARK_OIDC_CLIENT_ID: "${SPARK_OIDC_CLIENT_ID}"
@@ -35,23 +36,11 @@ services:
       - ./mcp.json:/config/mcp.json:ro
       # per-user volumes are mounted manually under /data/users/<user-id>/
     depends_on:
-      searxng:
-        condition: service_started
       tika:
         condition: service_started
       obscura:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
         condition: service_healthy
-
-  searxng:
-    image: searxng/searxng:latest
-    environment:
-      BASE_URL: "http://localhost:8888/"
-    volumes:
-      - ./searxng/settings.yaml:/etc/searxng/settings.yml:ro
-      - ./searxng/limiter.toml:/etc/searxng/limiter.toml:ro
-    ports:
-      - "8888:8080"
 
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)

@@ -7,8 +7,8 @@
 # SPARK_ADDR, which is why this uses network_mode: host instead of published ports
 # (a 127.0.0.1 bind inside a bridge-network container is unreachable via -p).
 #
-# Built-in SearXNG search: Spark is host-networked and reaches the SearXNG service through
-# its published localhost port. External MCP tools can still be configured via mcp.dev.json.
+# Built-in Tavily web search: set SPARK_TAVILY_API_KEY to enable it (the adapter talks to
+# Tavily's hosted MCP server). External MCP tools can still be configured via mcp.dev.json.
 services:
   # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
   spark-init:
@@ -29,7 +29,8 @@ services:
       SPARK_SESSION_SECRET: dev-secret-please-change
       SPARK_DB_PATH: /data/spark.db
       SPARK_USERS_DIR: /data/users
-      SPARK_SEARXNG_URL: http://localhost:8888
+      SPARK_TAVILY_URL: "${SPARK_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
+      SPARK_TAVILY_API_KEY: "${SPARK_TAVILY_API_KEY:-}"
       SPARK_MCP_CONFIG: /config/mcp.json
       # Optional: point at a real OpenAI-compatible endpoint to actually chat.
       SPARK_CHAT_BASE_URL: "${SPARK_CHAT_BASE_URL:-}"
@@ -44,21 +45,9 @@ services:
     depends_on:
       spark-init:
         condition: service_completed_successfully
-      searxng:
-        condition: service_started
       obscura:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
         condition: service_healthy
-
-  searxng:
-    image: searxng/searxng:latest
-    environment:
-      BASE_URL: "http://localhost:8888/"
-    volumes:
-      - ./searxng/settings.yaml:/etc/searxng/settings.yml:ro
-      - ./searxng/limiter.toml:/etc/searxng/limiter.toml:ro
-    ports:
-      - "8888:8080"
 
   obscura:
     # Headless-browser MCP. Spark is host-networked here, so the bridge is

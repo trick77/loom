@@ -68,6 +68,9 @@ func run() error {
 			mcpConfig = loadedMCPConfig
 		}
 	}
+	if !tavilyConfigured(cfg, mcpConfig) {
+		slog.Warn("built-in Tavily web search disabled; set SPARK_TAVILY_API_KEY to enable it")
+	}
 	if !context7Configured(cfg, mcpConfig) {
 		slog.Warn("Context7 MCP not configured; set SPARK_CONTEXT7_API_KEY to enable documentation tools", "url", cfg.Context7MCPURL)
 	}
@@ -167,11 +170,11 @@ func toolConfigForConfig(cfg config.Config, base mcp.Config) (mcp.Config, bool) 
 	for name, server := range base.Servers {
 		out.Servers[name] = server
 	}
-	if strings.TrimSpace(cfg.SearxngURL) != "" {
-		if _, exists := out.Servers["searxng"]; exists {
+	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
+		if _, exists := out.Servers["tavily"]; exists {
 			return out, true
 		}
-		out.Servers["searxng"] = mcp.SearxngServerConfig(cfg.SearxngURL)
+		out.Servers["tavily"] = mcp.TavilyServerConfig(cfg.TavilyURL, cfg.TavilyAPIKey)
 	}
 	if strings.TrimSpace(cfg.Context7APIKey) != "" {
 		if _, exists := out.Servers["context7"]; exists {
@@ -187,5 +190,13 @@ func context7Configured(cfg config.Config, base mcp.Config) bool {
 		return true
 	}
 	_, exists := base.Servers["context7"]
+	return exists
+}
+
+func tavilyConfigured(cfg config.Config, base mcp.Config) bool {
+	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
+		return true
+	}
+	_, exists := base.Servers["tavily"]
 	return exists
 }

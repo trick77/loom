@@ -375,7 +375,7 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 }
 
 func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
-	xml := "<tool_call><function=searxng__web_search><parameter=q>colossus</parameter></function></tool_call>"
+	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
@@ -397,7 +397,7 @@ func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
 		t.Fatalf("tool calls = %#v, want 1", final.ToolCalls)
 	}
 	call := final.ToolCalls[0]
-	if call.Function.Name != "searxng__web_search" || call.Function.Arguments != `{"q":"colossus"}` {
+	if call.Function.Name != "tavily__tavily_search" || call.Function.Arguments != `{"q":"colossus"}` {
 		t.Fatalf("tool call = %#v", call)
 	}
 	if final.Content != "" {
@@ -405,7 +405,7 @@ func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
 	}
 	sawToolCall := false
 	for _, e := range events {
-		if e.ToolCall.Function.Name == "searxng__web_search" {
+		if e.ToolCall.Function.Name == "tavily__tavily_search" {
 			sawToolCall = true
 		}
 	}
@@ -418,7 +418,7 @@ func TestClient_StreamChatWithToolsDoesNotStreamMiMoInlineXML(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		// Inline tool call arriving as several content chunks, marker split across two.
-		for _, c := range []string{"<tool", "_call><function=searxng__web_search>", "<parameter=q>x</parameter></function></tool_call>"} {
+		for _, c := range []string{"<tool", "_call><function=tavily__tavily_search>", "<parameter=q>x</parameter></function></tool_call>"} {
 			_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + c + `"}}]}` + "\n\n"))
 		}
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
@@ -472,7 +472,7 @@ func TestClient_StreamChatWithToolsStreamsNormalMiMoContent(t *testing.T) {
 }
 
 func TestClient_StreamChatWithToolsKeepsInlineXMLForNonMiMoModel(t *testing.T) {
-	xml := "<tool_call><function=searxng__web_search><parameter=q>colossus</parameter></function></tool_call>"
+	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))

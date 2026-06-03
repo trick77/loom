@@ -155,9 +155,10 @@ but sending a chat message returns a service-unavailable error.
 
 ### MCP Tools
 
-Spark exposes built-in SearXNG web search when `SPARK_SEARXNG_URL` is set. The bundled
-`compose.yaml` points this at the `searxng` service directly. SearXNG uses
-`searxng/settings.yaml`, which enables JSON output required by Spark's search adapter.
+Spark exposes built-in Tavily web search when `SPARK_TAVILY_API_KEY` is set (web search is opt-in;
+without a key there is no built-in search tool). Spark connects to Tavily's hosted MCP server at
+`SPARK_TAVILY_URL` (default `https://mcp.tavily.com/mcp/`), authenticating via the `tavilyApiKey`
+query parameter, and exposes only the `tavily_search` tool.
 
 Spark can also expose Context7 documentation tools when `SPARK_CONTEXT7_API_KEY` is set. It uses
 the remote Streamable HTTP endpoint `https://mcp.context7.com/mcp` by default; override it with
@@ -197,7 +198,7 @@ Local stdio servers are also supported:
 ```
 
 Built-in and discovered MCP tools are exposed to the chat model as OpenAI-compatible function tools
-named `<server>__<tool>`, such as `searxng__web_search`. During a streamed response, Spark pauses
+named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Spark pauses
 when the model emits `tool_calls`, runs the requested tools, streams tool status events to the UI,
 appends tool results to the model history, and resumes the assistant stream.
 

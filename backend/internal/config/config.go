@@ -34,7 +34,8 @@ type Config struct {
 	EmbedModel          string
 
 	TikaURL        string
-	SearxngURL     string
+	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
+	TavilyAPIKey   string // enables built-in Tavily web search when set
 	Context7MCPURL string
 	Context7APIKey string
 	MCPConfigPath  string
@@ -88,7 +89,8 @@ func Load() (Config, error) {
 		EmbedAPIKey:          env("SPARK_EMBED_API_KEY", ""),
 		EmbedModel:           env("SPARK_EMBED_MODEL", "text-embedding-3-small"),
 		TikaURL:              env("SPARK_TIKA_URL", "http://tika:9998"),
-		SearxngURL:           env("SPARK_SEARXNG_URL", ""),
+		TavilyURL:            env("SPARK_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
+		TavilyAPIKey:         env("SPARK_TAVILY_API_KEY", ""),
 		Context7MCPURL:       env("SPARK_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
 		Context7APIKey:       env("SPARK_CONTEXT7_API_KEY", ""),
 		MCPConfigPath:        env("SPARK_MCP_CONFIG", "/config/mcp.json"),

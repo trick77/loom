@@ -18,7 +18,7 @@ func TestIsMiMoModel_MatchesDeployVariants(t *testing.T) {
 }
 
 func TestParseInlineToolCalls_SingleMiMoCall(t *testing.T) {
-	content := "<tool_call>\n<function=searxng__web_search>\n<parameter=q>colossus forbin project</parameter>\n</function>\n</tool_call>"
+	content := "<tool_call>\n<function=tavily__tavily_search>\n<parameter=q>colossus forbin project</parameter>\n</function>\n</tool_call>"
 
 	calls, cleaned := parseInlineToolCalls(content)
 
@@ -28,7 +28,7 @@ func TestParseInlineToolCalls_SingleMiMoCall(t *testing.T) {
 	if calls[0].Type != "function" {
 		t.Fatalf("call type = %q, want function", calls[0].Type)
 	}
-	if calls[0].Function.Name != "searxng__web_search" {
+	if calls[0].Function.Name != "tavily__tavily_search" {
 		t.Fatalf("call name = %q", calls[0].Function.Name)
 	}
 	if calls[0].Function.Arguments != `{"q":"colossus forbin project"}` {
@@ -42,8 +42,8 @@ func TestParseInlineToolCalls_SingleMiMoCall(t *testing.T) {
 // Verbatim assistant content captured from thread EE7PeO1kdXk5kEGUKpBecQ, where
 // MiMo emitted two adjacent inline tool calls instead of native tool_calls.
 func TestParseInlineToolCalls_RealMiMoCapture(t *testing.T) {
-	content := "<tool_call>\n<function=searxng__web_search>\n<parameter=max_results>8</parameter>\n<parameter=q>Colossus Forbin Project 1970 Eric Braeden Hans Gudegast casting production history visual effects matte paintings</parameter>\n</function>\n</tool_call>" +
-		"<tool_call>\n<function=searxng__web_search>\n<parameter=max_results>8</parameter>\n<parameter=q>Colossus Forbin Project James Bridges screenplay production design John Lloyd budget Universal 1970</parameter>\n</function>\n</tool_call>"
+	content := "<tool_call>\n<function=tavily__tavily_search>\n<parameter=max_results>8</parameter>\n<parameter=q>Colossus Forbin Project 1970 Eric Braeden Hans Gudegast casting production history visual effects matte paintings</parameter>\n</function>\n</tool_call>" +
+		"<tool_call>\n<function=tavily__tavily_search>\n<parameter=max_results>8</parameter>\n<parameter=q>Colossus Forbin Project James Bridges screenplay production design John Lloyd budget Universal 1970</parameter>\n</function>\n</tool_call>"
 
 	calls, cleaned := parseInlineToolCalls(content)
 
@@ -51,7 +51,7 @@ func TestParseInlineToolCalls_RealMiMoCapture(t *testing.T) {
 		t.Fatalf("calls = %#v, want 2", calls)
 	}
 	for i, call := range calls {
-		if call.Function.Name != "searxng__web_search" {
+		if call.Function.Name != "tavily__tavily_search" {
 			t.Fatalf("call[%d] name = %q", i, call.Function.Name)
 		}
 	}
@@ -67,8 +67,8 @@ func TestParseInlineToolCalls_RealMiMoCapture(t *testing.T) {
 }
 
 func TestParseInlineToolCalls_MultipleCallsPreserveParameterOrder(t *testing.T) {
-	content := "<tool_call>\n<function=searxng__web_search>\n<parameter=max_results>8</parameter>\n<parameter=q>colossus 1970 production</parameter>\n</function>\n</tool_call>\n" +
-		"<tool_call>\n<function=searxng__web_search>\n<parameter=max_results>8</parameter>\n<parameter=q>forbin project budget</parameter>\n</function>\n</tool_call>"
+	content := "<tool_call>\n<function=tavily__tavily_search>\n<parameter=max_results>8</parameter>\n<parameter=q>colossus 1970 production</parameter>\n</function>\n</tool_call>\n" +
+		"<tool_call>\n<function=tavily__tavily_search>\n<parameter=max_results>8</parameter>\n<parameter=q>forbin project budget</parameter>\n</function>\n</tool_call>"
 
 	calls, cleaned := parseInlineToolCalls(content)
 
@@ -90,7 +90,7 @@ func TestParseInlineToolCalls_MultipleCallsPreserveParameterOrder(t *testing.T) 
 }
 
 func TestParseInlineToolCalls_KeepsSurroundingProse(t *testing.T) {
-	content := "Let me search for that.\n<tool_call>\n<function=searxng__web_search>\n<parameter=q>colossus</parameter>\n</function>\n</tool_call>"
+	content := "Let me search for that.\n<tool_call>\n<function=tavily__tavily_search>\n<parameter=q>colossus</parameter>\n</function>\n</tool_call>"
 
 	calls, cleaned := parseInlineToolCalls(content)
 
@@ -116,7 +116,7 @@ func TestParseInlineToolCalls_NoToolCallReturnsContentUnchanged(t *testing.T) {
 }
 
 func TestParseInlineToolCalls_EscapesSpecialCharactersInArguments(t *testing.T) {
-	content := `<tool_call><function=searxng__web_search><parameter=q>"quoted" & line
+	content := `<tool_call><function=tavily__tavily_search><parameter=q>"quoted" & line
 break</parameter></function></tool_call>`
 
 	calls, _ := parseInlineToolCalls(content)

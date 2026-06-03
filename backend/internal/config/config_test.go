@@ -24,8 +24,11 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatReasoningEffort != "high" {
 		t.Errorf("ChatReasoningEffort default = %q, want high", cfg.ChatReasoningEffort)
 	}
-	if cfg.SearxngURL != "" {
-		t.Errorf("SearxngURL default = %q, want empty opt-in value", cfg.SearxngURL)
+	if cfg.TavilyURL != "https://mcp.tavily.com/mcp/" {
+		t.Errorf("TavilyURL default = %q, want https://mcp.tavily.com/mcp/", cfg.TavilyURL)
+	}
+	if cfg.TavilyAPIKey != "" {
+		t.Errorf("TavilyAPIKey default = %q, want empty opt-in value", cfg.TavilyAPIKey)
 	}
 	if cfg.Context7MCPURL != "https://mcp.context7.com/mcp" {
 		t.Errorf("Context7MCPURL default = %q, want Context7 remote endpoint", cfg.Context7MCPURL)

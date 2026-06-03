@@ -96,7 +96,32 @@ func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
 	}
 }
 
-func TestBestEffortServiceIncludesSyntheticSearxngAndExternalTools(t *testing.T) {
+// tavilyMockServer mimics Tavily's hosted MCP endpoint: it answers the MCP
+// JSON-RPC handshake and advertises several tools, of which only tavily_search
+// must survive the ServerConfig.Tools allowlist.
+func tavilyMockServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		switch req.Method {
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{
+				{"name": "tavily_search", "description": "Web search", "inputSchema": map[string]any{"type": "object"}},
+				{"name": "tavily_extract", "description": "Extract", "inputSchema": map[string]any{"type": "object"}},
+				{"name": "tavily_crawl", "description": "Crawl", "inputSchema": map[string]any{"type": "object"}},
+			}})
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+}
+
+func TestBestEffortServiceIncludesSyntheticTavilyAndExternalTools(t *testing.T) {
 	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req rpcRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -117,9 +142,12 @@ func TestBestEffortServiceIncludesSyntheticSearxngAndExternalTools(t *testing.T)
 	}))
 	t.Cleanup(external.Close)
 
+	tavily := tavilyMockServer(t)
+	t.Cleanup(tavily.Close)
+
 	cfg := Config{Servers: map[string]ServerConfig{
-		"fetch":   {Transport: TransportStreamableHTTP, URL: external.URL},
-		"searxng": SearxngServerConfig("http://searxng:8080"),
+		"fetch":  {Transport: TransportStreamableHTTP, URL: external.URL},
+		"tavily": TavilyServerConfig(tavily.URL, "test-key"),
 	}}
 	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, external.Client(), nil)
 	if err != nil {
@@ -130,31 +158,28 @@ func TestBestEffortServiceIncludesSyntheticSearxngAndExternalTools(t *testing.T)
 	for _, tool := range service.Tools() {
 		names = append(names, tool.Function.Name)
 	}
-	if !reflect.DeepEqual(names, []string{"fetch__fetch", "searxng__web_search"}) {
+	// The Tools allowlist keeps only tavily_search despite the mock advertising
+	// extract/crawl too.
+	if !reflect.DeepEqual(names, []string{"fetch__fetch", "tavily__tavily_search"}) {
 		t.Fatalf("tool names = %#v", names)
 	}
 }
 
-func TestServiceServerStatusProbesSyntheticSearxngConfig(t *testing.T) {
-	searxng := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/config" {
-			t.Fatalf("path = %q, want /config", r.URL.Path)
-		}
-		writeSearxngJSON(t, w, map[string]any{"instance_name": "SearXNG"})
-	}))
-	t.Cleanup(searxng.Close)
+func TestServiceServerStatusProbesSyntheticTavilyConfig(t *testing.T) {
+	tavily := tavilyMockServer(t)
+	t.Cleanup(tavily.Close)
 
 	cfg := Config{Servers: map[string]ServerConfig{
-		"searxng": SearxngServerConfig(searxng.URL),
+		"tavily": TavilyServerConfig(tavily.URL, "test-key"),
 	}}
-	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, searxng.Client(), nil)
+	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, tavily.Client(), nil)
 	if err != nil {
 		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
 	}
 
 	statuses := service.ServerStatus(context.Background())
-	if len(statuses) != 1 || statuses[0].Name != "searxng" || !statuses[0].Active {
-		t.Fatalf("ServerStatus() = %#v, want active searxng", statuses)
+	if len(statuses) != 1 || statuses[0].Name != "tavily" || !statuses[0].Active {
+		t.Fatalf("ServerStatus() = %#v, want active tavily", statuses)
 	}
 }
 
