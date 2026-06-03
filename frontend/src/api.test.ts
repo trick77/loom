@@ -1,5 +1,13 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { AuthExpiredError, getMcpStatus, listProjects, listThreads, streamMessage } from "./api";
+import {
+  AuthExpiredError,
+  deleteThread,
+  getMcpStatus,
+  listProjects,
+  listThreads,
+  streamMessage,
+  updateThread,
+} from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -12,6 +20,33 @@ test("listThreads builds query parameters", async () => {
   await listThreads({ starred: true, limit: 10 });
 
   expect(fetchMock).toHaveBeenCalledWith("/api/threads?starred=true&limit=10");
+});
+
+test("updateThread patches the thread title", async () => {
+  const updated = {
+    id: "t1",
+    title: "Renamed chat",
+    starred: false,
+    createdAt: "2026-05-30T00:00:00Z",
+    updatedAt: "2026-05-30T00:00:01Z",
+  };
+  const fetchMock = vi.fn().mockResolvedValue(Response.json(updated));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(updateThread("t1", { title: "Renamed chat" })).resolves.toEqual(updated);
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Renamed chat" }),
+  });
+});
+
+test("deleteThread deletes a thread", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(deleteThread("t1")).resolves.toBeUndefined();
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", { method: "DELETE" });
 });
 
 test("getMcpStatus loads current server counts", async () => {

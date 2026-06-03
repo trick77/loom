@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ComponentPropsWithoutRef } from "react";
+import {
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ExtraProps } from "react-markdown";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +17,8 @@ import {
   AuthExpiredError,
   createProject,
   createThread,
+  deleteThread,
+  updateThread,
   getMcpStatus,
   getThread,
   listProjects,
@@ -70,6 +81,12 @@ export function ChatShell({
   const [projectName, setProjectName] = useState("");
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
+  const [renamingThread, setRenamingThread] = useState<Thread | null>(null);
+  const [deletingThread, setDeletingThread] = useState<Thread | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [modalError, setModalError] = useState("");
+  const [isMutatingThread, setIsMutatingThread] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [streamingReasoning, setStreamingReasoning] = useState("");
   const [toolEvents, setToolEvents] = useState<ToolActivity[]>([]);
@@ -114,6 +131,17 @@ export function ChatShell({
       window.removeEventListener("popstate", handlePopState);
     };
   }, []);
+
+  useEffect(() => {
+    if (openThreadMenuID === null) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpenThreadMenuID(null);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openThreadMenuID]);
 
   useEffect(() => {
     let active = true;
@@ -226,23 +254,87 @@ export function ChatShell({
     }
   }
 
-  async function handleSetActiveThreadStarred(starred: boolean) {
-    if (activeThread === null || isUpdatingStar) return;
-    const threadID = activeThread.id;
+  async function handleSetThreadStarred(thread: Thread, starred: boolean, menuKey?: string) {
+    if (isUpdatingStar) return;
     setIsUpdatingStar(true);
     try {
-      const updatedThread = await setThreadStarred(threadID, starred);
+      const updatedThread = await setThreadStarred(thread.id, starred);
+      if (activeThreadIDRef.current === updatedThread.id) {
+        setActiveThread(updatedThread);
+      }
+      setThreads((current) =>
+        current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
+      );
+      if (menuKey !== undefined) {
+        setOpenThreadMenuID(menuKey);
+      }
+      setSendError("");
+    } catch (error) {
+      handleActionError(error, "Thread failed to update.", setSendError);
+    } finally {
+      setIsUpdatingStar(false);
+    }
+  }
+
+  function openRenameModal(thread: Thread) {
+    setOpenThreadMenuID(null);
+    setRenamingThread(thread);
+    setRenameTitle(thread.title);
+    setModalError("");
+  }
+
+  function openDeleteModal(thread: Thread) {
+    setOpenThreadMenuID(null);
+    setDeletingThread(thread);
+    setModalError("");
+  }
+
+  async function handleRenameSubmit() {
+    if (renamingThread === null || isMutatingThread) return;
+    const title = renameTitle.trim();
+    if (title === "") return;
+    setIsMutatingThread(true);
+    try {
+      const updatedThread = await updateThread(renamingThread.id, { title });
       if (activeThreadIDRef.current === updatedThread.id) {
         setActiveThread(updatedThread);
       }
       setThreads((current) =>
         current.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread)),
       );
-      setSendError("");
+      setRenamingThread(null);
+      setModalError("");
     } catch (error) {
-      handleActionError(error, "Thread failed to update.", setSendError);
+      handleActionError(error, "Thread failed to rename.", setModalError);
     } finally {
-      setIsUpdatingStar(false);
+      setIsMutatingThread(false);
+    }
+  }
+
+  async function handleDeleteConfirm() {
+    if (deletingThread === null || isMutatingThread) return;
+    setIsMutatingThread(true);
+    try {
+      await deleteThread(deletingThread.id);
+      setThreads((current) => current.filter((thread) => thread.id !== deletingThread.id));
+      if (activeThreadIDRef.current === deletingThread.id) {
+        streamAbortRef.current?.abort();
+        activeThreadIDRef.current = null;
+        setActiveThread(null);
+        setMessages([]);
+        setStreamingText("");
+        setStreamingReasoning("");
+        clearToolEvents();
+        setSendError("");
+        navigate({ view: "new" });
+        setRoute({ view: "new" });
+      }
+      setDeletingThread(null);
+      setModalError("");
+    } catch (error) {
+      handleActionError(error, "Thread failed to delete.", setModalError);
+    } finally {
+      setIsMutatingThread(false);
     }
   }
 
@@ -339,7 +431,7 @@ export function ChatShell({
   }
 
   return (
-    <div className="grid h-screen grid-cols-[282px_1fr] bg-bg font-sans text-ink">
+    <div className="grid h-screen grid-cols-[362px_1fr] bg-bg font-sans text-ink">
       <aside className="spark-sidebar-text flex min-h-0 flex-col border-r border-[#343432] bg-panel text-[#c7c5bd]">
         <div className="flex h-11 items-center justify-between px-3">
           <div className="spark-wordmark font-serif font-medium text-[#f4f0e8]">Spark</div>
@@ -372,13 +464,29 @@ export function ChatShell({
             title="Starred"
             threads={starredThreads}
             activeThreadID={route.view === "chat" ? route.threadID : null}
+            openThreadMenuID={openThreadMenuID}
             onSelect={selectThread}
+            onDelete={openDeleteModal}
+            onRename={openRenameModal}
+            onStarChange={handleSetThreadStarred}
+            onToggleMenu={(menuKey) =>
+              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+            }
+            onCloseMenu={() => setOpenThreadMenuID(null)}
           />
           <SidebarSection
             title="Recents"
             threads={threads}
             activeThreadID={route.view === "chat" ? route.threadID : null}
+            openThreadMenuID={openThreadMenuID}
             onSelect={selectThread}
+            onDelete={openDeleteModal}
+            onRename={openRenameModal}
+            onStarChange={handleSetThreadStarred}
+            onToggleMenu={(menuKey) =>
+              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+            }
+            onCloseMenu={() => setOpenThreadMenuID(null)}
           />
           <section className="mt-5">
             <div className="spark-meta-text mb-2 flex items-center justify-between px-1.5 text-[#97958c]">
@@ -459,7 +567,6 @@ export function ChatShell({
               Logout
             </button>
           </div>
-          {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator status={mcpStatus} />}
         </div>
       </aside>
       <main className="min-w-0 bg-bg">
@@ -484,14 +591,31 @@ export function ChatShell({
             toolEvents={toolEvents}
             sendError={sendError}
             isSending={isSending}
-            isUpdatingStar={isUpdatingStar}
+            mcpStatus={mcpStatus}
             onDraftChange={setDraft}
             onSend={handleSend}
             onRetry={handleRetry}
-            onStarChange={handleSetActiveThreadStarred}
           />
         )}
       </main>
+      {renamingThread !== null && (
+        <RenameThreadModal
+          title={renameTitle}
+          error={modalError}
+          disabled={isMutatingThread}
+          onTitleChange={setRenameTitle}
+          onCancel={() => setRenamingThread(null)}
+          onSubmit={handleRenameSubmit}
+        />
+      )}
+      {deletingThread !== null && (
+        <DeleteThreadModal
+          error={modalError}
+          disabled={isMutatingThread}
+          onCancel={() => setDeletingThread(null)}
+          onDelete={handleDeleteConfirm}
+        />
+      )}
     </div>
   );
 }
@@ -579,13 +703,13 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
   return null;
 }
 
-function McpStatusIndicator({ status }: { status: McpStatusEvent }) {
+function McpStatusIndicator({ compact = false, status }: { compact?: boolean; status: McpStatusEvent }) {
   const allActive = status.active === status.configured;
   const ringClass = allActive ? "border-success" : "border-danger";
   const dotClass = allActive ? "bg-success" : "bg-danger";
   return (
     <div
-      className="spark-meta-text mt-2 flex items-center gap-1.5 text-muted"
+      className={`spark-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
       title={`${status.active} of ${status.configured} MCP servers active`}
     >
       <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
@@ -600,31 +724,376 @@ function SidebarSection({
   title,
   threads,
   activeThreadID,
+  openThreadMenuID,
   onSelect,
+  onDelete,
+  onRename,
+  onStarChange,
+  onToggleMenu,
+  onCloseMenu,
 }: {
   title: string;
   threads: Thread[];
   activeThreadID: string | null;
+  openThreadMenuID: string | null;
   onSelect(threadID: string): void;
+  onDelete(thread: Thread): void;
+  onRename(thread: Thread): void;
+  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
+  onToggleMenu(menuKey: string): void;
+  onCloseMenu(): void;
 }) {
   return (
     <section className="mt-5">
       <div className="spark-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
       <div className="space-y-1">
         {threads.map((thread) => (
-          <button
+          <SidebarThreadItem
             key={thread.id}
-            className={`block h-7 w-full truncate rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
-              activeThreadID === thread.id ? "bg-[#10100f] text-white" : ""
-            }`}
-            onClick={() => onSelect(thread.id)}
-            type="button"
-          >
-            {thread.title}
-          </button>
+            menuKey={`${title}:${thread.id}`}
+            thread={thread}
+            active={activeThreadID === thread.id}
+            menuOpen={openThreadMenuID === `${title}:${thread.id}`}
+            onSelect={onSelect}
+            onDelete={onDelete}
+            onRename={onRename}
+            onStarChange={onStarChange}
+            onToggleMenu={onToggleMenu}
+            onCloseMenu={onCloseMenu}
+          />
         ))}
       </div>
     </section>
+  );
+}
+
+function SidebarThreadItem({
+  menuKey,
+  thread,
+  active,
+  menuOpen,
+  onSelect,
+  onDelete,
+  onRename,
+  onStarChange,
+  onToggleMenu,
+  onCloseMenu,
+}: {
+  menuKey: string;
+  thread: Thread;
+  active: boolean;
+  menuOpen: boolean;
+  onSelect(threadID: string): void;
+  onDelete(thread: Thread): void;
+  onRename(thread: Thread): void;
+  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
+  onToggleMenu(menuKey: string): void;
+  onCloseMenu(): void;
+}) {
+  const itemRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node) || itemRef.current?.contains(target)) return;
+      onCloseMenu();
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [menuOpen, onCloseMenu]);
+
+  if (!active) {
+    return (
+      <button
+        className="block h-7 w-full truncate rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28]"
+        onClick={() => onSelect(thread.id)}
+        type="button"
+      >
+        {thread.title}
+      </button>
+    );
+  }
+  return (
+    <div ref={itemRef} className="relative">
+      <div className="flex h-7 w-full items-center rounded-md bg-[#10100f] py-0 pl-1.5 pr-1 text-left text-white">
+        <button
+          className="relative min-w-0 flex-1 overflow-hidden text-left"
+          onClick={() => onSelect(thread.id)}
+          type="button"
+        >
+          <span className="block truncate pr-7">{thread.title}</span>
+          <span
+            className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]"
+            aria-hidden="true"
+          />
+        </button>
+        <button
+          aria-expanded={menuOpen}
+          aria-label="Open chat actions"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleMenu(menuKey);
+          }}
+          type="button"
+        >
+          <span aria-hidden="true" className="flex h-[10px] flex-col items-center justify-between">
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
+          </span>
+        </button>
+      </div>
+      {menuOpen && (
+        <ThreadActionsMenu
+          menuKey={menuKey}
+          thread={thread}
+          onDelete={onDelete}
+          onRename={onRename}
+          onStarChange={onStarChange}
+        />
+      )}
+    </div>
+  );
+}
+
+function ThreadActionsMenu({
+  menuKey,
+  thread,
+  onDelete,
+  onRename,
+  onStarChange,
+}: {
+  menuKey: string;
+  thread: Thread;
+  onDelete(thread: Thread): void;
+  onRename(thread: Thread): void;
+  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
+}) {
+  return (
+    <div
+      aria-label="Chat actions"
+      className="absolute left-[174px] z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
+      role="menu"
+    >
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+        role="menuitem"
+        type="button"
+        onClick={() => onStarChange(thread, !thread.starred, menuKey)}
+      >
+        <span className="w-[18px]" aria-hidden="true">
+          {thread.starred ? "★" : "☆"}
+        </span>
+        {thread.starred ? "Unstar" : "Star"}
+      </button>
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+        role="menuitem"
+        type="button"
+        onClick={() => onRename(thread)}
+      >
+        <span className="w-[18px]" aria-hidden="true">
+          ✎
+        </span>
+        Rename
+      </button>
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8] disabled:cursor-default disabled:opacity-100"
+        disabled
+        role="menuitem"
+        type="button"
+      >
+        <ProjectMenuIcon />
+        Add to project
+      </button>
+      <div className="mx-[14px] my-[5px] h-px bg-[#77736b]" role="separator" />
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#d98278]"
+        role="menuitem"
+        type="button"
+        onClick={() => onDelete(thread)}
+      >
+        <TrashMenuIcon />
+        Delete
+      </button>
+    </div>
+  );
+}
+
+function ProjectMenuIcon() {
+  return (
+    <svg className="h-[18px] w-[18px] shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      <path
+        d="M4.5 8.5h5l1.6 2h8.4v7.2c0 1.2-.7 1.8-2 1.8h-11c-1.3 0-2-.6-2-1.8V8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4.5 8.5V6.8c0-1.1.7-1.7 1.9-1.7h3.1l1.6 2h6.5c1.2 0 1.9.6 1.9 1.7v1.7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TrashMenuIcon() {
+  return (
+    <svg className="-ml-px h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      <path
+        d="M8 7.5V6.2c0-.9.6-1.4 1.5-1.4h5c.9 0 1.5.5 1.5 1.4v1.3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path d="M5.5 7.5h13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M7.2 9.5l.6 8.1c.1 1 .8 1.6 1.8 1.6h4.8c1 0 1.7-.6 1.8-1.6l.6-8.1"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M10.4 11.3v5M13.6 11.3v5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RenameThreadModal({
+  title,
+  error,
+  disabled,
+  onTitleChange,
+  onCancel,
+  onSubmit,
+}: {
+  title: string;
+  error: string;
+  disabled: boolean;
+  onTitleChange(value: string): void;
+  onCancel(): void;
+  onSubmit(): void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+  return (
+    <ModalShell title="Rename chat" onCancel={onCancel}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <input
+          ref={inputRef}
+          aria-label="Chat title"
+          className="spark-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
+          value={title}
+          onChange={(event) => onTitleChange(event.target.value)}
+        />
+        {error !== "" && <ErrorText>{error}</ErrorText>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]"
+            onClick={onCancel}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button
+            className="h-8 rounded-md bg-[#50483d] px-3.5 font-medium text-[#fffaf2] disabled:opacity-50"
+            disabled={disabled || title.trim() === ""}
+            type="submit"
+          >
+            Save
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+function DeleteThreadModal({
+  error,
+  disabled,
+  onCancel,
+  onDelete,
+}: {
+  error: string;
+  disabled: boolean;
+  onCancel(): void;
+  onDelete(): void;
+}) {
+  return (
+    <ModalShell title="Delete chat" onCancel={onCancel}>
+      <div className="mt-3 text-[13px] leading-5 text-[#d8d4ca]">
+        Are you sure you want to delete this chat?
+      </div>
+      {error !== "" && <ErrorText>{error}</ErrorText>}
+      <div className="mt-4 flex justify-end gap-2">
+        <button
+          autoFocus
+          className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]"
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        <button
+          className="h-8 rounded-md bg-[#b85c52] px-3.5 font-medium text-[#fffaf2] disabled:opacity-50"
+          disabled={disabled}
+          onClick={onDelete}
+          type="button"
+        >
+          Delete
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function ModalShell({
+  title,
+  children,
+  onCancel,
+}: {
+  title: string;
+  children: ReactNode;
+  onCancel(): void;
+}) {
+  const titleID = useId();
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onCancel();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCancel]);
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] px-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div
+        aria-labelledby={titleID}
+        aria-modal="true"
+        className="w-full max-w-[390px] rounded-xl border border-[#4b4a46] bg-[#2a2a28] p-[18px] shadow-[0_28px_70px_rgba(0,0,0,0.55)]"
+        role="dialog"
+      >
+        <h2 id={titleID} className="font-sans text-[22px] font-semibold leading-7 text-[#f3f0e8]">
+          {title}
+        </h2>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -680,11 +1149,10 @@ function ChatPanel({
   toolEvents,
   sendError,
   isSending,
-  isUpdatingStar,
+  mcpStatus,
   onDraftChange,
   onSend,
   onRetry,
-  onStarChange,
 }: {
   thread: Thread | null;
   messages: MessageWithToolActivity[];
@@ -694,11 +1162,10 @@ function ChatPanel({
   toolEvents: ToolActivity[];
   sendError: string;
   isSending: boolean;
-  isUpdatingStar: boolean;
+  mcpStatus: McpStatusEvent | null;
   onDraftChange(value: string): void;
   onSend(): void;
   onRetry(content: string): void;
-  onStarChange(starred: boolean): void;
 }) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -771,22 +1238,19 @@ function ChatPanel({
 
   return (
     <section className="flex h-screen min-h-0 flex-col">
-      <header className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]">
+      <header
+        aria-label="Chat header"
+        className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
+        role="banner"
+      >
         <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">
           {thread?.title ?? "New chat"}
           <span className="ml-2 text-[#88857d]" aria-hidden="true">
             ⌄
           </span>
         </h1>
-        {thread !== null && (
-          <button
-            className="spark-meta-text rounded-md px-2 py-1 text-[#aaa79e] transition-colors hover:bg-[#2a2a28] hover:text-white disabled:opacity-50"
-            disabled={isUpdatingStar}
-            onClick={() => onStarChange(!thread.starred)}
-            type="button"
-          >
-            {thread.starred ? "Unstar chat" : "Star chat"}
-          </button>
+        {mcpStatus !== null && mcpStatus.configured > 0 && (
+          <McpStatusIndicator compact status={mcpStatus} />
         )}
       </header>
       <div className="relative min-h-0 flex-1">

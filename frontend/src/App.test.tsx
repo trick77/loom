@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
 
@@ -318,28 +318,68 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
   );
 });
 
-test("stars and unstars the active chat", async () => {
+test("active sidebar chat shows actions menu with locked entries", async () => {
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+
+  expect(await screen.findByRole("menu", { name: "Chat actions" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: /^Star$/ })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Add to project" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+});
+
+test("closes the active sidebar chat menu when clicking outside it", async () => {
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  expect(await screen.findByRole("menu", { name: "Chat actions" })).toBeInTheDocument();
+
+  fireEvent.pointerDown(screen.getByRole("main"));
+
+  expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
+});
+
+test("add to project is inert", async () => {
+  const fetchMock = chatThreadFetch(null);
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Add to project" }));
+
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("project"))).toHaveLength(1);
+});
+
+test("stars and unstars a chat from the sidebar action menu", async () => {
   let starred = false;
-  const thread = () => ({
-    id: "t1",
-    title: "Existing chat",
-    starred,
-    createdAt: "2026-05-30T00:00:00Z",
-    updatedAt: "2026-05-30T00:00:00Z",
-  });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([thread()]);
-    if (url === "/api/threads/t1") return Response.json({ thread: thread(), messages: [] });
+    if (url === "/api/threads?limit=30") return Response.json([{ ...threadFixture(), starred }]);
+    if (url === "/api/threads/t1") {
+      return Response.json({ thread: { ...threadFixture(), starred }, messages: [] });
+    }
     if (url === "/api/threads/t1/star" && init?.method === "POST") {
       starred = true;
-      return Response.json(thread());
+      return Response.json({ ...threadFixture(), starred: true });
     }
     if (url === "/api/threads/t1/unstar" && init?.method === "POST") {
       starred = false;
-      return Response.json(thread());
+      return Response.json({ ...threadFixture(), starred: false });
     }
     throw new Error(`unexpected fetch ${url}`);
   });
@@ -347,14 +387,146 @@ test("stars and unstars the active chat", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Star" }));
+  expect(await screen.findByRole("menuitem", { name: "Unstar" })).toBeInTheDocument();
 
-  fireEvent.click(await screen.findByRole("button", { name: "Star chat" }));
-  expect(await screen.findByRole("button", { name: "Unstar chat" })).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/star", { method: "POST" });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Unstar" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", { method: "POST" }),
+  );
+});
 
-  fireEvent.click(screen.getByRole("button", { name: "Unstar chat" }));
-  expect(await screen.findByRole("button", { name: "Star chat" })).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", { method: "POST" });
+test("renames a chat from the sidebar menu", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") {
+      return Response.json([{ ...threadFixture(), title: "Existing chat" }]);
+    }
+    if (url === "/api/threads/t1" && init?.method === "PATCH") {
+      return Response.json({ ...threadFixture(), title: "Renamed chat" });
+    }
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: { ...threadFixture(), title: "Existing chat" },
+        messages: [],
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+  expect(await screen.findByRole("dialog", { name: "Rename chat" })).toBeInTheDocument();
+  const input = await screen.findByRole("textbox", { name: "Chat title" });
+  expect(input).toHaveValue("Existing chat");
+  fireEvent.change(input, { target: { value: "Renamed chat" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByRole("button", { name: "Renamed chat" })).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/threads/t1",
+    expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ title: "Renamed chat" }),
+    }),
+  );
+});
+
+test("deletes the active chat from the sidebar menu after confirmation", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") {
+      return Response.json([{ ...threadFixture(), title: "Existing chat" }]);
+    }
+    if (url === "/api/threads/t1" && init?.method === "DELETE") {
+      return new Response(null, { status: 204 });
+    }
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: { ...threadFixture(), title: "Existing chat" },
+        messages: [],
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+
+  expect(await screen.findByRole("dialog", { name: "Delete chat" })).toBeInTheDocument();
+  expect(screen.getByText("Are you sure you want to delete this chat?")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+  await waitFor(() => expect(window.location.pathname).toBe("/new"));
+  expect(screen.queryByRole("button", { name: "Existing chat" })).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", { method: "DELETE" });
+});
+
+test("closes a chat modal when clicking the backdrop", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") {
+      return Response.json([{ ...threadFixture(), title: "Existing chat" }]);
+    }
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: { ...threadFixture(), title: "Existing chat" },
+        messages: [],
+      });
+    }
+    throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+  const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+  fireEvent.click(dialog.parentElement!);
+
+  expect(screen.queryByRole("dialog", { name: "Rename chat" })).not.toBeInTheDocument();
+});
+
+test("shows MCP status in the active chat header without the header star action", async () => {
+  const thread = () => ({
+    id: "t1",
+    title: "Existing chat",
+    starred: false,
+    createdAt: "2026-05-30T00:00:00Z",
+    updatedAt: "2026-05-30T00:00:00Z",
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json([thread()]);
+    if (url === "/api/threads/t1") return Response.json({ thread: thread(), messages: [] });
+    if (url === "/api/mcp/status") return Response.json({ active: 2, configured: 3 });
+    throw new Error(`unexpected fetch ${url}`);
+  }));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  const header = await screen.findByRole("banner", { name: "Chat header" });
+  expect(within(header).getByTitle("2 of 3 MCP servers active")).toBeInTheDocument();
+  expect(within(header).queryByRole("button", { name: /star chat/i })).toBeNull();
 });
 
 test("starting chat exits the admin panel", async () => {
@@ -838,22 +1010,25 @@ test("shows a green MCP indicator when all servers are active", async () => {
   expect(indicator.querySelector(".border-success")).not.toBeNull();
 });
 
-test("loads MCP status when the chat shell first renders", async () => {
+test("loads MCP status into the chat header", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json([threadFixture()]);
+      if (url === "/api/threads/t1") return Response.json({ thread: threadFixture(), messages: [] });
       if (url === "/api/mcp/status") return Response.json({ active: 1, configured: 2 });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
 
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const indicator = await screen.findByTitle("1 of 2 MCP servers active");
+  const header = await screen.findByRole("banner", { name: "Chat header" });
+  const indicator = within(header).getByTitle("1 of 2 MCP servers active");
   expect(indicator).toHaveTextContent("1");
   expect(indicator.querySelector(".border-danger")).not.toBeNull();
 });
