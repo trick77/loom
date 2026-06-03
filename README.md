@@ -159,6 +159,11 @@ Spark exposes built-in SearXNG web search when `SPARK_SEARXNG_URL` is set. The b
 `compose.yaml` points this at the `searxng` service directly. SearXNG uses
 `searxng/settings.yaml`, which enables JSON output required by Spark's search adapter.
 
+Spark can also expose Context7 documentation tools when `SPARK_CONTEXT7_API_KEY` is set. It uses
+the remote Streamable HTTP endpoint `https://mcp.context7.com/mcp` by default; override it with
+`SPARK_CONTEXT7_MCP_URL` if needed. Spark sends the key as the `CONTEXT7_API_KEY` request header
+and exposes the remote tools as `context7__resolve-library-id` and `context7__query-docs`.
+
 Spark also reads `SPARK_MCP_CONFIG` at startup for external MCP tools. The file defaults to
 `/config/mcp.json`; if it is missing, Spark starts with only built-in tools. Each configured external
 server is discovered once at boot. Servers that cannot be reached are logged and skipped, so one
