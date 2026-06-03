@@ -72,6 +72,8 @@ func run() error {
 	mcpConfig, tavilyNameCollision = toolConfigForConfig(cfg, mcpConfig)
 	if tavilyNameCollision {
 		slog.Warn("built-in Tavily tool disabled because MCP config already defines server name tavily")
+	} else if strings.TrimSpace(cfg.TavilyAPIKey) == "" {
+		slog.Warn("built-in Tavily web search disabled; set SPARK_TAVILY_API_KEY to enable it")
 	}
 	if len(mcpConfig.Servers) > 0 {
 		discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
