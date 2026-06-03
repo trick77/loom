@@ -339,7 +339,7 @@ body {
   padding-left: 0.9rem;
 }
 
-.spark-markdown code {
+:is(.spark-markdown, .spark-thinking-panel-body) code {
   border-radius: 0.25rem;
   background: #2a2a28;
   font-family: var(--font-mono);
@@ -348,7 +348,7 @@ body {
   padding: 0.1rem 0.28rem;
 }
 
-.spark-markdown pre {
+:is(.spark-markdown, .spark-thinking-panel-body) pre {
   overflow-x: auto;
   border: 1px solid #3e3d39;
   border-radius: 0.5rem;
@@ -356,7 +356,7 @@ body {
   padding: 0.85rem 1rem;
 }
 
-.spark-markdown pre code {
+:is(.spark-markdown, .spark-thinking-panel-body) pre code {
   border-radius: 0;
   background: transparent;
   padding: 0;
@@ -396,73 +396,73 @@ body {
 }
 
 /* Syntax-Highlighting (highlight.js) — an Spark-Dunkeltheme angepasst */
-.spark-markdown .hljs {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs {
   color: #f3f0e8;
   background: transparent;
 }
 
-.spark-markdown .hljs-comment,
-.spark-markdown .hljs-quote {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-comment,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-quote {
   color: #7d8a72;
   font-style: italic;
 }
 
-.spark-markdown .hljs-keyword,
-.spark-markdown .hljs-selector-tag,
-.spark-markdown .hljs-literal,
-.spark-markdown .hljs-doctag {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-keyword,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-selector-tag,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-literal,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-doctag {
   color: #e0915f;
 }
 
-.spark-markdown .hljs-string,
-.spark-markdown .hljs-regexp,
-.spark-markdown .hljs-addition {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-string,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-regexp,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-addition {
   color: #a3b565;
 }
 
-.spark-markdown .hljs-number,
-.spark-markdown .hljs-symbol,
-.spark-markdown .hljs-bullet {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-number,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-symbol,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-bullet {
   color: #c08bc4;
 }
 
-.spark-markdown .hljs-title,
-.spark-markdown .hljs-title.function_,
-.spark-markdown .hljs-section,
-.spark-markdown .hljs-name {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-title,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-title.function_,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-section,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-name {
   color: #6fb3c9;
 }
 
-.spark-markdown .hljs-built_in,
-.spark-markdown .hljs-class .hljs-title,
-.spark-markdown .hljs-title.class_,
-.spark-markdown .hljs-type {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-built_in,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-class .hljs-title,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-title.class_,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-type {
   color: #d8c06a;
 }
 
-.spark-markdown .hljs-attr,
-.spark-markdown .hljs-attribute,
-.spark-markdown .hljs-variable,
-.spark-markdown .hljs-template-variable,
-.spark-markdown .hljs-property {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-attr,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-attribute,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-variable,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-template-variable,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-property {
   color: #d2b07a;
 }
 
-.spark-markdown .hljs-meta,
-.spark-markdown .hljs-operator,
-.spark-markdown .hljs-punctuation {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-meta,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-operator,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-punctuation {
   color: #9b9789;
 }
 
-.spark-markdown .hljs-deletion {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-deletion {
   color: #d97c6b;
 }
 
-.spark-markdown .hljs-emphasis {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-emphasis {
   font-style: italic;
 }
 
-.spark-markdown .hljs-strong {
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-strong {
   font-weight: 600;
 }
 
