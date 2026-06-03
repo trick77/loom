@@ -1484,8 +1484,10 @@ test("surfaces the server error and keeps the draft when sending fails", async (
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
-  expect(screen.queryByText("search__web")).not.toBeInTheDocument();
-  expect(screen.queryByText("Running")).not.toBeInTheDocument();
+  // Tool activity from the failed turn stays visible so the user can see what
+  // was attempted (the panel is cleared on the next send / thread switch).
+  expect(screen.getByText("search__web")).toBeInTheDocument();
+  expect(screen.getByText("Running")).toBeInTheDocument();
 });
 
 test("keeps completed tool activity visible with the assistant answer", async () => {
