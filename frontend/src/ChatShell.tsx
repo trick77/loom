@@ -236,17 +236,24 @@ export function ChatShell({
   }
 
   async function handleSetActiveThreadStarred(starred: boolean) {
-    if (activeThread === null || isUpdatingStar) return;
-    const threadID = activeThread.id;
+    if (activeThread === null) return;
+    await handleSetThreadStarred(activeThread, starred);
+  }
+
+  async function handleSetThreadStarred(thread: Thread, starred: boolean, menuKey?: string) {
+    if (isUpdatingStar) return;
     setIsUpdatingStar(true);
     try {
-      const updatedThread = await setThreadStarred(threadID, starred);
+      const updatedThread = await setThreadStarred(thread.id, starred);
       if (activeThreadIDRef.current === updatedThread.id) {
         setActiveThread(updatedThread);
       }
       setThreads((current) =>
-        current.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread)),
+        current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
       );
+      if (menuKey !== undefined) {
+        setOpenThreadMenuID(menuKey);
+      }
       setSendError("");
     } catch (error) {
       handleActionError(error, "Thread failed to update.", setSendError);
@@ -383,8 +390,9 @@ export function ChatShell({
             activeThreadID={route.view === "chat" ? route.threadID : null}
             openThreadMenuID={openThreadMenuID}
             onSelect={selectThread}
-            onToggleMenu={(threadID) =>
-              setOpenThreadMenuID((current) => (current === threadID ? null : threadID))
+            onStarChange={handleSetThreadStarred}
+            onToggleMenu={(menuKey) =>
+              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
             }
             onCloseMenu={() => setOpenThreadMenuID(null)}
           />
@@ -394,8 +402,9 @@ export function ChatShell({
             activeThreadID={route.view === "chat" ? route.threadID : null}
             openThreadMenuID={openThreadMenuID}
             onSelect={selectThread}
-            onToggleMenu={(threadID) =>
-              setOpenThreadMenuID((current) => (current === threadID ? null : threadID))
+            onStarChange={handleSetThreadStarred}
+            onToggleMenu={(menuKey) =>
+              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
             }
             onCloseMenu={() => setOpenThreadMenuID(null)}
           />
@@ -621,6 +630,7 @@ function SidebarSection({
   activeThreadID,
   openThreadMenuID,
   onSelect,
+  onStarChange,
   onToggleMenu,
   onCloseMenu,
 }: {
@@ -629,7 +639,8 @@ function SidebarSection({
   activeThreadID: string | null;
   openThreadMenuID: string | null;
   onSelect(threadID: string): void;
-  onToggleMenu(threadID: string): void;
+  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
+  onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
 }) {
   return (
@@ -639,10 +650,12 @@ function SidebarSection({
         {threads.map((thread) => (
           <SidebarThreadItem
             key={thread.id}
+            menuKey={`${title}:${thread.id}`}
             thread={thread}
             active={activeThreadID === thread.id}
-            menuOpen={openThreadMenuID === thread.id}
+            menuOpen={openThreadMenuID === `${title}:${thread.id}`}
             onSelect={onSelect}
+            onStarChange={onStarChange}
             onToggleMenu={onToggleMenu}
             onCloseMenu={onCloseMenu}
           />
@@ -653,18 +666,22 @@ function SidebarSection({
 }
 
 function SidebarThreadItem({
+  menuKey,
   thread,
   active,
   menuOpen,
   onSelect,
+  onStarChange,
   onToggleMenu,
   onCloseMenu,
 }: {
+  menuKey: string;
   thread: Thread;
   active: boolean;
   menuOpen: boolean;
   onSelect(threadID: string): void;
-  onToggleMenu(threadID: string): void;
+  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
+  onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
 }) {
   if (!active) {
@@ -698,7 +715,7 @@ function SidebarThreadItem({
           className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white"
           onClick={(event) => {
             event.stopPropagation();
-            onToggleMenu(thread.id);
+            onToggleMenu(menuKey);
           }}
           type="button"
         >
@@ -707,12 +724,29 @@ function SidebarThreadItem({
           </span>
         </button>
       </div>
-      {menuOpen && <ThreadActionsMenu thread={thread} onClose={onCloseMenu} />}
+      {menuOpen && (
+        <ThreadActionsMenu
+          menuKey={menuKey}
+          thread={thread}
+          onClose={onCloseMenu}
+          onStarChange={onStarChange}
+        />
+      )}
     </div>
   );
 }
 
-function ThreadActionsMenu({ thread, onClose }: { thread: Thread; onClose(): void }) {
+function ThreadActionsMenu({
+  menuKey,
+  thread,
+  onClose,
+  onStarChange,
+}: {
+  menuKey: string;
+  thread: Thread;
+  onClose(): void;
+  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
+}) {
   return (
     <div
       aria-label="Chat actions"
@@ -723,7 +757,7 @@ function ThreadActionsMenu({ thread, onClose }: { thread: Thread; onClose(): voi
         className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
         role="menuitem"
         type="button"
-        onClick={onClose}
+        onClick={() => onStarChange(thread, !thread.starred, menuKey)}
       >
         <span className="w-[18px]" aria-hidden="true">
           {thread.starred ? "★" : "☆"}

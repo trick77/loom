@@ -347,6 +347,40 @@ test("add to project is inert", async () => {
   expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("project"))).toHaveLength(1);
 });
 
+test("stars and unstars a chat from the sidebar action menu", async () => {
+  let starred = false;
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json([{ ...threadFixture(), starred }]);
+    if (url === "/api/threads/t1") {
+      return Response.json({ thread: { ...threadFixture(), starred }, messages: [] });
+    }
+    if (url === "/api/threads/t1/star" && init?.method === "POST") {
+      starred = true;
+      return Response.json({ ...threadFixture(), starred: true });
+    }
+    if (url === "/api/threads/t1/unstar" && init?.method === "POST") {
+      starred = false;
+      return Response.json({ ...threadFixture(), starred: false });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Star" }));
+  expect(await screen.findByRole("menuitem", { name: "Unstar" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("menuitem", { name: "Unstar" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", { method: "POST" }),
+  );
+});
+
 test("stars and unstars the active chat", async () => {
   let starred = false;
   const thread = () => ({
