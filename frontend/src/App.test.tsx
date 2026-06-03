@@ -381,6 +381,47 @@ test("stars and unstars a chat from the sidebar action menu", async () => {
   );
 });
 
+test("renames a chat from the sidebar menu", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") {
+      return Response.json([{ ...threadFixture(), title: "Existing chat" }]);
+    }
+    if (url === "/api/threads/t1" && init?.method === "PATCH") {
+      return Response.json({ ...threadFixture(), title: "Renamed chat" });
+    }
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: { ...threadFixture(), title: "Existing chat" },
+        messages: [],
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+  const input = await screen.findByRole("textbox", { name: "Chat title" });
+  expect(input).toHaveValue("Existing chat");
+  fireEvent.change(input, { target: { value: "Renamed chat" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByRole("button", { name: "Renamed chat" })).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/threads/t1",
+    expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ title: "Renamed chat" }),
+    }),
+  );
+});
+
 test("stars and unstars the active chat", async () => {
   let starred = false;
   const thread = () => ({
