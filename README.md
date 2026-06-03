@@ -170,14 +170,22 @@ Spark also reads `SPARK_MCP_CONFIG` at startup for external MCP tools. The file 
 server is discovered once at boot. Servers that cannot be reached are logged and skipped, so one
 unavailable MCP server does not block startup.
 
+The default Compose setup includes two external MCP sidecars:
+
+- `fetch` exposes the reference `mcp-server-fetch` URL/document reader as `fetch__fetch`. Use it for
+  normal URL reading, article/document extraction, summarization, and quoting.
+- `obscura` exposes browser automation tools as `obscura__<tool>`. Use it only when a page needs
+  JavaScript rendering, visual inspection, navigation, screenshots, or interaction.
+
 Remote MCP servers should expose a Streamable HTTP endpoint:
 
 ```json
 {
   "servers": {
-    "search": {
+    "fetch": {
       "transport": "streamable-http",
-      "url": "http://search-mcp:8080/mcp"
+      "url": "http://fetch:8090/mcp",
+      "tools": ["fetch"]
     }
   }
 }

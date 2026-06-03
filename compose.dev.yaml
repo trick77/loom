@@ -48,6 +48,19 @@ services:
       obscura:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
         condition: service_healthy
+      fetch:
+        # one-shot MCP discovery at startup → wait for the bridge to be ready
+        condition: service_healthy
+
+  fetch:
+    # Lightweight URL/document fetch MCP. Spark is host-networked here, so the
+    # bridge is published on a localhost port and reached via mcp.dev.json at
+    # http://localhost:8091/mcp.
+    build:
+      context: ./fetch
+      dockerfile: Containerfile
+    ports:
+      - "127.0.0.1:8091:8090"
 
   obscura:
     # Headless-browser MCP. Spark is host-networked here, so the bridge is

@@ -1,5 +1,10 @@
 {
   "servers": {
+    "fetch": {
+      "transport": "streamable-http",
+      "url": "http://localhost:8091/mcp",
+      "tools": ["fetch"]
+    },
     "obscura": {
       "transport": "streamable-http",
       "url": "http://localhost:8090/mcp"

@@ -1,0 +1,37 @@
+# Fetch MCP, bridged to streamable-HTTP for Spark.
+#
+# The reference fetch server is a stdio MCP server. Spark discovers remote MCP
+# tools at startup, so this container runs the stdio server and lets
+# supergateway expose it as Streamable HTTP on 0.0.0.0:8090/mcp.
+#
+# SSRF: mcp-server-fetch does not document a private-network denylist. Compose
+# keeps this sidecar off Spark's default app network so it cannot reach sidecars
+# such as Tika by service DNS name. It remains on a dedicated MCP network with
+# Spark so Spark can call the bridge.
+#
+# Robots/telemetry: we do not pass --ignore-robots-txt, so model-initiated
+# fetches keep the server's default robots.txt behavior. The reference fetch
+# server does not document telemetry, and this image does not set telemetry
+# opt-in flags.
+
+FROM node:22-bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/mcp-fetch \
+    && /opt/mcp-fetch/bin/pip install --no-cache-dir mcp-server-fetch==2025.4.7 \
+    && npm install -g supergateway@3.4.3
+
+EXPOSE 8090
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 \
+  CMD node -e "const s=require('net').connect(8090,'127.0.0.1');s.setTimeout(3000);s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"
+
+CMD ["supergateway", \
+     "--stdio", "/opt/mcp-fetch/bin/python -m mcp_server_fetch", \
+     "--outputTransport", "streamableHttp", \
+     "--stateful", "--sessionTimeout", "180000", \
+     "--port", "8090", \
+     "--streamableHttpPath", "/mcp"]
