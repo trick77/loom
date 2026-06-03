@@ -339,7 +339,7 @@ body {
   padding-left: 0.9rem;
 }
 
-.spark-markdown code {
+:is(.spark-markdown, .spark-thinking-panel-body) code {
   border-radius: 0.25rem;
   background: #2a2a28;
   font-family: var(--font-mono);
@@ -348,7 +348,7 @@ body {
   padding: 0.1rem 0.28rem;
 }
 
-.spark-markdown pre {
+:is(.spark-markdown, .spark-thinking-panel-body) pre {
   overflow-x: auto;
   border: 1px solid #3e3d39;
   border-radius: 0.5rem;
@@ -356,10 +356,114 @@ body {
   padding: 0.85rem 1rem;
 }
 
-.spark-markdown pre code {
+:is(.spark-markdown, .spark-thinking-panel-body) pre code {
   border-radius: 0;
   background: transparent;
   padding: 0;
+}
+
+/* Code-Block-Wrapper mit Copy-Button */
+.spark-codeblock {
+  position: relative;
+}
+
+.spark-codeblock .spark-codeblock-copy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+  border: 1px solid #3e3d39;
+  border-radius: 0.375rem;
+  background: rgba(42, 42, 40, 0.6);
+  color: #c3c2b7;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.spark-codeblock .spark-codeblock-copy:hover {
+  opacity: 1;
+  background: #2a2a28;
+  color: #f3f0e8;
+}
+
+/* Platz schaffen, damit der Button nicht über dem Code liegt */
+.spark-codeblock pre {
+  padding-right: 2.75rem;
+}
+
+/* Syntax-Highlighting (highlight.js) — an Spark-Dunkeltheme angepasst */
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs {
+  color: #f3f0e8;
+  background: transparent;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-comment,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-quote {
+  color: #7d8a72;
+  font-style: italic;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-keyword,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-selector-tag,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-literal,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-doctag {
+  color: #e0915f;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-string,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-regexp,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-addition {
+  color: #a3b565;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-number,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-symbol,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-bullet {
+  color: #c08bc4;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-title,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-title.function_,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-section,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-name {
+  color: #6fb3c9;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-built_in,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-class .hljs-title,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-title.class_,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-type {
+  color: #d8c06a;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-attr,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-attribute,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-variable,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-template-variable,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-property {
+  color: #d2b07a;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-meta,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-operator,
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-punctuation {
+  color: #9b9789;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-deletion {
+  color: #d97c6b;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-emphasis {
+  font-style: italic;
+}
+
+:is(.spark-markdown, .spark-thinking-panel-body) .hljs-strong {
+  font-weight: 600;
 }
 
 .spark-markdown table {
