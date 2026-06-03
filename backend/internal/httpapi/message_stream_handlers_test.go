@@ -233,6 +233,34 @@ func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 	}
 }
 
+func TestStreamMessageSystemPromptRoutesURLTools(t *testing.T) {
+	var history []llm.Message
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{history: &history},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Read https://example.com"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if len(history) == 0 {
+		t.Fatal("history is empty")
+	}
+	if !strings.Contains(history[0].Content, "For URLs, use the lightweight fetch tool first") {
+		t.Fatalf("system prompt = %q, want fetch-first URL routing directive", history[0].Content)
+	}
+	if !strings.Contains(history[0].Content, "Use browser tools only when fetch cannot access useful content") {
+		t.Fatalf("system prompt = %q, want browser fallback directive", history[0].Content)
+	}
+}
+
 func TestStreamMessageReturns503WhenLLMDependencyMissing(t *testing.T) {
 	store := &fakeChatStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},

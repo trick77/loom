@@ -35,16 +35,33 @@ services:
       - spark-data:/data
       - ./mcp.json:/config/mcp.json:ro
       # per-user volumes are mounted manually under /data/users/<user-id>/
+    networks:
+      - default
+      - fetch-mcp
     depends_on:
       tika:
         condition: service_started
       obscura:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
         condition: service_healthy
+      fetch:
+        # one-shot MCP discovery at startup → wait for the bridge to be ready
+        condition: service_healthy
 
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
     image: apache/tika:2.9.2.1-full
+
+  fetch:
+    # Lightweight URL/document fetch MCP, bridged to streamable-HTTP by
+    # supergateway. Spark discovers it via mcp.json at http://fetch:8090/mcp.
+    # Keep it off the default app network so fetched URLs cannot resolve app
+    # sidecars such as tika by Compose service name.
+    build:
+      context: ./fetch
+      dockerfile: Containerfile
+    networks:
+      - fetch-mcp
 
   obscura:
     # Headless-browser MCP (Obscura) bridged to streamable-HTTP by supergateway.
@@ -55,6 +72,10 @@ services:
     build:
       context: ./obscura
       dockerfile: Containerfile
+
+networks:
+  default:
+  fetch-mcp:
 
 volumes:
   spark-data:
