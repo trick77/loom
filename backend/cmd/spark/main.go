@@ -59,6 +59,8 @@ func run() error {
 	artifactStore := artifact.NewStore(db)
 	docTools := []docgen.Generator{
 		docgen.TextGenerator{},
+		docgen.PDFGenerator{},
+		docgen.XLSXGenerator{},
 	}
 	var chatClient httpapi.ChatClient
 	if cfg.ChatBaseURL != "" {
