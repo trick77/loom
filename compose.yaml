@@ -28,6 +28,8 @@ services:
       SPARK_EMBED_BASE_URL: "${SPARK_EMBED_BASE_URL}"
       SPARK_EMBED_API_KEY: "${SPARK_EMBED_API_KEY}"
       SPARK_EMBED_MODEL: "${SPARK_EMBED_MODEL:-text-embedding-3-small}"
+      SPARK_CONTEXT7_API_KEY: "${SPARK_CONTEXT7_API_KEY:-}"
+      SPARK_CONTEXT7_MCP_URL: "${SPARK_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
       SPARK_SESSION_SECRET: "${SPARK_SESSION_SECRET}"
     volumes:
       - spark-data:/data

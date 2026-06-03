@@ -83,6 +83,77 @@ func TestToolConfigForConfigLeavesTavilyDisabledWhenKeyIsEmpty(t *testing.T) {
 	}
 }
 
+func TestTavilyConfiguredDetectsEnvOrExternalServer(t *testing.T) {
+	if tavilyConfigured(config.Config{}, mcp.Config{}) {
+		t.Fatal("tavilyConfigured() = true without API key or external server, want false")
+	}
+	if !tavilyConfigured(config.Config{TavilyAPIKey: "secret"}, mcp.Config{}) {
+		t.Fatal("tavilyConfigured() = false with API key, want true")
+	}
+	if !tavilyConfigured(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
+		"tavily": {Transport: mcp.TransportStreamableHTTP, URL: "http://custom-tavily:8080/mcp"},
+	}}) {
+		t.Fatal("tavilyConfigured() = false with external tavily server, want true")
+	}
+}
+
+func TestToolConfigForConfigAddsContext7WhenAPIKeyIsSet(t *testing.T) {
+	base := mcp.Config{Servers: map[string]mcp.ServerConfig{
+		"obscura": {Transport: mcp.TransportStreamableHTTP, URL: "http://obscura:8090/mcp"},
+	}}
+	cfg := config.Config{
+		Context7APIKey: "ctx-key",
+		Context7MCPURL: "https://mcp.context7.com/mcp",
+	}
+
+	got, collision := toolConfigForConfig(cfg, base)
+	if collision {
+		t.Fatal("toolConfigForConfig() collision = true, want false")
+	}
+	context7 := got.Servers["context7"]
+	if context7.Transport != mcp.TransportStreamableHTTP {
+		t.Fatalf("context7 transport = %q, want streamable-http", context7.Transport)
+	}
+	if context7.URL != "https://mcp.context7.com/mcp" {
+		t.Fatalf("context7 URL = %q, want Context7 remote endpoint", context7.URL)
+	}
+	if context7.Headers["CONTEXT7_API_KEY"] != "ctx-key" {
+		t.Fatalf("context7 headers = %#v, want API key header", context7.Headers)
+	}
+}
+
+func TestToolConfigForConfigPreservesExternalContext7OnCollision(t *testing.T) {
+	base := mcp.Config{Servers: map[string]mcp.ServerConfig{
+		"context7": {Transport: mcp.TransportStreamableHTTP, URL: "http://custom-context7:8080/mcp"},
+	}}
+	cfg := config.Config{
+		Context7APIKey: "ctx-key",
+		Context7MCPURL: "https://mcp.context7.com/mcp",
+	}
+
+	got, collision := toolConfigForConfig(cfg, base)
+	if !collision {
+		t.Fatal("toolConfigForConfig() collision = false, want true")
+	}
+	if got.Servers["context7"].URL != "http://custom-context7:8080/mcp" {
+		t.Fatalf("context7 config = %#v, want external config preserved", got.Servers["context7"])
+	}
+}
+
+func TestContext7ConfiguredDetectsEnvOrExternalServer(t *testing.T) {
+	if context7Configured(config.Config{}, mcp.Config{}) {
+		t.Fatal("context7Configured() = true without API key or external server, want false")
+	}
+	if !context7Configured(config.Config{Context7APIKey: "ctx-key"}, mcp.Config{}) {
+		t.Fatal("context7Configured() = false with API key, want true")
+	}
+	if !context7Configured(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
+		"context7": {Transport: mcp.TransportStreamableHTTP, URL: "http://custom-context7:8080/mcp"},
+	}}) {
+		t.Fatal("context7Configured() = false with external context7 server, want true")
+	}
+}
+
 func TestToolConfigForConfigPreservesExternalTavilyOnCollision(t *testing.T) {
 	base := mcp.Config{Servers: map[string]mcp.ServerConfig{
 		"tavily": {Transport: mcp.TransportStreamableHTTP, URL: "http://custom-tavily-mcp:8080/mcp"},

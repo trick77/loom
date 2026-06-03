@@ -33,10 +33,12 @@ type Config struct {
 	EmbedAPIKey         string
 	EmbedModel          string
 
-	TikaURL       string
-	TavilyURL     string // hosted Tavily MCP endpoint for built-in web search
-	TavilyAPIKey  string // enables built-in Tavily web search when set
-	MCPConfigPath string
+	TikaURL        string
+	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
+	TavilyAPIKey   string // enables built-in Tavily web search when set
+	Context7MCPURL string
+	Context7APIKey string
+	MCPConfigPath  string
 
 	AdminInitialPassword string // legacy; authentik owns credentials in Phase 2
 	SessionSecret        string
@@ -89,6 +91,8 @@ func Load() (Config, error) {
 		TikaURL:              env("SPARK_TIKA_URL", "http://tika:9998"),
 		TavilyURL:            env("SPARK_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
 		TavilyAPIKey:         env("SPARK_TAVILY_API_KEY", ""),
+		Context7MCPURL:       env("SPARK_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
+		Context7APIKey:       env("SPARK_CONTEXT7_API_KEY", ""),
 		MCPConfigPath:        env("SPARK_MCP_CONFIG", "/config/mcp.json"),
 		AdminInitialPassword: env("SPARK_ADMIN_INITIAL_PASSWORD", ""),
 		SessionSecret:        env("SPARK_SESSION_SECRET", ""),
@@ -136,6 +140,9 @@ func Load() (Config, error) {
 		}
 	default:
 		return Config{}, fmt.Errorf("SPARK_AUTH_MODE must be one of: oidc, dev")
+	}
+	if cfg.Context7APIKey != "" && cfg.Context7MCPURL == "" {
+		return Config{}, fmt.Errorf("SPARK_CONTEXT7_MCP_URL is required when SPARK_CONTEXT7_API_KEY is set")
 	}
 	return cfg, nil
 }

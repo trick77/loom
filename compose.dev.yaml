@@ -37,6 +37,8 @@ services:
       SPARK_CHAT_API_KEY: "${SPARK_CHAT_API_KEY:-}"
       SPARK_CHAT_MODEL: "${SPARK_CHAT_MODEL:-MiMo}"
       SPARK_CHAT_REASONING_EFFORT: "${SPARK_CHAT_REASONING_EFFORT:-high}"
+      SPARK_CONTEXT7_API_KEY: "${SPARK_CONTEXT7_API_KEY:-}"
+      SPARK_CONTEXT7_MCP_URL: "${SPARK_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
     volumes:
       - spark-dev-data:/data
       - ./mcp.dev.json:/config/mcp.json:ro
