@@ -68,10 +68,13 @@ func run() error {
 			mcpConfig = loadedMCPConfig
 		}
 	}
-	var searxngNameCollision bool
-	mcpConfig, searxngNameCollision = toolConfigForConfig(cfg, mcpConfig)
-	if searxngNameCollision {
-		slog.Warn("built-in SearXNG tool disabled because MCP config already defines server name searxng")
+	if !context7Configured(cfg, mcpConfig) {
+		slog.Warn("Context7 MCP not configured; set SPARK_CONTEXT7_API_KEY to enable documentation tools", "url", cfg.Context7MCPURL)
+	}
+	var builtInToolNameCollision bool
+	mcpConfig, builtInToolNameCollision = toolConfigForConfig(cfg, mcpConfig)
+	if builtInToolNameCollision {
+		slog.Warn("built-in MCP tool disabled because MCP config already defines the same server name")
 	}
 	if len(mcpConfig.Servers) > 0 {
 		discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -170,5 +173,19 @@ func toolConfigForConfig(cfg config.Config, base mcp.Config) (mcp.Config, bool) 
 		}
 		out.Servers["searxng"] = mcp.SearxngServerConfig(cfg.SearxngURL)
 	}
+	if strings.TrimSpace(cfg.Context7APIKey) != "" {
+		if _, exists := out.Servers["context7"]; exists {
+			return out, true
+		}
+		out.Servers["context7"] = mcp.Context7ServerConfig(cfg.Context7MCPURL, cfg.Context7APIKey)
+	}
 	return out, false
+}
+
+func context7Configured(cfg config.Config, base mcp.Config) bool {
+	if strings.TrimSpace(cfg.Context7APIKey) != "" {
+		return true
+	}
+	_, exists := base.Servers["context7"]
+	return exists
 }

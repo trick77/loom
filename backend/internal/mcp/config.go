@@ -94,3 +94,11 @@ func SplitExposedToolName(name string) (string, string, bool) {
 func SearxngServerConfig(baseURL string) ServerConfig {
 	return ServerConfig{Transport: transportSearxng, URL: baseURL}
 }
+
+func Context7ServerConfig(url, apiKey string) ServerConfig {
+	return ServerConfig{
+		Transport: TransportStreamableHTTP,
+		URL:       url,
+		Headers:   map[string]string{"CONTEXT7_API_KEY": apiKey},
+	}
+}
