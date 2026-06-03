@@ -363,7 +363,7 @@ test("add to project is inert", async () => {
   expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("project"))).toHaveLength(1);
 });
 
-test("stars and unstars a chat from the sidebar action menu", async () => {
+test("stars and unstars a chat from the sidebar action menu and closes the menu", async () => {
   let starred = false;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -389,12 +389,17 @@ test("stars and unstars a chat from the sidebar action menu", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
   fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Star" }));
-  expect(await screen.findByRole("menuitem", { name: "Unstar" })).toBeInTheDocument();
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/star", { method: "POST" }),
+  );
+  expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("menuitem", { name: "Unstar" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Open chat actions" })[0]);
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Unstar" }));
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", { method: "POST" }),
   );
+  expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
 });
 
 test("renames a chat from the sidebar menu", async () => {
