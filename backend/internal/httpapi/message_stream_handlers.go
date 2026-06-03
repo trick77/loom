@@ -91,6 +91,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	assistantContent := assistantResult.Content
 	if strings.TrimSpace(assistantContent) == "" {
+		slog.Warn("empty assistant response",
+			"thread_id", threadID,
+			"content_bytes", len(assistantResult.Content),
+			"reasoning_bytes", len(assistantResult.ReasoningContent),
+			"tool_calls", len(assistantResult.ToolCalls))
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
 		return
 	}
@@ -147,11 +152,13 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			if strings.TrimSpace(result.Content) != "" || !toolRan {
 				return result, nil
 			}
+			slog.Info("forcing final answer", "reason", "empty_after_tools", "round", round)
 			break
 		}
 		if len(result.ToolCalls) > maxToolCallsPerRound {
 			return llm.StreamResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
 		}
+		slog.Info("assistant requested tools", "round", round, "tool_calls", len(result.ToolCalls), "content_bytes", len(result.Content))
 
 		history = append(history, llm.Message{
 			Role:             "assistant",
@@ -160,7 +167,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			ToolCalls:        result.ToolCalls,
 		})
 		for _, call := range result.ToolCalls {
-			output := s.executeToolCall(ctx, call)
+			output := s.executeToolCall(ctx, call, round)
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				return llm.StreamResult{}, err
 			}
@@ -171,6 +178,9 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			})
 		}
 		toolRan = true
+		if round == maxToolRounds {
+			slog.Info("forcing final answer", "reason", "rounds_exhausted", "round", round)
+		}
 	}
 	// Force a final answer with no tools available, nudging the model to commit
 	// to a reply using the gathered results instead of issuing yet another tool
@@ -205,19 +215,23 @@ func (s *server) streamAssistantTurn(ctx context.Context, stream *sse.Writer, hi
 	})
 }
 
-func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall) string {
+func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall, round int) string {
+	args := summarizeForLog(call.Function.Arguments)
 	arguments, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
-		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "err", err)
+		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", err)
 		return capToolOutput("tool failed: invalid arguments: " + err.Error())
 	}
 	callCtx, cancel := context.WithTimeout(ctx, maxToolCallDuration)
 	defer cancel()
+	start := time.Now()
 	output, err := s.mcp.CallTool(callCtx, call.Function.Name, arguments)
+	durationMS := time.Since(start).Milliseconds()
 	if err != nil {
-		slog.Warn("tool call failed", "tool", call.Function.Name, "err", err)
+		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
 		return capToolOutput("tool failed: " + err.Error())
 	}
+	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
 	return capToolOutput(output)
 }
 
@@ -226,6 +240,17 @@ func capToolOutput(output string) string {
 		return output
 	}
 	return output[:maxToolResultContentBytes]
+}
+
+// summarizeForLog trims a value (e.g. tool arguments) to a length that is safe
+// to log: enough to debug, short enough not to flood the logs.
+func summarizeForLog(value string) string {
+	const maxLen = 256
+	value = strings.TrimSpace(value)
+	if len(value) <= maxLen {
+		return value
+	}
+	return value[:maxLen] + "…"
 }
 
 func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round int) llm.InferenceMetadata {
