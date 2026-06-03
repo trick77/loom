@@ -187,7 +187,14 @@ test("streamMessage dispatches artifact events", async () => {
 
 test("downloadArtifact fetches the artifact blob", async () => {
   const blob = new Blob(["hello"], { type: "text/plain" });
-  const fetchMock = vi.fn().mockResolvedValue(new Response(blob));
+  // Mock the response shape downloadArtifact relies on directly. Constructing a
+  // real Response from a Blob calls blob.stream(), which jsdom's Blob lacks on
+  // Node 22 (the CI runtime), so the test must not depend on it.
+  const fetchMock = vi.fn().mockResolvedValue({
+    status: 200,
+    ok: true,
+    blob: () => Promise.resolve(blob),
+  });
   vi.stubGlobal("fetch", fetchMock);
 
   await expect(downloadArtifact("/api/artifacts/art_1/download")).resolves.toBeInstanceOf(Blob);
