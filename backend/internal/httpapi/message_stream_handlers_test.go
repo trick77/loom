@@ -510,3 +510,49 @@ func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
 		t.Fatalf("assistantContent = %q, want final no-tool answer", store.assistantContent)
 	}
 }
+
+func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	// Round 1 runs a tool; round 2 returns nothing (no tool call, no content) —
+	// the model gave up without answering. The loop must force a final answer.
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
+			{},
+		},
+		plain: "Final answer after the tool ran.",
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+		MCP: fakeMCPService{
+			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Spark"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "empty assistant response") {
+		t.Fatalf("SSE body returned empty response after the model stopped empty:\n%s", body)
+	}
+	if store.assistantContent != "Final answer after the tool ran." {
+		t.Fatalf("assistantContent = %q, want forced final answer", store.assistantContent)
+	}
+	// The forced final turn must nudge the model to stop using tools.
+	lastHistory := llmClient.histories[len(llmClient.histories)-1]
+	nudged := false
+	for _, msg := range lastHistory {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Do not call any more tools") {
+			nudged = true
+		}
+	}
+	if !nudged {
+		t.Fatalf("final turn history missing the no-more-tools nudge: %#v", lastHistory)
+	}
+}

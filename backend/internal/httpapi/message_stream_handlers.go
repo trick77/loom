@@ -110,7 +110,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 const (
-	maxToolRounds             = 4
+	maxToolRounds             = 8
 	maxToolCallsPerRound      = 8
 	maxToolCallDuration       = 30 * time.Second
 	maxToolResultContentBytes = 32 << 10
@@ -130,41 +130,24 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		tools = s.mcp.Tools()
 	}
 	if len(tools) == 0 {
-		callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat", 1))
-		return s.llm.StreamChatWithTools(callCtx, history, nil, func(event llm.StreamEvent) error {
-			if event.ReasoningDelta != "" {
-				return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
-			}
-			if event.Delta != "" {
-				return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
-			}
-			return nil
-		})
+		return s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat", 1), nil)
 	}
 
+	toolRan := false
 	for round := 1; round <= maxToolRounds; round++ {
-		callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat_tool_round", round))
-		result, err := s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
-			if event.ReasoningDelta != "" {
-				return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
-			}
-			if event.Delta != "" {
-				return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
-			}
-			if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
-				return sendSSEJSON(stream, "tool_call", toolCallResponse{
-					ID:        event.ToolCall.ID,
-					Name:      event.ToolCall.Function.Name,
-					Arguments: event.ToolCall.Function.Arguments,
-				})
-			}
-			return nil
-		})
+		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
 			return llm.StreamResult{}, err
 		}
 		if len(result.ToolCalls) == 0 {
-			return result, nil
+			// A normal textual answer ends the loop. But if the model stops
+			// after running tools without producing any text, fall through to a
+			// forced, tool-free final answer instead of returning an empty (and
+			// therefore discarded) response.
+			if strings.TrimSpace(result.Content) != "" || !toolRan {
+				return result, nil
+			}
+			break
 		}
 		if len(result.ToolCalls) > maxToolCallsPerRound {
 			return llm.StreamResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
@@ -187,14 +170,36 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 				Content:    output,
 			})
 		}
+		toolRan = true
 	}
-	callCtx := llm.WithInferenceMetadata(ctx, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1))
-	return s.llm.StreamChatWithTools(callCtx, history, nil, func(event llm.StreamEvent) error {
+	// Force a final answer with no tools available, nudging the model to commit
+	// to a reply using the gathered results instead of issuing yet another tool
+	// call (which it cannot run and which would otherwise yield an empty turn).
+	// A system directive (not a user turn) avoids biasing the answer's language.
+	finalHistory := append(history[:len(history):len(history)], llm.Message{
+		Role:    "system",
+		Content: "Provide your final answer now using the information already gathered above. Do not call any more tools.",
+	})
+	return s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
+}
+
+// streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
+// tool-call events to the SSE stream.
+func (s *server) streamAssistantTurn(ctx context.Context, stream *sse.Writer, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+	callCtx := llm.WithInferenceMetadata(ctx, meta)
+	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
 			return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
 		}
 		if event.Delta != "" {
 			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
+		}
+		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
+			return sendSSEJSON(stream, "tool_call", toolCallResponse{
+				ID:        event.ToolCall.ID,
+				Name:      event.ToolCall.Function.Name,
+				Arguments: event.ToolCall.Function.Arguments,
+			})
 		}
 		return nil
 	})

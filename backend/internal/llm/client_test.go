@@ -386,7 +386,8 @@ func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
 	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
 
 	var events []StreamEvent
-	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, nil, func(event StreamEvent) error {
+	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, offeredTools, func(event StreamEvent) error {
 		events = append(events, event)
 		return nil
 	})
@@ -414,6 +415,31 @@ func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
 	}
 }
 
+func TestClient_StreamChatWithoutToolsKeepsInlineXMLAsContent(t *testing.T) {
+	// The tool-free final-answer call must not parse/strip inline tool XML;
+	// otherwise a stray inline call would empty the content and discard the turn.
+	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Answer"}}, nil, nil)
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if len(final.ToolCalls) != 0 {
+		t.Fatalf("tool calls = %#v, want none parsed when no tools offered", final.ToolCalls)
+	}
+	if final.Content != xml {
+		t.Fatalf("final content = %q, want inline XML kept verbatim", final.Content)
+	}
+}
+
 func TestClient_StreamChatWithToolsDoesNotStreamMiMoInlineXML(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -428,7 +454,8 @@ func TestClient_StreamChatWithToolsDoesNotStreamMiMoInlineXML(t *testing.T) {
 	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
 
 	var deltas string
-	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, nil, func(event StreamEvent) error {
+	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
+	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, offeredTools, func(event StreamEvent) error {
 		deltas += event.Delta
 		return nil
 	})
