@@ -1397,9 +1397,7 @@ function Composer({
 }) {
   const height = variant === "start" ? "h-[122px]" : "h-[102px]";
   const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
-  // Chat composer box is 34px wider than the 720px message rail; add 17px of
-  // horizontal padding per side so the typed text stays within a 720px field.
-  const padX = variant === "chat" ? "px-[41px]" : "px-6";
+  const padX = "px-6";
   return (
     <form
       className={`spark-composer ${height} relative rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
