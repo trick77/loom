@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ComponentPropsWithoutRef } from "react";
+import type { ExtraProps } from "react-markdown";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import {
   AuthExpiredError,
   createProject,
@@ -888,7 +891,9 @@ function ThinkingPanel({ content, complete }: { content: string; complete: boole
       </button>
       {expanded && (
         <div className="spark-thinking-panel-body">
-          <Markdown remarkPlugins={[remarkGfm]}>{trimmed}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            {trimmed}
+          </Markdown>
         </div>
       )}
     </div>
@@ -1028,11 +1033,58 @@ function MessageBubble({
   );
 }
 
-function ProseMarkdown({ children }: { children: string }) {
+function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
+  const preRef = useRef<HTMLPreElement | null>(null);
+  const [copied, setCopied] = useState(false);
+  const resetRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetRef.current !== null) window.clearTimeout(resetRef.current);
+    };
+  }, []);
+
+  const handleCopy = useCallback(() => {
+    const code = preRef.current?.textContent ?? "";
+    void copyResponse(code);
+    setCopied(true);
+    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
+    resetRef.current = window.setTimeout(() => setCopied(false), 1500);
+  }, []);
+
+  return (
+    <div className="spark-codeblock">
+      <button
+        type="button"
+        className="spark-codeblock-copy"
+        onClick={handleCopy}
+        aria-label={copied ? "Kopiert" : "Code kopieren"}
+        title={copied ? "Kopiert" : "Code kopieren"}
+      >
+        {copied ? (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
+            <path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+      <pre ref={preRef} {...props}>
+        {children}
+      </pre>
+    </div>
+  );
+}
+
+export function ProseMarkdown({ children }: { children: string }) {
   return (
     <div className="spark-message-text spark-markdown text-[#f3f0e8]">
       <Markdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
         components={{
           a({ children, ...props }) {
             return (
@@ -1041,6 +1093,7 @@ function ProseMarkdown({ children }: { children: string }) {
               </a>
             );
           },
+          pre: CodeBlock,
         }}
       >
         {children}
