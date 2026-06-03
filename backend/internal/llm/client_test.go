@@ -580,7 +580,7 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	if len(gotBody.Messages) != 3 {
 		t.Fatalf("len(messages) = %d, want 3", len(gotBody.Messages))
 	}
-	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != "Name this chat in 2 to 6 words. Return only the title." {
+	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != titleSystemPrompt {
 		t.Fatalf("system message = %#v", gotBody.Messages[0])
 	}
 	if gotBody.Messages[1].Role != "user" || gotBody.Messages[1].Content != "Can you explain x?" {
@@ -663,6 +663,32 @@ func TestClient_GenerateTitleOmitsEmptyAssistantMessage(t *testing.T) {
 		if message.Role == "assistant" {
 			t.Fatalf("messages include contentless assistant message: %#v", gotMessages)
 		}
+	}
+}
+
+func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]string{
+						"content": `I don't have specific information about a product called "Lens" by IPverse in my training data.`,
+					},
+				},
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	title, err := client.GenerateTitle(context.Background(), `Tell me about "Lens" by IPverse`, "")
+	if err != nil {
+		t.Fatalf("GenerateTitle() error: %v", err)
+	}
+	if title != "New chat" {
+		t.Fatalf("title = %q, want New chat", title)
 	}
 }
 
