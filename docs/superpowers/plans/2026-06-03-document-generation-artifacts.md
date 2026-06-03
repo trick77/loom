@@ -195,7 +195,6 @@ type Artifact struct {
 	UserID          string     `json:"-"`
 	ThreadID        string     `json:"threadId"`
 	ProjectID       *string    `json:"projectId,omitempty"`
-	MessageID       *string    `json:"messageId,omitempty"`
 	DisplayFilename string     `json:"displayFilename"`
 	VolumeRelPath   string     `json:"-"`
 	MIMEType        string     `json:"mimeType"`
@@ -526,7 +525,6 @@ CREATE TABLE artifacts (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     thread_id TEXT NOT NULL,
     project_id TEXT,
-    message_id TEXT,
     display_filename TEXT NOT NULL,
     volume_relpath TEXT NOT NULL,
     mime_type TEXT NOT NULL,
@@ -535,8 +533,7 @@ CREATE TABLE artifacts (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(user_id, id),
     FOREIGN KEY (user_id, thread_id) REFERENCES threads(user_id, id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id, project_id) REFERENCES projects(user_id, id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id, message_id) REFERENCES messages(user_id, id) ON DELETE SET NULL
+    FOREIGN KEY (user_id, project_id) REFERENCES projects(user_id, id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_artifacts_user_created ON artifacts(user_id, created_at DESC);
@@ -569,7 +566,6 @@ type CreateInput struct {
 	UserID          string
 	ThreadID        string
 	ProjectID       *string
-	MessageID       *string
 	DisplayFilename string
 	VolumeRelPath   string
 	MIMEType        string
@@ -583,9 +579,9 @@ func NewStore(db *sql.DB) *Store {
 func (s *Store) Create(ctx context.Context, in CreateInput) (Artifact, error) {
 	id := chat.NewIDForInternalUse()
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO artifacts (id, user_id, thread_id, project_id, message_id, display_filename, volume_relpath, mime_type, size_bytes)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, in.UserID, in.ThreadID, in.ProjectID, in.MessageID, in.DisplayFilename, in.VolumeRelPath, in.MIMEType, in.SizeBytes,
+INSERT INTO artifacts (id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, in.UserID, in.ThreadID, in.ProjectID, in.DisplayFilename, in.VolumeRelPath, in.MIMEType, in.SizeBytes,
 	)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("insert artifact: %w", err)
@@ -603,12 +599,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, bool, error) {
 	var out Artifact
 	var createdAt string
-	var projectID, messageID sql.NullString
+	var projectID sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-SELECT id, user_id, thread_id, project_id, message_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
+SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
 FROM artifacts
 WHERE user_id = ? AND id = ?`, userID, artifactID).Scan(
-		&out.ID, &out.UserID, &out.ThreadID, &projectID, &messageID, &out.DisplayFilename,
+		&out.ID, &out.UserID, &out.ThreadID, &projectID, &out.DisplayFilename,
 		&out.VolumeRelPath, &out.MIMEType, &out.SizeBytes, &out.Source, &createdAt,
 	)
 	if err == sql.ErrNoRows {
@@ -619,9 +615,6 @@ WHERE user_id = ? AND id = ?`, userID, artifactID).Scan(
 	}
 	if projectID.Valid {
 		out.ProjectID = &projectID.String
-	}
-	if messageID.Valid {
-		out.MessageID = &messageID.String
 	}
 	parsed, err := time.Parse("2006-01-02 15:04:05", createdAt)
 	if err != nil {

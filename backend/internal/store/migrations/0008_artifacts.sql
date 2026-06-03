@@ -3,7 +3,6 @@ CREATE TABLE artifacts (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     thread_id TEXT NOT NULL,
     project_id TEXT,
-    message_id TEXT,
     display_filename TEXT NOT NULL,
     volume_relpath TEXT NOT NULL,
     mime_type TEXT NOT NULL,

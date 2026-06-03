@@ -67,6 +67,11 @@ Add a small backend document-generation package with one focused generator per f
 - `docgen/xlsx`: converts CSV/sheet data to XLSX.
 - `docgen/pptx`: converts structured presentation JSON to PPTX.
 
+The first PDF generator is intentionally simple: it targets Latin-script Markdown/plain text,
+uses Spark's embedded Go font, and does not yet provide robust word wrapping, table layout, or
+automatic pagination for very long lines/documents. Rich PDF layout should be a follow-up generator
+iteration rather than hidden complexity in v1.
+
 Expose these generators to the existing tool loop as built-in tools, not as MCP servers. The tools
 are local Spark capabilities, need access to the authenticated user and current thread/project scope,
 and must emit first-class SSE artifact events.
@@ -92,7 +97,6 @@ Add an `artifacts` table:
 - `user_id`
 - `thread_id`
 - `project_id NULL`
-- `message_id NULL`
 - `display_filename`
 - `volume_relpath`
 - `mime_type`

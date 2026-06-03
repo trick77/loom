@@ -12,7 +12,6 @@ type Artifact struct {
 	UserID          string    `json:"-"`
 	ThreadID        string    `json:"threadId"`
 	ProjectID       *string   `json:"projectId,omitempty"`
-	MessageID       *string   `json:"messageId,omitempty"`
 	DisplayFilename string    `json:"displayFilename"`
 	VolumeRelPath   string    `json:"-"`
 	MIMEType        string    `json:"mimeType"`

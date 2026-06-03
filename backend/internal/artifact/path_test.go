@@ -87,6 +87,37 @@ func TestResolveOutputPathAddsCollisionSuffix(t *testing.T) {
 	}
 }
 
+func TestCreateOutputFileAddsCollisionSuffixAtomically(t *testing.T) {
+	root := t.TempDir()
+	existing := filepath.Join(root, "user_1", "files", "outputs")
+	if err := os.MkdirAll(existing, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(existing, "report.pdf"), []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, file, err := CreateOutputFile(OutputRequest{
+		UsersDir:        root,
+		UserID:          "user_1",
+		ThreadID:        "thread_1",
+		DisplayFilename: "report.pdf",
+		Extension:       "pdf",
+	})
+	if err != nil {
+		t.Fatalf("CreateOutputFile() error = %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if out.DisplayFilename != "report-2.pdf" {
+		t.Fatalf("DisplayFilename = %q", out.DisplayFilename)
+	}
+	if _, err := os.Stat(filepath.Join(existing, "report-2.pdf")); err != nil {
+		t.Fatalf("created file missing: %v", err)
+	}
+}
+
 func TestResolveOutputPathRejectsSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	outputs := filepath.Join(root, "user_1", "files", "outputs")
@@ -99,6 +130,28 @@ func TestResolveOutputPathRejectsSymlinkEscape(t *testing.T) {
 	_, err := ResolveExisting(root, "user_1", "files/outputs/escape/report.pdf")
 	if err == nil {
 		t.Fatal("ResolveExisting through symlink succeeded, want error")
+	}
+}
+
+func TestCreateOutputFileRejectsSymlinkOutputDirectory(t *testing.T) {
+	root := t.TempDir()
+	filesDir := filepath.Join(root, "user_1", "files")
+	if err := os.MkdirAll(filesDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(filesDir, "outputs")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := CreateOutputFile(OutputRequest{
+		UsersDir:        root,
+		UserID:          "user_1",
+		ThreadID:        "thread_1",
+		DisplayFilename: "report.pdf",
+		Extension:       "pdf",
+	})
+	if err == nil {
+		t.Fatal("CreateOutputFile through symlink output dir succeeded, want error")
 	}
 }
 

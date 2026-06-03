@@ -258,9 +258,11 @@ func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall, round i
 
 func (s *server) availableTools() []llm.Tool {
 	tools := []llm.Tool(nil)
+	names := map[string]string{}
 	if s.artifacts != nil && strings.TrimSpace(s.usersDir) != "" {
 		for _, gen := range s.docTools {
 			schema := gen.Schema()
+			names[schema.Name] = "built_in"
 			tools = append(tools, llm.Tool{
 				Type: "function",
 				Function: llm.ToolFunction{
@@ -272,7 +274,14 @@ func (s *server) availableTools() []llm.Tool {
 		}
 	}
 	if s.mcp != nil {
-		tools = append(tools, s.mcp.Tools()...)
+		for _, tool := range s.mcp.Tools() {
+			if owner, exists := names[tool.Function.Name]; exists {
+				slog.Warn("skipping duplicate MCP tool name", "tool", tool.Function.Name, "existing", owner)
+				continue
+			}
+			names[tool.Function.Name] = "mcp"
+			tools = append(tools, tool)
+		}
 	}
 	return tools
 }
@@ -299,7 +308,7 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
 		return "tool failed: generated file is too large", nil, true
 	}
-	out, err := artifact.ResolveOutputPath(artifact.OutputRequest{
+	out, file, err := artifact.CreateOutputFile(artifact.OutputRequest{
 		UsersDir:        s.usersDir,
 		UserID:          user.ID,
 		ThreadID:        thread.ID,
@@ -310,8 +319,14 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	if err != nil {
 		return capToolOutput("tool failed: " + err.Error()), nil, true
 	}
-	if err := os.WriteFile(out.AbsPath, buffer.Bytes(), 0o600); err != nil {
+	if _, err := file.Write(buffer.Bytes()); err != nil {
+		_ = file.Close()
+		_ = os.Remove(out.AbsPath)
 		return capToolOutput("tool failed: write artifact: " + err.Error()), nil, true
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(out.AbsPath)
+		return capToolOutput("tool failed: close artifact: " + err.Error()), nil, true
 	}
 	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
 		UserID:          user.ID,

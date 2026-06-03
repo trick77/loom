@@ -171,6 +171,33 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 }
 
+func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
+	srv := &server{
+		artifacts: fakeArtifactStore{},
+		usersDir:  t.TempDir(),
+		docTools:  []docgen.Generator{docgen.TextGenerator{}},
+		mcp: fakeMCPService{tools: []llm.Tool{
+			{Type: "function", Function: llm.ToolFunction{Name: "create_text_file"}},
+			{Type: "function", Function: llm.ToolFunction{Name: "search__web"}},
+		}},
+	}
+
+	tools := srv.availableTools()
+
+	var builtInCount, searchCount int
+	for _, tool := range tools {
+		switch tool.Function.Name {
+		case "create_text_file":
+			builtInCount++
+		case "search__web":
+			searchCount++
+		}
+	}
+	if builtInCount != 1 || searchCount != 1 {
+		t.Fatalf("tool counts create_text_file=%d search__web=%d, want 1 and 1", builtInCount, searchCount)
+	}
+}
+
 func TestStreamMessagePersistsAssistantTokenUsage(t *testing.T) {
 	store := &fakeChatStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},

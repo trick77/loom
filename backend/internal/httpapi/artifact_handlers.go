@@ -3,7 +3,6 @@ package httpapi
 import (
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/trick77/spark/internal/artifact"
@@ -32,7 +31,7 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusForbidden, "artifact path rejected")
 		return
 	}
-	data, err := os.ReadFile(abs)
+	file, err := os.Open(abs)
 	if os.IsNotExist(err) {
 		writeJSONError(w, http.StatusGone, "artifact file is missing")
 		return
@@ -41,11 +40,10 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusInternalServerError, "read artifact failed")
 		return
 	}
+	defer file.Close()
 	w.Header().Set("Content-Type", found.MIMEType)
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Header().Set("Content-Disposition", `attachment; filename="`+headerSafeFilename(found.DisplayFilename)+`"`)
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	http.ServeContent(w, r, found.DisplayFilename, found.CreatedAt, file)
 }
 
 func headerSafeFilename(filename string) string {

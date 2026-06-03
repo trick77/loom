@@ -77,6 +77,8 @@ type ChatStore interface {
 type ArtifactStore interface {
 	Create(context.Context, artifact.CreateInput) (artifact.Artifact, error)
 	Get(context.Context, string, string) (artifact.Artifact, bool, error)
+	ListForThread(context.Context, string, string) ([]artifact.Artifact, error)
+	ListForProject(context.Context, string, string) ([]artifact.Artifact, error)
 }
 
 // ChatClient is the LLM dependency used by chat stream handlers.
