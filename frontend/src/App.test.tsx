@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
 
@@ -457,43 +457,30 @@ test("deletes the active chat from the sidebar menu after confirmation", async (
   expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", { method: "DELETE" });
 });
 
-test("stars and unstars the active chat", async () => {
-  let starred = false;
+test("shows MCP status in the active chat header without the header star action", async () => {
   const thread = () => ({
     id: "t1",
     title: "Existing chat",
-    starred,
+    starred: false,
     createdAt: "2026-05-30T00:00:00Z",
     updatedAt: "2026-05-30T00:00:00Z",
   });
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") return Response.json([thread()]);
     if (url === "/api/threads/t1") return Response.json({ thread: thread(), messages: [] });
-    if (url === "/api/threads/t1/star" && init?.method === "POST") {
-      starred = true;
-      return Response.json(thread());
-    }
-    if (url === "/api/threads/t1/unstar" && init?.method === "POST") {
-      starred = false;
-      return Response.json(thread());
-    }
+    if (url === "/api/mcp/status") return Response.json({ active: 2, configured: 3 });
     throw new Error(`unexpected fetch ${url}`);
-  });
-  vi.stubGlobal("fetch", fetchMock);
+  }));
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  fireEvent.click(await screen.findByRole("button", { name: "Star chat" }));
-  expect(await screen.findByRole("button", { name: "Unstar chat" })).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/star", { method: "POST" });
-
-  fireEvent.click(screen.getByRole("button", { name: "Unstar chat" }));
-  expect(await screen.findByRole("button", { name: "Star chat" })).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", { method: "POST" });
+  const header = await screen.findByRole("banner", { name: "Chat header" });
+  expect(within(header).getByTitle("2 of 3 MCP servers active")).toBeInTheDocument();
+  expect(within(header).queryByRole("button", { name: /star chat/i })).toBeNull();
 });
 
 test("starting chat exits the admin panel", async () => {
@@ -977,22 +964,25 @@ test("shows a green MCP indicator when all servers are active", async () => {
   expect(indicator.querySelector(".border-success")).not.toBeNull();
 });
 
-test("loads MCP status when the chat shell first renders", async () => {
+test("loads MCP status into the chat header", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json([threadFixture()]);
+      if (url === "/api/threads/t1") return Response.json({ thread: threadFixture(), messages: [] });
       if (url === "/api/mcp/status") return Response.json({ active: 1, configured: 2 });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
 
   render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const indicator = await screen.findByTitle("1 of 2 MCP servers active");
+  const header = await screen.findByRole("banner", { name: "Chat header" });
+  const indicator = within(header).getByTitle("1 of 2 MCP servers active");
   expect(indicator).toHaveTextContent("1");
   expect(indicator.querySelector(".border-danger")).not.toBeNull();
 });

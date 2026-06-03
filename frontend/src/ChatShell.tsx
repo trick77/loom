@@ -242,11 +242,6 @@ export function ChatShell({
     }
   }
 
-  async function handleSetActiveThreadStarred(starred: boolean) {
-    if (activeThread === null) return;
-    await handleSetThreadStarred(activeThread, starred);
-  }
-
   async function handleSetThreadStarred(thread: Thread, starred: boolean, menuKey?: string) {
     if (isUpdatingStar) return;
     setIsUpdatingStar(true);
@@ -560,7 +555,6 @@ export function ChatShell({
               Logout
             </button>
           </div>
-          {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator status={mcpStatus} />}
         </div>
       </aside>
       <main className="min-w-0 bg-bg">
@@ -585,11 +579,10 @@ export function ChatShell({
             toolEvents={toolEvents}
             sendError={sendError}
             isSending={isSending}
-            isUpdatingStar={isUpdatingStar}
+            mcpStatus={mcpStatus}
             onDraftChange={setDraft}
             onSend={handleSend}
             onRetry={handleRetry}
-            onStarChange={handleSetActiveThreadStarred}
           />
         )}
       </main>
@@ -698,13 +691,13 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
   return null;
 }
 
-function McpStatusIndicator({ status }: { status: McpStatusEvent }) {
+function McpStatusIndicator({ compact = false, status }: { compact?: boolean; status: McpStatusEvent }) {
   const allActive = status.active === status.configured;
   const ringClass = allActive ? "border-success" : "border-danger";
   const dotClass = allActive ? "bg-success" : "bg-danger";
   return (
     <div
-      className="spark-meta-text mt-2 flex items-center gap-1.5 text-muted"
+      className={`spark-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
       title={`${status.active} of ${status.configured} MCP servers active`}
     >
       <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
@@ -1117,11 +1110,10 @@ function ChatPanel({
   toolEvents,
   sendError,
   isSending,
-  isUpdatingStar,
+  mcpStatus,
   onDraftChange,
   onSend,
   onRetry,
-  onStarChange,
 }: {
   thread: Thread | null;
   messages: MessageWithToolActivity[];
@@ -1131,11 +1123,10 @@ function ChatPanel({
   toolEvents: ToolActivity[];
   sendError: string;
   isSending: boolean;
-  isUpdatingStar: boolean;
+  mcpStatus: McpStatusEvent | null;
   onDraftChange(value: string): void;
   onSend(): void;
   onRetry(content: string): void;
-  onStarChange(starred: boolean): void;
 }) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -1208,22 +1199,19 @@ function ChatPanel({
 
   return (
     <section className="flex h-screen min-h-0 flex-col">
-      <header className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]">
+      <header
+        aria-label="Chat header"
+        className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
+        role="banner"
+      >
         <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">
           {thread?.title ?? "New chat"}
           <span className="ml-2 text-[#88857d]" aria-hidden="true">
             ⌄
           </span>
         </h1>
-        {thread !== null && (
-          <button
-            className="spark-meta-text rounded-md px-2 py-1 text-[#aaa79e] transition-colors hover:bg-[#2a2a28] hover:text-white disabled:opacity-50"
-            disabled={isUpdatingStar}
-            onClick={() => onStarChange(!thread.starred)}
-            type="button"
-          >
-            {thread.starred ? "Unstar chat" : "Star chat"}
-          </button>
+        {mcpStatus !== null && mcpStatus.configured > 0 && (
+          <McpStatusIndicator compact status={mcpStatus} />
         )}
       </header>
       <div className="relative min-h-0 flex-1">
