@@ -422,6 +422,41 @@ test("renames a chat from the sidebar menu", async () => {
   );
 });
 
+test("deletes the active chat from the sidebar menu after confirmation", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") {
+      return Response.json([{ ...threadFixture(), title: "Existing chat" }]);
+    }
+    if (url === "/api/threads/t1" && init?.method === "DELETE") {
+      return new Response(null, { status: 204 });
+    }
+    if (url === "/api/threads/t1") {
+      return Response.json({
+        thread: { ...threadFixture(), title: "Existing chat" },
+        messages: [],
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+
+  expect(await screen.findByRole("heading", { name: "Delete chat" })).toBeInTheDocument();
+  expect(screen.getByText("Are you sure you want to delete this chat?")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+  await waitFor(() => expect(window.location.pathname).toBe("/new"));
+  expect(screen.queryByRole("button", { name: "Existing chat" })).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", { method: "DELETE" });
+});
+
 test("stars and unstars the active chat", async () => {
   let starred = false;
   const thread = () => ({

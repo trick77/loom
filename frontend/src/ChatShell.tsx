@@ -5,6 +5,7 @@ import {
   AuthExpiredError,
   createProject,
   createThread,
+  deleteThread,
   updateThread,
   getMcpStatus,
   getThread,
@@ -70,6 +71,7 @@ export function ChatShell({
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [renamingThread, setRenamingThread] = useState<Thread | null>(null);
+  const [deletingThread, setDeletingThread] = useState<Thread | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [modalError, setModalError] = useState("");
   const [isMutatingThread, setIsMutatingThread] = useState(false);
@@ -274,6 +276,12 @@ export function ChatShell({
     setModalError("");
   }
 
+  function openDeleteModal(thread: Thread) {
+    setOpenThreadMenuID(null);
+    setDeletingThread(thread);
+    setModalError("");
+  }
+
   async function handleRenameSubmit() {
     if (renamingThread === null || isMutatingThread) return;
     const title = renameTitle.trim();
@@ -291,6 +299,33 @@ export function ChatShell({
       setModalError("");
     } catch (error) {
       handleActionError(error, "Thread failed to rename.", setModalError);
+    } finally {
+      setIsMutatingThread(false);
+    }
+  }
+
+  async function handleDeleteConfirm() {
+    if (deletingThread === null || isMutatingThread) return;
+    setIsMutatingThread(true);
+    try {
+      await deleteThread(deletingThread.id);
+      setThreads((current) => current.filter((thread) => thread.id !== deletingThread.id));
+      if (activeThreadIDRef.current === deletingThread.id) {
+        streamAbortRef.current?.abort();
+        activeThreadIDRef.current = null;
+        setActiveThread(null);
+        setMessages([]);
+        setStreamingText("");
+        setStreamingReasoning("");
+        clearToolEvents();
+        setSendError("");
+        navigate({ view: "new" });
+        setRoute({ view: "new" });
+      }
+      setDeletingThread(null);
+      setModalError("");
+    } catch (error) {
+      handleActionError(error, "Thread failed to delete.", setModalError);
     } finally {
       setIsMutatingThread(false);
     }
@@ -424,6 +459,7 @@ export function ChatShell({
             activeThreadID={route.view === "chat" ? route.threadID : null}
             openThreadMenuID={openThreadMenuID}
             onSelect={selectThread}
+            onDelete={openDeleteModal}
             onRename={openRenameModal}
             onStarChange={handleSetThreadStarred}
             onToggleMenu={(menuKey) =>
@@ -437,6 +473,7 @@ export function ChatShell({
             activeThreadID={route.view === "chat" ? route.threadID : null}
             openThreadMenuID={openThreadMenuID}
             onSelect={selectThread}
+            onDelete={openDeleteModal}
             onRename={openRenameModal}
             onStarChange={handleSetThreadStarred}
             onToggleMenu={(menuKey) =>
@@ -566,6 +603,14 @@ export function ChatShell({
           onSubmit={handleRenameSubmit}
         />
       )}
+      {deletingThread !== null && (
+        <DeleteThreadModal
+          error={modalError}
+          disabled={isMutatingThread}
+          onCancel={() => setDeletingThread(null)}
+          onDelete={handleDeleteConfirm}
+        />
+      )}
     </div>
   );
 }
@@ -676,6 +721,7 @@ function SidebarSection({
   activeThreadID,
   openThreadMenuID,
   onSelect,
+  onDelete,
   onRename,
   onStarChange,
   onToggleMenu,
@@ -686,6 +732,7 @@ function SidebarSection({
   activeThreadID: string | null;
   openThreadMenuID: string | null;
   onSelect(threadID: string): void;
+  onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
   onToggleMenu(menuKey: string): void;
@@ -703,6 +750,7 @@ function SidebarSection({
             active={activeThreadID === thread.id}
             menuOpen={openThreadMenuID === `${title}:${thread.id}`}
             onSelect={onSelect}
+            onDelete={onDelete}
             onRename={onRename}
             onStarChange={onStarChange}
             onToggleMenu={onToggleMenu}
@@ -720,6 +768,7 @@ function SidebarThreadItem({
   active,
   menuOpen,
   onSelect,
+  onDelete,
   onRename,
   onStarChange,
   onToggleMenu,
@@ -730,6 +779,7 @@ function SidebarThreadItem({
   active: boolean;
   menuOpen: boolean;
   onSelect(threadID: string): void;
+  onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
   onToggleMenu(menuKey: string): void;
@@ -781,7 +831,7 @@ function SidebarThreadItem({
         <ThreadActionsMenu
           menuKey={menuKey}
           thread={thread}
-          onClose={onCloseMenu}
+          onDelete={onDelete}
           onRename={onRename}
           onStarChange={onStarChange}
         />
@@ -793,20 +843,20 @@ function SidebarThreadItem({
 function ThreadActionsMenu({
   menuKey,
   thread,
-  onClose,
+  onDelete,
   onRename,
   onStarChange,
 }: {
   menuKey: string;
   thread: Thread;
-  onClose(): void;
+  onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
 }) {
   return (
     <div
       aria-label="Chat actions"
-      className="absolute left-[76px] z-20 mt-1 w-[188px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
+      className="absolute left-[88px] z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
       role="menu"
     >
       <button
@@ -845,7 +895,7 @@ function ThreadActionsMenu({
         className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#d98278]"
         role="menuitem"
         type="button"
-        onClick={onClose}
+        onClick={() => onDelete(thread)}
       >
         <TrashMenuIcon />
         Delete
@@ -947,6 +997,44 @@ function RenameThreadModal({
           </button>
         </div>
       </form>
+    </ModalShell>
+  );
+}
+
+function DeleteThreadModal({
+  error,
+  disabled,
+  onCancel,
+  onDelete,
+}: {
+  error: string;
+  disabled: boolean;
+  onCancel(): void;
+  onDelete(): void;
+}) {
+  return (
+    <ModalShell title="Delete chat" onCancel={onCancel}>
+      <div className="mt-3 text-[13px] leading-5 text-[#d8d4ca]">
+        Are you sure you want to delete this chat?
+      </div>
+      {error !== "" && <ErrorText>{error}</ErrorText>}
+      <div className="mt-4 flex justify-end gap-2">
+        <button
+          className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]"
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        <button
+          className="h-8 rounded-md bg-[#b85c52] px-3.5 font-medium text-[#fffaf2] disabled:opacity-50"
+          disabled={disabled}
+          onClick={onDelete}
+          type="button"
+        >
+          Delete
+        </button>
+      </div>
     </ModalShell>
   );
 }
