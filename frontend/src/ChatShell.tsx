@@ -419,7 +419,7 @@ export function ChatShell({
   }
 
   return (
-    <div className="grid h-screen grid-cols-[282px_1fr] bg-bg font-sans text-ink">
+    <div className="grid h-screen grid-cols-[362px_1fr] bg-bg font-sans text-ink">
       <aside className="spark-sidebar-text flex min-h-0 flex-col border-r border-[#343432] bg-panel text-[#c7c5bd]">
         <div className="flex h-11 items-center justify-between px-3">
           <div className="spark-wordmark font-serif font-medium text-[#f4f0e8]">Spark</div>
@@ -791,7 +791,7 @@ function SidebarThreadItem({
   }
   return (
     <div className="relative">
-      <div className="flex h-7 w-full items-center rounded-md bg-[#181817] py-0 pl-1.5 pr-1 text-left text-white">
+      <div className="flex h-7 w-full items-center rounded-md bg-[#10100f] py-0 pl-1.5 pr-1 text-left text-white">
         <button
           className="relative min-w-0 flex-1 overflow-hidden text-left"
           onClick={() => onSelect(thread.id)}
@@ -799,7 +799,7 @@ function SidebarThreadItem({
         >
           <span className="block truncate pr-7">{thread.title}</span>
           <span
-            className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#181817]"
+            className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]"
             aria-hidden="true"
           />
         </button>
@@ -814,9 +814,9 @@ function SidebarThreadItem({
           type="button"
         >
           <span aria-hidden="true" className="flex h-[14px] flex-col items-center justify-between">
-            <span className="h-[3px] w-[3px] rounded-full bg-current" />
-            <span className="h-[3px] w-[3px] rounded-full bg-current" />
-            <span className="h-[3px] w-[3px] rounded-full bg-current" />
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
           </span>
         </button>
       </div>
@@ -849,7 +849,7 @@ function ThreadActionsMenu({
   return (
     <div
       aria-label="Chat actions"
-      className="absolute left-[88px] z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
+      className="absolute left-[174px] z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
       role="menu"
     >
       <button
