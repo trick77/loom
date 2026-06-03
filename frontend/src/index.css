@@ -362,6 +362,110 @@ body {
   padding: 0;
 }
 
+/* Code-Block-Wrapper mit Copy-Button */
+.spark-codeblock {
+  position: relative;
+}
+
+.spark-codeblock .spark-codeblock-copy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+  border: 1px solid #3e3d39;
+  border-radius: 0.375rem;
+  background: rgba(42, 42, 40, 0.6);
+  color: #c3c2b7;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.spark-codeblock .spark-codeblock-copy:hover {
+  opacity: 1;
+  background: #2a2a28;
+  color: #f3f0e8;
+}
+
+/* Platz schaffen, damit der Button nicht über dem Code liegt */
+.spark-codeblock pre {
+  padding-right: 2.75rem;
+}
+
+/* Syntax-Highlighting (highlight.js) — an Spark-Dunkeltheme angepasst */
+.spark-markdown .hljs {
+  color: #f3f0e8;
+  background: transparent;
+}
+
+.spark-markdown .hljs-comment,
+.spark-markdown .hljs-quote {
+  color: #7d8a72;
+  font-style: italic;
+}
+
+.spark-markdown .hljs-keyword,
+.spark-markdown .hljs-selector-tag,
+.spark-markdown .hljs-literal,
+.spark-markdown .hljs-doctag {
+  color: #e0915f;
+}
+
+.spark-markdown .hljs-string,
+.spark-markdown .hljs-regexp,
+.spark-markdown .hljs-addition {
+  color: #a3b565;
+}
+
+.spark-markdown .hljs-number,
+.spark-markdown .hljs-symbol,
+.spark-markdown .hljs-bullet {
+  color: #c08bc4;
+}
+
+.spark-markdown .hljs-title,
+.spark-markdown .hljs-title.function_,
+.spark-markdown .hljs-section,
+.spark-markdown .hljs-name {
+  color: #6fb3c9;
+}
+
+.spark-markdown .hljs-built_in,
+.spark-markdown .hljs-class .hljs-title,
+.spark-markdown .hljs-title.class_,
+.spark-markdown .hljs-type {
+  color: #d8c06a;
+}
+
+.spark-markdown .hljs-attr,
+.spark-markdown .hljs-attribute,
+.spark-markdown .hljs-variable,
+.spark-markdown .hljs-template-variable,
+.spark-markdown .hljs-property {
+  color: #d2b07a;
+}
+
+.spark-markdown .hljs-meta,
+.spark-markdown .hljs-operator,
+.spark-markdown .hljs-punctuation {
+  color: #9b9789;
+}
+
+.spark-markdown .hljs-deletion {
+  color: #d97c6b;
+}
+
+.spark-markdown .hljs-emphasis {
+  font-style: italic;
+}
+
+.spark-markdown .hljs-strong {
+  font-weight: 600;
+}
+
 .spark-markdown table {
   width: 100%;
   border-collapse: collapse;
