@@ -1525,16 +1525,7 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
         aria-label={copied ? "Kopiert" : "Code kopieren"}
         title={copied ? "Kopiert" : "Code kopieren"}
       >
-        {copied ? (
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ) : (
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
-            <path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
+        {copied ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
       </button>
       <pre ref={preRef} {...props}>
         {children}
@@ -1934,9 +1925,9 @@ function markdownToPlainText(content: string): string {
     .trim();
 }
 
-function CopyIcon() {
+function CopyIcon({ className = "h-[1.33rem] w-[1.33rem]" }: { className?: string }) {
   return (
-    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M8 8.5V6.8c0-1 .8-1.8 1.8-1.8h7.4c1 0 1.8.8 1.8 1.8v7.4c0 1-.8 1.8-1.8 1.8h-1.7"
         stroke="currentColor"
@@ -1969,9 +1960,9 @@ function SpeakerIcon() {
   );
 }
 
-function CheckIcon() {
+function CheckIcon({ className = "h-[1.33rem] w-[1.33rem]" }: { className?: string }) {
   return (
-    <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="m5 12.5 4.2 4.2L19 7"
         stroke="currentColor"
