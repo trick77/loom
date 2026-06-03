@@ -266,7 +266,7 @@ export function ChatShell({
         current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
       );
       if (menuKey !== undefined) {
-        setOpenThreadMenuID(menuKey);
+        setOpenThreadMenuID(null);
       }
       setSendError("");
     } catch (error) {
