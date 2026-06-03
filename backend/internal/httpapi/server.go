@@ -3,11 +3,14 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
+	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
+	"github.com/trick77/spark/internal/docgen"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/mcp"
 )
@@ -23,8 +26,11 @@ type Deps struct {
 	Sessions              SessionService
 	Users                 UserService
 	Chat                  ChatStore
+	Artifacts             ArtifactStore
 	LLM                   ChatClient
 	MCP                   ToolService
+	DocTools              []docgen.Generator
+	UsersDir              string
 	OIDCAdminGroup        string
 	DevAuthClaims         auth.Claims
 	PostLogoutRedirectURL string
@@ -37,8 +43,11 @@ type server struct {
 	sessions              SessionService
 	users                 UserService
 	chat                  ChatStore
+	artifacts             ArtifactStore
 	llm                   ChatClient
 	mcp                   ToolService
+	docTools              []docgen.Generator
+	usersDir              string
 	oidcAdminGroup        string
 	devAuthClaims         auth.Claims
 	postLogoutRedirectURL string
@@ -60,7 +69,14 @@ type ChatStore interface {
 	DeleteThread(context.Context, string, string) (bool, error)
 	AddMessage(context.Context, string, string, chat.Role, string) (chat.Message, error)
 	AddMessageWithUsage(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage) (chat.Message, error)
+	AddMessageWithArtifacts(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage) (chat.Message, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
+}
+
+// ArtifactStore persists and looks up generated artifact metadata.
+type ArtifactStore interface {
+	Create(context.Context, artifact.CreateInput) (artifact.Artifact, error)
+	Get(context.Context, string, string) (artifact.Artifact, bool, error)
 }
 
 // ChatClient is the LLM dependency used by chat stream handlers.
@@ -109,8 +125,11 @@ func New(d Deps) http.Handler {
 		sessions:              d.Sessions,
 		users:                 d.Users,
 		chat:                  d.Chat,
+		artifacts:             d.Artifacts,
 		llm:                   d.LLM,
 		mcp:                   d.MCP,
+		docTools:              d.DocTools,
+		usersDir:              d.UsersDir,
 		oidcAdminGroup:        d.OIDCAdminGroup,
 		devAuthClaims:         d.DevAuthClaims,
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,

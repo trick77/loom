@@ -1,17 +1,21 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
+	"github.com/trick77/spark/internal/docgen"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/sse"
 	"golang.org/x/text/language"
@@ -79,7 +83,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	history := buildLLMHistory(user, priorMessages, userMessage)
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
-	assistantResult, err := s.runAssistantLoop(r.Context(), stream, history, inference)
+	assistantResult, err := s.runAssistantLoop(r.Context(), stream, history, inference, user, thread)
 	if err != nil {
 		message := "stream failed"
 		var userErr streamUserError
@@ -101,7 +105,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	persistCtx := context.WithoutCancel(r.Context())
-	assistantMessage, err := s.chat.AddMessageWithUsage(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromResult(assistantResult))
+	artifactsJSON, err := json.Marshal(assistantResult.Artifacts)
+	if err != nil {
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
+		return
+	}
+	assistantMessage, err := s.chat.AddMessageWithArtifacts(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromResult(assistantResult.StreamResult), artifactsJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
@@ -129,20 +138,24 @@ func (e streamUserError) Error() string {
 	return e.message
 }
 
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata) (llm.StreamResult, error) {
-	tools := []llm.Tool(nil)
-	if s.mcp != nil {
-		tools = s.mcp.Tools()
-	}
+type assistantLoopResult struct {
+	llm.StreamResult
+	Artifacts []artifactResponse
+}
+
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread) (assistantLoopResult, error) {
+	tools := s.availableTools()
 	if len(tools) == 0 {
-		return s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat", 1), nil)
+		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat", 1), nil)
+		return assistantLoopResult{StreamResult: result}, err
 	}
 
 	toolRan := false
+	var artifacts []artifactResponse
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
-			return llm.StreamResult{}, err
+			return assistantLoopResult{}, err
 		}
 		if len(result.ToolCalls) == 0 {
 			// A normal textual answer ends the loop. But if the model stops
@@ -150,13 +163,13 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			// forced, tool-free final answer instead of returning an empty (and
 			// therefore discarded) response.
 			if strings.TrimSpace(result.Content) != "" || !toolRan {
-				return result, nil
+				return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, nil
 			}
 			slog.Info("forcing final answer", "reason", "empty_after_tools", "round", round)
 			break
 		}
 		if len(result.ToolCalls) > maxToolCallsPerRound {
-			return llm.StreamResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
+			return assistantLoopResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
 		}
 		slog.Info("assistant requested tools", "round", round, "tool_calls", len(result.ToolCalls), "content_bytes", len(result.Content))
 
@@ -167,9 +180,16 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			ToolCalls:        result.ToolCalls,
 		})
 		for _, call := range result.ToolCalls {
-			output := s.executeToolCall(ctx, call, round)
+			output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call)
+			if handled {
+				if response != nil {
+					artifacts = append(artifacts, *response)
+				}
+			} else {
+				output = s.executeToolCall(ctx, call, round)
+			}
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
-				return llm.StreamResult{}, err
+				return assistantLoopResult{}, err
 			}
 			history = append(history, llm.Message{
 				Role:       "tool",
@@ -190,7 +210,8 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		Role:    "system",
 		Content: "Provide your final answer now using the information already gathered above. Do not call any more tools.",
 	})
-	return s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
+	result, err := s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
+	return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, err
 }
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
@@ -233,6 +254,97 @@ func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall, round i
 	}
 	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
 	return capToolOutput(output)
+}
+
+func (s *server) availableTools() []llm.Tool {
+	tools := []llm.Tool(nil)
+	if s.artifacts != nil && strings.TrimSpace(s.usersDir) != "" {
+		for _, gen := range s.docTools {
+			schema := gen.Schema()
+			tools = append(tools, llm.Tool{
+				Type: "function",
+				Function: llm.ToolFunction{
+					Name:        schema.Name,
+					Description: schema.Description,
+					Parameters:  schema.Parameters,
+				},
+			})
+		}
+	}
+	if s.mcp != nil {
+		tools = append(tools, s.mcp.Tools()...)
+	}
+	return tools
+}
+
+func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall) (string, *artifactResponse, bool) {
+	generator := s.docGenerator(call.Function.Name)
+	if generator == nil {
+		return "", nil, false
+	}
+	args, err := parseToolArguments(call.Function.Arguments)
+	if err != nil {
+		return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
+	}
+	filename, _ := args["filename"].(string)
+	var buffer bytes.Buffer
+	meta, err := generator.Generate(docgen.GenerateRequest{
+		Format:   generator.ToolName(),
+		Filename: filename,
+		Payload:  args,
+	}, &buffer)
+	if err != nil {
+		return capToolOutput("tool failed: " + err.Error()), nil, true
+	}
+	if buffer.Len() > artifact.MaxArtifactSizeBytes {
+		return "tool failed: generated file is too large", nil, true
+	}
+	out, err := artifact.ResolveOutputPath(artifact.OutputRequest{
+		UsersDir:        s.usersDir,
+		UserID:          user.ID,
+		ThreadID:        thread.ID,
+		ProjectID:       thread.ProjectID,
+		DisplayFilename: meta.DisplayFilename,
+		Extension:       meta.Extension,
+	})
+	if err != nil {
+		return capToolOutput("tool failed: " + err.Error()), nil, true
+	}
+	if err := os.WriteFile(out.AbsPath, buffer.Bytes(), 0o600); err != nil {
+		return capToolOutput("tool failed: write artifact: " + err.Error()), nil, true
+	}
+	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
+		UserID:          user.ID,
+		ThreadID:        thread.ID,
+		ProjectID:       thread.ProjectID,
+		DisplayFilename: out.DisplayFilename,
+		VolumeRelPath:   out.VolumeRelPath,
+		MIMEType:        out.MIMEType,
+		SizeBytes:       int64(buffer.Len()),
+	})
+	if err != nil {
+		_ = os.Remove(out.AbsPath)
+		return capToolOutput("tool failed: persist artifact: " + err.Error()), nil, true
+	}
+	response := artifactResponse{
+		ID:              created.ID,
+		DisplayFilename: created.DisplayFilename,
+		MIMEType:        created.MIMEType,
+		SizeBytes:       created.SizeBytes,
+		ProjectID:       created.ProjectID,
+		DownloadURL:     created.DownloadURL,
+	}
+	_ = sendSSEJSON(stream, "artifact", response)
+	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response, true
+}
+
+func (s *server) docGenerator(name string) docgen.Generator {
+	for _, candidate := range s.docTools {
+		if candidate.ToolName() == name {
+			return candidate
+		}
+	}
+	return nil
 }
 
 func capToolOutput(output string) string {

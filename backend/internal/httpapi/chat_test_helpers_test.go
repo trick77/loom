@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -131,12 +132,17 @@ func (f *fakeChatStore) AddMessage(ctx context.Context, _ string, threadID strin
 }
 
 func (f *fakeChatStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
+	return f.AddMessageWithArtifacts(ctx, "", threadID, role, content, usage, nil)
+}
+
+func (f *fakeChatStore) AddMessageWithArtifacts(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage) (chat.Message, error) {
 	message := chat.Message{
 		ID:               "msg_1",
 		ThreadID:         threadID,
 		Role:             role,
 		Content:          content,
 		ReasoningContent: usage.ReasoningContent,
+		Artifacts:        artifacts,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,

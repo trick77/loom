@@ -12,9 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/config"
+	"github.com/trick77/spark/internal/docgen"
 	"github.com/trick77/spark/internal/httpapi"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/mcp"
@@ -54,6 +56,10 @@ func run() error {
 	}
 	authMW := auth.NewMiddleware(sessionStore, userStore)
 	chatStore := chat.NewStore(db)
+	artifactStore := artifact.NewStore(db)
+	docTools := []docgen.Generator{
+		docgen.TextGenerator{},
+	}
 	var chatClient httpapi.ChatClient
 	if cfg.ChatBaseURL != "" {
 		chatClient = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
@@ -126,8 +132,11 @@ func run() error {
 		Sessions:              sessionStore,
 		Users:                 userStore,
 		Chat:                  chatStore,
+		Artifacts:             artifactStore,
 		LLM:                   chatClient,
 		MCP:                   toolService,
+		DocTools:              docTools,
+		UsersDir:              cfg.UsersDir,
 		OIDCAdminGroup:        cfg.OIDC.AdminGroup,
 		DevAuthClaims:         devAuthClaims,
 		PostLogoutRedirectURL: cfg.OIDC.PostLogoutRedirectURL,
