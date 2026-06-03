@@ -61,6 +61,8 @@ func run() error {
 		docgen.TextGenerator{},
 		docgen.PDFGenerator{},
 		docgen.XLSXGenerator{},
+		docgen.DOCXGenerator{},
+		docgen.PPTXGenerator{},
 	}
 	var chatClient httpapi.ChatClient
 	if cfg.ChatBaseURL != "" {
