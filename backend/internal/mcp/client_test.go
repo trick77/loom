@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -249,6 +251,95 @@ func TestRemoteClientAllowlistFiltersTools(t *testing.T) {
 	}
 	if len(tools) != 1 || tools[0].Name != "tavily__tavily_search" {
 		t.Fatalf("tools = %#v, want only tavily__tavily_search", tools)
+	}
+}
+
+func TestRemoteClientReinitializesOnExpiredSession(t *testing.T) {
+	var mu sync.Mutex
+	initCount := 0
+	liveSession := ""
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		methods = append(methods, req.Method)
+		switch req.Method {
+		case "initialize":
+			initCount++
+			sid := fmt.Sprintf("S%d", initCount)
+			// Simulate an idle timeout: the first session is dead on arrival for
+			// tools/call, later sessions are valid.
+			if initCount >= 2 {
+				liveSession = sid
+			} else {
+				liveSession = ""
+			}
+			w.Header().Set("Mcp-Session-Id", sid)
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/call":
+			if liveSession == "" || r.Header.Get("Mcp-Session-Id") != liveSession {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","error":{"code":-32000,"message":"Bad Request: No valid session ID provided"},"id":null}`))
+				return
+			}
+			writeRPCResult(t, w, req.ID, map[string]any{"content": []map[string]any{{"type": "text", "text": "ok"}}})
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewRemoteClient("tavily", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, server.Client())
+
+	got, err := client.CallTool(context.Background(), "tavily_search", map[string]any{"query": "x"})
+	if err != nil {
+		t.Fatalf("CallTool() error: %v", err)
+	}
+	if got != "ok" {
+		t.Fatalf("CallTool() = %q, want ok", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if initCount != 2 {
+		t.Fatalf("initialize count = %d, want 2 (re-init after expired session)", initCount)
+	}
+}
+
+func TestRemoteClientDoesNotRetryNonSessionErrors(t *testing.T) {
+	var mu sync.Mutex
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		switch req.Method {
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/call":
+			mu.Lock()
+			callCount++
+			mu.Unlock()
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("boom"))
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewRemoteClient("tavily", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, server.Client())
+	if _, err := client.CallTool(context.Background(), "tavily_search", map[string]any{"query": "x"}); err == nil {
+		t.Fatal("CallTool() error = nil, want server error")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if callCount != 1 {
+		t.Fatalf("tools/call count = %d, want 1 (non-session errors must not retry)", callCount)
 	}
 }
 
