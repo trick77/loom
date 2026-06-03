@@ -318,6 +318,35 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
   );
 });
 
+test("active sidebar chat shows actions menu with locked entries", async () => {
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+
+  expect(await screen.findByRole("menu", { name: "Chat actions" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: /^Star$/ })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Add to project" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+});
+
+test("add to project is inert", async () => {
+  const fetchMock = chatThreadFetch(null);
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Add to project" }));
+
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("project"))).toHaveLength(1);
+});
+
 test("stars and unstars the active chat", async () => {
   let starred = false;
   const thread = () => ({
