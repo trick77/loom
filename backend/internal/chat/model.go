@@ -56,6 +56,7 @@ type Message struct {
 	ReasoningContent string          `json:"reasoningContent,omitempty"`
 	ToolCalls        json.RawMessage `json:"toolCalls"`
 	Citations        json.RawMessage `json:"citations"`
+	Artifacts        json.RawMessage `json:"artifacts"`
 	PromptTokens     *int            `json:"promptTokens,omitempty"`
 	CompletionTokens *int            `json:"completionTokens,omitempty"`
 	TotalTokens      *int            `json:"totalTokens,omitempty"`

@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -145,6 +146,34 @@ func TestStore_ListMethodsReturnEmptySlices(t *testing.T) {
 	}
 	if len(messages) != 0 {
 		t.Fatalf("len(messages) = %d, want 0", len(messages))
+	}
+}
+
+func TestMessagesPersistArtifacts(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Artifacts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawArtifacts := json.RawMessage(`[{"id":"art_1","displayFilename":"report.pdf","downloadUrl":"/api/artifacts/art_1/download"}]`)
+	message, err := store.AddMessageWithArtifacts(ctx, userID, thread.ID, RoleAssistant, "Created report.pdf", MessageTokenUsage{}, rawArtifacts)
+	if err != nil {
+		t.Fatalf("AddMessageWithArtifacts() error = %v", err)
+	}
+	if string(message.Artifacts) != string(rawArtifacts) {
+		t.Fatalf("message.Artifacts = %s", message.Artifacts)
+	}
+
+	messages, found, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	if string(messages[0].Artifacts) != string(rawArtifacts) {
+		t.Fatalf("listed Artifacts = %s", messages[0].Artifacts)
 	}
 }
 

@@ -12,3 +12,7 @@ func newID() string {
 	}
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
+
+func NewIDForInternalUse() string {
+	return newID()
+}
