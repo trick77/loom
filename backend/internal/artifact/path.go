@@ -66,7 +66,11 @@ func ResolveExisting(usersDir, userID, volumeRelPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve artifact parent: %w", err)
 	}
-	if err := ensureInside(userRoot, resolvedParent); err != nil {
+	resolvedRoot, err := filepath.EvalSymlinks(userRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve user root: %w", err)
+	}
+	if err := ensureInside(resolvedRoot, resolvedParent); err != nil {
 		return "", err
 	}
 	return abs, nil
