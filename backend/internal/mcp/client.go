@@ -153,6 +153,10 @@ func (c *remoteClient) callWithSession(ctx context.Context, method string, param
 	if err == nil || !isSessionError(err) {
 		return err
 	}
+	// initMu keeps the re-init handshake atomic. Concurrent callers that each
+	// hit a session error may re-initialize more than once (a caller can reset a
+	// session another goroutine just refreshed); that only costs an extra
+	// handshake and never corrupts state, so it is acceptable at this scale.
 	c.resetSession()
 	if err := c.initialize(ctx); err != nil {
 		return err
