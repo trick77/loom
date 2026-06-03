@@ -18,6 +18,7 @@ import {
   createProject,
   createThread,
   deleteThread,
+  downloadArtifact,
   updateThread,
   getMcpStatus,
   getThread,
@@ -25,6 +26,7 @@ import {
   listThreads,
   setThreadStarred,
   streamMessage,
+  type Artifact,
   type McpStatusEvent,
   type Message,
   type Project,
@@ -89,6 +91,7 @@ export function ChatShell({
   const [isMutatingThread, setIsMutatingThread] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [streamingReasoning, setStreamingReasoning] = useState("");
+  const [streamingArtifacts, setStreamingArtifacts] = useState<Artifact[]>([]);
   const [toolEvents, setToolEvents] = useState<ToolActivity[]>([]);
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
@@ -190,6 +193,7 @@ export function ChatShell({
       setActiveThread(null);
       setMessages([]);
       setStreamingText("");
+      setStreamingArtifacts([]);
       clearToolEvents();
       setSendError("");
       return;
@@ -207,6 +211,7 @@ export function ChatShell({
         activeThreadIDRef.current = response.thread.id;
         setMessages(response.messages);
         setStreamingText("");
+        setStreamingArtifacts([]);
         clearToolEvents();
         setSendError("");
       })
@@ -229,6 +234,7 @@ export function ChatShell({
     setActiveThread(null);
     setMessages([]);
     setStreamingText("");
+    setStreamingArtifacts([]);
     clearToolEvents();
     setSendError("");
     navigate({ view: "new" });
@@ -327,6 +333,7 @@ export function ChatShell({
         setMessages([]);
         setStreamingText("");
         setStreamingReasoning("");
+        setStreamingArtifacts([]);
         clearToolEvents();
         setSendError("");
         navigate({ view: "new" });
@@ -357,6 +364,7 @@ export function ChatShell({
     setIsSending(true);
     setStreamingText("");
     setStreamingReasoning("");
+    setStreamingArtifacts([]);
     clearToolEvents();
     setSendError("");
     let abortController: AbortController | null = null;
@@ -396,6 +404,13 @@ export function ChatShell({
           if (!isCurrentThread()) return;
           updateToolEvents((current) => upsertToolResult(current, event));
         },
+        onArtifact: (artifact) => {
+          if (!isCurrentThread()) return;
+          setStreamingArtifacts((current) => [
+            ...current.filter((item) => item.id !== artifact.id),
+            artifact,
+          ]);
+        },
         onAssistantMessage: (message) => {
           if (!isCurrentThread()) return;
           const completedToolEvents = toolEventsRef.current;
@@ -405,6 +420,7 @@ export function ChatShell({
           ]);
           setStreamingText("");
           setStreamingReasoning("");
+          setStreamingArtifacts([]);
           clearToolEvents();
         },
         onThread: (updatedThread) => {
@@ -422,6 +438,7 @@ export function ChatShell({
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
       setStreamingReasoning("");
+      setStreamingArtifacts([]);
       // Keep any tool activity visible so a failed turn still shows what was
       // attempted (e.g. a tool that errored); the next send clears it.
       if (options.restoreDraftOnError) setDraft(content);
@@ -592,6 +609,7 @@ export function ChatShell({
             draft={draft}
             streamingText={streamingText}
             streamingReasoning={streamingReasoning}
+            streamingArtifacts={streamingArtifacts}
             toolEvents={toolEvents}
             sendError={sendError}
             isSending={isSending}
@@ -1150,6 +1168,7 @@ function ChatPanel({
   draft,
   streamingText,
   streamingReasoning,
+  streamingArtifacts,
   toolEvents,
   sendError,
   isSending,
@@ -1163,6 +1182,7 @@ function ChatPanel({
   draft: string;
   streamingText: string;
   streamingReasoning: string;
+  streamingArtifacts: Artifact[];
   toolEvents: ToolActivity[];
   sendError: string;
   isSending: boolean;
@@ -1175,7 +1195,13 @@ function ChatPanel({
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const showThinkingIndicator = isSending && streamingText === "" && streamingReasoning === "" && toolEvents.length === 0 && sendError === "";
+  const showThinkingIndicator =
+    isSending &&
+    streamingText === "" &&
+    streamingReasoning === "" &&
+    streamingArtifacts.length === 0 &&
+    toolEvents.length === 0 &&
+    sendError === "";
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1232,7 +1258,17 @@ function ChatPanel({
       return;
     }
     refreshScrollState();
-  }, [messages.length, refreshScrollState, scrollToLatest, sendError, showThinkingIndicator, streamingReasoning, streamingText, toolEvents.length]);
+  }, [
+    messages.length,
+    refreshScrollState,
+    scrollToLatest,
+    sendError,
+    showThinkingIndicator,
+    streamingArtifacts.length,
+    streamingReasoning,
+    streamingText,
+    toolEvents.length,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1281,6 +1317,9 @@ function ChatPanel({
             {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
             {showThinkingIndicator && <ThinkingIndicator />}
             {streamingReasoning !== "" && <ThinkingPanel content={streamingReasoning} complete={streamingText !== ""} />}
+            {streamingArtifacts.map((artifact) => (
+              <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
+            ))}
             {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
@@ -1540,6 +1579,9 @@ function MessageBubble({
       <AssistantText metricsMessage={message} onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>
         {message.content}
       </AssistantText>
+      {message.artifacts?.map((artifact) => (
+        <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
+      ))}
     </div>
   );
 }
@@ -1799,10 +1841,57 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
-          onClick={() => downloadArtifact(artifact)}
+          onClick={() => downloadEmbeddedArtifact(artifact)}
           type="button"
           title={`Download ${artifact.label} response`}
           aria-label={`Download ${artifact.label} response`}
+        >
+          <DownloadIcon />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
+  const [error, setError] = useState("");
+
+  async function handleDownload() {
+    setError("");
+    try {
+      const blob = await downloadArtifact(artifact.downloadUrl);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = artifact.displayFilename;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Download failed");
+    }
+  }
+
+  return (
+    <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
+      <div className="flex items-center gap-3">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
+          <FileIcon />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="spark-message-text truncate">{artifact.displayFilename}</div>
+          <div className="spark-meta-text text-[#aaa79e]">
+            {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
+          </div>
+          {error !== "" && <div className="spark-meta-text text-[#d36f67]">{error}</div>}
+        </div>
+        <button
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
+          onClick={handleDownload}
+          type="button"
+          title={`Download ${artifact.displayFilename}`}
+          aria-label={`Download ${artifact.displayFilename}`}
         >
           <DownloadIcon />
         </button>
@@ -1815,7 +1904,7 @@ async function copyResponse(content: string) {
   await navigator.clipboard?.writeText(content);
 }
 
-function downloadArtifact(artifact: DownloadableResponse) {
+function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
   const url = URL.createObjectURL(new Blob([artifact.content], { type: artifact.mimeType }));
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -1872,6 +1961,14 @@ function formatReceivedKB(bytes: number): string {
   const kb = bytes / 1024;
   const rounded = kb >= 10 ? Math.round(kb).toString() : kb.toFixed(1);
   return `${rounded} KB`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb >= 10 ? Math.round(kb).toString() : kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  return `${mb >= 10 ? Math.round(mb).toString() : mb.toFixed(1)} MB`;
 }
 
 function fencedArtifact(content: string): EmbeddedArtifact | null {

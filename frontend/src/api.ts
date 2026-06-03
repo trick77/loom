@@ -35,6 +35,7 @@ export type Message = {
   role: "user" | "assistant" | "tool";
   content: string;
   reasoningContent?: string;
+  artifacts?: Artifact[];
   createdAt: string;
   promptTokens?: number;
   completionTokens?: number;
@@ -44,6 +45,15 @@ export type Message = {
   durationMs?: number;
   model?: string;
   reasoningEffort?: string;
+};
+
+export type Artifact = {
+  id: string;
+  displayFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  projectId?: string;
+  downloadUrl: string;
 };
 
 export type ToolCallEvent = {
@@ -77,6 +87,7 @@ type StreamHandlers = {
   onToolCall?(event: ToolCallEvent): void;
   onToolResult?(event: ToolResultEvent): void;
   onMcpStatus?(event: McpStatusEvent): void;
+  onArtifact?(artifact: Artifact): void;
 };
 
 export class AuthExpiredError extends Error {
@@ -199,6 +210,17 @@ export async function deleteThread(threadId: string): Promise<void> {
   }
 }
 
+export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
+  const response = await fetch(downloadUrl);
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to download artifact");
+  }
+  return response.blob();
+}
+
 export async function streamMessage(
   threadId: string,
   content: string,
@@ -311,6 +333,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "mcp_status":
       handlers.onMcpStatus?.(payload as McpStatusEvent);
+      break;
+    case "artifact":
+      handlers.onArtifact?.(payload as Artifact);
       break;
     case "done":
       break;
