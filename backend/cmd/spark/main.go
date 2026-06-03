@@ -25,6 +25,9 @@ import (
 var version = "dev" // overridden via -ldflags at build time
 
 func main() {
+	// Configure structured logging with an explicit handler so every line
+	// carries an RFC3339 timestamp (the package default does not guarantee one).
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	if err := run(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)

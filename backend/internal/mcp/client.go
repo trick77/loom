@@ -81,10 +81,36 @@ type remoteClient struct {
 	cfg        ServerConfig
 	httpClient *http.Client
 	nextID     atomic.Int64
-	initOnce   sync.Once
-	initErr    error
+	initMu     sync.Mutex
+	inited     bool
 	mu         sync.Mutex
 	sessionID  string
+}
+
+// mcpStatusError carries a non-2xx HTTP response from an MCP request so callers
+// can distinguish a recoverable session failure from other errors.
+type mcpStatusError struct {
+	method string
+	status int
+	body   string
+}
+
+func (e *mcpStatusError) Error() string {
+	return fmt.Sprintf("MCP %s failed with status %d: %s", e.method, e.status, e.body)
+}
+
+// isSessionError reports whether err is an expired/invalid Streamable HTTP
+// session, which is recoverable by re-initializing. Servers reject such
+// requests with 400 or 404 and mention the session in the body.
+func isSessionError(err error) bool {
+	var statusErr *mcpStatusError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	if statusErr.status != http.StatusBadRequest && statusErr.status != http.StatusNotFound {
+		return false
+	}
+	return strings.Contains(strings.ToLower(statusErr.body), "session")
 }
 
 func NewRemoteClient(serverName string, cfg ServerConfig, httpClient *http.Client) Client {
@@ -95,22 +121,16 @@ func NewRemoteClient(serverName string, cfg ServerConfig, httpClient *http.Clien
 }
 
 func (c *remoteClient) ListTools(ctx context.Context) ([]Tool, error) {
-	if err := c.initialize(ctx); err != nil {
-		return nil, err
-	}
 	var result listToolsResult
-	if err := c.call(ctx, "tools/list", nil, &result); err != nil {
+	if err := c.callWithSession(ctx, "tools/list", nil, &result); err != nil {
 		return nil, err
 	}
 	return c.exposeTools(result.Tools), nil
 }
 
 func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
-	if err := c.initialize(ctx); err != nil {
-		return "", err
-	}
 	var result callToolResult
-	if err := c.call(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments}, &result); err != nil {
+	if err := c.callWithSession(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments}, &result); err != nil {
 		return "", err
 	}
 	if result.IsError {
@@ -121,15 +141,54 @@ func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[
 
 func (c *remoteClient) Close() error { return nil }
 
+// callWithSession initializes the session if needed and issues the request. If
+// the server rejects it with an expired/invalid session, it re-initializes once
+// and retries — Streamable HTTP servers (e.g. Tavily) expire idle sessions, and
+// the session established at startup discovery would otherwise stay stale.
+func (c *remoteClient) callWithSession(ctx context.Context, method string, params, out any) error {
+	if err := c.initialize(ctx); err != nil {
+		return err
+	}
+	err := c.call(ctx, method, params, out)
+	if err == nil || !isSessionError(err) {
+		return err
+	}
+	// initMu keeps the re-init handshake atomic. Concurrent callers that each
+	// hit a session error may re-initialize more than once (a caller can reset a
+	// session another goroutine just refreshed); that only costs an extra
+	// handshake and never corrupts state, so it is acceptable at this scale.
+	c.resetSession()
+	if err := c.initialize(ctx); err != nil {
+		return err
+	}
+	return c.call(ctx, method, params, out)
+}
+
 func (c *remoteClient) initialize(ctx context.Context) error {
-	c.initOnce.Do(func() {
-		c.initErr = c.call(ctx, "initialize", map[string]any{
-			"protocolVersion": "2025-06-18",
-			"capabilities":    map[string]any{},
-			"clientInfo":      map[string]string{"name": "spark", "version": "dev"},
-		}, nil)
-	})
-	return c.initErr
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
+	if c.inited {
+		return nil
+	}
+	if err := c.call(ctx, "initialize", map[string]any{
+		"protocolVersion": "2025-06-18",
+		"capabilities":    map[string]any{},
+		"clientInfo":      map[string]string{"name": "spark", "version": "dev"},
+	}, nil); err != nil {
+		return err
+	}
+	c.inited = true
+	return nil
+}
+
+// resetSession forces the next request to perform a fresh initialize handshake.
+func (c *remoteClient) resetSession() {
+	c.initMu.Lock()
+	c.inited = false
+	c.initMu.Unlock()
+	c.mu.Lock()
+	c.sessionID = ""
+	c.mu.Unlock()
 }
 
 func (c *remoteClient) call(ctx context.Context, method string, params any, out any) error {
@@ -168,7 +227,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("MCP %s failed with status %d: %s", method, resp.StatusCode, strings.TrimSpace(string(bytes)))
+		return &mcpStatusError{method: method, status: resp.StatusCode, body: strings.TrimSpace(string(bytes))}
 	}
 	rpcResp, err := decodeRPCResponse(resp, id)
 	if err != nil {

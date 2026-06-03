@@ -197,6 +197,9 @@ export function ChatShell({
     if (activeThreadIDRef.current === route.threadID) return;
     let active = true;
     streamAbortRef.current?.abort();
+    // Drop any tool activity left over from the previous thread (e.g. a failed
+    // turn whose panel is now kept) before this thread's transcript loads.
+    clearToolEvents();
     getThread(route.threadID)
       .then((response) => {
         if (!active) return;
@@ -419,7 +422,8 @@ export function ChatShell({
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
       setStreamingReasoning("");
-      clearToolEvents();
+      // Keep any tool activity visible so a failed turn still shows what was
+      // attempted (e.g. a tool that errored); the next send clears it.
       if (options.restoreDraftOnError) setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {

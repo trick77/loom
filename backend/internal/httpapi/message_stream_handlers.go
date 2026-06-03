@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -202,12 +203,14 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall) string {
 	arguments, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
+		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "err", err)
 		return capToolOutput("tool failed: invalid arguments: " + err.Error())
 	}
 	callCtx, cancel := context.WithTimeout(ctx, maxToolCallDuration)
 	defer cancel()
 	output, err := s.mcp.CallTool(callCtx, call.Function.Name, arguments)
 	if err != nil {
+		slog.Warn("tool call failed", "tool", call.Function.Name, "err", err)
 		return capToolOutput("tool failed: " + err.Error())
 	}
 	return capToolOutput(output)
