@@ -39,9 +39,13 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	toolCalls := map[int]*ToolCall{}
 	var toolCallOrder []int
 	// MiMo emits tool calls as inline XML in the content; gate the streamed
-	// deltas so the raw <tool_call> markup never reaches the client.
+	// deltas so the raw <tool_call> markup never reaches the client. Only do this
+	// when tools are actually on offer: the tool-free final-answer call must keep
+	// its content verbatim, otherwise a stray inline call would be stripped to an
+	// empty (and therefore discarded) response.
+	parseInlineTools := isMiMoModel(c.model) && len(tools) > 0
 	var gate *toolCallStreamGate
-	if isMiMoModel(c.model) {
+	if parseInlineTools {
 		gate = &toolCallStreamGate{}
 	}
 	flushGate := func() error {
@@ -70,7 +74,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 				logInferenceFailed(ctx, c.model, time.Since(start), err)
 				return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 			}
-			result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, isMiMoModel(c.model))
+			result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 			if err != nil {
 				logInferenceFailed(ctx, c.model, time.Since(start), err)
 				return result, err
@@ -150,7 +154,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 	}
-	result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, isMiMoModel(c.model))
+	result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return result, err
