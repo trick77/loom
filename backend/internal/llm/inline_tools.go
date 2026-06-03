@@ -11,8 +11,8 @@ import (
 // content stream instead of populating the OpenAI-native tool_calls field, e.g.:
 //
 //	<tool_call>
-//	<function=searxng__web_search>
-//	<parameter=q>colossus forbin project</parameter>
+//	<function=tavily__tavily_search>
+//	<parameter=query>colossus forbin project</parameter>
 //	</function>
 //	</tool_call>
 //

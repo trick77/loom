@@ -68,10 +68,10 @@ func run() error {
 			mcpConfig = loadedMCPConfig
 		}
 	}
-	var searxngNameCollision bool
-	mcpConfig, searxngNameCollision = toolConfigForConfig(cfg, mcpConfig)
-	if searxngNameCollision {
-		slog.Warn("built-in SearXNG tool disabled because MCP config already defines server name searxng")
+	var tavilyNameCollision bool
+	mcpConfig, tavilyNameCollision = toolConfigForConfig(cfg, mcpConfig)
+	if tavilyNameCollision {
+		slog.Warn("built-in Tavily tool disabled because MCP config already defines server name tavily")
 	}
 	if len(mcpConfig.Servers) > 0 {
 		discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -164,11 +164,11 @@ func toolConfigForConfig(cfg config.Config, base mcp.Config) (mcp.Config, bool) 
 	for name, server := range base.Servers {
 		out.Servers[name] = server
 	}
-	if strings.TrimSpace(cfg.SearxngURL) != "" {
-		if _, exists := out.Servers["searxng"]; exists {
+	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
+		if _, exists := out.Servers["tavily"]; exists {
 			return out, true
 		}
-		out.Servers["searxng"] = mcp.SearxngServerConfig(cfg.SearxngURL)
+		out.Servers["tavily"] = mcp.TavilyServerConfig(cfg.TavilyURL, cfg.TavilyAPIKey)
 	}
 	return out, false
 }

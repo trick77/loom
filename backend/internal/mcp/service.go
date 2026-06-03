@@ -153,9 +153,6 @@ func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient 
 }
 
 func clientForServer(name string, server ServerConfig, httpClient *http.Client) Client {
-	if server.Transport == transportSearxng {
-		return NewSearxngClient(name, server.URL, httpClient)
-	}
 	if server.Transport == TransportStdio {
 		return NewStdioClient(name, server)
 	}

@@ -216,6 +216,59 @@ func writeRPCResult(t *testing.T, w http.ResponseWriter, id int64, result any) {
 	}
 }
 
+func TestRemoteClientAllowlistFiltersTools(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		switch req.Method {
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{
+				{"name": "tavily_search", "inputSchema": map[string]any{"type": "object"}},
+				{"name": "tavily_extract", "inputSchema": map[string]any{"type": "object"}},
+				{"name": "tavily_crawl", "inputSchema": map[string]any{"type": "object"}},
+			}})
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewRemoteClient("tavily", ServerConfig{
+		Transport: TransportStreamableHTTP,
+		URL:       server.URL,
+		Tools:     []string{"tavily_search"},
+	}, server.Client())
+
+	tools, err := client.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("ListTools() error: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "tavily__tavily_search" {
+		t.Fatalf("tools = %#v, want only tavily__tavily_search", tools)
+	}
+}
+
+func TestRemoteClientScrubsSecretFromTransportError(t *testing.T) {
+	// An unreachable host yields a *url.Error whose message embeds the full URL,
+	// including the tavilyApiKey query parameter. The client must redact it.
+	client := NewRemoteClient("tavily", ServerConfig{
+		Transport: TransportStreamableHTTP,
+		URL:       "http://127.0.0.1:1/?tavilyApiKey=supersecret",
+	}, &http.Client{Timeout: 2 * time.Second})
+
+	_, err := client.ListTools(context.Background())
+	if err == nil {
+		t.Fatal("ListTools() error = nil, want connection error")
+	}
+	if strings.Contains(err.Error(), "supersecret") || strings.Contains(err.Error(), "tavilyApiKey") {
+		t.Fatalf("error leaks secret: %v", err)
+	}
+}
+
 func runMCPTestHelper(t *testing.T) {
 	t.Helper()
 	scanner := bufio.NewScanner(os.Stdin)

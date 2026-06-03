@@ -4,6 +4,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -11,9 +12,13 @@ import (
 const (
 	TransportStreamableHTTP = "streamable-http"
 	TransportStdio          = "stdio"
-	// transportSearxng is reserved for Spark's in-process SearXNG adapter.
-	// It is not accepted by LoadConfig and should not appear in mcp.json.
-	transportSearxng = "searxng"
+	// defaultTavilyURL is the hosted Tavily MCP endpoint used by the built-in
+	// Tavily web-search adapter when SPARK_TAVILY_URL is unset.
+	defaultTavilyURL = "https://mcp.tavily.com/mcp/"
+	// tavilySearchToolName is the server-side name of Tavily's web search tool.
+	// It is the only tool the built-in adapter exposes; Tavily's other tools
+	// (extract/map/crawl) are filtered out via the ServerConfig.Tools allowlist.
+	tavilySearchToolName = "tavily_search"
 )
 
 // Config is the on-disk MCP server configuration loaded from mcp.json.
@@ -29,6 +34,10 @@ type ServerConfig struct {
 	Command   string            `json:"command"`
 	Args      []string          `json:"args"`
 	Env       map[string]string `json:"env"`
+	// Tools is an optional allowlist of server-side tool names. When non-empty,
+	// only tools whose original name appears here are exposed; an empty list
+	// exposes every tool the server advertises.
+	Tools []string `json:"tools"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -91,6 +100,32 @@ func SplitExposedToolName(name string) (string, string, bool) {
 	return server, tool, true
 }
 
-func SearxngServerConfig(baseURL string) ServerConfig {
-	return ServerConfig{Transport: transportSearxng, URL: baseURL}
+// TavilyServerConfig builds the synthetic MCP server config for Spark's
+// built-in Tavily web search. Auth uses Tavily's documented query parameter
+// (?tavilyApiKey=...), so the key lives in the URL and must be scrubbed from any
+// error before it is logged (see scrubURLError in client.go). The Tools
+// allowlist restricts the exposed surface to the search tool only.
+func TavilyServerConfig(baseURL, apiKey string) ServerConfig {
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = defaultTavilyURL
+	}
+	cfg := ServerConfig{
+		Transport: TransportStreamableHTTP,
+		Tools:     []string{tavilySearchToolName},
+	}
+	if u, err := url.Parse(baseURL); err == nil {
+		q := u.Query()
+		q.Set("tavilyApiKey", apiKey)
+		u.RawQuery = q.Encode()
+		cfg.URL = u.String()
+		return cfg
+	}
+	// A malformed base URL still carries the key so the failure surfaces as an
+	// HTTP error rather than silently dropping auth.
+	sep := "?"
+	if strings.Contains(baseURL, "?") {
+		sep = "&"
+	}
+	cfg.URL = baseURL + sep + "tavilyApiKey=" + url.QueryEscape(apiKey)
+	return cfg
 }

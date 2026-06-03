@@ -29,8 +29,9 @@ Full design: `docs/superpowers/specs/2026-05-30-spark-design.md`. Per-phase plan
 - HTTP: stdlib `net/http` (Go 1.22 method routing), no web framework. Streaming: **SSE**.
 - One OpenAI-compatible client for chat (MiMo) + embeddings (OpenAI). Extraction: Apache **Tika** sidecar.
 - Tools/agents are **MCP by default** (config-driven via `mcp.json`, separate HTTP/SSE containers).
-  SearXNG is the exception: Spark talks to `SPARK_SEARXNG_URL` directly and exposes it as the built-in
-  `searxng__web_search` tool, without an MCP proxy image.
+  Tavily web search is built-in: when `SPARK_TAVILY_API_KEY` is set, `main.go` injects a synthetic
+  `tavily` MCP server (hosted at `SPARK_TAVILY_URL`, auth via `?tavilyApiKey=`) handled by the normal
+  remote client, with a `ServerConfig.Tools` allowlist exposing only `tavily_search`.
 
 ## Config
 - All runtime config comes from `SPARK_*` env vars — see `backend/internal/config/config.go` and

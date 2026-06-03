@@ -15,7 +15,7 @@ func collect(g *toolCallStreamGate, deltas ...string) string {
 func TestToolCallStreamGate_SuppressesToolCallAtStart(t *testing.T) {
 	g := &toolCallStreamGate{}
 
-	emitted := collect(g, "<tool_call>", "<function=searxng__web_search>", "</function></tool_call>")
+	emitted := collect(g, "<tool_call>", "<function=tavily__tavily_search>", "</function></tool_call>")
 
 	if emitted != "" {
 		t.Fatalf("emitted = %q, want empty (tool call suppressed)", emitted)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/trick77/spark/internal/config"
@@ -47,11 +48,11 @@ func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
 	}
 }
 
-func TestToolConfigForConfigAddsBuiltInSearxng(t *testing.T) {
+func TestToolConfigForConfigAddsBuiltInTavily(t *testing.T) {
 	base := mcp.Config{Servers: map[string]mcp.ServerConfig{
 		"obscura": {Transport: mcp.TransportStreamableHTTP, URL: "http://obscura:8090/mcp"},
 	}}
-	cfg := config.Config{SearxngURL: "http://searxng:8080"}
+	cfg := config.Config{TavilyURL: "https://mcp.tavily.com/mcp/", TavilyAPIKey: "secret"}
 
 	got, collision := toolConfigForConfig(cfg, base)
 	if collision {
@@ -60,33 +61,39 @@ func TestToolConfigForConfigAddsBuiltInSearxng(t *testing.T) {
 	if got.Servers["obscura"].URL != "http://obscura:8090/mcp" {
 		t.Fatalf("obscura config = %#v", got.Servers["obscura"])
 	}
-	searxng := got.Servers["searxng"]
-	if searxng.URL != "http://searxng:8080" {
-		t.Fatalf("searxng URL = %q, want configured URL", searxng.URL)
+	tavily := got.Servers["tavily"]
+	if tavily.Transport != mcp.TransportStreamableHTTP {
+		t.Fatalf("tavily transport = %q, want streamable-http", tavily.Transport)
+	}
+	if !strings.Contains(tavily.URL, "tavilyApiKey=secret") {
+		t.Fatalf("tavily URL = %q, want embedded tavilyApiKey", tavily.URL)
+	}
+	if len(tavily.Tools) != 1 || tavily.Tools[0] != "tavily_search" {
+		t.Fatalf("tavily tools = %#v, want [tavily_search]", tavily.Tools)
 	}
 }
 
-func TestToolConfigForConfigLeavesSearxngDisabledWhenURLIsEmpty(t *testing.T) {
-	got, collision := toolConfigForConfig(config.Config{}, mcp.Config{})
+func TestToolConfigForConfigLeavesTavilyDisabledWhenKeyIsEmpty(t *testing.T) {
+	got, collision := toolConfigForConfig(config.Config{TavilyURL: "https://mcp.tavily.com/mcp/"}, mcp.Config{})
 	if collision {
 		t.Fatal("toolConfigForConfig() collision = true, want false")
 	}
-	if _, exists := got.Servers["searxng"]; exists {
-		t.Fatalf("searxng server exists when SPARK_SEARXNG_URL is empty: %#v", got.Servers["searxng"])
+	if _, exists := got.Servers["tavily"]; exists {
+		t.Fatalf("tavily server exists when SPARK_TAVILY_API_KEY is empty: %#v", got.Servers["tavily"])
 	}
 }
 
-func TestToolConfigForConfigPreservesExternalSearxngOnCollision(t *testing.T) {
+func TestToolConfigForConfigPreservesExternalTavilyOnCollision(t *testing.T) {
 	base := mcp.Config{Servers: map[string]mcp.ServerConfig{
-		"searxng": {Transport: mcp.TransportStreamableHTTP, URL: "http://custom-searxng-mcp:8080/mcp"},
+		"tavily": {Transport: mcp.TransportStreamableHTTP, URL: "http://custom-tavily-mcp:8080/mcp"},
 	}}
-	cfg := config.Config{SearxngURL: "http://searxng:8080"}
+	cfg := config.Config{TavilyURL: "https://mcp.tavily.com/mcp/", TavilyAPIKey: "secret"}
 
 	got, collision := toolConfigForConfig(cfg, base)
 	if !collision {
 		t.Fatal("toolConfigForConfig() collision = false, want true")
 	}
-	if got.Servers["searxng"].URL != "http://custom-searxng-mcp:8080/mcp" {
-		t.Fatalf("searxng config = %#v, want external config preserved", got.Servers["searxng"])
+	if got.Servers["tavily"].URL != "http://custom-tavily-mcp:8080/mcp" {
+		t.Fatalf("tavily config = %#v, want external config preserved", got.Servers["tavily"])
 	}
 }

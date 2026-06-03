@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -157,7 +158,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return scrubURLError(err)
 	}
 	defer resp.Body.Close()
 	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
@@ -238,6 +239,9 @@ func decodeSSEResponse(r io.Reader, id int64) (rpcResponse, error) {
 func (c *remoteClient) exposeTools(tools []toolResult) []Tool {
 	out := make([]Tool, 0, len(tools))
 	for _, tool := range tools {
+		if !c.toolAllowed(tool.Name) {
+			continue
+		}
 		out = append(out, Tool{
 			Name:         ExposedToolName(c.serverName, tool.Name),
 			OriginalName: tool.Name,
@@ -247,6 +251,37 @@ func (c *remoteClient) exposeTools(tools []toolResult) []Tool {
 		})
 	}
 	return out
+}
+
+// toolAllowed reports whether a server-side tool name passes the optional
+// per-server allowlist (cfg.Tools). An empty allowlist permits every tool.
+func (c *remoteClient) toolAllowed(name string) bool {
+	if len(c.cfg.Tools) == 0 {
+		return true
+	}
+	for _, allowed := range c.cfg.Tools {
+		if allowed == name {
+			return true
+		}
+	}
+	return false
+}
+
+// scrubURLError redacts the query string (which may carry secrets such as
+// Tavily's ?tavilyApiKey=) from *url.Error values before they propagate into
+// logs or upstream error messages.
+func scrubURLError(err error) error {
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return err
+	}
+	if u, parseErr := url.Parse(urlErr.URL); parseErr == nil {
+		u.RawQuery = ""
+		urlErr.URL = u.String()
+	} else if i := strings.IndexByte(urlErr.URL, '?'); i >= 0 {
+		urlErr.URL = urlErr.URL[:i]
+	}
+	return urlErr
 }
 
 type stdioClient struct {
