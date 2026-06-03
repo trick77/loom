@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -778,6 +778,19 @@ function SidebarThreadItem({
   onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
 }) {
+  const itemRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node) || itemRef.current?.contains(target)) return;
+      onCloseMenu();
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [menuOpen, onCloseMenu]);
+
   if (!active) {
     return (
       <button
@@ -790,7 +803,7 @@ function SidebarThreadItem({
     );
   }
   return (
-    <div className="relative">
+    <div ref={itemRef} className="relative">
       <div className="flex h-7 w-full items-center rounded-md bg-[#10100f] py-0 pl-1.5 pr-1 text-left text-white">
         <button
           className="relative min-w-0 flex-1 overflow-hidden text-left"
@@ -1013,6 +1026,7 @@ function DeleteThreadModal({
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
         <button
+          autoFocus
           className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]"
           onClick={onCancel}
           type="button"
@@ -1041,6 +1055,7 @@ function ModalShell({
   children: ReactNode;
   onCancel(): void;
 }) {
+  const titleID = useId();
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onCancel();
@@ -1049,9 +1064,21 @@ function ModalShell({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onCancel]);
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] px-4">
-      <div className="w-full max-w-[390px] rounded-xl border border-[#4b4a46] bg-[#2a2a28] p-[18px] shadow-[0_28px_70px_rgba(0,0,0,0.55)]">
-        <h2 className="font-sans text-[22px] font-semibold leading-7 text-[#f3f0e8]">{title}</h2>
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] px-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div
+        aria-labelledby={titleID}
+        aria-modal="true"
+        className="w-full max-w-[390px] rounded-xl border border-[#4b4a46] bg-[#2a2a28] p-[18px] shadow-[0_28px_70px_rgba(0,0,0,0.55)]"
+        role="dialog"
+      >
+        <h2 id={titleID} className="font-sans text-[22px] font-semibold leading-7 text-[#f3f0e8]">
+          {title}
+        </h2>
         {children}
       </div>
     </div>
