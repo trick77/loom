@@ -1446,17 +1446,62 @@ function PromptChip({ icon, label }: { icon: string; label: string }) {
   );
 }
 
+function toolStatusMeta(event: ToolActivity): { label: string; className: string } {
+  if (event.status !== "done") {
+    return { label: "Running", className: "bg-[#363632] text-[#c7c5bd]" };
+  }
+  if (event.content?.startsWith("tool failed")) {
+    return { label: "Failed", className: "bg-[#b85c52] text-[#fffaf2]" };
+  }
+  return { label: "Done", className: "bg-[#363632] text-[#c7c5bd]" };
+}
+
 function ToolActivityPanel({ events }: { events: ToolActivity[] }) {
+  const [open, setOpen] = useState(false);
+  const hasAnyOutput = events.some(
+    (event) => event.status === "done" && (event.content?.trim().length ?? 0) > 0,
+  );
   return (
-    <div className="spark-meta-text max-w-3xl rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#aaa79e]">
-      <div className="font-medium text-[#f3f0e8]">Tools</div>
-      <div className="mt-2 space-y-1">
-        {events.map((event) => (
-          <div key={event.id} className="flex items-center justify-between gap-3">
-            <span className="min-w-0 truncate">{event.name}</span>
-            <span className="shrink-0">{event.status === "done" ? "Done" : "Running"}</span>
-          </div>
-        ))}
+    <div className="spark-meta-text max-w-3xl overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#aaa79e]">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left disabled:cursor-default"
+        onClick={hasAnyOutput ? () => setOpen((value) => !value) : undefined}
+        disabled={!hasAnyOutput}
+        aria-expanded={hasAnyOutput ? open : undefined}
+      >
+        {hasAnyOutput ? (
+          <svg
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            className={`size-3 shrink-0 text-[#88857d] transition-transform ${open ? "rotate-90" : ""}`}
+          >
+            <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <span className="size-3 shrink-0" aria-hidden="true" />
+        )}
+        <span className="font-medium text-[#f3f0e8]">Tools</span>
+        <span className="rounded-full bg-[#363632] px-1.5 text-[11px] text-[#c7c5bd]">{events.length}</span>
+      </button>
+      <div className="space-y-2 border-t border-[#3e3d39] px-4 py-2.5">
+        {events.map((event) => {
+          const status = toolStatusMeta(event);
+          const output = event.status === "done" ? event.content ?? "" : "";
+          return (
+            <div key={event.id}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate text-[#d6d3ca]">{event.name}</span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${status.className}`}>{status.label}</span>
+              </div>
+              {open && output.trim() !== "" && (
+                <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[#1f1f1d] px-3 py-2 text-xs leading-relaxed text-[#aaa79e]">
+                  {output}
+                </pre>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
