@@ -152,7 +152,13 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 	if !ok || !requireChat(w, s) {
 		return
 	}
-	found, err := s.chat.DeleteThread(r.Context(), user.ID, r.PathValue("threadID"))
+	threadID := r.PathValue("threadID")
+	artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "list thread artifacts failed")
+		return
+	}
+	found, err := s.chat.DeleteThread(r.Context(), user.ID, threadID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "delete thread failed")
 		return
@@ -161,6 +167,7 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
+	s.cleanupArtifactFiles(user.ID, artifacts)
 	w.WriteHeader(http.StatusNoContent)
 }
 

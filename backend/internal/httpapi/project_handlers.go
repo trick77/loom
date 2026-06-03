@@ -97,7 +97,13 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	if !ok || !requireChat(w, s) {
 		return
 	}
-	found, err := s.chat.DeleteProject(r.Context(), user.ID, r.PathValue("projectID"))
+	projectID := r.PathValue("projectID")
+	artifacts, err := s.artifactsForProjectCleanup(r.Context(), user.ID, projectID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "list project artifacts failed")
+		return
+	}
+	found, err := s.chat.DeleteProject(r.Context(), user.ID, projectID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "delete project failed")
 		return
@@ -106,5 +112,6 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
+	s.cleanupArtifactFiles(user.ID, artifacts)
 	w.WriteHeader(http.StatusNoContent)
 }

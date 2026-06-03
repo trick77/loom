@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import {
   AuthExpiredError,
   deleteThread,
+  downloadArtifact,
   getMcpStatus,
   listProjects,
   listThreads,
@@ -155,6 +156,42 @@ test("streamMessage parses mcp_status events", async () => {
   });
 
   expect(received).toEqual({ active: 2, configured: 3 });
+});
+
+test("streamMessage dispatches artifact events", async () => {
+  const body = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: artifact\ndata: {"id":"art_1","displayFilename":"notes.md","mimeType":"text/markdown; charset=utf-8","sizeBytes":7,"downloadUrl":"/api/artifacts/art_1/download"}\n\n',
+        ),
+      );
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  const onArtifact = vi.fn();
+
+  await streamMessage("t1", "Hi", {
+    onUserMessage: () => undefined,
+    onDelta: () => undefined,
+    onAssistantMessage: () => undefined,
+    onThread: () => undefined,
+    onArtifact,
+  });
+
+  expect(onArtifact).toHaveBeenCalledWith(expect.objectContaining({ displayFilename: "notes.md" }));
+});
+
+test("downloadArtifact fetches the artifact blob", async () => {
+  const blob = new Blob(["hello"], { type: "text/plain" });
+  const fetchMock = vi.fn().mockResolvedValue(new Response(blob));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(downloadArtifact("/api/artifacts/art_1/download")).resolves.toBeInstanceOf(Blob);
+  expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/art_1/download");
 });
 
 test("streamMessage throws server-sent error events", async () => {

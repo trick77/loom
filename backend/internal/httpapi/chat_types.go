@@ -57,3 +57,12 @@ type mcpStatusResponse struct {
 	Active     int `json:"active"`
 	Configured int `json:"configured"`
 }
+
+type artifactResponse struct {
+	ID              string  `json:"id"`
+	DisplayFilename string  `json:"displayFilename"`
+	MIMEType        string  `json:"mimeType"`
+	SizeBytes       int64   `json:"sizeBytes"`
+	ProjectID       *string `json:"projectId,omitempty"`
+	DownloadURL     string  `json:"downloadUrl"`
+}

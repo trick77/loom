@@ -647,6 +647,78 @@ test("renders streamed assistant response", async () => {
   expect(await screen.findByText("Hello")).toBeInTheDocument();
 });
 
+test("renders artifact card from streamed artifact event", async () => {
+  const artifact = {
+    id: "art_1",
+    displayFilename: "notes.md",
+    mimeType: "text/markdown; charset=utf-8",
+    sizeBytes: 7,
+    downloadUrl: "/api/artifacts/art_1/download",
+  };
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"make file","createdAt":"2026-06-03T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(encoder.encode(`event: artifact\ndata: ${JSON.stringify(artifact)}\n\n`));
+      controller.enqueue(
+        encoder.encode(
+          `event: assistant_message\ndata: ${JSON.stringify({
+            id: "m2",
+            threadId: "t1",
+            role: "assistant",
+            content: "Created notes.md.",
+            artifacts: [artifact],
+            createdAt: "2026-06-03T00:00:01Z",
+          })}\n\n`,
+        ),
+      );
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "make file" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByText("notes.md")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download notes.md" })).toBeInTheDocument();
+});
+
+test("renders artifact card from historical assistant message", async () => {
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [
+      {
+        id: "m1",
+        role: "assistant",
+        content: "Created notes.md.",
+        artifacts: [
+          {
+            id: "art_1",
+            displayFilename: "notes.md",
+            mimeType: "text/markdown; charset=utf-8",
+            sizeBytes: 7,
+            downloadUrl: "/api/artifacts/art_1/download",
+          },
+        ],
+      },
+    ]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  expect(await screen.findByText("notes.md")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download notes.md" })).toBeInTheDocument();
+});
+
 test("renders streamed reasoning in a collapsed thinking panel", async () => {
   vi.stubGlobal(
     "fetch",
@@ -884,7 +956,18 @@ function mcpStreamFetch(streamBody: string) {
 
 function chatThreadFetch(
   stream: ReadableStream<Uint8Array> | null,
-  messages: Array<{ id: string; role: "assistant" | "user"; content: string }> = [],
+  messages: Array<{
+    id: string;
+    role: "assistant" | "user";
+    content: string;
+    artifacts?: Array<{
+      id: string;
+      displayFilename: string;
+      mimeType: string;
+      sizeBytes: number;
+      downloadUrl: string;
+    }>;
+  }> = [],
 ) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -1428,7 +1511,7 @@ test("ignores stream events after switching threads", async () => {
   expect(screen.queryByText("Wrong thread answer")).not.toBeInTheDocument();
 });
 
-test("surfaces the server error and keeps the draft when sending fails", async () => {
+test("surfaces the server error and keeps failed tool activity visible", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();

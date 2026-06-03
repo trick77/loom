@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/llm"
@@ -19,6 +21,38 @@ var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, Res
 func newAuthenticatedChatServer(t *testing.T, deps Deps) http.Handler {
 	t.Helper()
 	return newAuthenticatedChatServerForUser(t, testUser, deps)
+}
+
+type fakeArtifactStore struct {
+	artifacts []artifact.Artifact
+}
+
+func (f fakeArtifactStore) Create(context.Context, artifact.CreateInput) (artifact.Artifact, error) {
+	return artifact.Artifact{}, nil
+}
+
+func (f fakeArtifactStore) Get(context.Context, string, string) (artifact.Artifact, bool, error) {
+	return artifact.Artifact{}, false, nil
+}
+
+func (f fakeArtifactStore) ListForThread(_ context.Context, _ string, threadID string) ([]artifact.Artifact, error) {
+	var out []artifact.Artifact
+	for _, item := range f.artifacts {
+		if item.ThreadID == threadID {
+			out = append(out, item)
+		}
+	}
+	return out, nil
+}
+
+func (f fakeArtifactStore) ListForProject(_ context.Context, _ string, projectID string) ([]artifact.Artifact, error) {
+	var out []artifact.Artifact
+	for _, item := range f.artifacts {
+		if item.ProjectID != nil && *item.ProjectID == projectID {
+			out = append(out, item)
+		}
+	}
+	return out, nil
 }
 
 func newAuthenticatedChatServerForUser(t *testing.T, user auth.User, deps Deps) http.Handler {
@@ -131,12 +165,17 @@ func (f *fakeChatStore) AddMessage(ctx context.Context, _ string, threadID strin
 }
 
 func (f *fakeChatStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
+	return f.AddMessageWithArtifacts(ctx, "", threadID, role, content, usage, nil)
+}
+
+func (f *fakeChatStore) AddMessageWithArtifacts(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage) (chat.Message, error) {
 	message := chat.Message{
 		ID:               "msg_1",
 		ThreadID:         threadID,
 		Role:             role,
 		Content:          content,
 		ReasoningContent: usage.ReasoningContent,
+		Artifacts:        artifacts,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,

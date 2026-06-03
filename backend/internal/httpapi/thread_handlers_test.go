@@ -6,10 +6,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/store"
@@ -158,6 +160,42 @@ func TestArchiveAndDeleteThreadReturn204(t *testing.T) {
 				t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body.String())
 			}
 		})
+	}
+}
+
+func TestDeleteThreadRemovesGeneratedArtifactFiles(t *testing.T) {
+	usersDir := t.TempDir()
+	relPath := "files/outputs/report.txt"
+	absPath := filepath.Join(usersDir, testUser.ID, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(absPath, []byte("report"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+			ID:            "art_1",
+			UserID:        testUser.ID,
+			ThreadID:      "thr_1",
+			VolumeRelPath: relPath,
+		}}},
+		UsersDir: usersDir,
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodDelete, "/api/threads/thr_1", "")
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(absPath); !os.IsNotExist(err) {
+		t.Fatalf("artifact file still exists or stat failed: %v", err)
 	}
 }
 

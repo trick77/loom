@@ -5,12 +5,16 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/chat"
+	"github.com/trick77/spark/internal/docgen"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/mcp"
+	"github.com/trick77/spark/internal/store"
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
@@ -95,6 +99,102 @@ func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
 	last := store.messages[len(store.messages)-1]
 	if last.Role != chat.RoleAssistant || last.ReasoningContent != "I should reason first." {
 		t.Fatalf("persisted assistant = %#v", last)
+	}
+}
+
+func TestStreamMessageExecutesBuiltInArtifactTool(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	chatStore := chat.NewStore(db)
+	artifactStore := artifact.NewStore(db)
+	user := testUser
+	thread, err := chatStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Artifacts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{
+				Content: "",
+				ToolCalls: []llm.ToolCall{{
+					ID:   "call_1",
+					Type: "function",
+					Function: llm.ToolCallFunction{
+						Name:      "create_text_file",
+						Arguments: `{"filename":"notes.md","extension":"md","content":"# Notes"}`,
+					},
+				}},
+			},
+			{Content: "Created notes.md."},
+		},
+	}
+	server := newAuthenticatedChatServer(t, Deps{
+		Chat:      chatStore,
+		Artifacts: artifactStore,
+		DocTools:  []docgen.Generator{docgen.TextGenerator{}},
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make a markdown file"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "event: artifact") {
+		t.Fatalf("stream missing artifact event:\n%s", rec.Body.String())
+	}
+
+	messages, found, err := chatStore.ListMessages(context.Background(), user.ID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	var assistant chat.Message
+	for _, message := range messages {
+		if message.Role == chat.RoleAssistant {
+			assistant = message
+			break
+		}
+	}
+	if !strings.Contains(string(assistant.Artifacts), "notes.md") {
+		t.Fatalf("assistant artifacts = %s", assistant.Artifacts)
+	}
+}
+
+func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
+	srv := &server{
+		artifacts: fakeArtifactStore{},
+		usersDir:  t.TempDir(),
+		docTools:  []docgen.Generator{docgen.TextGenerator{}},
+		mcp: fakeMCPService{tools: []llm.Tool{
+			{Type: "function", Function: llm.ToolFunction{Name: "create_text_file"}},
+			{Type: "function", Function: llm.ToolFunction{Name: "search__web"}},
+		}},
+	}
+
+	tools := srv.availableTools()
+
+	var builtInCount, searchCount int
+	for _, tool := range tools {
+		switch tool.Function.Name {
+		case "create_text_file":
+			builtInCount++
+		case "search__web":
+			searchCount++
+		}
+	}
+	if builtInCount != 1 || searchCount != 1 {
+		t.Fatalf("tool counts create_text_file=%d search__web=%d, want 1 and 1", builtInCount, searchCount)
 	}
 }
 
