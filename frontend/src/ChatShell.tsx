@@ -813,7 +813,7 @@ function SidebarThreadItem({
           }}
           type="button"
         >
-          <span aria-hidden="true" className="flex h-[11px] flex-col items-center justify-between">
+          <span aria-hidden="true" className="flex h-[10px] flex-col items-center justify-between">
             <span className="h-0.5 w-0.5 rounded-full bg-current" />
             <span className="h-0.5 w-0.5 rounded-full bg-current" />
             <span className="h-0.5 w-0.5 rounded-full bg-current" />
