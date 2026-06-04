@@ -1195,10 +1195,11 @@ function ChatPanel({
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const toolRunning = toolEvents.some((event) => event.status === "running");
   const showActiveThinkingPanel =
     isSending &&
-    streamingText === "" &&
-    sendError === "";
+    sendError === "" &&
+    (streamingText === "" || toolRunning);
   const showStreamingThinkingPanel = showActiveThinkingPanel || streamingReasoning.trim() !== "";
 
   const refreshScrollState = useCallback(() => {
@@ -1319,7 +1320,7 @@ function ChatPanel({
               <ThinkingPanel
                 active={showActiveThinkingPanel}
                 content={streamingReasoning}
-                complete={streamingText !== ""}
+                complete={!showActiveThinkingPanel}
               />
             )}
             {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
