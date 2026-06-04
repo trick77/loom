@@ -26,6 +26,8 @@ import (
 
 const sparkSystemPrompt = "Default to prose; keep replies brief but written as sentences. Use lists only for genuine item lists or steps, never for ordinary explanations. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
 
+const imagePromptCompilerSystemPrompt = "The latest user request requires image generation or editing. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Transform the user's request into a concise, visually rich prompt that preserves subject, setting, style, composition, mood, medium, text requirements, and constraints. Add only helpful visual details consistent with the request. Use `filename` when obvious. After the tool result, provide a brief final response that refers to the created artifact. Never claim an image was created unless the tool result confirms an artifact."
+
 func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok || !requireChat(w, s) {
@@ -89,14 +91,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	history := buildLLMHistory(user, priorMessages, userMessage)
 	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
-	if imageArtifactRequired {
-		history = append(history, llm.Message{
-			Role:    "system",
-			Content: "The latest user request is asking for an image/logo generation, edit, restyle, or variation. Call generate_image before answering. If you cannot call generate_image, say you cannot generate the image. Do not claim that an image has been generated unless an image artifact is created.",
-		})
-	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
-	assistantResult, err := s.runAssistantLoop(streamCtx, stream, history, inference, user, thread)
+	assistantResult, err := s.runAssistantLoop(streamCtx, stream, history, inference, user, thread, imageArtifactRequired)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return
@@ -110,6 +106,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	assistantContent := assistantResult.Content
+	if imageArtifactRequired && len(assistantResult.Artifacts) == 0 {
+		slog.Warn("image request completed without image artifact",
+			"thread_id", threadID,
+			"content_bytes", len(assistantResult.Content),
+			"tool_calls", len(assistantResult.ToolCalls))
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": "image generation was not completed"})
+		return
+	}
 	if strings.TrimSpace(assistantContent) == "" {
 		slog.Warn("empty assistant response",
 			"thread_id", threadID,
@@ -117,14 +121,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			"reasoning_bytes", len(assistantResult.ReasoningContent),
 			"tool_calls", len(assistantResult.ToolCalls))
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
-		return
-	}
-	if imageArtifactRequired && len(assistantResult.Artifacts) == 0 {
-		slog.Warn("image request completed without image artifact",
-			"thread_id", threadID,
-			"content_bytes", len(assistantResult.Content),
-			"tool_calls", len(assistantResult.ToolCalls))
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": "image generation was not completed"})
 		return
 	}
 
@@ -190,7 +186,7 @@ type assistantLoopResult struct {
 	Artifacts []artifactResponse
 }
 
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread) (assistantLoopResult, error) {
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool) (assistantLoopResult, error) {
 	tools := s.availableTools()
 	if len(tools) == 0 {
 		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat", 1), nil)
@@ -198,6 +194,12 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			return assistantLoopResult{StreamResult: result}, nil
 		}
 		return assistantLoopResult{StreamResult: result}, err
+	}
+	if imageArtifactRequired {
+		if imageTool := findGenerateImageTool(tools); imageTool != nil {
+			return s.runRequiredImageAssistantLoop(ctx, stream, history, inference, user, thread, *imageTool)
+		}
+		slog.Warn("image artifact required but generate_image tool is unavailable", "thread_id", thread.ID, "tools", len(tools))
 	}
 
 	toolRan := false
@@ -270,6 +272,63 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 	return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, err
 }
 
+func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool) (assistantLoopResult, error) {
+	compilerHistory := append(history[:len(history):len(history)], llm.Message{
+		Role:    "system",
+		Content: imagePromptCompilerSystemPrompt,
+	})
+	result, err := s.streamAssistantTurnSuppressingContent(ctx, stream, compilerHistory, inferenceWithPurpose(inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
+	if err != nil {
+		return assistantLoopResult{}, err
+	}
+	if len(result.ToolCalls) != 1 || result.ToolCalls[0].Function.Name != "generate_image" {
+		return assistantLoopResult{StreamResult: result}, nil
+	}
+
+	call := result.ToolCalls[0]
+	history = append(compilerHistory, llm.Message{
+		Role:             "assistant",
+		ReasoningContent: result.ReasoningContent,
+		ToolCalls:        result.ToolCalls,
+	})
+	output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call)
+	if !handled {
+		output = capToolOutput("tool failed: generate_image is not available")
+	}
+	if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+		return assistantLoopResult{}, err
+	}
+	history = append(history, llm.Message{
+		Role:       "tool",
+		ToolCallID: call.ID,
+		Content:    output,
+	})
+	if response == nil {
+		return assistantLoopResult{StreamResult: result}, nil
+	}
+
+	artifacts := []artifactResponse{*response}
+	finalHistory := append(history[:len(history):len(history)], llm.Message{
+		Role:    "system",
+		Content: "Provide a brief final response that refers to the created artifact. Do not call any more tools. Never claim an image was created unless the tool result confirms an artifact.",
+	})
+	final, err := s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
+	if persistCanceledPartial(final, err) {
+		return assistantLoopResult{StreamResult: final, Artifacts: artifacts}, nil
+	}
+	if err == nil && strings.TrimSpace(final.Content) == "" {
+		final.Content = fallbackImageArtifactResponse(*response)
+	}
+	return assistantLoopResult{StreamResult: final, Artifacts: artifacts}, err
+}
+
+func fallbackImageArtifactResponse(response artifactResponse) string {
+	if strings.TrimSpace(response.DisplayFilename) == "" {
+		return "Created the image artifact."
+	}
+	return "Created " + response.DisplayFilename + "."
+}
+
 func persistCanceledPartial(result llm.StreamResult, err error) bool {
 	return errors.Is(err, context.Canceled) && strings.TrimSpace(result.Content) != ""
 }
@@ -277,12 +336,20 @@ func persistCanceledPartial(result llm.StreamResult, err error) bool {
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
 // tool-call events to the SSE stream.
 func (s *server) streamAssistantTurn(ctx context.Context, stream *sse.Writer, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+	return s.streamAssistantTurnWithContentStreaming(ctx, stream, history, meta, tools, true)
+}
+
+func (s *server) streamAssistantTurnSuppressingContent(ctx context.Context, stream *sse.Writer, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+	return s.streamAssistantTurnWithContentStreaming(ctx, stream, history, meta, tools, false)
+}
+
+func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, stream *sse.Writer, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
 	callCtx := llm.WithInferenceMetadata(ctx, meta)
 	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
 			return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
 		}
-		if event.Delta != "" {
+		if event.Delta != "" && streamContent {
 			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
 		}
 		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
@@ -360,6 +427,16 @@ func (s *server) availableTools() []llm.Tool {
 		}
 	}
 	return tools
+}
+
+func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
+	for _, tool := range tools {
+		if tool.Function.Name == "generate_image" {
+			selected := tool
+			return &selected
+		}
+	}
+	return nil
 }
 
 func (s *server) imageArtifactRequired(content string, priorMessages []chat.Message) bool {

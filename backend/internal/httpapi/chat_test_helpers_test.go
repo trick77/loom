@@ -305,6 +305,7 @@ func (f *blockingChatClient) GenerateTitle(context.Context, string, string) (str
 type fakeToolChatClient struct {
 	results   []llm.StreamResult
 	histories [][]llm.Message
+	tools     [][]llm.Tool
 	plain     string
 }
 
@@ -322,6 +323,7 @@ func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, fu
 
 func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	f.histories = append(f.histories, append([]llm.Message(nil), history...))
+	f.tools = append(f.tools, append([]llm.Tool(nil), tools...))
 	if len(tools) == 0 {
 		result, err := f.StreamChatResult(context.Background(), history, nil)
 		if err != nil {
