@@ -432,6 +432,64 @@ func TestStore_ListThreadsSupportsRecentsAndStarred(t *testing.T) {
 	}
 }
 
+func TestStore_ListThreadsSearchFiltersByTitle(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	for _, title := range []string{"Greeting", "Morning greeting", "Apps and websites", "100% discount"} {
+		if _, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: title}); err != nil {
+			t.Fatalf("CreateThread(%q) error: %v", title, err)
+		}
+	}
+
+	// Case-insensitive substring match on the title.
+	matches, err := store.ListThreads(ctx, userID, ListThreadsOptions{Search: "greet"})
+	if err != nil {
+		t.Fatalf("ListThreads(search greet) error: %v", err)
+	}
+	if len(matches) != 2 {
+		t.Fatalf("len(search greet) = %d, want 2", len(matches))
+	}
+
+	// No match returns empty.
+	none, err := store.ListThreads(ctx, userID, ListThreadsOptions{Search: "nonexistent"})
+	if err != nil {
+		t.Fatalf("ListThreads(search nonexistent) error: %v", err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("len(search nonexistent) = %d, want 0", len(none))
+	}
+
+	// '%' is treated literally (escaped), not as a wildcard.
+	literal, err := store.ListThreads(ctx, userID, ListThreadsOptions{Search: "100%"})
+	if err != nil {
+		t.Fatalf("ListThreads(search 100%%) error: %v", err)
+	}
+	if len(literal) != 1 || literal[0].Title != "100% discount" {
+		t.Fatalf("search '100%%' = %#v, want only '100%% discount'", literal)
+	}
+
+	// A lone '%' must not match every thread (would happen without escaping).
+	wildcard, err := store.ListThreads(ctx, userID, ListThreadsOptions{Search: "%"})
+	if err != nil {
+		t.Fatalf("ListThreads(search %%) error: %v", err)
+	}
+	if len(wildcard) != 1 {
+		t.Fatalf("len(search %%) = %d, want 1 (only the literal '100%%' title)", len(wildcard))
+	}
+
+	// Whitespace-only search is ignored (returns all).
+	all, err := store.ListThreads(ctx, userID, ListThreadsOptions{Search: "   "})
+	if err != nil {
+		t.Fatalf("ListThreads(search blank) error: %v", err)
+	}
+	if len(all) != 4 {
+		t.Fatalf("len(search blank) = %d, want 4", len(all))
+	}
+}
+
 func TestStore_ArchiveAndUnarchiveThread(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

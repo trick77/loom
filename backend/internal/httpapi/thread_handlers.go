@@ -171,6 +171,46 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireChat(w, s) {
+		return
+	}
+	var body bulkDeleteThreadsRequest
+	if err := decodeJSONBody(w, r, &body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	deleted := 0
+	seen := make(map[string]struct{}, len(body.ThreadIDs))
+	for _, threadID := range body.ThreadIDs {
+		if threadID == "" {
+			continue
+		}
+		if _, dup := seen[threadID]; dup {
+			continue
+		}
+		seen[threadID] = struct{}{}
+
+		artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "list thread artifacts failed")
+			return
+		}
+		found, err := s.chat.DeleteThread(r.Context(), user.ID, threadID)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "delete thread failed")
+			return
+		}
+		if !found {
+			continue
+		}
+		s.cleanupArtifactFiles(user.ID, artifacts)
+		deleted++
+	}
+	writeJSON(w, bulkDeleteThreadsResponse{Deleted: deleted})
+}
+
 func listThreadsOptionsFromRequest(r *http.Request) (chat.ListThreadsOptions, error) {
 	var opts chat.ListThreadsOptions
 	query := r.URL.Query()
@@ -196,5 +236,6 @@ func listThreadsOptionsFromRequest(r *http.Request) (chat.ListThreadsOptions, er
 		return chat.ListThreadsOptions{}, err
 	}
 	opts.Limit = limit
+	opts.Search = query.Get("search")
 	return opts, nil
 }

@@ -199,6 +199,77 @@ func TestDeleteThreadRemovesGeneratedArtifactFiles(t *testing.T) {
 	}
 }
 
+func TestBulkDeleteThreadsRemovesArtifactsAndCountsDeleted(t *testing.T) {
+	usersDir := t.TempDir()
+	writeArtifact := func(rel string) string {
+		abs := filepath.Join(usersDir, testUser.ID, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte("data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return abs
+	}
+	absOne := writeArtifact("files/outputs/one.txt")
+	absTwo := writeArtifact("files/outputs/two.txt")
+
+	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{
+			{ID: "art_1", UserID: testUser.ID, ThreadID: "thr_1", VolumeRelPath: "files/outputs/one.txt"},
+			{ID: "art_2", UserID: testUser.ID, ThreadID: "thr_2", VolumeRelPath: "files/outputs/two.txt"},
+		}},
+		UsersDir: usersDir,
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads:delete", `{"threadIds":["thr_1","thr_2"]}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Deleted int `json:"deleted"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Deleted != 2 {
+		t.Fatalf("deleted = %d, want 2", resp.Deleted)
+	}
+	if _, err := os.Stat(absOne); !os.IsNotExist(err) {
+		t.Fatalf("artifact one still exists: %v", err)
+	}
+	if _, err := os.Stat(absTwo); !os.IsNotExist(err) {
+		t.Fatalf("artifact two still exists: %v", err)
+	}
+}
+
+func TestBulkDeleteThreadsSkipsEmptyAndDuplicateIDs(t *testing.T) {
+	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads:delete", `{"threadIds":["thr_1","thr_1",""]}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Deleted int `json:"deleted"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Deleted != 1 {
+		t.Fatalf("deleted = %d, want 1 (dedup + skip empty)", resp.Deleted)
+	}
+}
+
 func TestCreateThreadRejectsUnknownJSONFields(t *testing.T) {
 	store := &fakeChatStore{}
 	srv := newAuthenticatedChatServer(t, Deps{Chat: store})

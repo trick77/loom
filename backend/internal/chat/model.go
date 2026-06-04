@@ -104,5 +104,6 @@ type ListThreadsOptions struct {
 	ProjectlessOnly bool
 	StarredOnly     bool
 	Archived        bool
+	Search          string
 	Limit           int
 }
