@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/auth"
@@ -23,7 +24,7 @@ import (
 	"golang.org/x/text/language/display"
 )
 
-const sparkSystemPrompt = "Default to prose; keep replies brief but written as sentences. Use lists only for genuine item lists or steps, never for ordinary explanations. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
+const sparkSystemPrompt = "Default to prose; keep replies brief but written as sentences. Use lists only for genuine item lists or steps, never for ordinary explanations. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
 
 func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
@@ -87,6 +88,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	history := buildLLMHistory(user, priorMessages, userMessage)
+	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
+	if imageArtifactRequired {
+		history = append(history, llm.Message{
+			Role:    "system",
+			Content: "The latest user request is asking for an image/logo generation, edit, restyle, or variation. Call generate_image before answering. If you cannot call generate_image, say you cannot generate the image. Do not claim that an image has been generated unless an image artifact is created.",
+		})
+	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	assistantResult, err := s.runAssistantLoop(streamCtx, stream, history, inference, user, thread)
 	if err != nil {
@@ -111,9 +119,21 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
 		return
 	}
+	if imageArtifactRequired && len(assistantResult.Artifacts) == 0 {
+		slog.Warn("image request completed without image artifact",
+			"thread_id", threadID,
+			"content_bytes", len(assistantResult.Content),
+			"tool_calls", len(assistantResult.ToolCalls))
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": "image generation was not completed"})
+		return
+	}
 
 	persistCtx := context.WithoutCancel(r.Context())
-	artifactsJSON, err := json.Marshal(assistantResult.Artifacts)
+	artifacts := assistantResult.Artifacts
+	if artifacts == nil {
+		artifacts = []artifactResponse{}
+	}
+	artifactsJSON, err := json.Marshal(artifacts)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
@@ -340,6 +360,104 @@ func (s *server) availableTools() []llm.Tool {
 		}
 	}
 	return tools
+}
+
+func (s *server) imageArtifactRequired(content string, priorMessages []chat.Message) bool {
+	if len(s.imageTools) == 0 || s.artifacts == nil || strings.TrimSpace(s.usersDir) == "" {
+		return false
+	}
+	tokens := wordTokens(content)
+	if len(tokens) == 0 {
+		return false
+	}
+	if isImageCreationRequest(tokens) {
+		return true
+	}
+	if !priorConversationHasImageArtifact(priorMessages) {
+		return false
+	}
+	return isImageFollowUpRequest(tokens)
+}
+
+func priorConversationHasImageArtifact(messages []chat.Message) bool {
+	for _, message := range messages {
+		var artifacts []struct {
+			MIMEType      string `json:"mimeType"`
+			SnakeMIMEType string `json:"mime_type"`
+		}
+		if err := json.Unmarshal(message.Artifacts, &artifacts); err != nil {
+			continue
+		}
+		for _, item := range artifacts {
+			if strings.HasPrefix(item.MIMEType, "image/") || strings.HasPrefix(item.SnakeMIMEType, "image/") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isImageCreationRequest(tokens []string) bool {
+	actions := map[string]bool{
+		"generate": true, "create": true, "make": true, "draw": true, "render": true, "paint": true,
+		"generiere": true, "generieren": true, "erstelle": true, "erstellen": true, "erzeuge": true, "erzeugen": true,
+		"zeichne": true, "zeichnen": true, "male": true, "malen": true, "mach": true, "mache": true, "machen": true,
+	}
+	objects := map[string]bool{
+		"image": true, "images": true, "picture": true, "pictures": true, "logo": true, "logos": true,
+		"bild": true, "bilder": true,
+	}
+	return hasNearbyTokens(tokens, actions, objects, 5)
+}
+
+func isImageFollowUpRequest(tokens []string) bool {
+	terms := map[string]bool{
+		"make": true, "turn": true, "change": true, "try": true, "restyle": true, "variation": true, "variant": true, "version": true, "style": true,
+		"cyberpunk": true, "retro": true, "minimal": true, "minimalist": true, "colors": true, "colour": true, "glitch": true, "neon": true,
+		"mach": true, "mache": true, "machen": true, "aendere": true, "ändere": true, "wandle": true, "probiere": true,
+		"variante": true, "stil": true, "minimalistisch": true, "farben": true,
+	}
+	for _, token := range tokens {
+		if terms[token] {
+			return true
+		}
+	}
+	return false
+}
+
+func hasNearbyTokens(tokens []string, left, right map[string]bool, maxDistance int) bool {
+	for i, token := range tokens {
+		if !left[token] {
+			continue
+		}
+		for j := i + 1; j < len(tokens) && j <= i+maxDistance; j++ {
+			if right[tokens[j]] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func wordTokens(content string) []string {
+	var tokens []string
+	var current strings.Builder
+	flush := func() {
+		if current.Len() == 0 {
+			return
+		}
+		tokens = append(tokens, current.String())
+		current.Reset()
+	}
+	for _, r := range strings.ToLower(content) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			current.WriteRune(r)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return tokens
 }
 
 func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall) (string, *artifactResponse, bool) {

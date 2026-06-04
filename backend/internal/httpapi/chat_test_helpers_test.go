@@ -169,6 +169,9 @@ func (f *fakeChatStore) AddMessageWithUsage(ctx context.Context, _ string, threa
 }
 
 func (f *fakeChatStore) AddMessageWithArtifacts(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage) (chat.Message, error) {
+	if len(artifacts) == 0 {
+		artifacts = json.RawMessage("[]")
+	}
 	message := chat.Message{
 		ID:               "msg_1",
 		ThreadID:         threadID,
