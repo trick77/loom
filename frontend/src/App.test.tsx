@@ -218,7 +218,7 @@ test("creates a project from the sidebar", async () => {
   );
 });
 
-test("renders semantic sidebar creation icons instead of literal plus signs", async () => {
+test("renders the new-chat plus icon and the new-project plus control", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -235,12 +235,12 @@ test("renders semantic sidebar creation icons instead of literal plus signs", as
   const newChatButton = await screen.findByRole("button", { name: "New chat" });
   const newProjectButton = await screen.findByRole("button", { name: "New project" });
 
+  // New chat: a thin SVG plus inside a circle (no literal "+").
   expect(newChatButton.querySelector("svg")).toBeInTheDocument();
-  expect(newChatButton.querySelector("svg")).toHaveClass("h-[19px]", "w-[19px]");
+  expect(newChatButton.querySelector("svg")).toHaveClass("h-[13px]", "w-[13px]");
   expect(newChatButton).not.toHaveTextContent("+");
-  expect(newProjectButton.querySelector("svg")).toBeInTheDocument();
-  expect(newProjectButton.querySelector("svg")).toHaveClass("h-[19px]", "w-[19px]");
-  expect(newProjectButton).not.toHaveTextContent("+");
+  // New project: literal plus control.
+  expect(newProjectButton).toHaveTextContent("+");
 });
 
 test("new chat navigation does not create a thread or sidebar entry", async () => {
