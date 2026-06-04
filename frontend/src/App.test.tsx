@@ -362,6 +362,29 @@ test("active sidebar chat shows actions menu with locked entries", async () => {
   expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
 });
 
+test("active chat header chevron opens the shared chat actions menu", async () => {
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  const header = await screen.findByRole("banner", { name: "Chat header" });
+  fireEvent.click(within(header).getByRole("button", { name: "Open chat actions" }));
+
+  const menu = await screen.findByRole("menu", { name: "Chat actions" });
+  expect(within(menu).getByRole("menuitem", { name: /^Star$/ })).toBeInTheDocument();
+  expect(within(menu).getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+  expect(within(menu).getByRole("menuitem", { name: "Add to project" })).toBeDisabled();
+  expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename" }));
+
+  expect(await screen.findByRole("dialog", { name: "Rename chat" })).toBeInTheDocument();
+});
+
 test("closes the active sidebar chat menu when clicking outside it", async () => {
   vi.stubGlobal(
     "fetch",

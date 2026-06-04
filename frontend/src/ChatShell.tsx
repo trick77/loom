@@ -641,10 +641,18 @@ export function ChatShell({
             sendError={sendError}
             isSending={isSending}
             mcpStatus={mcpStatus}
+            openThreadMenuID={openThreadMenuID}
             onDraftChange={setDraft}
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
+            onDeleteThread={openDeleteModal}
+            onRenameThread={openRenameModal}
+            onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
+            onToggleThreadMenu={(menuKey) =>
+              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+            }
+            onCloseThreadMenu={() => setOpenThreadMenuID(null)}
           />
         )}
       </main>
@@ -946,12 +954,14 @@ function SidebarThreadItem({
 function ThreadActionsMenu({
   menuKey,
   thread,
+  className = "left-[174px]",
   onDelete,
   onRename,
   onStarChange,
 }: {
   menuKey: string;
   thread: Thread;
+  className?: string;
   onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
@@ -959,7 +969,7 @@ function ThreadActionsMenu({
   return (
     <div
       aria-label="Chat actions"
-      className="absolute left-[174px] z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
+      className={`absolute z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
       <button
@@ -1239,10 +1249,16 @@ function ChatPanel({
   sendError,
   isSending,
   mcpStatus,
+  openThreadMenuID,
   onDraftChange,
   onSend,
   onStop,
   onRetry,
+  onDeleteThread,
+  onRenameThread,
+  onStarThread,
+  onToggleThreadMenu,
+  onCloseThreadMenu,
 }: {
   thread: Thread | null;
   messages: MessageWithToolActivity[];
@@ -1254,15 +1270,24 @@ function ChatPanel({
   sendError: string;
   isSending: boolean;
   mcpStatus: McpStatusEvent | null;
+  openThreadMenuID: string | null;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
   onRetry(content: string): void;
+  onDeleteThread(thread: Thread): void;
+  onRenameThread(thread: Thread): void;
+  onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
+  onToggleThreadMenu(menuKey: string): void;
+  onCloseThreadMenu(): void;
 }) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const headerMenuRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const headerMenuKey = thread === null ? null : `Header:${thread.id}`;
+  const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   const toolRunning = toolEvents.some((event) => event.status === "running");
   const showActiveThinkingPanel =
     isSending &&
@@ -1343,6 +1368,17 @@ function ChatPanel({
     };
   }, []);
 
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node) || headerMenuRef.current?.contains(target)) return;
+      onCloseThreadMenu();
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [headerMenuOpen, onCloseThreadMenu]);
+
   return (
     <section className="flex h-screen min-h-0 flex-col">
       <header
@@ -1350,12 +1386,35 @@ function ChatPanel({
         className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
-        <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">
-          {thread?.title ?? "New chat"}
-          <span className="ml-2 text-[#88857d]" aria-hidden="true">
-            ⌄
-          </span>
-        </h1>
+        <div ref={headerMenuRef} className="relative flex min-w-0 items-center">
+          <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">
+            {thread?.title ?? "New chat"}
+          </h1>
+          {thread !== null && headerMenuKey !== null && (
+            <button
+              aria-expanded={headerMenuOpen}
+              aria-label="Open chat actions"
+              className="ml-1 grid h-5 w-5 shrink-0 place-items-center rounded-md text-[#88857d] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
+              onClick={() => onToggleThreadMenu(headerMenuKey)}
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className={headerMenuOpen ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"}
+              />
+            </button>
+          )}
+          {thread !== null && headerMenuKey !== null && headerMenuOpen && (
+            <ThreadActionsMenu
+              menuKey={headerMenuKey}
+              thread={thread}
+              className="right-0 top-full"
+              onDelete={onDeleteThread}
+              onRename={onRenameThread}
+              onStarChange={onStarThread}
+            />
+          )}
+        </div>
         {mcpStatus !== null && mcpStatus.configured > 0 && (
           <McpStatusIndicator compact status={mcpStatus} />
         )}
