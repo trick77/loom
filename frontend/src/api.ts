@@ -210,6 +210,18 @@ export async function deleteThread(threadId: string): Promise<void> {
   }
 }
 
+export async function stopMessage(threadId: string): Promise<void> {
+  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stop`, {
+    method: "POST",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to stop message");
+  }
+}
+
 export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
   const response = await fetch(downloadUrl);
   if (response.status === 401) {

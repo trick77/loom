@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/chat"
@@ -273,6 +274,102 @@ func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
 	}
 	if store.assistantContextErr != nil {
 		t.Fatalf("assistant AddMessage context error = %v, want nil", store.assistantContextErr)
+	}
+}
+
+func TestStopStreamMessageCancelsActiveAssistantTurn(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	llmClient := &blockingChatClient{
+		started: make(chan struct{}),
+		done:    make(chan struct{}),
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+	})
+
+	streamCtx, cancelStream := context.WithCancel(context.Background())
+	defer cancelStream()
+	streamDone := make(chan struct{})
+	go func() {
+		defer close(streamDone)
+		rec := httptest.NewRecorder()
+		req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`).WithContext(streamCtx)
+		srv.ServeHTTP(rec, req)
+	}()
+
+	select {
+	case <-llmClient.started:
+	case <-time.After(time.Second):
+		t.Fatal("stream did not reach llm client")
+	}
+
+	stopRec := httptest.NewRecorder()
+	stopReq := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stop", "")
+	srv.ServeHTTP(stopRec, stopReq)
+	if stopRec.Code != http.StatusNoContent {
+		cancelStream()
+		t.Fatalf("status = %d, want 204: %s", stopRec.Code, stopRec.Body.String())
+	}
+
+	select {
+	case <-llmClient.done:
+	case <-time.After(time.Second):
+		cancelStream()
+		t.Fatal("stop did not cancel llm context")
+	}
+	select {
+	case <-streamDone:
+	case <-time.After(time.Second):
+		cancelStream()
+		t.Fatal("stream handler did not return after stop")
+	}
+}
+
+func TestStopStreamMessagePersistsPartialAssistantContent(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	llmClient := &blockingChatClient{
+		started:        make(chan struct{}),
+		done:           make(chan struct{}),
+		partialContent: "Partial answer",
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+	})
+
+	streamDone := make(chan struct{})
+	go func() {
+		defer close(streamDone)
+		rec := httptest.NewRecorder()
+		req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+		srv.ServeHTTP(rec, req)
+	}()
+
+	select {
+	case <-llmClient.started:
+	case <-time.After(time.Second):
+		t.Fatal("stream did not reach llm client")
+	}
+
+	stopRec := httptest.NewRecorder()
+	stopReq := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stop", "")
+	srv.ServeHTTP(stopRec, stopReq)
+	if stopRec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204: %s", stopRec.Code, stopRec.Body.String())
+	}
+
+	select {
+	case <-streamDone:
+	case <-time.After(time.Second):
+		t.Fatal("stream handler did not return after stop")
+	}
+	if store.assistantContent != "Partial answer" {
+		t.Fatalf("assistantContent = %q, want partial answer", store.assistantContent)
 	}
 }
 

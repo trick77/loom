@@ -63,6 +63,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeChatStoreError(w, err, http.StatusBadRequest, "message content is required", "message content is too long")
 		return
 	}
+	streamCtx, cancelStream := context.WithCancel(r.Context())
+	defer cancelStream()
+	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream)
+	defer unregisterStream()
 
 	stream, err := sse.NewWriter(w)
 	if err != nil {
@@ -75,16 +79,19 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Kick off the MCP reachability probe now so its latency overlaps with
 	// assistant generation instead of delaying the final events.
-	mcpStatusCh := s.startMCPStatus(r.Context())
+	mcpStatusCh := s.startMCPStatus(streamCtx)
 
 	if thread.Title == chat.DefaultThreadTitle {
-		_ = s.generateAndSendThreadTitle(r.Context(), context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
+		_ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
 	}
 
 	history := buildLLMHistory(user, priorMessages, userMessage)
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
-	assistantResult, err := s.runAssistantLoop(r.Context(), stream, history, inference, user, thread)
+	assistantResult, err := s.runAssistantLoop(streamCtx, stream, history, inference, user, thread)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
 		message := "stream failed"
 		var userErr streamUserError
 		if errors.As(err, &userErr) {
@@ -123,6 +130,25 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	_ = stream.Send("done", "{}")
 }
 
+func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireChat(w, s) {
+		return
+	}
+	threadID := r.PathValue("threadID")
+	_, found, err := s.chat.GetThread(r.Context(), user.ID, threadID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "get thread failed")
+		return
+	}
+	if !found {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	s.activeStreams.stop(user.ID, threadID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 const (
 	maxToolRounds             = 8
 	maxToolCallsPerRound      = 8
@@ -147,6 +173,9 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 	tools := s.availableTools()
 	if len(tools) == 0 {
 		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat", 1), nil)
+		if persistCanceledPartial(result, err) {
+			return assistantLoopResult{StreamResult: result}, nil
+		}
 		return assistantLoopResult{StreamResult: result}, err
 	}
 
@@ -155,6 +184,9 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
+			if persistCanceledPartial(result, err) {
+				return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, nil
+			}
 			return assistantLoopResult{}, err
 		}
 		if len(result.ToolCalls) == 0 {
@@ -211,7 +243,14 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		Content: "Provide your final answer now using the information already gathered above. Do not call any more tools.",
 	})
 	result, err := s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
+	if persistCanceledPartial(result, err) {
+		return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, nil
+	}
 	return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, err
+}
+
+func persistCanceledPartial(result llm.StreamResult, err error) bool {
+	return errors.Is(err, context.Canceled) && strings.TrimSpace(result.Content) != ""
 }
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/trick77/spark/internal/artifact"
@@ -51,6 +52,7 @@ type server struct {
 	oidcAdminGroup        string
 	devAuthClaims         auth.Claims
 	postLogoutRedirectURL string
+	activeStreams         activeStreamRegistry
 }
 
 // ChatStore is the chat persistence dependency used by chat handlers.
@@ -162,12 +164,62 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/threads/{threadID}/unarchive", s.requireAuth(http.HandlerFunc(s.handleUnarchiveThread)))
 	mux.Handle("DELETE /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleDeleteThread)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
+	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))
 	if d.Static != nil {
 		mux.Handle("/", d.Static)
 	}
 
 	return logging(recovery(mux))
+}
+
+type activeStreamRegistry struct {
+	mu      sync.Mutex
+	streams map[activeStreamKey]*activeStream
+}
+
+type activeStreamKey struct {
+	userID   string
+	threadID string
+}
+
+type activeStream struct {
+	cancel context.CancelFunc
+}
+
+func (r *activeStreamRegistry) register(userID, threadID string, cancel context.CancelFunc) func() {
+	key := activeStreamKey{userID: userID, threadID: threadID}
+	stream := &activeStream{cancel: cancel}
+	r.mu.Lock()
+	if r.streams == nil {
+		r.streams = make(map[activeStreamKey]*activeStream)
+	}
+	if previous := r.streams[key]; previous != nil {
+		previous.cancel()
+	}
+	r.streams[key] = stream
+	r.mu.Unlock()
+	return func() {
+		r.mu.Lock()
+		if r.streams[key] == stream {
+			delete(r.streams, key)
+		}
+		r.mu.Unlock()
+	}
+}
+
+func (r *activeStreamRegistry) stop(userID, threadID string) {
+	key := activeStreamKey{userID: userID, threadID: threadID}
+	r.mu.Lock()
+	stream := r.streams[key]
+	if stream != nil {
+		delete(r.streams, key)
+	}
+	r.mu.Unlock()
+	if stream == nil {
+		return
+	}
+	stream.cancel()
 }
 
 func (s *server) requireAuth(next http.Handler) http.Handler {

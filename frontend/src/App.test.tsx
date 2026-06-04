@@ -674,6 +674,51 @@ test("renders streamed assistant response", async () => {
   expect(await screen.findByText("Hello")).toBeInTheDocument();
 });
 
+test("turns the send button into a stop button while the assistant is running", async () => {
+  const fetchMock = stoppingChatFetch();
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+  const stopButton = await screen.findByRole("button", { name: "Stop response" });
+  expect(stopButton).toBeEnabled();
+
+  fireEvent.click(stopButton);
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stop",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  });
+});
+
+test("Escape stops the active assistant response", async () => {
+  const fetchMock = stoppingChatFetch();
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+  await screen.findByRole("button", { name: "Stop response" });
+  fireEvent.keyDown(window, { key: "Escape" });
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stop",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+});
+
 test("renders artifact card from streamed artifact event", async () => {
   const artifact = {
     id: "art_1",
@@ -1081,6 +1126,35 @@ function chatThreadFetch(
       });
     }
     if (url === "/api/threads/t1/messages:stream" && init?.method === "POST" && stream !== null) {
+      return new Response(stream, { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
+
+function stoppingChatFetch() {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json([threadFixture()]);
+    if (url === "/api/threads/t1") return Response.json({ thread: threadFixture(), messages: [] });
+    if (url === "/api/threads/t1/messages:stop" && init?.method === "POST") {
+      return new Response("", { status: 204 });
+    }
+    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+            ),
+          );
+          init.signal?.addEventListener("abort", () => {
+            controller.error(new DOMException("Aborted", "AbortError"));
+          });
+        },
+      });
       return new Response(stream, { status: 200 });
     }
     throw new Error(`unexpected fetch ${url}`);
