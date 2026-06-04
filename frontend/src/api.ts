@@ -152,7 +152,6 @@ export async function listThreads(params: {
   projectId?: string | null;
   starred?: boolean;
   archived?: boolean;
-  search?: string;
   limit?: number;
 } = {}): Promise<Thread[]> {
   const query = new URLSearchParams();
@@ -164,9 +163,6 @@ export async function listThreads(params: {
   }
   if (params.archived !== undefined) {
     query.set("archived", String(params.archived));
-  }
-  if (params.search !== undefined && params.search !== "") {
-    query.set("search", params.search);
   }
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
@@ -219,15 +215,6 @@ export async function deleteThread(threadId: string): Promise<void> {
   }
 }
 
-export async function bulkDeleteThreads(threadIds: string[]): Promise<{ deleted: number }> {
-  const response = await fetch("/api/threads:delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ threadIds }),
-  });
-  return expectJSON<{ deleted: number }>(response, "failed to delete threads");
-}
-
 export async function stopMessage(threadId: string): Promise<void> {
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stop`, {
     method: "POST",
@@ -249,6 +236,17 @@ export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
     throw new Error("failed to download artifact");
   }
   return response.blob();
+}
+
+export async function openArtifact(downloadUrl: string): Promise<void> {
+  const openUrl = artifactActionUrl(downloadUrl, "open");
+  const response = await fetch(openUrl, { method: "POST" });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to open artifact");
+  }
 }
 
 export async function streamMessage(
@@ -290,6 +288,18 @@ export async function streamMessage(
   } finally {
     reader.releaseLock();
   }
+}
+
+function artifactActionUrl(downloadUrl: string, action: string): string {
+  const url = new URL(downloadUrl, window.location.origin);
+  if (!url.pathname.endsWith("/download")) {
+    throw new Error("invalid artifact download URL");
+  }
+  url.pathname = `${url.pathname.slice(0, -"/download".length)}/${action}`;
+  if (url.origin === window.location.origin) {
+    return `${url.pathname}${url.search}`;
+  }
+  return url.toString();
 }
 
 async function readStreamError(response: Response): Promise<string> {

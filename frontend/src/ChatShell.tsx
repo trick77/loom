@@ -19,6 +19,7 @@ import {
   createThread,
   deleteThread,
   downloadArtifact,
+  openArtifact,
   updateThread,
   getMcpStatus,
   getThread,
@@ -39,8 +40,6 @@ import {
 import logoImage from "./assets/logo.png";
 import { MessageMetrics } from "./MessageMetrics";
 import { formatDuration } from "./metrics";
-import { ThreadActionsMenu } from "./ThreadActionsMenu";
-import { ChatsPage } from "./ChatsPage";
 
 type ChatShellProps = {
   user: User;
@@ -54,7 +53,6 @@ type ChatShellProps = {
 
 type RouteState =
   | { view: "new" }
-  | { view: "chats" }
   | { view: "chat"; threadID: string };
 
 type ToolActivity = {
@@ -104,7 +102,6 @@ export function ChatShell({
   const [isSending, setIsSending] = useState(false);
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const toolEventsRef = useRef<ToolActivity[]>([]);
@@ -275,20 +272,6 @@ export function ChatShell({
     setRoute({ view: "new" });
   }, [clearToolEvents, onChat]);
 
-  const navigateToChats = useCallback(() => {
-    onChat();
-    navigate({ view: "chats" });
-    setRoute({ view: "chats" });
-  }, [onChat]);
-
-  const reloadThreads = useCallback(() => {
-    listThreads({ limit: 30 })
-      .then((nextThreads) => setThreads(nextThreads))
-      .catch((error: unknown) => {
-        if (error instanceof AuthExpiredError) onSessionExpired();
-      });
-  }, [onSessionExpired]);
-
   async function selectThread(threadID: string) {
     onChat();
     navigate({ view: "chat", threadID });
@@ -322,7 +305,6 @@ export function ChatShell({
       setThreads((current) =>
         current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
       );
-      setThreadMutationVersion((value) => value + 1);
       if (menuKey !== undefined) {
         setOpenThreadMenuID(null);
       }
@@ -360,7 +342,6 @@ export function ChatShell({
       setThreads((current) =>
         current.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread)),
       );
-      setThreadMutationVersion((value) => value + 1);
       setRenamingThread(null);
       setModalError("");
     } catch (error) {
@@ -376,7 +357,6 @@ export function ChatShell({
     try {
       await deleteThread(deletingThread.id);
       setThreads((current) => current.filter((thread) => thread.id !== deletingThread.id));
-      setThreadMutationVersion((value) => value + 1);
       if (activeThreadIDRef.current === deletingThread.id) {
         streamAbortRef.current?.abort();
         activeThreadIDRef.current = null;
@@ -556,13 +536,7 @@ export function ChatShell({
             </span>
             {!sidebarCollapsed && <span>New chat</span>}
           </button>
-          <SidebarPrimaryItem
-            label="Chats"
-            icon="chats"
-            collapsed={sidebarCollapsed}
-            active={route.view === "chats" && !showAdmin}
-            onClick={navigateToChats}
-          />
+          <SidebarPrimaryItem label="Chats" icon="chats" collapsed={sidebarCollapsed} />
           <SidebarPrimaryItem label="Projects" icon="projects" collapsed={sidebarCollapsed} />
           {!sidebarCollapsed && (
             <>
@@ -689,17 +663,6 @@ export function ChatShell({
       <main className="min-w-0 bg-bg">
         {showAdmin ? (
           adminPanel
-        ) : route.view === "chats" ? (
-          <ChatsPage
-            mutationVersion={threadMutationVersion}
-            onNewChat={navigateToNew}
-            onSelectThread={(threadID) => void selectThread(threadID)}
-            onRenameThread={openRenameModal}
-            onDeleteThread={openDeleteModal}
-            onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
-            onAfterBulkDelete={reloadThreads}
-            onSessionExpired={onSessionExpired}
-          />
         ) : route.view === "new" ? (
           <StartPanel
             displayName={displayName}
@@ -765,23 +728,11 @@ function routeFromLocation(): RouteState {
     const threadID = decodeURIComponent(path.slice("/chat/".length));
     if (threadID !== "") return { view: "chat", threadID };
   }
-  if (path === "/chats") return { view: "chats" };
   return { view: "new" };
 }
 
-function pathForRoute(route: RouteState): string {
-  switch (route.view) {
-    case "new":
-      return "/new";
-    case "chats":
-      return "/chats";
-    case "chat":
-      return `/chat/${encodeURIComponent(route.threadID)}`;
-  }
-}
-
 function navigate(route: RouteState) {
-  const path = pathForRoute(route);
+  const path = route.view === "new" ? "/new" : `/chat/${encodeURIComponent(route.threadID)}`;
   if (window.location.pathname !== path) {
     window.history.pushState({}, "", path);
   }
@@ -812,31 +763,20 @@ function SidebarPrimaryItem({
   icon,
   label,
   collapsed = false,
-  active = false,
-  onClick,
 }: {
   icon: SidebarIconName;
   label: string;
   collapsed?: boolean;
-  active?: boolean;
-  onClick?(): void;
 }) {
-  const className = `flex h-7 w-full items-center rounded-md px-1.5 text-left text-[#c7c5bd] ${
-    collapsed ? "justify-center" : "gap-2.5"
-  } ${active ? "bg-[#111110]" : ""} ${onClick !== undefined ? "transition-colors hover:bg-[#2a2a28]" : ""}`;
-  const content = (
-    <>
+  return (
+    <div
+      className={`flex h-7 items-center rounded-md px-1.5 text-[#c7c5bd] ${
+        collapsed ? "justify-center" : "gap-2.5"
+      }`}
+    >
       <SidebarIcon name={icon} />
       {!collapsed && <span className="truncate">{label}</span>}
-    </>
-  );
-  if (onClick === undefined) {
-    return <div className={className}>{content}</div>;
-  }
-  return (
-    <button type="button" className={className} onClick={onClick} aria-label={label}>
-      {content}
-    </button>
+    </div>
   );
 }
 
@@ -1032,6 +972,111 @@ function SidebarThreadItem({
   );
 }
 
+function ThreadActionsMenu({
+  menuKey,
+  thread,
+  className = "left-[174px]",
+  onDelete,
+  onRename,
+  onStarChange,
+}: {
+  menuKey: string;
+  thread: Thread;
+  className?: string;
+  onDelete(thread: Thread): void;
+  onRename(thread: Thread): void;
+  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
+}) {
+  return (
+    <div
+      aria-label="Chat actions"
+      className={`absolute z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
+      role="menu"
+    >
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+        role="menuitem"
+        type="button"
+        onClick={() => onStarChange(thread, !thread.starred, menuKey)}
+      >
+        <span className="w-[18px]" aria-hidden="true">
+          {thread.starred ? "★" : "☆"}
+        </span>
+        {thread.starred ? "Unstar" : "Star"}
+      </button>
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+        role="menuitem"
+        type="button"
+        onClick={() => onRename(thread)}
+      >
+        <span className="w-[18px]" aria-hidden="true">
+          ✎
+        </span>
+        Rename
+      </button>
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8] disabled:cursor-default disabled:opacity-100"
+        disabled
+        role="menuitem"
+        type="button"
+      >
+        <ProjectMenuIcon />
+        Add to project
+      </button>
+      <div className="mx-[14px] my-[5px] h-px bg-[#77736b]" role="separator" />
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#d98278]"
+        role="menuitem"
+        type="button"
+        onClick={() => onDelete(thread)}
+      >
+        <TrashMenuIcon />
+        Delete
+      </button>
+    </div>
+  );
+}
+
+function ProjectMenuIcon() {
+  return (
+    <svg className="h-[18px] w-[18px] shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      <path
+        d="M4.5 8.5h5l1.6 2h8.4v7.2c0 1.2-.7 1.8-2 1.8h-11c-1.3 0-2-.6-2-1.8V8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4.5 8.5V6.8c0-1.1.7-1.7 1.9-1.7h3.1l1.6 2h6.5c1.2 0 1.9.6 1.9 1.7v1.7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TrashMenuIcon() {
+  return (
+    <svg className="-ml-px h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      <path
+        d="M8 7.5V6.2c0-.9.6-1.4 1.5-1.4h5c.9 0 1.5.5 1.5 1.4v1.3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path d="M5.5 7.5h13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M7.2 9.5l.6 8.1c.1 1 .8 1.6 1.8 1.6h4.8c1 0 1.7-.6 1.8-1.6l.6-8.1"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M10.4 11.3v5M13.6 11.3v5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 function RenameThreadModal({
   title,
@@ -2046,6 +2091,15 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
     }
   }
 
+  async function handleOpenPreview() {
+    setError("");
+    try {
+      await openArtifact(artifact.downloadUrl);
+    } catch {
+      setError("Open failed");
+    }
+  }
+
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
       {isImage &&
@@ -2055,8 +2109,12 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
         // upward jump. With known dimensions we reserve the exact box via aspect-ratio;
         // otherwise we fall back to a min-height floor that bounds the collapse.
         (artifact.width && artifact.height ? (
-          <div
-            className="relative max-h-[28rem] w-full overflow-hidden bg-[#1f1f1d]"
+          <button
+            className="relative block max-h-[28rem] w-full cursor-zoom-in overflow-hidden bg-[#1f1f1d]"
+            onClick={handleOpenPreview}
+            type="button"
+            title={`Open ${artifact.displayFilename} in Preview`}
+            aria-label={`Open ${artifact.displayFilename} in Preview`}
             style={{ aspectRatio: `${artifact.width} / ${artifact.height}` }}
           >
             {previewUrl !== "" && (
@@ -2067,9 +2125,15 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
                 loading="lazy"
               />
             )}
-          </div>
+          </button>
         ) : (
-          <div className="min-h-[16rem] w-full bg-[#1f1f1d]">
+          <button
+            className="block min-h-[16rem] w-full cursor-zoom-in bg-[#1f1f1d]"
+            onClick={handleOpenPreview}
+            type="button"
+            title={`Open ${artifact.displayFilename} in Preview`}
+            aria-label={`Open ${artifact.displayFilename} in Preview`}
+          >
             {previewUrl !== "" && (
               <img
                 className="block max-h-[28rem] w-full object-contain"
@@ -2078,7 +2142,7 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
                 loading="lazy"
               />
             )}
-          </div>
+          </button>
         ))}
       <div className="flex items-center gap-3 px-4 py-3">
         {!isImage && (

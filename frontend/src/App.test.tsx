@@ -871,6 +871,43 @@ test("renders image artifact preview from generated artifact card", async () => 
   expect(screen.getByRole("button", { name: "Download robot.png" })).toBeInTheDocument();
 });
 
+test("clicking an image artifact preview opens it in system preview", async () => {
+  const objectURL = "blob:spark-image-preview";
+  stubURLObjectMethods(vi.fn(() => objectURL), vi.fn());
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === "/api/artifacts/art_1/download") {
+      return {
+        status: 200,
+        ok: true,
+        blob: async () => new Blob(["image-bytes"], { type: "image/png" }),
+      } as Response;
+    }
+    if (String(input) === "/api/artifacts/art_1/open" && init?.method === "POST") {
+      return new Response("", { status: 204 });
+    }
+    throw new Error(`unexpected fetch ${String(input)}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <GeneratedArtifactCard
+      artifact={{
+        id: "art_1",
+        displayFilename: "robot.png",
+        mimeType: "image/png",
+        sizeBytes: 12,
+        downloadUrl: "/api/artifacts/art_1/download",
+      }}
+    />,
+  );
+
+  fireEvent.click(await screen.findByRole("img", { name: "robot.png" }));
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/art_1/open", { method: "POST" });
+  });
+});
+
 test("renders streamed reasoning in a collapsed thinking panel", async () => {
   vi.stubGlobal(
     "fetch",
