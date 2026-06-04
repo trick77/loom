@@ -1195,12 +1195,9 @@ function ChatPanel({
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const showThinkingIndicator =
+  const showActiveThinkingPanel =
     isSending &&
     streamingText === "" &&
-    streamingReasoning === "" &&
-    streamingArtifacts.length === 0 &&
-    toolEvents.length === 0 &&
     sendError === "";
 
   const refreshScrollState = useCallback(() => {
@@ -1263,7 +1260,7 @@ function ChatPanel({
     refreshScrollState,
     scrollToLatest,
     sendError,
-    showThinkingIndicator,
+    showActiveThinkingPanel,
     streamingArtifacts.length,
     streamingReasoning,
     streamingText,
@@ -1314,9 +1311,10 @@ function ChatPanel({
                 />
               </div>
             ))}
-            {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
-            {showThinkingIndicator && <ThinkingIndicator />}
-            {streamingReasoning !== "" && <ThinkingPanel content={streamingReasoning} complete={streamingText !== ""} />}
+            {!showActiveThinkingPanel && toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
+            {showActiveThinkingPanel && (
+              <ThinkingPanel active content={streamingReasoning} complete={false} toolEvents={toolEvents} />
+            )}
             {streamingArtifacts.map((artifact) => (
               <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
             ))}
@@ -1367,20 +1365,20 @@ function ChatPanel({
   );
 }
 
-function ThinkingIndicator() {
-  return (
-    <div className="spark-thinking-indicator" role="status" aria-label="Spark is thinking">
-      <span className="spark-thinking-dot" aria-hidden="true" />
-      <span className="spark-thinking-dot" aria-hidden="true" />
-      <span className="spark-thinking-dot" aria-hidden="true" />
-    </div>
-  );
-}
-
-function ThinkingPanel({ content, complete }: { content: string; complete: boolean }) {
+function ThinkingPanel({
+  active = false,
+  content,
+  complete,
+  toolEvents = [],
+}: {
+  active?: boolean;
+  content: string;
+  complete: boolean;
+  toolEvents?: ToolActivity[];
+}) {
   const [expanded, setExpanded] = useState(false);
   const trimmed = content.trim();
-  if (trimmed === "") return null;
+  if (trimmed === "" && !active) return null;
   return (
     <div className="spark-thinking-panel">
       <button
@@ -1392,10 +1390,21 @@ function ThinkingPanel({ content, complete }: { content: string; complete: boole
       >
         <span className="spark-thinking-panel-label">
           <span className={complete ? "spark-thinking-status-complete" : "spark-thinking-status-active"} aria-hidden="true" />
-          <span>{complete ? "Thinking" : "Thinking..."}</span>
+          {active ? (
+            <span className="spark-thinking-label-active" data-text="Thinking">
+              Thinking
+            </span>
+          ) : (
+            <span>Thinking</span>
+          )}
         </span>
         <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
       </button>
+      {active && toolEvents.length > 0 && (
+        <div className="spark-thinking-tool-activity">
+          <ToolActivityPanel events={toolEvents} />
+        </div>
+      )}
       {expanded && (
         <div className="spark-thinking-panel-body">
           <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
