@@ -152,6 +152,7 @@ export async function listThreads(params: {
   projectId?: string | null;
   starred?: boolean;
   archived?: boolean;
+  search?: string;
   limit?: number;
 } = {}): Promise<Thread[]> {
   const query = new URLSearchParams();
@@ -163,6 +164,9 @@ export async function listThreads(params: {
   }
   if (params.archived !== undefined) {
     query.set("archived", String(params.archived));
+  }
+  if (params.search !== undefined && params.search !== "") {
+    query.set("search", params.search);
   }
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
@@ -213,6 +217,15 @@ export async function deleteThread(threadId: string): Promise<void> {
   if (!response.ok) {
     throw new Error("failed to delete thread");
   }
+}
+
+export async function bulkDeleteThreads(threadIds: string[]): Promise<{ deleted: number }> {
+  const response = await fetch("/api/threads:delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ threadIds }),
+  });
+  return expectJSON<{ deleted: number }>(response, "failed to delete threads");
 }
 
 export async function stopMessage(threadId: string): Promise<void> {
