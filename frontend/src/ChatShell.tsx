@@ -1141,7 +1141,7 @@ function ModalShell({
   }, [onCancel]);
   return (
     <div
-      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] px-4"
+      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] pr-4 pl-[378px]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
