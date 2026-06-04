@@ -453,7 +453,7 @@ export function ChatShell({
 
   return (
     <div className="grid h-screen grid-cols-[362px_1fr] bg-bg font-sans text-ink">
-      <aside className="spark-sidebar-text flex min-h-0 flex-col border-r border-[#343432] bg-panel text-[#c7c5bd]">
+      <aside className="spark-sidebar-text flex min-h-0 flex-col border-r border-[#343432] bg-panel pl-2 text-[#c7c5bd]">
         <div className="flex h-11 items-center justify-between px-3">
           <div className="spark-wordmark font-serif font-medium text-[#f4f0e8]">Spark</div>
           <div className="flex items-center gap-3 text-[#aaa79e]" aria-hidden="true">
@@ -557,7 +557,7 @@ export function ChatShell({
                 </div>
               </form>
             )}
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {projects.map((project) => (
                 <div key={project.id} className="truncate rounded-md px-1.5 py-1.5 text-xs">
                   {project.name}
@@ -768,7 +768,7 @@ function SidebarSection({
   return (
     <section className="mt-5">
       <div className="spark-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {threads.map((thread) => (
           <SidebarThreadItem
             key={thread.id}
