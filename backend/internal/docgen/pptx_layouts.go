@@ -5,11 +5,8 @@ import (
 	"strings"
 )
 
-// EMU helpers: a 16:9 slide is 12192000 x 6858000 EMU.
-const (
-	slideWidthEMU  = 12192000
-	slideHeightEMU = 6858000
-)
+// EMU helper: a 16:9 slide is 12192000 EMU wide.
+const slideWidthEMU = 12192000
 
 // solidRect renders a filled rectangle shape (used for backgrounds and accent bars).
 func solidRect(id int, name string, x, y, cx, cy int, hex string) string {
@@ -97,7 +94,7 @@ func bulletsLayout(s pptxSlide) string {
 func titleLayout(s pptxSlide) string {
 	band := solidRect(2, "Title Band", 0, 2300000, slideWidthEMU, 1500000, Theme.AccentHex)
 	title := textBox(3, "Title", 685800, 2450000, 10820400, 1000000,
-		styledRun(s.Title, 5400, Theme.WhiteHex, true, "ctr"))
+		styledRun(s.Title, 5400, textOnHex(Theme.AccentHex), true, "ctr"))
 	body := band + title
 	if s.Subtitle != "" {
 		body += textBox(4, "Subtitle", 685800, 4000000, 10820400, 700000,
@@ -109,7 +106,7 @@ func titleLayout(s pptxSlide) string {
 // sectionLayout: full-bleed accent background with a large light, centered title.
 func sectionLayout(s pptxSlide) string {
 	title := textBox(2, "Section Title", 685800, 2900000, 10820400, 1100000,
-		styledRun(s.Title, 4800, Theme.CreamHex, true, "ctr"))
+		styledRun(s.Title, 4800, textOnHex(Theme.AccentHex), true, "ctr"))
 	return slideEnvelope(Theme.AccentHex, title)
 }
 
@@ -193,7 +190,7 @@ func tableFrame(id int, rows [][]string) string {
 		textHex := Theme.InkHex
 		if header {
 			fill = Theme.AccentHex
-			textHex = Theme.WhiteHex
+			textHex = textOnHex(Theme.AccentHex)
 		} else if ri%2 == 0 {
 			fill = "E7E2D6" // subtle zebra band
 		}

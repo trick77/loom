@@ -47,7 +47,7 @@ func newMaroto(title, subtitle string) (core.Maroto, error) {
 	m := maroto.New(cfg)
 
 	band := col.New(12).WithStyle(&props.Cell{BackgroundColor: rgbColor(Theme.Accent)})
-	band.Add(text.New(title, props.Text{Size: 22, Style: fontstyle.Bold, Color: rgbColor(Theme.White), Align: align.Left, Top: 4, Left: 4}))
+	band.Add(text.New(title, props.Text{Size: 22, Style: fontstyle.Bold, Color: rgbColor(TextOn(Theme.Accent)), Align: align.Left, Top: 4, Left: 4}))
 	m.AddRow(20, band)
 	if strings.TrimSpace(subtitle) != "" {
 		m.AddRow(8, text.NewCol(12, subtitle, props.Text{Size: 11, Color: rgbColor(Theme.Muted), Top: 1}))

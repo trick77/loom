@@ -33,7 +33,8 @@ func (g PPTXGenerator) Schema() ToolSchema {
 		Description: "Create a styled PPTX presentation. Open with a 'title' slide, use 'section' " +
 			"dividers between parts, choose 'table' for tabular data, 'two-column' to compare, " +
 			"'big-number' to highlight a stat, and 'quote' for a pull quote. Vary layouts; do not " +
-			"put everything in plain bullets.",
+			"put everything in plain bullets. Every slide needs a title (used as the heading), except " +
+			"the 'quote' layout, which displays only the quote and attribution.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -279,7 +280,6 @@ func pptxPresentationXML(slideCount int) string {
   <p:notesSz cx="6858000" cy="9144000"/>
 </p:presentation>`
 }
-
 
 func pptxAppXML(slideCount int) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

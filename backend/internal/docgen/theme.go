@@ -1,5 +1,7 @@
 package docgen
 
+import "fmt"
+
 // RGB is an 8-bit-per-channel color, used by the PDF generator (maroto wants
 // numeric channels) while the OOXML generators use the *Hex strings.
 type RGB struct{ R, G, B int }
@@ -71,3 +73,9 @@ func TextOn(bg RGB) RGB {
 	}
 	return Theme.Ink
 }
+
+// hexOf renders an RGB value as a 6-digit OOXML hex string.
+func hexOf(c RGB) string { return fmt.Sprintf("%02X%02X%02X", c.R, c.G, c.B) }
+
+// textOnHex returns the legible text color (as OOXML hex) for a hex background.
+func textOnHex(bgHex string) string { return hexOf(TextOn(hexToRGB(bgHex))) }

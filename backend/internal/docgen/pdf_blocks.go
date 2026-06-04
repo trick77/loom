@@ -82,6 +82,21 @@ func renderBlock(m core.Maroto, b pdfBlock) {
 			m.AddRow(6, text.NewCol(12, "•  "+it, props.Text{Size: 11, Color: rgbColor(Theme.Ink), Left: 4, Top: 1}))
 		}
 	case "table":
+		// Column count is the widest row, so columns align even when rows are ragged
+		// (matches the PPTX table renderer).
+		cols := 0
+		for _, r := range b.Rows {
+			if len(r) > cols {
+				cols = len(r)
+			}
+		}
+		if cols == 0 {
+			break
+		}
+		span := 12 / cols
+		if span == 0 {
+			span = 1
+		}
 		for ri, r := range b.Rows {
 			header := ri == 0
 			cellStyle := &props.Cell{BackgroundColor: rgbColor(Theme.Cream)}
@@ -89,23 +104,20 @@ func renderBlock(m core.Maroto, b pdfBlock) {
 			style := fontstyle.Normal
 			if header {
 				cellStyle = &props.Cell{BackgroundColor: rgbColor(Theme.Accent)}
-				textColor = rgbColor(Theme.White)
+				textColor = rgbColor(TextOn(Theme.Accent))
 				style = fontstyle.Bold
-			} else if ri%2 == 1 {
+			} else if ri%2 == 0 {
 				cellStyle = &props.Cell{BackgroundColor: &props.Color{Red: 231, Green: 226, Blue: 214}}
 			}
-			cols := make([]core.Col, 0, len(r))
-			span := 12
-			if len(r) > 0 {
-				span = 12 / len(r)
-				if span == 0 {
-					span = 1
+			cells := make([]core.Col, 0, cols)
+			for ci := 0; ci < cols; ci++ {
+				cell := ""
+				if ci < len(r) {
+					cell = r[ci]
 				}
+				cells = append(cells, text.NewCol(span, cell, props.Text{Size: 10, Style: style, Color: textColor, Top: 1, Left: 2}).WithStyle(cellStyle))
 			}
-			for _, cell := range r {
-				cols = append(cols, text.NewCol(span, cell, props.Text{Size: 10, Style: style, Color: textColor, Top: 1, Left: 2}).WithStyle(cellStyle))
-			}
-			m.AddRow(8, cols...)
+			m.AddRow(8, cells...)
 		}
 	case "columns":
 		m.AddRow(6,
