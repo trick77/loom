@@ -19,7 +19,6 @@ import {
   createThread,
   deleteThread,
   downloadArtifact,
-  openArtifact,
   updateThread,
   getMcpStatus,
   getThread,
@@ -2003,6 +2002,7 @@ export function buildImageStats(artifact: Artifact): string | null {
 export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const isImage = artifact.mimeType.startsWith("image/");
   const imageStats = isImage ? buildImageStats(artifact) : null;
 
@@ -2047,14 +2047,20 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
     }
   }
 
-  async function handleOpenPreview() {
+  function handleOpenPreview() {
+    if (previewUrl === "") return;
     setError("");
-    try {
-      await openArtifact(artifact.downloadUrl);
-    } catch {
-      setError("Open failed");
-    }
+    setLightboxOpen(true);
   }
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setLightboxOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightboxOpen]);
 
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
@@ -2069,8 +2075,8 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
             className="relative block max-h-[28rem] w-full cursor-zoom-in overflow-hidden bg-[#1f1f1d]"
             onClick={handleOpenPreview}
             type="button"
-            title={`Open ${artifact.displayFilename} in Preview`}
-            aria-label={`Open ${artifact.displayFilename} in Preview`}
+            title={`Preview ${artifact.displayFilename}`}
+            aria-label={`Preview ${artifact.displayFilename}`}
             style={{ aspectRatio: `${artifact.width} / ${artifact.height}` }}
           >
             {previewUrl !== "" && (
@@ -2087,8 +2093,8 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
             className="block min-h-[16rem] w-full cursor-zoom-in bg-[#1f1f1d]"
             onClick={handleOpenPreview}
             type="button"
-            title={`Open ${artifact.displayFilename} in Preview`}
-            aria-label={`Open ${artifact.displayFilename} in Preview`}
+            title={`Preview ${artifact.displayFilename}`}
+            aria-label={`Preview ${artifact.displayFilename}`}
           >
             {previewUrl !== "" && (
               <img
@@ -2126,6 +2132,31 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           <DownloadIcon />
         </button>
       </div>
+      {lightboxOpen && previewUrl !== "" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+          onClick={() => setLightboxOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview ${artifact.displayFilename}`}
+        >
+          <button
+            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-black/40 text-[#f3f0e8] transition-colors hover:bg-black/60"
+            onClick={() => setLightboxOpen(false)}
+            type="button"
+            title="Close preview"
+            aria-label="Close preview"
+          >
+            <CloseIcon />
+          </button>
+          <img
+            className="max-h-full max-w-full object-contain"
+            src={previewUrl}
+            alt={artifact.displayFilename}
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -2360,6 +2391,19 @@ function DownloadIcon() {
       />
       <path
         d="M5 18.5h14"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 6 18 18M18 6 6 18"
         stroke="currentColor"
         strokeWidth="1.9"
         strokeLinecap="round"

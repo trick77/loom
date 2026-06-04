@@ -871,19 +871,16 @@ test("renders image artifact preview from generated artifact card", async () => 
   expect(screen.getByRole("button", { name: "Download robot.png" })).toBeInTheDocument();
 });
 
-test("clicking an image artifact preview opens it in system preview", async () => {
+test("clicking an image artifact opens a lightbox preview in the browser", async () => {
   const objectURL = "blob:spark-image-preview";
   stubURLObjectMethods(vi.fn(() => objectURL), vi.fn());
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     if (String(input) === "/api/artifacts/art_1/download") {
       return {
         status: 200,
         ok: true,
         blob: async () => new Blob(["image-bytes"], { type: "image/png" }),
       } as Response;
-    }
-    if (String(input) === "/api/artifacts/art_1/open" && init?.method === "POST") {
-      return new Response("", { status: 204 });
     }
     throw new Error(`unexpected fetch ${String(input)}`);
   });
@@ -903,8 +900,29 @@ test("clicking an image artifact preview opens it in system preview", async () =
 
   fireEvent.click(await screen.findByRole("img", { name: "robot.png" }));
 
+  // The lightbox overlay appears, showing the already-downloaded blob — no host open call.
+  const dialog = await screen.findByRole("dialog", { name: "Preview robot.png" });
+  expect(within(dialog).getByRole("img", { name: "robot.png" })).toHaveAttribute(
+    "src",
+    objectURL,
+  );
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    "/api/artifacts/art_1/open",
+    expect.anything(),
+  );
+
+  // The close button dismisses the lightbox.
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close preview" }));
   await waitFor(() => {
-    expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/art_1/open", { method: "POST" });
+    expect(screen.queryByRole("dialog", { name: "Preview robot.png" })).not.toBeInTheDocument();
+  });
+
+  // Escape also closes it.
+  fireEvent.click(screen.getByRole("img", { name: "robot.png" }));
+  await screen.findByRole("dialog", { name: "Preview robot.png" });
+  fireEvent.keyDown(window, { key: "Escape" });
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Preview robot.png" })).not.toBeInTheDocument();
   });
 });
 

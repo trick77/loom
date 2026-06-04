@@ -168,64 +168,6 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 	}
 }
 
-func TestOpenImageArtifactUsesSystemPreview(t *testing.T) {
-	usersDir := t.TempDir()
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	artifacts := artifact.NewStore(db)
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO threads (id, user_id, title)
-VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
-		t.Fatal(err)
-	}
-	imagePath := filepath.Join(usersDir, testUser.ID, "files", "outputs", "robot.png")
-	if err := os.MkdirAll(filepath.Dir(imagePath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(imagePath, []byte("png"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	created, err := artifacts.Create(context.Background(), artifact.CreateInput{
-		UserID:          testUser.ID,
-		ThreadID:        "thread_1",
-		DisplayFilename: "robot.png",
-		VolumeRelPath:   "files/outputs/robot.png",
-		MIMEType:        "image/png",
-		SizeBytes:       3,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var opened string
-	server := newAuthenticatedChatServer(t, Deps{
-		Artifacts: artifacts,
-		UsersDir:  usersDir,
-		ArtifactOpener: artifactOpenerFunc(func(_ context.Context, path string) error {
-			opened = path
-			return nil
-		}),
-	})
-	req := authenticatedRequest(http.MethodPost, "/api/artifacts/"+created.ID+"/open", "")
-	rec := httptest.NewRecorder()
-
-	server.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
-	}
-	if opened != imagePath {
-		t.Fatalf("opened = %q, want %q", opened, imagePath)
-	}
-}
-
 func TestAdminUsersRequiresAdmin(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
 	srv := New(Deps{
