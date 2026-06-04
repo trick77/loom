@@ -251,17 +251,6 @@ export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
   return response.blob();
 }
 
-export async function openArtifact(downloadUrl: string): Promise<void> {
-  const openUrl = artifactActionUrl(downloadUrl, "open");
-  const response = await fetch(openUrl, { method: "POST" });
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to open artifact");
-  }
-}
-
 export async function streamMessage(
   threadId: string,
   content: string,
@@ -301,18 +290,6 @@ export async function streamMessage(
   } finally {
     reader.releaseLock();
   }
-}
-
-function artifactActionUrl(downloadUrl: string, action: string): string {
-  const url = new URL(downloadUrl, window.location.origin);
-  if (!url.pathname.endsWith("/download")) {
-    throw new Error("invalid artifact download URL");
-  }
-  url.pathname = `${url.pathname.slice(0, -"/download".length)}/${action}`;
-  if (url.origin === window.location.origin) {
-    return `${url.pathname}${url.search}`;
-  }
-  return url.toString();
 }
 
 async function readStreamError(response: Response): Promise<string> {
