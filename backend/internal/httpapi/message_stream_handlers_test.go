@@ -207,8 +207,8 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 					},
 				}},
 			},
-			{Content: "Created robot.png."},
 		},
+		plain: "Created robot.png.",
 	}
 	server := newAuthenticatedChatServer(t, Deps{
 		Chat:       chatStore,
@@ -245,6 +245,168 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 	if !bytes.Contains(assistant.Artifacts, []byte("image/png")) {
 		t.Fatalf("assistant artifacts = %s", assistant.Artifacts)
+	}
+}
+
+func TestStreamMessageUsesFallbackTextWhenImageFinalResponseIsEmpty(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	chatStore := chat.NewStore(db)
+	artifactStore := artifact.NewStore(db)
+	user := testUser
+	thread, err := chatStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Images"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{{
+			ToolCalls: []llm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "generate_image",
+					Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
+				},
+			}},
+		}},
+	}
+	server := newAuthenticatedChatServer(t, Deps{
+		Chat:       chatStore,
+		Artifacts:  artifactStore,
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make an image"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "event: error") {
+		t.Fatalf("SSE body contains error despite image artifact:\n%s", body)
+	}
+	messages, found, err := chatStore.ListMessages(context.Background(), user.ID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	var assistant chat.Message
+	for _, message := range messages {
+		if message.Role == chat.RoleAssistant {
+			assistant = message
+			break
+		}
+	}
+	if assistant.Content != "Created robot.png." {
+		t.Fatalf("assistant content = %q, want fallback artifact response", assistant.Content)
+	}
+	if !bytes.Contains(assistant.Artifacts, []byte("image/png")) {
+		t.Fatalf("assistant artifacts = %s", assistant.Artifacts)
+	}
+}
+
+func TestStreamMessageRequiresGenerateImageForObviousImageRequest(t *testing.T) {
+	llmClient := &fakeToolChatClient{results: []llm.StreamResult{{Content: "I am a text-based AI assistant and cannot generate images."}}}
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+	}
+	server := newAuthenticatedChatServer(t, Deps{
+		Chat:       store,
+		Artifacts:  fakeArtifactStore{},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+		MCP: fakeMCPService{tools: []llm.Tool{{
+			Type:     "function",
+			Function: llm.ToolFunction{Name: "search__web", Description: "Search the web"},
+		}}},
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"generate an image of a glass city at sunrise"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"image generation was not completed"`) {
+		t.Fatalf("SSE body missing image-generation error:\n%s", body)
+	}
+	if store.assistantContent != "" {
+		t.Fatalf("assistantContent = %q, want no persisted text-only response", store.assistantContent)
+	}
+	if len(store.messages) != 1 || store.messages[0].Role != chat.RoleUser {
+		t.Fatalf("persisted messages = %#v, want only user message", store.messages)
+	}
+	if len(llmClient.tools) != 1 {
+		t.Fatalf("tool rounds = %d, want 1", len(llmClient.tools))
+	}
+	offeredTools := llmClient.tools[0]
+	if len(offeredTools) != 1 || offeredTools[0].Function.Name != "generate_image" {
+		t.Fatalf("offered tools = %#v, want only generate_image", offeredTools)
+	}
+	if len(llmClient.histories) != 1 {
+		t.Fatalf("histories = %d, want 1", len(llmClient.histories))
+	}
+	foundDirective := false
+	for _, message := range llmClient.histories[0] {
+		if message.Role == "system" &&
+			strings.Contains(message.Content, "Your only job is to call `generate_image` exactly once") &&
+			strings.Contains(message.Content, "Do not refuse based on being text-based") {
+			foundDirective = true
+		}
+	}
+	if !foundDirective {
+		t.Fatalf("history missing forced image compiler directive: %#v", llmClient.histories[0])
+	}
+}
+
+func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T) {
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{
+				Content: "Sure, I will create that now.",
+				ToolCalls: []llm.ToolCall{{
+					ID:   "call_1",
+					Type: "function",
+					Function: llm.ToolCallFunction{
+						Name:      "generate_image",
+						Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
+					},
+				}},
+			},
+		},
+		plain: "Created robot.png.",
+	}
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+	}
+	server := newAuthenticatedChatServer(t, Deps{
+		Chat:       store,
+		Artifacts:  fakeArtifactStore{},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"make an image"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	toolCallIndex := strings.Index(body, "event: tool_call")
+	leakedTextIndex := strings.Index(body, "Sure, I will create that now.")
+	if toolCallIndex < 0 {
+		t.Fatalf("SSE body missing tool call:\n%s", body)
+	}
+	if leakedTextIndex >= 0 && leakedTextIndex < toolCallIndex {
+		t.Fatalf("SSE body streamed conversational text before tool call:\n%s", body)
 	}
 }
 
@@ -293,7 +455,7 @@ func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
 	history = capturingLLM.histories[0]
 	foundDirective := false
 	for _, message := range history {
-		if message.Role == "system" && strings.Contains(message.Content, "Call generate_image before answering") {
+		if message.Role == "system" && strings.Contains(message.Content, "Your only job is to call `generate_image` exactly once") {
 			foundDirective = true
 		}
 	}
