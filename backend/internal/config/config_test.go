@@ -106,8 +106,8 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 	if cfg.BFLModel != "flux-2-klein-4b" {
 		t.Fatalf("BFLModel = %q", cfg.BFLModel)
 	}
-	if cfg.BFLPollTimeout != 3*time.Minute {
-		t.Fatalf("BFLPollTimeout = %s, want 3m0s", cfg.BFLPollTimeout)
+	if cfg.BFLPollTimeout != 1*time.Minute {
+		t.Fatalf("BFLPollTimeout = %s, want 1m0s", cfg.BFLPollTimeout)
 	}
 }
 

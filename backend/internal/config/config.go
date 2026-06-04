@@ -10,7 +10,7 @@ import (
 )
 
 // Keep in sync with imagegen's direct-client fallback default.
-const defaultBFLPollTimeout = 3 * time.Minute
+const defaultBFLPollTimeout = 1 * time.Minute
 
 // AuthMode selects how Spark signs users in.
 type AuthMode string

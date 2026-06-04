@@ -16,7 +16,7 @@ import (
 const (
 	defaultBFLPollInterval = 750 * time.Millisecond
 	// Keep in sync with config's runtime default.
-	defaultBFLPollTimeout  = 3 * time.Minute
+	defaultBFLPollTimeout  = 1 * time.Minute
 	maxDownloadedImageSize = 25 << 20
 )
 
