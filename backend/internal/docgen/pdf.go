@@ -5,76 +5,121 @@ import (
 	"io"
 	"strings"
 
-	"github.com/signintech/gopdf"
+	"github.com/johnfercher/maroto/v2"
+	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/text"
+	"github.com/johnfercher/maroto/v2/pkg/config"
+	"github.com/johnfercher/maroto/v2/pkg/consts/align"
+	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
+	"github.com/johnfercher/maroto/v2/pkg/core"
+	"github.com/johnfercher/maroto/v2/pkg/props"
+	"github.com/johnfercher/maroto/v2/pkg/repository"
 	"github.com/trick77/spark/internal/artifact"
+	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gobolditalic"
+	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/gofont/goregular"
 )
+
+const pdfFontFamily = "spark"
 
 type PDFGenerator struct{}
 
 func (g PDFGenerator) ToolName() string { return "create_pdf_file" }
 
+func rgbColor(c RGB) *props.Color { return &props.Color{Red: c.R, Green: c.G, Blue: c.B} }
+
+// newMaroto builds a maroto instance with the Spark fonts and an accent header band.
+func newMaroto(title, subtitle string) (core.Maroto, error) {
+	fonts, err := repository.New().
+		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Normal, goregular.TTF).
+		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Bold, gobold.TTF).
+		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Italic, goitalic.TTF).
+		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.BoldItalic, gobolditalic.TTF).
+		Load()
+	if err != nil {
+		return nil, err
+	}
+	cfg := config.NewBuilder().
+		WithCustomFonts(fonts).
+		WithDefaultFont(&props.Font{Family: pdfFontFamily}).
+		Build()
+	m := maroto.New(cfg)
+
+	band := col.New(12).WithStyle(&props.Cell{BackgroundColor: rgbColor(Theme.Accent)})
+	band.Add(text.New(title, props.Text{Size: 22, Style: fontstyle.Bold, Color: rgbColor(Theme.White), Align: align.Left, Top: 4, Left: 4}))
+	m.AddRow(20, band)
+	if strings.TrimSpace(subtitle) != "" {
+		m.AddRow(8, text.NewCol(12, subtitle, props.Text{Size: 11, Color: rgbColor(Theme.Muted), Top: 1}))
+	}
+	m.AddRow(6, text.NewCol(12, "")) // spacer
+	return m, nil
+}
+
+func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta, error) {
+	title, _ := req.Payload["title"].(string)
+	blocks := parseBlocks(req.Payload)
+	content, _ := req.Payload["content"].(string)
+	if len(blocks) == 0 && strings.TrimSpace(content) == "" {
+		return GeneratedMeta{}, errors.New("content or blocks are required")
+	}
+	if len(blocks) == 0 {
+		blocks = blocksFromMarkdown(content)
+	}
+	subtitle, _ := req.Payload["subtitle"].(string)
+	if strings.TrimSpace(title) == "" {
+		title = "Document"
+	}
+	m, err := newMaroto(title, subtitle)
+	if err != nil {
+		return GeneratedMeta{}, err
+	}
+	for _, b := range blocks {
+		renderBlock(m, b)
+	}
+	doc, err := m.Generate()
+	if err != nil {
+		return GeneratedMeta{}, err
+	}
+	if _, err := w.Write(doc.GetBytes()); err != nil {
+		return GeneratedMeta{}, err
+	}
+	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "pdf", MIMEType: artifact.MIMEType("pdf")}, nil
+}
+
 func (g PDFGenerator) Schema() ToolSchema {
 	return ToolSchema{
-		Name:        g.ToolName(),
-		Description: "Create a simple PDF from Markdown or plain text content.",
+		Name: g.ToolName(),
+		Description: "Create a styled PDF report. Prefer the structured 'blocks' array (heading, " +
+			"paragraph, bullets, table, columns, callout) over a flat text string: use headings to " +
+			"structure sections, tables for tabular data, and callouts to emphasize key points. " +
+			"'content' is accepted as a simple Markdown fallback.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"filename": map[string]any{"type": "string"},
 				"title":    map[string]any{"type": "string"},
-				"content":  map[string]any{"type": "string"},
+				"subtitle": map[string]any{"type": "string"},
+				"content":  map[string]any{"type": "string", "description": "Markdown fallback when blocks is omitted."},
+				"blocks": map[string]any{
+					"type": "array",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"type":  map[string]any{"type": "string", "enum": []string{"heading", "paragraph", "bullets", "table", "columns", "callout"}},
+							"level": map[string]any{"type": "integer"},
+							"text":  map[string]any{"type": "string"},
+							"items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"rows":  map[string]any{"type": "array", "items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
+							"left":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"right": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						},
+						"required": []string{"type"},
+					},
+				},
 			},
-			"required":             []string{"filename", "content"},
+			"required":             []string{"filename"},
 			"additionalProperties": false,
 		},
 	}
-}
-
-func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta, error) {
-	content, ok := req.Payload["content"].(string)
-	if !ok || strings.TrimSpace(content) == "" {
-		return GeneratedMeta{}, errors.New("content is required")
-	}
-	pdf := gopdf.GoPdf{}
-	pdf.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4, Unit: gopdf.UnitMM})
-	if err := pdf.AddTTFFontData("goregular", goregular.TTF); err != nil {
-		return GeneratedMeta{}, err
-	}
-	pdf.AddPage()
-	pdf.SetXY(18, 20)
-	if title, ok := req.Payload["title"].(string); ok && strings.TrimSpace(title) != "" {
-		if err := pdf.SetFont("goregular", "", 18); err != nil {
-			return GeneratedMeta{}, err
-		}
-		if err := pdf.Cell(nil, strings.TrimSpace(title)); err != nil {
-			return GeneratedMeta{}, err
-		}
-		pdf.Br(10)
-	}
-	if err := pdf.SetFont("goregular", "", 11); err != nil {
-		return GeneratedMeta{}, err
-	}
-	for _, line := range strings.Split(content, "\n") {
-		if strings.HasPrefix(line, "# ") {
-			if err := pdf.SetFont("goregular", "", 16); err != nil {
-				return GeneratedMeta{}, err
-			}
-			if err := pdf.Cell(nil, strings.TrimSpace(strings.TrimPrefix(line, "# "))); err != nil {
-				return GeneratedMeta{}, err
-			}
-			if err := pdf.SetFont("goregular", "", 11); err != nil {
-				return GeneratedMeta{}, err
-			}
-		} else if strings.TrimSpace(line) != "" {
-			if err := pdf.Cell(nil, strings.TrimSpace(line)); err != nil {
-				return GeneratedMeta{}, err
-			}
-		}
-		pdf.Br(7)
-	}
-	if _, err := pdf.WriteTo(w); err != nil {
-		return GeneratedMeta{}, err
-	}
-	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "pdf", MIMEType: artifact.MIMEType("pdf")}, nil
 }
