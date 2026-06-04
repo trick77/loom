@@ -30,7 +30,7 @@ case "$*" in
     sleep 1
     printf '%s\n' down-done >> "$LOG_FILE"
     ;;
-  "compose -f compose.dev.yaml up")
+  "compose -f compose.dev.yaml up --remove-orphans")
     printf '%s\n' up-start >> "$LOG_FILE"
     ;;
   *)

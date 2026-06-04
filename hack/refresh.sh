@@ -40,4 +40,4 @@ if [ "$down_status" -ne 0 ]; then
   exit "$down_status"
 fi
 
-exec docker compose -f compose.dev.yaml up
+exec docker compose -f compose.dev.yaml up --remove-orphans
