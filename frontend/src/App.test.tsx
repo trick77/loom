@@ -2,14 +2,30 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
+import { GeneratedArtifactCard } from "./ChatShell";
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
+let restoreURLObjectMethods: (() => void) | null = null;
+
 afterEach(() => {
+  restoreURLObjectMethods?.();
+  restoreURLObjectMethods = null;
   vi.unstubAllGlobals();
 });
+
+function stubURLObjectMethods(createObjectURL: (blob: Blob | MediaSource) => string, revokeObjectURL: (url: string) => void) {
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+  restoreURLObjectMethods = () => {
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+  };
+}
 
 test("renders signed-out screen when /api/me returns 401", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
@@ -816,34 +832,42 @@ test("renders artifact card from historical assistant message", async () => {
   expect(screen.getByRole("button", { name: "Download notes.md" })).toBeInTheDocument();
 });
 
-test("renders image artifact preview from historical assistant message", async () => {
+test("renders image artifact preview from generated artifact card", async () => {
+  const objectURL = "blob:spark-image-preview";
+  const createObjectURL = vi.fn(() => objectURL);
+  const revokeObjectURL = vi.fn();
+  stubURLObjectMethods(createObjectURL, revokeObjectURL);
   vi.stubGlobal(
     "fetch",
-    chatThreadFetch(null, [
-      {
-        id: "m1",
-        role: "assistant",
-        content: "Created robot.png.",
-        artifacts: [
-          {
-            id: "art_1",
-            displayFilename: "robot.png",
-            mimeType: "image/png",
-            sizeBytes: 12,
-            downloadUrl: "/api/artifacts/art_1/download",
-          },
-        ],
-      },
-    ]),
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/artifacts/art_1/download") {
+        return {
+          status: 200,
+          ok: true,
+          blob: async () => new Blob(["image-bytes"], { type: "image/png" }),
+        } as Response;
+      }
+      throw new Error(`unexpected fetch ${String(input)}`);
+    }),
   );
 
-  render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  render(
+    <GeneratedArtifactCard
+      artifact={{
+        id: "art_1",
+        displayFilename: "robot.png",
+        mimeType: "image/png",
+        sizeBytes: 12,
+        downloadUrl: "/api/artifacts/art_1/download",
+      }}
+    />,
+  );
 
-  expect(await screen.findByRole("img", { name: "robot.png" })).toHaveAttribute(
+  expect(await screen.findByRole("img", { name: "robot.png" }, { timeout: 3000 })).toHaveAttribute(
     "src",
-    "/api/artifacts/art_1/download",
+    objectURL,
   );
+  expect(createObjectURL).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("button", { name: "Download robot.png" })).toBeInTheDocument();
 });
 
