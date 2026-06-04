@@ -5,7 +5,7 @@
 # placeholder satisfies //go:embed all:dist, so the binary compiles and serves a
 # stub UI on :8080 — the real UI runs separately via Vite/HMR:
 #
-#   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build
+#   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build --remove-orphans
 #   cd frontend && npm run dev        # real UI with hot-reload on http://localhost:5173
 #
 # The full-stack image with the real embedded UI stays in backend/Containerfile

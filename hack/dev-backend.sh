@@ -24,4 +24,4 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
-exec docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build "$@"
+exec docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build --remove-orphans "$@"

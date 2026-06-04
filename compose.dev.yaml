@@ -1,6 +1,6 @@
 # Local development: single embedded binary, dev auth (no authentik), host networking.
 #
-#   docker compose -f compose.dev.yaml up --build      # start (UI on http://localhost:8080)
+#   docker compose -f compose.dev.yaml up --build --remove-orphans  # start (UI on http://localhost:8080)
 #   docker compose -f compose.dev.yaml down            # stop
 #
 # Auto-signs in as a fixed "dev" admin user. The dev-auth guard requires a loopback
