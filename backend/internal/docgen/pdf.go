@@ -70,6 +70,15 @@ func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta,
 	if strings.TrimSpace(title) == "" {
 		title = "Document"
 	}
+	// gofpdf (via maroto) indexes a 65536-entry glyph-width table by rune and
+	// panics on any code point outside the Basic Multilingual Plane. The bundled
+	// Go fonts carry no glyphs for those runes anyway, so strip them before they
+	// reach the renderer. See sanitizeForPDF.
+	title = sanitizeForPDF(title)
+	subtitle = sanitizeForPDF(subtitle)
+	for i := range blocks {
+		blocks[i] = sanitizeBlock(blocks[i])
+	}
 	m, err := newMaroto(title, subtitle)
 	if err != nil {
 		return GeneratedMeta{}, err
