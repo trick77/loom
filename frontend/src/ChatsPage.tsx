@@ -195,7 +195,7 @@ export function ChatsPage({
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Search chats…"
             aria-label="Search chats"
-            className="spark-control-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
+            className="spark-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
           />
         </div>
 
@@ -341,7 +341,7 @@ function ChatRow({
       onPointerEnter={() => onHoverChange(true)}
       onPointerLeave={() => onHoverChange(false)}
     >
-      <div className="flex h-[49px] items-center gap-3">
+      <div className="flex h-[49px] items-center gap-3 rounded-md px-1.5 transition-colors hover:bg-[#2a2a28]">
         {selectMode && (
           <button
             type="button"
