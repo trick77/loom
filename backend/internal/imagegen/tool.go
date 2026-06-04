@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 )
 
 type Tool struct {
@@ -27,6 +28,9 @@ type ToolMeta struct {
 	Provider        string
 	Model           string
 	RequestID       string
+	Width           int
+	Height          int
+	DurationMs      int64
 }
 
 type ToolSchema struct {
@@ -89,6 +93,7 @@ func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolM
 	if t.provider == nil {
 		return ToolMeta{}, fmt.Errorf("image provider is not configured")
 	}
+	start := time.Now()
 	result, err := t.provider.Generate(ctx, GenerateRequest{
 		Prompt:          req.Prompt,
 		Filename:        req.Filename,
@@ -101,6 +106,7 @@ func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolM
 	if err != nil {
 		return ToolMeta{}, err
 	}
+	durationMs := time.Since(start).Milliseconds()
 	if _, err := w.Write(result.Bytes); err != nil {
 		return ToolMeta{}, err
 	}
@@ -111,5 +117,8 @@ func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolM
 		Provider:        result.Provider,
 		Model:           result.Model,
 		RequestID:       result.RequestID,
+		Width:           result.Width,
+		Height:          result.Height,
+		DurationMs:      durationMs,
 	}, nil
 }

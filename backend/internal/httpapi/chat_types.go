@@ -65,4 +65,9 @@ type artifactResponse struct {
 	SizeBytes       int64   `json:"sizeBytes"`
 	ProjectID       *string `json:"projectId,omitempty"`
 	DownloadURL     string  `json:"downloadUrl"`
+	Model           string  `json:"model,omitempty"`
+	Provider        string  `json:"provider,omitempty"`
+	Width           int     `json:"width,omitempty"`
+	Height          int     `json:"height,omitempty"`
+	DurationMs      int64   `json:"durationMs,omitempty"`
 }

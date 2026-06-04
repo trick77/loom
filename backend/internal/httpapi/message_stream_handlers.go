@@ -491,6 +491,11 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 		SizeBytes:       created.SizeBytes,
 		ProjectID:       created.ProjectID,
 		DownloadURL:     created.DownloadURL,
+		Model:           meta.Model,
+		Provider:        meta.Provider,
+		Width:           meta.Width,
+		Height:          meta.Height,
+		DurationMs:      meta.DurationMs,
 	}
 	_ = sendSSEJSON(stream, "artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true

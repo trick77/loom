@@ -60,6 +60,12 @@ func TestToolGenerateWritesImage(t *testing.T) {
 	if meta.DisplayFilename != "robot.png" || meta.Extension != "png" || meta.MIMEType != "image/png" {
 		t.Fatalf("meta = %#v", meta)
 	}
+	if meta.Model != "fake-model" || meta.Width != 512 || meta.Height != 512 {
+		t.Fatalf("meta stats = %#v", meta)
+	}
+	if meta.DurationMs < 0 {
+		t.Fatalf("meta.DurationMs = %d, want >= 0", meta.DurationMs)
+	}
 	if provider.req.Prompt != "a robot" || provider.req.Width != 512 {
 		t.Fatalf("provider request = %#v", provider.req)
 	}

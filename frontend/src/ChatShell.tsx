@@ -38,6 +38,7 @@ import {
 } from "./api";
 import logoImage from "./assets/logo.png";
 import { MessageMetrics } from "./MessageMetrics";
+import { formatDuration } from "./metrics";
 
 type ChatShellProps = {
   user: User;
@@ -1981,9 +1982,18 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
   );
 }
 
+export function buildImageStats(artifact: Artifact): string | null {
+  const segments: string[] = [];
+  if (artifact.model) segments.push(artifact.model);
+  if (artifact.width && artifact.height) segments.push(`${artifact.width}×${artifact.height}`);
+  if (artifact.durationMs && artifact.durationMs > 0) segments.push(formatDuration(artifact.durationMs));
+  return segments.length > 0 ? segments.join(" · ") : null;
+}
+
 function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
   const isImage = artifact.mimeType.startsWith("image/");
+  const imageStats = isImage ? buildImageStats(artifact) : null;
 
   async function handleDownload() {
     setError("");
@@ -2023,6 +2033,9 @@ function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           <div className="spark-meta-text text-[#aaa79e]">
             {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
           </div>
+          {imageStats !== null && (
+            <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>
+          )}
           {error !== "" && <div className="spark-meta-text text-[#d36f67]">{error}</div>}
         </div>
         <button
