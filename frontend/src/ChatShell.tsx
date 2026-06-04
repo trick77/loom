@@ -1195,10 +1195,11 @@ function ChatPanel({
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const toolRunning = toolEvents.some((event) => event.status === "running");
   const showActiveThinkingPanel =
     isSending &&
-    streamingText === "" &&
-    sendError === "";
+    sendError === "" &&
+    (streamingText === "" || toolRunning);
   const showStreamingThinkingPanel = showActiveThinkingPanel || streamingReasoning.trim() !== "";
 
   const refreshScrollState = useCallback(() => {
@@ -1302,6 +1303,9 @@ function ChatPanel({
           <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
             {messages.map((message, index) => (
               <div key={message.id} className="space-y-6">
+                {message.role === "assistant" && message.reasoningContent && (
+                  <ThinkingPanel content={message.reasoningContent} complete={true} />
+                )}
                 {message.role === "assistant" && message.toolEvents !== undefined && (
                   <ToolActivityPanel events={message.toolEvents} />
                 )}
@@ -1312,15 +1316,14 @@ function ChatPanel({
                 />
               </div>
             ))}
-            {!showActiveThinkingPanel && toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
             {showStreamingThinkingPanel && (
               <ThinkingPanel
                 active={showActiveThinkingPanel}
                 content={streamingReasoning}
-                complete={streamingText !== ""}
-                toolEvents={showActiveThinkingPanel ? toolEvents : []}
+                complete={!showActiveThinkingPanel}
               />
             )}
+            {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
             {streamingArtifacts.map((artifact) => (
               <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
             ))}
@@ -1375,12 +1378,10 @@ function ThinkingPanel({
   active = false,
   content,
   complete,
-  toolEvents = [],
 }: {
   active?: boolean;
   content: string;
   complete: boolean;
-  toolEvents?: ToolActivity[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const trimmed = content.trim();
@@ -1411,11 +1412,6 @@ function ThinkingPanel({
         </span>
         <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
       </button>
-      {active && toolEvents.length > 0 && (
-        <div className="spark-thinking-tool-activity">
-          <ToolActivityPanel events={toolEvents} />
-        </div>
-      )}
       {expanded && (
         <div className="spark-thinking-panel-body">
           <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
@@ -1595,7 +1591,6 @@ function MessageBubble({
   }
   return (
     <div className="max-w-[46rem] space-y-3">
-      {message.reasoningContent && <ThinkingPanel content={message.reasoningContent} complete={true} />}
       <AssistantText metricsMessage={message} onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>
         {message.content}
       </AssistantText>

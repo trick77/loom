@@ -161,7 +161,7 @@ body {
   color: transparent;
   content: attr(data-text);
   opacity: 0;
-  animation: spark-thinking-sweep 4.5s linear infinite;
+  animation: spark-thinking-sweep 2.5s linear infinite;
 }
 
 .spark-thinking-status-active,
@@ -219,10 +219,6 @@ body {
   transform: rotate(45deg);
 }
 
-.spark-thinking-tool-activity {
-  margin-top: 0.65rem;
-}
-
 /*
  * Hover reveal for message action icons + stats. Written as plain CSS on purpose:
  * Tailwind v4 wraps `group-hover:` in `@media (hover: hover)`, which Safari
@@ -254,12 +250,12 @@ body {
     opacity: 1;
   }
 
-  62% {
+  82% {
     background-position: 150% 0;
     opacity: 1;
   }
 
-  67% {
+  88% {
     background-position: 162% 0;
     opacity: 0;
   }
