@@ -1981,9 +1981,34 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
   );
 }
 
-function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
+export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
   const isImage = artifact.mimeType.startsWith("image/");
+
+  useEffect(() => {
+    if (!isImage) {
+      setPreviewUrl("");
+      return;
+    }
+    let cancelled = false;
+    let objectUrl = "";
+    setError("");
+    setPreviewUrl("");
+    void downloadArtifact(artifact.downloadUrl)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Preview failed");
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl !== "") URL.revokeObjectURL(objectUrl);
+    };
+  }, [artifact.downloadUrl, isImage]);
 
   async function handleDownload() {
     setError("");
@@ -2004,10 +2029,10 @@ function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
 
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
-      {isImage && (
+      {isImage && previewUrl !== "" && (
         <img
           className="block max-h-[28rem] w-full bg-[#1f1f1d] object-contain"
-          src={artifact.downloadUrl}
+          src={previewUrl}
           alt={artifact.displayFilename}
           loading="lazy"
         />
