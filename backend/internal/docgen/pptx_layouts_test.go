@@ -25,3 +25,77 @@ func TestBulletParaHasGlyph(t *testing.T) {
 		t.Fatalf("bulletPara = %s", xml)
 	}
 }
+
+func TestRenderSlideBulletsHasBackgroundAndAccentTitle(t *testing.T) {
+	s := pptxSlide{Layout: "bullets", Title: "Phase 1", Bullets: []string{"Plan", "Build"}}
+	xml := renderSlide(s)
+	if !strings.Contains(xml, `<p:bg>`) {
+		t.Fatalf("missing background: %s", xml)
+	}
+	if !strings.Contains(xml, `<a:srgbClr val="9A6B4F"/>`) { // accent title color
+		t.Fatalf("missing accent title: %s", xml)
+	}
+	if !strings.Contains(xml, "Plan") || !strings.Contains(xml, "Build") {
+		t.Fatalf("missing bullets: %s", xml)
+	}
+}
+
+func TestRenderSlideUnknownLayoutFallsBackToBullets(t *testing.T) {
+	s := pptxSlide{Layout: "nonsense", Title: "T", Bullets: []string{"x"}}
+	xml := renderSlide(s)
+	if !strings.Contains(xml, "x") || !strings.Contains(xml, `<p:bg>`) {
+		t.Fatalf("fallback failed: %s", xml)
+	}
+}
+
+func TestTitleLayoutCentersTitleAndSubtitle(t *testing.T) {
+	xml := titleLayout(pptxSlide{Layout: "title", Title: "Spark", Subtitle: "Q3 Review"})
+	if !strings.Contains(xml, "Spark") || !strings.Contains(xml, "Q3 Review") || !strings.Contains(xml, `algn="ctr"`) {
+		t.Fatalf("titleLayout = %s", xml)
+	}
+}
+
+func TestSectionLayoutUsesAccentBackground(t *testing.T) {
+	xml := sectionLayout(pptxSlide{Layout: "section", Title: "Part II"})
+	if !strings.Contains(xml, `<a:srgbClr val="9A6B4F"/>`) || !strings.Contains(xml, "Part II") {
+		t.Fatalf("sectionLayout = %s", xml)
+	}
+}
+
+func TestTwoColumnLayoutRendersBothColumns(t *testing.T) {
+	xml := twoColumnLayout(pptxSlide{Title: "Compare", ColumnsLeft: []string{"A"}, ColumnsRight: []string{"B"}})
+	if !strings.Contains(xml, "A") || !strings.Contains(xml, "B") || !strings.Contains(xml, "Compare") {
+		t.Fatalf("twoColumnLayout = %s", xml)
+	}
+}
+
+func TestQuoteLayoutShowsQuoteAndAttribution(t *testing.T) {
+	xml := quoteLayout(pptxSlide{Quote: "Ship it", Attribution: "Jan"})
+	if !strings.Contains(xml, "Ship it") || !strings.Contains(xml, "Jan") {
+		t.Fatalf("quoteLayout = %s", xml)
+	}
+}
+
+func TestBigNumberLayoutShowsNumberAndCaption(t *testing.T) {
+	xml := bigNumberLayout(pptxSlide{Title: "Growth", Number: "85%", Caption: "YoY"})
+	if !strings.Contains(xml, "85%") || !strings.Contains(xml, "YoY") {
+		t.Fatalf("bigNumberLayout = %s", xml)
+	}
+}
+
+func TestTableLayoutEmitsTableWithAccentHeader(t *testing.T) {
+	xml := tableLayout(pptxSlide{Title: "Data", Table: [][]string{{"Name", "Value"}, {"A", "1"}}})
+	if !strings.Contains(xml, "<a:tbl>") || !strings.Contains(xml, "Name") || !strings.Contains(xml, "A") {
+		t.Fatalf("tableLayout = %s", xml)
+	}
+	if !strings.Contains(xml, `<a:srgbClr val="9A6B4F"/>`) { // accent header fill
+		t.Fatalf("missing accent header fill: %s", xml)
+	}
+}
+
+func TestTableLayoutWithoutRowsFallsBackToTitleOnly(t *testing.T) {
+	xml := tableLayout(pptxSlide{Title: "Empty"})
+	if strings.Contains(xml, "<a:tbl>") || !strings.Contains(xml, "Empty") {
+		t.Fatalf("expected no table, got %s", xml)
+	}
+}

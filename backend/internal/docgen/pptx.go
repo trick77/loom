@@ -12,8 +12,17 @@ import (
 type PPTXGenerator struct{}
 
 type pptxSlide struct {
-	Title   string
-	Bullets []string
+	Layout       string
+	Title        string
+	Subtitle     string
+	Bullets      []string
+	ColumnsLeft  []string
+	ColumnsRight []string
+	Number       string
+	Caption      string
+	Quote        string
+	Attribution  string
+	Table        [][]string
 }
 
 func (g PPTXGenerator) ToolName() string { return "create_pptx_presentation" }
@@ -78,21 +87,80 @@ func presentationSlides(payload map[string]any) ([]pptxSlide, error) {
 		if !ok || strings.TrimSpace(title) == "" {
 			return nil, errors.New("slide title is required")
 		}
-		slide := pptxSlide{Title: strings.TrimSpace(title)}
-		if rawBullets, ok := item["bullets"].([]any); ok {
-			for _, rawBullet := range rawBullets {
-				bullet, ok := rawBullet.(string)
-				if !ok {
-					return nil, errors.New("slide bullets must be strings")
-				}
-				if strings.TrimSpace(bullet) != "" {
-					slide.Bullets = append(slide.Bullets, strings.TrimSpace(bullet))
-				}
+		slide := pptxSlide{
+			Layout:      strings.TrimSpace(stringField(item, "layout")),
+			Title:       strings.TrimSpace(title),
+			Subtitle:    strings.TrimSpace(stringField(item, "subtitle")),
+			Number:      strings.TrimSpace(stringField(item, "number")),
+			Caption:     strings.TrimSpace(stringField(item, "caption")),
+			Quote:       strings.TrimSpace(stringField(item, "quote")),
+			Attribution: strings.TrimSpace(stringField(item, "attribution")),
+		}
+		bullets, err := stringList(item["bullets"], "slide bullets")
+		if err != nil {
+			return nil, err
+		}
+		slide.Bullets = bullets
+		if cols, ok := item["columns"].(map[string]any); ok {
+			if slide.ColumnsLeft, err = stringList(cols["left"], "column"); err != nil {
+				return nil, err
+			}
+			if slide.ColumnsRight, err = stringList(cols["right"], "column"); err != nil {
+				return nil, err
 			}
 		}
+		slide.Table = stringMatrix(item["table"])
 		slides = append(slides, slide)
 	}
 	return slides, nil
+}
+
+func stringField(item map[string]any, key string) string {
+	v, _ := item[key].(string)
+	return v
+}
+
+// stringList converts a JSON array of strings, skipping empties. nil input → nil slice.
+func stringList(raw any, label string) ([]string, error) {
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil, nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, v := range arr {
+		s, ok := v.(string)
+		if !ok {
+			return nil, errors.New(label + " must be strings")
+		}
+		if strings.TrimSpace(s) != "" {
+			out = append(out, strings.TrimSpace(s))
+		}
+	}
+	return out, nil
+}
+
+// stringMatrix converts a JSON array of string-arrays (table rows). Malformed cells are skipped.
+func stringMatrix(raw any) [][]string {
+	rows, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	var out [][]string
+	for _, r := range rows {
+		cells, ok := r.([]any)
+		if !ok {
+			continue
+		}
+		row := make([]string, 0, len(cells))
+		for _, c := range cells {
+			s, _ := c.(string)
+			row = append(row, strings.TrimSpace(s))
+		}
+		if len(row) > 0 {
+			out = append(out, row)
+		}
+	}
+	return out
 }
 
 func pptxPackage(title string, slides []pptxSlide) map[string]string {
@@ -120,7 +188,7 @@ func pptxPackage(title string, slides []pptxSlide) map[string]string {
 </Relationships>`,
 	}
 	for i, slide := range slides {
-		files[fmt.Sprintf("ppt/slides/slide%d.xml", i+1)] = pptxSlideXML(slide)
+		files[fmt.Sprintf("ppt/slides/slide%d.xml", i+1)] = renderSlide(slide)
 		files[fmt.Sprintf("ppt/slides/_rels/slide%d.xml.rels", i+1)] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
@@ -188,20 +256,6 @@ func pptxPresentationXML(slideCount int) string {
 </p:presentation>`
 }
 
-func pptxSlideXML(slide pptxSlide) string {
-	var bullets strings.Builder
-	for i, bullet := range slide.Bullets {
-		y := 1828800 + i*457200
-		bullets.WriteString(fmt.Sprintf(`<p:sp><p:nvSpPr><p:cNvPr id="%d" name="Bullet %d"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="1066800" y="%d"/><a:ext cx="9144000" cy="365760"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="2400"/><a:t>%s</a:t></a:r></a:p></p:txBody></p:sp>`, i+3, i+1, y, xmlText(bullet)))
-	}
-	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:cSld><p:spTree>
-    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-    <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="685800" y="457200"/><a:ext cx="10668000" cy="914400"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="4000"/><a:t>` + xmlText(slide.Title) + `</a:t></a:r></a:p></p:txBody></p:sp>` + bullets.String() + `
-  </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
-</p:sld>`
-}
 
 func pptxAppXML(slideCount int) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
