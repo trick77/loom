@@ -192,17 +192,14 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 		}
 		seen[threadID] = struct{}{}
 
+		// Best-effort: skip a thread we cannot clean up or delete rather than
+		// aborting the whole batch, which would leave it partially applied.
 		artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
 		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "list thread artifacts failed")
-			return
+			continue
 		}
 		found, err := s.chat.DeleteThread(r.Context(), user.ID, threadID)
-		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "delete thread failed")
-			return
-		}
-		if !found {
+		if err != nil || !found {
 			continue
 		}
 		s.cleanupArtifactFiles(user.ID, artifacts)

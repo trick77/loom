@@ -37,6 +37,7 @@ export function ChatsPage({
   const [hoveredID, setHoveredID] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   // Debounce the raw input into the term that actually hits the API.
   useEffect(() => {
@@ -76,7 +77,7 @@ export function ChatsPage({
     return () => {
       active = false;
     };
-  }, [searchTerm, mutationVersion, onSessionExpired]);
+  }, [searchTerm, mutationVersion, reloadToken, onSessionExpired]);
 
   const selectedCount = selectedIds.size;
   const hasSelection = selectedCount > 0;
@@ -116,10 +117,14 @@ export function ChatsPage({
     setIsDeleting(true);
     try {
       await bulkDeleteThreads(ids);
+      // Optimistically drop the selected rows for instant feedback, then
+      // reconcile with the server in case a best-effort delete left some
+      // threads behind (partial failure).
       const removed = new Set(ids);
       setThreads((current) => current.filter((thread) => !removed.has(thread.id)));
       setConfirmingDelete(false);
       exitSelectMode();
+      setReloadToken((value) => value + 1);
       onAfterBulkDelete();
     } catch (error) {
       if (error instanceof AuthExpiredError) {
