@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/trick77/spark/internal/artifact"
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/docgen"
+	"github.com/trick77/spark/internal/imagegen"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/mcp"
 	"github.com/trick77/spark/internal/store"
@@ -172,6 +174,79 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 }
 
+func TestStreamMessageExecutesBuiltInImageTool(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	chatStore := chat.NewStore(db)
+	artifactStore := artifact.NewStore(db)
+	user := testUser
+	thread, err := chatStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Images"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{
+				Content: "",
+				ToolCalls: []llm.ToolCall{{
+					ID:   "call_1",
+					Type: "function",
+					Function: llm.ToolCallFunction{
+						Name:      "generate_image",
+						Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
+					},
+				}},
+			},
+			{Content: "Created robot.png."},
+		},
+	}
+	server := newAuthenticatedChatServer(t, Deps{
+		Chat:       chatStore,
+		Artifacts:  artifactStore,
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make an image"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: artifact") {
+		t.Fatalf("stream missing artifact event:\n%s", body)
+	}
+	if !strings.Contains(body, "image/png") {
+		t.Fatalf("stream missing image mime type:\n%s", body)
+	}
+
+	messages, found, err := chatStore.ListMessages(context.Background(), user.ID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	var assistant chat.Message
+	for _, message := range messages {
+		if message.Role == chat.RoleAssistant {
+			assistant = message
+			break
+		}
+	}
+	if !bytes.Contains(assistant.Artifacts, []byte("image/png")) {
+		t.Fatalf("assistant artifacts = %s", assistant.Artifacts)
+	}
+}
+
 func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 	srv := &server{
 		artifacts: fakeArtifactStore{},
@@ -197,6 +272,23 @@ func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 	if builtInCount != 1 || searchCount != 1 {
 		t.Fatalf("tool counts create_text_file=%d search__web=%d, want 1 and 1", builtInCount, searchCount)
 	}
+}
+
+type fakeImageProvider struct{}
+
+func (fakeImageProvider) Generate(_ context.Context, req imagegen.GenerateRequest) (imagegen.GenerateResult, error) {
+	return imagegen.GenerateResult{
+		Filename:  req.Filename,
+		Extension: "png",
+		MIMEType:  "image/png",
+		Bytes:     []byte("\x89PNG\r\n\x1a\nfake"),
+		Provider:  "fake",
+		Model:     "fake-model",
+		RequestID: "request-1",
+		Prompt:    req.Prompt,
+		Width:     req.Width,
+		Height:    req.Height,
+	}, nil
 }
 
 func TestStreamMessagePersistsAssistantTokenUsage(t *testing.T) {

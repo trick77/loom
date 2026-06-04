@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLoad_defaults(t *testing.T) {
 	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
@@ -84,6 +87,49 @@ func TestLoad_context7RequiresURLWhenEnabled(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when Context7 API key is set without MCP URL")
+	}
+}
+
+func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "secret")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.BFLAPIKey != "" {
+		t.Fatal("BFLAPIKey default was not empty")
+	}
+	if cfg.BFLBaseURL != "https://api.bfl.ai/v1" {
+		t.Fatalf("BFLBaseURL = %q", cfg.BFLBaseURL)
+	}
+	if cfg.BFLModel != "flux-2-klein-4b" {
+		t.Fatalf("BFLModel = %q", cfg.BFLModel)
+	}
+}
+
+func TestLoadBFLImageRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "secret")
+	t.Setenv("SPARK_BFL_API_KEY", "bfl-test")
+	t.Setenv("SPARK_BFL_BASE_URL", "")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "SPARK_BFL_BASE_URL is required") {
+		t.Fatalf("Load() error = %v, want SPARK_BFL_BASE_URL required", err)
+	}
+}
+
+func TestLoadBFLImageConfiguredByAPIKey(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "secret")
+	t.Setenv("SPARK_BFL_API_KEY", "bfl-test")
+	t.Setenv("SPARK_BFL_MODEL", "flux-2-klein-9b")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.BFLAPIKey != "bfl-test" {
+		t.Fatalf("BFLAPIKey was not loaded")
+	}
+	if cfg.BFLModel != "flux-2-klein-9b" {
+		t.Fatalf("BFLModel = %q", cfg.BFLModel)
 	}
 }
 

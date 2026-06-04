@@ -12,6 +12,7 @@ import (
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/docgen"
+	"github.com/trick77/spark/internal/imagegen"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/mcp"
 )
@@ -31,6 +32,7 @@ type Deps struct {
 	LLM                   ChatClient
 	MCP                   ToolService
 	DocTools              []docgen.Generator
+	ImageTools            []imagegen.Tool
 	UsersDir              string
 	OIDCAdminGroup        string
 	DevAuthClaims         auth.Claims
@@ -48,6 +50,7 @@ type server struct {
 	llm                   ChatClient
 	mcp                   ToolService
 	docTools              []docgen.Generator
+	imageTools            []imagegen.Tool
 	usersDir              string
 	oidcAdminGroup        string
 	devAuthClaims         auth.Claims
@@ -133,6 +136,7 @@ func New(d Deps) http.Handler {
 		llm:                   d.LLM,
 		mcp:                   d.MCP,
 		docTools:              d.DocTools,
+		imageTools:            d.ImageTools,
 		usersDir:              d.UsersDir,
 		oidcAdminGroup:        d.OIDCAdminGroup,
 		devAuthClaims:         d.DevAuthClaims,

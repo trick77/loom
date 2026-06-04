@@ -32,6 +32,9 @@ type Config struct {
 	EmbedBaseURL        string // OpenAI embeddings endpoint
 	EmbedAPIKey         string
 	EmbedModel          string
+	BFLBaseURL          string
+	BFLAPIKey           string
+	BFLModel            string
 
 	TikaURL        string
 	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
@@ -88,6 +91,9 @@ func Load() (Config, error) {
 		EmbedBaseURL:         env("SPARK_EMBED_BASE_URL", ""),
 		EmbedAPIKey:          env("SPARK_EMBED_API_KEY", ""),
 		EmbedModel:           env("SPARK_EMBED_MODEL", "text-embedding-3-small"),
+		BFLBaseURL:           env("SPARK_BFL_BASE_URL", "https://api.bfl.ai/v1"),
+		BFLAPIKey:            env("SPARK_BFL_API_KEY", ""),
+		BFLModel:             env("SPARK_BFL_MODEL", "flux-2-klein-4b"),
 		TikaURL:              env("SPARK_TIKA_URL", "http://tika:9998"),
 		TavilyURL:            env("SPARK_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
 		TavilyAPIKey:         env("SPARK_TAVILY_API_KEY", ""),
@@ -143,6 +149,14 @@ func Load() (Config, error) {
 	}
 	if cfg.Context7APIKey != "" && cfg.Context7MCPURL == "" {
 		return Config{}, fmt.Errorf("SPARK_CONTEXT7_MCP_URL is required when SPARK_CONTEXT7_API_KEY is set")
+	}
+	if cfg.BFLAPIKey != "" {
+		if cfg.BFLBaseURL == "" {
+			return Config{}, fmt.Errorf("SPARK_BFL_BASE_URL is required when SPARK_BFL_API_KEY is set")
+		}
+		if cfg.BFLModel == "" {
+			return Config{}, fmt.Errorf("SPARK_BFL_MODEL is required when SPARK_BFL_API_KEY is set")
+		}
 	}
 	return cfg, nil
 }

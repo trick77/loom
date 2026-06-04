@@ -18,6 +18,7 @@ import (
 	"github.com/trick77/spark/internal/config"
 	"github.com/trick77/spark/internal/docgen"
 	"github.com/trick77/spark/internal/httpapi"
+	"github.com/trick77/spark/internal/imagegen"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/mcp"
 	"github.com/trick77/spark/internal/store"
@@ -64,6 +65,15 @@ func run() error {
 		docgen.DOCXGenerator{},
 		docgen.PPTXGenerator{},
 	}
+	var imageTools []imagegen.Tool
+	if bflImageConfigured(cfg) {
+		imageProvider := imagegen.NewBFLClient(imagegen.BFLConfig{
+			BaseURL: cfg.BFLBaseURL,
+			APIKey:  cfg.BFLAPIKey,
+			Model:   cfg.BFLModel,
+		})
+		imageTools = append(imageTools, imagegen.NewTool(imageProvider))
+	}
 	var chatClient httpapi.ChatClient
 	if cfg.ChatBaseURL != "" {
 		chatClient = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
@@ -81,12 +91,6 @@ func run() error {
 			mcpConfig = loadedMCPConfig
 		}
 	}
-	if !tavilyConfigured(cfg, mcpConfig) {
-		slog.Warn("built-in Tavily web search disabled; set SPARK_TAVILY_API_KEY to enable it")
-	}
-	if !context7Configured(cfg, mcpConfig) {
-		slog.Warn("Context7 MCP not configured; set SPARK_CONTEXT7_API_KEY to enable documentation tools", "url", cfg.Context7MCPURL)
-	}
 	var builtInToolNameCollision bool
 	mcpConfig, builtInToolNameCollision = toolConfigForConfig(cfg, mcpConfig)
 	if builtInToolNameCollision {
@@ -101,6 +105,10 @@ func run() error {
 		}
 		toolService = discovered
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
+	}
+	discoveredTools := 0
+	if toolService != nil {
+		discoveredTools = len(toolService.Tools())
 	}
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
@@ -127,6 +135,11 @@ func run() error {
 			Groups:   []string{auth.DevAdminGroup},
 		}
 	}
+	logStartupCapabilities(cfg, mcpConfig, startupRuntime{
+		DocToolCount:        len(docTools),
+		ImageToolCount:      len(imageTools),
+		DiscoveredToolCount: discoveredTools,
+	})
 
 	handler := httpapi.New(httpapi.Deps{
 		Version:               version,
@@ -140,6 +153,7 @@ func run() error {
 		LLM:                   chatClient,
 		MCP:                   toolService,
 		DocTools:              docTools,
+		ImageTools:            imageTools,
 		UsersDir:              cfg.UsersDir,
 		OIDCAdminGroup:        cfg.OIDC.AdminGroup,
 		DevAuthClaims:         devAuthClaims,
@@ -215,4 +229,8 @@ func tavilyConfigured(cfg config.Config, base mcp.Config) bool {
 	}
 	_, exists := base.Servers["tavily"]
 	return exists
+}
+
+func bflImageConfigured(cfg config.Config) bool {
+	return strings.TrimSpace(cfg.BFLAPIKey) != ""
 }
