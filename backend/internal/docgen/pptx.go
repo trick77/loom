@@ -29,8 +29,11 @@ func (g PPTXGenerator) ToolName() string { return "create_pptx_presentation" }
 
 func (g PPTXGenerator) Schema() ToolSchema {
 	return ToolSchema{
-		Name:        g.ToolName(),
-		Description: "Create a PPTX presentation from slide titles and bullet lists.",
+		Name: g.ToolName(),
+		Description: "Create a styled PPTX presentation. Open with a 'title' slide, use 'section' " +
+			"dividers between parts, choose 'table' for tabular data, 'two-column' to compare, " +
+			"'big-number' to highlight a stat, and 'quote' for a pull quote. Vary layouts; do not " +
+			"put everything in plain bullets.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -41,8 +44,29 @@ func (g PPTXGenerator) Schema() ToolSchema {
 					"items": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"title":   map[string]any{"type": "string"},
-							"bullets": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"layout": map[string]any{
+								"type":        "string",
+								"enum":        []string{"title", "section", "bullets", "two-column", "big-number", "quote", "table"},
+								"description": "Slide layout. Defaults to bullets.",
+							},
+							"title":    map[string]any{"type": "string"},
+							"subtitle": map[string]any{"type": "string"},
+							"bullets":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"columns": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"left":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+									"right": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+								},
+							},
+							"number":      map[string]any{"type": "string"},
+							"caption":     map[string]any{"type": "string"},
+							"quote":       map[string]any{"type": "string"},
+							"attribution": map[string]any{"type": "string"},
+							"table": map[string]any{
+								"type":  "array",
+								"items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							},
 						},
 						"required": []string{"title"},
 					},
