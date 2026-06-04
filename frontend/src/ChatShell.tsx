@@ -483,11 +483,11 @@ export function ChatShell({
 
   return (
     <div
-      className={`grid h-screen bg-bg font-sans text-ink ${
+      className={`grid h-screen bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out ${
         sidebarCollapsed ? "grid-cols-[56px_1fr]" : "grid-cols-[362px_1fr]"
       }`}
     >
-      <aside className="spark-sidebar-text flex min-h-0 flex-col border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd]">
+      <aside className="spark-sidebar-text flex min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd]">
         <div className={`flex h-11 items-center px-3 ${sidebarCollapsed ? "justify-center" : "justify-between"}`}>
           {!sidebarCollapsed && (
             <div className="spark-wordmark font-serif font-medium text-[#f4f0e8]">Spark</div>
