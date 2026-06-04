@@ -1333,7 +1333,10 @@ function ChatPanel({
     if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = window.requestAnimationFrame(() => {
       scrollFrameRef.current = null;
-      scroll();
+      // Honour a user scroll that happened between the synchronous scroll above and this
+      // frame: if they scrolled away, refreshScrollState cleared the flag, so don't yank
+      // them back to the bottom.
+      if (shouldStickToBottomRef.current) scroll();
     });
     shouldStickToBottomRef.current = true;
     setShowJumpToBottom(false);
@@ -2089,14 +2092,38 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
 
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
-      {isImage && previewUrl !== "" && (
-        <img
-          className="block max-h-[28rem] w-full bg-[#1f1f1d] object-contain"
-          src={previewUrl}
-          alt={artifact.displayFilename}
-          loading="lazy"
-        />
-      )}
+      {isImage &&
+        // Reserve the image's vertical space up-front so the card never collapses while the
+        // blob loads asynchronously (or when it remounts on stream → committed). A collapse
+        // would shrink scrollHeight and make the browser clamp scrollTop upward = unwanted
+        // upward jump. With known dimensions we reserve the exact box via aspect-ratio;
+        // otherwise we fall back to a min-height floor that bounds the collapse.
+        (artifact.width && artifact.height ? (
+          <div
+            className="relative max-h-[28rem] w-full overflow-hidden bg-[#1f1f1d]"
+            style={{ aspectRatio: `${artifact.width} / ${artifact.height}` }}
+          >
+            {previewUrl !== "" && (
+              <img
+                className="absolute inset-0 h-full w-full object-contain"
+                src={previewUrl}
+                alt={artifact.displayFilename}
+                loading="lazy"
+              />
+            )}
+          </div>
+        ) : (
+          <div className="min-h-[16rem] w-full bg-[#1f1f1d]">
+            {previewUrl !== "" && (
+              <img
+                className="block max-h-[28rem] w-full object-contain"
+                src={previewUrl}
+                alt={artifact.displayFilename}
+                loading="lazy"
+              />
+            )}
+          </div>
+        ))}
       <div className="flex items-center gap-3 px-4 py-3">
         {!isImage && (
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
