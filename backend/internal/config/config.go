@@ -6,7 +6,11 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"time"
 )
+
+// Keep in sync with imagegen's direct-client fallback default.
+const defaultBFLPollTimeout = 3 * time.Minute
 
 // AuthMode selects how Spark signs users in.
 type AuthMode string
@@ -35,6 +39,7 @@ type Config struct {
 	BFLBaseURL          string
 	BFLAPIKey           string
 	BFLModel            string
+	BFLPollTimeout      time.Duration
 
 	TikaURL        string
 	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
@@ -119,6 +124,11 @@ func Load() (Config, error) {
 			Role:        "admin",
 		},
 	}
+	bflPollTimeout, err := time.ParseDuration(env("SPARK_BFL_POLL_TIMEOUT", defaultBFLPollTimeout.String()))
+	if err != nil || bflPollTimeout <= 0 {
+		return Config{}, fmt.Errorf("SPARK_BFL_POLL_TIMEOUT must be a duration greater than 0")
+	}
+	cfg.BFLPollTimeout = bflPollTimeout
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("SPARK_SESSION_SECRET is required")
 	}

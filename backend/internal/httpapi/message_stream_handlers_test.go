@@ -367,6 +367,43 @@ func TestStreamMessageRequiresGenerateImageForObviousImageRequest(t *testing.T) 
 	}
 }
 
+func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{{
+			ToolCalls: []llm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "generate_image",
+					Arguments: `{"prompt":"a small robot","filename":"robot"}`,
+				},
+			}},
+		}},
+	}
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+	}
+	server := newAuthenticatedChatServer(t, Deps{
+		Chat:       store,
+		Artifacts:  fakeArtifactStore{},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(errorImageProvider{err: errors.New("BFL generation timed out: context deadline exceeded")})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"make an image"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"tool failed: BFL generation timed out: context deadline exceeded"`) {
+		t.Fatalf("SSE body missing provider failure error:\n%s", body)
+	}
+	if store.assistantContent != "" {
+		t.Fatalf("assistantContent = %q, want no persisted assistant after image failure", store.assistantContent)
+	}
+}
+
 func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T) {
 	llmClient := &fakeToolChatClient{
 		results: []llm.StreamResult{
@@ -583,6 +620,14 @@ func (fakeImageProvider) Generate(_ context.Context, req imagegen.GenerateReques
 		Width:     req.Width,
 		Height:    req.Height,
 	}, nil
+}
+
+type errorImageProvider struct {
+	err error
+}
+
+func (f errorImageProvider) Generate(context.Context, imagegen.GenerateRequest) (imagegen.GenerateResult, error) {
+	return imagegen.GenerateResult{}, f.err
 }
 
 func TestStreamMessagePersistsAssistantTokenUsage(t *testing.T) {

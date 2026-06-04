@@ -148,6 +148,41 @@ func TestBFLClientGenerateTimesOutWhilePolling(t *testing.T) {
 	}
 }
 
+func TestBFLClientGenerateReturnsCanceledWhenPollingContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/flux-2-klein-4b":
+			writeJSON(t, w, map[string]any{
+				"id":          "task-1",
+				"polling_url": serverURL(r) + "/v1/get_result?id=task-1",
+			})
+		case "/v1/get_result":
+			cancel()
+			writeJSON(t, w, map[string]any{"id": "task-1", "status": "Processing"})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewBFLClient(BFLConfig{
+		BaseURL:      server.URL + "/v1",
+		APIKey:       "test-key",
+		Model:        "flux-2-klein-4b",
+		PollInterval: time.Millisecond,
+		PollTimeout:  time.Minute,
+		HTTPClient:   server.Client(),
+	})
+	_, err := client.Generate(ctx, GenerateRequest{Prompt: "x"})
+	if err == nil || !strings.Contains(err.Error(), "BFL generation canceled") {
+		t.Fatalf("Generate() error = %v, want canceled", err)
+	}
+	if strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("Generate() error = %v, did not want timeout wording", err)
+	}
+}
+
 func TestBFLClientGenerateUsesDownloadedWebPExtension(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoad_defaults(t *testing.T) {
@@ -105,6 +106,9 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 	if cfg.BFLModel != "flux-2-klein-4b" {
 		t.Fatalf("BFLModel = %q", cfg.BFLModel)
 	}
+	if cfg.BFLPollTimeout != 3*time.Minute {
+		t.Fatalf("BFLPollTimeout = %s, want 3m0s", cfg.BFLPollTimeout)
+	}
 }
 
 func TestLoadBFLImageRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
@@ -130,6 +134,27 @@ func TestLoadBFLImageConfiguredByAPIKey(t *testing.T) {
 	}
 	if cfg.BFLModel != "flux-2-klein-9b" {
 		t.Fatalf("BFLModel = %q", cfg.BFLModel)
+	}
+}
+
+func TestLoadBFLImagePollTimeoutOverride(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "secret")
+	t.Setenv("SPARK_BFL_POLL_TIMEOUT", "7m")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.BFLPollTimeout != 7*time.Minute {
+		t.Fatalf("BFLPollTimeout = %s, want 7m0s", cfg.BFLPollTimeout)
+	}
+}
+
+func TestLoadBFLImageRejectsInvalidPollTimeout(t *testing.T) {
+	t.Setenv("SPARK_SESSION_SECRET", "secret")
+	t.Setenv("SPARK_BFL_POLL_TIMEOUT", "soon")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "SPARK_BFL_POLL_TIMEOUT must be a duration") {
+		t.Fatalf("Load() error = %v, want invalid poll timeout", err)
 	}
 }
 
