@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const titleSystemPrompt = "Write a chat title as a neutral noun phrase. Use 2 to 6 words. Do not write a sentence. Do not use first person, second person, future tense, promises, or assistant actions. Prefer subject titles like \"Photorealistic cat image\" over action titles like \"I'll create a cat image\". Return only the title."
+const titleSystemPrompt = "Write a chat title for the user's request as a neutral noun phrase. Use 2 to 6 words. Do not write a sentence. Ignore assistant refusals, apologies, or capability disclaimers. Do not use first person, second person, future tense, promises, or assistant actions. Prefer subject titles like \"Photorealistic cat image\" over action titles like \"I'll create a cat image\". Return only the title."
 
 func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
 	start := time.Now()
@@ -102,8 +102,13 @@ func isAnswerLikeTitle(title string) bool {
 		"i do not know",
 		"i'm sorry",
 		"i am sorry",
+		"i appreciate ",
 		"sorry,",
+		"unfortunately",
 		"as an ai",
+		"as a text-based",
+		"i'm a text-based",
+		"i am a text-based",
 		"i can't ",
 		"i cannot ",
 	}
