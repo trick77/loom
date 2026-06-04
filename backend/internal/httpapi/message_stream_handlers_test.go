@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -244,6 +245,137 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 	if !bytes.Contains(assistant.Artifacts, []byte("image/png")) {
 		t.Fatalf("assistant artifacts = %s", assistant.Artifacts)
+	}
+}
+
+func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
+	textOnlyImageClaim := "Here's your trick77 logo in full cyberpunk style."
+	var history []llm.Message
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+		messages: []chat.Message{{
+			ID:        "old_1",
+			ThreadID:  "thr_1",
+			Role:      chat.RoleAssistant,
+			Content:   "Created a logo.",
+			Artifacts: json.RawMessage(`[{"id":"art_1","displayFilename":"generated-image.png","mimeType":"image/png","downloadUrl":"/api/artifacts/art_1/download"}]`),
+		}},
+	}
+	capturingLLM := &fakeToolChatClient{results: []llm.StreamResult{{Content: textOnlyImageClaim}}}
+	server := newAuthenticatedChatServer(t, Deps{
+		Chat:       store,
+		Artifacts:  fakeArtifactStore{},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        capturingLLM,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"make it cyberpunk"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"image generation was not completed"`) {
+		t.Fatalf("SSE body missing image-generation error:\n%s", body)
+	}
+	if store.assistantContent != "" {
+		t.Fatalf("assistantContent = %q, want no persisted text-only image claim", store.assistantContent)
+	}
+	if len(store.messages) != 2 {
+		t.Fatalf("persisted messages = %d, want prior assistant plus new user only: %#v", len(store.messages), store.messages)
+	}
+	if store.messages[1].Role != chat.RoleUser || store.messages[1].Content != "make it cyberpunk" {
+		t.Fatalf("last persisted message = %#v, want cyberpunk user message", store.messages[1])
+	}
+	if len(capturingLLM.histories) == 0 {
+		t.Fatal("LLM history was not captured")
+	}
+	history = capturingLLM.histories[0]
+	foundDirective := false
+	for _, message := range history {
+		if message.Role == "system" && strings.Contains(message.Content, "Call generate_image before answering") {
+			foundDirective = true
+		}
+	}
+	if !foundDirective {
+		t.Fatalf("history missing image artifact directive: %#v", history)
+	}
+}
+
+func TestStreamMessagePersistsEmptyArtifactListForTextOnlyAssistant(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if len(store.messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	}
+	if string(store.messages[1].Artifacts) != "[]" {
+		t.Fatalf("assistant artifacts = %s, want []", store.messages[1].Artifacts)
+	}
+}
+
+func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
+	srv := &server{
+		artifacts:  fakeArtifactStore{},
+		usersDir:   t.TempDir(),
+		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+	}
+	priorMessages := []chat.Message{{
+		Role:      chat.RoleAssistant,
+		Artifacts: json.RawMessage(`[{"mimeType":"image/png"}]`),
+	}}
+
+	for _, content := range []string{
+		"I surrender",
+		"what's the entry point",
+		"explain that industry",
+		"How do I render this template?",
+		"describe the image under this URL",
+		"explain how to draw a UML diagram",
+		"lifestyle changes",
+		"conversion tracking",
+	} {
+		t.Run(content, func(t *testing.T) {
+			if srv.imageArtifactRequired(content, priorMessages) {
+				t.Fatalf("imageArtifactRequired(%q) = true, want false", content)
+			}
+		})
+	}
+}
+
+func TestImageArtifactRequiredDetectsCreationAndGermanFollowUps(t *testing.T) {
+	srv := &server{
+		artifacts:  fakeArtifactStore{},
+		usersDir:   t.TempDir(),
+		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+	}
+	priorMessages := []chat.Message{{
+		Role:      chat.RoleAssistant,
+		Artifacts: json.RawMessage(`[{"mimeType":"image/png"}]`),
+	}}
+
+	for _, content := range []string{
+		"generate an image of a robot",
+		"create a logo for trick77",
+		"erstelle ein Logo fuer trick77",
+		"zeichne mir ein Bild",
+		"mach es cyberpunk",
+		"ändere den Stil",
+	} {
+		t.Run(content, func(t *testing.T) {
+			if !srv.imageArtifactRequired(content, priorMessages) {
+				t.Fatalf("imageArtifactRequired(%q) = false, want true", content)
+			}
+		})
 	}
 }
 
