@@ -1553,6 +1553,9 @@ function Composer({
   const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   const padX = "px-6";
   const canSend = !isSending && draft.trim() !== "";
+  const actionButtonClass = isSending
+    ? "bg-[#3a3a37] hover:bg-[#4b4a46]"
+    : "bg-accent hover:bg-accent-strong disabled:bg-accent";
   return (
     <form
       className={`spark-composer ${height} relative rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
@@ -1583,7 +1586,7 @@ function Composer({
         </button>
         <div className="spark-meta-text flex items-center text-[#d8d4ca]">
           <button
-            className="spark-composer-send grid h-7 w-7 place-items-center rounded-md bg-accent text-[#eeeae2] transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-45"
+            className={`spark-composer-send grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
             disabled={!isSending && !canSend}
             type="submit"
             aria-label={isSending ? "Stop response" : "Send message"}
