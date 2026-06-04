@@ -63,7 +63,7 @@ type MessageWithToolActivity = Message & {
   toolEvents?: ToolActivity[];
 };
 
-type SidebarIconName = "chats" | "projects";
+type SidebarIconName = "newChat" | "chats" | "projects" | "newProject";
 
 export function ChatShell({
   user,
@@ -469,9 +469,7 @@ export function ChatShell({
             onClick={navigateToNew}
             type="button"
           >
-            <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-[#30302e] text-[14px] leading-none text-[#d5d2c9]">
-              +
-            </span>
+            <SidebarIcon name="newChat" />
             <span>New chat</span>
           </button>
           <SidebarPrimaryItem label="Chats" icon="chats" />
@@ -518,7 +516,7 @@ export function ChatShell({
                 type="button"
                 aria-label="New project"
               >
-                +
+                <SidebarIcon name="newProject" />
               </button>
             </div>
             {isProjectFormOpen && (
@@ -689,22 +687,39 @@ function SidebarPrimaryItem({ icon, label }: { icon: SidebarIconName; label: str
 }
 
 function SidebarIcon({ name }: { name: SidebarIconName }) {
-  const className = "h-5 w-5 shrink-0 text-[#f0eee7]";
+  const className = "h-[19px] w-[19px] shrink-0 text-[#f0eee7]";
+  if (name === "newChat") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path
+          d="M5 7.8c0-1.8 1.1-2.8 3-2.8h8c1.9 0 3 1 3 2.8v5.4c0 1.8-1.1 2.8-3 2.8h-4.6L7 19v-3H8c-1.9 0-3-1-3-2.8V7.8Z"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 8.4v4.8M9.6 10.8h4.8"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
   if (name === "chats") {
     return (
       <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
         <path
-          d="M6.5 15.5c-2.2-.2-3.5-1.6-3.5-3.8V8.8C3 6.3 4.5 5 7.1 5h5.1c2.6 0 4.1 1.3 4.1 3.8v2.9c0 2.5-1.5 3.8-4.1 3.8H9l-3.3 2.3v-2.3Z"
+          d="M5 7.8c0-1.8 1.1-2.8 3-2.8h8c1.9 0 3 1 3 2.8v5.4c0 1.8-1.1 2.8-3 2.8h-4.6L7 19v-3H8c-1.9 0-3-1-3-2.8V7.8Z"
           stroke="currentColor"
-          strokeWidth="1.8"
+          strokeWidth="1.7"
           strokeLinejoin="round"
         />
         <path
-          d="M17.2 9.2c2.5.1 3.8 1.4 3.8 3.8v2.4c0 2.2-1.3 3.5-3.6 3.7v2l-2.9-2h-3.2c-1.8 0-3-.7-3.5-2"
+          d="M8.6 9.4h6.8M8.6 12.2h4.6"
           stroke="currentColor"
-          strokeWidth="1.8"
+          strokeWidth="1.7"
           strokeLinecap="round"
-          strokeLinejoin="round"
         />
       </svg>
     );
@@ -713,12 +728,30 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
     return (
       <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
         <path
-          d="M4.5 8.5h5l1.6 2h8.4v7.2c0 1.2-.7 1.8-2 1.8h-11c-1.3 0-2-.6-2-1.8V8.5Z"
+          d="M5 6.6c0-1 .6-1.6 1.7-1.6h3.2l1.6 2h5.8c1.1 0 1.7.6 1.7 1.6v8.8c0 1-.6 1.6-1.7 1.6H6.7c-1.1 0-1.7-.6-1.7-1.6V6.6Z"
           stroke="currentColor"
-          strokeWidth="1.8"
+          strokeWidth="1.7"
           strokeLinejoin="round"
         />
-        <path d="M4.5 8.5V6.8c0-1.1.7-1.7 1.9-1.7h3.1l1.6 2h6.5c1.2 0 1.9.6 1.9 1.7v1.7" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M5 9h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (name === "newProject") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path
+          d="M5 6.6c0-1 .6-1.6 1.7-1.6h3.2l1.6 2h5.8c1.1 0 1.7.6 1.7 1.6v8.8c0 1-.6 1.6-1.7 1.6H6.7c-1.1 0-1.7-.6-1.7-1.6V6.6Z"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 11v5M9.5 13.5h5"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
