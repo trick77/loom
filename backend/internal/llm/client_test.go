@@ -692,6 +692,29 @@ func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
 	}
 }
 
+func TestCleanTitleFallsBackForRefusalLikeCompletion(t *testing.T) {
+	for _, raw := range []string{
+		"I appreciate the fun and creative idea! Unfortunately, I'm a text-based AI assistant.",
+		"Unfortunately, I can't create images directly.",
+		"As a text-based AI assistant, I cannot generate images.",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			title := cleanTitle(raw)
+			if title != "New chat" {
+				t.Fatalf("title = %q, want New chat", title)
+			}
+		})
+	}
+}
+
+func TestCleanTitleRewritesFirstPersonCreationSentence(t *testing.T) {
+	title := cleanTitle(`"I'll create a photorealistic image of a male Maine Coon cat for you."`)
+
+	if title != "Creation of a photorealistic image of a male Maine Coon cat" {
+		t.Fatalf("title = %q, want passive creation title", title)
+	}
+}
+
 func TestClient_GenerateTitleIncludesAssistantMessageWhenPresent(t *testing.T) {
 	var gotMessages []Message
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
