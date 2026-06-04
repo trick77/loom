@@ -844,7 +844,7 @@ function SidebarThreadItem({
           onClick={() => onSelect(thread.id)}
           type="button"
         >
-          <span className="block truncate pr-7">{thread.title}</span>
+          <span className="block whitespace-nowrap pr-7">{thread.title}</span>
           <span
             className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]"
             aria-hidden="true"
