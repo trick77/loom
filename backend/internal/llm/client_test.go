@@ -692,6 +692,14 @@ func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
 	}
 }
 
+func TestCleanTitleRewritesFirstPersonCreationSentence(t *testing.T) {
+	title := cleanTitle(`"I'll create a photorealistic image of a male Maine Coon cat for you."`)
+
+	if title != "Creation of a photorealistic image of a male Maine Coon cat" {
+		t.Fatalf("title = %q, want passive creation title", title)
+	}
+}
+
 func TestClient_GenerateTitleIncludesAssistantMessageWhenPresent(t *testing.T) {
 	var gotMessages []Message
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

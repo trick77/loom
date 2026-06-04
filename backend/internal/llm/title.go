@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const titleSystemPrompt = "Name this chat topic in 2 to 6 words. Do not answer the user. If unsure, use the user's own subject words. Return only the title."
+const titleSystemPrompt = "Write a chat title as a neutral noun phrase. Use 2 to 6 words. Do not write a sentence. Do not use first person, second person, future tense, promises, or assistant actions. Prefer subject titles like \"Photorealistic cat image\" over action titles like \"I'll create a cat image\". Return only the title."
 
 func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
 	start := time.Now()
@@ -54,6 +54,7 @@ func cleanTitle(title string) string {
 	if title == "" {
 		return "New chat"
 	}
+	title = rewriteFirstPersonCreationTitle(title)
 	if isAnswerLikeTitle(title) {
 		return "New chat"
 	}
@@ -61,6 +62,33 @@ func cleanTitle(title string) string {
 	runes := []rune(title)
 	if len(runes) > 80 {
 		title = string(runes[:80])
+	}
+	return title
+}
+
+func rewriteFirstPersonCreationTitle(title string) string {
+	normalized := strings.ToLower(strings.Join(strings.Fields(title), " "))
+	prefixes := []string{
+		"i'll create ",
+		"i will create ",
+		"i'll generate ",
+		"i will generate ",
+		"i'll make ",
+		"i will make ",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(normalized, prefix) {
+			subject := strings.TrimSpace(title[len(prefix):])
+			subject = strings.TrimSuffix(subject, ".")
+			subject = strings.TrimSuffix(subject, "!")
+			subject = strings.TrimSpace(subject)
+			subject = strings.TrimSuffix(subject, " for you")
+			subject = strings.TrimSuffix(subject, " for me")
+			subject = strings.TrimSpace(subject)
+			if subject != "" {
+				return "Creation of " + subject
+			}
+		}
 	}
 	return title
 }
