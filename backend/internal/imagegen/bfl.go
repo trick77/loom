@@ -150,6 +150,9 @@ func (c *BFLClient) poll(ctx context.Context, pollingURL string) (bflStatusRespo
 	for {
 		status, err := c.fetchStatus(ctx, pollingURL)
 		if err != nil {
+			if ctx.Err() != nil {
+				return bflStatusResponse{}, fmt.Errorf("BFL generation timed out: %w", ctx.Err())
+			}
 			return bflStatusResponse{}, err
 		}
 		switch strings.ToLower(status.Status) {
