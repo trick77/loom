@@ -90,6 +90,51 @@ func TestPDFSchemaAdvertisesBlocks(t *testing.T) {
 	}
 }
 
+func TestPDFHandlesNonBMPCharacters(t *testing.T) {
+	// gofpdf (via maroto) indexes a 65536-entry width table by rune. A character
+	// at exactly U+10000 panicked with "index out of range [65536] with length
+	// 65536"; higher non-BMP runes (emoji) panic during font subset embedding.
+	// Such runes reach the generator from model-produced tool arguments (a JSON
+	// surrogate pair 𐀀 decodes to U+10000). Every text path must cope.
+	nonBMP := "X\U00010000Y\U0001F600Z" // U+10000 + grinning face emoji
+	var out bytes.Buffer
+	_, err := PDFGenerator{}.Generate(GenerateRequest{
+		Filename: "unicode.pdf",
+		Payload: map[string]any{
+			"title":    "Title " + nonBMP,
+			"subtitle": "Sub " + nonBMP,
+			"blocks": []any{
+				map[string]any{"type": "heading", "level": float64(1), "text": "Heading " + nonBMP},
+				map[string]any{"type": "paragraph", "text": "Para " + nonBMP},
+				map[string]any{"type": "bullets", "items": []any{"Bullet " + nonBMP}},
+				map[string]any{"type": "table", "rows": []any{[]any{"Head " + nonBMP}, []any{"Cell " + nonBMP}}},
+				map[string]any{"type": "columns", "left": []any{"L " + nonBMP}, "right": []any{"R " + nonBMP}},
+				map[string]any{"type": "callout", "text": "Note " + nonBMP},
+			},
+		},
+	}, &out)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if !bytes.HasPrefix(out.Bytes(), []byte("%PDF-")) {
+		t.Fatalf("not a PDF")
+	}
+}
+
+func TestPDFHandlesNonBMPInMarkdownContent(t *testing.T) {
+	var out bytes.Buffer
+	_, err := PDFGenerator{}.Generate(GenerateRequest{
+		Filename: "unicode.pdf",
+		Payload:  map[string]any{"title": "T", "content": "# Heading \U00010000\n\nBody \U0001F600 text."},
+	}, &out)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if !bytes.HasPrefix(out.Bytes(), []byte("%PDF-")) {
+		t.Fatalf("not a PDF")
+	}
+}
+
 func TestPDFLongContentSpansMultiplePages(t *testing.T) {
 	blocks := make([]any, 0, 120)
 	for i := 0; i < 120; i++ {

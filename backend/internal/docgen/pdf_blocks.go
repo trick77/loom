@@ -68,6 +68,55 @@ func blocksFromMarkdown(content string) []pdfBlock {
 	return out
 }
 
+// sanitizeForPDF replaces every code point outside the Basic Multilingual Plane
+// (rune > 0xFFFF) with the Unicode replacement character. gofpdf — which maroto
+// uses to render PDFs — looks up glyph widths in a 65536-entry table indexed by
+// rune, so a non-BMP rune (an emoji, or a U+10000+ character the model may emit
+// via a JSON surrogate pair) panics with "index out of range". The bundled Go
+// fonts have no glyphs for those runes anyway, so nothing renderable is lost.
+func sanitizeForPDF(s string) string {
+	if s == "" {
+		return s
+	}
+	hasNonBMP := false
+	for _, r := range s {
+		if r > 0xFFFF {
+			hasNonBMP = true
+			break
+		}
+	}
+	if !hasNonBMP {
+		return s
+	}
+	runes := []rune(s)
+	for i, r := range runes {
+		if r > 0xFFFF {
+			runes[i] = '�'
+		}
+	}
+	return string(runes)
+}
+
+// sanitizeBlock applies sanitizeForPDF to every text field of a block.
+func sanitizeBlock(b pdfBlock) pdfBlock {
+	b.Text = sanitizeForPDF(b.Text)
+	for i := range b.Items {
+		b.Items[i] = sanitizeForPDF(b.Items[i])
+	}
+	for ri := range b.Rows {
+		for ci := range b.Rows[ri] {
+			b.Rows[ri][ci] = sanitizeForPDF(b.Rows[ri][ci])
+		}
+	}
+	for i := range b.Left {
+		b.Left[i] = sanitizeForPDF(b.Left[i])
+	}
+	for i := range b.Right {
+		b.Right[i] = sanitizeForPDF(b.Right[i])
+	}
+	return b
+}
+
 // renderBlock appends maroto rows for one block.
 func renderBlock(m core.Maroto, b pdfBlock) {
 	switch b.Type {
