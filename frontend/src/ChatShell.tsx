@@ -497,7 +497,7 @@ export function ChatShell({
             onClick={navigateToNew}
             type="button"
           >
-            <span className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full bg-[hsl(180deg_3%_19%)] text-[#d5d2c9]">
+            <span className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full bg-[hsl(180deg_3%_19%)] text-[hsl(55deg_9%_74%)]">
               <svg className="h-[13px] w-[13px]" viewBox="0 0 24 24" aria-hidden="true" fill="none">
                 <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
@@ -1590,7 +1590,7 @@ function Composer({
           >
             {isSending ? (
               <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-                <rect x="7" y="7" width="10" height="10" rx="1.6" />
+                <rect x="5.5" y="5.5" width="13" height="13" rx="2" />
               </svg>
             ) : (
               <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
@@ -2200,14 +2200,14 @@ function CopyIcon({ className = "h-[1.33rem] w-[1.33rem]" }: { className?: strin
       <path
         d="M8 8.5V6.8c0-1 .8-1.8 1.8-1.8h7.4c1 0 1.8.8 1.8 1.8v7.4c0 1-.8 1.8-1.8 1.8h-1.7"
         stroke="currentColor"
-        strokeWidth="1.8"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M5.8 8h7.4c1 0 1.8.8 1.8 1.8v7.4c0 1-.8 1.8-1.8 1.8H5.8c-1 0-1.8-.8-1.8-1.8V9.8C4 8.8 4.8 8 5.8 8Z"
         stroke="currentColor"
-        strokeWidth="1.8"
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
     </svg>
@@ -2220,11 +2220,11 @@ function SpeakerIcon() {
       <path
         d="M4 9.5h3l4-3.3v11.6l-4-3.3H4z"
         stroke="currentColor"
-        strokeWidth="1.8"
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
-      <path d="M15 9.2a4 4 0 0 1 0 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M17.6 6.6a7.5 7.5 0 0 1 0 10.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M15 9.2a4 4 0 0 1 0 5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M17.6 6.6a7.5 7.5 0 0 1 0 10.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -2235,7 +2235,7 @@ function CheckIcon({ className = "h-[1.33rem] w-[1.33rem]" }: { className?: stri
       <path
         d="m5 12.5 4.2 4.2L19 7"
         stroke="currentColor"
-        strokeWidth="2.2"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -2269,13 +2269,13 @@ function RetryIcon() {
       <path
         d="M18.5 9.2A6.5 6.5 0 1 0 19 12"
         stroke="currentColor"
-        strokeWidth="1.9"
+        strokeWidth="1.5"
         strokeLinecap="round"
       />
       <path
         d="M18.5 5.5v3.7h-3.7"
         stroke="currentColor"
-        strokeWidth="1.9"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
