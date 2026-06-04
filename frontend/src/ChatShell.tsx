@@ -1142,7 +1142,7 @@ function ModalShell({
   }, [onCancel]);
   return (
     <div
-      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] px-4"
+      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] pr-4 pl-[378px]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
@@ -1990,10 +1990,35 @@ export function buildImageStats(artifact: Artifact): string | null {
   return segments.length > 0 ? segments.join(" · ") : null;
 }
 
-function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
+export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
   const isImage = artifact.mimeType.startsWith("image/");
   const imageStats = isImage ? buildImageStats(artifact) : null;
+
+  useEffect(() => {
+    if (!isImage) {
+      setPreviewUrl("");
+      return;
+    }
+    let cancelled = false;
+    let objectUrl = "";
+    setError("");
+    setPreviewUrl("");
+    void downloadArtifact(artifact.downloadUrl)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Preview failed");
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl !== "") URL.revokeObjectURL(objectUrl);
+    };
+  }, [artifact.downloadUrl, isImage]);
 
   async function handleDownload() {
     setError("");
@@ -2014,10 +2039,10 @@ function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
 
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
-      {isImage && (
+      {isImage && previewUrl !== "" && (
         <img
           className="block max-h-[28rem] w-full bg-[#1f1f1d] object-contain"
-          src={artifact.downloadUrl}
+          src={previewUrl}
           alt={artifact.displayFilename}
           loading="lazy"
         />
