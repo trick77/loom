@@ -218,6 +218,31 @@ test("creates a project from the sidebar", async () => {
   );
 });
 
+test("renders semantic sidebar creation icons instead of literal plus signs", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json([]);
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+
+  const newChatButton = await screen.findByRole("button", { name: "New chat" });
+  const newProjectButton = await screen.findByRole("button", { name: "New project" });
+
+  expect(newChatButton.querySelector("svg")).toBeInTheDocument();
+  expect(newChatButton.querySelector("svg")).toHaveClass("h-[19px]", "w-[19px]");
+  expect(newChatButton).not.toHaveTextContent("+");
+  expect(newProjectButton.querySelector("svg")).toBeInTheDocument();
+  expect(newProjectButton.querySelector("svg")).toHaveClass("h-[19px]", "w-[19px]");
+  expect(newProjectButton).not.toHaveTextContent("+");
+});
+
 test("new chat navigation does not create a thread or sidebar entry", async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
@@ -298,7 +323,9 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
 
   expect(await screen.findByText("It is hot")).toBeInTheDocument();
   expect(window.location.pathname).toBe("/chat/t1");
-  expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
+  expect(
+    within(screen.getByText("Recents").closest("section")!).queryByRole("button", { name: "New chat" }),
+  ).not.toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "Weather comfort" })).toBeInTheDocument();
   expect(screen.queryByText("Drink water.")).not.toBeInTheDocument();
 
