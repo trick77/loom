@@ -1980,6 +1980,7 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
 
 function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
+  const isImage = artifact.mimeType.startsWith("image/");
 
   async function handleDownload() {
     setError("");
@@ -1999,11 +2000,21 @@ function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   }
 
   return (
-    <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
-      <div className="flex items-center gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-          <FileIcon />
-        </div>
+    <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
+      {isImage && (
+        <img
+          className="block max-h-[28rem] w-full bg-[#1f1f1d] object-contain"
+          src={artifact.downloadUrl}
+          alt={artifact.displayFilename}
+          loading="lazy"
+        />
+      )}
+      <div className="flex items-center gap-3 px-4 py-3">
+        {!isImage && (
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
+            <FileIcon />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="spark-message-text truncate">{artifact.displayFilename}</div>
           <div className="spark-meta-text text-[#aaa79e]">

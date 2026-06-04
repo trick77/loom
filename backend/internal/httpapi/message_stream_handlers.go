@@ -16,6 +16,7 @@ import (
 	"github.com/trick77/spark/internal/auth"
 	"github.com/trick77/spark/internal/chat"
 	"github.com/trick77/spark/internal/docgen"
+	"github.com/trick77/spark/internal/imagegen"
 	"github.com/trick77/spark/internal/llm"
 	"github.com/trick77/spark/internal/sse"
 	"golang.org/x/text/language"
@@ -311,6 +312,22 @@ func (s *server) availableTools() []llm.Tool {
 				},
 			})
 		}
+		for _, gen := range s.imageTools {
+			schema := gen.Schema()
+			if owner, exists := names[schema.Name]; exists {
+				slog.Warn("skipping duplicate image tool name", "tool", schema.Name, "existing", owner)
+				continue
+			}
+			names[schema.Name] = "built_in_image"
+			tools = append(tools, llm.Tool{
+				Type: "function",
+				Function: llm.ToolFunction{
+					Name:        schema.Name,
+					Description: schema.Description,
+					Parameters:  schema.Parameters,
+				},
+			})
+		}
 	}
 	if s.mcp != nil {
 		for _, tool := range s.mcp.Tools() {
@@ -326,6 +343,9 @@ func (s *server) availableTools() []llm.Tool {
 }
 
 func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall) (string, *artifactResponse, bool) {
+	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call); handled {
+		return output, response, true
+	}
 	generator := s.docGenerator(call.Function.Name)
 	if generator == nil {
 		return "", nil, false
@@ -392,6 +412,90 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response, true
 }
 
+func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall) (*artifactResponse, string, bool) {
+	generator := s.imageTool(call.Function.Name)
+	if generator == nil {
+		return nil, "", false
+	}
+	args, err := parseToolArguments(call.Function.Arguments)
+	if err != nil {
+		return nil, capToolOutput("tool failed: invalid arguments: " + err.Error()), true
+	}
+	req := imagegen.ToolRequest{}
+	if prompt, _ := args["prompt"].(string); prompt != "" {
+		req.Prompt = prompt
+	}
+	if filename, _ := args["filename"].(string); filename != "" {
+		req.Filename = filename
+	}
+	if format, _ := args["output_format"].(string); format != "" {
+		req.OutputFormat = format
+	}
+	if width, ok := numberArg(args["width"]); ok {
+		req.Width = width
+	}
+	if height, ok := numberArg(args["height"]); ok {
+		req.Height = height
+	}
+	if safety, ok := numberArg(args["safety_tolerance"]); ok {
+		req.SafetyTolerance = &safety
+	}
+	if seed, ok := int64Arg(args["seed"]); ok {
+		req.Seed = &seed
+	}
+	var buffer bytes.Buffer
+	meta, err := generator.Generate(ctx, req, &buffer)
+	if err != nil {
+		return nil, capToolOutput("tool failed: " + err.Error()), true
+	}
+	if buffer.Len() > artifact.MaxArtifactSizeBytes {
+		return nil, "tool failed: generated image is too large", true
+	}
+	out, file, err := artifact.CreateOutputFile(artifact.OutputRequest{
+		UsersDir:        s.usersDir,
+		UserID:          user.ID,
+		ThreadID:        thread.ID,
+		ProjectID:       thread.ProjectID,
+		DisplayFilename: meta.DisplayFilename,
+		Extension:       meta.Extension,
+	})
+	if err != nil {
+		return nil, capToolOutput("tool failed: " + err.Error()), true
+	}
+	if _, err := file.Write(buffer.Bytes()); err != nil {
+		_ = file.Close()
+		_ = os.Remove(out.AbsPath)
+		return nil, capToolOutput("tool failed: write artifact: " + err.Error()), true
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(out.AbsPath)
+		return nil, capToolOutput("tool failed: close artifact: " + err.Error()), true
+	}
+	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
+		UserID:          user.ID,
+		ThreadID:        thread.ID,
+		ProjectID:       thread.ProjectID,
+		DisplayFilename: out.DisplayFilename,
+		VolumeRelPath:   out.VolumeRelPath,
+		MIMEType:        meta.MIMEType,
+		SizeBytes:       int64(buffer.Len()),
+	})
+	if err != nil {
+		_ = os.Remove(out.AbsPath)
+		return nil, capToolOutput("tool failed: persist artifact: " + err.Error()), true
+	}
+	response := artifactResponse{
+		ID:              created.ID,
+		DisplayFilename: created.DisplayFilename,
+		MIMEType:        created.MIMEType,
+		SizeBytes:       created.SizeBytes,
+		ProjectID:       created.ProjectID,
+		DownloadURL:     created.DownloadURL,
+	}
+	_ = sendSSEJSON(stream, "artifact", response)
+	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
+}
+
 func (s *server) docGenerator(name string) docgen.Generator {
 	for _, candidate := range s.docTools {
 		if candidate.ToolName() == name {
@@ -399,6 +503,39 @@ func (s *server) docGenerator(name string) docgen.Generator {
 		}
 	}
 	return nil
+}
+
+func (s *server) imageTool(name string) *imagegen.Tool {
+	for i := range s.imageTools {
+		if s.imageTools[i].ToolName() == name {
+			return &s.imageTools[i]
+		}
+	}
+	return nil
+}
+
+func numberArg(value any) (int, bool) {
+	switch v := value.(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	default:
+		return 0, false
+	}
+}
+
+func int64Arg(value any) (int64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return int64(v), true
+	case int64:
+		return v, true
+	case int:
+		return int64(v), true
+	default:
+		return 0, false
+	}
 }
 
 func capToolOutput(output string) string {

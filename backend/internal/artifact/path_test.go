@@ -155,6 +155,20 @@ func TestCreateOutputFileRejectsSymlinkOutputDirectory(t *testing.T) {
 	}
 }
 
+func TestMIMETypeImages(t *testing.T) {
+	tests := map[string]string{
+		"png":  "image/png",
+		".jpg": "image/jpeg",
+		"jpeg": "image/jpeg",
+		"webp": "image/webp",
+	}
+	for extension, want := range tests {
+		if got := MIMEType(extension); got != want {
+			t.Fatalf("MIMEType(%q) = %q, want %q", extension, got, want)
+		}
+	}
+}
+
 func strPtr(value string) *string {
 	return &value
 }

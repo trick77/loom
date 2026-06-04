@@ -814,6 +814,37 @@ test("renders artifact card from historical assistant message", async () => {
   expect(screen.getByRole("button", { name: "Download notes.md" })).toBeInTheDocument();
 });
 
+test("renders image artifact preview from historical assistant message", async () => {
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [
+      {
+        id: "m1",
+        role: "assistant",
+        content: "Created robot.png.",
+        artifacts: [
+          {
+            id: "art_1",
+            displayFilename: "robot.png",
+            mimeType: "image/png",
+            sizeBytes: 12,
+            downloadUrl: "/api/artifacts/art_1/download",
+          },
+        ],
+      },
+    ]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  expect(await screen.findByRole("img", { name: "robot.png" })).toHaveAttribute(
+    "src",
+    "/api/artifacts/art_1/download",
+  );
+  expect(screen.getByRole("button", { name: "Download robot.png" })).toBeInTheDocument();
+});
+
 test("renders streamed reasoning in a collapsed thinking panel", async () => {
   vi.stubGlobal(
     "fetch",
