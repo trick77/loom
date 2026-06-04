@@ -34,6 +34,7 @@ type Deps struct {
 	DocTools              []docgen.Generator
 	ImageTools            []imagegen.Tool
 	UsersDir              string
+	ArtifactOpener        ArtifactOpener
 	OIDCAdminGroup        string
 	DevAuthClaims         auth.Claims
 	PostLogoutRedirectURL string
@@ -52,6 +53,7 @@ type server struct {
 	docTools              []docgen.Generator
 	imageTools            []imagegen.Tool
 	usersDir              string
+	artifactOpener        ArtifactOpener
 	oidcAdminGroup        string
 	devAuthClaims         auth.Claims
 	postLogoutRedirectURL string
@@ -84,6 +86,17 @@ type ArtifactStore interface {
 	Get(context.Context, string, string) (artifact.Artifact, bool, error)
 	ListForThread(context.Context, string, string) ([]artifact.Artifact, error)
 	ListForProject(context.Context, string, string) ([]artifact.Artifact, error)
+}
+
+// ArtifactOpener opens a generated artifact on the host running the Spark backend.
+type ArtifactOpener interface {
+	Open(context.Context, string) error
+}
+
+type artifactOpenerFunc func(context.Context, string) error
+
+func (f artifactOpenerFunc) Open(ctx context.Context, path string) error {
+	return f(ctx, path)
 }
 
 // ChatClient is the LLM dependency used by chat stream handlers.
@@ -125,6 +138,10 @@ type UserService interface {
 
 // New returns the fully wired HTTP handler.
 func New(d Deps) http.Handler {
+	artifactOpener := d.ArtifactOpener
+	if artifactOpener == nil {
+		artifactOpener = systemArtifactOpener{}
+	}
 	s := &server{
 		version:               d.Version,
 		oidc:                  d.OIDC,
@@ -138,6 +155,7 @@ func New(d Deps) http.Handler {
 		docTools:              d.DocTools,
 		imageTools:            d.ImageTools,
 		usersDir:              d.UsersDir,
+		artifactOpener:        artifactOpener,
 		oidcAdminGroup:        d.OIDCAdminGroup,
 		devAuthClaims:         d.DevAuthClaims,
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
@@ -171,6 +189,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))
+	mux.Handle("POST /api/artifacts/{artifactID}/open", s.requireAuth(http.HandlerFunc(s.handleOpenArtifact)))
 	if d.Static != nil {
 		mux.Handle("/", d.Static)
 	}

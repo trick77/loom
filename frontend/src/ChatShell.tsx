@@ -19,6 +19,7 @@ import {
   createThread,
   deleteThread,
   downloadArtifact,
+  openArtifact,
   updateThread,
   getMcpStatus,
   getThread,
@@ -2046,6 +2047,15 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
     }
   }
 
+  async function handleOpenPreview() {
+    setError("");
+    try {
+      await openArtifact(artifact.downloadUrl);
+    } catch {
+      setError("Open failed");
+    }
+  }
+
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
       {isImage &&
@@ -2055,8 +2065,12 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
         // upward jump. With known dimensions we reserve the exact box via aspect-ratio;
         // otherwise we fall back to a min-height floor that bounds the collapse.
         (artifact.width && artifact.height ? (
-          <div
-            className="relative max-h-[28rem] w-full overflow-hidden bg-[#1f1f1d]"
+          <button
+            className="relative block max-h-[28rem] w-full cursor-zoom-in overflow-hidden bg-[#1f1f1d]"
+            onClick={handleOpenPreview}
+            type="button"
+            title={`Open ${artifact.displayFilename} in Preview`}
+            aria-label={`Open ${artifact.displayFilename} in Preview`}
             style={{ aspectRatio: `${artifact.width} / ${artifact.height}` }}
           >
             {previewUrl !== "" && (
@@ -2067,9 +2081,15 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
                 loading="lazy"
               />
             )}
-          </div>
+          </button>
         ) : (
-          <div className="min-h-[16rem] w-full bg-[#1f1f1d]">
+          <button
+            className="block min-h-[16rem] w-full cursor-zoom-in bg-[#1f1f1d]"
+            onClick={handleOpenPreview}
+            type="button"
+            title={`Open ${artifact.displayFilename} in Preview`}
+            aria-label={`Open ${artifact.displayFilename} in Preview`}
+          >
             {previewUrl !== "" && (
               <img
                 className="block max-h-[28rem] w-full object-contain"
@@ -2078,7 +2098,7 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
                 loading="lazy"
               />
             )}
-          </div>
+          </button>
         ))}
       <div className="flex items-center gap-3 px-4 py-3">
         {!isImage && (
