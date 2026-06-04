@@ -911,7 +911,15 @@ test("clicking an image artifact opens a lightbox preview in the browser", async
     expect.anything(),
   );
 
-  // Escape closes the lightbox.
+  // The close button dismisses the lightbox.
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close preview" }));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Preview robot.png" })).not.toBeInTheDocument();
+  });
+
+  // Escape also closes it.
+  fireEvent.click(screen.getByRole("img", { name: "robot.png" }));
+  await screen.findByRole("dialog", { name: "Preview robot.png" });
   fireEvent.keyDown(window, { key: "Escape" });
   await waitFor(() => {
     expect(screen.queryByRole("dialog", { name: "Preview robot.png" })).not.toBeInTheDocument();

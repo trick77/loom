@@ -2140,6 +2140,15 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           aria-modal="true"
           aria-label={`Preview ${artifact.displayFilename}`}
         >
+          <button
+            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-black/40 text-[#f3f0e8] transition-colors hover:bg-black/60"
+            onClick={() => setLightboxOpen(false)}
+            type="button"
+            title="Close preview"
+            aria-label="Close preview"
+          >
+            <CloseIcon />
+          </button>
           <img
             className="max-h-full max-w-full object-contain"
             src={previewUrl}
@@ -2382,6 +2391,19 @@ function DownloadIcon() {
       />
       <path
         d="M5 18.5h14"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 6 18 18M18 6 6 18"
         stroke="currentColor"
         strokeWidth="1.9"
         strokeLinecap="round"
