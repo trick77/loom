@@ -25,6 +25,7 @@ import {
   listProjects,
   listThreads,
   setThreadStarred,
+  stopMessage,
   streamMessage,
   type Artifact,
   type McpStatusEvent,
@@ -113,13 +114,27 @@ export function ChatShell({
     setToolEvents([]);
   }, []);
 
-  function handleActionError(error: unknown, fallback: string, setError: (message: string) => void) {
-    if (error instanceof AuthExpiredError) {
-      onSessionExpired();
-      return;
+  const handleActionError = useCallback(
+    (error: unknown, fallback: string, setError: (message: string) => void) => {
+      if (error instanceof AuthExpiredError) {
+        onSessionExpired();
+        return;
+      }
+      setError(error instanceof Error && error.message !== "" ? error.message : fallback);
+    },
+    [onSessionExpired],
+  );
+
+  const handleStopResponse = useCallback(() => {
+    if (!isSending) return;
+    const threadID = activeThreadIDRef.current;
+    if (threadID !== null) {
+      void stopMessage(threadID).catch((error: unknown) => {
+        handleActionError(error, "Message failed to stop.", setSendError);
+      });
     }
-    setError(error instanceof Error && error.message !== "" ? error.message : fallback);
-  }
+    streamAbortRef.current?.abort();
+  }, [handleActionError, isSending]);
 
   useEffect(() => {
     if (window.location.pathname === "/") {
@@ -145,6 +160,19 @@ export function ChatShell({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [openThreadMenuID]);
+
+  useEffect(() => {
+    if (!isSending) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      handleStopResponse();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleStopResponse, isSending]);
 
   useEffect(() => {
     let active = true;
@@ -222,7 +250,7 @@ export function ChatShell({
     return () => {
       active = false;
     };
-  }, [route]);
+  }, [clearToolEvents, handleActionError, route]);
 
   const displayName = user.displayName || user.username;
   const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
@@ -599,6 +627,7 @@ export function ChatShell({
             sendError={sendError}
             onDraftChange={setDraft}
             onSend={handleSend}
+            onStop={handleStopResponse}
           />
         ) : (
           <ChatPanel
@@ -614,6 +643,7 @@ export function ChatShell({
             mcpStatus={mcpStatus}
             onDraftChange={setDraft}
             onSend={handleSend}
+            onStop={handleStopResponse}
             onRetry={handleRetry}
           />
         )}
@@ -1159,6 +1189,7 @@ function StartPanel({
   sendError,
   onDraftChange,
   onSend,
+  onStop,
 }: {
   displayName: string;
   draft: string;
@@ -1166,6 +1197,7 @@ function StartPanel({
   sendError: string;
   onDraftChange(value: string): void;
   onSend(): void;
+  onStop(): void;
 }) {
   return (
     <section className="flex h-screen min-h-0 flex-col items-center justify-center px-8 pb-[14vh]">
@@ -1177,10 +1209,11 @@ function StartPanel({
         <Composer
           variant="start"
           draft={draft}
-          disabled={isSending}
+          isSending={isSending}
           placeholder="How can I help you today?"
           onDraftChange={onDraftChange}
           onSend={onSend}
+          onStop={onStop}
         />
         {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
         <div className="spark-meta-text mt-4 flex justify-center gap-2 text-[#e8e4da]">
@@ -1208,6 +1241,7 @@ function ChatPanel({
   mcpStatus,
   onDraftChange,
   onSend,
+  onStop,
   onRetry,
 }: {
   thread: Thread | null;
@@ -1222,6 +1256,7 @@ function ChatPanel({
   mcpStatus: McpStatusEvent | null;
   onDraftChange(value: string): void;
   onSend(): void;
+  onStop(): void;
   onRetry(content: string): void;
 }) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -1372,10 +1407,11 @@ function ChatPanel({
               <Composer
                 variant="chat"
                 draft={draft}
-                disabled={isSending}
+                isSending={isSending}
                 placeholder="Write a message..."
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}
+                onStop={onStop}
               />
               <div className="spark-meta-text mt-2 text-center text-[#858178]">
                 Spark can make mistakes. Please double-check responses.
@@ -1471,26 +1507,33 @@ function previousUserContent(messages: Message[], beforeIndex: number): string |
 function Composer({
   variant,
   draft,
-  disabled,
+  isSending,
   placeholder,
   onDraftChange,
   onSend,
+  onStop,
 }: {
   variant: "start" | "chat";
   draft: string;
-  disabled: boolean;
+  isSending: boolean;
   placeholder: string;
   onDraftChange(value: string): void;
   onSend(): void;
+  onStop(): void;
 }) {
   const height = variant === "start" ? "h-[122px]" : "h-[102px]";
   const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   const padX = "px-6";
+  const canSend = !isSending && draft.trim() !== "";
   return (
     <form
       className={`spark-composer ${height} relative rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
       onSubmit={(event) => {
         event.preventDefault();
+        if (isSending) {
+          onStop();
+          return;
+        }
         onSend();
       }}
     >
@@ -1502,7 +1545,7 @@ function Composer({
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
-            onSend();
+            if (!isSending) onSend();
           }
         }}
       />
@@ -1513,13 +1556,19 @@ function Composer({
         <div className="spark-meta-text flex items-center text-[#d8d4ca]">
           <button
             className="spark-composer-send grid h-7 w-7 place-items-center rounded-md bg-accent text-[#eeeae2] transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-45"
-            disabled={disabled || draft.trim() === ""}
+            disabled={!isSending && !canSend}
             type="submit"
-            aria-label="Send message"
+            aria-label={isSending ? "Stop response" : "Send message"}
           >
-            <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-              <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            {isSending ? (
+              <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                <rect x="7" y="7" width="10" height="10" rx="1.6" />
+              </svg>
+            ) : (
+              <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+                <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
           </button>
         </div>
       </div>

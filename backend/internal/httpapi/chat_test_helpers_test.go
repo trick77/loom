@@ -268,6 +268,37 @@ func (f fakeChatClient) StreamChatWithTools(_ context.Context, history []llm.Mes
 	return llm.StreamResult{Content: content, ReasoningContent: f.reasoningText, Usage: f.usage}, nil
 }
 
+type blockingChatClient struct {
+	started        chan struct{}
+	done           chan struct{}
+	partialContent string
+}
+
+func (f *blockingChatClient) StreamChat(ctx context.Context, _ []llm.Message, _ func(string) error) (string, error) {
+	result, err := f.StreamChatResult(ctx, nil, nil)
+	return result.Content, err
+}
+
+func (f *blockingChatClient) StreamChatResult(ctx context.Context, _ []llm.Message, _ func(string) error) (llm.StreamResult, error) {
+	close(f.started)
+	<-ctx.Done()
+	close(f.done)
+	return llm.StreamResult{Content: f.partialContent}, ctx.Err()
+}
+
+func (f *blockingChatClient) StreamChatWithTools(ctx context.Context, _ []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+	if f.partialContent != "" && onEvent != nil {
+		if err := onEvent(llm.StreamEvent{Delta: f.partialContent}); err != nil {
+			return llm.StreamResult{}, err
+		}
+	}
+	return f.StreamChatResult(ctx, nil, nil)
+}
+
+func (f *blockingChatClient) GenerateTitle(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
 type fakeToolChatClient struct {
 	results   []llm.StreamResult
 	histories [][]llm.Message
