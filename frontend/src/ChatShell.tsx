@@ -100,6 +100,7 @@ export function ChatShell({
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const toolEventsRef = useRef<ToolActivity[]>([]);
@@ -481,32 +482,63 @@ export function ChatShell({
   }
 
   return (
-    <div className="grid h-screen grid-cols-[362px_1fr] bg-bg font-sans text-ink">
+    <div
+      className={`grid h-screen bg-bg font-sans text-ink ${
+        sidebarCollapsed ? "grid-cols-[56px_1fr]" : "grid-cols-[362px_1fr]"
+      }`}
+    >
       <aside className="spark-sidebar-text flex min-h-0 flex-col border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd]">
-        <div className="flex h-11 items-center justify-between px-3">
-          <div className="spark-wordmark font-serif font-medium text-[#f4f0e8]">Spark</div>
-          <div className="flex items-center gap-3 text-[#aaa79e]" aria-hidden="true">
-            <span className="text-sm">⌕</span>
-            <span className="text-xs">▯</span>
+        <div className={`flex h-11 items-center px-3 ${sidebarCollapsed ? "justify-center" : "justify-between"}`}>
+          {!sidebarCollapsed && (
+            <div className="spark-wordmark font-serif font-medium text-[#f4f0e8]">Spark</div>
+          )}
+          <div className="flex items-center gap-3 text-[#aaa79e]">
+            {!sidebarCollapsed && (
+              <button
+                type="button"
+                aria-label="Search"
+                className="grid place-items-center rounded transition-colors hover:text-white"
+              >
+                <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="m20 20-3.6-3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+              aria-expanded={!sidebarCollapsed}
+              onClick={() => setSidebarCollapsed((value) => !value)}
+              className="grid place-items-center rounded transition-colors hover:text-white"
+            >
+              <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M9.5 5v14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
         </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
+        <nav className="spark-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
           <button
-            className={`flex h-7 w-full items-center gap-2.5 rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
-              route.view === "new" && !showAdmin ? "bg-[#111110]" : ""
-            }`}
+            className={`flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
+              sidebarCollapsed ? "justify-center" : "gap-2.5"
+            } ${route.view === "new" && !showAdmin ? "bg-[#111110]" : ""}`}
             onClick={navigateToNew}
             type="button"
+            aria-label="New chat"
           >
             <span className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full bg-[hsl(180deg_3%_19%)] text-[hsl(55deg_9%_74%)]">
               <svg className="h-[13px] w-[13px]" viewBox="0 0 24 24" aria-hidden="true" fill="none">
                 <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </span>
-            <span>New chat</span>
+            {!sidebarCollapsed && <span>New chat</span>}
           </button>
-          <SidebarPrimaryItem label="Chats" icon="chats" />
-          <SidebarPrimaryItem label="Projects" icon="projects" />
+          <SidebarPrimaryItem label="Chats" icon="chats" collapsed={sidebarCollapsed} />
+          <SidebarPrimaryItem label="Projects" icon="projects" collapsed={sidebarCollapsed} />
+          {!sidebarCollapsed && (
+            <>
           {loadError !== "" && (
             <div className="spark-meta-text mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-accent">
               {loadError}
@@ -605,19 +637,25 @@ export function ChatShell({
               Admin
             </button>
           )}
+            </>
+          )}
         </nav>
         <div className="border-t border-[#343432] px-3 py-3">
-          <div className="flex items-center gap-3">
+          <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "gap-3"}`}>
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dedbd0] text-xs font-semibold text-[#1d1d1b]">
               {initialsFor(displayName)}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[#f4f0e8]">{displayName}</div>
-              <div className="truncate font-normal text-[#8f8b82]">{user.role}</div>
-            </div>
-            <button className="rounded-md px-2 py-1 text-[#aaa79e] hover:bg-[#2a2a28]" onClick={onLogout}>
-              Logout
-            </button>
+            {!sidebarCollapsed && (
+              <>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[#f4f0e8]">{displayName}</div>
+                  <div className="truncate font-normal text-[#8f8b82]">{user.role}</div>
+                </div>
+                <button className="rounded-md px-2 py-1 text-[#aaa79e] hover:bg-[#2a2a28]" onClick={onLogout}>
+                  Logout
+                </button>
+              </>
+            )}
           </div>
         </div>
       </aside>
@@ -720,11 +758,23 @@ function greetingForNow() {
   return "Evening";
 }
 
-function SidebarPrimaryItem({ icon, label }: { icon: SidebarIconName; label: string }) {
+function SidebarPrimaryItem({
+  icon,
+  label,
+  collapsed = false,
+}: {
+  icon: SidebarIconName;
+  label: string;
+  collapsed?: boolean;
+}) {
   return (
-    <div className="flex h-7 items-center gap-2.5 rounded-md px-1.5 text-[#c7c5bd]">
+    <div
+      className={`flex h-7 items-center rounded-md px-1.5 text-[#c7c5bd] ${
+        collapsed ? "justify-center" : "gap-2.5"
+      }`}
+    >
       <SidebarIcon name={icon} />
-      <span className="truncate">{label}</span>
+      {!collapsed && <span className="truncate">{label}</span>}
     </div>
   );
 }
