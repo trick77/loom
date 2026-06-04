@@ -107,11 +107,16 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	assistantContent := assistantResult.Content
 	if imageArtifactRequired && len(assistantResult.Artifacts) == 0 {
+		message := "image generation was not completed"
+		if strings.TrimSpace(assistantResult.ToolError) != "" {
+			message = assistantResult.ToolError
+		}
 		slog.Warn("image request completed without image artifact",
 			"thread_id", threadID,
 			"content_bytes", len(assistantResult.Content),
-			"tool_calls", len(assistantResult.ToolCalls))
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": "image generation was not completed"})
+			"tool_calls", len(assistantResult.ToolCalls),
+			"tool_error", assistantResult.ToolError)
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		return
 	}
 	if strings.TrimSpace(assistantContent) == "" {
@@ -184,6 +189,7 @@ func (e streamUserError) Error() string {
 type assistantLoopResult struct {
 	llm.StreamResult
 	Artifacts []artifactResponse
+	ToolError string
 }
 
 func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool) (assistantLoopResult, error) {
@@ -304,7 +310,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		Content:    output,
 	})
 	if response == nil {
-		return assistantLoopResult{StreamResult: result}, nil
+		return assistantLoopResult{StreamResult: result, ToolError: output}, nil
 	}
 
 	artifacts := []artifactResponse{*response}
@@ -641,7 +647,12 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	var buffer bytes.Buffer
 	meta, err := generator.Generate(ctx, req, &buffer)
 	if err != nil {
-		return nil, capToolOutput("tool failed: " + err.Error()), true
+		output := capToolOutput("tool failed: " + err.Error())
+		slog.Warn("image tool failed",
+			"tool", call.Function.Name,
+			"thread_id", thread.ID,
+			"provider_error", err)
+		return nil, output, true
 	}
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
 		return nil, "tool failed: generated image is too large", true

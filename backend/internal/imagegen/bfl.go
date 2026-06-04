@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,7 +15,8 @@ import (
 
 const (
 	defaultBFLPollInterval = 750 * time.Millisecond
-	defaultBFLPollTimeout  = 2 * time.Minute
+	// Keep in sync with config's runtime default.
+	defaultBFLPollTimeout  = 3 * time.Minute
 	maxDownloadedImageSize = 25 << 20
 )
 
@@ -151,7 +153,7 @@ func (c *BFLClient) poll(ctx context.Context, pollingURL string) (bflStatusRespo
 		status, err := c.fetchStatus(ctx, pollingURL)
 		if err != nil {
 			if ctx.Err() != nil {
-				return bflStatusResponse{}, fmt.Errorf("BFL generation timed out: %w", ctx.Err())
+				return bflStatusResponse{}, bflPollContextError(ctx.Err())
 			}
 			return bflStatusResponse{}, err
 		}
@@ -163,10 +165,17 @@ func (c *BFLClient) poll(ctx context.Context, pollingURL string) (bflStatusRespo
 		}
 		select {
 		case <-ctx.Done():
-			return bflStatusResponse{}, fmt.Errorf("BFL generation timed out: %w", ctx.Err())
+			return bflStatusResponse{}, bflPollContextError(ctx.Err())
 		case <-ticker.C:
 		}
 	}
+}
+
+func bflPollContextError(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("BFL generation canceled: %w", err)
+	}
+	return fmt.Errorf("BFL generation timed out: %w", err)
 }
 
 func (c *BFLClient) fetchStatus(ctx context.Context, pollingURL string) (bflStatusResponse, error) {

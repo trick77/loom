@@ -68,9 +68,10 @@ func run() error {
 	var imageTools []imagegen.Tool
 	if bflImageConfigured(cfg) {
 		imageProvider := imagegen.NewBFLClient(imagegen.BFLConfig{
-			BaseURL: cfg.BFLBaseURL,
-			APIKey:  cfg.BFLAPIKey,
-			Model:   cfg.BFLModel,
+			BaseURL:     cfg.BFLBaseURL,
+			APIKey:      cfg.BFLAPIKey,
+			Model:       cfg.BFLModel,
+			PollTimeout: cfg.BFLPollTimeout,
 		})
 		imageTools = append(imageTools, imagegen.NewTool(imageProvider))
 	}
