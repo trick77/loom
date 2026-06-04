@@ -708,6 +708,8 @@ test("turns the send button into a stop button while the assistant is running", 
 
   const stopButton = await screen.findByRole("button", { name: "Stop response" });
   expect(stopButton).toBeEnabled();
+  expect(stopButton).toHaveClass("bg-[#3a3a37]");
+  expect(stopButton).not.toHaveClass("bg-accent");
 
   fireEvent.click(stopButton);
 
