@@ -50,4 +50,5 @@ CMD ["supergateway", \
      "--outputTransport", "streamableHttp", \
      "--stateful", "--sessionTimeout", "180000", \
      "--port", "8090", \
-     "--streamableHttpPath", "/mcp"]
+     "--streamableHttpPath", "/mcp", \
+     "--logLevel", "none"]
