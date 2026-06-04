@@ -54,6 +54,11 @@ export type Artifact = {
   sizeBytes: number;
   projectId?: string;
   downloadUrl: string;
+  model?: string;
+  provider?: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
 };
 
 export type ToolCallEvent = {
