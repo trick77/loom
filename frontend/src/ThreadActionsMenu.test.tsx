@@ -1,0 +1,85 @@
+import "@testing-library/jest-dom/vitest";
+import { render, screen } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
+
+import { ThreadActionsMenu } from "./ThreadActionsMenu";
+import type { Thread } from "./api";
+
+function threadFixture(): Thread {
+  return {
+    id: "t1",
+    title: "Chat title",
+    starred: false,
+    createdAt: "2026-06-01T00:00:00Z",
+    updatedAt: "2026-06-04T15:00:00Z",
+  };
+}
+
+test("uses sidebar text sizing regardless of render location", () => {
+  render(
+    <ThreadActionsMenu
+      menuKey="t1"
+      thread={threadFixture()}
+      onDelete={vi.fn()}
+      onRename={vi.fn()}
+      onStarChange={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("menu", { name: "Chat actions" })).toHaveClass("spark-sidebar-text");
+});
+
+test("adds a divider after select when select is available", () => {
+  render(
+    <ThreadActionsMenu
+      menuKey="t1"
+      thread={threadFixture()}
+      onSelect={vi.fn()}
+      onDelete={vi.fn()}
+      onRename={vi.fn()}
+      onStarChange={vi.fn()}
+    />,
+  );
+
+  const menu = screen.getByRole("menu", { name: "Chat actions" });
+  const itemRoles = Array.from(menu.children).map((child) => child.getAttribute("role") ?? child.tagName.toLowerCase());
+
+  expect(itemRoles).toEqual(["menuitem", "separator", "menuitem", "menuitem", "menuitem", "separator", "menuitem"]);
+});
+
+test("uses the brighter menu divider color for separators", () => {
+  render(
+    <ThreadActionsMenu
+      menuKey="t1"
+      thread={threadFixture()}
+      onSelect={vi.fn()}
+      onDelete={vi.fn()}
+      onRename={vi.fn()}
+      onStarChange={vi.fn()}
+    />,
+  );
+
+  for (const separator of screen.getAllByRole("separator")) {
+    expect(separator).toHaveClass("bg-[#4a4741]");
+  }
+});
+
+test("uses sidebar icon sizing for menu icons", () => {
+  render(
+    <ThreadActionsMenu
+      menuKey="t1"
+      thread={threadFixture()}
+      onSelect={vi.fn()}
+      onDelete={vi.fn()}
+      onRename={vi.fn()}
+      onStarChange={vi.fn()}
+    />,
+  );
+
+  for (const label of ["Select", "Star", "Rename", "Add to project", "Delete"]) {
+    const icon = screen.getByRole("menuitem", { name: label }).querySelector("[aria-hidden='true']");
+
+    expect(icon).toHaveClass("h-[21px]");
+    expect(icon).toHaveClass("w-[21px]");
+  }
+});

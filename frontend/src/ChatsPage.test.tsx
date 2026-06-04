@@ -65,6 +65,26 @@ test("renders all chats with a relative time label", async () => {
   expect(screen.getByText("Apps and websites")).toBeInTheDocument();
 });
 
+test("chat rows use the sidebar hover surface", async () => {
+  renderPage();
+
+  const rowButton = await screen.findByRole("button", { name: /Greeting/ });
+  const rowSurface = rowButton.closest("div");
+
+  expect(rowSurface).toHaveClass("rounded-md");
+  expect(rowSurface).toHaveClass("transition-colors");
+  expect(rowSurface).toHaveClass("hover:bg-[#2a2a28]");
+});
+
+test("search input uses the standard input text size", async () => {
+  renderPage();
+
+  const searchInput = await screen.findByRole("textbox", { name: "Search chats" });
+
+  expect(searchInput).toHaveClass("spark-composer-text");
+  expect(searchInput).not.toHaveClass("spark-control-text");
+});
+
 test("search filters by title (debounced)", async () => {
   renderPage();
   await screen.findByText("Apps and websites");
