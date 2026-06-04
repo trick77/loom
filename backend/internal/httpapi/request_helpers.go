@@ -90,8 +90,8 @@ func parseOptionalLimit(r *http.Request, key string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if limit < 1 || limit > 100 {
-		return 0, fmt.Errorf("%s must be between 1 and 100", key)
+	if limit < 1 || limit > 1000 {
+		return 0, fmt.Errorf("%s must be between 1 and 1000", key)
 	}
 	return limit, nil
 }
