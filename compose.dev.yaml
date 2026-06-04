@@ -39,6 +39,9 @@ services:
       SPARK_CHAT_REASONING_EFFORT: "${SPARK_CHAT_REASONING_EFFORT:-high}"
       SPARK_CONTEXT7_API_KEY: "${SPARK_CONTEXT7_API_KEY:-}"
       SPARK_CONTEXT7_MCP_URL: "${SPARK_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
+      SPARK_BFL_BASE_URL: "${SPARK_BFL_BASE_URL:-https://api.bfl.ai/v1}"
+      SPARK_BFL_API_KEY: "${SPARK_BFL_API_KEY:-}"
+      SPARK_BFL_MODEL: "${SPARK_BFL_MODEL:-flux-2-klein-4b}"
     volumes:
       - spark-dev-data:/data
       - ./mcp.dev.json:/config/mcp.json:ro
