@@ -1199,6 +1199,7 @@ function ChatPanel({
     isSending &&
     streamingText === "" &&
     sendError === "";
+  const showStreamingThinkingPanel = showActiveThinkingPanel || streamingReasoning.trim() !== "";
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1260,7 +1261,7 @@ function ChatPanel({
     refreshScrollState,
     scrollToLatest,
     sendError,
-    showActiveThinkingPanel,
+    showStreamingThinkingPanel,
     streamingArtifacts.length,
     streamingReasoning,
     streamingText,
@@ -1312,8 +1313,13 @@ function ChatPanel({
               </div>
             ))}
             {!showActiveThinkingPanel && toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
-            {showActiveThinkingPanel && (
-              <ThinkingPanel active content={streamingReasoning} complete={false} toolEvents={toolEvents} />
+            {showStreamingThinkingPanel && (
+              <ThinkingPanel
+                active={showActiveThinkingPanel}
+                content={streamingReasoning}
+                complete={streamingText !== ""}
+                toolEvents={showActiveThinkingPanel ? toolEvents : []}
+              />
             )}
             {streamingArtifacts.map((artifact) => (
               <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
@@ -1380,7 +1386,12 @@ function ThinkingPanel({
   const trimmed = content.trim();
   if (trimmed === "" && !active) return null;
   return (
-    <div className="spark-thinking-panel">
+    <div
+      aria-label={active ? "Spark is thinking" : undefined}
+      aria-live={active ? "polite" : undefined}
+      className="spark-thinking-panel"
+      role={active ? "status" : undefined}
+    >
       <button
         aria-expanded={expanded}
         aria-label={expanded ? "Hide thinking" : "Show thinking"}

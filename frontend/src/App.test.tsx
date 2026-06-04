@@ -763,13 +763,47 @@ test("shows the thinking panel while waiting for the first assistant output", as
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByRole("button", { name: /show thinking/i })).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: /spark is thinking/i })).toBeInTheDocument();
   expect(screen.getByText("Thinking")).toBeInTheDocument();
-  expect(screen.queryByRole("status", { name: /spark is thinking/i })).not.toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
   await waitFor(() => expect(screen.queryByRole("button", { name: /show thinking/i })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("status", { name: /spark is thinking/i })).not.toBeInTheDocument());
+});
+
+test("keeps streamed reasoning visible while assistant text is streaming", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
+  );
+  const toggle = await screen.findByRole("button", { name: /show thinking/i });
+  fireEvent.click(toggle);
+  expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
+
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
+
+  expect(await screen.findByText("Hel")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /hide thinking/i })).toBeInTheDocument();
+  expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
 });
 
 test("keeps the thinking panel visible during tool activity before assistant output", async () => {
