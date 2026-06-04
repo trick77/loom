@@ -56,8 +56,8 @@ func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreads
 	if limit <= 0 {
 		limit = 30
 	}
-	if limit > 100 {
-		limit = 100
+	if limit > 1000 {
+		limit = 1000
 	}
 
 	filters := []string{"user_id = ?"}
@@ -76,6 +76,10 @@ func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreads
 	}
 	if opts.StarredOnly {
 		filters = append(filters, "starred = 1")
+	}
+	if search := strings.TrimSpace(opts.Search); search != "" {
+		filters = append(filters, `title LIKE ? ESCAPE '\'`)
+		args = append(args, "%"+escapeLike(search)+"%")
 	}
 	args = append(args, limit)
 
@@ -179,6 +183,13 @@ WHERE user_id = ? AND id = ?`,
 		return false, fmt.Errorf("delete thread: %w", err)
 	}
 	return changed(result)
+}
+
+// escapeLike escapes the LIKE wildcards so a user search term matches literally.
+// Used together with `ESCAPE '\'` in the query.
+func escapeLike(term string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(term)
 }
 
 func (s *Store) getThread(ctx context.Context, userID, threadID string) (Thread, bool, error) {

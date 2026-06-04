@@ -28,6 +28,14 @@ type updateThreadRequest struct {
 	Title *string `json:"title"`
 }
 
+type bulkDeleteThreadsRequest struct {
+	ThreadIDs []string `json:"threadIds"`
+}
+
+type bulkDeleteThreadsResponse struct {
+	Deleted int `json:"deleted"`
+}
+
 type getThreadResponse struct {
 	Thread   chat.Thread    `json:"thread"`
 	Messages []chat.Message `json:"messages"`
