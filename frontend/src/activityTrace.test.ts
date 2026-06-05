@@ -142,14 +142,26 @@ describe("activity trace model", () => {
     });
   });
 
-  test("formats tool details with vendor indicator and deduplicated action", () => {
+  test("formats tool details with source label and deduplicated action", () => {
     expect(summarizeToolCall("tavily__tavily_search", "{\"query\":\"balcony glazing\"}")).toMatchObject({
       title: "balcony glazing",
-      detail: "(Tavily) search",
+      detail: "Tavily: search",
+    });
+    expect(summarizeToolCall("fetch__fetch", "{\"url\":\"https://example.com\"}")).toMatchObject({
+      title: "example.com",
+      detail: "https://example.com",
+    });
+    expect(summarizeToolCall("generate_image", "{\"prompt\":\"a cabin\"}")).toMatchObject({
+      title: "generate image",
+      detail: "Black Forest Labs: generate image",
+    });
+    expect(summarizeToolCall("create_pptx_presentation", "{\"filename\":\"deck.pptx\"}")).toMatchObject({
+      title: "deck.pptx",
+      detail: "Native: create presentation",
     });
     expect(summarizeToolCall("custom__lookup", "not-json")).toMatchObject({
       title: "custom lookup",
-      detail: "(Custom) lookup",
+      detail: "Custom: lookup",
     });
   });
 });

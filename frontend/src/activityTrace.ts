@@ -191,9 +191,11 @@ function readableToolName(name: string): string {
 }
 
 function toolDetail(name: string): string {
+  const native = nativeToolDetail(name);
+  if (native !== undefined) return native;
   const [vendor, rawAction] = splitToolName(name);
   if (vendor === undefined) return rawAction;
-  return `(${titleCase(vendor)}) ${rawAction}`;
+  return `${titleCase(vendor)}: ${rawAction}`;
 }
 
 function splitToolName(name: string): [string | undefined, string] {
@@ -205,6 +207,25 @@ function splitToolName(name: string): [string | undefined, string] {
     ? action.slice(vendorPrefix.length)
     : action;
   return [vendor, readableToolName(deduplicatedAction)];
+}
+
+function nativeToolDetail(name: string): string | undefined {
+  switch (name) {
+    case "generate_image":
+      return "Black Forest Labs: generate image";
+    case "create_text_file":
+      return "Native: create text file";
+    case "create_docx_file":
+      return "Native: create docx file";
+    case "create_pdf_file":
+      return "Native: create pdf file";
+    case "create_pptx_presentation":
+      return "Native: create presentation";
+    case "create_xlsx_file":
+      return "Native: create spreadsheet";
+    default:
+      return undefined;
+  }
 }
 
 function titleCase(value: string): string {
