@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   appendReasoningDelta,
   completeTrace,
+  summarizeToolCall,
   summarizeTrace,
   upsertTraceToolCall,
   upsertTraceToolResult,
@@ -138,6 +139,17 @@ describe("activity trace model", () => {
         domain: "example.com",
         detail: "Example documentation page content",
       },
+    });
+  });
+
+  test("formats tool details with vendor indicator and deduplicated action", () => {
+    expect(summarizeToolCall("tavily__tavily_search", "{\"query\":\"balcony glazing\"}")).toMatchObject({
+      title: "balcony glazing",
+      detail: "(Tavily) search",
+    });
+    expect(summarizeToolCall("custom__lookup", "not-json")).toMatchObject({
+      title: "custom lookup",
+      detail: "(Custom) lookup",
     });
   });
 });

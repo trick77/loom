@@ -122,23 +122,24 @@ export function summarizeTrace(events: ActivityTraceEvent[]): string {
 
 export function summarizeToolCall(name: string, rawArguments: string): ToolSummary {
   const args = parseJSONRecord(rawArguments);
+  const detail = toolDetail(name);
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
   if (isSearchTool(name) || query !== undefined) {
-    return { kind: "search", title: query ?? readableToolName(name), detail: readableToolName(name) };
+    return { kind: "search", title: query ?? readableToolName(name), detail };
   }
   const url = stringValue(args, ["url", "uri", "href"]);
   if (isFetchTool(name) || url !== undefined) {
     return {
       kind: "fetch",
       title: url !== undefined ? domainFromURL(url) ?? url : readableToolName(name),
-      detail: url ?? readableToolName(name),
+      detail: url ?? detail,
     };
   }
   const file = stringValue(args, ["filename", "file", "path", "displayFilename"]);
   if (file !== undefined) {
-    return { kind: "file", title: file, detail: readableToolName(name) };
+    return { kind: "file", title: file, detail };
   }
-  return { kind: "generic", title: readableToolName(name), detail: name };
+  return { kind: "generic", title: readableToolName(name), detail };
 }
 
 export function summarizeToolResult(tool: ActivityTraceToolEvent, rawOutput: string): ToolResultPreview {
@@ -189,6 +190,28 @@ function readableToolName(name: string): string {
   return name.replace(/__/g, " ").replace(/_/g, " ").trim();
 }
 
+function toolDetail(name: string): string {
+  const [vendor, rawAction] = splitToolName(name);
+  if (vendor === undefined) return rawAction;
+  return `(${titleCase(vendor)}) ${rawAction}`;
+}
+
+function splitToolName(name: string): [string | undefined, string] {
+  const [vendor, ...rest] = name.split("__");
+  if (rest.length === 0) return [undefined, readableToolName(name)];
+  const action = rest.join("__");
+  const vendorPrefix = `${vendor}_`;
+  const deduplicatedAction = action.toLowerCase().startsWith(vendorPrefix.toLowerCase())
+    ? action.slice(vendorPrefix.length)
+    : action;
+  return [vendor, readableToolName(deduplicatedAction)];
+}
+
+function titleCase(value: string): string {
+  const readable = readableToolName(value);
+  return readable === "" ? value : readable.charAt(0).toUpperCase() + readable.slice(1);
+}
+
 function stringValue(record: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = record[key];
@@ -222,12 +245,13 @@ function extractSearchResults(value: unknown): SearchResultPreview[] {
     const title = typeof record.title === "string" ? record.title : undefined;
     const url = typeof record.url === "string" ? record.url : typeof record.href === "string" ? record.href : undefined;
     if (title === undefined && url === undefined) return [];
+    const snippet = typeof record.snippet === "string" ? record.snippet : typeof record.content === "string" ? record.content : undefined;
     return [
       {
-        title: title ?? url ?? "Result",
+        title: stripSearchResultMarkdown(title ?? url ?? "Result"),
         url,
         domain: url !== undefined ? domainFromURL(url) : undefined,
-        snippet: typeof record.snippet === "string" ? record.snippet : typeof record.content === "string" ? record.content : undefined,
+        snippet: snippet === undefined ? undefined : stripSearchResultMarkdown(snippet),
       },
     ];
   });
@@ -235,4 +259,13 @@ function extractSearchResults(value: unknown): SearchResultPreview[] {
 
 function truncateText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
+function stripSearchResultMarkdown(value: string): string {
+  return value
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_`~]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

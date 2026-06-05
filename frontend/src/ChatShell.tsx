@@ -1259,8 +1259,7 @@ function ChatPanel({
   const headerMenuKey = thread === null ? null : `Header:${thread.id}`;
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   const hasActiveActivityTrace = activityTrace.length > 0;
-  const showActiveActivityTrace =
-    hasActiveActivityTrace || (isSending && sendError === "" && streamingText === "");
+  const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1572,6 +1571,8 @@ function SearchResultRow({
   result: { title: string; url?: string; domain?: string; snippet?: string };
 }) {
   const favicon = result.url === undefined ? undefined : faviconURL(result.url);
+  const href = result.url === undefined ? undefined : externalHTTPURL(result.url);
+  const title = <div className="spark-activity-result-title">{result.title}</div>;
   return (
     <div className="spark-activity-result-row">
       {favicon !== undefined ? (
@@ -1582,12 +1583,27 @@ function SearchResultRow({
         </span>
       )}
       <div className="min-w-0">
-        <div className="spark-activity-result-title">{result.title}</div>
+        {href === undefined ? (
+          title
+        ) : (
+          <a className="spark-activity-result-link" href={href} target="_blank" rel="noreferrer">
+            {title}
+          </a>
+        )}
         {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
       </div>
       {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
     </div>
   );
+}
+
+function externalHTTPURL(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {
