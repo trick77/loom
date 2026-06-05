@@ -926,7 +926,7 @@ test("clicking an image artifact opens a lightbox preview in the browser", async
   });
 });
 
-test("renders streamed reasoning in a collapsed thinking panel", async () => {
+test("renders completed reasoning in a collapsed activity trace", async () => {
   vi.stubGlobal(
     "fetch",
     mcpStreamFetch(
@@ -941,7 +941,7 @@ test("renders streamed reasoning in a collapsed thinking panel", async () => {
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("Answer.")).toBeInTheDocument();
-  const toggle = screen.getByRole("button", { name: /show thinking/i });
+  const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toBeInTheDocument();
   expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
 
@@ -950,7 +950,7 @@ test("renders streamed reasoning in a collapsed thinking panel", async () => {
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
 });
 
-test("shows the thinking panel while waiting for the first assistant output", async () => {
+test("shows active activity trace while waiting for assistant output", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -969,18 +969,17 @@ test("shows the thinking panel while waiting for the first assistant output", as
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  expect(await screen.findByRole("button", { name: /show thinking/i })).toBeInTheDocument();
-  expect(screen.getByRole("status", { name: /spark is thinking/i })).toBeInTheDocument();
-  expect(screen.getByText("Thinking")).toBeInTheDocument();
+  const trace = await screen.findByRole("status", { name: /spark activity trace/i });
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(within(trace).getByText("Thinking")).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  await waitFor(() => expect(screen.queryByRole("button", { name: /show thinking/i })).not.toBeInTheDocument());
-  await waitFor(() => expect(screen.queryByRole("status", { name: /spark is thinking/i })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("status", { name: /spark activity trace/i })).not.toBeInTheDocument());
 });
 
-test("keeps streamed reasoning visible while assistant text is streaming", async () => {
+test("keeps active activity trace visible while assistant text is streaming", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1002,18 +1001,17 @@ test("keeps streamed reasoning visible while assistant text is streaming", async
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
   );
-  const toggle = await screen.findByRole("button", { name: /show thinking/i });
-  fireEvent.click(toggle);
+  const trace = await screen.findByRole("status", { name: /spark activity trace/i });
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /hide thinking/i })).toBeInTheDocument();
-  expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
 });
 
-test("keeps the thinking panel visible during tool activity before assistant output", async () => {
+test("shows active activity trace with reasoning and tool activity before assistant output", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1033,16 +1031,21 @@ test("keeps the thinking panel visible during tool activity before assistant out
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n'),
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'),
   );
 
-  expect(await screen.findByRole("button", { name: /show thinking/i })).toBeInTheDocument();
-  expect(screen.getByText("Thinking")).toBeInTheDocument();
-  expect(screen.getByText("search__web")).toBeInTheDocument();
-  expect(screen.getByText("Running")).toBeInTheDocument();
+  const trace = await screen.findByRole("status", { name: /spark activity trace/i });
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(within(trace).getByText("Thinking")).toBeInTheDocument();
+  expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
+  expect(within(trace).getByText("agentgateway kgateway")).toBeInTheDocument();
+  expect(within(trace).getByText("Running")).toBeInTheDocument();
 });
 
-test("hides the thinking panel when the stream fails", async () => {
+test("hides empty activity trace when the stream fails", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1061,13 +1064,13 @@ test("hides the thinking panel when the stream fails", async () => {
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  expect(await screen.findByRole("button", { name: /show thinking/i })).toBeInTheDocument();
+  expect(await screen.findByRole("status", { name: /spark activity trace/i })).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
   streamController.current?.close();
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /show thinking/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /spark activity trace/i })).not.toBeInTheDocument();
 });
 
 test("keeps the transcript pinned while an assistant response streams at the bottom", async () => {
@@ -1812,54 +1815,17 @@ test("ignores stream events after switching threads", async () => {
   expect(screen.queryByText("Wrong thread answer")).not.toBeInTheDocument();
 });
 
-test("surfaces the server error and keeps failed tool activity visible", async () => {
+test("surfaces the server error and keeps failed activity trace visible", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(
-        encoder.encode(
-          'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n',
-        ),
-      );
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway\\"}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"tool failed: timeout"}\n\n'));
       controller.enqueue(encoder.encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
       controller.close();
     },
   });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-      if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") {
-        return Response.json([
-          {
-            id: "t1",
-            title: "Existing chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ]);
-      }
-      if (url === "/api/threads/t1") {
-        return Response.json({
-          thread: {
-            id: "t1",
-            title: "Existing chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-          messages: [],
-        });
-      }
-      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
-        return new Response(stream, { status: 200 });
-      }
-      throw new Error(`unexpected fetch ${url}`);
-    }),
-  );
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
@@ -1868,75 +1834,48 @@ test("surfaces the server error and keeps failed tool activity visible", async (
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
-  // Tool activity from the failed turn stays visible so the user can see what
-  // was attempted (the panel is cleared on the next send / thread switch).
-  expect(screen.getByText("search__web")).toBeInTheDocument();
-  expect(screen.getByText("Running")).toBeInTheDocument();
+  const trace = screen.getByRole("status", { name: /spark activity trace/i });
+  expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
+  expect(within(trace).getByText("Failed")).toBeInTheDocument();
 });
 
-test("keeps completed tool activity visible with the assistant answer", async () => {
+test("renders unknown tool calls with safe fallback details", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(
-        encoder.encode(
-          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Search for updates","createdAt":"2026-05-30T00:00:00Z"}\n\n',
-        ),
-      );
-      controller.enqueue(
-        encoder.encode(
-          'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n',
-        ),
-      );
-      controller.enqueue(
-        encoder.encode(
-          'event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"result"}\n\n',
-        ),
-      );
-      controller.enqueue(
-        encoder.encode(
-          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"I found the update.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
-        ),
-      );
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"custom__lookup","arguments":"not-json"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
   });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-      if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") {
-        return Response.json([
-          {
-            id: "t1",
-            title: "Existing chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ]);
-      }
-      if (url === "/api/threads/t1") {
-        return Response.json({
-          thread: {
-            id: "t1",
-            title: "Existing chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-          messages: [],
-        });
-      }
-      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
-        return new Response(stream, { status: 200 });
-      }
-      throw new Error(`unexpected fetch ${url}`);
-    }),
-  );
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByText("Done.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /show activity/i }));
+  expect(await screen.findByText("custom lookup")).toBeInTheDocument();
+  expect(screen.getByText("Done")).toBeInTheDocument();
+});
+
+test("keeps completed activity trace collapsed before the assistant answer", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Search for updates","createdAt":"2026-05-30T00:00:00Z"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"{\\"results\\":[{\\"title\\":\\"Agentgateway\\",\\"url\\":\\"https://agentgateway.dev\\",\\"snippet\\":\\"Next generation proxy\\"},{\\"title\\":\\"Malformed source\\",\\"url\\":\\"not a url\\"}]}"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"I found the update.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
@@ -1945,9 +1884,26 @@ test("keeps completed tool activity visible with the assistant answer", async ()
   });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  expect(await screen.findByText("I found the update.")).toBeInTheDocument();
-  expect(screen.getByText("search__web")).toBeInTheDocument();
-  expect(screen.getByText("Done")).toBeInTheDocument();
+  const answer = await screen.findByText("I found the update.");
+  const toggle = screen.getByRole("button", { name: /show activity/i });
+  expect(toggle).toHaveTextContent("Searched 1 query");
+  expect(screen.queryByRole("status", { name: /spark activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
+
+  fireEvent.click(toggle);
+
+  expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
+  expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
+  expect(screen.getByText("Agentgateway")).toBeInTheDocument();
+  expect(screen.getByText("Malformed source")).toBeInTheDocument();
+  const resultList = document.querySelector(".spark-activity-result-list");
+  const faviconImages = resultList?.querySelectorAll("img.spark-activity-favicon");
+  expect(faviconImages).toHaveLength(1);
+  expect(faviconImages?.[0]).toHaveAttribute(
+    "src",
+    "https://www.google.com/s2/favicons?domain=agentgateway.dev&sz=32",
+  );
+  expect(toggle.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {

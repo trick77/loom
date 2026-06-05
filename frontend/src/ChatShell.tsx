@@ -32,10 +32,18 @@ import {
   type Message,
   type Project,
   type Thread,
-  type ToolCallEvent,
-  type ToolResultEvent,
   type User,
 } from "./api";
+import {
+  appendReasoningDelta,
+  completeTrace,
+  faviconURL,
+  summarizeTrace,
+  upsertTraceToolCall,
+  upsertTraceToolResult,
+  type ActivityTraceEvent,
+  type ActivityTraceToolEvent,
+} from "./activityTrace";
 import logoImage from "./assets/logo.png";
 import { MessageMetrics } from "./MessageMetrics";
 import { formatDuration } from "./metrics";
@@ -57,15 +65,8 @@ type RouteState =
   | { view: "chats" }
   | { view: "chat"; threadID: string };
 
-type ToolActivity = {
-  id: string;
-  name: string;
-  status: "running" | "done";
-  content?: string;
-};
-
-type MessageWithToolActivity = Message & {
-  toolEvents?: ToolActivity[];
+type MessageWithActivityTrace = Message & {
+  activityTrace?: ActivityTraceEvent[];
 };
 
 type SidebarIconName = "chats" | "projects";
@@ -83,7 +84,7 @@ export function ChatShell({
   const [threads, setThreads] = useState<Thread[]>([]);
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
-  const [messages, setMessages] = useState<MessageWithToolActivity[]>([]);
+  const [messages, setMessages] = useState<MessageWithActivityTrace[]>([]);
   const [draft, setDraft] = useState("");
   const [projectName, setProjectName] = useState("");
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
@@ -95,9 +96,8 @@ export function ChatShell({
   const [modalError, setModalError] = useState("");
   const [isMutatingThread, setIsMutatingThread] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [streamingReasoning, setStreamingReasoning] = useState("");
   const [streamingArtifacts, setStreamingArtifacts] = useState<Artifact[]>([]);
-  const [toolEvents, setToolEvents] = useState<ToolActivity[]>([]);
+  const [activityTrace, setActivityTrace] = useState<ActivityTraceEvent[]>([]);
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -107,17 +107,17 @@ export function ChatShell({
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
-  const toolEventsRef = useRef<ToolActivity[]>([]);
+  const activityTraceRef = useRef<ActivityTraceEvent[]>([]);
 
-  const updateToolEvents = useCallback((updater: (current: ToolActivity[]) => ToolActivity[]) => {
-    const next = updater(toolEventsRef.current);
-    toolEventsRef.current = next;
-    setToolEvents(next);
+  const updateActivityTrace = useCallback((updater: (current: ActivityTraceEvent[]) => ActivityTraceEvent[]) => {
+    const next = updater(activityTraceRef.current);
+    activityTraceRef.current = next;
+    setActivityTrace(next);
   }, []);
 
-  const clearToolEvents = useCallback(() => {
-    toolEventsRef.current = [];
-    setToolEvents([]);
+  const clearActivityTrace = useCallback(() => {
+    activityTraceRef.current = [];
+    setActivityTrace([]);
   }, []);
 
   const handleActionError = useCallback(
@@ -228,16 +228,16 @@ export function ChatShell({
       setMessages([]);
       setStreamingText("");
       setStreamingArtifacts([]);
-      clearToolEvents();
+      clearActivityTrace();
       setSendError("");
       return;
     }
     if (activeThreadIDRef.current === route.threadID) return;
     let active = true;
     streamAbortRef.current?.abort();
-    // Drop any tool activity left over from the previous thread (e.g. a failed
-    // turn whose panel is now kept) before this thread's transcript loads.
-    clearToolEvents();
+    // Drop any activity trace left over from the previous thread (e.g. a failed
+    // turn whose trace is now kept) before this thread's transcript loads.
+    clearActivityTrace();
     getThread(route.threadID)
       .then((response) => {
         if (!active) return;
@@ -246,7 +246,7 @@ export function ChatShell({
         setMessages(response.messages);
         setStreamingText("");
         setStreamingArtifacts([]);
-        clearToolEvents();
+        clearActivityTrace();
         setSendError("");
       })
       .catch((error: unknown) => {
@@ -256,7 +256,7 @@ export function ChatShell({
     return () => {
       active = false;
     };
-  }, [clearToolEvents, handleActionError, route]);
+  }, [clearActivityTrace, handleActionError, route]);
 
   const displayName = user.displayName || user.username;
   const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
@@ -269,11 +269,11 @@ export function ChatShell({
     setMessages([]);
     setStreamingText("");
     setStreamingArtifacts([]);
-    clearToolEvents();
+    clearActivityTrace();
     setSendError("");
     navigate({ view: "new" });
     setRoute({ view: "new" });
-  }, [clearToolEvents, onChat]);
+  }, [clearActivityTrace, onChat]);
 
   const navigateToChats = useCallback(() => {
     onChat();
@@ -383,9 +383,8 @@ export function ChatShell({
         setActiveThread(null);
         setMessages([]);
         setStreamingText("");
-        setStreamingReasoning("");
         setStreamingArtifacts([]);
-        clearToolEvents();
+        clearActivityTrace();
         setSendError("");
         navigate({ view: "new" });
         setRoute({ view: "new" });
@@ -414,9 +413,8 @@ export function ChatShell({
     setDraft("");
     setIsSending(true);
     setStreamingText("");
-    setStreamingReasoning("");
     setStreamingArtifacts([]);
-    clearToolEvents();
+    clearActivityTrace();
     setSendError("");
     let abortController: AbortController | null = null;
     let createdThreadForFallback: Thread | null = null;
@@ -445,15 +443,16 @@ export function ChatShell({
           if (isCurrentThread()) setStreamingText((current) => current + delta);
         },
         onReasoningDelta: (delta) => {
-          if (isCurrentThread()) setStreamingReasoning((current) => current + delta);
+          if (!isCurrentThread()) return;
+          updateActivityTrace((current) => appendReasoningDelta(current, delta));
         },
         onToolCall: (event) => {
           if (!isCurrentThread()) return;
-          updateToolEvents((current) => upsertToolCall(current, event));
+          updateActivityTrace((current) => upsertTraceToolCall(current, event));
         },
         onToolResult: (event) => {
           if (!isCurrentThread()) return;
-          updateToolEvents((current) => upsertToolResult(current, event));
+          updateActivityTrace((current) => upsertTraceToolResult(current, event));
         },
         onArtifact: (artifact) => {
           if (!isCurrentThread()) return;
@@ -464,15 +463,14 @@ export function ChatShell({
         },
         onAssistantMessage: (message) => {
           if (!isCurrentThread()) return;
-          const completedToolEvents = toolEventsRef.current;
+          const completedTrace = completeTrace(activityTraceRef.current);
           setMessages((current) => [
             ...current,
-            completedToolEvents.length > 0 ? { ...message, toolEvents: completedToolEvents } : message,
+            completedTrace.length > 0 ? { ...message, activityTrace: completedTrace } : message,
           ]);
           setStreamingText("");
-          setStreamingReasoning("");
           setStreamingArtifacts([]);
-          clearToolEvents();
+          clearActivityTrace();
         },
         onThread: (updatedThread) => {
           receivedThreadEvent = true;
@@ -488,9 +486,8 @@ export function ChatShell({
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
-      setStreamingReasoning("");
       setStreamingArtifacts([]);
-      // Keep any tool activity visible so a failed turn still shows what was
+      // Keep any activity trace visible so a failed turn still shows what was
       // attempted (e.g. a tool that errored); the next send clears it.
       if (options.restoreDraftOnError) setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
@@ -716,9 +713,8 @@ export function ChatShell({
             messages={messages}
             draft={draft}
             streamingText={streamingText}
-            streamingReasoning={streamingReasoning}
             streamingArtifacts={streamingArtifacts}
-            toolEvents={toolEvents}
+            activityTrace={activityTrace}
             sendError={sendError}
             isSending={isSending}
             mcpStatus={mcpStatus}
@@ -1219,9 +1215,8 @@ function ChatPanel({
   messages,
   draft,
   streamingText,
-  streamingReasoning,
   streamingArtifacts,
-  toolEvents,
+  activityTrace,
   sendError,
   isSending,
   mcpStatus,
@@ -1237,12 +1232,11 @@ function ChatPanel({
   onCloseThreadMenu,
 }: {
   thread: Thread | null;
-  messages: MessageWithToolActivity[];
+  messages: MessageWithActivityTrace[];
   draft: string;
   streamingText: string;
-  streamingReasoning: string;
   streamingArtifacts: Artifact[];
-  toolEvents: ToolActivity[];
+  activityTrace: ActivityTraceEvent[];
   sendError: string;
   isSending: boolean;
   mcpStatus: McpStatusEvent | null;
@@ -1264,12 +1258,9 @@ function ChatPanel({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const headerMenuKey = thread === null ? null : `Header:${thread.id}`;
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
-  const toolRunning = toolEvents.some((event) => event.status === "running");
-  const showActiveThinkingPanel =
-    isSending &&
-    sendError === "" &&
-    (streamingText === "" || toolRunning);
-  const showStreamingThinkingPanel = showActiveThinkingPanel || streamingReasoning.trim() !== "";
+  const hasActiveActivityTrace = activityTrace.length > 0;
+  const showActiveActivityTrace =
+    hasActiveActivityTrace || (isSending && sendError === "" && streamingText === "");
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1334,11 +1325,10 @@ function ChatPanel({
     refreshScrollState,
     scrollToLatest,
     sendError,
-    showStreamingThinkingPanel,
+    showActiveActivityTrace,
     streamingArtifacts.length,
-    streamingReasoning,
     streamingText,
-    toolEvents.length,
+    activityTrace.length,
   ]);
 
   useEffect(() => {
@@ -1409,11 +1399,21 @@ function ChatPanel({
           <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
             {messages.map((message, index) => (
               <div key={message.id} className="space-y-6">
-                {message.role === "assistant" && message.reasoningContent && (
-                  <ThinkingPanel content={message.reasoningContent} complete={true} />
+                {message.role === "assistant" && message.activityTrace !== undefined && (
+                  <ActivityTracePanel events={message.activityTrace} active={false} />
                 )}
-                {message.role === "assistant" && message.toolEvents !== undefined && (
-                  <ToolActivityPanel events={message.toolEvents} />
+                {message.role === "assistant" && message.activityTrace === undefined && message.reasoningContent && (
+                  <ActivityTracePanel
+                    events={[
+                      {
+                        id: `${message.id}-reasoning`,
+                        type: "reasoning",
+                        content: message.reasoningContent,
+                        status: "done",
+                      },
+                    ]}
+                    active={false}
+                  />
                 )}
                 <MessageBubble
                   message={message}
@@ -1422,14 +1422,7 @@ function ChatPanel({
                 />
               </div>
             ))}
-            {showStreamingThinkingPanel && (
-              <ThinkingPanel
-                active={showActiveThinkingPanel}
-                content={streamingReasoning}
-                complete={!showActiveThinkingPanel}
-              />
-            )}
-            {toolEvents.length > 0 && <ToolActivityPanel events={toolEvents} />}
+            {showActiveActivityTrace && <ActivityTracePanel events={activityTrace} active={true} />}
             {streamingArtifacts.map((artifact) => (
               <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
             ))}
@@ -1481,53 +1474,150 @@ function ChatPanel({
   );
 }
 
-function ThinkingPanel({
-  active = false,
-  content,
-  complete,
+function ActivityTracePanel({
+  events,
+  active,
 }: {
-  active?: boolean;
-  content: string;
-  complete: boolean;
+  events: ActivityTraceEvent[];
+  active: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const trimmed = content.trim();
-  if (trimmed === "" && !active) return null;
+  const [expanded, setExpanded] = useState(active);
+  useEffect(() => {
+    if (active) setExpanded(true);
+  }, [active]);
+  if (events.length === 0 && !active) return null;
+  const summary = active ? "Thinking" : summarizeTrace(events);
   return (
     <div
-      aria-label={active ? "Spark is thinking" : undefined}
+      aria-label={active ? "Spark activity trace" : undefined}
       aria-live={active ? "polite" : undefined}
-      className="spark-thinking-panel"
+      className="spark-activity-trace"
       role={active ? "status" : undefined}
     >
       <button
         aria-expanded={expanded}
-        aria-label={expanded ? "Hide thinking" : "Show thinking"}
-        className="spark-thinking-panel-toggle"
+        aria-label={expanded ? "Hide activity" : "Show activity"}
+        className="spark-activity-trace-toggle"
         type="button"
         onClick={() => setExpanded((current) => !current)}
       >
-        <span className="spark-thinking-panel-label">
-          <span className={complete ? "spark-thinking-status-complete" : "spark-thinking-status-active"} aria-hidden="true" />
+        <span className="spark-activity-trace-label">
+          <span className={active ? "spark-thinking-status-active" : "spark-thinking-status-complete"} aria-hidden="true" />
           {active ? (
             <span className="spark-thinking-label-active" data-text="Thinking">
               Thinking
             </span>
           ) : (
-            <span>Thinking</span>
+            <span>{summary}</span>
           )}
+          <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
         </span>
-        <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
       </button>
       {expanded && (
-        <div className="spark-thinking-panel-body">
-          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-            {trimmed}
-          </Markdown>
+        <div className="spark-activity-trace-body">
+          {events.map((event) => (
+            <ActivityTraceRow key={event.id} event={event} />
+          ))}
         </div>
       )}
     </div>
   );
+}
+
+function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
+  if (event.type === "reasoning") {
+    return (
+      <div className="spark-activity-trace-row">
+        <span className="spark-activity-trace-icon spark-activity-trace-icon-reasoning" aria-hidden="true" />
+        <div className="spark-activity-reasoning">
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            {event.content.trim()}
+          </Markdown>
+        </div>
+      </div>
+    );
+  }
+  const status = activityToolStatusMeta(event);
+  return (
+    <div className="spark-activity-trace-row">
+      <span className="spark-activity-trace-icon" aria-hidden="true">
+        {event.summary.kind === "search" ? <GlobeTraceIcon /> : <FetchTraceIcon />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-3">
+          <span className="spark-activity-tool-title">{event.summary.title}</span>
+          <span className={`spark-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
+        </div>
+        <div className="spark-activity-tool-detail">{event.summary.detail}</div>
+        {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
+          <>
+            <div className="spark-activity-result-count">
+              {event.preview.resultCount} {event.preview.resultCount === 1 ? "result" : "results"}
+            </div>
+            <div className="spark-activity-result-list">
+              {event.preview.results.map((result, index) => (
+                <SearchResultRow key={`${result.url ?? result.title}-${index}`} result={result} />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SearchResultRow({
+  result,
+}: {
+  result: { title: string; url?: string; domain?: string; snippet?: string };
+}) {
+  const favicon = result.url === undefined ? undefined : faviconURL(result.url);
+  return (
+    <div className="spark-activity-result-row">
+      {favicon !== undefined ? (
+        <img alt="" className="spark-activity-favicon" src={favicon} />
+      ) : (
+        <span className="spark-activity-favicon" aria-hidden="true">
+          {faviconInitial(result.domain ?? result.title)}
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="spark-activity-result-title">{result.title}</div>
+        {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
+      </div>
+      {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
+    </div>
+  );
+}
+
+function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {
+  if (event.status === "failed") return { label: "Failed", className: "spark-activity-status-failed" };
+  if (event.status === "running") return { label: "Running", className: "spark-activity-status-neutral" };
+  return { label: "Done", className: "spark-activity-status-neutral" };
+}
+
+function GlobeTraceIcon() {
+  return (
+    <svg className="spark-activity-globe-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c2.25 2.45 3.35 5.45 3.35 9s-1.1 6.55-3.35 9" />
+      <path d="M12 3c-2.25 2.45-3.35 5.45-3.35 9s1.1 6.55 3.35 9" />
+    </svg>
+  );
+}
+
+function FetchTraceIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 17 17 7" />
+      <path d="M9 7h8v8" />
+    </svg>
+  );
+}
+
+function faviconInitial(value: string): string {
+  return value.trim().charAt(0).toUpperCase() || "*";
 }
 
 function isNearBottom(element: HTMLElement): boolean {
@@ -1623,67 +1713,6 @@ function PromptChip({ icon, label }: { icon: string; label: string }) {
       <span className="text-[#aaa79e]">{icon}</span>
       {label}
     </button>
-  );
-}
-
-function toolStatusMeta(event: ToolActivity): { label: string; className: string } {
-  if (event.status !== "done") {
-    return { label: "Running", className: "bg-[#363632] text-[#c7c5bd]" };
-  }
-  if (event.content?.startsWith("tool failed")) {
-    return { label: "Failed", className: "bg-[#b85c52] text-[#fffaf2]" };
-  }
-  return { label: "Done", className: "bg-[#363632] text-[#c7c5bd]" };
-}
-
-function ToolActivityPanel({ events }: { events: ToolActivity[] }) {
-  const [open, setOpen] = useState(false);
-  const hasAnyOutput = events.some(
-    (event) => event.status === "done" && (event.content?.trim().length ?? 0) > 0,
-  );
-  return (
-    <div className="spark-meta-text max-w-3xl overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#aaa79e]">
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 px-4 py-2.5 text-left disabled:cursor-default"
-        onClick={hasAnyOutput ? () => setOpen((value) => !value) : undefined}
-        disabled={!hasAnyOutput}
-        aria-expanded={hasAnyOutput ? open : undefined}
-      >
-        {hasAnyOutput ? (
-          <svg
-            viewBox="0 0 16 16"
-            aria-hidden="true"
-            className={`size-3 shrink-0 text-[#88857d] transition-transform ${open ? "rotate-90" : ""}`}
-          >
-            <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ) : (
-          <span className="size-3 shrink-0" aria-hidden="true" />
-        )}
-        <span className="font-medium text-[#f3f0e8]">Tools</span>
-        <span className="rounded-full bg-[#363632] px-1.5 text-[11px] text-[#c7c5bd]">{events.length}</span>
-      </button>
-      <div className="space-y-2 border-t border-[#3e3d39] px-4 py-2.5">
-        {events.map((event) => {
-          const status = toolStatusMeta(event);
-          const output = event.status === "done" ? event.content ?? "" : "";
-          return (
-            <div key={event.id}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate text-[#d6d3ca]">{event.name}</span>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${status.className}`}>{status.label}</span>
-              </div>
-              {open && output.trim() !== "" && (
-                <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[#1f1f1d] px-3 py-2 text-xs leading-relaxed text-[#aaa79e]">
-                  {output}
-                </pre>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -2456,16 +2485,5 @@ function ErrorText({ children }: { children: React.ReactNode }) {
     <div className="spark-meta-text mt-3 max-w-3xl rounded-lg border border-accent bg-[#282826] px-4 py-3 text-accent">
       {children}
     </div>
-  );
-}
-
-function upsertToolCall(current: ToolActivity[], event: ToolCallEvent): ToolActivity[] {
-  const next = current.filter((item) => item.id !== event.id);
-  return [...next, { id: event.id, name: event.name, status: "running" }];
-}
-
-function upsertToolResult(current: ToolActivity[], event: ToolResultEvent): ToolActivity[] {
-  return current.map((item) =>
-    item.id === event.id ? { ...item, status: "done", content: event.content } : item,
   );
 }
