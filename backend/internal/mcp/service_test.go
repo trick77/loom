@@ -82,6 +82,10 @@ func TestServiceFromConfigClosesUnavailableClient(t *testing.T) {
 
 func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		var req rpcRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("Decode request: %v", err)
@@ -131,6 +135,10 @@ func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
 func tavilyMockServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		var req rpcRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("Decode request: %v", err)

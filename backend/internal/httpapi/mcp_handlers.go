@@ -15,10 +15,12 @@ func (s *server) currentMCPStatus(ctx context.Context) mcpStatusResponse {
 	}
 	statuses := s.mcp.ServerStatus(ctx)
 	active := 0
+	servers := make([]mcpServerStatus, 0, len(statuses))
 	for _, st := range statuses {
 		if st.Active {
 			active++
 		}
+		servers = append(servers, mcpServerStatus{Name: st.Name, Active: st.Active})
 	}
-	return mcpStatusResponse{Active: active, Configured: len(statuses)}
+	return mcpStatusResponse{Active: active, Configured: len(statuses), Servers: servers}
 }

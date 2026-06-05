@@ -713,6 +713,7 @@ export function ChatShell({
             displayName={displayName}
             draft={draft}
             isSending={isSending}
+            mcpStatus={mcpStatus}
             sendError={sendError}
             onDraftChange={setDraft}
             onSend={handleSend}
@@ -898,10 +899,15 @@ function McpStatusIndicator({ compact = false, status }: { compact?: boolean; st
   const allActive = status.active === status.configured;
   const ringClass = allActive ? "border-success" : "border-danger";
   const dotClass = allActive ? "bg-success" : "bg-danger";
+  const inactiveServers = status.servers?.filter((server) => !server.active).map((server) => server.name) ?? [];
+  const tooltip =
+    !allActive && inactiveServers.length > 0
+      ? `${status.active} of ${status.configured} MCP servers active. Failed: ${inactiveServers.join(", ")}`
+      : `${status.active} of ${status.configured} MCP servers active`;
   return (
     <div
       className={`spark-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
-      title={`${status.active} of ${status.configured} MCP servers active`}
+      title={tooltip}
     >
       <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
         <span className={`h-1 w-1 rounded-full ${dotClass}`} />
@@ -1189,6 +1195,7 @@ function StartPanel({
   displayName,
   draft,
   isSending,
+  mcpStatus,
   sendError,
   onDraftChange,
   onSend,
@@ -1197,34 +1204,47 @@ function StartPanel({
   displayName: string;
   draft: string;
   isSending: boolean;
+  mcpStatus: McpStatusEvent | null;
   sendError: string;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
 }) {
   return (
-    <section className="flex h-screen min-h-0 flex-col items-center justify-center px-8 pb-[14vh]">
-      <h1 className="spark-greeting-text mb-8 flex items-center gap-4 font-serif">
-        <img className="h-10 w-10 shrink-0" src={logoImage} alt="" aria-hidden="true" />
-        {greetingForNow()}, {displayName}
-      </h1>
-      <div className="w-full max-w-[674px]">
-        <Composer
-          variant="start"
-          draft={draft}
-          isSending={isSending}
-          placeholder="How can I help you today?"
-          onDraftChange={onDraftChange}
-          onSend={onSend}
-          onStop={onStop}
-        />
-        {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-        <div className="spark-meta-text mt-4 flex justify-center gap-2 text-[#e8e4da]">
-          <PromptChip icon="◇" label="Write" />
-          <PromptChip icon="▱" label="Learn" />
-          <PromptChip icon="‹/›" label="Code" />
-          <PromptChip icon="☕" label="Life stuff" />
-          <PromptChip icon="◌" label="Spark's choice" />
+    <section className="flex h-screen min-h-0 flex-col">
+      <header
+        aria-label="Chat header"
+        className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
+        role="banner"
+      >
+        <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">New chat</h1>
+        {mcpStatus !== null && mcpStatus.configured > 0 && (
+          <McpStatusIndicator compact status={mcpStatus} />
+        )}
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 pb-[14vh]">
+        <h2 className="spark-greeting-text mb-8 flex items-center gap-4 font-serif">
+          <img className="h-10 w-10 shrink-0" src={logoImage} alt="" aria-hidden="true" />
+          {greetingForNow()}, {displayName}
+        </h2>
+        <div className="w-full max-w-[674px]">
+          <Composer
+            variant="start"
+            draft={draft}
+            isSending={isSending}
+            placeholder="How can I help you today?"
+            onDraftChange={onDraftChange}
+            onSend={onSend}
+            onStop={onStop}
+          />
+          {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+          <div className="spark-meta-text mt-4 flex justify-center gap-2 text-[#e8e4da]">
+            <PromptChip icon="◇" label="Write" />
+            <PromptChip icon="▱" label="Learn" />
+            <PromptChip icon="‹/›" label="Code" />
+            <PromptChip icon="☕" label="Life stuff" />
+            <PromptChip icon="◌" label="Spark's choice" />
+          </div>
         </div>
       </div>
     </section>

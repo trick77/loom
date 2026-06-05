@@ -115,6 +115,15 @@ func TestMCPStatusReturnsConfiguredServerCounts(t *testing.T) {
 	if body.Active != 1 || body.Configured != 2 {
 		t.Fatalf("body = %#v, want active=1 configured=2", body)
 	}
+	if len(body.Servers) != 2 {
+		t.Fatalf("servers = %#v, want 2 entries", body.Servers)
+	}
+	if body.Servers[0].Name != "alpha" || !body.Servers[0].Active {
+		t.Fatalf("servers[0] = %#v, want active alpha", body.Servers[0])
+	}
+	if body.Servers[1].Name != "zeta" || body.Servers[1].Active {
+		t.Fatalf("servers[1] = %#v, want inactive zeta", body.Servers[1])
+	}
 }
 
 func TestDownloadArtifactRequiresOwningUser(t *testing.T) {

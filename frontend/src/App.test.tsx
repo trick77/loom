@@ -116,6 +116,40 @@ test("shows a visible send control in the new chat composer", async () => {
   expect(sendButton).toBeEnabled();
 });
 
+test("shows MCP status on the new chat screen", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") {
+        return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
+      }
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/mcp/status") {
+        return Response.json({
+          active: 3,
+          configured: 4,
+          servers: [
+            { name: "fetch", active: true },
+            { name: "obscura", active: false },
+            { name: "tavily", active: true },
+            { name: "context7", active: true },
+          ],
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+
+  expect(await screen.findByPlaceholderText("How can I help you today?")).toBeInTheDocument();
+  const header = screen.getByRole("banner", { name: "Chat header" });
+  const indicator = await within(header).findByTitle("3 of 4 MCP servers active. Failed: obscura");
+  expect(indicator).toHaveTextContent("3");
+});
+
 test("renders admin user list for admin users", async () => {
   vi.stubGlobal(
     "fetch",
@@ -1492,14 +1526,14 @@ test("shows a red MCP indicator when not all servers are active", async () => {
     "fetch",
     mcpStreamFetch(
       assistantMessageEvent +
-        'event: mcp_status\ndata: {"active":2,"configured":3}\n\n' +
+        'event: mcp_status\ndata: {"active":2,"configured":3,"servers":[{"name":"fetch","active":true},{"name":"obscura","active":false},{"name":"tavily","active":true}]}\n\n' +
         "event: done\ndata: {}\n\n",
     ),
   );
 
   await sendMessageInExistingChat();
 
-  const indicator = await screen.findByTitle("2 of 3 MCP servers active");
+  const indicator = await screen.findByTitle("2 of 3 MCP servers active. Failed: obscura");
   expect(indicator).toHaveTextContent("2");
   expect(indicator.querySelector(".border-danger")).not.toBeNull();
 });

@@ -9,6 +9,7 @@ import {
   streamMessage,
   updateThread,
 } from "./api";
+import type { McpStatusEvent } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -137,13 +138,17 @@ test("streamMessage parses mcp_status events", async () => {
   const body = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: mcp_status\ndata: {"active":2,"configured":3}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: mcp_status\ndata: {"active":2,"configured":3,"servers":[{"name":"fetch","active":true},{"name":"obscura","active":false},{"name":"tavily","active":true}]}\n\n',
+        ),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
   });
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
-  let received: { active: number; configured: number } | null = null;
+  let received: McpStatusEvent | null = null;
 
   await streamMessage("t1", "Hi", {
     onUserMessage: () => undefined,
@@ -155,7 +160,15 @@ test("streamMessage parses mcp_status events", async () => {
     },
   });
 
-  expect(received).toEqual({ active: 2, configured: 3 });
+  expect(received).toEqual({
+    active: 2,
+    configured: 3,
+    servers: [
+      { name: "fetch", active: true },
+      { name: "obscura", active: false },
+      { name: "tavily", active: true },
+    ],
+  });
 });
 
 test("streamMessage dispatches artifact events", async () => {

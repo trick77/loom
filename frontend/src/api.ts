@@ -79,6 +79,7 @@ export type ToolResultEvent = {
 export type McpStatusEvent = {
   active: number;
   configured: number;
+  servers?: { name: string; active: boolean }[];
 };
 
 type ThreadResponse = {

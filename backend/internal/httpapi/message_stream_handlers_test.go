@@ -956,7 +956,7 @@ func TestStreamMessageEmitsMcpStatus(t *testing.T) {
 	if !strings.Contains(body, "event: mcp_status") {
 		t.Fatalf("SSE body missing mcp_status event:\n%s", body)
 	}
-	if !strings.Contains(body, `data: {"active":1,"configured":2}`) {
+	if !strings.Contains(body, `data: {"active":1,"configured":2,"servers":[{"name":"alpha","active":true},{"name":"zeta","active":false}]}`) {
 		t.Fatalf("SSE body missing mcp_status payload:\n%s", body)
 	}
 }
