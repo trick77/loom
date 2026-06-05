@@ -1065,6 +1065,16 @@ test("centers reasoning activity dots inside their row circles", () => {
   expect(css).toContain("border-left: 1.5px solid currentColor");
 });
 
+test("spaces activity trace connector lines away from adjacent icons", () => {
+  const css = readFileSync("src/index.css", "utf8");
+  const connectorRule =
+    css.match(/\.spark-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+
+  expect(connectorRule).toContain("top: 1.5rem");
+  expect(connectorRule).toContain("bottom: 0.5rem");
+  expect(connectorRule).toContain("left: 0.4375rem");
+});
+
 test("shows active activity trace with reasoning and tool activity before assistant output", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
