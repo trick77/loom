@@ -332,6 +332,7 @@ body {
 .spark-activity-trace-icon-reasoning {
   border: 1px solid currentColor;
   border-radius: 9999px;
+  margin-top: 0.67rem;
 }
 
 .spark-activity-reasoning :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
