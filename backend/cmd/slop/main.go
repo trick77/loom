@@ -1,4 +1,4 @@
-// Command spark is the all-in-one server: API + embedded SPA, backed by SQLite.
+// Command slop is the all-in-one server: API + embedded SPA, backed by SQLite.
 package main
 
 import (
@@ -12,17 +12,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/trick77/spark/internal/artifact"
-	"github.com/trick77/spark/internal/auth"
-	"github.com/trick77/spark/internal/chat"
-	"github.com/trick77/spark/internal/config"
-	"github.com/trick77/spark/internal/docgen"
-	"github.com/trick77/spark/internal/httpapi"
-	"github.com/trick77/spark/internal/imagegen"
-	"github.com/trick77/spark/internal/llm"
-	"github.com/trick77/spark/internal/mcp"
-	"github.com/trick77/spark/internal/store"
-	"github.com/trick77/spark/web"
+	"github.com/trick77/slop/internal/artifact"
+	"github.com/trick77/slop/internal/auth"
+	"github.com/trick77/slop/internal/chat"
+	"github.com/trick77/slop/internal/config"
+	"github.com/trick77/slop/internal/docgen"
+	"github.com/trick77/slop/internal/httpapi"
+	"github.com/trick77/slop/internal/imagegen"
+	"github.com/trick77/slop/internal/llm"
+	"github.com/trick77/slop/internal/mcp"
+	"github.com/trick77/slop/internal/store"
+	"github.com/trick77/slop/web"
 )
 
 var version = "dev" // overridden via -ldflags at build time

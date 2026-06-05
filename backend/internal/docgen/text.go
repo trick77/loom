@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 )
 
 type TextGenerator struct {

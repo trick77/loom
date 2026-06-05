@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Spark's generated PPTX and PDF documents look professional and varied by applying a shared Spark theme and adding layout variety plus tables.
+**Goal:** Make Slop's generated PPTX and PDF documents look professional and varied by applying a shared Slop theme and adding layout variety plus tables.
 
 **Architecture:** A new shared theme module supplies one palette to both generators. PPTX keeps its hand-written OOXML but gains styled per-layout renderers (background fills, accent titles, real bullets, tables). PDF is rebuilt on the `maroto/v2` grid library (accent header band, typed content blocks, automatic page breaks).
 
@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-03-docgen-styling-design.md`
 
-**Working dir:** worktree `../spark-docgen-styling`, branch `feat/docgen-styling`. All `go` commands run from `backend/`.
+**Working dir:** worktree `../slop-docgen-styling`, branch `feat/docgen-styling`. All `go` commands run from `backend/`.
 
 ---
 
@@ -81,7 +81,7 @@ package docgen
 // numeric channels) while the OOXML generators use the *Hex strings.
 type RGB struct{ R, G, B int }
 
-// palette holds the Spark brand colors once, so PPTX and PDF stay in sync.
+// palette holds the Slop brand colors once, so PPTX and PDF stay in sync.
 type palette struct {
 	Ink   RGB
 	Cream RGB
@@ -130,7 +130,7 @@ func fmtSscanHex(hex string, r, g, b *int) (int, error) {
 	return 3, nil
 }
 
-// Theme is the single shared Spark palette.
+// Theme is the single shared Slop palette.
 var Theme = func() palette {
 	p := palette{
 		InkHex: "1D1D1B", CreamHex: "F3F0E8", AccentHex: "9A6B4F",
@@ -166,7 +166,7 @@ Expected: PASS (all three).
 
 ```bash
 git add backend/internal/docgen/theme.go backend/internal/docgen/theme_test.go
-git commit -m "feat(docgen): add shared Spark theme palette"
+git commit -m "feat(docgen): add shared Slop theme palette"
 ```
 
 ---
@@ -514,8 +514,8 @@ git commit -m "feat(docgen): styled PPTX bullets layout + layout dispatch"
 
 ```go
 func TestTitleLayoutCentersTitleAndSubtitle(t *testing.T) {
-	xml := titleLayout(pptxSlide{Layout: "title", Title: "Spark", Subtitle: "Q3 Review"})
-	if !strings.Contains(xml, "Spark") || !strings.Contains(xml, "Q3 Review") || !strings.Contains(xml, `algn="ctr"`) {
+	xml := titleLayout(pptxSlide{Layout: "title", Title: "Slop", Subtitle: "Q3 Review"})
+	if !strings.Contains(xml, "Slop") || !strings.Contains(xml, "Q3 Review") || !strings.Contains(xml, `algn="ctr"`) {
 		t.Fatalf("titleLayout = %s", xml)
 	}
 }
@@ -1001,14 +1001,14 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/fontrepository"
 	"github.com/johnfercher/maroto/v2/pkg/props"
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gobolditalic"
 	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/gofont/goregular"
 )
 
-const pdfFontFamily = "spark"
+const pdfFontFamily = "slop"
 
 type PDFGenerator struct{}
 
@@ -1016,7 +1016,7 @@ func (g PDFGenerator) ToolName() string { return "create_pdf_file" }
 
 func rgbColor(c RGB) *props.Color { return &props.Color{Red: c.R, Green: c.G, Blue: c.B} }
 
-// newMaroto builds a maroto instance with the Spark fonts and an accent header band.
+// newMaroto builds a maroto instance with the Slop fonts and an accent header band.
 func newMaroto(title, subtitle string) (core.Maroto, error) {
 	fonts, err := fontrepository.New().
 		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Normal, goregular.TTF).

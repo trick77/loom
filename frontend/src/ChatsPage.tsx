@@ -145,7 +145,7 @@ export function ChatsPage({
           <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Chats</h1>
           {selectMode ? (
             <div className="flex items-center gap-2.5">
-              <span className="spark-control-text text-[#9c9a92]">{selectedCount} selected</span>
+              <span className="slop-control-text text-[#9c9a92]">{selectedCount} selected</span>
               <PillButton variant="solid" onClick={toggleSelectAll}>
                 Select all
               </PillButton>
@@ -161,7 +161,7 @@ export function ChatsPage({
               </PillButton>
               <button
                 type="button"
-                className="spark-control-text rounded-lg px-3 py-1.5 text-[#c7c5bd] transition-colors hover:text-white"
+                className="slop-control-text rounded-lg px-3 py-1.5 text-[#c7c5bd] transition-colors hover:text-white"
                 onClick={exitSelectMode}
               >
                 Cancel
@@ -195,12 +195,12 @@ export function ChatsPage({
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Search chats…"
             aria-label="Search chats"
-            className="spark-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
+            className="slop-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
           />
         </div>
 
         {loadError !== "" && (
-          <div className="spark-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
+          <div className="slop-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
             {loadError}
           </div>
         )}
@@ -263,7 +263,7 @@ function PillButton({
   onClick?(): void;
   title?: string;
 }) {
-  let className = "spark-control-text rounded-lg px-3 py-1.5 font-medium transition-colors ";
+  let className = "slop-control-text rounded-lg px-3 py-1.5 font-medium transition-colors ";
   if (variant === "solid") {
     className += "bg-[#343433] text-[#f5f3ee] hover:bg-[#3d3d3b]";
   } else if (variant === "white") {

@@ -1,11 +1,11 @@
-# spark — Design Spec (v1)
+# slop — Design Spec (v1)
 
 > **Status:** Approved design, basis for the (per-phase) implementation plans.
 > **Date:** 2026-05-30 · **Chosen UI direction:** A — Warm Editorial (Claude-inspired).
 
 ## Context
 
-`spark` is a self-hosted, multi-user LLM chat app. **Goal:** give a small group of users a
+`slop` is a self-hosted, multi-user LLM chat app. **Goal:** give a small group of users a
 **deliberately simple** interface to work with **work- and school-related documents, topics,
 questions and information** — secure LLM access (deliberately not advertised, no age controls).
 It takes cues from the lean UI of **AnythingLLM** and the interaction patterns of the
@@ -63,14 +63,14 @@ Docker volume** per user.
 
 `compose.yaml` services:
 
-- **spark** — Go binary (API + static assets), **lean image** (no node/python runtimes). Mounts
+- **slop** — Go binary (API + static assets), **lean image** (no node/python runtimes). Mounts
   per-user volumes under `/data/users/<user-id>/` and a data volume for the SQLite file. Talks to
   MCP servers over HTTP/SSE.
 - **searxng** — its own service (web-search backend).
 - **tika** — Apache Tika server (document extraction). OCR only with the **`-full` image variant**
   (bundles Tesseract) — pin and verify the image tag, otherwise drop the OCR claim.
 - **MCP servers** — as **separate HTTP/SSE containers** for external tools (Fetch, others). SearXNG is
-  a built-in Spark adapter that talks directly to `SPARK_SEARXNG_URL` and exposes
+  a built-in Slop adapter that talks directly to `SLOP_SEARXNG_URL` and exposes
   `searxng__web_search`.
 
 ### Tech decisions (settled)
@@ -96,7 +96,7 @@ Docker volume** per user.
 - **`sqlite-vec` integration (verify early):** loadable C extension → either cgo via
   `mattn/go-sqlite3` (extension loading; then the base image is **not** distroless-static but
   debian-slim/alpine) **or** pure-Go via `ncruces/go-sqlite3` (WASM, no cgo). Lock the choice early.
-- **MCP as separate containers:** the spark image stays lean (no foreign runtimes); MCP servers run as
+- **MCP as separate containers:** the slop image stays lean (no foreign runtimes); MCP servers run as
   their own HTTP/SSE containers.
 - **Secrets** via compose `environment`/`env_file`, never baked into the image. Per-user volumes are
   provisioned and mounted manually.
@@ -146,14 +146,14 @@ projects/threads/messages/documents/memories.
 /data/users/<user-id>/
 ├─ files/                # RAG scope: GLOBAL (freely organizable, subfolders allowed)
 │   └─ …
-├─ projects/             # spark-managed, one folder per project (keyed to project id)
+├─ projects/             # slop-managed, one folder per project (keyed to project id)
 │   └─ <project-id>/     # RAG scope: this project
 │       ├─ …
 │       └─ outputs/      # thread results for this project
-└─ .spark/                 # reserved, NOT shown in the Artifacts browser: upload staging (Tika hotdir), tmp
+└─ .slop/                 # reserved, NOT shown in the Artifacts browser: upload staging (Tika hotdir), tmp
 ```
 
-- The Artifacts browser shows only `files/` + `projects/<id>/`; `.spark/` stays hidden.
+- The Artifacts browser shows only `files/` + `projects/<id>/`; `.slop/` stays hidden.
 - Thread results are scope-consistent: project thread → `projects/<P>/outputs/`; project-less thread → `files/`.
 
 **Volume sandbox (security-critical):** confine every file operation hard to the user's root —
@@ -248,7 +248,7 @@ Three-column layout (like AnythingLLM/Claude):
 
 ```
 ┌──────────────┬───────────────────────────────────┬─────────────────┐
-│  spark         │  Thread title            [Artifacts]│  Context panel  │
+│  slop         │  Thread title            [Artifacts]│  Context panel  │
 │  + New chat  │ ───────────────────────────────────│  (switchable)   │
 │  🔎 Search   │  ▸ User: ...                        │                 │
 │              │  ▸ Assistant: ...                   │  • Sources      │
@@ -310,9 +310,9 @@ fonts in the mockups).
 ## Repo structure (monorepo)
 
 ```
-spark/
+slop/
   backend/                     # Go module
-    cmd/spark/main.go
+    cmd/slop/main.go
     internal/
       config/   auth/   http/        # router, middleware, SSE
       chat/     llm/                 # agent loop, OpenAI-compatible client
@@ -323,7 +323,7 @@ spark/
   frontend/                    # React + Vite + Tailwind
     src/...
   Containerfile                # multi-stage: Node build → Go build → minimal image
-  compose.yaml                 # spark + searxng + tika (+ MCP servers)
+  compose.yaml                 # slop + searxng + tika (+ MCP servers)
   mcp.json                     # example MCP configuration
 ```
 

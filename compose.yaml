@@ -1,41 +1,41 @@
 services:
-  spark:
+  slop:
     build:
       context: .
       dockerfile: backend/Containerfile
     ports:
       - "8080:8080"
     environment:
-      SPARK_ADDR: ":8080"
-      SPARK_DB_PATH: "/data/spark.db"
-      SPARK_USERS_DIR: "/data/users"
-      SPARK_PUBLIC_URL: "${SPARK_PUBLIC_URL}"
-      SPARK_AUTH_MODE: "${SPARK_AUTH_MODE:-oidc}"
-      SPARK_TIKA_URL: "http://tika:9998"
-      SPARK_TAVILY_URL: "${SPARK_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
-      SPARK_TAVILY_API_KEY: "${SPARK_TAVILY_API_KEY}"
-      SPARK_MCP_CONFIG: "/config/mcp.json"
-      SPARK_OIDC_ISSUER: "${SPARK_OIDC_ISSUER}"
-      SPARK_OIDC_CLIENT_ID: "${SPARK_OIDC_CLIENT_ID}"
-      SPARK_OIDC_CLIENT_SECRET: "${SPARK_OIDC_CLIENT_SECRET}"
-      SPARK_OIDC_REDIRECT_URL: "${SPARK_OIDC_REDIRECT_URL}"
-      SPARK_OIDC_POST_LOGOUT_REDIRECT_URL: "${SPARK_OIDC_POST_LOGOUT_REDIRECT_URL}"
-      SPARK_OIDC_ADMIN_GROUP: "${SPARK_OIDC_ADMIN_GROUP:-spark-admins}"
-      SPARK_CHAT_BASE_URL: "${SPARK_CHAT_BASE_URL}"
-      SPARK_CHAT_API_KEY: "${SPARK_CHAT_API_KEY}"
-      SPARK_CHAT_MODEL: "${SPARK_CHAT_MODEL:-MiMo}"
-      SPARK_CHAT_REASONING_EFFORT: "${SPARK_CHAT_REASONING_EFFORT:-high}"
-      SPARK_EMBED_BASE_URL: "${SPARK_EMBED_BASE_URL}"
-      SPARK_EMBED_API_KEY: "${SPARK_EMBED_API_KEY}"
-      SPARK_EMBED_MODEL: "${SPARK_EMBED_MODEL:-text-embedding-3-small}"
-      SPARK_CONTEXT7_API_KEY: "${SPARK_CONTEXT7_API_KEY:-}"
-      SPARK_CONTEXT7_MCP_URL: "${SPARK_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
-      SPARK_BFL_BASE_URL: "${SPARK_BFL_BASE_URL:-https://api.bfl.ai/v1}"
-      SPARK_BFL_API_KEY: "${SPARK_BFL_API_KEY:-}"
-      SPARK_BFL_MODEL: "${SPARK_BFL_MODEL:-flux-2-klein-4b}"
-      SPARK_SESSION_SECRET: "${SPARK_SESSION_SECRET}"
+      SLOP_ADDR: ":8080"
+      SLOP_DB_PATH: "/data/slop.db"
+      SLOP_USERS_DIR: "/data/users"
+      SLOP_PUBLIC_URL: "${SLOP_PUBLIC_URL}"
+      SLOP_AUTH_MODE: "${SLOP_AUTH_MODE:-oidc}"
+      SLOP_TIKA_URL: "http://tika:9998"
+      SLOP_TAVILY_URL: "${SLOP_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
+      SLOP_TAVILY_API_KEY: "${SLOP_TAVILY_API_KEY}"
+      SLOP_MCP_CONFIG: "/config/mcp.json"
+      SLOP_OIDC_ISSUER: "${SLOP_OIDC_ISSUER}"
+      SLOP_OIDC_CLIENT_ID: "${SLOP_OIDC_CLIENT_ID}"
+      SLOP_OIDC_CLIENT_SECRET: "${SLOP_OIDC_CLIENT_SECRET}"
+      SLOP_OIDC_REDIRECT_URL: "${SLOP_OIDC_REDIRECT_URL}"
+      SLOP_OIDC_POST_LOGOUT_REDIRECT_URL: "${SLOP_OIDC_POST_LOGOUT_REDIRECT_URL}"
+      SLOP_OIDC_ADMIN_GROUP: "${SLOP_OIDC_ADMIN_GROUP:-slop-admins}"
+      SLOP_CHAT_BASE_URL: "${SLOP_CHAT_BASE_URL}"
+      SLOP_CHAT_API_KEY: "${SLOP_CHAT_API_KEY}"
+      SLOP_CHAT_MODEL: "${SLOP_CHAT_MODEL:-MiMo}"
+      SLOP_CHAT_REASONING_EFFORT: "${SLOP_CHAT_REASONING_EFFORT:-high}"
+      SLOP_EMBED_BASE_URL: "${SLOP_EMBED_BASE_URL}"
+      SLOP_EMBED_API_KEY: "${SLOP_EMBED_API_KEY}"
+      SLOP_EMBED_MODEL: "${SLOP_EMBED_MODEL:-text-embedding-3-small}"
+      SLOP_CONTEXT7_API_KEY: "${SLOP_CONTEXT7_API_KEY:-}"
+      SLOP_CONTEXT7_MCP_URL: "${SLOP_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
+      SLOP_BFL_BASE_URL: "${SLOP_BFL_BASE_URL:-https://api.bfl.ai/v1}"
+      SLOP_BFL_API_KEY: "${SLOP_BFL_API_KEY:-}"
+      SLOP_BFL_MODEL: "${SLOP_BFL_MODEL:-flux-2-klein-4b}"
+      SLOP_SESSION_SECRET: "${SLOP_SESSION_SECRET}"
     volumes:
-      - spark-data:/data
+      - slop-data:/data
       - ./mcp.json:/config/mcp.json:ro
       # per-user volumes are mounted manually under /data/users/<user-id>/
     networks:
@@ -57,7 +57,7 @@ services:
 
   fetch:
     # Lightweight URL/document fetch MCP, bridged to streamable-HTTP by
-    # supergateway. Spark discovers it via mcp.json at http://fetch:8090/mcp.
+    # supergateway. Slop discovers it via mcp.json at http://fetch:8090/mcp.
     # Keep it off the default app network so fetched URLs cannot resolve app
     # sidecars such as tika by Compose service name.
     build:
@@ -68,7 +68,7 @@ services:
 
   obscura:
     # Headless-browser MCP (Obscura) bridged to streamable-HTTP by supergateway.
-    # Spark discovers it via mcp.json at http://obscura:8090/mcp; tools are
+    # Slop discovers it via mcp.json at http://obscura:8090/mcp; tools are
     # surfaced to the LLM as obscura__<tool>.
     # Obscura is amd64-only (emulated on arm64 hosts).
     platform: linux/amd64
@@ -81,4 +81,4 @@ networks:
   fetch-mcp:
 
 volumes:
-  spark-data:
+  slop-data:

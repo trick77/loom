@@ -2,12 +2,12 @@
 
 ## Context
 
-Spark can already generate PPTX, PDF, DOCX, XLSX, and text artifacts (see
+Slop can already generate PPTX, PDF, DOCX, XLSX, and text artifacts (see
 `2026-06-03-document-generation-artifacts-design.md`). The output is functionally correct but
 visually bland: every generator emits hand-written OOXML or low-level PDF primitives with no styling
 applied. Concretely:
 
-- **PPTX** defines a tasteful Spark color theme in `theme1.xml`, but no slide ever references it.
+- **PPTX** defines a tasteful Slop color theme in `theme1.xml`, but no slide ever references it.
   Titles are plain 40pt black text, bullets are manually positioned 24pt black text with no bullet
   glyphs, no background fills, and no accent color. There is a single blank layout.
 - **PDF** uses `gopdf` with one Go font, black text, no color, and no page-overflow handling — long

@@ -1,10 +1,10 @@
-# spark Phase 1 — Foundation Implementation Plan
+# slop Phase 1 — Foundation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stand up a runnable spark foundation — a single Go binary that serves a JSON/SSE API and an embedded React/Vite/Tailwind frontend, backed by a SQLite store (with sqlite-vec verified), config from ENV, and a runtime-agnostic container/compose skeleton.
+**Goal:** Stand up a runnable slop foundation — a single Go binary that serves a JSON/SSE API and an embedded React/Vite/Tailwind frontend, backed by a SQLite store (with sqlite-vec verified), config from ENV, and a runtime-agnostic container/compose skeleton.
 
-**Architecture:** One Go module (`backend/`) serves `/api/*` (JSON + SSE) and the embedded React build (`web/dist` via `embed.FS`) with SPA fallback. Persistence is one SQLite file accessed through the **pure-Go** `ncruces/go-sqlite3` driver (no cgo) with **sqlite-vec** linked via `sqlite-vec-go-bindings/ncruces`. A hand-rolled migration runner applies embedded `.sql` files. The frontend is a Vite + React + TypeScript + Tailwind app using the chosen **UI direction A (Warm Editorial)** palette. Containerfile is multi-stage (Node build → Go static build → distroless), `compose.yaml` wires `spark` + `searxng` + `tika`.
+**Architecture:** One Go module (`backend/`) serves `/api/*` (JSON + SSE) and the embedded React build (`web/dist` via `embed.FS`) with SPA fallback. Persistence is one SQLite file accessed through the **pure-Go** `ncruces/go-sqlite3` driver (no cgo) with **sqlite-vec** linked via `sqlite-vec-go-bindings/ncruces`. A hand-rolled migration runner applies embedded `.sql` files. The frontend is a Vite + React + TypeScript + Tailwind app using the chosen **UI direction A (Warm Editorial)** palette. Containerfile is multi-stage (Node build → Go static build → distroless), `compose.yaml` wires `slop` + `searxng` + `tika`.
 
 **Tech Stack:** Go 1.25 (stdlib `net/http` 1.22+ routing, no web framework), `github.com/ncruces/go-sqlite3` + `github.com/asg017/sqlite-vec-go-bindings/ncruces`, React 18 + TypeScript + Vite 5 + Tailwind 3, Vitest + Testing Library, OCI Containerfile/compose (Podman/Docker).
 
@@ -16,17 +16,17 @@
 - **sqlite-vec:** `github.com/asg017/sqlite-vec-go-bindings/ncruces` (blank import in the `store` package provides the WASM build with sqlite-vec compiled in — replaces `ncruces/go-sqlite3/embed`).
 - **Routing:** stdlib `http.ServeMux` with Go 1.22+ method/pattern routes; hand-rolled middleware. No chi/gin.
 - **Migrations:** hand-rolled runner over `embed.FS` `.sql` files, tracked in `schema_migrations`.
-- **Module path:** `github.com/trick77/spark` (adjust if the remote differs).
+- **Module path:** `github.com/trick77/slop` (adjust if the remote differs).
 - **Fonts:** wire a CSS-variable font system; ship open stand-ins via `@fontsource` (`@fontsource-variable/inter` for sans, `@fontsource/fraunces` for the editorial serif) with a single documented swap point for the real Anthropic font package when its npm name is confirmed.
-- **Branch:** continue on a feature branch off `design/spark-v1` (e.g. `feat/phase-1-foundation`); never commit to `master`.
+- **Branch:** continue on a feature branch off `design/slop-v1` (e.g. `feat/phase-1-foundation`); never commit to `master`.
 
 ## File Structure
 
 ```
-spark/
+slop/
   backend/
-    go.mod                                  # module github.com/trick77/spark, go 1.25
-    cmd/spark/main.go                         # entrypoint: load config, open store, build server, serve + graceful shutdown
+    go.mod                                  # module github.com/trick77/slop, go 1.25
+    cmd/slop/main.go                         # entrypoint: load config, open store, build server, serve + graceful shutdown
     internal/
       config/config.go                      # Config struct + Load() from ENV
       config/config_test.go
@@ -64,25 +64,25 @@ spark/
 ## Task 1: Backend Go module & scaffold
 
 **Files:**
-- Create: `backend/go.mod`, `backend/cmd/spark/main.go` (temporary stub), `Makefile`
+- Create: `backend/go.mod`, `backend/cmd/slop/main.go` (temporary stub), `Makefile`
 
 - [ ] **Step 1: Create the Go module**
 
 Run:
 ```bash
-mkdir -p backend/cmd/spark && cd backend && go mod init github.com/trick77/spark && go mod edit -go=1.25
+mkdir -p backend/cmd/slop && cd backend && go mod init github.com/trick77/slop && go mod edit -go=1.25
 ```
 
 - [ ] **Step 2: Add a temporary main stub so the module compiles**
 
-Create `backend/cmd/spark/main.go`:
+Create `backend/cmd/slop/main.go`:
 ```go
 package main
 
 import "fmt"
 
 func main() {
-	fmt.Println("spark")
+	fmt.Println("slop")
 }
 ```
 
@@ -110,16 +110,16 @@ fe-build:
 	cd frontend && npm ci && npm run build
 
 build: fe-build
-	cd backend && CGO_ENABLED=0 go build -o ../bin/spark ./cmd/spark
+	cd backend && CGO_ENABLED=0 go build -o ../bin/slop ./cmd/slop
 
 run:
-	cd backend && go run ./cmd/spark
+	cd backend && go run ./cmd/slop
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/go.mod backend/cmd/spark/main.go Makefile
+git add backend/go.mod backend/cmd/slop/main.go Makefile
 git commit -m "chore: scaffold Go module and Makefile"
 ```
 
@@ -139,8 +139,8 @@ package config
 import "testing"
 
 func TestLoad_defaults(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_ADMIN_INITIAL_PASSWORD", "admin-pw")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_ADMIN_INITIAL_PASSWORD", "admin-pw")
 
 	cfg, err := Load()
 	if err != nil {
@@ -149,8 +149,8 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.Addr != ":8080" {
 		t.Errorf("Addr default = %q, want :8080", cfg.Addr)
 	}
-	if cfg.DBPath != "/data/spark.db" {
-		t.Errorf("DBPath default = %q, want /data/spark.db", cfg.DBPath)
+	if cfg.DBPath != "/data/slop.db" {
+		t.Errorf("DBPath default = %q, want /data/slop.db", cfg.DBPath)
 	}
 	if cfg.UsersDir != "/data/users" {
 		t.Errorf("UsersDir default = %q, want /data/users", cfg.UsersDir)
@@ -158,12 +158,12 @@ func TestLoad_defaults(t *testing.T) {
 }
 
 func TestLoad_overrides_and_required(t *testing.T) {
-	t.Setenv("SPARK_ADDR", ":9000")
-	t.Setenv("SPARK_SESSION_SECRET", "")
-	t.Setenv("SPARK_ADMIN_INITIAL_PASSWORD", "admin-pw")
+	t.Setenv("SLOP_ADDR", ":9000")
+	t.Setenv("SLOP_SESSION_SECRET", "")
+	t.Setenv("SLOP_ADMIN_INITIAL_PASSWORD", "admin-pw")
 
 	if _, err := Load(); err == nil {
-		t.Fatal("expected error when SPARK_SESSION_SECRET is empty")
+		t.Fatal("expected error when SLOP_SESSION_SECRET is empty")
 	}
 }
 ```
@@ -177,7 +177,7 @@ Expected: FAIL — `config.Load` undefined.
 
 Create `backend/internal/config/config.go`:
 ```go
-// Package config loads spark's runtime configuration from environment variables.
+// Package config loads slop's runtime configuration from environment variables.
 package config
 
 import (
@@ -216,26 +216,26 @@ func env(key, def string) string {
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:                 env("SPARK_ADDR", ":8080"),
-		DBPath:               env("SPARK_DB_PATH", "/data/spark.db"),
-		UsersDir:             env("SPARK_USERS_DIR", "/data/users"),
-		ChatBaseURL:          env("SPARK_CHAT_BASE_URL", ""),
-		ChatAPIKey:           env("SPARK_CHAT_API_KEY", ""),
-		ChatModel:            env("SPARK_CHAT_MODEL", "MiMo"),
-		EmbedBaseURL:         env("SPARK_EMBED_BASE_URL", ""),
-		EmbedAPIKey:          env("SPARK_EMBED_API_KEY", ""),
-		EmbedModel:           env("SPARK_EMBED_MODEL", "text-embedding-3-small"),
-		TikaURL:              env("SPARK_TIKA_URL", "http://tika:9998"),
-		SearxngURL:           env("SPARK_SEARXNG_URL", "http://searxng:8080"),
-		MCPConfigPath:        env("SPARK_MCP_CONFIG", "/config/mcp.json"),
-		AdminInitialPassword: env("SPARK_ADMIN_INITIAL_PASSWORD", ""),
-		SessionSecret:        env("SPARK_SESSION_SECRET", ""),
+		Addr:                 env("SLOP_ADDR", ":8080"),
+		DBPath:               env("SLOP_DB_PATH", "/data/slop.db"),
+		UsersDir:             env("SLOP_USERS_DIR", "/data/users"),
+		ChatBaseURL:          env("SLOP_CHAT_BASE_URL", ""),
+		ChatAPIKey:           env("SLOP_CHAT_API_KEY", ""),
+		ChatModel:            env("SLOP_CHAT_MODEL", "MiMo"),
+		EmbedBaseURL:         env("SLOP_EMBED_BASE_URL", ""),
+		EmbedAPIKey:          env("SLOP_EMBED_API_KEY", ""),
+		EmbedModel:           env("SLOP_EMBED_MODEL", "text-embedding-3-small"),
+		TikaURL:              env("SLOP_TIKA_URL", "http://tika:9998"),
+		SearxngURL:           env("SLOP_SEARXNG_URL", "http://searxng:8080"),
+		MCPConfigPath:        env("SLOP_MCP_CONFIG", "/config/mcp.json"),
+		AdminInitialPassword: env("SLOP_ADMIN_INITIAL_PASSWORD", ""),
+		SessionSecret:        env("SLOP_SESSION_SECRET", ""),
 	}
 	if cfg.SessionSecret == "" {
-		return Config{}, fmt.Errorf("SPARK_SESSION_SECRET is required")
+		return Config{}, fmt.Errorf("SLOP_SESSION_SECRET is required")
 	}
 	if cfg.AdminInitialPassword == "" {
-		return Config{}, fmt.Errorf("SPARK_ADMIN_INITIAL_PASSWORD is required")
+		return Config{}, fmt.Errorf("SLOP_ADMIN_INITIAL_PASSWORD is required")
 	}
 	return cfg, nil
 }
@@ -673,7 +673,7 @@ func (s *server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 
 Create `backend/internal/httpapi/server.go`:
 ```go
-// Package httpapi builds spark's HTTP handler: JSON/SSE API plus the embedded SPA.
+// Package httpapi builds slop's HTTP handler: JSON/SSE API plus the embedded SPA.
 package httpapi
 
 import "net/http"
@@ -843,7 +843,7 @@ func (s *server) handleHealthStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 ```
-Add the imports `"fmt"` and `"github.com/trick77/spark/internal/sse"` to `health.go`.
+Add the imports `"fmt"` and `"github.com/trick77/slop/internal/sse"` to `health.go`.
 
 - [ ] **Step 6: Run tests to verify everything passes**
 
@@ -870,7 +870,7 @@ git commit -m "feat(sse): SSE writer helper and live health stream endpoint"
 ```bash
 mkdir -p backend/web/dist
 printf '' > backend/web/dist/.gitkeep
-printf '<!doctype html><title>spark</title><div id="root"></div>' > backend/web/dist/index.html
+printf '<!doctype html><title>slop</title><div id="root"></div>' > backend/web/dist/index.html
 ```
 
 - [ ] **Step 2: Extend `.gitignore` to ignore built assets but keep the dir**
@@ -976,13 +976,13 @@ git commit -m "feat(web): embed and serve frontend dist as a SPA"
 ## Task 8: Wire everything in main.go
 
 **Files:**
-- Modify: `backend/cmd/spark/main.go`
+- Modify: `backend/cmd/slop/main.go`
 
 - [ ] **Step 1: Replace the stub with real wiring**
 
-Replace `backend/cmd/spark/main.go` with:
+Replace `backend/cmd/slop/main.go` with:
 ```go
-// Command spark is the all-in-one server: API + embedded SPA, backed by SQLite.
+// Command slop is the all-in-one server: API + embedded SPA, backed by SQLite.
 package main
 
 import (
@@ -995,10 +995,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/trick77/spark/internal/config"
-	"github.com/trick77/spark/internal/httpapi"
-	"github.com/trick77/spark/internal/store"
-	"github.com/trick77/spark/web"
+	"github.com/trick77/slop/internal/config"
+	"github.com/trick77/slop/internal/httpapi"
+	"github.com/trick77/slop/internal/store"
+	"github.com/trick77/slop/web"
 )
 
 var version = "dev" // overridden via -ldflags at build time
@@ -1055,7 +1055,7 @@ Expected: build OK; all tests PASS.
 
 Run:
 ```bash
-cd backend && SPARK_SESSION_SECRET=dev SPARK_ADMIN_INITIAL_PASSWORD=dev SPARK_DB_PATH=/tmp/spark.db go run ./cmd/spark &
+cd backend && SLOP_SESSION_SECRET=dev SLOP_ADMIN_INITIAL_PASSWORD=dev SLOP_DB_PATH=/tmp/slop.db go run ./cmd/slop &
 sleep 1
 curl -s localhost:8080/api/health
 curl -s localhost:8080/api/health/stream
@@ -1066,7 +1066,7 @@ Expected: health returns `{"status":"ok","version":"dev"}`; stream prints three 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add backend/cmd/spark/main.go
+git add backend/cmd/slop/main.go
 git commit -m "feat: wire config, store and HTTP server in main"
 ```
 
@@ -1173,19 +1173,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: "var(--spark-bg)",
-        panel: "var(--spark-panel)",
-        active: "var(--spark-active)",
-        border: "var(--spark-border)",
-        ink: "var(--spark-text)",
-        muted: "var(--spark-muted)",
-        accent: "var(--spark-accent)",
+        bg: "var(--slop-bg)",
+        panel: "var(--slop-panel)",
+        active: "var(--slop-active)",
+        border: "var(--slop-border)",
+        ink: "var(--slop-text)",
+        muted: "var(--slop-muted)",
+        accent: "var(--slop-accent)",
       },
       fontFamily: {
-        sans: ["var(--spark-font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
-        serif: ["var(--spark-font-serif)", "Georgia", "serif"],
+        sans: ["var(--slop-font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        serif: ["var(--slop-font-serif)", "Georgia", "serif"],
       },
-      borderRadius: { spark: "12px" },
+      borderRadius: { slop: "12px" },
     },
   },
   plugins: [],
@@ -1199,20 +1199,20 @@ Create `frontend/src/theme/tokens.css`:
 /* UI direction A — Warm Editorial (Claude-inspired). Starting palette from the
    design spec; fine-tuned during the frontend phase. */
 :root {
-  --spark-bg: #faf7f2;
-  --spark-panel: #f1ebe1;
-  --spark-active: #e9dfce;
-  --spark-border: #e3dccf;
-  --spark-text: #2b2520;
-  --spark-muted: #9a8f7e;
-  --spark-accent: #cc785c;
-  --spark-accent-text: #ffffff;
+  --slop-bg: #faf7f2;
+  --slop-panel: #f1ebe1;
+  --slop-active: #e9dfce;
+  --slop-border: #e3dccf;
+  --slop-text: #2b2520;
+  --slop-muted: #9a8f7e;
+  --slop-accent: #cc785c;
+  --slop-accent-text: #ffffff;
 
   /* Font stand-ins. SWAP POINT: replace these two custom-props (and the
      @fontsource imports in index.css) with the real Anthropic font package
      once its npm name is confirmed. */
-  --spark-font-sans: "Inter Variable";
-  --spark-font-serif: "Fraunces";
+  --slop-font-sans: "Inter Variable";
+  --slop-font-serif: "Fraunces";
 }
 ```
 
@@ -1228,9 +1228,9 @@ Create `frontend/src/index.css`:
 
 body {
   margin: 0;
-  background: var(--spark-bg);
-  color: var(--spark-text);
-  font-family: var(--spark-font-sans), ui-sans-serif, system-ui, sans-serif;
+  background: var(--slop-bg);
+  color: var(--slop-text);
+  font-family: var(--slop-font-sans), ui-sans-serif, system-ui, sans-serif;
 }
 ```
 
@@ -1243,7 +1243,7 @@ Create `frontend/index.html`:
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>spark</title>
+    <title>slop</title>
   </head>
   <body>
     <div id="root"></div>
@@ -1272,13 +1272,13 @@ export default function App() {
   return (
     <div className="grid h-screen grid-cols-[240px_1fr_300px] font-sans text-ink">
       <aside className="flex flex-col gap-2 bg-panel p-3 border-r border-border">
-        <div className="font-serif text-xl font-semibold">spark</div>
-        <button className="rounded-spark bg-accent px-3 py-2 text-sm text-white">
+        <div className="font-serif text-xl font-semibold">slop</div>
+        <button className="rounded-slop bg-accent px-3 py-2 text-sm text-white">
           + New chat
         </button>
       </aside>
       <main className="flex flex-col bg-bg p-6">
-        <h1 className="font-serif text-lg">Welcome to spark</h1>
+        <h1 className="font-serif text-lg">Welcome to slop</h1>
         <p className="text-muted">Foundation is up. Chat arrives in a later phase.</p>
       </main>
       <aside className="bg-panel border-l border-border p-3 text-sm text-muted">
@@ -1296,9 +1296,9 @@ Create `frontend/src/App.test.tsx`:
 import { render, screen } from "@testing-library/react";
 import App from "./App";
 
-test("renders the spark brand and new chat action", () => {
+test("renders the slop brand and new chat action", () => {
   render(<App />);
-  expect(screen.getByText("spark")).toBeInTheDocument();
+  expect(screen.getByText("slop")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /new chat/i })).toBeInTheDocument();
 });
 ```
@@ -1350,13 +1350,13 @@ RUN go mod download
 COPY backend/ ./
 # bring in the built frontend so //go:embed all:dist has real assets
 COPY --from=web /app/backend/web/dist ./web/dist
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(date +%Y%m%d)" -o /out/spark ./cmd/spark
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(date +%Y%m%d)" -o /out/slop ./cmd/slop
 
 # --- Stage 3: minimal runtime ---
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/spark /spark
+COPY --from=build /out/slop /slop
 EXPOSE 8080
-ENTRYPOINT ["/spark"]
+ENTRYPOINT ["/slop"]
 ```
 
 - [ ] **Step 2: Create `.dockerignore`**
@@ -1376,28 +1376,28 @@ backend/web/dist/assets
 Create `compose.yaml` at repo root:
 ```yaml
 services:
-  spark:
+  slop:
     build:
       context: .
       dockerfile: backend/Containerfile
     ports:
       - "8080:8080"
     environment:
-      SPARK_ADDR: ":8080"
-      SPARK_DB_PATH: "/data/spark.db"
-      SPARK_USERS_DIR: "/data/users"
-      SPARK_TIKA_URL: "http://tika:9998"
-      SPARK_SEARXNG_URL: "http://searxng:8080"
-      SPARK_MCP_CONFIG: "/config/mcp.json"
-      SPARK_CHAT_BASE_URL: "${SPARK_CHAT_BASE_URL}"
-      SPARK_CHAT_API_KEY: "${SPARK_CHAT_API_KEY}"
-      SPARK_CHAT_MODEL: "${SPARK_CHAT_MODEL:-MiMo}"
-      SPARK_EMBED_BASE_URL: "${SPARK_EMBED_BASE_URL}"
-      SPARK_EMBED_API_KEY: "${SPARK_EMBED_API_KEY}"
-      SPARK_ADMIN_INITIAL_PASSWORD: "${SPARK_ADMIN_INITIAL_PASSWORD}"
-      SPARK_SESSION_SECRET: "${SPARK_SESSION_SECRET}"
+      SLOP_ADDR: ":8080"
+      SLOP_DB_PATH: "/data/slop.db"
+      SLOP_USERS_DIR: "/data/users"
+      SLOP_TIKA_URL: "http://tika:9998"
+      SLOP_SEARXNG_URL: "http://searxng:8080"
+      SLOP_MCP_CONFIG: "/config/mcp.json"
+      SLOP_CHAT_BASE_URL: "${SLOP_CHAT_BASE_URL}"
+      SLOP_CHAT_API_KEY: "${SLOP_CHAT_API_KEY}"
+      SLOP_CHAT_MODEL: "${SLOP_CHAT_MODEL:-MiMo}"
+      SLOP_EMBED_BASE_URL: "${SLOP_EMBED_BASE_URL}"
+      SLOP_EMBED_API_KEY: "${SLOP_EMBED_API_KEY}"
+      SLOP_ADMIN_INITIAL_PASSWORD: "${SLOP_ADMIN_INITIAL_PASSWORD}"
+      SLOP_SESSION_SECRET: "${SLOP_SESSION_SECRET}"
     volumes:
-      - spark-data:/data
+      - slop-data:/data
       - ./mcp.json:/config/mcp.json:ro
       # per-user volumes are mounted manually under /data/users/<user-id>/
     depends_on:
@@ -1416,7 +1416,7 @@ services:
     image: apache/tika:2.9.2.1-full
 
 volumes:
-  spark-data:
+  slop-data:
 ```
 
 - [ ] **Step 4: Create the example MCP config**
@@ -1442,13 +1442,13 @@ Create `mcp.json`:
 
 Create `.env.example`:
 ```
-SPARK_SESSION_SECRET=change-me-to-a-long-random-string
-SPARK_ADMIN_INITIAL_PASSWORD=change-me
-SPARK_CHAT_BASE_URL=http://your-mimo-host/v1
-SPARK_CHAT_API_KEY=
-SPARK_CHAT_MODEL=MiMo
-SPARK_EMBED_BASE_URL=https://api.openai.com/v1
-SPARK_EMBED_API_KEY=sk-...
+SLOP_SESSION_SECRET=change-me-to-a-long-random-string
+SLOP_ADMIN_INITIAL_PASSWORD=change-me
+SLOP_CHAT_BASE_URL=http://your-mimo-host/v1
+SLOP_CHAT_API_KEY=
+SLOP_CHAT_MODEL=MiMo
+SLOP_EMBED_BASE_URL=https://api.openai.com/v1
+SLOP_EMBED_API_KEY=sk-...
 ```
 
 - [ ] **Step 6: Validate the compose file**
@@ -1460,7 +1460,7 @@ Expected: prints `OK` (config parses).
 
 ```bash
 git add backend/Containerfile backend/.dockerignore compose.yaml mcp.json .env.example
-git commit -m "chore: add multi-stage Containerfile and compose skeleton (spark+searxng+tika)"
+git commit -m "chore: add multi-stage Containerfile and compose skeleton (slop+searxng+tika)"
 ```
 
 ---
@@ -1483,8 +1483,8 @@ Expected: tests pass; `backend/web/dist` populated.
 
 Run:
 ```bash
-cd backend && CGO_ENABLED=0 go build -o /tmp/spark ./cmd/spark
-SPARK_SESSION_SECRET=dev SPARK_ADMIN_INITIAL_PASSWORD=dev SPARK_DB_PATH=/tmp/spark.db /tmp/spark &
+cd backend && CGO_ENABLED=0 go build -o /tmp/slop ./cmd/slop
+SLOP_SESSION_SECRET=dev SLOP_ADMIN_INITIAL_PASSWORD=dev SLOP_DB_PATH=/tmp/slop.db /tmp/slop &
 sleep 1
 curl -s localhost:8080/api/health        # {"status":"ok",...}
 curl -s localhost:8080/ | head -c 100     # served index.html from embed
@@ -1494,7 +1494,7 @@ Expected: health JSON ok; `/` returns the built `index.html`.
 
 - [ ] **Step 4: Container build (if a container runtime is available)**
 
-Run: `docker build -f backend/Containerfile -t spark:dev . && echo BUILT` (or `podman build`)
+Run: `docker build -f backend/Containerfile -t slop:dev . && echo BUILT` (or `podman build`)
 Expected: image builds; prints `BUILT`.
 
 - [ ] **Step 5: Final commit / tag the phase**
@@ -1513,12 +1513,12 @@ git commit -m "chore: phase 1 foundation complete" --allow-empty
 - Go server serving JSON/SSE API + embedded React via `embed.FS` → Tasks 5, 6, 7, 8. ✓
 - SQLite store + `sqlite-vec` verified early → Tasks 3, 4. ✓
 - Config (ENV) → Task 2. ✓
-- Containerfile/compose skeleton (runtime-agnostic; spark+searxng+tika; MCP as separate containers) → Task 10. ✓
+- Containerfile/compose skeleton (runtime-agnostic; slop+searxng+tika; MCP as separate containers) → Task 10. ✓
 - UI direction A palette + Anthropic-font wiring (with documented swap point) → Task 9. ✓
 - `mcp.json` example present (client deferred to Phase 4, noted) → Task 10. ✓
 
 **Placeholder scan:** No "TBD/TODO"; the one font swap-point is concrete working code (open stand-ins) with an explicit, documented replacement instruction — not a gap. The cgo fallback in Task 4 is a conditional with full instructions, not a placeholder.
 
-**Type/name consistency:** `store.Open(path) (*sql.DB, error)`, `config.Load() (Config, error)`, `httpapi.New(Deps) http.Handler` with `Deps{Version, Static}`, `sse.NewWriter(w) (*Writer, error)` + `(*Writer).Send(event, data)`, `web.SPAHandler() http.Handler` — used consistently across Tasks 5–10. CSS custom props (`--spark-*`) match between `tokens.css`, `index.css`, and `tailwind.config.ts`.
+**Type/name consistency:** `store.Open(path) (*sql.DB, error)`, `config.Load() (Config, error)`, `httpapi.New(Deps) http.Handler` with `Deps{Version, Static}`, `sse.NewWriter(w) (*Writer, error)` + `(*Writer).Send(event, data)`, `web.SPAHandler() http.Handler` — used consistently across Tasks 5–10. CSS custom props (`--slop-*`) match between `tokens.css`, `index.css`, and `tailwind.config.ts`.
 
 **Out of scope (correctly deferred):** auth/sessions (Phase 2), projects/threads/messages tables (Phase 3), MCP client (Phase 4), documents/RAG + vec tables (Phase 5), memory (Phase 6). Phase 1 ships only `settings` + `schema_migrations`.

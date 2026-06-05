@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/trick77/spark/internal/sse"
+	"github.com/trick77/slop/internal/sse"
 )
 
 func (s *server) handleHealth(w http.ResponseWriter, _ *http.Request) {

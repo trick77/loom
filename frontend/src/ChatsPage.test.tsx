@@ -81,8 +81,8 @@ test("search input uses the standard input text size", async () => {
 
   const searchInput = await screen.findByRole("textbox", { name: "Search chats" });
 
-  expect(searchInput).toHaveClass("spark-composer-text");
-  expect(searchInput).not.toHaveClass("spark-control-text");
+  expect(searchInput).toHaveClass("slop-composer-text");
+  expect(searchInput).not.toHaveClass("slop-control-text");
 });
 
 test("search filters by title (debounced)", async () => {

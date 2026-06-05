@@ -14,9 +14,9 @@ const (
 )
 
 // DevAdminGroup is the synthetic group used only by local development auth.
-const DevAdminGroup = "spark-dev-admin"
+const DevAdminGroup = "slop-dev-admin"
 
-// User is Spark's app-local user profile.
+// User is Slop's app-local user profile.
 type User struct {
 	ID               string `json:"id"`
 	OIDCSubject      string `json:"-"`
@@ -27,7 +27,7 @@ type User struct {
 	ResponseLanguage string `json:"responseLanguage"`
 }
 
-// Claims contains the verified OIDC identity fields Spark needs.
+// Claims contains the verified OIDC identity fields Slop needs.
 type Claims struct {
 	Subject  string
 	Username string
@@ -38,7 +38,7 @@ type Claims struct {
 
 type contextKey string
 
-const userContextKey contextKey = "spark_user"
+const userContextKey contextKey = "slop_user"
 
 // UserFromContext returns the authenticated user stored on a request context.
 func UserFromContext(ctx context.Context) (User, bool) {

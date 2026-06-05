@@ -1,9 +1,9 @@
-# Spark Phase 2 Authentik OIDC Design
+# Slop Phase 2 Authentik OIDC Design
 
 ## Goal
 
 Phase 2 adds real authentication and a usable authenticated frontend by delegating identity to
-authentik via OpenID Connect. Spark owns only app-local sessions, role mapping, and app profile data;
+authentik via OpenID Connect. Slop owns only app-local sessions, role mapping, and app profile data;
 authentik remains the source of truth for credentials, MFA, account lifecycle, and group membership.
 
 ## Scope
@@ -11,28 +11,28 @@ authentik remains the source of truth for credentials, MFA, account lifecycle, a
 Included:
 
 - OIDC authorization-code login against authentik.
-- Server-side Spark session cookie after successful OIDC callback.
-- Logout that clears the Spark session and redirects to a configured post-logout URL.
+- Server-side Slop session cookie after successful OIDC callback.
+- Logout that clears the Slop session and redirects to a configured post-logout URL.
 - Local `users` table keyed by the OIDC subject claim.
 - Local `sessions` table keyed by opaque random session tokens.
 - Admin role mapping from a configured authentik group claim.
 - `/api/me` for the current authenticated user.
 - Auth middleware for API routes that must be protected.
 - Frontend signed-out screen, authenticated shell, user menu, logout, and basic admin user list.
-- `spark.png` moved into the frontend asset tree and used as the main brand image.
-- README setup instructions for configuring authentik and Spark.
+- `slop.png` moved into the frontend asset tree and used as the main brand image.
+- README setup instructions for configuring authentik and Slop.
 
 Excluded:
 
 - Local usernames and passwords.
 - Local password reset or MFA.
 - Public registration.
-- Creating or deleting authentik users from Spark.
+- Creating or deleting authentik users from Slop.
 - Full admin settings UI beyond reading app-local users and their mapped roles.
 
 ## OIDC Model
 
-Spark is an OIDC relying party. It discovers authentik metadata from `SPARK_OIDC_ISSUER`, redirects
+Slop is an OIDC relying party. It discovers authentik metadata from `SLOP_OIDC_ISSUER`, redirects
 users through authentik, exchanges the callback code for tokens, verifies the ID token, validates the
 callback state and nonce, and extracts claims.
 
@@ -47,8 +47,8 @@ Optional claims:
 - `email`: contact identifier.
 - `groups`: used for admin role mapping.
 
-The admin group name is configured with `SPARK_OIDC_ADMIN_GROUP`. If a user's groups include that
-value, Spark stores the user as `admin`; otherwise Spark stores the user as `user`. Role mapping is
+The admin group name is configured with `SLOP_OIDC_ADMIN_GROUP`. If a user's groups include that
+value, Slop stores the user as `admin`; otherwise Slop stores the user as `user`. Role mapping is
 refreshed on every login so authentik remains authoritative.
 
 ## Backend Components
@@ -59,7 +59,7 @@ refreshed on every login so authentik remains authoritative.
   and logout URLs.
 - `StateStore`: creates and validates short-lived login state and nonce values using signed,
   httponly cookies.
-- `SessionStore`: creates, looks up, refreshes, and revokes Spark sessions in SQLite.
+- `SessionStore`: creates, looks up, refreshes, and revokes Slop sessions in SQLite.
 - `UserStore`: upserts users by OIDC subject and lists users for admins.
 - `Middleware`: attaches the authenticated user to request context and rejects unauthenticated or
   unauthorized requests.
@@ -67,7 +67,7 @@ refreshed on every login so authentik remains authoritative.
 `backend/internal/httpapi` exposes auth routes:
 
 - `GET /api/auth/login`: starts OIDC login.
-- `GET /api/auth/callback`: validates callback, upserts user, creates Spark session, redirects to `/`.
+- `GET /api/auth/callback`: validates callback, upserts user, creates Slop session, redirects to `/`.
 - `POST /api/auth/logout`: revokes the current session and returns the configured post-logout
   redirect URL.
 - `GET /api/me`: returns the current user or `401`.
@@ -109,11 +109,11 @@ served over HTTPS, and `SameSite=Lax`.
 The frontend starts by calling `/api/me`.
 
 - `200`: render the authenticated app shell with current user state.
-- `401`: render a signed-out Spark screen with a Sign in button linking to `/api/auth/login`.
+- `401`: render a signed-out Slop screen with a Sign in button linking to `/api/auth/login`.
 - Other errors: render a compact service error state.
 
-The authenticated shell keeps the current Phase 1 layout, adds Spark branding from
-`frontend/src/assets/spark.png`, and adds a bottom user menu with Logout. Admin users see an Admin
+The authenticated shell keeps the current Phase 1 layout, adds Slop branding from
+`frontend/src/assets/slop.png`, and adds a bottom user menu with Logout. Admin users see an Admin
 view entry and a user list sourced from `/api/admin/users`.
 
 The frontend does not collect passwords. All sign-in credentials are entered only in authentik.
@@ -122,22 +122,22 @@ The frontend does not collect passwords. All sign-in credentials are entered onl
 
 New required configuration for Phase 2:
 
-- `SPARK_PUBLIC_URL`
-- `SPARK_OIDC_ISSUER`
-- `SPARK_OIDC_CLIENT_ID`
-- `SPARK_OIDC_CLIENT_SECRET`
-- `SPARK_OIDC_REDIRECT_URL`
-- `SPARK_OIDC_POST_LOGOUT_REDIRECT_URL`
-- `SPARK_OIDC_ADMIN_GROUP`
+- `SLOP_PUBLIC_URL`
+- `SLOP_OIDC_ISSUER`
+- `SLOP_OIDC_CLIENT_ID`
+- `SLOP_OIDC_CLIENT_SECRET`
+- `SLOP_OIDC_REDIRECT_URL`
+- `SLOP_OIDC_POST_LOGOUT_REDIRECT_URL`
+- `SLOP_OIDC_ADMIN_GROUP`
 
-`SPARK_SESSION_SECRET` remains required and signs transient auth state. `SPARK_ADMIN_INITIAL_PASSWORD`
+`SLOP_SESSION_SECRET` remains required and signs transient auth state. `SLOP_ADMIN_INITIAL_PASSWORD`
 is removed from the required boot path because authentik owns credentials.
 
 ## Security Notes
 
 - Validate OIDC `state` and ID-token `nonce`.
 - Verify ID token issuer, audience, expiry, and signature through `go-oidc`.
-- Store only opaque Spark session cookies in the browser.
+- Store only opaque Slop session cookies in the browser.
 - Store only session token hashes in SQLite.
 - Keep static SPA public but protect all non-health API routes that expose user data.
 - Do not trust frontend-provided role or identity fields.
@@ -155,16 +155,16 @@ Backend tests cover:
 
 Frontend tests cover:
 
-- Signed-out state renders Spark branding and sign-in action after `/api/me` returns `401`.
+- Signed-out state renders Slop branding and sign-in action after `/api/me` returns `401`.
 - Authenticated state renders the shell and current user.
 - Admin users see the Admin view; regular users do not.
 - Logout calls the backend and navigates to the returned redirect URL.
 
 Manual smoke test:
 
-1. Configure an authentik OAuth2/OpenID Connect provider for Spark.
-2. Start Spark with OIDC env vars.
-3. Visit Spark and sign in through authentik.
+1. Configure an authentik OAuth2/OpenID Connect provider for Slop.
+2. Start Slop with OIDC env vars.
+3. Visit Slop and sign in through authentik.
 4. Confirm `/api/me` returns the mapped user.
 5. Confirm an authentik group member appears as admin.
 6. Confirm a non-group member appears as user and cannot call admin APIs.

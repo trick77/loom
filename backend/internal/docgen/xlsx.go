@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 	"github.com/xuri/excelize/v2"
 )
 

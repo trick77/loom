@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/trick77/spark/internal/store"
+	"github.com/trick77/slop/internal/store"
 )
 
 func TestStoreCreatesAndFindsArtifactByUser(t *testing.T) {

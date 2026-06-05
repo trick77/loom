@@ -516,10 +516,10 @@ export function ChatShell({
         sidebarCollapsed ? "grid-cols-[56px_1fr]" : "grid-cols-[362px_1fr]"
       }`}
     >
-      <aside className="spark-sidebar-text flex min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd]">
+      <aside className="slop-sidebar-text flex min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd]">
         <div className={`flex h-11 items-center px-3 ${sidebarCollapsed ? "justify-center" : "justify-between"}`}>
           {!sidebarCollapsed && (
-            <div className="spark-wordmark font-serif font-medium text-[#f4f0e8]">Spark</div>
+            <div className="slop-wordmark font-serif font-medium text-[#f4f0e8]">Slop</div>
           )}
           <div className="flex items-center gap-3 text-[#aaa79e]">
             {!sidebarCollapsed && (
@@ -548,7 +548,7 @@ export function ChatShell({
             </button>
           </div>
         </div>
-        <nav className="spark-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
+        <nav className="slop-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
           <button
             className={`flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
               sidebarCollapsed ? "justify-center" : "gap-2.5"
@@ -575,7 +575,7 @@ export function ChatShell({
           {!sidebarCollapsed && (
             <>
           {loadError !== "" && (
-            <div className="spark-meta-text mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-accent">
+            <div className="slop-meta-text mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-accent">
               {loadError}
             </div>
           )}
@@ -608,7 +608,7 @@ export function ChatShell({
             onCloseMenu={() => setOpenThreadMenuID(null)}
           />
           <section className="mt-5">
-            <div className="spark-meta-text mb-2 flex items-center justify-between px-1.5 text-[#97958c]">
+            <div className="slop-meta-text mb-2 flex items-center justify-between px-1.5 text-[#97958c]">
               <span>Projects</span>
               <button
                 className="rounded px-1 text-[#aaa79e] transition-colors hover:text-white"
@@ -629,21 +629,21 @@ export function ChatShell({
               >
                 <input
                   autoFocus
-                  className="spark-sidebar-text w-full rounded-md border border-[#3b3b38] bg-[#20201f] px-2 py-1.5 text-ink outline-none placeholder:text-muted focus:border-[#69665f]"
+                  className="slop-sidebar-text w-full rounded-md border border-[#3b3b38] bg-[#20201f] px-2 py-1.5 text-ink outline-none placeholder:text-muted focus:border-[#69665f]"
                   placeholder="Project name"
                   value={projectName}
                   onChange={(event) => setProjectName(event.target.value)}
                 />
                 <div className="flex gap-2">
                   <button
-                    className="spark-sidebar-text rounded-md bg-[#393936] px-3 py-1.5 font-medium text-white disabled:opacity-50"
+                    className="slop-sidebar-text rounded-md bg-[#393936] px-3 py-1.5 font-medium text-white disabled:opacity-50"
                     disabled={projectName.trim() === "" || isCreatingProject}
                     type="submit"
                   >
                     Create
                   </button>
                   <button
-                    className="spark-sidebar-text px-2 py-1.5 text-muted transition-colors hover:text-ink"
+                    className="slop-sidebar-text px-2 py-1.5 text-muted transition-colors hover:text-ink"
                     onClick={() => {
                       setProjectName("");
                       setIsProjectFormOpen(false);
@@ -908,7 +908,7 @@ function McpStatusIndicator({ compact = false, status }: { compact?: boolean; st
       : `${status.active} of ${status.configured} MCP servers active`;
   return (
     <div
-      className={`spark-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
+      className={`slop-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
       title={tooltip}
     >
       <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
@@ -944,7 +944,7 @@ function SidebarSection({
 }) {
   return (
     <section className="mt-5">
-      <div className="spark-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
+      <div className="slop-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
       <div className="space-y-1.5">
         {threads.map((thread) => (
           <SidebarThreadItem
@@ -1089,7 +1089,7 @@ function RenameThreadModal({
         <input
           ref={inputRef}
           aria-label="Chat title"
-          className="spark-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
+          className="slop-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
         />
@@ -1216,7 +1216,7 @@ function StartPanel({
     <section className="flex h-screen min-h-0 flex-col">
       <header
         aria-label="Chat header"
-        className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
+        className="slop-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
         <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">New chat</h1>
@@ -1225,7 +1225,7 @@ function StartPanel({
         )}
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 pb-[14vh]">
-        <h2 className="spark-greeting-text mb-8 flex items-center gap-4 font-serif">
+        <h2 className="slop-greeting-text mb-8 flex items-center gap-4 font-serif">
           <img className="h-16 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
           {greetingForNow(displayName)}
         </h2>
@@ -1240,12 +1240,12 @@ function StartPanel({
             onStop={onStop}
           />
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-          <div className="spark-meta-text mt-4 flex justify-center gap-2 text-[#e8e4da]">
+          <div className="slop-meta-text mt-4 flex justify-center gap-2 text-[#e8e4da]">
             <PromptChip icon="◇" label="Write" />
             <PromptChip icon="▱" label="Learn" />
             <PromptChip icon="‹/›" label="Code" />
             <PromptChip icon="☕" label="Life stuff" />
-            <PromptChip icon="◌" label="Spark's choice" />
+            <PromptChip icon="◌" label="Slop's choice" />
           </div>
         </div>
       </div>
@@ -1396,7 +1396,7 @@ function ChatPanel({
     <section className="flex h-screen min-h-0 flex-col">
       <header
         aria-label="Chat header"
-        className="spark-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
+        className="slop-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
         <div ref={headerMenuRef} className="relative flex min-w-0 items-center">
@@ -1413,7 +1413,7 @@ function ChatPanel({
             >
               <span
                 aria-hidden="true"
-                className={headerMenuOpen ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"}
+                className={headerMenuOpen ? "slop-thinking-chevron-expanded" : "slop-thinking-chevron"}
               />
             </button>
           )}
@@ -1440,7 +1440,7 @@ function ChatPanel({
           onScroll={refreshScrollState}
           role="region"
         >
-          <div className="spark-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
+          <div className="slop-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
             {messages.map((message, index) => (
               <div key={message.id} className="space-y-6">
                 {message.role === "assistant" && message.activityTrace !== undefined && (
@@ -1488,7 +1488,7 @@ function ChatPanel({
             className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
-            <div className="spark-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
+            <div className="slop-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
               <Composer
                 variant="chat"
                 draft={draft}
@@ -1498,8 +1498,8 @@ function ChatPanel({
                 onSend={handleSendRequest}
                 onStop={onStop}
               />
-              <div className="spark-meta-text mt-2 text-center text-[#858178]">
-                Spark can make mistakes. Please double-check responses.
+              <div className="slop-meta-text mt-2 text-center text-[#858178]">
+                Slop can make mistakes. Please double-check responses.
               </div>
             </div>
           </div>
@@ -1544,15 +1544,15 @@ function ActivityTracePanel({
   const summary = active ? "Thinking" : summarizeTrace(events);
   return (
     <div
-      aria-label={active ? "Spark activity trace" : undefined}
+      aria-label={active ? "Slop activity trace" : undefined}
       aria-live={active ? "polite" : undefined}
-      className="spark-activity-trace"
+      className="slop-activity-trace"
       role={active ? "status" : undefined}
     >
       <button
         aria-expanded={expanded}
         aria-label={expanded ? "Hide activity" : "Show activity"}
-        className="spark-activity-trace-toggle"
+        className="slop-activity-trace-toggle"
         type="button"
         onClick={() =>
           setExpanded((current) => {
@@ -1562,20 +1562,20 @@ function ActivityTracePanel({
           })
         }
       >
-        <span className="spark-activity-trace-label">
-          <span className={active ? "spark-thinking-status-active" : "spark-thinking-status-complete"} aria-hidden="true" />
+        <span className="slop-activity-trace-label">
+          <span className={active ? "slop-thinking-status-active" : "slop-thinking-status-complete"} aria-hidden="true" />
           {active ? (
-            <span className="spark-thinking-label-active" data-text="Thinking">
+            <span className="slop-thinking-label-active" data-text="Thinking">
               Thinking
             </span>
           ) : (
             <span>{summary}</span>
           )}
-          <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
+          <span aria-hidden="true" className={expanded ? "slop-thinking-chevron-expanded" : "slop-thinking-chevron"} />
         </span>
       </button>
       {expanded && (
-        <div className="spark-activity-trace-body">
+        <div className="slop-activity-trace-body">
           {events.map((event) => (
             <ActivityTraceRow key={event.id} event={event} />
           ))}
@@ -1589,12 +1589,12 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   if (event.type === "reasoning") {
     const iconClass =
       event.status === "done"
-        ? "spark-activity-trace-icon spark-activity-trace-icon-reasoning spark-activity-trace-icon-reasoning-complete"
-        : "spark-activity-trace-icon spark-activity-trace-icon-reasoning";
+        ? "slop-activity-trace-icon slop-activity-trace-icon-reasoning slop-activity-trace-icon-reasoning-complete"
+        : "slop-activity-trace-icon slop-activity-trace-icon-reasoning";
     return (
-      <div className="spark-activity-trace-row">
+      <div className="slop-activity-trace-row">
         <span className={iconClass} aria-hidden="true" />
-        <div className="spark-activity-reasoning">
+        <div className="slop-activity-reasoning">
           <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
             {event.content.trim()}
           </Markdown>
@@ -1604,22 +1604,22 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   }
   const status = activityToolStatusMeta(event);
   return (
-    <div className="spark-activity-trace-row">
-      <span className="spark-activity-trace-icon" aria-hidden="true">
+    <div className="slop-activity-trace-row">
+      <span className="slop-activity-trace-icon" aria-hidden="true">
         {event.summary.kind === "search" ? <GlobeTraceIcon /> : <FetchTraceIcon />}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
-          <span className="spark-activity-tool-title">{event.summary.title}</span>
-          <span className={`spark-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
+          <span className="slop-activity-tool-title">{event.summary.title}</span>
+          <span className={`slop-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
-        <div className="spark-activity-tool-detail">{event.summary.detail}</div>
+        <div className="slop-activity-tool-detail">{event.summary.detail}</div>
         {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
           <>
-            <div className="spark-activity-result-count">
+            <div className="slop-activity-result-count">
               {event.preview.resultCount} {event.preview.resultCount === 1 ? "result" : "results"}
             </div>
-            <div className="spark-activity-result-list">
+            <div className="slop-activity-result-list">
               {event.preview.results.map((result, index) => (
                 <SearchResultRow key={`${result.url ?? result.title}-${index}`} result={result} />
               ))}
@@ -1638,13 +1638,13 @@ function SearchResultRow({
 }) {
   const favicon = result.url === undefined ? undefined : faviconURL(result.url);
   const href = result.url === undefined ? undefined : externalHTTPURL(result.url);
-  const title = <div className="spark-activity-result-title">{result.title}</div>;
+  const title = <div className="slop-activity-result-title">{result.title}</div>;
   return (
-    <div className="spark-activity-result-row">
+    <div className="slop-activity-result-row">
       {favicon !== undefined ? (
-        <img alt="" className="spark-activity-favicon" src={favicon} />
+        <img alt="" className="slop-activity-favicon" src={favicon} />
       ) : (
-        <span className="spark-activity-favicon" aria-hidden="true">
+        <span className="slop-activity-favicon" aria-hidden="true">
           {faviconInitial(result.domain ?? result.title)}
         </span>
       )}
@@ -1652,12 +1652,12 @@ function SearchResultRow({
         {href === undefined ? (
           title
         ) : (
-          <a className="spark-activity-result-link" href={href} target="_blank" rel="noreferrer">
+          <a className="slop-activity-result-link" href={href} target="_blank" rel="noreferrer">
             {title}
           </a>
         )}
       </div>
-      {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
+      {result.domain !== undefined && <div className="slop-activity-result-domain">{result.domain}</div>}
     </div>
   );
 }
@@ -1672,14 +1672,14 @@ function externalHTTPURL(value: string): string | undefined {
 }
 
 function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {
-  if (event.status === "failed") return { label: "Failed", className: "spark-activity-status-failed" };
-  if (event.status === "running") return { label: "Running", className: "spark-activity-status-neutral" };
-  return { label: "Done", className: "spark-activity-status-neutral" };
+  if (event.status === "failed") return { label: "Failed", className: "slop-activity-status-failed" };
+  if (event.status === "running") return { label: "Running", className: "slop-activity-status-neutral" };
+  return { label: "Done", className: "slop-activity-status-neutral" };
 }
 
 function GlobeTraceIcon() {
   return (
-    <svg className="spark-activity-globe-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="slop-activity-globe-icon" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="9" />
       <path d="M3 12h18" />
       <path d="M12 3c2.25 2.45 3.35 5.45 3.35 9s-1.1 6.55-3.35 9" />
@@ -1739,7 +1739,7 @@ function Composer({
     : "bg-accent hover:bg-accent-strong disabled:bg-accent";
   return (
     <form
-      className={`spark-composer ${height} relative rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
+      className={`slop-composer ${height} relative rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
       onSubmit={(event) => {
         event.preventDefault();
         if (isSending) {
@@ -1750,7 +1750,7 @@ function Composer({
       }}
     >
       <textarea
-        className={`spark-composer-text h-full w-full resize-none overflow-hidden bg-transparent ${padX} pb-14 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]`}
+        className={`slop-composer-text h-full w-full resize-none overflow-hidden bg-transparent ${padX} pb-14 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]`}
         placeholder={placeholder}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
@@ -1765,9 +1765,9 @@ function Composer({
         <button className="text-2xl leading-none" type="button" aria-label="Add attachment">
           +
         </button>
-        <div className="spark-meta-text flex items-center text-[#d8d4ca]">
+        <div className="slop-meta-text flex items-center text-[#d8d4ca]">
           <button
-            className={`spark-composer-send grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
+            className={`slop-composer-send grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
             disabled={!isSending && !canSend}
             type="submit"
             aria-label={isSending ? "Stop response" : "Send message"}
@@ -1790,7 +1790,7 @@ function Composer({
 
 function PromptChip({ icon, label }: { icon: string; label: string }) {
   return (
-    <button className="spark-meta-text flex h-8 items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 text-[#eeeae2]" type="button">
+    <button className="slop-meta-text flex h-8 items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 text-[#eeeae2]" type="button">
       <span className="text-[#aaa79e]">{icon}</span>
       {label}
     </button>
@@ -1808,8 +1808,8 @@ function MessageBubble({
 }) {
   if (message.role === "user") {
     return (
-      <div className="spark-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
-        <div className="spark-message-text spark-user-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
+      <div className="slop-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
+        <div className="slop-message-text slop-user-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
           {message.content}
         </div>
         <MessageActions
@@ -1854,10 +1854,10 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
   }, []);
 
   return (
-    <div className="spark-codeblock">
+    <div className="slop-codeblock">
       <button
         type="button"
-        className="spark-codeblock-copy"
+        className="slop-codeblock-copy"
         onClick={handleCopy}
         aria-label={copied ? "Kopiert" : "Code kopieren"}
         title={copied ? "Kopiert" : "Code kopieren"}
@@ -1873,7 +1873,7 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
 
 export function ProseMarkdown({ children }: { children: string }) {
   return (
-    <div className="spark-message-text spark-markdown text-[#f3f0e8]">
+    <div className="slop-message-text slop-markdown text-[#f3f0e8]">
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
@@ -1911,7 +1911,7 @@ function AssistantText({
       return <DownloadResponseBubble artifact={artifact} />;
     }
     return (
-      <div className="spark-assistant-message group w-full space-y-3">
+      <div className="slop-assistant-message group w-full space-y-3">
         {before !== "" && <ProseMarkdown>{before}</ProseMarkdown>}
         <DownloadResponseBubble artifact={artifact} />
         {after !== "" && <ProseMarkdown>{after}</ProseMarkdown>}
@@ -1934,7 +1934,7 @@ function AssistantText({
       return <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />;
     }
     return (
-      <div className="spark-assistant-message group w-full space-y-3">
+      <div className="slop-assistant-message group w-full space-y-3">
         <ProseMarkdown>{before}</ProseMarkdown>
         <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />
       </div>
@@ -1942,7 +1942,7 @@ function AssistantText({
   }
 
   return (
-    <div className="spark-assistant-message group w-full">
+    <div className="slop-assistant-message group w-full">
       <ProseMarkdown>{children}</ProseMarkdown>
       <MessageActions
         copyLabel="Copy response"
@@ -2061,8 +2061,8 @@ function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string
           <FileIcon />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="spark-message-text truncate">{label} response</div>
-          <div className="spark-meta-text text-[#aaa79e]">{progressText}</div>
+          <div className="slop-message-text truncate">{label} response</div>
+          <div className="slop-meta-text text-[#aaa79e]">{progressText}</div>
         </div>
       </div>
     </div>
@@ -2084,8 +2084,8 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
           <FileIcon />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="spark-message-text truncate">{artifact.label} response</div>
-          <div className="spark-meta-text text-[#aaa79e]">Ready to download</div>
+          <div className="slop-message-text truncate">{artifact.label} response</div>
+          <div className="slop-meta-text text-[#aaa79e]">Ready to download</div>
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
@@ -2223,14 +2223,14 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="spark-message-text truncate">{artifact.displayFilename}</div>
-          <div className="spark-meta-text text-[#aaa79e]">
+          <div className="slop-message-text truncate">{artifact.displayFilename}</div>
+          <div className="slop-meta-text text-[#aaa79e]">
             {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
           </div>
           {imageStats !== null && (
             <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>
           )}
-          {error !== "" && <div className="spark-meta-text text-[#d36f67]">{error}</div>}
+          {error !== "" && <div className="slop-meta-text text-[#d36f67]">{error}</div>}
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
@@ -2279,7 +2279,7 @@ function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
   const url = URL.createObjectURL(new Blob([artifact.content], { type: artifact.mimeType }));
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `spark-response.${artifact.extension}`;
+  anchor.download = `slop-response.${artifact.extension}`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
@@ -2563,7 +2563,7 @@ function FileIcon() {
 
 function ErrorText({ children }: { children: React.ReactNode }) {
   return (
-    <div className="spark-meta-text mt-3 max-w-3xl rounded-lg border border-accent bg-[#282826] px-4 py-3 text-accent">
+    <div className="slop-meta-text mt-3 max-w-3xl rounded-lg border border-accent bg-[#282826] px-4 py-3 text-accent">
       {children}
     </div>
   );
