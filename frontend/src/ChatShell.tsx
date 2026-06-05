@@ -819,11 +819,12 @@ function initialsFor(name: string): string {
     .join("");
 }
 
-function greetingForNow() {
+function greetingForNow(name: string) {
   const hour = new Date().getHours();
-  if (hour < 12) return "Morning";
-  if (hour < 18) return "Afternoon";
-  return "Evening";
+  if (hour < 10) return `Morning, ${name}`;
+  if (hour >= 18) return `Evening, ${name}`;
+  if (hour >= 13) return `Afternoon, ${name}`;
+  return `${name} returns!`;
 }
 
 function SidebarPrimaryItem({
@@ -1225,7 +1226,7 @@ function StartPanel({
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 pb-[14vh]">
         <h2 className="spark-greeting-text mb-8 flex items-center gap-4 font-serif">
           <img className="h-10 w-10 shrink-0" src={logoImage} alt="" aria-hidden="true" />
-          {greetingForNow()}, {displayName}
+          {greetingForNow(displayName)}
         </h2>
         <div className="w-full max-w-[674px]">
           <Composer
