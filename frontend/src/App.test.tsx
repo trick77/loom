@@ -950,7 +950,7 @@ test("renders completed reasoning in a collapsed activity trace", async () => {
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
 });
 
-test("shows active activity trace while waiting for assistant output", async () => {
+test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -976,7 +976,8 @@ test("shows active activity trace while waiting for assistant output", async () 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  await waitFor(() => expect(screen.queryByRole("status", { name: /spark activity trace/i })).not.toBeInTheDocument());
+  expect(screen.getByRole("status", { name: /spark activity trace/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
 });
 
 test("keeps active activity trace visible while assistant text is streaming", async () => {
@@ -1869,7 +1870,7 @@ test("keeps completed activity trace collapsed before the assistant answer", asy
       controller.enqueue(encoder.encode('event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Search for updates","createdAt":"2026-05-30T00:00:00Z"}\n\n'));
       controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'));
       controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'));
-      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"{\\"results\\":[{\\"title\\":\\"Agentgateway\\",\\"url\\":\\"https://agentgateway.dev\\",\\"snippet\\":\\"Next generation proxy\\"},{\\"title\\":\\"Malformed source\\",\\"url\\":\\"not a url\\"}]}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"{\\"results\\":[{\\"title\\":\\"Agentgateway\\",\\"url\\":\\"https://agentgateway.dev\\",\\"snippet\\":\\"**Next generation proxy**\\"},{\\"title\\":\\"# Our Story and Lumon Brand\\",\\"url\\":\\"https://lumon.com/story\\"},{\\"title\\":\\"Malformed source\\",\\"url\\":\\"not a url\\"}]}"}\n\n'));
       controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"I found the update.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
@@ -1894,14 +1895,25 @@ test("keeps completed activity trace collapsed before the assistant answer", asy
 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
-  expect(screen.getByText("Agentgateway")).toBeInTheDocument();
+  const agentgatewayLink = screen.getByRole("link", { name: /Agentgateway/ });
+  expect(agentgatewayLink).toHaveAttribute("href", "https://agentgateway.dev/");
+  expect(agentgatewayLink).toHaveAttribute("target", "_blank");
+  expect(agentgatewayLink).toHaveAttribute("rel", "noreferrer");
+  expect(screen.getByText("Next generation proxy")).toBeInTheDocument();
+  expect(screen.queryByText("**Next generation proxy**")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Our Story and Lumon Brand/ })).toHaveAttribute("href", "https://lumon.com/story");
+  expect(screen.queryByText("# Our Story and Lumon Brand")).not.toBeInTheDocument();
   expect(screen.getByText("Malformed source")).toBeInTheDocument();
   const resultList = document.querySelector(".spark-activity-result-list");
   const faviconImages = resultList?.querySelectorAll("img.spark-activity-favicon");
-  expect(faviconImages).toHaveLength(1);
+  expect(faviconImages).toHaveLength(2);
   expect(faviconImages?.[0]).toHaveAttribute(
     "src",
     "https://www.google.com/s2/favicons?domain=agentgateway.dev&sz=32",
+  );
+  expect(faviconImages?.[1]).toHaveAttribute(
+    "src",
+    "https://www.google.com/s2/favicons?domain=lumon.com&sz=32",
   );
   expect(toggle.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
