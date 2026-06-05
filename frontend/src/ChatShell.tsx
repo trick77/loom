@@ -37,6 +37,7 @@ import {
 import {
   appendReasoningDelta,
   completeTrace,
+  faviconURL,
   summarizeTrace,
   upsertTraceToolCall,
   upsertTraceToolResult,
@@ -1559,6 +1560,29 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
           <span className={`spark-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
         <div className="spark-activity-tool-detail">{event.summary.detail}</div>
+        {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
+          <>
+            <div className="spark-activity-result-count">
+              {event.preview.resultCount} {event.preview.resultCount === 1 ? "result" : "results"}
+            </div>
+            <div className="spark-activity-result-list">
+              {event.preview.results.map((result, index) => (
+                <div key={`${result.url ?? result.title}-${index}`} className="spark-activity-result-row">
+                  {result.url !== undefined ? (
+                    <img alt="" className="spark-activity-favicon" src={faviconURL(result.url)} />
+                  ) : (
+                    <span className="spark-activity-favicon" aria-hidden="true" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="spark-activity-result-title">{result.title}</div>
+                    {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
+                  </div>
+                  {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
