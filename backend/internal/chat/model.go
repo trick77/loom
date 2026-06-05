@@ -57,6 +57,7 @@ type Message struct {
 	ToolCalls        json.RawMessage `json:"toolCalls"`
 	Citations        json.RawMessage `json:"citations"`
 	Artifacts        json.RawMessage `json:"artifacts"`
+	ActivityTrace    json.RawMessage `json:"activityTrace,omitempty"`
 	PromptTokens     *int            `json:"promptTokens,omitempty"`
 	CompletionTokens *int            `json:"completionTokens,omitempty"`
 	TotalTokens      *int            `json:"totalTokens,omitempty"`

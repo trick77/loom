@@ -169,8 +169,15 @@ func (f *fakeChatStore) AddMessageWithUsage(ctx context.Context, _ string, threa
 }
 
 func (f *fakeChatStore) AddMessageWithArtifacts(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage) (chat.Message, error) {
+	return f.AddMessageWithActivityTrace(ctx, "", threadID, role, content, usage, artifacts, nil)
+}
+
+func (f *fakeChatStore) AddMessageWithActivityTrace(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (chat.Message, error) {
 	if len(artifacts) == 0 {
 		artifacts = json.RawMessage("[]")
+	}
+	if len(activityTrace) == 0 {
+		activityTrace = json.RawMessage("[]")
 	}
 	message := chat.Message{
 		ID:               "msg_1",
@@ -179,6 +186,7 @@ func (f *fakeChatStore) AddMessageWithArtifacts(ctx context.Context, _ string, t
 		Content:          content,
 		ReasoningContent: usage.ReasoningContent,
 		Artifacts:        artifacts,
+		ActivityTrace:    activityTrace,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,

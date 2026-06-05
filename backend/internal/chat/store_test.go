@@ -177,6 +177,34 @@ func TestMessagesPersistArtifacts(t *testing.T) {
 	}
 }
 
+func TestMessagesPersistActivityTrace(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Activity"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawTrace := json.RawMessage(`[{"id":"reasoning-1","type":"reasoning","content":"I searched first.","status":"done"},{"id":"call_1","type":"tool","name":"search__web","status":"done","rawArguments":"{\"q\":\"spark\"}","rawOutput":"search result"}]`)
+	message, err := store.AddMessageWithActivityTrace(ctx, userID, thread.ID, RoleAssistant, "I found Spark.", MessageTokenUsage{}, nil, rawTrace)
+	if err != nil {
+		t.Fatalf("AddMessageWithActivityTrace() error = %v", err)
+	}
+	if string(message.ActivityTrace) != string(rawTrace) {
+		t.Fatalf("message.ActivityTrace = %s", message.ActivityTrace)
+	}
+
+	messages, found, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	if string(messages[0].ActivityTrace) != string(rawTrace) {
+		t.Fatalf("listed ActivityTrace = %s", messages[0].ActivityTrace)
+	}
+}
+
 func TestStore_AddMessageRollsBackWhenThreadTimestampUpdateFails(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -572,6 +600,46 @@ func TestStore_DeleteProjectCascadesThreadsAndMessages(t *testing.T) {
 		t.Fatalf("ListMessages() after DeleteProject error: %v", err)
 	} else if ok || len(messages) != 0 {
 		t.Fatalf("ListMessages() after DeleteProject = %d messages, ok %v; want 0, false", len(messages), ok)
+	}
+}
+
+func TestStore_DeleteThreadCascadesMessagesActivityTraceAndArtifacts(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Generated assets"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	trace := json.RawMessage(`[{"id":"call_1","type":"tool","name":"create_pdf_file","status":"done","rawOutput":"created report.pdf"}]`)
+	if _, err := store.AddMessageWithActivityTrace(ctx, userID, thread.ID, RoleAssistant, "Created report.pdf", MessageTokenUsage{}, json.RawMessage(`[{"id":"art_1"}]`), trace); err != nil {
+		t.Fatalf("AddMessageWithActivityTrace() error: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO artifacts (id, user_id, thread_id, display_filename, volume_relpath, mime_type, size_bytes)
+VALUES ('art_1', ?, ?, 'report.pdf', 'artifacts/report.pdf', 'application/pdf', 42)`, userID, thread.ID); err != nil {
+		t.Fatalf("insert artifact: %v", err)
+	}
+
+	if ok, err := store.DeleteThread(ctx, userID, thread.ID); err != nil {
+		t.Fatalf("DeleteThread() error: %v", err)
+	} else if !ok {
+		t.Fatal("DeleteThread() ok = false, want true")
+	}
+
+	if messages, ok, err := store.ListMessages(ctx, userID, thread.ID); err != nil {
+		t.Fatalf("ListMessages() after DeleteThread error: %v", err)
+	} else if ok || len(messages) != 0 {
+		t.Fatalf("ListMessages() after DeleteThread = %d messages, ok %v; want 0, false", len(messages), ok)
+	}
+	var artifactCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM artifacts WHERE user_id = ? AND thread_id = ?`, userID, thread.ID).Scan(&artifactCount); err != nil {
+		t.Fatalf("count artifacts: %v", err)
+	}
+	if artifactCount != 0 {
+		t.Fatalf("artifact count after DeleteThread = %d, want 0", artifactCount)
 	}
 }
 

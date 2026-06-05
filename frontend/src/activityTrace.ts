@@ -104,6 +104,27 @@ export function completeTrace(events: ActivityTraceEvent[]): ActivityTraceEvent[
   });
 }
 
+export function normalizeActivityTrace(events: ActivityTraceEvent[] | undefined): ActivityTraceEvent[] | undefined {
+  if (events === undefined || events.length === 0) return undefined;
+  return events.map((event) => {
+    if (event.type === "reasoning") {
+      return { ...event, status: event.status === "running" ? "done" : event.status };
+    }
+    const summary = event.summary ?? summarizeToolCall(event.name, event.rawArguments ?? "{}");
+    const normalized: ActivityTraceToolEvent = {
+      ...event,
+      status: event.status === "running" && event.rawOutput !== undefined ? "done" : event.status,
+      summary,
+    };
+    if (event.rawOutput !== undefined && event.preview === undefined) {
+      const failed = event.rawOutput.startsWith("tool failed");
+      normalized.status = failed ? "failed" : normalized.status;
+      normalized.preview = summarizeToolResult(normalized, event.rawOutput);
+    }
+    return normalized;
+  });
+}
+
 export function summarizeTrace(events: ActivityTraceEvent[]): string {
   const tools = events.filter((event): event is ActivityTraceToolEvent => event.type === "tool");
   const searches = tools.filter((event) => event.summary.kind === "search").length;

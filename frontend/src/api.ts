@@ -1,3 +1,5 @@
+import type { ActivityTraceEvent } from "./activityTrace";
+
 export type Role = "admin" | "user";
 
 export type User = {
@@ -35,6 +37,7 @@ export type Message = {
   role: "user" | "assistant" | "tool";
   content: string;
   reasoningContent?: string;
+  activityTrace?: ActivityTraceEvent[];
   artifacts?: Artifact[];
   createdAt: string;
   promptTokens?: number;
