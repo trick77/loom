@@ -2,7 +2,7 @@
 
 ## Goal
 
-Spark should present tool calls and model reasoning as one chronological work trace instead of two separate panels. The user should be able to see what Spark is doing, what data it is handling, and what it found without reading raw MCP tool names such as `fetch__fetch`.
+Slop should present tool calls and model reasoning as one chronological work trace instead of two separate panels. The user should be able to see what Slop is doing, what data it is handling, and what it found without reading raw MCP tool names such as `fetch__fetch`.
 
 The trace is not a second answer. It is provenance for the answer and should stay visually subordinate to the assistant message.
 
@@ -49,8 +49,8 @@ The trace appears before the assistant answer.
 This keeps the timeline logical:
 
 1. User asks.
-2. Spark works.
-3. Spark answers.
+2. Slop works.
+3. Slop answers.
 
 When a completed assistant message has stored trace data, rendering should keep the trace directly above that assistant message content.
 
@@ -167,4 +167,4 @@ Rendered browser verification is required for the final implementation because t
 
 ## Future Extension
 
-If backend-provided display metadata is not implemented immediately, the frontend trace model should still leave room for it. If Spark normalizes tool calls server-side, the Activity Trace should consume that metadata instead of duplicating parsing heuristics in the browser.
+If backend-provided display metadata is not implemented immediately, the frontend trace model should still leave room for it. If Slop normalizes tool calls server-side, the Activity Trace should consume that metadata instead of duplicating parsing heuristics in the browser.

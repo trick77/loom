@@ -27,7 +27,7 @@ func NewMiddleware(sessions SessionLookup, users UserLookup) *Middleware {
 	return &Middleware{sessions: sessions, users: users}
 }
 
-// RequireAuth rejects requests without a valid Spark session.
+// RequireAuth rejects requests without a valid Slop session.
 func (m *Middleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(SessionCookieName)

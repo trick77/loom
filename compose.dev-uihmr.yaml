@@ -1,7 +1,7 @@
 # UI-development overlay for compose.dev.yaml.
 #
 # Starts the backend (with built-in Tavily web search) from compose.dev.yaml,
-# but builds the spark image WITHOUT the frontend (backend/Containerfile.dev), so the
+# but builds the slop image WITHOUT the frontend (backend/Containerfile.dev), so the
 # UI is developed separately with Vite/HMR instead of the slow embedded build.
 #
 #   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build --remove-orphans  # backend on :8080
@@ -12,6 +12,6 @@
 # all stay same-origin. Everything else (env, host networking, volumes, depends_on)
 # is inherited from compose.dev.yaml.
 services:
-  spark:
+  slop:
     build:
       dockerfile: backend/Containerfile.dev

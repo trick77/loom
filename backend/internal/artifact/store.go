@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/trick77/spark/internal/chat"
+	"github.com/trick77/slop/internal/chat"
 )
 
 type Store struct {

@@ -1,4 +1,4 @@
-module github.com/trick77/spark
+module github.com/trick77/slop
 
 go 1.25.0
 

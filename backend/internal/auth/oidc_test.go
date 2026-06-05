@@ -14,7 +14,7 @@ import (
 func TestOIDCService_CallbackRejectsInvalidState(t *testing.T) {
 	service := NewOIDCService(OIDCServiceConfig{
 		ClientID: "client",
-		Backend: fakeOIDCBackend{},
+		Backend:  fakeOIDCBackend{},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=bad&code=abc", nil)
 
@@ -31,7 +31,7 @@ func TestOIDCService_CallbackMapsVerifiedClaims(t *testing.T) {
 			Subject:  "sub-1",
 			Username: "jan",
 			Email:    "jan@example.com",
-			Groups:   []string{"spark-admins"},
+			Groups:   []string{"slop-admins"},
 		}, nonce: "valid-nonce"},
 	})
 	req := requestWithValidStateAndNonce(t, service)
@@ -43,7 +43,7 @@ func TestOIDCService_CallbackMapsVerifiedClaims(t *testing.T) {
 	if claims.Subject != "sub-1" {
 		t.Fatalf("subject = %q", claims.Subject)
 	}
-	if claims.Groups[0] != "spark-admins" {
+	if claims.Groups[0] != "slop-admins" {
 		t.Fatalf("groups = %v", claims.Groups)
 	}
 }
@@ -51,7 +51,7 @@ func TestOIDCService_CallbackMapsVerifiedClaims(t *testing.T) {
 func TestOIDCService_CallbackRejectsMissingNonceClaim(t *testing.T) {
 	service := NewOIDCService(OIDCServiceConfig{
 		ClientID: "client",
-		Backend: fakeOIDCBackend{claims: Claims{Subject: "sub-1"}},
+		Backend:  fakeOIDCBackend{claims: Claims{Subject: "sub-1"}},
 	})
 	req := requestWithValidStateAndNonce(t, service)
 
@@ -64,7 +64,7 @@ func TestOIDCService_CallbackRejectsMissingNonceClaim(t *testing.T) {
 func TestOIDCService_CallbackRejectsNonceMismatch(t *testing.T) {
 	service := NewOIDCService(OIDCServiceConfig{
 		ClientID: "client",
-		Backend: fakeOIDCBackend{claims: Claims{Subject: "sub-1"}, nonce: "wrong-nonce"},
+		Backend:  fakeOIDCBackend{claims: Claims{Subject: "sub-1"}, nonce: "wrong-nonce"},
 	})
 	req := requestWithValidStateAndNonce(t, service)
 
@@ -77,8 +77,8 @@ func TestOIDCService_CallbackRejectsNonceMismatch(t *testing.T) {
 func TestOIDCService_LoginSetsStateAndNonceCookies(t *testing.T) {
 	service := NewOIDCService(OIDCServiceConfig{
 		ClientID:    "client",
-		RedirectURL: "https://spark.example.com/api/auth/callback",
-		Backend:    fakeOIDCBackend{authURL: "https://auth.example.com/authorize"},
+		RedirectURL: "https://slop.example.com/api/auth/callback",
+		Backend:     fakeOIDCBackend{authURL: "https://auth.example.com/authorize"},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/login", nil)
 	rec := httptest.NewRecorder()

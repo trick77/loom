@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/spark/internal/artifact"
-	"github.com/trick77/spark/internal/chat"
+	"github.com/trick77/slop/internal/artifact"
+	"github.com/trick77/slop/internal/chat"
 )
 
 func TestCreateProjectReturns201(t *testing.T) {

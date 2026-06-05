@@ -1,4 +1,4 @@
-# spark
+# slop
 
 Self-hosted, multi-user LLM chat app with a Go backend, embedded React frontend, SQLite, SSE, and
 authentik-backed authentication.
@@ -9,7 +9,7 @@ Required for local backend startup:
 
 - Go 1.25
 - Node.js/npm for frontend builds
-- `SPARK_SESSION_SECRET`
+- `SLOP_SESSION_SECRET`
 - OIDC configuration for authentik, or local-only development auth
 
 Common commands:
@@ -24,51 +24,51 @@ make dev
 
 ### Local development without OIDC
 
-For local UI/API work, Spark can sign in as one fixed admin user without contacting authentik.
+For local UI/API work, Slop can sign in as one fixed admin user without contacting authentik.
 Start both the backend and Vite frontend with:
 
 ```bash
 make dev
 ```
 
-The script binds both services to IPv4 loopback so Vite proxies `/api` to Spark predictably.
+The script binds both services to IPv4 loopback so Vite proxies `/api` to Slop predictably.
 
 To run only the backend from `backend/`:
 
 ```bash
-SPARK_SESSION_SECRET=dev-secret \
-SPARK_AUTH_MODE=dev \
-SPARK_ADDR=127.0.0.1:8080 \
-SPARK_PUBLIC_URL=http://localhost:8080 \
-SPARK_DB_PATH=/tmp/spark-dev.db \
-go run ./cmd/spark
+SLOP_SESSION_SECRET=dev-secret \
+SLOP_AUTH_MODE=dev \
+SLOP_ADDR=127.0.0.1:8080 \
+SLOP_PUBLIC_URL=http://localhost:8080 \
+SLOP_DB_PATH=/tmp/slop-dev.db \
+go run ./cmd/slop
 ```
 
-This mode is guarded at startup. `SPARK_AUTH_MODE=dev` is rejected unless `SPARK_ADDR` binds to
-`localhost`, `127.0.0.1`, or `::1`, and `SPARK_PUBLIC_URL` is empty or loopback. It always creates an
+This mode is guarded at startup. `SLOP_AUTH_MODE=dev` is rejected unless `SLOP_ADDR` binds to
+`localhost`, `127.0.0.1`, or `::1`, and `SLOP_PUBLIC_URL` is empty or loopback. It always creates an
 admin session for the fixed local development user; there is no user switcher.
 
 ## Authentik OIDC Setup
 
-Spark delegates sign-in to authentik through OpenID Connect. Authentik owns credentials, MFA, user
-lifecycle, and group membership. Spark stores only app-local users and opaque app sessions.
+Slop delegates sign-in to authentik through OpenID Connect. Authentik owns credentials, MFA, user
+lifecycle, and group membership. Slop stores only app-local users and opaque app sessions.
 
 ### 1. Create an authentik provider
 
-In authentik, create an **OAuth2/OpenID Provider** for Spark.
+In authentik, create an **OAuth2/OpenID Provider** for Slop.
 
 Use these settings:
 
 - Flow: the default explicit consent or authorization flow used by your authentik installation.
 - Client type: confidential.
-- Redirect URI: `https://spark.example.com/api/auth/callback`
+- Redirect URI: `https://slop.example.com/api/auth/callback`
 - Signing key: your normal authentik signing key.
 - Scopes: include `openid`, `profile`, and `email`.
 - Subject mode: stable per-user subject.
 
 Record:
 
-- Issuer URL, for example `https://auth.example.com/application/o/spark/`
+- Issuer URL, for example `https://auth.example.com/application/o/slop/`
 - Client ID
 - Client Secret
 
@@ -78,40 +78,40 @@ Create an authentik **Application** that uses the provider.
 
 Suggested values:
 
-- Name: `Spark`
-- Slug: `spark`
-- Launch URL: `https://spark.example.com/`
+- Name: `Slop`
+- Slug: `slop`
+- Launch URL: `https://slop.example.com/`
 
 ### 3. Configure admin group mapping
 
-Create or choose an authentik group for Spark administrators, for example:
+Create or choose an authentik group for Slop administrators, for example:
 
 ```text
-spark-admins
+slop-admins
 ```
 
-Ensure authentik includes a `groups` claim in the ID token for the Spark provider. Spark maps users
+Ensure authentik includes a `groups` claim in the ID token for the Slop provider. Slop maps users
 to the local `admin` role when the configured admin group appears in that claim. Everyone else is
 mapped to `user`.
 
-### 4. Configure Spark environment
+### 4. Configure Slop environment
 
-Set these variables for Spark:
+Set these variables for Slop:
 
 ```bash
-SPARK_AUTH_MODE=oidc
-SPARK_PUBLIC_URL=https://spark.example.com
-SPARK_SESSION_SECRET=replace-with-a-long-random-secret
-SPARK_OIDC_ISSUER=https://auth.example.com/application/o/spark/
-SPARK_OIDC_CLIENT_ID=replace-with-authentik-client-id
-SPARK_OIDC_CLIENT_SECRET=replace-with-authentik-client-secret
-SPARK_OIDC_REDIRECT_URL=https://spark.example.com/api/auth/callback
-SPARK_OIDC_POST_LOGOUT_REDIRECT_URL=https://spark.example.com/
-SPARK_OIDC_ADMIN_GROUP=spark-admins
-SPARK_CHAT_BASE_URL=http://your-mimo-host/v1
-SPARK_CHAT_API_KEY=replace-with-chat-api-key
-SPARK_CHAT_MODEL=MiMo
-SPARK_CHAT_REASONING_EFFORT=high
+SLOP_AUTH_MODE=oidc
+SLOP_PUBLIC_URL=https://slop.example.com
+SLOP_SESSION_SECRET=replace-with-a-long-random-secret
+SLOP_OIDC_ISSUER=https://auth.example.com/application/o/slop/
+SLOP_OIDC_CLIENT_ID=replace-with-authentik-client-id
+SLOP_OIDC_CLIENT_SECRET=replace-with-authentik-client-secret
+SLOP_OIDC_REDIRECT_URL=https://slop.example.com/api/auth/callback
+SLOP_OIDC_POST_LOGOUT_REDIRECT_URL=https://slop.example.com/
+SLOP_OIDC_ADMIN_GROUP=slop-admins
+SLOP_CHAT_BASE_URL=http://your-mimo-host/v1
+SLOP_CHAT_API_KEY=replace-with-chat-api-key
+SLOP_CHAT_MODEL=MiMo
+SLOP_CHAT_REASONING_EFFORT=high
 ```
 
 Keep secrets in environment variables or an uncommitted `.env` file. Do not commit client secrets or
@@ -119,8 +119,8 @@ session secrets.
 
 ### 5. Reverse proxy notes
 
-Spark OIDC does not require authentik ForwardAuth headers. Your reverse proxy only needs to route
-normal HTTPS traffic to Spark.
+Slop OIDC does not require authentik ForwardAuth headers. Your reverse proxy only needs to route
+normal HTTPS traffic to Slop.
 
 Required externally reachable paths:
 
@@ -132,41 +132,41 @@ Required externally reachable paths:
 - `/api/projects`
 - `/api/threads`
 
-The callback URL configured in authentik must exactly match `SPARK_OIDC_REDIRECT_URL`.
+The callback URL configured in authentik must exactly match `SLOP_OIDC_REDIRECT_URL`.
 
 ## Chat Setup
 
-Spark supports project-less chats, projects, threads, message persistence, starred/recents, SSE
+Slop supports project-less chats, projects, threads, message persistence, starred/recents, SSE
 streaming, first-exchange thread naming, and MCP-backed tool calls.
 
-Spark uses an OpenAI-compatible chat endpoint:
+Slop uses an OpenAI-compatible chat endpoint:
 
 ```bash
-SPARK_CHAT_BASE_URL=http://your-mimo-host/v1
-SPARK_CHAT_API_KEY=replace-with-chat-api-key
-SPARK_CHAT_MODEL=MiMo
-SPARK_CHAT_REASONING_EFFORT=high
+SLOP_CHAT_BASE_URL=http://your-mimo-host/v1
+SLOP_CHAT_API_KEY=replace-with-chat-api-key
+SLOP_CHAT_MODEL=MiMo
+SLOP_CHAT_REASONING_EFFORT=high
 ```
 
-The backend calls `POST <SPARK_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
-`messages`, `model`, `stream`, and `reasoning_effort` fields. `SPARK_CHAT_REASONING_EFFORT`
-defaults to `high` when unset. If `SPARK_CHAT_BASE_URL` is empty, the authenticated shell still loads
+The backend calls `POST <SLOP_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
+`messages`, `model`, `stream`, and `reasoning_effort` fields. `SLOP_CHAT_REASONING_EFFORT`
+defaults to `high` when unset. If `SLOP_CHAT_BASE_URL` is empty, the authenticated shell still loads
 but sending a chat message returns a service-unavailable error.
 
 ### MCP Tools
 
-Spark exposes built-in Tavily web search when `SPARK_TAVILY_API_KEY` is set (web search is opt-in;
-without a key there is no built-in search tool). Spark connects to Tavily's hosted MCP server at
-`SPARK_TAVILY_URL` (default `https://mcp.tavily.com/mcp/`), authenticating via the `tavilyApiKey`
+Slop exposes built-in Tavily web search when `SLOP_TAVILY_API_KEY` is set (web search is opt-in;
+without a key there is no built-in search tool). Slop connects to Tavily's hosted MCP server at
+`SLOP_TAVILY_URL` (default `https://mcp.tavily.com/mcp/`), authenticating via the `tavilyApiKey`
 query parameter, and exposes only the `tavily_search` tool.
 
-Spark can also expose Context7 documentation tools when `SPARK_CONTEXT7_API_KEY` is set. It uses
+Slop can also expose Context7 documentation tools when `SLOP_CONTEXT7_API_KEY` is set. It uses
 the remote Streamable HTTP endpoint `https://mcp.context7.com/mcp` by default; override it with
-`SPARK_CONTEXT7_MCP_URL` if needed. Spark sends the key as the `CONTEXT7_API_KEY` request header
+`SLOP_CONTEXT7_MCP_URL` if needed. Slop sends the key as the `CONTEXT7_API_KEY` request header
 and exposes the remote tools as `context7__resolve-library-id` and `context7__query-docs`.
 
-Spark also reads `SPARK_MCP_CONFIG` at startup for external MCP tools. The file defaults to
-`/config/mcp.json`; if it is missing, Spark starts with only built-in tools. Each configured external
+Slop also reads `SLOP_MCP_CONFIG` at startup for external MCP tools. The file defaults to
+`/config/mcp.json`; if it is missing, Slop starts with only built-in tools. Each configured external
 server is discovered once at boot. Servers that cannot be reached are logged and skipped, so one
 unavailable MCP server does not block startup.
 
@@ -206,7 +206,7 @@ Local stdio servers are also supported:
 ```
 
 Built-in and discovered MCP tools are exposed to the chat model as OpenAI-compatible function tools
-named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Spark pauses
+named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Slop pauses
 when the model emits `tool_calls`, runs the requested tools, streams tool status events to the UI,
 appends tool results to the model history, and resumes the assistant stream.
 
@@ -232,22 +232,22 @@ Still planned for later phases:
 
 ### Smoke Test
 
-1. Start Spark with the environment above.
-2. Open `https://spark.example.com/`.
+1. Start Slop with the environment above.
+2. Open `https://slop.example.com/`.
 3. Click **Sign in**.
 4. Complete authentik login.
-5. Confirm Spark opens the authenticated app shell.
-6. Sign in as a member of `SPARK_OIDC_ADMIN_GROUP` and confirm admin features appear.
+5. Confirm Slop opens the authenticated app shell.
+6. Sign in as a member of `SLOP_OIDC_ADMIN_GROUP` and confirm admin features appear.
 7. Create a new chat.
 8. Send a message and confirm the assistant response streams into the conversation.
 9. If MCP servers are configured and reachable, ask a question that requires a configured tool and
    confirm the tool status appears before the final answer.
 10. Confirm the thread title changes from **New chat** after the first completed response.
-11. Sign out and confirm returning to Spark requires a new authenticated session.
+11. Sign out and confirm returning to Slop requires a new authenticated session.
 
 ### Logout behavior
 
-Spark logout revokes the local Spark session and redirects to
-`SPARK_OIDC_POST_LOGOUT_REDIRECT_URL`. It does not currently perform RP-initiated logout against
+Slop logout revokes the local Slop session and redirects to
+`SLOP_OIDC_POST_LOGOUT_REDIRECT_URL`. It does not currently perform RP-initiated logout against
 authentik's `end_session_endpoint`. If the browser still has an active authentik SSO session, clicking
-**Sign in** again can immediately create a new Spark session without showing the authentik login form.
+**Sign in** again can immediately create a new Slop session without showing the authentik login form.

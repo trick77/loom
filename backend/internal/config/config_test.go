@@ -7,7 +7,7 @@ import (
 )
 
 func TestLoad_defaults(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
 
 	cfg, err := Load()
 	if err != nil {
@@ -16,8 +16,8 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.Addr != ":8080" {
 		t.Errorf("Addr default = %q, want :8080", cfg.Addr)
 	}
-	if cfg.DBPath != "/data/spark.db" {
-		t.Errorf("DBPath default = %q, want /data/spark.db", cfg.DBPath)
+	if cfg.DBPath != "/data/slop.db" {
+		t.Errorf("DBPath default = %q, want /data/slop.db", cfg.DBPath)
 	}
 	if cfg.UsersDir != "/data/users" {
 		t.Errorf("UsersDir default = %q, want /data/users", cfg.UsersDir)
@@ -43,17 +43,17 @@ func TestLoad_defaults(t *testing.T) {
 }
 
 func TestLoad_overrides_and_required(t *testing.T) {
-	t.Setenv("SPARK_ADDR", ":9000")
-	t.Setenv("SPARK_SESSION_SECRET", "")
+	t.Setenv("SLOP_ADDR", ":9000")
+	t.Setenv("SLOP_SESSION_SECRET", "")
 
 	if _, err := Load(); err == nil {
-		t.Fatal("expected error when SPARK_SESSION_SECRET is empty")
+		t.Fatal("expected error when SLOP_SESSION_SECRET is empty")
 	}
 }
 
 func TestLoad_chatReasoningEffort(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_CHAT_REASONING_EFFORT", "low")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_CHAT_REASONING_EFFORT", "low")
 
 	cfg, err := Load()
 	if err != nil {
@@ -65,9 +65,9 @@ func TestLoad_chatReasoningEffort(t *testing.T) {
 }
 
 func TestLoad_context7Settings(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_CONTEXT7_API_KEY", "ctx-key")
-	t.Setenv("SPARK_CONTEXT7_MCP_URL", "https://context7.example/mcp")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_CONTEXT7_API_KEY", "ctx-key")
+	t.Setenv("SLOP_CONTEXT7_MCP_URL", "https://context7.example/mcp")
 
 	cfg, err := Load()
 	if err != nil {
@@ -82,9 +82,9 @@ func TestLoad_context7Settings(t *testing.T) {
 }
 
 func TestLoad_context7RequiresURLWhenEnabled(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_CONTEXT7_API_KEY", "ctx-key")
-	t.Setenv("SPARK_CONTEXT7_MCP_URL", "")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_CONTEXT7_API_KEY", "ctx-key")
+	t.Setenv("SLOP_CONTEXT7_MCP_URL", "")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when Context7 API key is set without MCP URL")
@@ -92,7 +92,7 @@ func TestLoad_context7RequiresURLWhenEnabled(t *testing.T) {
 }
 
 func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "secret")
+	t.Setenv("SLOP_SESSION_SECRET", "secret")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -112,19 +112,19 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 }
 
 func TestLoadBFLImageRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "secret")
-	t.Setenv("SPARK_BFL_API_KEY", "bfl-test")
-	t.Setenv("SPARK_BFL_BASE_URL", "")
+	t.Setenv("SLOP_SESSION_SECRET", "secret")
+	t.Setenv("SLOP_BFL_API_KEY", "bfl-test")
+	t.Setenv("SLOP_BFL_BASE_URL", "")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "SPARK_BFL_BASE_URL is required") {
-		t.Fatalf("Load() error = %v, want SPARK_BFL_BASE_URL required", err)
+	if err == nil || !strings.Contains(err.Error(), "SLOP_BFL_BASE_URL is required") {
+		t.Fatalf("Load() error = %v, want SLOP_BFL_BASE_URL required", err)
 	}
 }
 
 func TestLoadBFLImageConfiguredByAPIKey(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "secret")
-	t.Setenv("SPARK_BFL_API_KEY", "bfl-test")
-	t.Setenv("SPARK_BFL_MODEL", "flux-2-klein-9b")
+	t.Setenv("SLOP_SESSION_SECRET", "secret")
+	t.Setenv("SLOP_BFL_API_KEY", "bfl-test")
+	t.Setenv("SLOP_BFL_MODEL", "flux-2-klein-9b")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -138,8 +138,8 @@ func TestLoadBFLImageConfiguredByAPIKey(t *testing.T) {
 }
 
 func TestLoadBFLImagePollTimeoutOverride(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "secret")
-	t.Setenv("SPARK_BFL_POLL_TIMEOUT", "7m")
+	t.Setenv("SLOP_SESSION_SECRET", "secret")
+	t.Setenv("SLOP_BFL_POLL_TIMEOUT", "7m")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -150,16 +150,16 @@ func TestLoadBFLImagePollTimeoutOverride(t *testing.T) {
 }
 
 func TestLoadBFLImageRejectsInvalidPollTimeout(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "secret")
-	t.Setenv("SPARK_BFL_POLL_TIMEOUT", "soon")
+	t.Setenv("SLOP_SESSION_SECRET", "secret")
+	t.Setenv("SLOP_BFL_POLL_TIMEOUT", "soon")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "SPARK_BFL_POLL_TIMEOUT must be a duration") {
+	if err == nil || !strings.Contains(err.Error(), "SLOP_BFL_POLL_TIMEOUT must be a duration") {
 		t.Fatalf("Load() error = %v, want invalid poll timeout", err)
 	}
 }
 
 func TestLoad_defaultsDoNotRequireAdminPassword(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
 
 	cfg, err := Load()
 	if err != nil {
@@ -171,32 +171,32 @@ func TestLoad_defaultsDoNotRequireAdminPassword(t *testing.T) {
 }
 
 func TestLoad_oidcSettings(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_PUBLIC_URL", "https://spark.example.com")
-	t.Setenv("SPARK_OIDC_ISSUER", "https://auth.example.com/application/o/spark/")
-	t.Setenv("SPARK_OIDC_CLIENT_ID", "spark-client")
-	t.Setenv("SPARK_OIDC_CLIENT_SECRET", "spark-secret")
-	t.Setenv("SPARK_OIDC_REDIRECT_URL", "https://spark.example.com/api/auth/callback")
-	t.Setenv("SPARK_OIDC_POST_LOGOUT_REDIRECT_URL", "https://spark.example.com/")
-	t.Setenv("SPARK_OIDC_ADMIN_GROUP", "spark-admins")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_PUBLIC_URL", "https://slop.example.com")
+	t.Setenv("SLOP_OIDC_ISSUER", "https://auth.example.com/application/o/slop/")
+	t.Setenv("SLOP_OIDC_CLIENT_ID", "slop-client")
+	t.Setenv("SLOP_OIDC_CLIENT_SECRET", "slop-secret")
+	t.Setenv("SLOP_OIDC_REDIRECT_URL", "https://slop.example.com/api/auth/callback")
+	t.Setenv("SLOP_OIDC_POST_LOGOUT_REDIRECT_URL", "https://slop.example.com/")
+	t.Setenv("SLOP_OIDC_ADMIN_GROUP", "slop-admins")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.OIDC.Issuer != "https://auth.example.com/application/o/spark/" {
+	if cfg.OIDC.Issuer != "https://auth.example.com/application/o/slop/" {
 		t.Fatalf("OIDC issuer = %q", cfg.OIDC.Issuer)
 	}
-	if cfg.OIDC.AdminGroup != "spark-admins" {
+	if cfg.OIDC.AdminGroup != "slop-admins" {
 		t.Fatalf("OIDC admin group = %q", cfg.OIDC.AdminGroup)
 	}
 }
 
 func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_OIDC_ISSUER", "https://auth.example.com/application/o/spark/")
-	t.Setenv("SPARK_OIDC_CLIENT_ID", "spark-client")
-	t.Setenv("SPARK_OIDC_REDIRECT_URL", "https://spark.example.com/api/auth/callback")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_OIDC_ISSUER", "https://auth.example.com/application/o/slop/")
+	t.Setenv("SLOP_OIDC_CLIENT_ID", "slop-client")
+	t.Setenv("SLOP_OIDC_REDIRECT_URL", "https://slop.example.com/api/auth/callback")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when OIDC issuer is set without client secret")
@@ -204,9 +204,9 @@ func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
 }
 
 func TestLoad_devAuthRequiresLoopbackAddr(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_AUTH_MODE", "dev")
-	t.Setenv("SPARK_ADDR", ":8080")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_AUTH_MODE", "dev")
+	t.Setenv("SLOP_ADDR", ":8080")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when dev auth listens on all interfaces")
@@ -214,10 +214,10 @@ func TestLoad_devAuthRequiresLoopbackAddr(t *testing.T) {
 }
 
 func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_AUTH_MODE", "dev")
-	t.Setenv("SPARK_ADDR", "localhost:8080")
-	t.Setenv("SPARK_PUBLIC_URL", "https://spark.example.com")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_AUTH_MODE", "dev")
+	t.Setenv("SLOP_ADDR", "localhost:8080")
+	t.Setenv("SLOP_PUBLIC_URL", "https://slop.example.com")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when dev auth has a non-loopback public URL")
@@ -225,10 +225,10 @@ func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
 }
 
 func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
-	t.Setenv("SPARK_SESSION_SECRET", "test-secret")
-	t.Setenv("SPARK_AUTH_MODE", "dev")
-	t.Setenv("SPARK_ADDR", "127.0.0.1:8080")
-	t.Setenv("SPARK_PUBLIC_URL", "http://localhost:8080")
+	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOP_AUTH_MODE", "dev")
+	t.Setenv("SLOP_ADDR", "127.0.0.1:8080")
+	t.Setenv("SLOP_PUBLIC_URL", "http://localhost:8080")
 
 	cfg, err := Load()
 	if err != nil {

@@ -23,10 +23,10 @@ fe-build:
 	cd frontend && npm ci && npm run build
 
 build: fe-build
-	cd backend && CGO_ENABLED=0 go build -o ../bin/spark ./cmd/spark
+	cd backend && CGO_ENABLED=0 go build -o ../bin/slop ./cmd/slop
 
 run:
-	cd backend && go run ./cmd/spark
+	cd backend && go run ./cmd/slop
 
 dev:
 	./hack/dev.sh

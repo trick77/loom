@@ -65,7 +65,7 @@ func TestRemoteClientListsAndCallsTools(t *testing.T) {
 	if len(tools) != 1 || tools[0].Name != "search__search" || tools[0].OriginalName != "search" {
 		t.Fatalf("tools = %#v", tools)
 	}
-	got, err := client.CallTool(context.Background(), "search", map[string]any{"q": "spark"})
+	got, err := client.CallTool(context.Background(), "search", map[string]any{"q": "slop"})
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestRemoteClientHandlesStreamableHTTPSessionAndSSE(t *testing.T) {
 	if len(tools) != 1 || tools[0].Name != "search__web_search" {
 		t.Fatalf("tools = %#v", tools)
 	}
-	got, err := client.CallTool(context.Background(), "web_search", map[string]any{"query": "spark"})
+	got, err := client.CallTool(context.Background(), "web_search", map[string]any{"query": "slop"})
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestRemoteClientProbeUsesLightweightHTTPRequest(t *testing.T) {
 }
 
 func TestStdioClientListsTools(t *testing.T) {
-	if os.Getenv("SPARK_MCP_TEST_HELPER") == "1" {
+	if os.Getenv("SLOP_MCP_TEST_HELPER") == "1" {
 		runMCPTestHelper(t)
 		return
 	}
@@ -200,7 +200,7 @@ func TestStdioClientListsTools(t *testing.T) {
 		Transport: TransportStdio,
 		Command:   os.Args[0],
 		Args:      []string{"-test.run=TestStdioClientListsTools"},
-		Env:       map[string]string{"SPARK_MCP_TEST_HELPER": "1"},
+		Env:       map[string]string{"SLOP_MCP_TEST_HELPER": "1"},
 	})
 	defer client.Close()
 
@@ -410,7 +410,7 @@ func runMCPTestHelper(t *testing.T) {
 }
 
 func TestStdioClientCommandFailure(t *testing.T) {
-	client := NewStdioClient("bad", ServerConfig{Transport: TransportStdio, Command: "definitely-missing-spark-mcp-helper"})
+	client := NewStdioClient("bad", ServerConfig{Transport: TransportStdio, Command: "definitely-missing-slop-mcp-helper"})
 	defer client.Close()
 
 	if _, err := client.ListTools(context.Background()); err == nil {
@@ -419,7 +419,7 @@ func TestStdioClientCommandFailure(t *testing.T) {
 }
 
 func TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock(t *testing.T) {
-	if os.Getenv("SPARK_MCP_HANG_HELPER") == "1" {
+	if os.Getenv("SLOP_MCP_HANG_HELPER") == "1" {
 		time.Sleep(10 * time.Second)
 		return
 	}
@@ -427,7 +427,7 @@ func TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock(t *testing.T) {
 		Transport: TransportStdio,
 		Command:   os.Args[0],
 		Args:      []string{"-test.run=TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock"},
-		Env:       map[string]string{"SPARK_MCP_HANG_HELPER": "1"},
+		Env:       map[string]string{"SLOP_MCP_HANG_HELPER": "1"},
 	})
 	defer client.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)

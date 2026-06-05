@@ -1,6 +1,6 @@
 package httpapi
 
-import "github.com/trick77/spark/internal/chat"
+import "github.com/trick77/slop/internal/chat"
 
 type createProjectRequest struct {
 	Name        string `json:"name"`

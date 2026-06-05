@@ -1,13 +1,13 @@
 #!/bin/sh
 #
-# Refresh the Dockerized local dev stack: build the spark image and stop the
+# Refresh the Dockerized local dev stack: build the slop image and stop the
 # previous stack in parallel, then start it again.
 #
 # Optional chat API config for local dev:
 #
-#   SPARK_CHAT_BASE_URL=https://your-openai-compatible-host/v1 \
-#   SPARK_CHAT_API_KEY=your-api-key \
-#   SPARK_CHAT_MODEL=your-model \
+#   SLOP_CHAT_BASE_URL=https://your-openai-compatible-host/v1 \
+#   SLOP_CHAT_API_KEY=your-api-key \
+#   SLOP_CHAT_MODEL=your-model \
 #   ./hack/refresh.sh
 #
 # Or place the same values in an uncommitted .env file; Docker Compose reads it
@@ -21,7 +21,7 @@ cd "$ROOT"
 build_status=0
 down_status=0
 
-docker compose -f compose.dev.yaml build spark &
+docker compose -f compose.dev.yaml build slop &
 build_pid=$!
 
 docker compose -f compose.dev.yaml down &

@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Spark's separate thinking and tool panels with one collapsible chronological Activity Trace that appears before the assistant answer.
+**Goal:** Replace Slop's separate thinking and tool panels with one collapsible chronological Activity Trace that appears before the assistant answer.
 
 **Architecture:** Keep the existing SSE event stream initially and normalize reasoning/tool events into a frontend `ActivityTraceEvent[]` model. Render one `ActivityTracePanel` for active turns and completed assistant messages, with specialized summaries for search/fetch-like tools and a safe generic fallback. Add backend display metadata only if the frontend cannot reliably summarize current tool payloads.
 
-**Tech Stack:** React 19, TypeScript, Vite, Vitest, Testing Library, Tailwind v4 themed CSS variables, existing Spark SSE API.
+**Tech Stack:** React 19, TypeScript, Vite, Vitest, Testing Library, Tailwind v4 themed CSS variables, existing Slop SSE API.
 
 **Command Context:** Run `npm ...` commands from `frontend/`. Run `git ...` commands from the repository root unless the command explicitly says otherwise.
 
@@ -520,7 +520,7 @@ test("shows active activity trace with reasoning and tool activity before assist
     new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'),
   );
 
-  const trace = await screen.findByRole("status", { name: /spark activity trace/i });
+  const trace = await screen.findByRole("status", { name: /slop activity trace/i });
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
@@ -660,30 +660,30 @@ function ActivityTracePanel({
   const summary = active ? "Thinking" : summarizeTrace(events);
   return (
     <div
-      aria-label={active ? "Spark activity trace" : undefined}
+      aria-label={active ? "Slop activity trace" : undefined}
       aria-live={active ? "polite" : undefined}
-      className="spark-activity-trace"
+      className="slop-activity-trace"
       role={active ? "status" : undefined}
     >
       <button
         aria-expanded={expanded}
         aria-label={expanded ? "Hide activity" : "Show activity"}
-        className="spark-activity-trace-toggle"
+        className="slop-activity-trace-toggle"
         type="button"
         onClick={() => setExpanded((current) => !current)}
       >
-        <span className="spark-activity-trace-label">
-          <span className={active ? "spark-thinking-status-active" : "spark-thinking-status-complete"} aria-hidden="true" />
+        <span className="slop-activity-trace-label">
+          <span className={active ? "slop-thinking-status-active" : "slop-thinking-status-complete"} aria-hidden="true" />
           {active ? (
-            <span className="spark-thinking-label-active" data-text="Thinking">Thinking</span>
+            <span className="slop-thinking-label-active" data-text="Thinking">Thinking</span>
           ) : (
             <span>{summary}</span>
           )}
-          <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
+          <span aria-hidden="true" className={expanded ? "slop-thinking-chevron-expanded" : "slop-thinking-chevron"} />
         </span>
       </button>
       {expanded && (
-        <div className="spark-activity-trace-body">
+        <div className="slop-activity-trace-body">
           {events.map((event) => (
             <ActivityTraceRow key={event.id} event={event} />
           ))}
@@ -700,8 +700,8 @@ Add row renderer:
 function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   if (event.type === "reasoning") {
     return (
-      <div className="spark-activity-trace-row">
-        <span className="spark-activity-trace-icon spark-activity-trace-icon-reasoning" aria-hidden="true" />
+      <div className="slop-activity-trace-row">
+        <span className="slop-activity-trace-icon slop-activity-trace-icon-reasoning" aria-hidden="true" />
         <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
           {event.content.trim()}
         </Markdown>
@@ -710,30 +710,30 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   }
   const status = activityToolStatusMeta(event);
   return (
-    <div className="spark-activity-trace-row">
-      <span className="spark-activity-trace-icon" aria-hidden="true">
+    <div className="slop-activity-trace-row">
+      <span className="slop-activity-trace-icon" aria-hidden="true">
         {event.summary.kind === "search" ? <GlobeTraceIcon /> : <FetchTraceIcon />}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
-          <span className="spark-activity-tool-title">{event.summary.title}</span>
-          <span className={`spark-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
+          <span className="slop-activity-tool-title">{event.summary.title}</span>
+          <span className={`slop-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
-        <div className="spark-activity-tool-detail">{event.summary.detail}</div>
+        <div className="slop-activity-tool-detail">{event.summary.detail}</div>
       </div>
     </div>
   );
 }
 
 function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {
-  if (event.status === "failed") return { label: "Failed", className: "spark-activity-status-failed" };
-  if (event.status === "running") return { label: "Running", className: "spark-activity-status-neutral" };
-  return { label: "Done", className: "spark-activity-status-neutral" };
+  if (event.status === "failed") return { label: "Failed", className: "slop-activity-status-failed" };
+  if (event.status === "running") return { label: "Running", className: "slop-activity-status-neutral" };
+  return { label: "Done", className: "slop-activity-status-neutral" };
 }
 
 function GlobeTraceIcon() {
   return (
-    <svg className="spark-activity-globe-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="slop-activity-globe-icon" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="9" />
       <path d="M3 12h18" />
       <path d="M12 3c2.25 2.45 3.35 5.45 3.35 9s-1.1 6.55-3.35 9" />
@@ -806,7 +806,7 @@ test("keeps completed activity trace collapsed before the assistant answer", asy
   const answer = await screen.findByText("I found the update.");
   const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toHaveTextContent("Searched 1 query");
-  expect(screen.queryByRole("status", { name: /spark activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /slop activity trace/i })).not.toBeInTheDocument();
   expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
 
   fireEvent.click(toggle);
@@ -849,22 +849,22 @@ Extend `ActivityTraceRow` tool branch:
 ```tsx
 {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
   <>
-    <div className="spark-activity-result-count">
+    <div className="slop-activity-result-count">
       {event.preview.resultCount} {event.preview.resultCount === 1 ? "result" : "results"}
     </div>
-    <div className="spark-activity-result-list">
+    <div className="slop-activity-result-list">
     {event.preview.results.map((result, index) => (
-      <div key={`${result.url ?? result.title}-${index}`} className="spark-activity-result-row">
+      <div key={`${result.url ?? result.title}-${index}`} className="slop-activity-result-row">
         {result.url !== undefined ? (
-          <img alt="" className="spark-activity-favicon" src={faviconURL(result.url)} />
+          <img alt="" className="slop-activity-favicon" src={faviconURL(result.url)} />
         ) : (
-          <span className="spark-activity-favicon" aria-hidden="true" />
+          <span className="slop-activity-favicon" aria-hidden="true" />
         )}
         <div className="min-w-0">
-          <div className="spark-activity-result-title">{result.title}</div>
-          {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
+          <div className="slop-activity-result-title">{result.title}</div>
+          {result.snippet !== undefined && <div className="slop-activity-result-snippet">{result.snippet}</div>}
         </div>
-        {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
+        {result.domain !== undefined && <div className="slop-activity-result-domain">{result.domain}</div>}
       </div>
     ))}
     </div>
@@ -924,7 +924,7 @@ test("surfaces the server error and keeps failed activity trace visible", async 
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
-  const trace = screen.getByRole("status", { name: /spark activity trace/i });
+  const trace = screen.getByRole("status", { name: /slop activity trace/i });
   expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Failed")).toBeInTheDocument();
 });
@@ -1012,10 +1012,10 @@ git commit -m "feat: handle activity trace failures"
 
 - [ ] **Step 1: Update CSS classes**
 
-In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but replace panel/body class names with the classes below. Keep Activity Trace colors in CSS classes rather than adding new inline hex utility classes in TSX; the literal values intentionally mirror existing Spark thinking/sidebar colors.
+In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but replace panel/body class names with the classes below. Keep Activity Trace colors in CSS classes rather than adding new inline hex utility classes in TSX; the literal values intentionally mirror existing Slop thinking/sidebar colors.
 
 ```css
-.spark-activity-trace {
+.slop-activity-trace {
   max-width: 46rem;
   overflow: hidden;
   border: 0;
@@ -1027,7 +1027,7 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   line-height: 1.45rem;
 }
 
-.spark-activity-trace-toggle {
+.slop-activity-trace-toggle {
   display: flex;
   width: 100%;
   align-items: center;
@@ -1039,30 +1039,30 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   transition: color 0.16s ease;
 }
 
-.spark-activity-trace-toggle:hover {
+.slop-activity-trace-toggle:hover {
   color: #f3f0e8;
 }
 
-.spark-activity-trace-label {
+.slop-activity-trace-label {
   display: inline-flex;
   min-width: 0;
   align-items: center;
   gap: 0.5rem;
 }
 
-.spark-activity-trace-body {
+.slop-activity-trace-body {
   border-top: 0;
   padding: 0.125rem 0 0;
 }
 
-.spark-activity-trace-row {
+.slop-activity-trace-row {
   position: relative;
   display: flex;
   gap: 0.875rem;
   padding: 0.25rem 0 1rem;
 }
 
-.spark-activity-trace-row:not(:last-child)::before {
+.slop-activity-trace-row:not(:last-child)::before {
   position: absolute;
   bottom: -0.15rem;
   left: 0.4375rem;
@@ -1072,7 +1072,7 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   content: "";
 }
 
-.spark-activity-trace-icon {
+.slop-activity-trace-icon {
   display: grid;
   width: 1rem;
   height: 1rem;
@@ -1081,7 +1081,7 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   color: #88857d;
 }
 
-.spark-activity-trace-icon svg {
+.slop-activity-trace-icon svg {
   width: 0.625rem;
   height: 0.625rem;
   fill: none;
@@ -1091,7 +1091,7 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   stroke-width: 2;
 }
 
-.spark-activity-trace-icon-reasoning::after {
+.slop-activity-trace-icon-reasoning::after {
   width: 0.3125rem;
   height: 0.3125rem;
   border-radius: 9999px;
@@ -1100,7 +1100,7 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   opacity: 0.72;
 }
 
-.spark-activity-globe-icon {
+.slop-activity-globe-icon {
   width: 1.0625rem !important;
   height: 1.0625rem !important;
   stroke-width: 1.35 !important;
@@ -1108,7 +1108,7 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   transform-origin: center;
 }
 
-.spark-activity-status-pill {
+.slop-activity-status-pill {
   min-width: 3.625rem;
   border-radius: 9999px;
   padding: 0.0625rem 0.5rem;
@@ -1116,17 +1116,17 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   text-align: center;
 }
 
-.spark-activity-status-neutral {
+.slop-activity-status-neutral {
   background: #363632;
   color: #c7c5bd;
 }
 
-.spark-activity-status-failed {
+.slop-activity-status-failed {
   background: #b85c52;
   color: #fffaf2;
 }
 
-.spark-activity-tool-title {
+.slop-activity-tool-title {
   min-width: 0;
   overflow: hidden;
   color: #d6d3ca;
@@ -1134,21 +1134,21 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   white-space: nowrap;
 }
 
-.spark-activity-tool-detail {
+.slop-activity-tool-detail {
   overflow: hidden;
   color: #88857d;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.spark-activity-result-count {
+.slop-activity-result-count {
   margin-top: 0.25rem;
   color: #88857d;
   text-align: right;
   font-size: 0.75rem;
 }
 
-.spark-activity-result-list {
+.slop-activity-result-list {
   margin-top: 0.25rem;
   max-height: 10rem;
   overflow: auto;
@@ -1160,24 +1160,24 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
-.spark-activity-result-list::-webkit-scrollbar {
+.slop-activity-result-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.spark-activity-result-list::-webkit-scrollbar-track {
+.slop-activity-result-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.spark-activity-result-list::-webkit-scrollbar-thumb {
+.slop-activity-result-list::-webkit-scrollbar-thumb {
   border-radius: 9999px;
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.spark-activity-result-list::-webkit-scrollbar-thumb:hover {
+.slop-activity-result-list::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.18);
 }
 
-.spark-activity-result-row {
+.slop-activity-result-row {
   display: grid;
   grid-template-columns: 1rem minmax(0, 1fr) auto;
   align-items: center;
@@ -1185,34 +1185,34 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   padding: 0.3rem 0.35rem;
 }
 
-.spark-activity-result-title,
-.spark-activity-result-snippet {
+.slop-activity-result-title,
+.slop-activity-result-snippet {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.spark-activity-result-title {
+.slop-activity-result-title {
   color: #d6d3ca;
 }
 
-.spark-activity-result-snippet {
+.slop-activity-result-snippet {
   color: #aaa79e;
 }
 
-.spark-activity-result-domain {
+.slop-activity-result-domain {
   flex-shrink: 0;
   color: #88857d;
 }
 
-.spark-activity-favicon {
+.slop-activity-favicon {
   width: 1rem;
   height: 1rem;
   border-radius: 0.2rem;
 }
 ```
 
-Update markdown selector groups from `.spark-thinking-panel-body` to include `.spark-activity-trace-body`.
+Update markdown selector groups from `.slop-thinking-panel-body` to include `.slop-activity-trace-body`.
 
 - [ ] **Step 2: Migrate old tests**
 
@@ -1223,7 +1223,7 @@ Rename and update tests:
 - `keeps streamed reasoning visible while assistant text is streaming` becomes `keeps active activity trace visible while assistant text is streaming`.
 - `hides the thinking panel when the stream fails` becomes `hides empty activity trace when the stream fails`.
 
-Use role/name assertions for `Show activity`, `Hide activity`, and `Spark activity trace`.
+Use role/name assertions for `Show activity`, `Hide activity`, and `Slop activity trace`.
 
 - [ ] **Step 3: Run full frontend tests**
 

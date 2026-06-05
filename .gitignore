@@ -7,8 +7,8 @@ frontend/dist/
 *.tsbuildinfo
 
 # Go
-/spark
-/backend/spark
+/slop
+/backend/slop
 /bin/
 *.test
 

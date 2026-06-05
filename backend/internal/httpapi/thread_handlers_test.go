@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/spark/internal/artifact"
-	"github.com/trick77/spark/internal/auth"
-	"github.com/trick77/spark/internal/chat"
-	"github.com/trick77/spark/internal/store"
+	"github.com/trick77/slop/internal/artifact"
+	"github.com/trick77/slop/internal/auth"
+	"github.com/trick77/slop/internal/chat"
+	"github.com/trick77/slop/internal/store"
 )
 
 func TestCreateThreadRequiresAuth(t *testing.T) {

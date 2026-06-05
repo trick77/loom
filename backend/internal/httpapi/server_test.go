@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/spark/internal/artifact"
-	"github.com/trick77/spark/internal/auth"
-	"github.com/trick77/spark/internal/mcp"
-	"github.com/trick77/spark/internal/store"
+	"github.com/trick77/slop/internal/artifact"
+	"github.com/trick77/slop/internal/auth"
+	"github.com/trick77/slop/internal/mcp"
+	"github.com/trick77/slop/internal/store"
 )
 
 func TestHealth_returnsOK(t *testing.T) {

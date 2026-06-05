@@ -4,49 +4,49 @@
 #   docker compose -f compose.dev.yaml down            # stop
 #
 # Auto-signs in as a fixed "dev" admin user. The dev-auth guard requires a loopback
-# SPARK_ADDR, which is why this uses network_mode: host instead of published ports
+# SLOP_ADDR, which is why this uses network_mode: host instead of published ports
 # (a 127.0.0.1 bind inside a bridge-network container is unreachable via -p).
 #
-# Built-in Tavily web search: set SPARK_TAVILY_API_KEY to enable it (the adapter talks to
+# Built-in Tavily web search: set SLOP_TAVILY_API_KEY to enable it (the adapter talks to
 # Tavily's hosted MCP server). External MCP tools can still be configured via mcp.dev.json.
 services:
   # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
-  spark-init:
+  slop-init:
     image: alpine
     command: chown -R 65532:65532 /data
     volumes:
-      - spark-dev-data:/data
+      - slop-dev-data:/data
 
-  spark:
+  slop:
     build:
       context: .
       dockerfile: backend/Containerfile
     network_mode: host
     environment:
-      SPARK_AUTH_MODE: dev
-      SPARK_ADDR: "127.0.0.1:8080"
-      SPARK_PUBLIC_URL: "http://localhost:8080"
-      SPARK_SESSION_SECRET: dev-secret-please-change
-      SPARK_DB_PATH: /data/spark.db
-      SPARK_USERS_DIR: /data/users
-      SPARK_TAVILY_URL: "${SPARK_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
-      SPARK_TAVILY_API_KEY: "${SPARK_TAVILY_API_KEY:-}"
-      SPARK_MCP_CONFIG: /config/mcp.json
+      SLOP_AUTH_MODE: dev
+      SLOP_ADDR: "127.0.0.1:8080"
+      SLOP_PUBLIC_URL: "http://localhost:8080"
+      SLOP_SESSION_SECRET: dev-secret-please-change
+      SLOP_DB_PATH: /data/slop.db
+      SLOP_USERS_DIR: /data/users
+      SLOP_TAVILY_URL: "${SLOP_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
+      SLOP_TAVILY_API_KEY: "${SLOP_TAVILY_API_KEY:-}"
+      SLOP_MCP_CONFIG: /config/mcp.json
       # Optional: point at a real OpenAI-compatible endpoint to actually chat.
-      SPARK_CHAT_BASE_URL: "${SPARK_CHAT_BASE_URL:-}"
-      SPARK_CHAT_API_KEY: "${SPARK_CHAT_API_KEY:-}"
-      SPARK_CHAT_MODEL: "${SPARK_CHAT_MODEL:-MiMo}"
-      SPARK_CHAT_REASONING_EFFORT: "${SPARK_CHAT_REASONING_EFFORT:-high}"
-      SPARK_CONTEXT7_API_KEY: "${SPARK_CONTEXT7_API_KEY:-}"
-      SPARK_CONTEXT7_MCP_URL: "${SPARK_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
-      SPARK_BFL_BASE_URL: "${SPARK_BFL_BASE_URL:-https://api.bfl.ai/v1}"
-      SPARK_BFL_API_KEY: "${SPARK_BFL_API_KEY:-}"
-      SPARK_BFL_MODEL: "${SPARK_BFL_MODEL:-flux-2-klein-4b}"
+      SLOP_CHAT_BASE_URL: "${SLOP_CHAT_BASE_URL:-}"
+      SLOP_CHAT_API_KEY: "${SLOP_CHAT_API_KEY:-}"
+      SLOP_CHAT_MODEL: "${SLOP_CHAT_MODEL:-MiMo}"
+      SLOP_CHAT_REASONING_EFFORT: "${SLOP_CHAT_REASONING_EFFORT:-high}"
+      SLOP_CONTEXT7_API_KEY: "${SLOP_CONTEXT7_API_KEY:-}"
+      SLOP_CONTEXT7_MCP_URL: "${SLOP_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
+      SLOP_BFL_BASE_URL: "${SLOP_BFL_BASE_URL:-https://api.bfl.ai/v1}"
+      SLOP_BFL_API_KEY: "${SLOP_BFL_API_KEY:-}"
+      SLOP_BFL_MODEL: "${SLOP_BFL_MODEL:-flux-2-klein-4b}"
     volumes:
-      - spark-dev-data:/data
+      - slop-dev-data:/data
       - ./mcp.dev.json:/config/mcp.json:ro
     depends_on:
-      spark-init:
+      slop-init:
         condition: service_completed_successfully
       obscura:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
@@ -56,7 +56,7 @@ services:
         condition: service_healthy
 
   fetch:
-    # Lightweight URL/document fetch MCP. Spark is host-networked here, so the
+    # Lightweight URL/document fetch MCP. Slop is host-networked here, so the
     # bridge is published on a localhost port and reached via mcp.dev.json at
     # http://localhost:8091/mcp.
     build:
@@ -66,7 +66,7 @@ services:
       - "127.0.0.1:8091:8090"
 
   obscura:
-    # Headless-browser MCP. Spark is host-networked here, so the bridge is
+    # Headless-browser MCP. Slop is host-networked here, so the bridge is
     # published on a localhost port and reached via mcp.dev.json at
     # http://localhost:8090/mcp.
     # Obscura is amd64-only (emulated on arm64 hosts).
@@ -78,4 +78,4 @@ services:
       - "127.0.0.1:8090:8090"
 
 volumes:
-  spark-dev-data:
+  slop-dev-data:

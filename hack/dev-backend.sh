@@ -9,14 +9,14 @@
 # Open http://localhost:5173 (NOT :8080). The Vite proxy forwards /api to the
 # backend, keeping API + streaming + the dev-auth session cookie same-origin.
 #
-# All required runtime vars (SPARK_AUTH_MODE=dev, SPARK_ADDR, SPARK_SESSION_SECRET,
-# SPARK_DB_PATH, SPARK_USERS_DIR, SPARK_MCP_CONFIG) are baked into compose.dev.yaml.
+# All required runtime vars (SLOP_AUTH_MODE=dev, SLOP_ADDR, SLOP_SESSION_SECRET,
+# SLOP_DB_PATH, SLOP_USERS_DIR, SLOP_MCP_CONFIG) are baked into compose.dev.yaml.
 # For real chatting, set the optional chat vars in an uncommitted .env file at the
 # repo root (Docker Compose reads it automatically):
 #
-#   SPARK_CHAT_BASE_URL=https://your-openai-compatible-host/v1
-#   SPARK_CHAT_API_KEY=your-api-key
-#   SPARK_CHAT_MODEL=your-model
+#   SLOP_CHAT_BASE_URL=https://your-openai-compatible-host/v1
+#   SLOP_CHAT_API_KEY=your-api-key
+#   SLOP_CHAT_MODEL=your-model
 #
 # Any extra args are passed straight to `docker compose up` (e.g. -d, --no-build).
 set -eu

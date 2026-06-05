@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add AnythingLLM-style assistant-generated files to Spark: chat tools can create text, PDF, DOCX, XLSX, and PPTX artifacts, store them in the user's Artifacts volume, and render downloadable chat cards.
+**Goal:** Add AnythingLLM-style assistant-generated files to Slop: chat tools can create text, PDF, DOCX, XLSX, and PPTX artifacts, store them in the user's Artifacts volume, and render downloadable chat cards.
 
-**Architecture:** Keep generation as built-in Spark tools rather than MCP servers, because these tools need the authenticated user, current thread/project scope, and direct access to the per-user volume sandbox. Add artifact metadata to SQLite, route downloads through artifact ids, emit a new SSE `artifact` event during chat streaming, and persist artifact metadata with assistant messages so old chats re-render cards. Start with text artifacts and the plumbing, then add XLSX/PDF/DOCX/PPTX generators behind the same interface.
+**Architecture:** Keep generation as built-in Slop tools rather than MCP servers, because these tools need the authenticated user, current thread/project scope, and direct access to the per-user volume sandbox. Add artifact metadata to SQLite, route downloads through artifact ids, emit a new SSE `artifact` event during chat streaming, and persist artifact metadata with assistant messages so old chats re-render cards. Start with text artifacts and the plumbing, then add XLSX/PDF/DOCX/PPTX generators behind the same interface.
 
 **Tech Stack:** Go 1.25, stdlib `net/http`, SQLite migrations, existing SSE, React 19 + TypeScript, Vitest, Go `archive/zip` OOXML writers, `github.com/xuri/excelize/v2` for XLSX, `github.com/signintech/gopdf` for PDF.
 
@@ -41,7 +41,7 @@
 - Modify `backend/internal/httpapi/chat_test_helpers_test.go`: fake artifact/docgen dependencies.
 - Modify `backend/internal/httpapi/message_stream_handlers_test.go`: built-in tool and SSE tests.
 - Modify `backend/internal/httpapi/server_test.go`: artifact download auth tests.
-- Modify `backend/cmd/spark/main.go`: construct artifact store and generators from `SPARK_USERS_DIR`.
+- Modify `backend/cmd/slop/main.go`: construct artifact store and generators from `SLOP_USERS_DIR`.
 - Modify `backend/go.mod` and `backend/go.sum`: add generation dependencies.
 - Modify `frontend/src/api.ts`: add artifact types, SSE handler, and download helper.
 - Modify `frontend/src/api.test.ts`: cover artifact SSE parsing and download helper.
@@ -111,7 +111,7 @@ func TestResolveOutputPathUsesProjectlessOutputs(t *testing.T) {
 
 func TestResolveOutputPathRejectsTraversalAndReservedPaths(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{"../secret.pdf", "/tmp/secret.pdf", ".spark/secret.pdf", "folder/../../secret.pdf"} {
+	for _, name := range []string{"../secret.pdf", "/tmp/secret.pdf", ".slop/secret.pdf", "folder/../../secret.pdf"} {
 		_, err := ResolveOutputPath(OutputRequest{
 			UsersDir:        root,
 			UserID:          "user_1",
@@ -308,7 +308,7 @@ func ResolveExisting(usersDir, userID, volumeRelPath string) (string, error) {
 	if filepath.IsAbs(volumeRelPath) || strings.Contains(volumeRelPath, "..") {
 		return "", errors.New("invalid artifact path")
 	}
-	if strings.HasPrefix(filepath.ToSlash(volumeRelPath), ".spark/") {
+	if strings.HasPrefix(filepath.ToSlash(volumeRelPath), ".slop/") {
 		return "", errors.New("reserved artifact path")
 	}
 	userRoot := filepath.Join(usersDir, userID)
@@ -337,7 +337,7 @@ func sanitizeDisplayFilename(input, extension string) (string, error) {
 	if name == "" {
 		name = "artifact." + extension
 	}
-	if filepath.IsAbs(input) || strings.Contains(filepath.ToSlash(input), "../") || strings.HasPrefix(filepath.ToSlash(input), ".spark/") {
+	if filepath.IsAbs(input) || strings.Contains(filepath.ToSlash(input), "../") || strings.HasPrefix(filepath.ToSlash(input), ".slop/") {
 		return "", errors.New("invalid filename")
 	}
 	if !strings.EqualFold(filepath.Ext(name), "."+extension) {
@@ -424,7 +424,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/trick77/spark/internal/store"
+	"github.com/trick77/slop/internal/store"
 )
 
 func TestStoreCreatesAndFindsArtifactByUser(t *testing.T) {
@@ -555,7 +555,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/trick77/spark/internal/chat"
+	"github.com/trick77/slop/internal/chat"
 )
 
 type Store struct {
@@ -814,7 +814,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 )
 
 type TextGenerator struct {
@@ -890,7 +890,7 @@ git commit -m "feat: add text artifact generator"
 - Modify: `backend/internal/httpapi/message_stream_handlers.go`
 - Modify: `backend/internal/httpapi/chat_test_helpers_test.go`
 - Modify: `backend/internal/httpapi/message_stream_handlers_test.go`
-- Modify: `backend/cmd/spark/main.go`
+- Modify: `backend/cmd/slop/main.go`
 
 - [ ] **Step 1: Add failing stream test for generated text artifact**
 
@@ -899,9 +899,9 @@ Add these imports to `backend/internal/httpapi/message_stream_handlers_test.go` 
 ```go
 	"path/filepath"
 
-	"github.com/trick77/spark/internal/artifact"
-	"github.com/trick77/spark/internal/docgen"
-	"github.com/trick77/spark/internal/store"
+	"github.com/trick77/slop/internal/artifact"
+	"github.com/trick77/slop/internal/docgen"
+	"github.com/trick77/slop/internal/store"
 ```
 
 Append this test to `backend/internal/httpapi/message_stream_handlers_test.go`:
@@ -977,8 +977,8 @@ Expected: fail because `Deps.Artifacts`, `Deps.DocTools`, `Deps.UsersDir`, and b
 In `backend/internal/httpapi/server.go`, add imports:
 
 ```go
-	"github.com/trick77/spark/internal/artifact"
-	"github.com/trick77/spark/internal/docgen"
+	"github.com/trick77/slop/internal/artifact"
+	"github.com/trick77/slop/internal/docgen"
 ```
 
 Add to `Deps`:
@@ -1150,7 +1150,7 @@ final persisted message.
 
 - [ ] **Step 8: Wire production dependencies**
 
-In `backend/cmd/spark/main.go`, construct:
+In `backend/cmd/slop/main.go`, construct:
 
 ```go
 artifactStore := artifact.NewStore(db)
@@ -1170,7 +1170,7 @@ Expected: pass.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add backend/internal/httpapi/server.go backend/internal/httpapi/chat_types.go backend/internal/httpapi/message_stream_handlers.go backend/internal/httpapi/chat_test_helpers_test.go backend/internal/httpapi/message_stream_handlers_test.go backend/cmd/spark/main.go
+git add backend/internal/httpapi/server.go backend/internal/httpapi/chat_types.go backend/internal/httpapi/message_stream_handlers.go backend/internal/httpapi/chat_test_helpers_test.go backend/internal/httpapi/message_stream_handlers_test.go backend/cmd/slop/main.go
 git commit -m "feat: execute built-in artifact tools"
 ```
 
@@ -1257,7 +1257,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 )
 
 func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {
@@ -1479,7 +1479,7 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
     }
   }
   return (
-    <div className="mt-3 flex items-center gap-3 rounded-spark border border-line bg-panel px-3 py-2 text-sm">
+    <div className="mt-3 flex items-center gap-3 rounded-slop border border-line bg-panel px-3 py-2 text-sm">
       <div className="flex h-9 w-9 items-center justify-center rounded bg-bg font-semibold uppercase text-muted">
         {artifact.displayFilename.split(".").pop()?.slice(0, 3) ?? "file"}
       </div>
@@ -1526,7 +1526,7 @@ git commit -m "feat(ui): render generated artifact cards"
 - Create: `backend/internal/docgen/xlsx_test.go`
 - Create: `backend/internal/docgen/pdf.go`
 - Create: `backend/internal/docgen/pdf_test.go`
-- Modify: `backend/cmd/spark/main.go`
+- Modify: `backend/cmd/slop/main.go`
 
 - [ ] **Step 1: Add dependencies**
 
@@ -1594,7 +1594,7 @@ func TestPDFGeneratorCreatesPDF(t *testing.T) {
 	meta, err := PDFGenerator{}.Generate(GenerateRequest{
 		Filename: "report.pdf",
 		Payload: map[string]any{
-			"content": "# Report\n\nHello from Spark.",
+			"content": "# Report\n\nHello from Slop.",
 		},
 	}, &out)
 	if err != nil {
@@ -1629,7 +1629,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -1701,7 +1701,7 @@ import (
 	"strings"
 
 	"github.com/signintech/gopdf"
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 )
 
 type PDFGenerator struct{}
@@ -1752,7 +1752,7 @@ func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta,
 
 - [ ] **Step 7: Register generators**
 
-In `backend/cmd/spark/main.go`, update `docTools`:
+In `backend/cmd/slop/main.go`, update `docTools`:
 
 ```go
 docTools := []docgen.Generator{
@@ -1771,7 +1771,7 @@ Expected: pass.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add backend/go.mod backend/go.sum backend/internal/docgen/xlsx.go backend/internal/docgen/xlsx_test.go backend/internal/docgen/pdf.go backend/internal/docgen/pdf_test.go backend/cmd/spark/main.go
+git add backend/go.mod backend/go.sum backend/internal/docgen/xlsx.go backend/internal/docgen/xlsx_test.go backend/internal/docgen/pdf.go backend/internal/docgen/pdf_test.go backend/cmd/slop/main.go
 git commit -m "feat: generate pdf and xlsx artifacts"
 ```
 
@@ -1783,7 +1783,7 @@ git commit -m "feat: generate pdf and xlsx artifacts"
 - Create: `backend/internal/docgen/docx_test.go`
 - Create: `backend/internal/docgen/pptx.go`
 - Create: `backend/internal/docgen/pptx_test.go`
-- Modify: `backend/cmd/spark/main.go`
+- Modify: `backend/cmd/slop/main.go`
 
 - [ ] **Step 1: Write DOCX smoke test**
 
@@ -1804,7 +1804,7 @@ func TestDOCXGeneratorCreatesWordPackage(t *testing.T) {
 		Filename: "report.docx",
 		Payload: map[string]any{
 			"title":   "Report",
-			"content": "# Report\n\nHello Spark.",
+			"content": "# Report\n\nHello Slop.",
 		},
 	}, &out)
 	if err != nil {
@@ -1839,7 +1839,7 @@ func TestPPTXGeneratorCreatesPresentationPackage(t *testing.T) {
 	meta, err := PPTXGenerator{}.Generate(GenerateRequest{
 		Filename: "deck.pptx",
 		Payload: map[string]any{
-			"title": "Spark Update",
+			"title": "Slop Update",
 			"slides": []any{
 				map[string]any{"title": "Status", "bullets": []any{"Generated artifacts", "Download cards"}},
 			},
@@ -1932,7 +1932,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 )
 
 type DOCXGenerator struct{}
@@ -1991,7 +1991,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/spark/internal/artifact"
+	"github.com/trick77/slop/internal/artifact"
 )
 
 type PPTXGenerator struct{}
@@ -2047,7 +2047,7 @@ func pptxSlideXML(title string) string {
 
 - [ ] **Step 7: Register generators**
 
-In `backend/cmd/spark/main.go`, update `docTools`:
+In `backend/cmd/slop/main.go`, update `docTools`:
 
 ```go
 docTools := []docgen.Generator{
@@ -2068,7 +2068,7 @@ Expected: pass.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add backend/internal/docgen/ooxml.go backend/internal/docgen/docx.go backend/internal/docgen/docx_test.go backend/internal/docgen/pptx.go backend/internal/docgen/pptx_test.go backend/cmd/spark/main.go
+git add backend/internal/docgen/ooxml.go backend/internal/docgen/docx.go backend/internal/docgen/docx_test.go backend/internal/docgen/pptx.go backend/internal/docgen/pptx_test.go backend/cmd/slop/main.go
 git commit -m "feat: generate docx and pptx artifacts"
 ```
 
@@ -2105,14 +2105,14 @@ git checkout -- backend/web/dist/.gitkeep backend/web/dist/index.html
 
 Run: `make build`
 
-Expected: pass and create `bin/spark`.
+Expected: pass and create `bin/slop`.
 
 - [ ] **Step 5: Smoke test dev server**
 
 Run:
 
 ```bash
-SPARK_SESSION_SECRET=dev-secret SPARK_AUTH_MODE=dev SPARK_ADDR=127.0.0.1:18081 SPARK_PUBLIC_URL=http://127.0.0.1:18081 SPARK_DB_PATH=/private/tmp/spark-docgen.db SPARK_USERS_DIR=/private/tmp/spark-docgen-users ./bin/spark
+SLOP_SESSION_SECRET=dev-secret SLOP_AUTH_MODE=dev SLOP_ADDR=127.0.0.1:18081 SLOP_PUBLIC_URL=http://127.0.0.1:18081 SLOP_DB_PATH=/private/tmp/slop-docgen.db SLOP_USERS_DIR=/private/tmp/slop-docgen-users ./bin/slop
 ```
 
 In a second shell, run:

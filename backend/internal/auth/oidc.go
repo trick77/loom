@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	oidcStateCookieName = "spark_oidc_state"
-	oidcNonceCookieName = "spark_oidc_nonce"
+	oidcStateCookieName = "slop_oidc_state"
+	oidcNonceCookieName = "slop_oidc_nonce"
 )
 
 var (

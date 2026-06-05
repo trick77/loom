@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/spark/internal/llm"
+	"github.com/trick77/slop/internal/llm"
 )
 
 func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
@@ -34,7 +34,7 @@ func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
 	if len(tools) != 1 || tools[0].Function.Name != "search__web" {
 		t.Fatalf("tools = %#v", tools)
 	}
-	got, err := service.CallTool(context.Background(), "search__web", map[string]any{"q": "spark"})
+	got, err := service.CallTool(context.Background(), "search__web", map[string]any{"q": "slop"})
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}

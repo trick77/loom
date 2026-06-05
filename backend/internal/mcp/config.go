@@ -1,4 +1,4 @@
-// Package mcp contains Spark's MCP client configuration and tool registry.
+// Package mcp contains Slop's MCP client configuration and tool registry.
 package mcp
 
 import (
@@ -13,7 +13,7 @@ const (
 	TransportStreamableHTTP = "streamable-http"
 	TransportStdio          = "stdio"
 	// defaultTavilyURL is the hosted Tavily MCP endpoint used by the built-in
-	// Tavily web-search adapter when SPARK_TAVILY_URL is unset.
+	// Tavily web-search adapter when SLOP_TAVILY_URL is unset.
 	defaultTavilyURL = "https://mcp.tavily.com/mcp/"
 	// tavilySearchToolName is the server-side name of Tavily's web search tool.
 	// It is the only tool the built-in adapter exposes; Tavily's other tools
@@ -100,7 +100,7 @@ func SplitExposedToolName(name string) (string, string, bool) {
 	return server, tool, true
 }
 
-// TavilyServerConfig builds the synthetic MCP server config for Spark's
+// TavilyServerConfig builds the synthetic MCP server config for Slop's
 // built-in Tavily web search. Auth uses Tavily's documented query parameter
 // (?tavilyApiKey=...), so the key lives in the URL and must be scrubbed from any
 // error before it is logged (see scrubURLError in client.go). The Tools

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/trick77/spark/internal/store"
+	"github.com/trick77/slop/internal/store"
 )
 
 func openTestDB(t *testing.T) DBTX {
@@ -27,10 +27,10 @@ func TestUserStore_UpsertFromClaimsCreatesAndRefreshesRole(t *testing.T) {
 		Username: "jan",
 		Email:    "jan@example.com",
 		Name:     "Jan",
-		Groups:   []string{"spark-admins"},
+		Groups:   []string{"slop-admins"},
 	}
 
-	user, err := store.UpsertFromClaims(context.Background(), claims, "spark-admins")
+	user, err := store.UpsertFromClaims(context.Background(), claims, "slop-admins")
 	if err != nil {
 		t.Fatalf("UpsertFromClaims() error: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestUserStore_UpsertFromClaimsCreatesAndRefreshesRole(t *testing.T) {
 	}
 
 	claims.Groups = []string{"family"}
-	user, err = store.UpsertFromClaims(context.Background(), claims, "spark-admins")
+	user, err = store.UpsertFromClaims(context.Background(), claims, "slop-admins")
 	if err != nil {
 		t.Fatalf("second upsert error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestUserStore_UpsertFromClaimsFallsBackToEmailForUsername(t *testing.T) {
 	user, err := store.UpsertFromClaims(context.Background(), Claims{
 		Subject: "authentik-sub-2",
 		Email:   "user@example.com",
-	}, "spark-admins")
+	}, "slop-admins")
 	if err != nil {
 		t.Fatalf("UpsertFromClaims() error: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestUserStore_ListUsersOrdersByUsername(t *testing.T) {
 		{Subject: "sub-b", Username: "zoe"},
 		{Subject: "sub-a", Username: "amy"},
 	} {
-		if _, err := store.UpsertFromClaims(context.Background(), claims, "spark-admins"); err != nil {
+		if _, err := store.UpsertFromClaims(context.Background(), claims, "slop-admins"); err != nil {
 			t.Fatalf("upsert %s: %v", claims.Subject, err)
 		}
 	}

@@ -1,7 +1,7 @@
-# spark
+# slop
 
 Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an embedded React SPA.
-Full design: `docs/superpowers/specs/2026-05-30-spark-design.md`. Per-phase plans:
+Full design: `docs/superpowers/specs/2026-05-30-slop-design.md`. Per-phase plans:
 `docs/superpowers/plans/`. Deferred minors: `docs/superpowers/notes/phase-1-polish-backlog.md`.
 
 ## Working conventions
@@ -15,12 +15,12 @@ Full design: `docs/superpowers/specs/2026-05-30-spark-design.md`. Per-phase plan
 - `make test` — backend Go tests (`go test ./...`)
 - `make fe-test` — frontend Vitest
 - `make fe-build` — build the SPA into `backend/web/dist` (embedded by Go)
-- `make build` — full build → `bin/spark` (CGO_ENABLED=0)
-- `make run` — run locally (needs `SPARK_SESSION_SECRET` + `SPARK_ADMIN_INITIAL_PASSWORD`)
+- `make build` — full build → `bin/slop` (CGO_ENABLED=0)
+- `make run` — run locally (needs `SLOP_SESSION_SECRET` + `SLOP_ADMIN_INITIAL_PASSWORD`)
 - `docker compose up --build` — full stack (copy `.env.example` → `.env` and fill it first)
 
 ## Locked technical choices (do not change without explicit agreement)
-- Module path `github.com/trick77/spark`. Go 1.25 (`go.mod`; Containerfile uses `golang:1.25-alpine`).
+- Module path `github.com/trick77/slop`. Go 1.25 (`go.mod`; Containerfile uses `golang:1.25-alpine`).
 - **Pure-Go SQLite**: `ncruces/go-sqlite3` pinned to **`v0.23.3`** + `sqlite-vec-go-bindings/ncruces`
   pinned to **`v0.1.7-alpha.2`**.
   `CGO_ENABLED=0` everywhere. Do NOT switch to `mattn/go-sqlite3` — the pin matches the sqlite-vec
@@ -29,13 +29,13 @@ Full design: `docs/superpowers/specs/2026-05-30-spark-design.md`. Per-phase plan
 - HTTP: stdlib `net/http` (Go 1.22 method routing), no web framework. Streaming: **SSE**.
 - One OpenAI-compatible client for chat (MiMo) + embeddings (OpenAI). Extraction: Apache **Tika** sidecar.
 - Tools/agents are **MCP by default** (config-driven via `mcp.json`, separate HTTP/SSE containers).
-  Tavily web search is built-in: when `SPARK_TAVILY_API_KEY` is set, `main.go` injects a synthetic
-  `tavily` MCP server (hosted at `SPARK_TAVILY_URL`, auth via `?tavilyApiKey=`) handled by the normal
+  Tavily web search is built-in: when `SLOP_TAVILY_API_KEY` is set, `main.go` injects a synthetic
+  `tavily` MCP server (hosted at `SLOP_TAVILY_URL`, auth via `?tavilyApiKey=`) handled by the normal
   remote client, with a `ServerConfig.Tools` allowlist exposing only `tavily_search`.
 
 ## Config
-- All runtime config comes from `SPARK_*` env vars — see `backend/internal/config/config.go` and
-  `.env.example`. Required to boot: `SPARK_SESSION_SECRET`, `SPARK_ADMIN_INITIAL_PASSWORD`.
+- All runtime config comes from `SLOP_*` env vars — see `backend/internal/config/config.go` and
+  `.env.example`. Required to boot: `SLOP_SESSION_SECRET`, `SLOP_ADMIN_INITIAL_PASSWORD`.
 - Secrets via env only; never commit them. The `admin` account is seeded from env on first boot only.
 
 ## Database / migrations
@@ -45,8 +45,8 @@ Full design: `docs/superpowers/specs/2026-05-30-spark-design.md`. Per-phase plan
 
 ## Frontend
 - Vite + React + TS + Tailwind. UI is **direction A (Warm Editorial)**: design tokens are CSS variables
-  `--spark-*` in `src/theme/tokens.css`; use the themed Tailwind classes (`bg-bg`, `bg-panel`,
-  `text-ink`, `text-muted`, `bg-accent`, `rounded-spark`, `font-serif`/`font-sans`). The real Anthropic
+  `--slop-*` in `src/theme/tokens.css`; use the themed Tailwind classes (`bg-bg`, `bg-panel`,
+  `text-ink`, `text-muted`, `bg-accent`, `rounded-slop`, `font-serif`/`font-sans`). The real Anthropic
   font is a documented swap point in `tokens.css` + `index.css`.
 - `npm run build` empties `backend/web/dist` and overwrites the tracked `.gitkeep` + placeholder
   `index.html`. Do NOT commit built assets — only those two placeholders are tracked; restore them
