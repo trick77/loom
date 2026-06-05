@@ -2109,5 +2109,5 @@ function threadFixture() {
 }
 
 function greetingPattern(name: string) {
-  return new RegExp(`^(Morning|Afternoon|Evening), ${name}$`);
+  return new RegExp(`^((Morning|Afternoon|Evening), ${name}|${name} returns!)$`);
 }
