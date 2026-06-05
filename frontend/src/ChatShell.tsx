@@ -38,6 +38,7 @@ import {
   appendReasoningDelta,
   completeTrace,
   faviconURL,
+  normalizeActivityTrace,
   summarizeTrace,
   upsertTraceToolCall,
   upsertTraceToolResult,
@@ -245,7 +246,7 @@ export function ChatShell({
         if (!active) return;
         setActiveThread(response.thread);
         activeThreadIDRef.current = response.thread.id;
-        setMessages(response.messages);
+        setMessages(response.messages.map(withNormalizedActivityTrace));
         setStreamingText("");
         setStreamingArtifacts([]);
         clearActivityTrace();
@@ -798,6 +799,13 @@ function navigate(route: RouteState) {
 
 function upsertThread(current: Thread[], thread: Thread): Thread[] {
   return [thread, ...current.filter((item) => item.id !== thread.id)];
+}
+
+function withNormalizedActivityTrace(message: Message): MessageWithActivityTrace {
+  return {
+    ...message,
+    activityTrace: normalizeActivityTrace(message.activityTrace),
+  };
 }
 
 function initialsFor(name: string): string {

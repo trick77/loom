@@ -1054,6 +1054,61 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	if got := lastHistory[len(lastHistory)-2]; got.Role != "assistant" || got.ReasoningContent != "I should search first." {
 		t.Fatalf("assistant tool-call history = %#v, want preserved reasoning content", got)
 	}
+	if len(store.messages) < 2 {
+		t.Fatalf("persisted messages = %#v, want assistant message", store.messages)
+	}
+	trace := string(store.messages[len(store.messages)-1].ActivityTrace)
+	for _, want := range []string{
+		`"type":"reasoning"`,
+		`"content":"I should search first."`,
+		`"type":"tool"`,
+		`"id":"call_1"`,
+		`"name":"search__web"`,
+		`"rawArguments":"{\"q\":\"spark\"}"`,
+		`"rawOutput":"search result"`,
+	} {
+		if !strings.Contains(trace, want) {
+			t.Fatalf("activity trace missing %q:\n%s", want, trace)
+		}
+	}
+	if strings.Contains(trace, `"summary"`) {
+		t.Fatalf("activity trace persisted backend summary, want raw trace only:\n%s", trace)
+	}
+}
+
+func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
+	trace := activityTraceFromResult(nil, llm.StreamResult{
+		ToolCalls: []llm.ToolCall{
+			{
+				ID:   "call_pdf",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "create_pdf_file",
+					Arguments: `{"filename":"report.pdf"}`,
+				},
+			},
+			{
+				ID:   "call_future",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "acme__transmogrify_asset",
+					Arguments: `{"asset":"draft.pdf"}`,
+				},
+			},
+		},
+	})
+	trace = activityTraceWithToolResult(trace, "call_pdf", "created report.pdf")
+	trace = activityTraceWithToolResult(trace, "call_future", "Created draft.pdf")
+
+	if len(trace) != 2 {
+		t.Fatalf("len(trace) = %d, want 2: %#v", len(trace), trace)
+	}
+	if trace[0].Name != "create_pdf_file" || trace[0].RawArguments != `{"filename":"report.pdf"}` || trace[0].RawOutput != "created report.pdf" {
+		t.Fatalf("pdf trace = %#v", trace[0])
+	}
+	if trace[1].Name != "acme__transmogrify_asset" || trace[1].RawArguments != `{"asset":"draft.pdf"}` || trace[1].RawOutput != "Created draft.pdf" {
+		t.Fatalf("future tool trace = %#v", trace[1])
+	}
 }
 
 func TestStreamMessageRecoversFromToolError(t *testing.T) {

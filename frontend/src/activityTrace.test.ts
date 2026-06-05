@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   appendReasoningDelta,
   completeTrace,
+  normalizeActivityTrace,
   summarizeToolCall,
   summarizeTrace,
   upsertTraceToolCall,
@@ -139,6 +140,35 @@ describe("activity trace model", () => {
         domain: "example.com",
         detail: "Example documentation page content",
       },
+    });
+  });
+
+  test("normalizes persisted generic tool traces from raw call data", () => {
+    const events = normalizeActivityTrace([
+      {
+        id: "call_future",
+        type: "tool",
+        name: "acme__transmogrify_asset",
+        status: "running",
+        rawArguments: "{\"asset\":\"draft.pdf\"}",
+        rawOutput: "Created draft.pdf",
+      },
+    ] as ActivityTraceEvent[]);
+
+    expect(events?.[0]).toMatchObject({
+      id: "call_future",
+      type: "tool",
+      name: "acme__transmogrify_asset",
+      status: "done",
+      summary: {
+        kind: "generic",
+        title: "acme transmogrify asset",
+      },
+      preview: {
+        kind: "text",
+        detail: "Created draft.pdf",
+      },
+      rawOutput: "Created draft.pdf",
     });
   });
 

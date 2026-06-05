@@ -18,6 +18,10 @@ func (s *Store) AddMessageWithUsage(ctx context.Context, userID, threadID string
 }
 
 func (s *Store) AddMessageWithArtifacts(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage) (Message, error) {
+	return s.AddMessageWithActivityTrace(ctx, userID, threadID, role, content, usage, artifacts, nil)
+}
+
+func (s *Store) AddMessageWithActivityTrace(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (Message, error) {
 	if role != RoleUser && role != RoleAssistant && role != RoleTool {
 		return Message{}, fmt.Errorf("invalid message role %q", role)
 	}
@@ -39,6 +43,12 @@ func (s *Store) AddMessageWithArtifacts(ctx context.Context, userID, threadID st
 	if !json.Valid(artifacts) {
 		return Message{}, errors.New("message artifacts must be valid JSON")
 	}
+	if len(activityTrace) == 0 {
+		activityTrace = json.RawMessage("[]")
+	}
+	if !json.Valid(activityTrace) {
+		return Message{}, errors.New("message activity trace must be valid JSON")
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -58,6 +68,7 @@ INSERT INTO messages (
     tool_calls,
     citations,
     artifacts,
+    activity_trace,
     prompt_tokens,
     completion_tokens,
     total_tokens,
@@ -67,7 +78,7 @@ INSERT INTO messages (
     model,
     reasoning_effort
 )
-VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		messageID,
 		threadID,
 		userID,
@@ -75,6 +86,7 @@ VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		content,
 		usage.ReasoningContent,
 		string(artifacts),
+		string(activityTrace),
 		usage.PromptTokens,
 		usage.CompletionTokens,
 		usage.TotalTokens,
@@ -120,7 +132,7 @@ func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Me
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, reasoning_effort, created_at
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, activity_trace, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, reasoning_effort, created_at
 FROM messages
 WHERE user_id = ? AND thread_id = ?
 ORDER BY created_at ASC, id ASC`,
@@ -147,7 +159,7 @@ ORDER BY created_at ASC, id ASC`,
 
 func (s *Store) getMessage(ctx context.Context, userID, messageID string) (Message, bool, error) {
 	message, err := scanMessage(s.db.QueryRowContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, reasoning_effort, created_at
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, activity_trace, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, reasoning_effort, created_at
 FROM messages
 WHERE user_id = ? AND id = ?`,
 		userID, messageID,

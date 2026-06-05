@@ -139,7 +139,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
 	}
-	assistantMessage, err := s.chat.AddMessageWithArtifacts(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromResult(assistantResult.StreamResult), artifactsJSON)
+	activityTraceJSON, err := json.Marshal(assistantResult.ActivityTrace)
+	if err != nil {
+		slog.Warn("marshal activity trace failed", "thread_id", threadID, "error", err)
+		activityTraceJSON = []byte("[]")
+	}
+	assistantMessage, err := s.chat.AddMessageWithActivityTrace(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromResult(assistantResult.StreamResult), artifactsJSON, activityTraceJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
@@ -176,6 +181,7 @@ const (
 	maxToolCallsPerRound      = 8
 	maxToolCallDuration       = 30 * time.Second
 	maxToolResultContentBytes = 32 << 10
+	toolFailedPrefix          = "tool failed"
 )
 
 type streamUserError struct {
@@ -188,8 +194,19 @@ func (e streamUserError) Error() string {
 
 type assistantLoopResult struct {
 	llm.StreamResult
-	Artifacts []artifactResponse
-	ToolError string
+	Artifacts     []artifactResponse
+	ToolError     string
+	ActivityTrace []activityTraceEvent
+}
+
+type activityTraceEvent struct {
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	Content      string `json:"content,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Status       string `json:"status"`
+	RawArguments string `json:"rawArguments,omitempty"`
+	RawOutput    string `json:"rawOutput,omitempty"`
 }
 
 func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool) (assistantLoopResult, error) {
@@ -197,9 +214,9 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 	if len(tools) == 0 {
 		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat", 1), nil)
 		if persistCanceledPartial(result, err) {
-			return assistantLoopResult{StreamResult: result}, nil
+			return assistantLoopResult{StreamResult: result, ActivityTrace: activityTraceFromResult(nil, result)}, nil
 		}
-		return assistantLoopResult{StreamResult: result}, err
+		return assistantLoopResult{StreamResult: result, ActivityTrace: activityTraceFromResult(nil, result)}, err
 	}
 	if imageArtifactRequired {
 		if imageTool := findGenerateImageTool(tools); imageTool != nil {
@@ -210,21 +227,23 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 
 	toolRan := false
 	var artifacts []artifactResponse
+	var trace []activityTraceEvent
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
 			if persistCanceledPartial(result, err) {
-				return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, nil
+				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: activityTraceFromResult(trace, result)}, nil
 			}
 			return assistantLoopResult{}, err
 		}
+		trace = activityTraceFromResult(trace, result)
 		if len(result.ToolCalls) == 0 {
 			// A normal textual answer ends the loop. But if the model stops
 			// after running tools without producing any text, fall through to a
 			// forced, tool-free final answer instead of returning an empty (and
 			// therefore discarded) response.
 			if strings.TrimSpace(result.Content) != "" || !toolRan {
-				return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, nil
+				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
 			}
 			slog.Info("forcing final answer", "reason", "empty_after_tools", "round", round)
 			break
@@ -252,6 +271,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				return assistantLoopResult{}, err
 			}
+			trace = activityTraceWithToolResult(trace, call.ID, output)
 			history = append(history, llm.Message{
 				Role:       "tool",
 				ToolCallID: call.ID,
@@ -272,10 +292,11 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		Content: "Provide your final answer now using the information already gathered above. Do not call any more tools.",
 	})
 	result, err := s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
+	trace = activityTraceFromResult(trace, result)
 	if persistCanceledPartial(result, err) {
-		return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, nil
+		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
 	}
-	return assistantLoopResult{StreamResult: result, Artifacts: artifacts}, err
+	return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, err
 }
 
 func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool) (assistantLoopResult, error) {
@@ -284,11 +305,12 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		Content: imagePromptCompilerSystemPrompt,
 	})
 	result, err := s.streamAssistantTurnSuppressingContent(ctx, stream, compilerHistory, inferenceWithPurpose(inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
+	trace := activityTraceFromResult(nil, result)
 	if err != nil {
 		return assistantLoopResult{}, err
 	}
 	if len(result.ToolCalls) != 1 || result.ToolCalls[0].Function.Name != "generate_image" {
-		return assistantLoopResult{StreamResult: result}, nil
+		return assistantLoopResult{StreamResult: result, ActivityTrace: trace}, nil
 	}
 
 	call := result.ToolCalls[0]
@@ -304,13 +326,14 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 		return assistantLoopResult{}, err
 	}
+	trace = activityTraceWithToolResult(trace, call.ID, output)
 	history = append(history, llm.Message{
 		Role:       "tool",
 		ToolCallID: call.ID,
 		Content:    output,
 	})
 	if response == nil {
-		return assistantLoopResult{StreamResult: result, ToolError: output}, nil
+		return assistantLoopResult{StreamResult: result, ToolError: output, ActivityTrace: trace}, nil
 	}
 
 	artifacts := []artifactResponse{*response}
@@ -319,13 +342,14 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		Content: "Provide a brief final response that refers to the created artifact. Do not call any more tools. Never claim an image was created unless the tool result confirms an artifact.",
 	})
 	final, err := s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
+	trace = activityTraceFromResult(trace, final)
 	if persistCanceledPartial(final, err) {
-		return assistantLoopResult{StreamResult: final, Artifacts: artifacts}, nil
+		return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: trace}, nil
 	}
 	if err == nil && strings.TrimSpace(final.Content) == "" {
 		final.Content = fallbackImageArtifactResponse(*response)
 	}
-	return assistantLoopResult{StreamResult: final, Artifacts: artifacts}, err
+	return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: trace}, err
 }
 
 func fallbackImageArtifactResponse(response artifactResponse) string {
@@ -337,6 +361,54 @@ func fallbackImageArtifactResponse(response artifactResponse) string {
 
 func persistCanceledPartial(result llm.StreamResult, err error) bool {
 	return errors.Is(err, context.Canceled) && strings.TrimSpace(result.Content) != ""
+}
+
+func activityTraceFromResult(current []activityTraceEvent, result llm.StreamResult) []activityTraceEvent {
+	next := append([]activityTraceEvent(nil), current...)
+	if strings.TrimSpace(result.ReasoningContent) != "" {
+		next = append(next, activityTraceEvent{
+			ID:      fmt.Sprintf("reasoning-%d", countActivityTraceReasoning(next)+1),
+			Type:    "reasoning",
+			Content: result.ReasoningContent,
+			Status:  "done",
+		})
+	}
+	for _, call := range result.ToolCalls {
+		next = append(next, activityTraceEvent{
+			ID:           call.ID,
+			Type:         "tool",
+			Name:         call.Function.Name,
+			Status:       "running",
+			RawArguments: call.Function.Arguments,
+		})
+	}
+	return next
+}
+
+func activityTraceWithToolResult(current []activityTraceEvent, toolCallID, output string) []activityTraceEvent {
+	next := append([]activityTraceEvent(nil), current...)
+	for i := range next {
+		if next[i].Type != "tool" || next[i].ID != toolCallID {
+			continue
+		}
+		next[i].Status = "done"
+		if strings.HasPrefix(output, toolFailedPrefix) {
+			next[i].Status = "failed"
+		}
+		next[i].RawOutput = output
+		return next
+	}
+	return next
+}
+
+func countActivityTraceReasoning(events []activityTraceEvent) int {
+	count := 0
+	for _, event := range events {
+		if event.Type == "reasoning" {
+			count++
+		}
+	}
+	return count
 }
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and

@@ -1,5 +1,7 @@
 import type { ToolCallEvent, ToolResultEvent } from "./api";
 
+const TOOL_FAILED_PREFIX = "tool failed";
+
 export type ActivityTraceEvent =
   | {
       id: string;
@@ -87,7 +89,7 @@ export function upsertTraceToolCall(events: ActivityTraceEvent[], event: ToolCal
 export function upsertTraceToolResult(events: ActivityTraceEvent[], event: ToolResultEvent): ActivityTraceEvent[] {
   return events.map((item) => {
     if (item.type !== "tool" || item.id !== event.id) return item;
-    const failed = event.content.startsWith("tool failed");
+    const failed = event.content.startsWith(TOOL_FAILED_PREFIX);
     return {
       ...item,
       status: failed ? "failed" : "done",
@@ -101,6 +103,27 @@ export function completeTrace(events: ActivityTraceEvent[]): ActivityTraceEvent[
   return events.map((event) => {
     if (event.status !== "running") return event;
     return { ...event, status: "done" };
+  });
+}
+
+export function normalizeActivityTrace(events: ActivityTraceEvent[] | undefined): ActivityTraceEvent[] | undefined {
+  if (events === undefined || events.length === 0) return undefined;
+  return events.map((event) => {
+    if (event.type === "reasoning") {
+      return { ...event, status: event.status === "running" ? "done" : event.status };
+    }
+    const summary = event.summary ?? summarizeToolCall(event.name, event.rawArguments ?? "{}");
+    const normalized: ActivityTraceToolEvent = {
+      ...event,
+      status: event.status === "running" && event.rawOutput !== undefined ? "done" : event.status,
+      summary,
+    };
+    if (event.rawOutput !== undefined && event.preview === undefined) {
+      const failed = event.rawOutput.startsWith(TOOL_FAILED_PREFIX);
+      normalized.status = failed ? "failed" : normalized.status;
+      normalized.preview = summarizeToolResult(normalized, event.rawOutput);
+    }
+    return normalized;
   });
 }
 

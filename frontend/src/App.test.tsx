@@ -954,6 +954,55 @@ test("keeps just-completed reasoning trace collapsed until opened", async () => 
   expect(document.querySelector(".spark-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
 });
 
+test("restores persisted activity trace when reopening a chat", async () => {
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [
+      {
+        id: "m1",
+        role: "user",
+        content: "Search Spark",
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        content: "I found Spark.",
+        activityTrace: [
+          {
+            id: "reasoning-1",
+            type: "reasoning",
+            content: "I should search current sources.",
+            status: "done",
+          },
+          {
+            id: "call_1",
+            type: "tool",
+            name: "search__web",
+            status: "done",
+            rawArguments: "{\"query\":\"agentgateway kgateway\"}",
+            rawOutput:
+              "{\"results\":[{\"title\":\"Agentgateway\",\"url\":\"https://agentgateway.dev\",\"snippet\":\"Next generation proxy\"}]}",
+          },
+        ],
+      },
+    ]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  expect(await screen.findByText("I found Spark.")).toBeInTheDocument();
+  const toggle = screen.getByRole("button", { name: /show activity/i });
+  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+
+  fireEvent.click(toggle);
+
+  expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
+  expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
+  expect(screen.getByText("Agentgateway")).toBeInTheDocument();
+  expect(document.querySelector(".spark-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+});
+
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
@@ -1304,6 +1353,7 @@ function chatThreadFetch(
     id: string;
     role: "assistant" | "user";
     content: string;
+    activityTrace?: unknown[];
     artifacts?: Array<{
       id: string;
       displayFilename: string;
