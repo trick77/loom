@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make Slop's assistant waiting state consistent across plain waiting, tool activity, streamed reasoning, and final answer startup.
+Make Slopr's assistant waiting state consistent across plain waiting, tool activity, streamed reasoning, and final answer startup.
 
 ## Current Behavior
 

@@ -199,7 +199,7 @@ function SidebarSection({
 }) {
   return (
     <section className="mt-5">
-      <div className="slop-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
+      <div className="slopr-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
       <div className="space-y-1">
         {threads.map((thread) => (
           <SidebarThreadItem
@@ -575,7 +575,7 @@ function RenameThreadModal({
         <input
           ref={inputRef}
           aria-label="Chat title"
-          className="slop-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
+          className="slopr-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
         />
@@ -750,7 +750,7 @@ function DeleteThreadModal({
 }) {
   return (
     <ModalShell title="Delete chat" onCancel={onCancel}>
-      <p className="slop-control-text mt-2 text-[#c7c5bd]">Are you sure you want to delete this chat?</p>
+      <p className="slopr-control-text mt-2 text-[#c7c5bd]">Are you sure you want to delete this chat?</p>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-[18px] flex justify-end gap-2">
         <button className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]" onClick={onCancel} type="button">Cancel</button>
@@ -844,7 +844,7 @@ Change the header to:
 ```tsx
 <header
   aria-label="Chat header"
-  className="slop-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
+  className="slopr-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
   role="banner"
 >
   <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">
@@ -871,7 +871,7 @@ function McpStatusIndicator({ status, compact = false }: { status: McpStatusEven
   const dotClass = allActive ? "bg-success" : "bg-danger";
   return (
     <div
-      className={`slop-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
+      className={`slopr-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
       title={`${status.active} of ${status.configured} MCP servers active`}
     >
       <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>

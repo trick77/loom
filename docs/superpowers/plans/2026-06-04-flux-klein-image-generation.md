@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add first-class text-to-image generation to Slop using the BFL FLUX.2 [klein] API, saving generated images as normal per-user/project artifacts and rendering them inline in chat.
+**Goal:** Add first-class text-to-image generation to Slopr using the BFL FLUX.2 [klein] API, saving generated images as normal per-user/project artifacts and rendering them inline in chat.
 
 **Architecture:** Implement a small `imagegen` backend package with a provider interface and a BFL client. Expose the provider as a built-in LLM tool named `generate_image`, then reuse the existing tool loop, SSE `artifact` event, artifact storage, sandboxed output paths, and assistant message artifact persistence. The frontend only needs to render image artifacts as previews; explicit image compose mode and image editing are deferred.
 
-**Tech Stack:** Go stdlib `net/http`, BFL API `POST https://api.bfl.ai/v1/flux-2-klein-4b` with `x-key`, existing Slop SSE/tool/artifact pipeline, React + TypeScript.
+**Tech Stack:** Go stdlib `net/http`, BFL API `POST https://api.bfl.ai/v1/flux-2-klein-4b` with `x-key`, existing Slopr SSE/tool/artifact pipeline, React + TypeScript.
 
 **Current BFL docs checked:** Context7 `/websites/bfl_ai`, query “FLUX.2 [klein] text-to-image API”. Relevant docs: `flux_2/flux2_text_to_image`, `api-reference/models/generate-or-edit-an-image-with-flux2-[klein-9b]-fast-editing`, `api_integration/integration_guidelines`.
 
@@ -21,7 +21,7 @@
 - **Create** `backend/internal/imagegen/tool_test.go` — tool-level tests for artifact bytes, filenames, formats, and validation.
 - **Modify** `backend/internal/config/config.go` — add image generation env vars.
 - **Modify** `backend/internal/config/config_test.go` — config defaults and required-key behavior.
-- **Modify** `backend/cmd/slop/main.go` — instantiate BFL client/tool when configured.
+- **Modify** `backend/cmd/slopr/main.go` — instantiate BFL client/tool when configured.
 - **Modify** `backend/internal/httpapi/server.go` — accept image tools in dependencies.
 - **Modify** `backend/internal/httpapi/message_stream_handlers.go` — include and execute image tools alongside document tools.
 - **Modify** `backend/internal/httpapi/message_stream_handlers_test.go` — verify image tool emits artifact event and persists artifact metadata.
@@ -130,7 +130,7 @@ Add these tests to `backend/internal/config/config_test.go`:
 
 ```go
 func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
-	t.Setenv("SLOP_SESSION_SECRET", "secret")
+	t.Setenv("SLOPR_SESSION_SECRET", "secret")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -147,19 +147,19 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 }
 
 func TestLoadBFLImageRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
-	t.Setenv("SLOP_SESSION_SECRET", "secret")
-	t.Setenv("SLOP_BFL_API_KEY", "bfl-test")
-	t.Setenv("SLOP_BFL_BASE_URL", "")
+	t.Setenv("SLOPR_SESSION_SECRET", "secret")
+	t.Setenv("SLOPR_BFL_API_KEY", "bfl-test")
+	t.Setenv("SLOPR_BFL_BASE_URL", "")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "SLOP_BFL_BASE_URL is required") {
-		t.Fatalf("Load() error = %v, want SLOP_BFL_BASE_URL required", err)
+	if err == nil || !strings.Contains(err.Error(), "SLOPR_BFL_BASE_URL is required") {
+		t.Fatalf("Load() error = %v, want SLOPR_BFL_BASE_URL required", err)
 	}
 }
 
 func TestLoadBFLImageConfiguredByAPIKey(t *testing.T) {
-	t.Setenv("SLOP_SESSION_SECRET", "secret")
-	t.Setenv("SLOP_BFL_API_KEY", "bfl-test")
-	t.Setenv("SLOP_BFL_MODEL", "flux-2-klein-9b")
+	t.Setenv("SLOPR_SESSION_SECRET", "secret")
+	t.Setenv("SLOPR_BFL_API_KEY", "bfl-test")
+	t.Setenv("SLOPR_BFL_MODEL", "flux-2-klein-9b")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -194,9 +194,9 @@ In `backend/internal/config/config.go`, add fields to `Config` after the embeddi
 Add defaults after `EmbedModel`:
 
 ```go
-		BFLBaseURL:           env("SLOP_BFL_BASE_URL", "https://api.bfl.ai/v1"),
-		BFLAPIKey:            env("SLOP_BFL_API_KEY", ""),
-		BFLModel:             env("SLOP_BFL_MODEL", "flux-2-klein-4b"),
+		BFLBaseURL:           env("SLOPR_BFL_BASE_URL", "https://api.bfl.ai/v1"),
+		BFLAPIKey:            env("SLOPR_BFL_API_KEY", ""),
+		BFLModel:             env("SLOPR_BFL_MODEL", "flux-2-klein-4b"),
 ```
 
 After the existing Context7 validation, add:
@@ -204,10 +204,10 @@ After the existing Context7 validation, add:
 ```go
 	if cfg.BFLAPIKey != "" {
 		if cfg.BFLBaseURL == "" {
-			return Config{}, fmt.Errorf("SLOP_BFL_BASE_URL is required when SLOP_BFL_API_KEY is set")
+			return Config{}, fmt.Errorf("SLOPR_BFL_BASE_URL is required when SLOPR_BFL_API_KEY is set")
 		}
 		if cfg.BFLModel == "" {
-			return Config{}, fmt.Errorf("SLOP_BFL_MODEL is required when SLOP_BFL_API_KEY is set")
+			return Config{}, fmt.Errorf("SLOPR_BFL_MODEL is required when SLOPR_BFL_API_KEY is set")
 		}
 	}
 ```
@@ -218,9 +218,9 @@ Add this block after the embedding settings:
 
 ```dotenv
 # Image generation (optional). Default model is FLUX.2 [klein] 4B.
-SLOP_BFL_BASE_URL=https://api.bfl.ai/v1
-SLOP_BFL_API_KEY=
-SLOP_BFL_MODEL=flux-2-klein-4b
+SLOPR_BFL_BASE_URL=https://api.bfl.ai/v1
+SLOPR_BFL_API_KEY=
+SLOPR_BFL_MODEL=flux-2-klein-4b
 ```
 
 - [ ] **Step 5: Run config tests**
@@ -1088,7 +1088,7 @@ Expected: FAIL because the server has no image tool dependency.
 
 - [ ] **Step 3: Add image tool dependency to server**
 
-In `backend/internal/httpapi/server.go`, import `github.com/trick77/slop/internal/imagegen`.
+In `backend/internal/httpapi/server.go`, import `github.com/trick77/slopr/internal/imagegen`.
 
 Add to `Deps`:
 
@@ -1110,7 +1110,7 @@ Set it in `New`:
 
 - [ ] **Step 4: Include image tools in available tool schemas**
 
-In `backend/internal/httpapi/message_stream_handlers.go`, import `github.com/trick77/slop/internal/imagegen` if needed by helper signatures.
+In `backend/internal/httpapi/message_stream_handlers.go`, import `github.com/trick77/slopr/internal/imagegen` if needed by helper signatures.
 
 In `availableTools`, after document tools, add:
 
@@ -1284,14 +1284,14 @@ git commit -m "feat: expose image generation as a chat tool"
 ### Task 7: Wire BFL Client From Main
 
 **Files:**
-- Modify: `backend/cmd/slop/main.go`
+- Modify: `backend/cmd/slopr/main.go`
 
 - [ ] **Step 1: Add imagegen import**
 
-In `backend/cmd/slop/main.go`, add:
+In `backend/cmd/slopr/main.go`, add:
 
 ```go
-	"github.com/trick77/slop/internal/imagegen"
+	"github.com/trick77/slopr/internal/imagegen"
 ```
 
 - [ ] **Step 2: Instantiate configured image tools**
@@ -1327,7 +1327,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/cmd/slop/main.go
+git add backend/cmd/slopr/main.go
 git commit -m "feat: wire BFL image generation provider"
 ```
 
@@ -1398,11 +1398,11 @@ function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="slop-message-text truncate">{artifact.displayFilename}</div>
-          <div className="slop-meta-text text-[#aaa79e]">
+          <div className="slopr-message-text truncate">{artifact.displayFilename}</div>
+          <div className="slopr-meta-text text-[#aaa79e]">
             {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
           </div>
-          {error !== "" && <div className="slop-meta-text text-[#d36f67]">{error}</div>}
+          {error !== "" && <div className="slopr-meta-text text-[#d36f67]">{error}</div>}
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
@@ -1457,7 +1457,7 @@ Expected: PASS.
 
 Run: `make build`
 
-Expected: PASS and `bin/slop` exists.
+Expected: PASS and `bin/slopr` exists.
 
 - [ ] **Step 3: Restore tracked web placeholders after local frontend build**
 
@@ -1465,19 +1465,19 @@ Run: `git checkout -- backend/web/dist/.gitkeep backend/web/dist/index.html`
 
 Expected: no generated dist assets remain staged.
 
-- [ ] **Step 4: Run Slop with image generation enabled**
+- [ ] **Step 4: Run Slopr with image generation enabled**
 
 Use a local DB and your real BFL key through the environment. Do not put the key in any file:
 
 ```bash
-SLOP_SESSION_SECRET=dev-secret \
-SLOP_AUTH_MODE=dev \
-SLOP_ADDR=127.0.0.1:18081 \
-SLOP_PUBLIC_URL=http://localhost:18081 \
-SLOP_DB_PATH=/private/tmp/slop-imagegen-dev.db \
-SLOP_BFL_API_KEY="$BFL_API_KEY" \
-SLOP_BFL_MODEL=flux-2-klein-4b \
-./bin/slop
+SLOPR_SESSION_SECRET=dev-secret \
+SLOPR_AUTH_MODE=dev \
+SLOPR_ADDR=127.0.0.1:18081 \
+SLOPR_PUBLIC_URL=http://localhost:18081 \
+SLOPR_DB_PATH=/private/tmp/slopr-imagegen-dev.db \
+SLOPR_BFL_API_KEY="$BFL_API_KEY" \
+SLOPR_BFL_MODEL=flux-2-klein-4b \
+./bin/slopr
 ```
 
 Expected startup summary line: `startup capability name="BFL image generation" status=enabled detail="model=flux-2-klein-4b tools=1"`.

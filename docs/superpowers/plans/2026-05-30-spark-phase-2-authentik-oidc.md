@@ -1,10 +1,10 @@
-# Slop Phase 2 Authentik OIDC Implementation Plan
+# Slopr Phase 2 Authentik OIDC Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add authentik-backed OIDC sign-in, Slop server-side sessions, role-aware API protection, and a frontend sign-in/authenticated shell.
+**Goal:** Add authentik-backed OIDC sign-in, Slopr server-side sessions, role-aware API protection, and a frontend sign-in/authenticated shell.
 
-**Architecture:** Slop acts as an OIDC relying party using `go-oidc` and `oauth2`, then issues its own opaque session cookie backed by SQLite. Authentik remains the identity source; Slop stores app-local users keyed by OIDC subject and maps admin role from the configured authentik group.
+**Architecture:** Slopr acts as an OIDC relying party using `go-oidc` and `oauth2`, then issues its own opaque session cookie backed by SQLite. Authentik remains the identity source; Slopr stores app-local users keyed by OIDC subject and maps admin role from the configured authentik group.
 
 **Tech Stack:** Go 1.25, stdlib `net/http`, `github.com/coreos/go-oidc/v3/oidc`, `golang.org/x/oauth2`, pure-Go SQLite via `ncruces/go-sqlite3`, React 19, TypeScript, Tailwind v4, Vitest.
 
@@ -22,9 +22,9 @@
 - Modify `backend/internal/config/config.go` and tests: add OIDC env vars, remove required admin password.
 - Modify `backend/internal/httpapi/server.go`: wire auth dependencies and routes.
 - Create `backend/internal/httpapi/auth_handlers.go`: login/callback/logout/me/admin handlers.
-- Modify `backend/cmd/slop/main.go`: pass DB/config into HTTP API and initialize OIDC auth.
+- Modify `backend/cmd/slopr/main.go`: pass DB/config into HTTP API and initialize OIDC auth.
 - Modify `.env.example` and `compose.yaml`: replace admin password with authentik/OIDC config.
-- Move `slop.png` to `frontend/src/assets/slop.png`.
+- Move `slopr.png` to `frontend/src/assets/slopr.png`.
 - Create `frontend/src/api.ts`: typed API helpers for `/api/me`, logout, admin users.
 - Modify `frontend/src/App.tsx`: signed-out screen, authenticated shell, admin view.
 - Modify `frontend/src/App.test.tsx`: frontend auth state tests.
@@ -40,11 +40,11 @@
 
 - [ ] **Step 1: Write failing config tests**
 
-Add tests showing OIDC settings are loaded and `SLOP_ADMIN_INITIAL_PASSWORD` is no longer required:
+Add tests showing OIDC settings are loaded and `SLOPR_ADMIN_INITIAL_PASSWORD` is no longer required:
 
 ```go
 func TestLoad_defaultsDoNotRequireAdminPassword(t *testing.T) {
-	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
 
 	cfg, err := Load()
 	if err != nil {
@@ -56,23 +56,23 @@ func TestLoad_defaultsDoNotRequireAdminPassword(t *testing.T) {
 }
 
 func TestLoad_oidcSettings(t *testing.T) {
-	t.Setenv("SLOP_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOP_PUBLIC_URL", "https://slop.example.com")
-	t.Setenv("SLOP_OIDC_ISSUER", "https://auth.example.com/application/o/slop/")
-	t.Setenv("SLOP_OIDC_CLIENT_ID", "slop-client")
-	t.Setenv("SLOP_OIDC_CLIENT_SECRET", "slop-secret")
-	t.Setenv("SLOP_OIDC_REDIRECT_URL", "https://slop.example.com/api/auth/callback")
-	t.Setenv("SLOP_OIDC_POST_LOGOUT_REDIRECT_URL", "https://slop.example.com/")
-	t.Setenv("SLOP_OIDC_ADMIN_GROUP", "slop-admins")
+	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOPR_PUBLIC_URL", "https://slopr.example.com")
+	t.Setenv("SLOPR_OIDC_ISSUER", "https://auth.example.com/application/o/slopr/")
+	t.Setenv("SLOPR_OIDC_CLIENT_ID", "slopr-client")
+	t.Setenv("SLOPR_OIDC_CLIENT_SECRET", "slopr-secret")
+	t.Setenv("SLOPR_OIDC_REDIRECT_URL", "https://slopr.example.com/api/auth/callback")
+	t.Setenv("SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL", "https://slopr.example.com/")
+	t.Setenv("SLOPR_OIDC_ADMIN_GROUP", "slopr-admins")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.OIDC.Issuer != "https://auth.example.com/application/o/slop/" {
+	if cfg.OIDC.Issuer != "https://auth.example.com/application/o/slopr/" {
 		t.Fatalf("OIDC issuer = %q", cfg.OIDC.Issuer)
 	}
-	if cfg.OIDC.AdminGroup != "slop-admins" {
+	if cfg.OIDC.AdminGroup != "slopr-admins" {
 		t.Fatalf("OIDC admin group = %q", cfg.OIDC.AdminGroup)
 	}
 }
@@ -104,20 +104,20 @@ needed for compatibility in tests, but do not require it. Load env vars exactly 
 
 - [ ] **Step 4: Update env files**
 
-In `.env.example`, remove `SLOP_ADMIN_INITIAL_PASSWORD` and add:
+In `.env.example`, remove `SLOPR_ADMIN_INITIAL_PASSWORD` and add:
 
 ```bash
-SLOP_PUBLIC_URL=https://slop.example.com
-SLOP_OIDC_ISSUER=https://auth.example.com/application/o/slop/
-SLOP_OIDC_CLIENT_ID=
-SLOP_OIDC_CLIENT_SECRET=
-SLOP_OIDC_REDIRECT_URL=https://slop.example.com/api/auth/callback
-SLOP_OIDC_POST_LOGOUT_REDIRECT_URL=https://slop.example.com/
-SLOP_OIDC_ADMIN_GROUP=slop-admins
+SLOPR_PUBLIC_URL=https://slopr.example.com
+SLOPR_OIDC_ISSUER=https://auth.example.com/application/o/slopr/
+SLOPR_OIDC_CLIENT_ID=
+SLOPR_OIDC_CLIENT_SECRET=
+SLOPR_OIDC_REDIRECT_URL=https://slopr.example.com/api/auth/callback
+SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL=https://slopr.example.com/
+SLOPR_OIDC_ADMIN_GROUP=slopr-admins
 ```
 
-In `compose.yaml`, pass the same variables through to the `slop` service and remove
-`SLOP_ADMIN_INITIAL_PASSWORD`.
+In `compose.yaml`, pass the same variables through to the `slopr` service and remove
+`SLOPR_ADMIN_INITIAL_PASSWORD`.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -229,10 +229,10 @@ func TestUserStore_UpsertFromClaimsCreatesAndRefreshesRole(t *testing.T) {
 		Username: "jan",
 		Email: "jan@example.com",
 		Name: "Jan",
-		Groups: []string{"slop-admins"},
+		Groups: []string{"slopr-admins"},
 	}
 
-	user, err := store.UpsertFromClaims(context.Background(), claims, "slop-admins")
+	user, err := store.UpsertFromClaims(context.Background(), claims, "slopr-admins")
 	if err != nil {
 		t.Fatalf("UpsertFromClaims() error: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestUserStore_UpsertFromClaimsCreatesAndRefreshesRole(t *testing.T) {
 	}
 
 	claims.Groups = []string{"family"}
-	user, err = store.UpsertFromClaims(context.Background(), claims, "slop-admins")
+	user, err = store.UpsertFromClaims(context.Background(), claims, "slopr-admins")
 	if err != nil {
 		t.Fatalf("second upsert error: %v", err)
 	}
@@ -332,7 +332,7 @@ Expected: session symbols missing.
 - [ ] **Step 3: Implement session store**
 
 Generate 32 random bytes, encode with `base64.RawURLEncoding`, hash with SHA-256 before storing.
-Use cookie name `slop_session`. `CookieFor(token, expires)` returns `HttpOnly`, `SameSite=Lax`,
+Use cookie name `slopr_session`. `CookieFor(token, expires)` returns `HttpOnly`, `SameSite=Lax`,
 path `/`, and `Secure` based on config/runtime.
 
 - [ ] **Step 4: Verify and commit**
@@ -391,7 +391,7 @@ func TestOIDCService_CallbackMapsVerifiedClaims(t *testing.T) {
 		Subject: "sub-1",
 		Username: "jan",
 		Email: "jan@example.com",
-		Groups: []string{"slop-admins"},
+		Groups: []string{"slopr-admins"},
 	})
 	req := requestWithValidStateAndNonce(t)
 
@@ -469,7 +469,7 @@ Expected: middleware symbols missing.
 
 - [ ] **Step 3: Implement middleware**
 
-Read `slop_session`, look up active session, load user, attach `User` to context. `RequireAdmin`
+Read `slopr_session`, look up active session, load user, attach `User` to context. `RequireAdmin`
 checks `RoleAdmin`. Return JSON errors with `Content-Type: application/json`.
 
 - [ ] **Step 4: Verify and commit**
@@ -496,7 +496,7 @@ git commit -m "feat: add auth middleware"
 - Modify: `backend/internal/httpapi/server.go`
 - Create: `backend/internal/httpapi/auth_handlers.go`
 - Modify: `backend/internal/httpapi/server_test.go`
-- Modify: `backend/cmd/slop/main.go`
+- Modify: `backend/cmd/slopr/main.go`
 
 - [ ] **Step 1: Write failing HTTP API tests**
 
@@ -536,7 +536,7 @@ mux.Handle("GET /api/me", authMW.RequireAuth(http.HandlerFunc(s.handleMe)))
 mux.Handle("GET /api/admin/users", authMW.RequireAuth(authMW.RequireAdmin(http.HandlerFunc(s.handleAdminUsers))))
 ```
 
-Update `cmd/slop/main.go` to initialize the auth stores from `db` and `cfg`, then pass them to
+Update `cmd/slopr/main.go` to initialize the auth stores from `db` and `cfg`, then pass them to
 `httpapi.New`.
 
 - [ ] **Step 4: Verify and commit**
@@ -548,25 +548,25 @@ Expected: PASS.
 Commit:
 
 ```bash
-git add backend/internal/httpapi/server.go backend/internal/httpapi/auth_handlers.go backend/internal/httpapi/server_test.go backend/cmd/slop/main.go
+git add backend/internal/httpapi/server.go backend/internal/httpapi/auth_handlers.go backend/internal/httpapi/server_test.go backend/cmd/slopr/main.go
 git commit -m "feat: expose oidc auth api"
 ```
 
 ## Task 8: Frontend Auth States
 
 **Files:**
-- Move: `slop.png` to `frontend/src/assets/slop.png`
+- Move: `slopr.png` to `frontend/src/assets/slopr.png`
 - Create: `frontend/src/api.ts`
 - Modify: `frontend/src/App.tsx`
 - Modify: `frontend/src/App.test.tsx`
 
-- [ ] **Step 1: Move Slop image**
+- [ ] **Step 1: Move Slopr image**
 
 Run:
 
 ```bash
 mkdir -p frontend/src/assets
-mv slop.png frontend/src/assets/slop.png
+mv slopr.png frontend/src/assets/slopr.png
 ```
 
 - [ ] **Step 2: Write failing frontend tests**
@@ -583,7 +583,7 @@ test("renders signed-out screen when /api/me returns 401", async () => {
     "href",
     "/api/auth/login",
   );
-  expect(screen.getByAltText("Slop")).toBeInTheDocument();
+  expect(screen.getByAltText("Slopr")).toBeInTheDocument();
 });
 
 test("renders admin entry for admin users", async () => {
@@ -627,7 +627,7 @@ Expected: frontend tests and build pass; built assets are restored to placeholde
 Commit:
 
 ```bash
-git add frontend/src/assets/slop.png frontend/src/api.ts frontend/src/App.tsx frontend/src/App.test.tsx
+git add frontend/src/assets/slopr.png frontend/src/api.ts frontend/src/App.tsx frontend/src/App.test.tsx
 git commit -m "feat: add oidc frontend auth states"
 ```
 
@@ -635,7 +635,7 @@ git commit -m "feat: add oidc frontend auth states"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/superpowers/specs/2026-05-30-slop-phase-2-authentik-oidc-design.md` only if implementation diverged.
+- Modify: `docs/superpowers/specs/2026-05-30-slopr-phase-2-authentik-oidc-design.md` only if implementation diverged.
 
 - [ ] **Step 1: Review README against implementation**
 
@@ -669,7 +669,7 @@ Expected:
 If README or design docs changed:
 
 ```bash
-git add README.md docs/superpowers/specs/2026-05-30-slop-phase-2-authentik-oidc-design.md
+git add README.md docs/superpowers/specs/2026-05-30-slopr-phase-2-authentik-oidc-design.md
 git commit -m "docs: align authentik setup with implementation"
 ```
 
@@ -681,7 +681,7 @@ real smoke test.
 ## Self-Review
 
 - Spec coverage: OIDC login, local sessions, role mapping, frontend signed-out/authenticated states,
-  `slop.png`, README setup, and admin user list are all covered.
+  `slopr.png`, README setup, and admin user list are all covered.
 - Placeholder scan: no red-flag placeholder terms remain.
 - Type consistency: config uses `OIDCConfig`; backend auth exposes `User`, `Claims`, role constants,
   user/session stores, OIDC service, and middleware used by HTTP handlers.

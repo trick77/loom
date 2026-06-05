@@ -1,10 +1,10 @@
-# Slop Phase 4 MCP Tools Implementation Plan
+# Slopr Phase 4 MCP Tools Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add MCP-backed tool discovery and tool execution to the existing streamed chat path.
 
-**Architecture:** Slop loads `mcp.json` at startup, connects to configured MCP servers, discovers tools, and exposes them to the OpenAI-compatible chat client as function tools. The LLM stream parser detects streamed tool calls, the HTTP handler emits tool status events, Slop executes the requested MCP tools, appends tool-result messages, and resumes streaming until the model returns a final assistant answer.
+**Architecture:** Slopr loads `mcp.json` at startup, connects to configured MCP servers, discovers tools, and exposes them to the OpenAI-compatible chat client as function tools. The LLM stream parser detects streamed tool calls, the HTTP handler emits tool status events, Slopr executes the requested MCP tools, appends tool-result messages, and resumes streaming until the model returns a final assistant answer.
 
 **Tech Stack:** Go stdlib `net/http`, JSON-RPC 2.0, stdio processes for local MCP servers, OpenAI-compatible chat completions with function tools, existing `net/http` SSE API.
 
@@ -113,7 +113,7 @@ Expected: pass.
 ### Task 5: Runtime Wiring And Config Examples
 
 **Files:**
-- Modify: `backend/cmd/slop/main.go`
+- Modify: `backend/cmd/slopr/main.go`
 - Modify: `mcp.json`
 - Modify: `compose.yaml`
 - Modify: `.env.example`
@@ -121,11 +121,11 @@ Expected: pass.
 
 - [ ] **Step 1: Write failing config/runtime tests if needed**
 
-Add config-loader tests only if new environment variables are introduced. Prefer no new runtime env beyond existing `SLOP_MCP_CONFIG`.
+Add config-loader tests only if new environment variables are introduced. Prefer no new runtime env beyond existing `SLOPR_MCP_CONFIG`.
 
 - [ ] **Step 2: Wire startup**
 
-Load `SLOP_MCP_CONFIG` if present, initialize MCP clients, discover tools once at startup, log discovery failures per server, and continue booting with the remaining tools.
+Load `SLOPR_MCP_CONFIG` if present, initialize MCP clients, discover tools once at startup, log discovery failures per server, and continue booting with the remaining tools.
 
 - [ ] **Step 3: Update examples**
 

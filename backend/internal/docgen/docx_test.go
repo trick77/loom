@@ -14,7 +14,7 @@ func TestDOCXGeneratorWritesDocumentPackage(t *testing.T) {
 	meta, err := gen.Generate(GenerateRequest{
 		Filename: "report.docx",
 		Payload: map[string]any{
-			"content": "# Report\n\nHello from Slop.",
+			"content": "# Report\n\nHello from Slopr.",
 		},
 	}, &out)
 	if err != nil {
@@ -24,7 +24,7 @@ func TestDOCXGeneratorWritesDocumentPackage(t *testing.T) {
 		t.Fatalf("meta = %#v", meta)
 	}
 	documentXML := zipEntry(t, out.Bytes(), "word/document.xml")
-	if !strings.Contains(documentXML, "Hello from Slop.") {
+	if !strings.Contains(documentXML, "Hello from Slopr.") {
 		t.Fatalf("document.xml = %s", documentXML)
 	}
 }

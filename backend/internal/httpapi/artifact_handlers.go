@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/trick77/slop/internal/artifact"
+	"github.com/trick77/slopr/internal/artifact"
 )
 
 func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {

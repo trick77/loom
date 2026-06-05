@@ -14,14 +14,14 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 	"github.com/johnfercher/maroto/v2/pkg/repository"
-	"github.com/trick77/slop/internal/artifact"
+	"github.com/trick77/slopr/internal/artifact"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gobolditalic"
 	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/gofont/goregular"
 )
 
-const pdfFontFamily = "slop"
+const pdfFontFamily = "slopr"
 
 type PDFGenerator struct{}
 
@@ -29,7 +29,7 @@ func (g PDFGenerator) ToolName() string { return "create_pdf_file" }
 
 func rgbColor(c RGB) *props.Color { return &props.Color{Red: c.R, Green: c.G, Blue: c.B} }
 
-// newMaroto builds a maroto instance with the Slop fonts and an accent header band.
+// newMaroto builds a maroto instance with the Slopr fonts and an accent header band.
 func newMaroto(title, subtitle string) (core.Maroto, error) {
 	fonts, err := repository.New().
 		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Normal, goregular.TTF).

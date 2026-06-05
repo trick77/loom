@@ -1,4 +1,4 @@
-// Package httpapi builds slop's HTTP handler: JSON/SSE API plus the embedded SPA.
+// Package httpapi builds slopr's HTTP handler: JSON/SSE API plus the embedded SPA.
 package httpapi
 
 import (
@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/slop/internal/artifact"
-	"github.com/trick77/slop/internal/auth"
-	"github.com/trick77/slop/internal/chat"
-	"github.com/trick77/slop/internal/docgen"
-	"github.com/trick77/slop/internal/imagegen"
-	"github.com/trick77/slop/internal/llm"
-	"github.com/trick77/slop/internal/mcp"
+	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/slopr/internal/auth"
+	"github.com/trick77/slopr/internal/chat"
+	"github.com/trick77/slopr/internal/docgen"
+	"github.com/trick77/slopr/internal/imagegen"
+	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/slopr/internal/mcp"
 )
 
 // Deps are the dependencies needed to build the server. Grows in later phases

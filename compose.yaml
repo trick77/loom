@@ -1,41 +1,41 @@
 services:
-  slop:
+  slopr:
     build:
       context: .
       dockerfile: backend/Containerfile
     ports:
       - "8080:8080"
     environment:
-      SLOP_ADDR: ":8080"
-      SLOP_DB_PATH: "/data/slop.db"
-      SLOP_USERS_DIR: "/data/users"
-      SLOP_PUBLIC_URL: "${SLOP_PUBLIC_URL}"
-      SLOP_AUTH_MODE: "${SLOP_AUTH_MODE:-oidc}"
-      SLOP_TIKA_URL: "http://tika:9998"
-      SLOP_TAVILY_URL: "${SLOP_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
-      SLOP_TAVILY_API_KEY: "${SLOP_TAVILY_API_KEY}"
-      SLOP_MCP_CONFIG: "/config/mcp.json"
-      SLOP_OIDC_ISSUER: "${SLOP_OIDC_ISSUER}"
-      SLOP_OIDC_CLIENT_ID: "${SLOP_OIDC_CLIENT_ID}"
-      SLOP_OIDC_CLIENT_SECRET: "${SLOP_OIDC_CLIENT_SECRET}"
-      SLOP_OIDC_REDIRECT_URL: "${SLOP_OIDC_REDIRECT_URL}"
-      SLOP_OIDC_POST_LOGOUT_REDIRECT_URL: "${SLOP_OIDC_POST_LOGOUT_REDIRECT_URL}"
-      SLOP_OIDC_ADMIN_GROUP: "${SLOP_OIDC_ADMIN_GROUP:-slop-admins}"
-      SLOP_CHAT_BASE_URL: "${SLOP_CHAT_BASE_URL}"
-      SLOP_CHAT_API_KEY: "${SLOP_CHAT_API_KEY}"
-      SLOP_CHAT_MODEL: "${SLOP_CHAT_MODEL:-MiMo}"
-      SLOP_CHAT_REASONING_EFFORT: "${SLOP_CHAT_REASONING_EFFORT:-high}"
-      SLOP_EMBED_BASE_URL: "${SLOP_EMBED_BASE_URL}"
-      SLOP_EMBED_API_KEY: "${SLOP_EMBED_API_KEY}"
-      SLOP_EMBED_MODEL: "${SLOP_EMBED_MODEL:-text-embedding-3-small}"
-      SLOP_CONTEXT7_API_KEY: "${SLOP_CONTEXT7_API_KEY:-}"
-      SLOP_CONTEXT7_MCP_URL: "${SLOP_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
-      SLOP_BFL_BASE_URL: "${SLOP_BFL_BASE_URL:-https://api.bfl.ai/v1}"
-      SLOP_BFL_API_KEY: "${SLOP_BFL_API_KEY:-}"
-      SLOP_BFL_MODEL: "${SLOP_BFL_MODEL:-flux-2-klein-4b}"
-      SLOP_SESSION_SECRET: "${SLOP_SESSION_SECRET}"
+      SLOPR_ADDR: ":8080"
+      SLOPR_DB_PATH: "/data/slopr.db"
+      SLOPR_USERS_DIR: "/data/users"
+      SLOPR_PUBLIC_URL: "${SLOPR_PUBLIC_URL}"
+      SLOPR_AUTH_MODE: "${SLOPR_AUTH_MODE:-oidc}"
+      SLOPR_TIKA_URL: "http://tika:9998"
+      SLOPR_TAVILY_URL: "${SLOPR_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
+      SLOPR_TAVILY_API_KEY: "${SLOPR_TAVILY_API_KEY}"
+      SLOPR_MCP_CONFIG: "/config/mcp.json"
+      SLOPR_OIDC_ISSUER: "${SLOPR_OIDC_ISSUER}"
+      SLOPR_OIDC_CLIENT_ID: "${SLOPR_OIDC_CLIENT_ID}"
+      SLOPR_OIDC_CLIENT_SECRET: "${SLOPR_OIDC_CLIENT_SECRET}"
+      SLOPR_OIDC_REDIRECT_URL: "${SLOPR_OIDC_REDIRECT_URL}"
+      SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL: "${SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL}"
+      SLOPR_OIDC_ADMIN_GROUP: "${SLOPR_OIDC_ADMIN_GROUP:-slopr-admins}"
+      SLOPR_CHAT_BASE_URL: "${SLOPR_CHAT_BASE_URL}"
+      SLOPR_CHAT_API_KEY: "${SLOPR_CHAT_API_KEY}"
+      SLOPR_CHAT_MODEL: "${SLOPR_CHAT_MODEL:-MiMo}"
+      SLOPR_CHAT_REASONING_EFFORT: "${SLOPR_CHAT_REASONING_EFFORT:-high}"
+      SLOPR_EMBED_BASE_URL: "${SLOPR_EMBED_BASE_URL}"
+      SLOPR_EMBED_API_KEY: "${SLOPR_EMBED_API_KEY}"
+      SLOPR_EMBED_MODEL: "${SLOPR_EMBED_MODEL:-text-embedding-3-small}"
+      SLOPR_CONTEXT7_API_KEY: "${SLOPR_CONTEXT7_API_KEY:-}"
+      SLOPR_CONTEXT7_MCP_URL: "${SLOPR_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
+      SLOPR_BFL_BASE_URL: "${SLOPR_BFL_BASE_URL:-https://api.bfl.ai/v1}"
+      SLOPR_BFL_API_KEY: "${SLOPR_BFL_API_KEY:-}"
+      SLOPR_BFL_MODEL: "${SLOPR_BFL_MODEL:-flux-2-klein-4b}"
+      SLOPR_SESSION_SECRET: "${SLOPR_SESSION_SECRET}"
     volumes:
-      - slop-data:/data
+      - slopr-data:/data
       - ./mcp.json:/config/mcp.json:ro
       # per-user volumes are mounted manually under /data/users/<user-id>/
     networks:
@@ -57,7 +57,7 @@ services:
 
   fetch:
     # Lightweight URL/document fetch MCP, bridged to streamable-HTTP by
-    # supergateway. Slop discovers it via mcp.json at http://fetch:8090/mcp.
+    # supergateway. Slopr discovers it via mcp.json at http://fetch:8090/mcp.
     # Keep it off the default app network so fetched URLs cannot resolve app
     # sidecars such as tika by Compose service name.
     build:
@@ -68,7 +68,7 @@ services:
 
   obscura:
     # Headless-browser MCP (Obscura) bridged to streamable-HTTP by supergateway.
-    # Slop discovers it via mcp.json at http://obscura:8090/mcp; tools are
+    # Slopr discovers it via mcp.json at http://obscura:8090/mcp; tools are
     # surfaced to the LLM as obscura__<tool>.
     # Obscura is amd64-only (emulated on arm64 hosts).
     platform: linux/amd64
@@ -81,4 +81,4 @@ networks:
   fetch-mcp:
 
 volumes:
-  slop-data:
+  slopr-data:

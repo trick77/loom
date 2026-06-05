@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const SessionCookieName = "slop_session"
+const SessionCookieName = "slopr_session"
 
 // Session is the server-side representation of an authenticated browser session.
 type Session struct {

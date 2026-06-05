@@ -3,7 +3,7 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/trick77/slop/internal/chat"
+	"github.com/trick77/slopr/internal/chat"
 )
 
 func (s *server) handleListProjects(w http.ResponseWriter, r *http.Request) {

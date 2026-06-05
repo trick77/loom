@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/slop/internal/config"
-	"github.com/trick77/slop/internal/mcp"
+	"github.com/trick77/slopr/internal/config"
+	"github.com/trick77/slopr/internal/mcp"
 )
 
 func TestResponseLogDirForConfigOnlyEnablesDevMode(t *testing.T) {
@@ -79,7 +79,7 @@ func TestToolConfigForConfigLeavesTavilyDisabledWhenKeyIsEmpty(t *testing.T) {
 		t.Fatal("toolConfigForConfig() collision = true, want false")
 	}
 	if _, exists := got.Servers["tavily"]; exists {
-		t.Fatalf("tavily server exists when SLOP_TAVILY_API_KEY is empty: %#v", got.Servers["tavily"])
+		t.Fatalf("tavily server exists when SLOPR_TAVILY_API_KEY is empty: %#v", got.Servers["tavily"])
 	}
 }
 

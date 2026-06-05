@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Slop's split waiting indicators with one persistent animated `Thinking` block during active assistant turns.
+**Goal:** Replace Slopr's split waiting indicators with one persistent animated `Thinking` block during active assistant turns.
 
 **Architecture:** Keep the change in the existing `ChatShell.tsx` streaming UI. Replace `ThinkingIndicator` with an active `ThinkingPanel` state that can render before reasoning exists, while tool events are running, and while reasoning deltas stream.
 
@@ -24,7 +24,7 @@ Add/update frontend tests so they assert:
 ```tsx
 expect(await screen.findByRole("button", { name: /show thinking/i })).toBeInTheDocument();
 expect(screen.getByText("Thinking")).toBeInTheDocument();
-expect(screen.queryByRole("status", { name: /slop is thinking/i })).not.toBeInTheDocument();
+expect(screen.queryByRole("status", { name: /slopr is thinking/i })).not.toBeInTheDocument();
 ```
 
 Add a tool-stream test that sends `user_message -> tool_call` and asserts `Thinking`, the tool name, and `Running` are all visible at the same time.
@@ -68,7 +68,7 @@ Move transient `ToolActivityPanel` rendering under that active panel when the as
 Remove the old dot animation CSS and add a non-repeating `Thinking` shimmer:
 
 ```css
-.slop-thinking-label-active {
+.slopr-thinking-label-active {
   position: relative;
   display: inline-block;
   overflow: hidden;
@@ -76,7 +76,7 @@ Remove the old dot animation CSS and add a non-repeating `Thinking` shimmer:
   font-weight: 500;
 }
 
-.slop-thinking-label-active::after {
+.slopr-thinking-label-active::after {
   position: absolute;
   inset: 0;
   content: attr(data-text);
@@ -88,7 +88,7 @@ Remove the old dot animation CSS and add a non-repeating `Thinking` shimmer:
   -webkit-background-clip: text;
   background-clip: text;
   opacity: 0;
-  animation: slop-thinking-sweep 4.5s linear infinite;
+  animation: slopr-thinking-sweep 4.5s linear infinite;
 }
 ```
 
