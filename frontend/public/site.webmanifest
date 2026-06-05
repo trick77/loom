@@ -1,6 +1,6 @@
 {
-  "name": "slop",
-  "short_name": "slop",
+  "name": "slopr",
+  "short_name": "slopr",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

@@ -35,7 +35,7 @@
 }
 
 /* UI direction A — Warm Editorial, dark. These tokens drive the Tailwind v4
-   theme, generating the bg, text, border, font, and rounded-slop utilities.
+   theme, generating the bg, text, border, font, and rounded-slopr utilities.
    Palette: warm charcoal surfaces, off-white ink, clay accent.
    Fonts are self-hosted Variable Fonts under src/fonts/. */
 @theme {
@@ -52,7 +52,7 @@
   --font-sans: "Anthropic Sans", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-serif: "Anthropic Serif", Georgia, "Times New Roman", Times, serif;
   --font-mono: "Anthropic Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --radius-slop: 10px;
+  --radius-slopr: 10px;
 }
 
 html {
@@ -70,73 +70,73 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.slop-wordmark {
+.slopr-wordmark {
   font-size: 1.1875rem;
   line-height: 1.75rem;
 }
 
-.slop-greeting-text {
+.slopr-greeting-text {
   color: #c3c2b7;
   font-size: 2.125rem;
   font-weight: 300;
   line-height: 1;
 }
 
-.slop-sidebar-text {
+.slopr-sidebar-text {
   font-size: 0.875rem;
   font-weight: 400;
   line-height: 1.25rem;
 }
 
 /* Sidebar scrollbar: slimmer and toned down */
-.slop-sidebar-scroll {
+.slopr-sidebar-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
-.slop-sidebar-scroll::-webkit-scrollbar {
+.slopr-sidebar-scroll::-webkit-scrollbar {
   width: 8px;
 }
 
-.slop-sidebar-scroll::-webkit-scrollbar-track {
+.slopr-sidebar-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.slop-sidebar-scroll::-webkit-scrollbar-thumb {
+.slopr-sidebar-scroll::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.1);
   border-radius: 9999px;
 }
 
-.slop-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+.slopr-sidebar-scroll::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.18);
 }
 
-.slop-meta-text {
+.slopr-meta-text {
   font-size: 0.75rem;
   font-weight: 400;
   line-height: 1rem;
 }
 
-.slop-control-text {
+.slopr-control-text {
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
 
-.slop-composer-text {
+.slopr-composer-text {
   font-size: 1rem;
   line-height: 1.4rem;
 }
 
-.slop-message-text {
+.slopr-message-text {
   font-size: 1rem;
   line-height: 1.4rem;
 }
 
-.slop-user-message-text {
+.slopr-user-message-text {
   line-height: 1.4;
 }
 
-.slop-thinking-panel {
+.slopr-thinking-panel {
   max-width: 46rem;
   color: #9b9790;
   font-family: var(--font-sans);
@@ -144,7 +144,7 @@ body {
   line-height: 1.45rem;
 }
 
-.slop-thinking-panel-toggle {
+.slopr-thinking-panel-toggle {
   display: flex;
   width: fit-content;
   align-items: center;
@@ -154,17 +154,17 @@ body {
   transition: color 0.16s ease;
 }
 
-.slop-thinking-panel-toggle:hover {
+.slopr-thinking-panel-toggle:hover {
   color: #c7c5bd;
 }
 
-.slop-thinking-panel-label {
+.slopr-thinking-panel-label {
   display: inline-flex;
   align-items: center;
   gap: 0.625rem;
 }
 
-.slop-thinking-label-active {
+.slopr-thinking-label-active {
   position: relative;
   display: inline-block;
   overflow: hidden;
@@ -172,7 +172,7 @@ body {
   font-weight: 500;
 }
 
-.slop-thinking-label-active::after {
+.slopr-thinking-label-active::after {
   position: absolute;
   inset: 0;
   background-image: linear-gradient(90deg, transparent 0%, #f3f0e8 50%, transparent 100%);
@@ -184,11 +184,11 @@ body {
   color: transparent;
   content: attr(data-text);
   opacity: 0;
-  animation: slop-thinking-sweep 2.5s linear infinite;
+  animation: slopr-thinking-sweep 2.5s linear infinite;
 }
 
-.slop-thinking-status-active,
-.slop-thinking-status-complete {
+.slopr-thinking-status-active,
+.slopr-thinking-status-complete {
   display: inline-block;
   width: 1rem;
   height: 1rem;
@@ -196,13 +196,13 @@ body {
   border-radius: 9999px;
 }
 
-.slop-thinking-status-active {
+.slopr-thinking-status-active {
   display: inline-grid;
   position: relative;
   place-items: center;
 }
 
-.slop-thinking-status-active::after {
+.slopr-thinking-status-active::after {
   display: block;
   width: 0.375rem;
   height: 0.375rem;
@@ -211,11 +211,11 @@ body {
   content: "";
 }
 
-.slop-thinking-status-complete {
+.slopr-thinking-status-complete {
   position: relative;
 }
 
-.slop-thinking-status-complete::after {
+.slopr-thinking-status-complete::after {
   position: absolute;
   left: 0.25rem;
   top: 0.2rem;
@@ -227,8 +227,8 @@ body {
   transform: rotate(-45deg);
 }
 
-.slop-thinking-chevron,
-.slop-thinking-chevron-expanded {
+.slopr-thinking-chevron,
+.slopr-thinking-chevron-expanded {
   display: inline-block;
   padding: 0.18rem;
   border: solid currentColor;
@@ -237,15 +237,15 @@ body {
 }
 
 /* Border-drawn chevron: points right when collapsed, rotates down when expanded. */
-.slop-thinking-chevron {
+.slopr-thinking-chevron {
   transform: rotate(-45deg);
 }
 
-.slop-thinking-chevron-expanded {
+.slopr-thinking-chevron-expanded {
   transform: rotate(45deg);
 }
 
-.slop-activity-trace {
+.slopr-activity-trace {
   max-width: 46rem;
   overflow: hidden;
   border: 0;
@@ -257,7 +257,7 @@ body {
   line-height: 1.45rem;
 }
 
-.slop-activity-trace-toggle {
+.slopr-activity-trace-toggle {
   display: flex;
   width: 100%;
   align-items: center;
@@ -269,23 +269,23 @@ body {
   transition: color 0.16s ease;
 }
 
-.slop-activity-trace-toggle:hover {
+.slopr-activity-trace-toggle:hover {
   color: #f3f0e8;
 }
 
-.slop-activity-trace-label {
+.slopr-activity-trace-label {
   display: inline-flex;
   min-width: 0;
   align-items: center;
   gap: 0.5rem;
 }
 
-.slop-activity-trace-body {
+.slopr-activity-trace-body {
   border-top: 0;
   padding: 0.125rem 0 0;
 }
 
-.slop-activity-trace-row {
+.slopr-activity-trace-row {
   position: relative;
   display: flex;
   align-items: flex-start;
@@ -293,7 +293,7 @@ body {
   padding: 0.25rem 0 1rem;
 }
 
-.slop-activity-trace-row:not(:last-child)::before {
+.slopr-activity-trace-row:not(:last-child)::before {
   position: absolute;
   bottom: 0.5rem;
   left: 0.4375rem;
@@ -303,7 +303,7 @@ body {
   content: "";
 }
 
-.slop-activity-trace-icon {
+.slopr-activity-trace-icon {
   display: grid;
   width: 1rem;
   height: 1rem;
@@ -313,7 +313,7 @@ body {
   color: #88857d;
 }
 
-.slop-activity-trace-icon svg {
+.slopr-activity-trace-icon svg {
   width: 0.625rem;
   height: 0.625rem;
   fill: none;
@@ -323,7 +323,7 @@ body {
   stroke-width: 2;
 }
 
-.slop-activity-trace-icon-reasoning::after {
+.slopr-activity-trace-icon-reasoning::after {
   display: block;
   width: 0.25rem;
   height: 0.25rem;
@@ -333,17 +333,17 @@ body {
   opacity: 0.72;
 }
 
-.slop-activity-trace-icon-reasoning {
+.slopr-activity-trace-icon-reasoning {
   border: 1px solid currentColor;
   border-radius: 9999px;
   margin-top: 0.67rem;
 }
 
-.slop-activity-trace-icon-reasoning-complete {
+.slopr-activity-trace-icon-reasoning-complete {
   position: relative;
 }
 
-.slop-activity-trace-icon-reasoning-complete::after {
+.slopr-activity-trace-icon-reasoning-complete::after {
   position: absolute;
   left: 0.25rem;
   top: 0.2rem;
@@ -359,15 +359,15 @@ body {
   transform: rotate(-45deg);
 }
 
-.slop-activity-reasoning :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
+.slopr-activity-reasoning :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
   margin-top: 0;
 }
 
-.slop-activity-reasoning :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
+.slopr-activity-reasoning :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
   margin-bottom: 0;
 }
 
-.slop-activity-globe-icon {
+.slopr-activity-globe-icon {
   width: 1.0625rem !important;
   height: 1.0625rem !important;
   stroke-width: 1.35 !important;
@@ -375,7 +375,7 @@ body {
   transform-origin: center;
 }
 
-.slop-activity-status-pill {
+.slopr-activity-status-pill {
   min-width: 3.625rem;
   border-radius: 9999px;
   padding: 0.0625rem 0.5rem;
@@ -383,17 +383,17 @@ body {
   text-align: center;
 }
 
-.slop-activity-status-neutral {
+.slopr-activity-status-neutral {
   background: #363632;
   color: #c7c5bd;
 }
 
-.slop-activity-status-failed {
+.slopr-activity-status-failed {
   background: #b85c52;
   color: #fffaf2;
 }
 
-.slop-activity-tool-title {
+.slopr-activity-tool-title {
   min-width: 0;
   overflow: hidden;
   color: #d6d3ca;
@@ -401,21 +401,21 @@ body {
   white-space: nowrap;
 }
 
-.slop-activity-tool-detail {
+.slopr-activity-tool-detail {
   overflow: hidden;
   color: #88857d;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.slop-activity-result-count {
+.slopr-activity-result-count {
   margin-top: 0.25rem;
   color: #88857d;
   font-size: 0.75rem;
   text-align: right;
 }
 
-.slop-activity-result-list {
+.slopr-activity-result-list {
   margin-top: 0.25rem;
   max-height: 10rem;
   overflow: auto;
@@ -427,24 +427,24 @@ body {
   scrollbar-width: thin;
 }
 
-.slop-activity-result-list::-webkit-scrollbar {
+.slopr-activity-result-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.slop-activity-result-list::-webkit-scrollbar-track {
+.slopr-activity-result-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.slop-activity-result-list::-webkit-scrollbar-thumb {
+.slopr-activity-result-list::-webkit-scrollbar-thumb {
   border-radius: 9999px;
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.slop-activity-result-list::-webkit-scrollbar-thumb:hover {
+.slopr-activity-result-list::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.18);
 }
 
-.slop-activity-result-row {
+.slopr-activity-result-row {
   display: grid;
   grid-template-columns: 1rem minmax(0, 1fr) auto;
   align-items: center;
@@ -452,34 +452,34 @@ body {
   padding: 0.3rem 0.35rem;
 }
 
-.slop-activity-result-title,
-.slop-activity-result-snippet {
+.slopr-activity-result-title,
+.slopr-activity-result-snippet {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.slop-activity-result-title {
+.slopr-activity-result-title {
   color: #d6d3ca;
 }
 
-.slop-activity-result-link {
+.slopr-activity-result-link {
   display: block;
   color: inherit;
   text-decoration: none;
 }
 
-.slop-activity-result-link:hover .slop-activity-result-title {
+.slopr-activity-result-link:hover .slopr-activity-result-title {
   color: #f3f0e8;
   text-decoration: underline;
   text-underline-offset: 0.14em;
 }
 
-.slop-activity-result-snippet {
+.slopr-activity-result-snippet {
   color: #aaa79e;
 }
 
-.slop-activity-result-domain {
+.slopr-activity-result-domain {
   max-width: 12rem;
   overflow: hidden;
   color: #88857d;
@@ -488,7 +488,7 @@ body {
   white-space: nowrap;
 }
 
-.slop-activity-favicon {
+.slopr-activity-favicon {
   display: grid;
   width: 1rem;
   height: 1rem;
@@ -508,7 +508,7 @@ body {
  * this mirrors that exactly. The loudspeaker is excluded (always visible).
  */
 
-.slop-thinking-panel-body {
+.slopr-thinking-panel-body {
   margin-left: 0.5rem;
   margin-top: 0.45rem;
   border-left: 1px solid #4a4741;
@@ -516,12 +516,12 @@ body {
   color: #b8b3aa;
 }
 
-.slop-thinking-panel-body :where(p, ul, ol, blockquote, pre, table),
-.slop-activity-trace-body :where(p, ul, ol, blockquote, pre, table) {
+.slopr-thinking-panel-body :where(p, ul, ol, blockquote, pre, table),
+.slopr-activity-trace-body :where(p, ul, ol, blockquote, pre, table) {
   margin-block: 0.45rem;
 }
 
-@keyframes slop-thinking-sweep {
+@keyframes slopr-thinking-sweep {
   0% {
     background-position: -62% 0;
     opacity: 0;
@@ -548,7 +548,7 @@ body {
   }
 }
 
-.slop-markdown {
+.slopr-markdown {
   font-family: var(--font-serif);
   font-weight: 360;
   line-height: 1.5;
@@ -556,89 +556,89 @@ body {
   padding-right: 2rem;
 }
 
-.slop-markdown :where(p, ul, ol, blockquote, pre, table) {
+.slopr-markdown :where(p, ul, ol, blockquote, pre, table) {
   margin-block: 0.75rem;
 }
 
-.slop-markdown :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
+.slopr-markdown :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
   margin-top: 0;
 }
 
-.slop-markdown :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
+.slopr-markdown :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
   margin-bottom: 0;
 }
 
-.slop-markdown :where(h1, h2, h3, h4) {
+.slopr-markdown :where(h1, h2, h3, h4) {
   margin: 1.1rem 0 0.45rem;
   color: #f3f0e8;
   font-weight: 530;
   line-height: 1.3;
 }
 
-.slop-markdown :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
+.slopr-markdown :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
   margin-top: 0;
 }
 
-.slop-markdown h1 {
+.slopr-markdown h1 {
   font-size: 1.65rem;
 }
 
-.slop-markdown h2 {
+.slopr-markdown h2 {
   font-size: 1.4rem;
 }
 
-.slop-markdown h3 {
+.slopr-markdown h3 {
   font-size: 1.2rem;
 }
 
-.slop-markdown h4 {
+.slopr-markdown h4 {
   font-size: 1.15rem;
 }
 
-.slop-markdown :where(ul, ol) {
+.slopr-markdown :where(ul, ol) {
   padding-left: 1.35rem;
 }
 
-.slop-markdown ul {
+.slopr-markdown ul {
   list-style: disc;
 }
 
-.slop-markdown ol {
+.slopr-markdown ol {
   list-style: decimal;
 }
 
-.slop-markdown li + li {
+.slopr-markdown li + li {
   margin-top: 0.25rem;
 }
 
-.slop-markdown strong {
+.slopr-markdown strong {
   color: #faf9f5;
   font-weight: 530;
 }
 
-.slop-markdown em {
+.slopr-markdown em {
   color: #e2ded4;
 }
 
-.slop-markdown a {
+.slopr-markdown a {
   color: #d97757;
   text-decoration: underline;
   text-underline-offset: 0.16em;
 }
 
-.slop-markdown blockquote {
+.slopr-markdown blockquote {
   border-left: 2px solid #4b4a46;
   color: #c3c2b7;
   padding-left: 0.9rem;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) hr {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) hr {
   border: 0;
   border-top: 1px solid #4a4741;
   margin-block: 1.8rem;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) code {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) code {
   border-radius: 0.25rem;
   background: #2a2a28;
   font-family: var(--font-mono);
@@ -647,7 +647,7 @@ body {
   padding: 0.1rem 0.28rem;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) pre {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) pre {
   overflow-x: auto;
   border: 1px solid #3e3d39;
   border-radius: 0.5rem;
@@ -655,18 +655,18 @@ body {
   padding: 0.85rem 1rem;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) pre code {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) pre code {
   border-radius: 0;
   background: transparent;
   padding: 0;
 }
 
 /* Code-Block-Wrapper mit Copy-Button */
-.slop-codeblock {
+.slopr-codeblock {
   position: relative;
 }
 
-.slop-codeblock .slop-codeblock-copy {
+.slopr-codeblock .slopr-codeblock-copy {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -683,101 +683,101 @@ body {
   transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
 }
 
-.slop-codeblock .slop-codeblock-copy:hover {
+.slopr-codeblock .slopr-codeblock-copy:hover {
   opacity: 1;
   background: #2a2a28;
   color: #f3f0e8;
 }
 
 /* Platz schaffen, damit der Button nicht über dem Code liegt */
-.slop-codeblock pre {
+.slopr-codeblock pre {
   padding-right: 2.75rem;
 }
 
-/* Syntax-Highlighting (highlight.js) — an Slop-Dunkeltheme angepasst */
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs {
+/* Syntax-Highlighting (highlight.js) — an Slopr-Dunkeltheme angepasst */
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs {
   color: #f3f0e8;
   background: transparent;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-comment,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-quote {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-comment,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-quote {
   color: #7d8a72;
   font-style: italic;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-keyword,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-selector-tag,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-literal,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-doctag {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-keyword,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-selector-tag,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-literal,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-doctag {
   color: #e0915f;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-string,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-regexp,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-addition {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-string,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-regexp,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-addition {
   color: #a3b565;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-number,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-symbol,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-bullet {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-number,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-symbol,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-bullet {
   color: #c08bc4;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-title,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-title.function_,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-section,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-name {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-title,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-title.function_,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-section,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-name {
   color: #6fb3c9;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-built_in,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-class .hljs-title,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-title.class_,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-type {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-built_in,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-class .hljs-title,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-title.class_,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-type {
   color: #d8c06a;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-attr,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-attribute,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-variable,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-template-variable,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-property {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-attr,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-attribute,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-variable,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-template-variable,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-property {
   color: #d2b07a;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-meta,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-operator,
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-punctuation {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-meta,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-operator,
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-punctuation {
   color: #9b9789;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-deletion {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-deletion {
   color: #d97c6b;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-emphasis {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-emphasis {
   font-style: italic;
 }
 
-:is(.slop-markdown, .slop-thinking-panel-body, .slop-activity-trace-body) .hljs-strong {
+:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-strong {
   font-weight: 600;
 }
 
-.slop-markdown table {
+.slopr-markdown table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
 }
 
-.slop-markdown :where(th, td) {
+.slopr-markdown :where(th, td) {
   border: 1px solid #3e3d39;
   padding: 0.45rem 0.6rem;
   text-align: left;
 }
 
-.slop-markdown th {
+.slopr-markdown th {
   background: #282826;
   color: #faf9f5;
   font-weight: 500;

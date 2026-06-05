@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/slop-refresh-test.XXXXXX")
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/slopr-refresh-test.XXXXXX")
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -15,12 +15,12 @@ cat > "$TMP_DIR/bin/docker" <<'STUB'
 #!/bin/sh
 set -eu
 
-LOG_FILE=${SLOP_REFRESH_TEST_LOG:?}
+LOG_FILE=${SLOPR_REFRESH_TEST_LOG:?}
 
 printf '%s\n' "$*" >> "$LOG_FILE"
 
 case "$*" in
-  "compose -f compose.dev.yaml build slop")
+  "compose -f compose.dev.yaml build slopr")
     printf '%s\n' build-start >> "$LOG_FILE"
     sleep 1
     printf '%s\n' build-done >> "$LOG_FILE"
@@ -42,7 +42,7 @@ STUB
 chmod +x "$TMP_DIR/bin/docker"
 
 LOG_FILE="$TMP_DIR/docker.log"
-PATH="$TMP_DIR/bin:$PATH" SLOP_REFRESH_TEST_LOG="$LOG_FILE" "$ROOT/hack/refresh.sh"
+PATH="$TMP_DIR/bin:$PATH" SLOPR_REFRESH_TEST_LOG="$LOG_FILE" "$ROOT/hack/refresh.sh"
 
 build_start_line=$(grep -n '^build-start$' "$LOG_FILE" | cut -d: -f1)
 down_start_line=$(grep -n '^down-start$' "$LOG_FILE" | cut -d: -f1)

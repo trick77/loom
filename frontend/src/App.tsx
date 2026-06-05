@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChatShell } from "./ChatShell";
-import slopImage from "./assets/sloppy.png";
+import sloprImage from "./assets/sloppy.png";
 import { getMe, listUsers, logout, type User } from "./api";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
@@ -71,10 +71,10 @@ export default function App() {
     return (
       <main className="flex h-screen items-center justify-center bg-bg px-6 font-sans text-ink">
         <section className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <img src={slopImage} alt="Slop" className="w-full max-w-sm rounded-slop" />
+          <img src={sloprImage} alt="Slopr" className="w-full max-w-sm rounded-slopr" />
           <a
             href="/api/auth/login"
-            className="rounded-slop bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"
+            className="rounded-slopr bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"
           >
             Sign in
           </a>

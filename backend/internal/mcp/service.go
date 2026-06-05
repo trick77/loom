@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/slop/internal/llm"
+	"github.com/trick77/slopr/internal/llm"
 )
 
 // statusProbeTimeout bounds each per-server reachability probe in ServerStatus.

@@ -6,7 +6,7 @@ import "fmt"
 // numeric channels) while the OOXML generators use the *Hex strings.
 type RGB struct{ R, G, B int }
 
-// palette holds the Slop brand colors once, so PPTX and PDF stay in sync.
+// palette holds the Slopr brand colors once, so PPTX and PDF stay in sync.
 type palette struct {
 	Ink    RGB
 	Cream  RGB
@@ -48,7 +48,7 @@ func hexToRGB(hex string) RGB {
 	return RGB{R: parse(hex[0:2]), G: parse(hex[2:4]), B: parse(hex[4:6])}
 }
 
-// Theme is the single shared Slop palette.
+// Theme is the single shared Slopr palette.
 var Theme = func() palette {
 	p := palette{
 		InkHex: "1D1D1B", CreamHex: "F3F0E8", AccentHex: "9A6B4F",

@@ -1,4 +1,4 @@
-# Slop MiMo Reasoning Display Implementation Plan
+# Slopr MiMo Reasoning Display Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -20,7 +20,7 @@
 - Modify `backend/internal/httpapi/server.go`, `message_stream_handlers.go`, `chat_test_helpers_test.go`, and `message_stream_handlers_test.go`: send `assistant_reasoning_delta`, persist reasoning, and include reasoning in LLM history.
 - Modify `frontend/src/api.ts` and `frontend/src/api.test.ts`: add `onReasoningDelta`.
 - Modify `frontend/src/ChatShell.tsx` and `frontend/src/App.test.tsx`: maintain streaming reasoning state and render collapsible Thinking UI.
-- Modify `frontend/src/index.css`: add minimal Thinking panel styles using existing Slop tokens/colors.
+- Modify `frontend/src/index.css`: add minimal Thinking panel styles using existing Slopr tokens/colors.
 
 ---
 
@@ -739,21 +739,21 @@ function ThinkingPanel({ content, complete }: { content: string; complete: boole
   const trimmed = content.trim();
   if (trimmed === "") return null;
   return (
-    <div className="slop-thinking-panel">
+    <div className="slopr-thinking-panel">
       <button
         aria-expanded={expanded}
         aria-label={expanded ? "Hide thinking" : "Show thinking"}
-        className="slop-thinking-panel-toggle"
+        className="slopr-thinking-panel-toggle"
         type="button"
         onClick={() => setExpanded((current) => !current)}
       >
         <span>{complete ? "Thinking" : "Thinking..."}</span>
-        <span aria-hidden="true" className={expanded ? "slop-thinking-chevron-expanded" : "slop-thinking-chevron"}>
+        <span aria-hidden="true" className={expanded ? "slopr-thinking-chevron-expanded" : "slopr-thinking-chevron"}>
           ^
         </span>
       </button>
       {expanded && (
-        <div className="slop-thinking-panel-body">
+        <div className="slopr-thinking-panel-body">
           <Markdown remarkPlugins={[remarkGfm]}>{trimmed}</Markdown>
         </div>
       )}
@@ -781,7 +781,7 @@ Render streaming reasoning before streaming text:
 In `frontend/src/index.css`, add:
 
 ```css
-.slop-thinking-panel {
+.slopr-thinking-panel {
   max-width: 48rem;
   border: 1px solid #3e3d39;
   border-radius: 8px;
@@ -790,7 +790,7 @@ In `frontend/src/index.css`, add:
   font-size: 0.8125rem;
 }
 
-.slop-thinking-panel-toggle {
+.slopr-thinking-panel-toggle {
   display: flex;
   width: 100%;
   align-items: center;
@@ -800,22 +800,22 @@ In `frontend/src/index.css`, add:
   color: #d8d4ca;
 }
 
-.slop-thinking-chevron,
-.slop-thinking-chevron-expanded {
+.slopr-thinking-chevron,
+.slopr-thinking-chevron-expanded {
   display: inline-block;
   line-height: 1;
   transition: transform 0.16s ease;
 }
 
-.slop-thinking-chevron {
+.slopr-thinking-chevron {
   transform: rotate(180deg);
 }
 
-.slop-thinking-chevron-expanded {
+.slopr-thinking-chevron-expanded {
   transform: rotate(0deg);
 }
 
-.slop-thinking-panel-body {
+.slopr-thinking-panel-body {
   border-top: 1px solid #3e3d39;
   padding: 0.75rem;
   color: #c7c5bd;
@@ -894,7 +894,7 @@ Run:
 make build
 ```
 
-Expected: PASS and `bin/slop` exists.
+Expected: PASS and `bin/slopr` exists.
 
 - [ ] **Step 6: Check final diff**
 
@@ -912,7 +912,7 @@ Expected: only intentional source/test/migration changes are listed; `git diff -
 If verification required small fixes, commit them:
 
 ```bash
-git add backend frontend docs/superpowers/plans/2026-05-31-slop-mimo-reasoning.md
+git add backend frontend docs/superpowers/plans/2026-05-31-slopr-mimo-reasoning.md
 git commit -m "test: verify MiMo reasoning display"
 ```
 
@@ -924,4 +924,4 @@ If no fixes were needed, do not create an empty commit.
 
 - Spec coverage: MiMo streaming `delta.reasoning_content`, persisted assistant `reasoning_content`, multi-turn/tool-call preservation, SSE event parsing, collapsible frontend display, and verification are covered.
 - Placeholder scan: no TBD/TODO/implement-later placeholders remain.
-- Type consistency: backend names use `ReasoningContent` / `ReasoningDelta`; API JSON uses `reasoning_content` for MiMo and `reasoningContent` for Slop message JSON; SSE event is `assistant_reasoning_delta`.
+- Type consistency: backend names use `ReasoningContent` / `ReasoningDelta`; API JSON uses `reasoning_content` for MiMo and `reasoningContent` for Slopr message JSON; SSE event is `assistant_reasoning_delta`.

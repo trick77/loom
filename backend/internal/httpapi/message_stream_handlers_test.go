@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/slop/internal/artifact"
-	"github.com/trick77/slop/internal/chat"
-	"github.com/trick77/slop/internal/docgen"
-	"github.com/trick77/slop/internal/imagegen"
-	"github.com/trick77/slop/internal/llm"
-	"github.com/trick77/slop/internal/mcp"
-	"github.com/trick77/slop/internal/store"
+	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/slopr/internal/chat"
+	"github.com/trick77/slopr/internal/docgen"
+	"github.com/trick77/slopr/internal/imagegen"
+	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/slopr/internal/mcp"
+	"github.com/trick77/slopr/internal/store"
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
@@ -993,11 +993,11 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 					Type: "function",
 					Function: llm.ToolCallFunction{
 						Name:      "search__web",
-						Arguments: `{"q":"slop"}`,
+						Arguments: `{"q":"slopr"}`,
 					},
 				}},
 			},
-			{Content: "I found Slop."},
+			{Content: "I found Slopr."},
 		},
 	}
 	srv := newAuthenticatedChatServer(t, Deps{
@@ -1016,7 +1016,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slop"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1030,7 +1030,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 		"event: tool_result",
 		`"content":"search result"`,
 		"event: assistant_delta",
-		`data: {"content":"I found Slop."}`,
+		`data: {"content":"I found Slopr."}`,
 		"event: assistant_message",
 		"event: done",
 	} {
@@ -1038,7 +1038,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 			t.Fatalf("SSE body missing %q:\n%s", want, body)
 		}
 	}
-	if store.assistantContent != "I found Slop." {
+	if store.assistantContent != "I found Slopr." {
 		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
 	}
 	if len(llmClient.histories) != 2 {
@@ -1064,7 +1064,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 		`"type":"tool"`,
 		`"id":"call_1"`,
 		`"name":"search__web"`,
-		`"rawArguments":"{\"q\":\"slop\"}"`,
+		`"rawArguments":"{\"q\":\"slopr\"}"`,
 		`"rawOutput":"search result"`,
 	} {
 		if !strings.Contains(trace, want) {
@@ -1121,7 +1121,7 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 				ID: "call_1",
 				Function: llm.ToolCallFunction{
 					Name:      "search__web",
-					Arguments: `{"q":"slop"}`,
+					Arguments: `{"q":"slopr"}`,
 				},
 			}}},
 			{Content: "The search tool failed, but I can continue."},
@@ -1136,7 +1136,7 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slop"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1172,7 +1172,7 @@ func TestStreamMessageStopsAfterToolCallLimit(t *testing.T) {
 		MCP:  fakeMCPService{tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slop"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1209,7 +1209,7 @@ func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slop"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1244,7 +1244,7 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slop"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
 
 	srv.ServeHTTP(rec, req)
 

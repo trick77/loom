@@ -19,12 +19,12 @@ func TestComposePassesBFLImageGenerationEnv(t *testing.T) {
 			compose := string(data)
 
 			for _, want := range []string{
-				`SLOP_BFL_BASE_URL: "${SLOP_BFL_BASE_URL:-https://api.bfl.ai/v1}"`,
-				`SLOP_BFL_API_KEY: "${SLOP_BFL_API_KEY:-}"`,
-				`SLOP_BFL_MODEL: "${SLOP_BFL_MODEL:-flux-2-klein-4b}"`,
+				`SLOPR_BFL_BASE_URL: "${SLOPR_BFL_BASE_URL:-https://api.bfl.ai/v1}"`,
+				`SLOPR_BFL_API_KEY: "${SLOPR_BFL_API_KEY:-}"`,
+				`SLOPR_BFL_MODEL: "${SLOPR_BFL_MODEL:-flux-2-klein-4b}"`,
 			} {
 				if !strings.Contains(compose, want) {
-					t.Fatalf("%s does not pass %s into the slop container", path, strings.Split(want, ":")[0])
+					t.Fatalf("%s does not pass %s into the slopr container", path, strings.Split(want, ":")[0])
 				}
 			}
 		})

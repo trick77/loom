@@ -103,7 +103,7 @@ func ResolveExisting(usersDir, userID, volumeRelPath string) (string, error) {
 	if filepath.IsAbs(volumeRelPath) || strings.Contains(volumeRelPath, "..") {
 		return "", errors.New("invalid artifact path")
 	}
-	if strings.HasPrefix(filepath.ToSlash(volumeRelPath), ".slop/") {
+	if strings.HasPrefix(filepath.ToSlash(volumeRelPath), ".slopr/") {
 		return "", errors.New("reserved artifact path")
 	}
 	userRoot := filepath.Join(usersDir, userID)
@@ -138,7 +138,7 @@ func ensureResolvedInside(root, path string) error {
 
 func sanitizeDisplayFilename(input, extension string) (string, error) {
 	slashInput := filepath.ToSlash(input)
-	if filepath.IsAbs(input) || strings.Contains(slashInput, "../") || strings.HasPrefix(slashInput, ".slop/") {
+	if filepath.IsAbs(input) || strings.Contains(slashInput, "../") || strings.HasPrefix(slashInput, ".slopr/") {
 		return "", errors.New("invalid filename")
 	}
 	name := strings.TrimSpace(filepath.Base(input))

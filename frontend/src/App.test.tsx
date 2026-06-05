@@ -38,7 +38,7 @@ test("renders signed-out screen when /api/me returns 401", async () => {
     "href",
     "/api/auth/login",
   );
-  expect(screen.getByAltText("Slop")).toBeInTheDocument();
+  expect(screen.getByAltText("Slopr")).toBeInTheDocument();
 });
 
 test("renders authenticated shell for signed-in users", async () => {
@@ -869,7 +869,7 @@ test("renders artifact card from historical assistant message", async () => {
 });
 
 test("renders image artifact preview from generated artifact card", async () => {
-  const objectURL = "blob:slop-image-preview";
+  const objectURL = "blob:slopr-image-preview";
   const createObjectURL = vi.fn(() => objectURL);
   const revokeObjectURL = vi.fn();
   stubURLObjectMethods(createObjectURL, revokeObjectURL);
@@ -908,7 +908,7 @@ test("renders image artifact preview from generated artifact card", async () => 
 });
 
 test("clicking an image artifact opens a lightbox preview in the browser", async () => {
-  const objectURL = "blob:slop-image-preview";
+  const objectURL = "blob:slopr-image-preview";
   stubURLObjectMethods(vi.fn(() => objectURL), vi.fn());
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     if (String(input) === "/api/artifacts/art_1/download") {
@@ -985,7 +985,7 @@ test("keeps just-completed reasoning trace collapsed until opened", async () => 
 
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(document.querySelector(".slop-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
 });
 
 test("restores persisted activity trace when reopening a chat", async () => {
@@ -995,12 +995,12 @@ test("restores persisted activity trace when reopening a chat", async () => {
       {
         id: "m1",
         role: "user",
-        content: "Search Slop",
+        content: "Search Slopr",
       },
       {
         id: "m2",
         role: "assistant",
-        content: "I found Slop.",
+        content: "I found Slopr.",
         activityTrace: [
           {
             id: "reasoning-1",
@@ -1025,7 +1025,7 @@ test("restores persisted activity trace when reopening a chat", async () => {
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  expect(await screen.findByText("I found Slop.")).toBeInTheDocument();
+  expect(await screen.findByText("I found Slopr.")).toBeInTheDocument();
   const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
 
@@ -1034,7 +1034,7 @@ test("restores persisted activity trace when reopening a chat", async () => {
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(screen.getByText("Agentgateway")).toBeInTheDocument();
-  expect(document.querySelector(".slop-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
 });
 
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
@@ -1056,14 +1056,14 @@ test("keeps active activity trace while assistant output streams without explici
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  const trace = await screen.findByRole("status", { name: /slop activity trace/i });
+  const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
   expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  expect(screen.getByRole("status", { name: /slop activity trace/i })).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: /slopr activity trace/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
 });
 
@@ -1089,7 +1089,7 @@ test("keeps active activity trace visible while assistant text is streaming", as
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
   );
-  const trace = await screen.findByRole("status", { name: /slop activity trace/i });
+  const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
   expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
 
@@ -1103,7 +1103,7 @@ test("keeps active activity trace visible while assistant text is streaming", as
 
   expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(document.querySelector(".slop-activity-trace-icon-reasoning-complete")).toBeNull();
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeNull();
 
   streamController.current?.enqueue(
     new TextEncoder().encode(
@@ -1116,14 +1116,14 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(await screen.findByText("Hello.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
-  expect(document.querySelector(".slop-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
 });
 
 test("centers the active thinking status dot inside its circle", () => {
   const css = readFileSync("src/index.css", "utf8");
-  const activeStatusRule = css.match(/\.slop-thinking-status-active\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const activeStatusRule = css.match(/\.slopr-thinking-status-active\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const activeDotRule =
-    css.match(/\.slop-thinking-status-active::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.slopr-thinking-status-active::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
   expect(activeStatusRule).toContain("display: inline-grid");
   expect(activeStatusRule).toContain("place-items: center");
@@ -1135,15 +1135,15 @@ test("centers the active thinking status dot inside its circle", () => {
 test("centers reasoning activity dots inside their row circles", () => {
   const css = readFileSync("src/index.css", "utf8");
   const reasoningIconRule =
-    css.match(/\.slop-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.slopr-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const reasoningDotRule =
-    css.match(/\.slop-activity-trace-icon-reasoning::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.slopr-activity-trace-icon-reasoning::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
   expect(reasoningIconRule).toContain("border: 1px solid currentColor");
   expect(reasoningDotRule).toContain("display: block");
   expect(reasoningDotRule).toContain("width: 0.25rem");
   expect(reasoningDotRule).toContain("height: 0.25rem");
-  expect(css).toContain(".slop-activity-trace-icon-reasoning-complete::after");
+  expect(css).toContain(".slopr-activity-trace-icon-reasoning-complete::after");
   expect(css).toContain("border-bottom: 1.5px solid currentColor");
   expect(css).toContain("border-left: 1.5px solid currentColor");
 });
@@ -1151,7 +1151,7 @@ test("centers reasoning activity dots inside their row circles", () => {
 test("spaces activity trace connector lines away from adjacent icons", () => {
   const css = readFileSync("src/index.css", "utf8");
   const connectorRule =
-    css.match(/\.slop-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.slopr-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
   expect(connectorRule).toContain("top: 1.5rem");
   expect(connectorRule).toContain("bottom: 0.5rem");
@@ -1184,7 +1184,7 @@ test("shows active activity trace with reasoning and tool activity before assist
     new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'),
   );
 
-  const trace = await screen.findByRole("status", { name: /slop activity trace/i });
+  const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
   expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
   expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
@@ -1216,13 +1216,13 @@ test("hides empty activity trace when the stream fails", async () => {
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  expect(await screen.findByRole("status", { name: /slop activity trace/i })).toBeInTheDocument();
+  expect(await screen.findByRole("status", { name: /slopr activity trace/i })).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
   streamController.current?.close();
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
-  expect(screen.queryByRole("status", { name: /slop activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
 });
 
 test("keeps the transcript pinned while an assistant response streams at the bottom", async () => {
@@ -1600,7 +1600,7 @@ test("renders assistant markdown without rendering raw HTML", async () => {
   expect(screen.getByText("classic").tagName).toBe("STRONG");
   expect(screen.getByRole("list")).toBeInTheDocument();
   expect(screen.getByText(/<div>raw html<\/div>/)).toBeInTheDocument();
-  expect(document.querySelector(".slop-markdown div")).toBeNull();
+  expect(document.querySelector(".slopr-markdown div")).toBeNull();
   expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Download response" })).not.toBeInTheDocument();
 });
@@ -1627,10 +1627,10 @@ test("aligns chat messages and composer to the same readable rail", async () => 
   const transcript = await screen.findByRole("region", { name: "Conversation transcript" });
   const composerDock = screen.getByLabelText("Message composer dock");
 
-  expect(transcript.querySelector(".slop-chat-rail")).toBeInTheDocument();
-  expect(composerDock.querySelector(".slop-chat-rail")).toBeInTheDocument();
-  expect(transcript.querySelector(".slop-user-message")).toHaveClass("ml-auto");
-  expect(transcript.querySelector(".slop-assistant-message")).toBeInTheDocument();
+  expect(transcript.querySelector(".slopr-chat-rail")).toBeInTheDocument();
+  expect(composerDock.querySelector(".slopr-chat-rail")).toBeInTheDocument();
+  expect(transcript.querySelector(".slopr-user-message")).toHaveClass("ml-auto");
+  expect(transcript.querySelector(".slopr-assistant-message")).toBeInTheDocument();
 });
 
 test("anchors the chat send button inside the composer action area", async () => {
@@ -1641,8 +1641,8 @@ test("anchors the chat send button inside the composer action area", async () =>
 
   const sendButton = screen.getByRole("button", { name: "Send message" });
 
-  expect(sendButton.closest("form")).toHaveClass("slop-composer");
-  expect(sendButton).toHaveClass("slop-composer-send");
+  expect(sendButton.closest("form")).toHaveClass("slopr-composer");
+  expect(sendButton).toHaveClass("slopr-composer-send");
 });
 
 test("copying a markdown assistant response writes rendered plain text", async () => {
@@ -1707,7 +1707,7 @@ test("renders raw file-like assistant output inline", async () => {
     await screen.findByText(
       (_, element) =>
         element !== null &&
-        element.classList.contains("slop-markdown") &&
+        element.classList.contains("slopr-markdown") &&
         element.textContent?.includes("<!doctype html>") === true,
     ),
   ).toBeInTheDocument();
@@ -1845,7 +1845,7 @@ test("renders inline triple backticks without treating them as a download fence"
 });
 
 test("downloads fenced generated data without markdown fences", async () => {
-  const objectURL = "blob:slop-response";
+  const objectURL = "blob:slopr-response";
   let downloadedBlob: Blob | undefined;
   const createObjectURL = vi.fn((blob: Blob) => {
     downloadedBlob = blob;
@@ -1987,7 +1987,7 @@ test("surfaces the server error and keeps failed activity trace visible", async 
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
-  const trace = screen.getByRole("status", { name: /slop activity trace/i });
+  const trace = screen.getByRole("status", { name: /slopr activity trace/i });
   expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(screen.queryByText("agentgateway")).not.toBeInTheDocument();
 
@@ -2050,7 +2050,7 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   const answer = await screen.findByText("I found the update.");
   const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toHaveTextContent("Searched 1 query");
-  expect(screen.queryByRole("status", { name: /slop activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
   expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
   expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
 
@@ -2067,8 +2067,8 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   expect(screen.getByRole("link", { name: /Our Story and Lumon Brand/ })).toHaveAttribute("href", "https://lumon.com/story");
   expect(screen.queryByText("# Our Story and Lumon Brand")).not.toBeInTheDocument();
   expect(screen.getByText("Malformed source")).toBeInTheDocument();
-  const resultList = document.querySelector(".slop-activity-result-list");
-  const faviconImages = resultList?.querySelectorAll("img.slop-activity-favicon");
+  const resultList = document.querySelector(".slopr-activity-result-list");
+  const faviconImages = resultList?.querySelectorAll("img.slopr-activity-favicon");
   expect(faviconImages).toHaveLength(2);
   expect(faviconImages?.[0]).toHaveAttribute(
     "src",

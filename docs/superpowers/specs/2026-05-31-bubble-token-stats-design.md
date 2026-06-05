@@ -106,8 +106,8 @@ Neue optionale Felder: `promptTokens?`, `completionTokens?`, `totalTokens?`,
 - Zeile default `opacity-0` + `group-hover:opacity-100 transition` (die
   Bubble-Wrapper tragen bereits `className="group"`).
 - Klick togglet „immer sichtbar" (`opacity-100`), persistiert in
-  `localStorage["slop_show_chat_metrics"]`.
-- Synchronisation aller Bubbles via `CustomEvent("slop_show_metrics_change")`
+  `localStorage["slopr_show_chat_metrics"]`.
+- Synchronisation aller Bubbles via `CustomEvent("slopr_show_metrics_change")`
   und einem React-Context-Provider, der um den Transcript-Bereich gelegt wird
   (analog ALLM `MetricsProvider`).
 

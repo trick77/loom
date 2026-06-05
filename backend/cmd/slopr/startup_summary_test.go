@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/slop/internal/config"
-	"github.com/trick77/slop/internal/mcp"
+	"github.com/trick77/slopr/internal/config"
+	"github.com/trick77/slopr/internal/mcp"
 )
 
 func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
@@ -16,12 +16,12 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 		EmbedModel: "text-embedding-3-small",
 	}, mcp.Config{}, startupRuntime{DocToolCount: 5})
 
-	assertCapability(t, items, "chat", "disabled", "SLOP_CHAT_BASE_URL")
-	assertCapability(t, items, "embeddings", "disabled", "SLOP_EMBED_BASE_URL")
+	assertCapability(t, items, "chat", "disabled", "SLOPR_CHAT_BASE_URL")
+	assertCapability(t, items, "embeddings", "disabled", "SLOPR_EMBED_BASE_URL")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
-	assertCapability(t, items, "Tavily web search", "disabled", "SLOP_TAVILY_API_KEY")
-	assertCapability(t, items, "Context7 docs", "disabled", "SLOP_CONTEXT7_API_KEY")
-	assertCapability(t, items, "BFL image generation", "disabled", "SLOP_BFL_API_KEY")
+	assertCapability(t, items, "Tavily web search", "disabled", "SLOPR_TAVILY_API_KEY")
+	assertCapability(t, items, "Context7 docs", "disabled", "SLOPR_CONTEXT7_API_KEY")
+	assertCapability(t, items, "BFL image generation", "disabled", "SLOPR_BFL_API_KEY")
 	assertCapability(t, items, "document generation", "enabled", "tools=5")
 	assertCapability(t, items, "artifacts", "enabled", "users_dir=/data/users")
 }

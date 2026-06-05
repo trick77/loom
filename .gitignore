@@ -7,8 +7,8 @@ frontend/dist/
 *.tsbuildinfo
 
 # Go
-/slop
-/backend/slop
+/slopr
+/backend/slopr
 /bin/
 *.test
 

@@ -1,4 +1,4 @@
-# Slop Phase 3 Chat Core Implementation Plan
+# Slopr Phase 3 Chat Core Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -30,7 +30,7 @@
 - Create `backend/internal/httpapi/chat_handlers.go`: JSON chat endpoints and SSE send endpoint.
 - Modify `backend/internal/httpapi/server.go`: add chat and LLM dependencies, register protected chat routes.
 - Modify `backend/internal/httpapi/server_test.go`: route-level auth, scoping, JSON, and stream tests.
-- Modify `backend/cmd/slop/main.go`: initialize chat store and MiMo client from config.
+- Modify `backend/cmd/slopr/main.go`: initialize chat store and MiMo client from config.
 - Modify `frontend/src/api.ts`: project/thread/message DTOs and API helpers.
 - Create `frontend/src/api.test.ts`: API URL construction and SSE parsing tests.
 - Modify `frontend/src/App.tsx`: three-column chat shell, project/thread lists, message stream, composer.
@@ -533,7 +533,7 @@ git commit -m "feat: add openai compatible chat client"
 - Create: `backend/internal/httpapi/chat_handlers.go`
 - Modify: `backend/internal/httpapi/server.go`
 - Modify: `backend/internal/httpapi/server_test.go`
-- Modify: `backend/cmd/slop/main.go`
+- Modify: `backend/cmd/slopr/main.go`
 
 - [ ] **Step 1: Write failing HTTP API tests**
 
@@ -669,7 +669,7 @@ Handler requirements:
 - Build LLM history from persisted messages plus the new user message, using roles `system`, `user`, and `assistant`. The system prompt is:
 
 ```text
-You are Slop, a concise assistant for work and school. Answer in the user's language unless their profile requests a specific response language.
+You are Slopr, a concise assistant for work and school. Answer in the user's language unless their profile requests a specific response language.
 ```
 
 - If `auth.User.ResponseLanguage` is not empty and not `auto`, append:
@@ -682,7 +682,7 @@ Always answer in this language: <response_language>.
 
 - [ ] **Step 5: Wire the real dependencies**
 
-In `backend/cmd/slop/main.go`, initialize:
+In `backend/cmd/slopr/main.go`, initialize:
 
 ```go
 chatStore := chat.NewStore(db)
@@ -708,7 +708,7 @@ Expected: PASS.
 Commit:
 
 ```bash
-git add backend/internal/httpapi/server.go backend/internal/httpapi/chat_handlers.go backend/internal/httpapi/server_test.go backend/cmd/slop/main.go
+git add backend/internal/httpapi/server.go backend/internal/httpapi/chat_handlers.go backend/internal/httpapi/server_test.go backend/cmd/slopr/main.go
 git commit -m "feat: expose chat api"
 ```
 
@@ -909,7 +909,7 @@ UI requirements:
 - Thread click loads `GET /api/threads/{id}`.
 - Send validates non-empty draft, creates a thread first if none is selected, calls `streamMessage`, appends the user message event, appends deltas to `streamingText`, replaces the streaming text with the persisted assistant message, and updates the thread title when a `thread` event arrives.
 - Disable send while streaming.
-- Use existing theme classes: `bg-bg`, `bg-panel`, `bg-active`, `text-ink`, `text-muted`, `border-border`, `bg-accent`, `rounded-slop`, `font-serif`, `font-sans`.
+- Use existing theme classes: `bg-bg`, `bg-panel`, `bg-active`, `text-ink`, `text-muted`, `border-border`, `bg-accent`, `rounded-slopr`, `font-serif`, `font-sans`.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -934,13 +934,13 @@ git commit -m "feat: add chat frontend shell"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/superpowers/specs/2026-05-30-slop-design.md` only if implementation intentionally diverged.
+- Modify: `docs/superpowers/specs/2026-05-30-slopr-design.md` only if implementation intentionally diverged.
 
 - [ ] **Step 1: Align README with Phase 3 behavior**
 
 Ensure README includes:
 
-- `SLOP_CHAT_BASE_URL`, `SLOP_CHAT_API_KEY`, and `SLOP_CHAT_MODEL`.
+- `SLOPR_CHAT_BASE_URL`, `SLOPR_CHAT_API_KEY`, and `SLOPR_CHAT_MODEL`.
 - Authenticated chat smoke test steps: sign in, create a new chat, send a message, see streamed response, confirm the thread title changes.
 - A note that MCP tools, RAG/document upload, citations, artifacts, and memory are planned phases and are not enabled by Phase 3.
 
@@ -971,7 +971,7 @@ Expected:
 If README or design docs changed:
 
 ```bash
-git add README.md docs/superpowers/specs/2026-05-30-slop-design.md
+git add README.md docs/superpowers/specs/2026-05-30-slopr-design.md
 git commit -m "docs: document chat core setup"
 ```
 

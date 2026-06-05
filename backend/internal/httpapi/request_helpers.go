@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/trick77/slop/internal/auth"
+	"github.com/trick77/slopr/internal/auth"
 )
 
 const maxJSONBodyBytes = 64 * 1024

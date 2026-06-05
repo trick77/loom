@@ -31,7 +31,7 @@ func TestOIDCService_CallbackMapsVerifiedClaims(t *testing.T) {
 			Subject:  "sub-1",
 			Username: "jan",
 			Email:    "jan@example.com",
-			Groups:   []string{"slop-admins"},
+			Groups:   []string{"slopr-admins"},
 		}, nonce: "valid-nonce"},
 	})
 	req := requestWithValidStateAndNonce(t, service)
@@ -43,7 +43,7 @@ func TestOIDCService_CallbackMapsVerifiedClaims(t *testing.T) {
 	if claims.Subject != "sub-1" {
 		t.Fatalf("subject = %q", claims.Subject)
 	}
-	if claims.Groups[0] != "slop-admins" {
+	if claims.Groups[0] != "slopr-admins" {
 		t.Fatalf("groups = %v", claims.Groups)
 	}
 }
@@ -77,7 +77,7 @@ func TestOIDCService_CallbackRejectsNonceMismatch(t *testing.T) {
 func TestOIDCService_LoginSetsStateAndNonceCookies(t *testing.T) {
 	service := NewOIDCService(OIDCServiceConfig{
 		ClientID:    "client",
-		RedirectURL: "https://slop.example.com/api/auth/callback",
+		RedirectURL: "https://slopr.example.com/api/auth/callback",
 		Backend:     fakeOIDCBackend{authURL: "https://auth.example.com/authorize"},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/login", nil)

@@ -716,8 +716,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { Message } from "./api";
 import { buildMetricsString } from "./metrics";
 
-export const SHOW_METRICS_KEY = "slop_show_chat_metrics";
-const SHOW_METRICS_EVENT = "slop_show_metrics_change";
+export const SHOW_METRICS_KEY = "slopr_show_chat_metrics";
+const SHOW_METRICS_EVENT = "slopr_show_metrics_change";
 
 const MetricsContext = createContext<{
   showAlways: boolean;
@@ -943,5 +943,5 @@ Expected: PASS — migrations including `0005_message_metrics.sql` apply in orde
 ## Self-Review Notes
 
 - **Spec coverage:** voll (model/duration/tps/prompt→completion/total/cached/reasoning) → Tasks 5-6; DB persistence (migration) → Task 1; duration semantics (final round only) → Tasks 2-3; hover + localStorage toggle + cross-bubble sync → Task 6; render guard for null/historical → `hasRenderableMetrics` in Task 5; all 5 backend touchpoints (migration, StreamResult, handler, store INSERT + both SELECTs, Message struct) → Tasks 1-3.
-- **Naming consistency:** `messageMetricsFromResult`, `buildMetricsString`, `hasRenderableMetrics`, `formatDuration` (ms-based), `formatTps`, `MetricsProvider`, `MessageMetrics`, `SHOW_METRICS_KEY = "slop_show_chat_metrics"` used consistently across tasks.
+- **Naming consistency:** `messageMetricsFromResult`, `buildMetricsString`, `hasRenderableMetrics`, `formatDuration` (ms-based), `formatTps`, `MetricsProvider`, `MessageMetrics`, `SHOW_METRICS_KEY = "slopr_show_chat_metrics"` used consistently across tasks.
 - **Deliberate scope cut:** pure-download artifact bubble shows no metrics (no actions row); documented in Task 7.

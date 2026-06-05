@@ -11,17 +11,17 @@ RUN npm run build
 
 # --- Stage 2: build the Go binary (pure-Go, no cgo) ---
 FROM golang:1.25-alpine AS build
-ARG SLOP_VERSION=dev
+ARG SLOPR_VERSION=dev
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 # bring in the built frontend so //go:embed all:dist has real assets
 COPY --from=web /app/backend/web/dist ./web/dist
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${SLOP_VERSION}" -o /out/slop ./cmd/slop
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${SLOPR_VERSION}" -o /out/slopr ./cmd/slopr
 
 # --- Stage 3: minimal runtime ---
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/slop /slop
+COPY --from=build /out/slopr /slopr
 EXPOSE 8080
-ENTRYPOINT ["/slop"]
+ENTRYPOINT ["/slopr"]

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/slop/internal/artifact"
-	"github.com/trick77/slop/internal/auth"
-	"github.com/trick77/slop/internal/chat"
-	"github.com/trick77/slop/internal/llm"
-	"github.com/trick77/slop/internal/mcp"
+	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/slopr/internal/auth"
+	"github.com/trick77/slopr/internal/chat"
+	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/slopr/internal/mcp"
 )
 
 var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}

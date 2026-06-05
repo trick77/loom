@@ -1,4 +1,4 @@
-// Package config loads slop's runtime configuration from environment variables.
+// Package config loads slopr's runtime configuration from environment variables.
 package config
 
 import (
@@ -12,7 +12,7 @@ import (
 // Keep in sync with imagegen's direct-client fallback default.
 const defaultBFLPollTimeout = 1 * time.Minute
 
-// AuthMode selects how Slop signs users in.
+// AuthMode selects how Slopr signs users in.
 type AuthMode string
 
 const (
@@ -84,53 +84,53 @@ func env(key, def string) string {
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:                 env("SLOP_ADDR", ":8080"),
-		DBPath:               env("SLOP_DB_PATH", "/data/slop.db"),
-		UsersDir:             env("SLOP_USERS_DIR", "/data/users"),
-		PublicURL:            env("SLOP_PUBLIC_URL", ""),
-		ChatBaseURL:          env("SLOP_CHAT_BASE_URL", ""),
-		ChatAPIKey:           env("SLOP_CHAT_API_KEY", ""),
-		ChatModel:            env("SLOP_CHAT_MODEL", "MiMo"),
-		ChatReasoningEffort:  env("SLOP_CHAT_REASONING_EFFORT", "high"),
-		ChatLogDir:           env("SLOP_CHAT_LOG_DIR", "logs/llm-responses"),
-		EmbedBaseURL:         env("SLOP_EMBED_BASE_URL", ""),
-		EmbedAPIKey:          env("SLOP_EMBED_API_KEY", ""),
-		EmbedModel:           env("SLOP_EMBED_MODEL", "text-embedding-3-small"),
-		BFLBaseURL:           env("SLOP_BFL_BASE_URL", "https://api.bfl.ai/v1"),
-		BFLAPIKey:            env("SLOP_BFL_API_KEY", ""),
-		BFLModel:             env("SLOP_BFL_MODEL", "flux-2-klein-4b"),
-		TikaURL:              env("SLOP_TIKA_URL", "http://tika:9998"),
-		TavilyURL:            env("SLOP_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
-		TavilyAPIKey:         env("SLOP_TAVILY_API_KEY", ""),
-		Context7MCPURL:       env("SLOP_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
-		Context7APIKey:       env("SLOP_CONTEXT7_API_KEY", ""),
-		MCPConfigPath:        env("SLOP_MCP_CONFIG", "/config/mcp.json"),
-		AdminInitialPassword: env("SLOP_ADMIN_INITIAL_PASSWORD", ""),
-		SessionSecret:        env("SLOP_SESSION_SECRET", ""),
-		AuthMode:             AuthMode(env("SLOP_AUTH_MODE", "")),
+		Addr:                 env("SLOPR_ADDR", ":8080"),
+		DBPath:               env("SLOPR_DB_PATH", "/data/slopr.db"),
+		UsersDir:             env("SLOPR_USERS_DIR", "/data/users"),
+		PublicURL:            env("SLOPR_PUBLIC_URL", ""),
+		ChatBaseURL:          env("SLOPR_CHAT_BASE_URL", ""),
+		ChatAPIKey:           env("SLOPR_CHAT_API_KEY", ""),
+		ChatModel:            env("SLOPR_CHAT_MODEL", "MiMo"),
+		ChatReasoningEffort:  env("SLOPR_CHAT_REASONING_EFFORT", "high"),
+		ChatLogDir:           env("SLOPR_CHAT_LOG_DIR", "logs/llm-responses"),
+		EmbedBaseURL:         env("SLOPR_EMBED_BASE_URL", ""),
+		EmbedAPIKey:          env("SLOPR_EMBED_API_KEY", ""),
+		EmbedModel:           env("SLOPR_EMBED_MODEL", "text-embedding-3-small"),
+		BFLBaseURL:           env("SLOPR_BFL_BASE_URL", "https://api.bfl.ai/v1"),
+		BFLAPIKey:            env("SLOPR_BFL_API_KEY", ""),
+		BFLModel:             env("SLOPR_BFL_MODEL", "flux-2-klein-4b"),
+		TikaURL:              env("SLOPR_TIKA_URL", "http://tika:9998"),
+		TavilyURL:            env("SLOPR_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
+		TavilyAPIKey:         env("SLOPR_TAVILY_API_KEY", ""),
+		Context7MCPURL:       env("SLOPR_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
+		Context7APIKey:       env("SLOPR_CONTEXT7_API_KEY", ""),
+		MCPConfigPath:        env("SLOPR_MCP_CONFIG", "/config/mcp.json"),
+		AdminInitialPassword: env("SLOPR_ADMIN_INITIAL_PASSWORD", ""),
+		SessionSecret:        env("SLOPR_SESSION_SECRET", ""),
+		AuthMode:             AuthMode(env("SLOPR_AUTH_MODE", "")),
 		OIDC: OIDCConfig{
-			Issuer:                env("SLOP_OIDC_ISSUER", ""),
-			ClientID:              env("SLOP_OIDC_CLIENT_ID", ""),
-			ClientSecret:          env("SLOP_OIDC_CLIENT_SECRET", ""),
-			RedirectURL:           env("SLOP_OIDC_REDIRECT_URL", ""),
-			PostLogoutRedirectURL: env("SLOP_OIDC_POST_LOGOUT_REDIRECT_URL", ""),
-			AdminGroup:            env("SLOP_OIDC_ADMIN_GROUP", ""),
+			Issuer:                env("SLOPR_OIDC_ISSUER", ""),
+			ClientID:              env("SLOPR_OIDC_CLIENT_ID", ""),
+			ClientSecret:          env("SLOPR_OIDC_CLIENT_SECRET", ""),
+			RedirectURL:           env("SLOPR_OIDC_REDIRECT_URL", ""),
+			PostLogoutRedirectURL: env("SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL", ""),
+			AdminGroup:            env("SLOPR_OIDC_ADMIN_GROUP", ""),
 		},
 		DevUser: DevUserConfig{
-			Subject:     env("SLOP_DEV_USER_SUBJECT", "dev-admin"),
-			Username:    env("SLOP_DEV_USER_USERNAME", "dev"),
-			Email:       env("SLOP_DEV_USER_EMAIL", "dev@example.local"),
-			DisplayName: env("SLOP_DEV_USER_NAME", "Dev Admin"),
+			Subject:     env("SLOPR_DEV_USER_SUBJECT", "dev-admin"),
+			Username:    env("SLOPR_DEV_USER_USERNAME", "dev"),
+			Email:       env("SLOPR_DEV_USER_EMAIL", "dev@example.local"),
+			DisplayName: env("SLOPR_DEV_USER_NAME", "Dev Admin"),
 			Role:        "admin",
 		},
 	}
-	bflPollTimeout, err := time.ParseDuration(env("SLOP_BFL_POLL_TIMEOUT", defaultBFLPollTimeout.String()))
+	bflPollTimeout, err := time.ParseDuration(env("SLOPR_BFL_POLL_TIMEOUT", defaultBFLPollTimeout.String()))
 	if err != nil || bflPollTimeout <= 0 {
-		return Config{}, fmt.Errorf("SLOP_BFL_POLL_TIMEOUT must be a duration greater than 0")
+		return Config{}, fmt.Errorf("SLOPR_BFL_POLL_TIMEOUT must be a duration greater than 0")
 	}
 	cfg.BFLPollTimeout = bflPollTimeout
 	if cfg.SessionSecret == "" {
-		return Config{}, fmt.Errorf("SLOP_SESSION_SECRET is required")
+		return Config{}, fmt.Errorf("SLOPR_SESSION_SECRET is required")
 	}
 	if cfg.AuthMode == AuthModeNone && cfg.OIDC.Issuer != "" {
 		cfg.AuthMode = AuthModeOIDC
@@ -139,33 +139,33 @@ func Load() (Config, error) {
 	case AuthModeNone:
 	case AuthModeOIDC:
 		if cfg.OIDC.Issuer == "" {
-			return Config{}, fmt.Errorf("SLOP_OIDC_ISSUER is required when SLOP_AUTH_MODE=oidc")
+			return Config{}, fmt.Errorf("SLOPR_OIDC_ISSUER is required when SLOPR_AUTH_MODE=oidc")
 		}
 		if cfg.OIDC.ClientID == "" {
-			return Config{}, fmt.Errorf("SLOP_OIDC_CLIENT_ID is required when SLOP_OIDC_ISSUER is set")
+			return Config{}, fmt.Errorf("SLOPR_OIDC_CLIENT_ID is required when SLOPR_OIDC_ISSUER is set")
 		}
 		if cfg.OIDC.ClientSecret == "" {
-			return Config{}, fmt.Errorf("SLOP_OIDC_CLIENT_SECRET is required when SLOP_OIDC_ISSUER is set")
+			return Config{}, fmt.Errorf("SLOPR_OIDC_CLIENT_SECRET is required when SLOPR_OIDC_ISSUER is set")
 		}
 		if cfg.OIDC.RedirectURL == "" {
-			return Config{}, fmt.Errorf("SLOP_OIDC_REDIRECT_URL is required when SLOP_OIDC_ISSUER is set")
+			return Config{}, fmt.Errorf("SLOPR_OIDC_REDIRECT_URL is required when SLOPR_OIDC_ISSUER is set")
 		}
 	case AuthModeDev:
 		if err := validateDevAuthLocalOnly(cfg); err != nil {
 			return Config{}, err
 		}
 	default:
-		return Config{}, fmt.Errorf("SLOP_AUTH_MODE must be one of: oidc, dev")
+		return Config{}, fmt.Errorf("SLOPR_AUTH_MODE must be one of: oidc, dev")
 	}
 	if cfg.Context7APIKey != "" && cfg.Context7MCPURL == "" {
-		return Config{}, fmt.Errorf("SLOP_CONTEXT7_MCP_URL is required when SLOP_CONTEXT7_API_KEY is set")
+		return Config{}, fmt.Errorf("SLOPR_CONTEXT7_MCP_URL is required when SLOPR_CONTEXT7_API_KEY is set")
 	}
 	if cfg.BFLAPIKey != "" {
 		if cfg.BFLBaseURL == "" {
-			return Config{}, fmt.Errorf("SLOP_BFL_BASE_URL is required when SLOP_BFL_API_KEY is set")
+			return Config{}, fmt.Errorf("SLOPR_BFL_BASE_URL is required when SLOPR_BFL_API_KEY is set")
 		}
 		if cfg.BFLModel == "" {
-			return Config{}, fmt.Errorf("SLOP_BFL_MODEL is required when SLOP_BFL_API_KEY is set")
+			return Config{}, fmt.Errorf("SLOPR_BFL_MODEL is required when SLOPR_BFL_API_KEY is set")
 		}
 	}
 	return cfg, nil
@@ -173,10 +173,10 @@ func Load() (Config, error) {
 
 func validateDevAuthLocalOnly(cfg Config) error {
 	if !isLoopbackAddr(cfg.Addr) {
-		return fmt.Errorf("SLOP_AUTH_MODE=dev requires SLOP_ADDR to bind to localhost or a loopback address")
+		return fmt.Errorf("SLOPR_AUTH_MODE=dev requires SLOPR_ADDR to bind to localhost or a loopback address")
 	}
 	if cfg.PublicURL != "" && !isLoopbackPublicURL(cfg.PublicURL) {
-		return fmt.Errorf("SLOP_AUTH_MODE=dev requires SLOP_PUBLIC_URL to be empty or loopback")
+		return fmt.Errorf("SLOPR_AUTH_MODE=dev requires SLOPR_PUBLIC_URL to be empty or loopback")
 	}
 	return nil
 }
