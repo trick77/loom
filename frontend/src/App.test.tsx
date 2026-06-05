@@ -1,5 +1,7 @@
+/// <reference types="node" />
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
 import { GeneratedArtifactCard } from "./ChatShell";
@@ -1006,6 +1008,32 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(await screen.findByText("Hel")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
+});
+
+test("centers the active thinking status dot inside its circle", () => {
+  const css = readFileSync("src/index.css", "utf8");
+  const activeStatusRule = css.match(/\.spark-thinking-status-active\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const activeDotRule =
+    css.match(/\.spark-thinking-status-active::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+
+  expect(activeStatusRule).toContain("display: inline-grid");
+  expect(activeStatusRule).toContain("place-items: center");
+  expect(activeDotRule).toContain("width: 0.375rem");
+  expect(activeDotRule).toContain("height: 0.375rem");
+  expect(activeDotRule).not.toContain("inset:");
+});
+
+test("centers reasoning activity dots inside their row circles", () => {
+  const css = readFileSync("src/index.css", "utf8");
+  const reasoningIconRule =
+    css.match(/\.spark-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const reasoningDotRule =
+    css.match(/\.spark-activity-trace-icon-reasoning::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+
+  expect(reasoningIconRule).toContain("border: 1px solid currentColor");
+  expect(reasoningDotRule).toContain("display: block");
+  expect(reasoningDotRule).toContain("width: 0.25rem");
+  expect(reasoningDotRule).toContain("height: 0.25rem");
 });
 
 test("shows active activity trace with reasoning and tool activity before assistant output", async () => {

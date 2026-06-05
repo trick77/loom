@@ -197,12 +197,15 @@ body {
 }
 
 .spark-thinking-status-active {
+  display: inline-grid;
   position: relative;
+  place-items: center;
 }
 
 .spark-thinking-status-active::after {
-  position: absolute;
-  inset: 0.25rem;
+  display: block;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 9999px;
   background: currentColor;
   content: "";
@@ -321,8 +324,9 @@ body {
 }
 
 .spark-activity-trace-icon-reasoning::after {
-  width: 0.3125rem;
-  height: 0.3125rem;
+  display: block;
+  width: 0.25rem;
+  height: 0.25rem;
   border-radius: 9999px;
   background: currentColor;
   content: "";
