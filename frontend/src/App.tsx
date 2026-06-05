@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChatShell } from "./ChatShell";
-import sparkImage from "./assets/spark.png";
+import sparkImage from "./assets/sloppy.png";
 import { getMe, listUsers, logout, type User } from "./api";
 
 type Status = "loading" | "signed-out" | "ready" | "error";

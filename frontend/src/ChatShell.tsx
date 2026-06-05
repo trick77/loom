@@ -45,7 +45,7 @@ import {
   type ActivityTraceEvent,
   type ActivityTraceToolEvent,
 } from "./activityTrace";
-import logoImage from "./assets/logo.png";
+import logoImage from "./assets/sloppy.png";
 import { MessageMetrics } from "./MessageMetrics";
 import { formatDuration } from "./metrics";
 import { ThreadActionsMenu } from "./ThreadActionsMenu";
@@ -819,7 +819,8 @@ function initialsFor(name: string): string {
     .join("");
 }
 
-function greetingForNow(name: string) {
+function greetingForNow(fullName: string) {
+  const name = fullName.trim().split(/\s+/)[0];
   const hour = new Date().getHours();
   if (hour < 10) return `Morning, ${name}`;
   if (hour >= 18) return `Evening, ${name}`;
@@ -1225,7 +1226,7 @@ function StartPanel({
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 pb-[14vh]">
         <h2 className="spark-greeting-text mb-8 flex items-center gap-4 font-serif">
-          <img className="h-10 w-10 shrink-0" src={logoImage} alt="" aria-hidden="true" />
+          <img className="h-16 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
           {greetingForNow(displayName)}
         </h2>
         <div className="w-full max-w-[674px]">
