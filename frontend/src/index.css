@@ -339,6 +339,26 @@ body {
   margin-top: 0.67rem;
 }
 
+.spark-activity-trace-icon-reasoning-complete {
+  position: relative;
+}
+
+.spark-activity-trace-icon-reasoning-complete::after {
+  position: absolute;
+  left: 0.25rem;
+  top: 0.2rem;
+  display: block;
+  width: 0.42rem;
+  height: 0.24rem;
+  border-bottom: 1.5px solid currentColor;
+  border-left: 1.5px solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  content: "";
+  opacity: 1;
+  transform: rotate(-45deg);
+}
+
 .spark-activity-reasoning :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
   margin-top: 0;
 }

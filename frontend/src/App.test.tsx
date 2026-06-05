@@ -928,7 +928,7 @@ test("clicking an image artifact opens a lightbox preview in the browser", async
   });
 });
 
-test("keeps just-completed reasoning trace expanded", async () => {
+test("keeps just-completed reasoning trace collapsed until opened", async () => {
   vi.stubGlobal(
     "fetch",
     mcpStreamFetch(
@@ -943,9 +943,15 @@ test("keeps just-completed reasoning trace expanded", async () => {
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("Answer.")).toBeInTheDocument();
-  const toggle = screen.getByRole("button", { name: /hide activity/i });
+  const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toBeInTheDocument();
+  expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
+
+  fireEvent.click(toggle);
+
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(document.querySelector(".spark-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
 });
 
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
@@ -968,14 +974,14 @@ test("keeps active activity trace while assistant output streams without explici
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   const trace = await screen.findByRole("status", { name: /spark activity trace/i });
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
   expect(screen.getByRole("status", { name: /spark activity trace/i })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
 });
 
 test("keeps active activity trace visible while assistant text is streaming", async () => {
@@ -1001,13 +1007,33 @@ test("keeps active activity trace visible while assistant text is streaming", as
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
   );
   const trace = await screen.findByRole("status", { name: /spark activity trace/i });
-  expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
+
+  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
+
   expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(document.querySelector(".spark-activity-trace-icon-reasoning-complete")).toBeNull();
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello.","reasoningContent":"I checked the source first.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+    ),
+  );
+  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
+
+  expect(await screen.findByText("Hello.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
+  expect(document.querySelector(".spark-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
 });
 
 test("centers the active thinking status dot inside its circle", () => {
@@ -1034,6 +1060,9 @@ test("centers reasoning activity dots inside their row circles", () => {
   expect(reasoningDotRule).toContain("display: block");
   expect(reasoningDotRule).toContain("width: 0.25rem");
   expect(reasoningDotRule).toContain("height: 0.25rem");
+  expect(css).toContain(".spark-activity-trace-icon-reasoning-complete::after");
+  expect(css).toContain("border-bottom: 1.5px solid currentColor");
+  expect(css).toContain("border-left: 1.5px solid currentColor");
 });
 
 test("shows active activity trace with reasoning and tool activity before assistant output", async () => {
@@ -1063,8 +1092,13 @@ test("shows active activity trace with reasoning and tool activity before assist
   );
 
   const trace = await screen.findByRole("status", { name: /spark activity trace/i });
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
+  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
+
+  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
+
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Running")).toBeInTheDocument();
@@ -1860,6 +1894,11 @@ test("surfaces the server error and keeps failed activity trace visible", async 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
   const trace = screen.getByRole("status", { name: /spark activity trace/i });
+  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(screen.queryByText("agentgateway")).not.toBeInTheDocument();
+
+  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
+
   expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Failed")).toBeInTheDocument();
 });
@@ -1882,12 +1921,17 @@ test("renders unknown tool calls with safe fallback details", async () => {
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("Done.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  const toggle = screen.getByRole("button", { name: /show activity/i });
+  expect(toggle).toBeInTheDocument();
+  expect(screen.queryByText("custom lookup")).not.toBeInTheDocument();
+
+  fireEvent.click(toggle);
+
   expect(await screen.findByText("custom lookup")).toBeInTheDocument();
   expect(screen.getByText("Done")).toBeInTheDocument();
 });
 
-test("keeps just-completed activity trace expanded before the assistant answer", async () => {
+test("keeps just-completed activity trace collapsed before the assistant answer until opened", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -1910,9 +1954,13 @@ test("keeps just-completed activity trace expanded before the assistant answer",
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   const answer = await screen.findByText("I found the update.");
-  const toggle = screen.getByRole("button", { name: /hide activity/i });
+  const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toHaveTextContent("Searched 1 query");
   expect(screen.queryByRole("status", { name: /spark activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
+
+  fireEvent.click(toggle);
 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
