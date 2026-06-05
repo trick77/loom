@@ -295,7 +295,7 @@ body {
 
 .spark-activity-trace-row:not(:last-child)::before {
   position: absolute;
-  bottom: -0.15rem;
+  bottom: 0.5rem;
   left: 0.4375rem;
   top: 1.5rem;
   width: 1px;
