@@ -269,7 +269,7 @@ function extractSearchResults(value: unknown): SearchResultPreview[] {
     const snippet = typeof record.snippet === "string" ? record.snippet : typeof record.content === "string" ? record.content : undefined;
     return [
       {
-        title: stripSearchResultMarkdown(title ?? url ?? "Result"),
+        title: title === undefined ? (url ?? "Result") : stripSearchResultMarkdown(title),
         url,
         domain: url !== undefined ? domainFromURL(url) : undefined,
         snippet: snippet === undefined ? undefined : stripSearchResultMarkdown(snippet),

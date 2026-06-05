@@ -164,4 +164,31 @@ describe("activity trace model", () => {
       detail: "Custom: lookup",
     });
   });
+
+  test("preserves URL fallback text for search results without titles", () => {
+    let events: ActivityTraceEvent[] = [];
+
+    events = upsertTraceToolCall(events, {
+      id: "call_1",
+      name: "tavily__tavily_search",
+      arguments: "{\"query\":\"example\"}",
+    });
+    events = upsertTraceToolResult(events, {
+      id: "call_1",
+      name: "tavily__tavily_search",
+      content: "{\"results\":[{\"url\":\"https://example.com/my_page\"}]}",
+    });
+
+    expect(events[0]).toMatchObject({
+      preview: {
+        kind: "searchResults",
+        results: [
+          {
+            title: "https://example.com/my_page",
+            url: "https://example.com/my_page",
+          },
+        ],
+      },
+    });
+  });
 });
