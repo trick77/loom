@@ -117,7 +117,7 @@ export function summarizeTrace(events: ActivityTraceEvent[]): string {
   if (reads > 0) parts.push(`read ${reads} ${reads === 1 ? "page" : "pages"}`);
   if (otherTools > 0) parts.push(`used ${otherTools} ${otherTools === 1 ? "tool" : "tools"}`);
   if (failures > 0) parts.push(`${failures} ${failures === 1 ? "tool" : "tools"} failed`);
-  return parts.length > 0 ? parts.join(" · ") : "Reviewed work";
+  return parts.length > 0 ? parts.join(" · ") : "Thought through response";
 }
 
 export function summarizeToolCall(name: string, rawArguments: string): ToolSummary {
@@ -170,11 +170,6 @@ export function domainFromURL(value: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-export function faviconURL(value: string): string | undefined {
-  const domain = domainFromURL(value);
-  return domain === undefined ? undefined : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
 }
 
 function isSearchTool(name: string): boolean {

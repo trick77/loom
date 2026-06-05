@@ -37,7 +37,6 @@ import {
 import {
   appendReasoningDelta,
   completeTrace,
-  faviconURL,
   summarizeTrace,
   upsertTraceToolCall,
   upsertTraceToolResult,
@@ -96,7 +95,6 @@ export function ChatShell({
   const [modalError, setModalError] = useState("");
   const [isMutatingThread, setIsMutatingThread] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [streamingReasoning, setStreamingReasoning] = useState("");
   const [streamingArtifacts, setStreamingArtifacts] = useState<Artifact[]>([]);
   const [activityTrace, setActivityTrace] = useState<ActivityTraceEvent[]>([]);
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
@@ -384,7 +382,6 @@ export function ChatShell({
         setActiveThread(null);
         setMessages([]);
         setStreamingText("");
-        setStreamingReasoning("");
         setStreamingArtifacts([]);
         clearActivityTrace();
         setSendError("");
@@ -415,7 +412,6 @@ export function ChatShell({
     setDraft("");
     setIsSending(true);
     setStreamingText("");
-    setStreamingReasoning("");
     setStreamingArtifacts([]);
     clearActivityTrace();
     setSendError("");
@@ -447,7 +443,6 @@ export function ChatShell({
         },
         onReasoningDelta: (delta) => {
           if (!isCurrentThread()) return;
-          setStreamingReasoning((current) => current + delta);
           updateActivityTrace((current) => appendReasoningDelta(current, delta));
         },
         onToolCall: (event) => {
@@ -473,7 +468,6 @@ export function ChatShell({
             completedTrace.length > 0 ? { ...message, activityTrace: completedTrace } : message,
           ]);
           setStreamingText("");
-          setStreamingReasoning("");
           setStreamingArtifacts([]);
           clearActivityTrace();
         },
@@ -491,7 +485,6 @@ export function ChatShell({
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStreamingText("");
-      setStreamingReasoning("");
       setStreamingArtifacts([]);
       // Keep any activity trace visible so a failed turn still shows what was
       // attempted (e.g. a tool that errored); the next send clears it.
@@ -719,7 +712,6 @@ export function ChatShell({
             messages={messages}
             draft={draft}
             streamingText={streamingText}
-            streamingReasoning={streamingReasoning}
             streamingArtifacts={streamingArtifacts}
             activityTrace={activityTrace}
             sendError={sendError}
@@ -1222,7 +1214,6 @@ function ChatPanel({
   messages,
   draft,
   streamingText,
-  streamingReasoning,
   streamingArtifacts,
   activityTrace,
   sendError,
@@ -1243,7 +1234,6 @@ function ChatPanel({
   messages: MessageWithActivityTrace[];
   draft: string;
   streamingText: string;
-  streamingReasoning: string;
   streamingArtifacts: Artifact[];
   activityTrace: ActivityTraceEvent[];
   sendError: string;
@@ -1336,7 +1326,6 @@ function ChatPanel({
     sendError,
     showActiveActivityTrace,
     streamingArtifacts.length,
-    streamingReasoning,
     streamingText,
     activityTrace.length,
   ]);
@@ -1567,11 +1556,9 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
             <div className="spark-activity-result-list">
               {event.preview.results.map((result, index) => (
                 <div key={`${result.url ?? result.title}-${index}`} className="spark-activity-result-row">
-                  {result.url !== undefined ? (
-                    <img alt="" className="spark-activity-favicon" src={faviconURL(result.url)} />
-                  ) : (
-                    <span className="spark-activity-favicon" aria-hidden="true" />
-                  )}
+                  <span className="spark-activity-favicon" aria-hidden="true">
+                    {faviconInitial(result.domain ?? result.title)}
+                  </span>
                   <div className="min-w-0">
                     <div className="spark-activity-result-title">{result.title}</div>
                     {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
@@ -1611,6 +1598,10 @@ function FetchTraceIcon() {
       <path d="M9 7h8v8" />
     </svg>
   );
+}
+
+function faviconInitial(value: string): string {
+  return value.trim().charAt(0).toUpperCase() || "*";
 }
 
 function isNearBottom(element: HTMLElement): boolean {

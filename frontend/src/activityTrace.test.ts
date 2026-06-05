@@ -106,6 +106,19 @@ describe("activity trace model", () => {
     expect(summary).toBe("1 tool failed");
   });
 
+  test("summarizes reasoning-only traces without implying tool work", () => {
+    const summary = summarizeTrace([
+      {
+        id: "reasoning-1",
+        type: "reasoning",
+        content: "Thinking through the response.",
+        status: "done",
+      },
+    ]);
+
+    expect(summary).toBe("Thought through response");
+  });
+
   test("creates a fetch result preview for fetch-like tools", () => {
     let events: ActivityTraceEvent[] = [];
     events = upsertTraceToolCall(events, {
