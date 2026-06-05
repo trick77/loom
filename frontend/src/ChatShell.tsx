@@ -37,6 +37,7 @@ import {
 import {
   appendReasoningDelta,
   completeTrace,
+  faviconURL,
   summarizeTrace,
   upsertTraceToolCall,
   upsertTraceToolResult,
@@ -1555,21 +1556,36 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
             </div>
             <div className="spark-activity-result-list">
               {event.preview.results.map((result, index) => (
-                <div key={`${result.url ?? result.title}-${index}`} className="spark-activity-result-row">
-                  <span className="spark-activity-favicon" aria-hidden="true">
-                    {faviconInitial(result.domain ?? result.title)}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="spark-activity-result-title">{result.title}</div>
-                    {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
-                  </div>
-                  {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
-                </div>
+                <SearchResultRow key={`${result.url ?? result.title}-${index}`} result={result} />
               ))}
             </div>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function SearchResultRow({
+  result,
+}: {
+  result: { title: string; url?: string; domain?: string; snippet?: string };
+}) {
+  const favicon = result.url === undefined ? undefined : faviconURL(result.url);
+  return (
+    <div className="spark-activity-result-row">
+      {favicon !== undefined ? (
+        <img alt="" className="spark-activity-favicon" src={favicon} />
+      ) : (
+        <span className="spark-activity-favicon" aria-hidden="true">
+          {faviconInitial(result.domain ?? result.title)}
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="spark-activity-result-title">{result.title}</div>
+        {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
+      </div>
+      {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
     </div>
   );
 }

@@ -172,6 +172,11 @@ export function domainFromURL(value: string): string | undefined {
   }
 }
 
+export function faviconURL(value: string): string | undefined {
+  const domain = domainFromURL(value);
+  return domain === undefined ? undefined : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
+}
+
 function isSearchTool(name: string): boolean {
   return /search|tavily|web/i.test(name);
 }

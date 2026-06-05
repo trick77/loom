@@ -1896,7 +1896,13 @@ test("keeps completed activity trace collapsed before the assistant answer", asy
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(screen.getByText("Agentgateway")).toBeInTheDocument();
   expect(screen.getByText("Malformed source")).toBeInTheDocument();
-  expect(document.querySelector(".spark-activity-result-list")?.querySelectorAll("img")).toHaveLength(0);
+  const resultList = document.querySelector(".spark-activity-result-list");
+  const faviconImages = resultList?.querySelectorAll("img.spark-activity-favicon");
+  expect(faviconImages).toHaveLength(1);
+  expect(faviconImages?.[0]).toHaveAttribute(
+    "src",
+    "https://www.google.com/s2/favicons?domain=agentgateway.dev&sz=32",
+  );
   expect(toggle.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
