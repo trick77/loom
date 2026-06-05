@@ -45,7 +45,7 @@ import {
   type ActivityTraceEvent,
   type ActivityTraceToolEvent,
 } from "./activityTrace";
-import logoImage from "./assets/sloppy.png";
+import logoImage from "./assets/slopr.png";
 import { MessageMetrics } from "./MessageMetrics";
 import { formatDuration } from "./metrics";
 import { ThreadActionsMenu } from "./ThreadActionsMenu";
