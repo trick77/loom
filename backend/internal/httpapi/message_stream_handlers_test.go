@@ -1071,6 +1071,9 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 			t.Fatalf("activity trace missing %q:\n%s", want, trace)
 		}
 	}
+	if strings.Contains(trace, `"summary"`) {
+		t.Fatalf("activity trace persisted backend summary, want raw trace only:\n%s", trace)
+	}
 }
 
 func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
@@ -1100,10 +1103,10 @@ func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
 	if len(trace) != 2 {
 		t.Fatalf("len(trace) = %d, want 2: %#v", len(trace), trace)
 	}
-	if trace[0].Name != "create_pdf_file" || trace[0].Summary == nil || trace[0].Summary.Kind != "file" || trace[0].Summary.Title != "report.pdf" || trace[0].RawOutput != "created report.pdf" {
+	if trace[0].Name != "create_pdf_file" || trace[0].RawArguments != `{"filename":"report.pdf"}` || trace[0].RawOutput != "created report.pdf" {
 		t.Fatalf("pdf trace = %#v", trace[0])
 	}
-	if trace[1].Name != "acme__transmogrify_asset" || trace[1].Summary == nil || trace[1].Summary.Kind != "generic" || trace[1].RawArguments != `{"asset":"draft.pdf"}` || trace[1].RawOutput != "Created draft.pdf" {
+	if trace[1].Name != "acme__transmogrify_asset" || trace[1].RawArguments != `{"asset":"draft.pdf"}` || trace[1].RawOutput != "Created draft.pdf" {
 		t.Fatalf("future tool trace = %#v", trace[1])
 	}
 }

@@ -141,8 +141,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	activityTraceJSON, err := json.Marshal(assistantResult.ActivityTrace)
 	if err != nil {
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
-		return
+		slog.Warn("marshal activity trace failed", "thread_id", threadID, "error", err)
+		activityTraceJSON = []byte("[]")
 	}
 	assistantMessage, err := s.chat.AddMessageWithActivityTrace(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromResult(assistantResult.StreamResult), artifactsJSON, activityTraceJSON)
 	if err != nil {
@@ -181,6 +181,7 @@ const (
 	maxToolCallsPerRound      = 8
 	maxToolCallDuration       = 30 * time.Second
 	maxToolResultContentBytes = 32 << 10
+	toolFailedPrefix          = "tool failed"
 )
 
 type streamUserError struct {
@@ -199,20 +200,13 @@ type assistantLoopResult struct {
 }
 
 type activityTraceEvent struct {
-	ID           string                `json:"id"`
-	Type         string                `json:"type"`
-	Content      string                `json:"content,omitempty"`
-	Name         string                `json:"name,omitempty"`
-	Status       string                `json:"status"`
-	Summary      *activityTraceSummary `json:"summary,omitempty"`
-	RawArguments string                `json:"rawArguments,omitempty"`
-	RawOutput    string                `json:"rawOutput,omitempty"`
-}
-
-type activityTraceSummary struct {
-	Kind   string `json:"kind"`
-	Title  string `json:"title"`
-	Detail string `json:"detail"`
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	Content      string `json:"content,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Status       string `json:"status"`
+	RawArguments string `json:"rawArguments,omitempty"`
+	RawOutput    string `json:"rawOutput,omitempty"`
 }
 
 func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool) (assistantLoopResult, error) {
@@ -385,7 +379,6 @@ func activityTraceFromResult(current []activityTraceEvent, result llm.StreamResu
 			Type:         "tool",
 			Name:         call.Function.Name,
 			Status:       "running",
-			Summary:      summarizeActivityTraceTool(call.Function.Name, call.Function.Arguments),
 			RawArguments: call.Function.Arguments,
 		})
 	}
@@ -399,7 +392,7 @@ func activityTraceWithToolResult(current []activityTraceEvent, toolCallID, outpu
 			continue
 		}
 		next[i].Status = "done"
-		if strings.HasPrefix(output, "tool failed") {
+		if strings.HasPrefix(output, toolFailedPrefix) {
 			next[i].Status = "failed"
 		}
 		next[i].RawOutput = output
@@ -416,53 +409,6 @@ func countActivityTraceReasoning(events []activityTraceEvent) int {
 		}
 	}
 	return count
-}
-
-func summarizeActivityTraceTool(name, rawArguments string) *activityTraceSummary {
-	args, _ := parseToolArguments(rawArguments)
-	detail := readableActivityTraceToolName(name)
-	if query := activityTraceStringArg(args, "query", "q", "search", "searchQuery"); query != "" || isActivityTraceSearchTool(name) {
-		title := query
-		if title == "" {
-			title = detail
-		}
-		return &activityTraceSummary{Kind: "search", Title: title, Detail: detail}
-	}
-	if url := activityTraceStringArg(args, "url", "uri", "href"); url != "" || isActivityTraceFetchTool(name) {
-		title := url
-		if title == "" {
-			title = detail
-		}
-		return &activityTraceSummary{Kind: "fetch", Title: title, Detail: detail}
-	}
-	if file := activityTraceStringArg(args, "filename", "file", "path", "displayFilename"); file != "" {
-		return &activityTraceSummary{Kind: "file", Title: file, Detail: detail}
-	}
-	return &activityTraceSummary{Kind: "generic", Title: detail, Detail: detail}
-}
-
-func activityTraceStringArg(args map[string]any, names ...string) string {
-	for _, name := range names {
-		value, ok := args[name].(string)
-		if ok && strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func readableActivityTraceToolName(name string) string {
-	return strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(name, "__", " "), "_", " "))
-}
-
-func isActivityTraceSearchTool(name string) bool {
-	lower := strings.ToLower(name)
-	return strings.Contains(lower, "search") || strings.Contains(lower, "tavily") || strings.Contains(lower, "web")
-}
-
-func isActivityTraceFetchTool(name string) bool {
-	lower := strings.ToLower(name)
-	return strings.Contains(lower, "fetch") || strings.Contains(lower, "crawl") || strings.Contains(lower, "read") || strings.Contains(lower, "browser")
 }
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and

@@ -1,5 +1,7 @@
 import type { ToolCallEvent, ToolResultEvent } from "./api";
 
+const TOOL_FAILED_PREFIX = "tool failed";
+
 export type ActivityTraceEvent =
   | {
       id: string;
@@ -87,7 +89,7 @@ export function upsertTraceToolCall(events: ActivityTraceEvent[], event: ToolCal
 export function upsertTraceToolResult(events: ActivityTraceEvent[], event: ToolResultEvent): ActivityTraceEvent[] {
   return events.map((item) => {
     if (item.type !== "tool" || item.id !== event.id) return item;
-    const failed = event.content.startsWith("tool failed");
+    const failed = event.content.startsWith(TOOL_FAILED_PREFIX);
     return {
       ...item,
       status: failed ? "failed" : "done",
@@ -117,7 +119,7 @@ export function normalizeActivityTrace(events: ActivityTraceEvent[] | undefined)
       summary,
     };
     if (event.rawOutput !== undefined && event.preview === undefined) {
-      const failed = event.rawOutput.startsWith("tool failed");
+      const failed = event.rawOutput.startsWith(TOOL_FAILED_PREFIX);
       normalized.status = failed ? "failed" : normalized.status;
       normalized.preview = summarizeToolResult(normalized, event.rawOutput);
     }
