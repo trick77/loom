@@ -99,7 +99,7 @@ func run() error {
 	}
 	if len(mcpConfig.Servers) > 0 {
 		discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		discovered, err := mcp.NewBestEffortServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 15 * time.Second}, slog.Default())
+		discovered, err := mcp.NewRequiredServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 15 * time.Second})
 		cancel()
 		if err != nil {
 			return err

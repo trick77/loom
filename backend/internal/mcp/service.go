@@ -117,6 +117,52 @@ func NewServiceFromConfig(cfg Config, httpClient *http.Client) (*Service, error)
 	return service, nil
 }
 
+func NewRequiredServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client) (*Service, error) {
+	clients := map[string]Client{}
+	for name, server := range cfg.Servers {
+		clients[name] = clientForServer(name, server, httpClient)
+	}
+	service, err := NewRequiredServiceFromClients(ctx, clients)
+	if err != nil {
+		return nil, err
+	}
+	service.cfg = cfg
+	service.httpClient = httpClient
+	return service, nil
+}
+
+func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Client) (*Service, error) {
+	service := &Service{routes: map[string]toolRoute{}}
+	names := make([]string, 0, len(clients))
+	for name := range clients {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, serverName := range names {
+		client := clients[serverName]
+		tools, err := client.ListTools(ctx)
+		if err != nil {
+			_ = client.Close()
+			return nil, fmt.Errorf("list MCP tools for %s: %w", serverName, err)
+		}
+		for _, tool := range tools {
+			if _, exists := service.routes[tool.Name]; exists {
+				return nil, fmt.Errorf("duplicate MCP tool name %q", tool.Name)
+			}
+			service.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName}
+			service.tools = append(service.tools, llm.Tool{
+				Type: "function",
+				Function: llm.ToolFunction{
+					Name:        tool.Name,
+					Description: tool.Description,
+					Parameters:  tool.InputSchema,
+				},
+			})
+		}
+	}
+	return service, nil
+}
+
 func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client, logger *slog.Logger) (*Service, error) {
 	service := &Service{routes: map[string]toolRoute{}, cfg: cfg, httpClient: httpClient}
 	names := make([]string, 0, len(cfg.Servers))
