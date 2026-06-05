@@ -109,6 +109,7 @@ export function ChatShell({
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const activityTraceRef = useRef<ActivityTraceEvent[]>([]);
+  const activeActivityTraceExpandedRef = useRef(false);
 
   const updateActivityTrace = useCallback((updater: (current: ActivityTraceEvent[]) => ActivityTraceEvent[]) => {
     const next = updater(activityTraceRef.current);
@@ -271,6 +272,7 @@ export function ChatShell({
     setStreamingText("");
     setStreamingArtifacts([]);
     clearActivityTrace();
+    activeActivityTraceExpandedRef.current = false;
     setSendError("");
     navigate({ view: "new" });
     setRoute({ view: "new" });
@@ -468,9 +470,14 @@ export function ChatShell({
           setMessages((current) => [
             ...current,
             completedTrace.length > 0
-              ? { ...message, activityTrace: completedTrace, activityTraceInitiallyExpanded: true }
+              ? {
+                  ...message,
+                  activityTrace: completedTrace,
+                  activityTraceInitiallyExpanded: activeActivityTraceExpandedRef.current,
+                }
               : message,
           ]);
+          activeActivityTraceExpandedRef.current = false;
           setStreamingText("");
           setStreamingArtifacts([]);
           clearActivityTrace();
@@ -713,7 +720,7 @@ export function ChatShell({
         ) : (
           <ChatPanel
             thread={activeThread}
-            messages={messages}
+        messages={messages}
             draft={draft}
             streamingText={streamingText}
             streamingArtifacts={streamingArtifacts}
@@ -725,8 +732,11 @@ export function ChatShell({
             onDraftChange={setDraft}
             onSend={handleSend}
             onStop={handleStopResponse}
-            onRetry={handleRetry}
-            onDeleteThread={openDeleteModal}
+        onRetry={handleRetry}
+        onActiveActivityTraceExpandedChange={(expanded) => {
+          activeActivityTraceExpandedRef.current = expanded;
+        }}
+        onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}
             onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
             onToggleThreadMenu={(menuKey) =>
@@ -1228,6 +1238,7 @@ function ChatPanel({
   onSend,
   onStop,
   onRetry,
+  onActiveActivityTraceExpandedChange,
   onDeleteThread,
   onRenameThread,
   onStarThread,
@@ -1248,6 +1259,7 @@ function ChatPanel({
   onSend(): void;
   onStop(): void;
   onRetry(content: string): void;
+  onActiveActivityTraceExpandedChange(expanded: boolean): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
   onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
@@ -1428,7 +1440,13 @@ function ChatPanel({
                 />
               </div>
             ))}
-            {showActiveActivityTrace && <ActivityTracePanel events={activityTrace} active={true} />}
+            {showActiveActivityTrace && (
+              <ActivityTracePanel
+                events={activityTrace}
+                active={true}
+                onExpandedChange={onActiveActivityTraceExpandedChange}
+              />
+            )}
             {streamingArtifacts.map((artifact) => (
               <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
             ))}
@@ -1484,15 +1502,14 @@ function ActivityTracePanel({
   events,
   active,
   initiallyExpanded = false,
+  onExpandedChange,
 }: {
   events: ActivityTraceEvent[];
   active: boolean;
   initiallyExpanded?: boolean;
+  onExpandedChange?(expanded: boolean): void;
 }) {
-  const [expanded, setExpanded] = useState(active || initiallyExpanded);
-  useEffect(() => {
-    if (active) setExpanded(true);
-  }, [active]);
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   if (events.length === 0 && !active) return null;
   const summary = active ? "Thinking" : summarizeTrace(events);
   return (
@@ -1507,7 +1524,13 @@ function ActivityTracePanel({
         aria-label={expanded ? "Hide activity" : "Show activity"}
         className="spark-activity-trace-toggle"
         type="button"
-        onClick={() => setExpanded((current) => !current)}
+        onClick={() =>
+          setExpanded((current) => {
+            const next = !current;
+            onExpandedChange?.(next);
+            return next;
+          })
+        }
       >
         <span className="spark-activity-trace-label">
           <span className={active ? "spark-thinking-status-active" : "spark-thinking-status-complete"} aria-hidden="true" />
@@ -1534,9 +1557,13 @@ function ActivityTracePanel({
 
 function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   if (event.type === "reasoning") {
+    const iconClass =
+      event.status === "done"
+        ? "spark-activity-trace-icon spark-activity-trace-icon-reasoning spark-activity-trace-icon-reasoning-complete"
+        : "spark-activity-trace-icon spark-activity-trace-icon-reasoning";
     return (
       <div className="spark-activity-trace-row">
-        <span className="spark-activity-trace-icon spark-activity-trace-icon-reasoning" aria-hidden="true" />
+        <span className={iconClass} aria-hidden="true" />
         <div className="spark-activity-reasoning">
           <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
             {event.content.trim()}
