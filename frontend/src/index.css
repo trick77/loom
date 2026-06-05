@@ -305,7 +305,7 @@ body {
   width: 1rem;
   height: 1rem;
   flex: 0 0 auto;
-  margin-top: 0.2rem;
+  margin-top: 0.36rem;
   place-items: center;
   color: #88857d;
 }
@@ -332,6 +332,14 @@ body {
 .spark-activity-trace-icon-reasoning {
   border: 1px solid currentColor;
   border-radius: 9999px;
+}
+
+.spark-activity-reasoning :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
+  margin-top: 0;
+}
+
+.spark-activity-reasoning :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
+  margin-bottom: 0;
 }
 
 .spark-activity-globe-icon {
@@ -414,7 +422,7 @@ body {
 .spark-activity-result-row {
   display: grid;
   grid-template-columns: 1rem minmax(0, 1fr) auto;
-  align-items: start;
+  align-items: center;
   gap: 0.55rem;
   padding: 0.3rem 0.35rem;
 }
@@ -447,8 +455,12 @@ body {
 }
 
 .spark-activity-result-domain {
-  flex-shrink: 0;
+  max-width: 12rem;
+  overflow: hidden;
   color: #88857d;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .spark-activity-favicon {

@@ -926,7 +926,7 @@ test("clicking an image artifact opens a lightbox preview in the browser", async
   });
 });
 
-test("renders completed reasoning in a collapsed activity trace", async () => {
+test("keeps just-completed reasoning trace expanded", async () => {
   vi.stubGlobal(
     "fetch",
     mcpStreamFetch(
@@ -941,12 +941,8 @@ test("renders completed reasoning in a collapsed activity trace", async () => {
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("Answer.")).toBeInTheDocument();
-  const toggle = screen.getByRole("button", { name: /show activity/i });
+  const toggle = screen.getByRole("button", { name: /hide activity/i });
   expect(toggle).toBeInTheDocument();
-  expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
-
-  fireEvent.click(toggle);
-
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
 });
 
@@ -1858,12 +1854,12 @@ test("renders unknown tool calls with safe fallback details", async () => {
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("Done.")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /show activity/i }));
+  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(await screen.findByText("custom lookup")).toBeInTheDocument();
   expect(screen.getByText("Done")).toBeInTheDocument();
 });
 
-test("keeps completed activity trace collapsed before the assistant answer", async () => {
+test("keeps just-completed activity trace expanded before the assistant answer", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -1886,12 +1882,9 @@ test("keeps completed activity trace collapsed before the assistant answer", asy
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   const answer = await screen.findByText("I found the update.");
-  const toggle = screen.getByRole("button", { name: /show activity/i });
+  const toggle = screen.getByRole("button", { name: /hide activity/i });
   expect(toggle).toHaveTextContent("Searched 1 query");
   expect(screen.queryByRole("status", { name: /spark activity trace/i })).not.toBeInTheDocument();
-  expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
-
-  fireEvent.click(toggle);
 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
@@ -1899,7 +1892,7 @@ test("keeps completed activity trace collapsed before the assistant answer", asy
   expect(agentgatewayLink).toHaveAttribute("href", "https://agentgateway.dev/");
   expect(agentgatewayLink).toHaveAttribute("target", "_blank");
   expect(agentgatewayLink).toHaveAttribute("rel", "noreferrer");
-  expect(screen.getByText("Next generation proxy")).toBeInTheDocument();
+  expect(screen.queryByText("Next generation proxy")).not.toBeInTheDocument();
   expect(screen.queryByText("**Next generation proxy**")).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: /Our Story and Lumon Brand/ })).toHaveAttribute("href", "https://lumon.com/story");
   expect(screen.queryByText("# Our Story and Lumon Brand")).not.toBeInTheDocument();

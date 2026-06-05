@@ -67,6 +67,7 @@ type RouteState =
 
 type MessageWithActivityTrace = Message & {
   activityTrace?: ActivityTraceEvent[];
+  activityTraceInitiallyExpanded?: boolean;
 };
 
 type SidebarIconName = "chats" | "projects";
@@ -466,7 +467,9 @@ export function ChatShell({
           const completedTrace = completeTrace(activityTraceRef.current);
           setMessages((current) => [
             ...current,
-            completedTrace.length > 0 ? { ...message, activityTrace: completedTrace } : message,
+            completedTrace.length > 0
+              ? { ...message, activityTrace: completedTrace, activityTraceInitiallyExpanded: true }
+              : message,
           ]);
           setStreamingText("");
           setStreamingArtifacts([]);
@@ -1399,7 +1402,11 @@ function ChatPanel({
             {messages.map((message, index) => (
               <div key={message.id} className="space-y-6">
                 {message.role === "assistant" && message.activityTrace !== undefined && (
-                  <ActivityTracePanel events={message.activityTrace} active={false} />
+                  <ActivityTracePanel
+                    events={message.activityTrace}
+                    active={false}
+                    initiallyExpanded={message.activityTraceInitiallyExpanded === true}
+                  />
                 )}
                 {message.role === "assistant" && message.activityTrace === undefined && message.reasoningContent && (
                   <ActivityTracePanel
@@ -1476,11 +1483,13 @@ function ChatPanel({
 function ActivityTracePanel({
   events,
   active,
+  initiallyExpanded = false,
 }: {
   events: ActivityTraceEvent[];
   active: boolean;
+  initiallyExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(active);
+  const [expanded, setExpanded] = useState(active || initiallyExpanded);
   useEffect(() => {
     if (active) setExpanded(true);
   }, [active]);
@@ -1590,7 +1599,6 @@ function SearchResultRow({
             {title}
           </a>
         )}
-        {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
       </div>
       {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
     </div>
