@@ -1267,10 +1267,9 @@ function ChatPanel({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const headerMenuKey = thread === null ? null : `Header:${thread.id}`;
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
+  const hasActiveActivityTrace = activityTrace.length > 0;
   const showActiveActivityTrace =
-    isSending &&
-    sendError === "" &&
-    (activityTrace.length > 0 || streamingText === "");
+    hasActiveActivityTrace || (isSending && sendError === "" && streamingText === "");
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;

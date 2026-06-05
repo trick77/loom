@@ -138,7 +138,7 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   if (file !== undefined) {
     return { kind: "file", title: file, detail: readableToolName(name) };
   }
-  return { kind: "generic", title: readableToolName(name), detail: readableToolName(name) };
+  return { kind: "generic", title: readableToolName(name), detail: name };
 }
 
 export function summarizeToolResult(tool: ActivityTraceToolEvent, rawOutput: string): ToolResultPreview {

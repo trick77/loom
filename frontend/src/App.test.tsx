@@ -1817,54 +1817,17 @@ test("ignores stream events after switching threads", async () => {
   expect(screen.queryByText("Wrong thread answer")).not.toBeInTheDocument();
 });
 
-test("surfaces the server error and keeps failed tool activity visible", async () => {
+test("surfaces the server error and keeps failed activity trace visible", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(
-        encoder.encode(
-          'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n',
-        ),
-      );
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway\\"}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"tool failed: timeout"}\n\n'));
       controller.enqueue(encoder.encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
       controller.close();
     },
   });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-      if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") {
-        return Response.json([
-          {
-            id: "t1",
-            title: "Existing chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ]);
-      }
-      if (url === "/api/threads/t1") {
-        return Response.json({
-          thread: {
-            id: "t1",
-            title: "Existing chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-          messages: [],
-        });
-      }
-      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
-        return new Response(stream, { status: 200 });
-      }
-      throw new Error(`unexpected fetch ${url}`);
-    }),
-  );
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
@@ -1873,10 +1836,32 @@ test("surfaces the server error and keeps failed tool activity visible", async (
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
-  // Tool activity from the failed turn stays visible so the user can see what
-  // was attempted (the panel is cleared on the next send / thread switch).
-  expect(screen.getByText("search__web")).toBeInTheDocument();
-  expect(screen.getByText("Running")).toBeInTheDocument();
+  const trace = screen.getByRole("status", { name: /spark activity trace/i });
+  expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
+  expect(within(trace).getByText("Failed")).toBeInTheDocument();
+});
+
+test("renders unknown tool calls with safe fallback details", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"custom__lookup","arguments":"not-json"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByText("Done.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /show activity/i }));
+  expect(await screen.findByText("custom lookup")).toBeInTheDocument();
+  expect(screen.getByText("Done")).toBeInTheDocument();
 });
 
 test("keeps completed activity trace collapsed before the assistant answer", async () => {
