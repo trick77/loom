@@ -165,6 +165,31 @@ func TestRemoteClientRejectsOversizedResponse(t *testing.T) {
 	}
 }
 
+func TestRemoteClientProbeUsesLightweightHTTPRequest(t *testing.T) {
+	var methods []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		if r.Header.Get("X-Test") != "yes" {
+			t.Fatalf("X-Test header = %q, want yes", r.Header.Get("X-Test"))
+		}
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewRemoteClient("search", ServerConfig{
+		Transport: TransportStreamableHTTP,
+		URL:       server.URL,
+		Headers:   map[string]string{"X-Test": "yes"},
+	}, server.Client())
+
+	if err := client.(*remoteClient).Probe(context.Background()); err != nil {
+		t.Fatalf("Probe() error: %v", err)
+	}
+	if !reflect.DeepEqual(methods, []string{http.MethodHead}) {
+		t.Fatalf("methods = %#v, want HEAD only", methods)
+	}
+}
+
 func TestStdioClientListsTools(t *testing.T) {
 	if os.Getenv("SPARK_MCP_TEST_HELPER") == "1" {
 		runMCPTestHelper(t)

@@ -62,8 +62,14 @@ type toolResultResponse struct {
 }
 
 type mcpStatusResponse struct {
-	Active     int `json:"active"`
-	Configured int `json:"configured"`
+	Active     int               `json:"active"`
+	Configured int               `json:"configured"`
+	Servers    []mcpServerStatus `json:"servers,omitempty"`
+}
+
+type mcpServerStatus struct {
+	Name   string `json:"name"`
+	Active bool   `json:"active"`
 }
 
 type artifactResponse struct {

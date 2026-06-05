@@ -139,6 +139,25 @@ func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[
 	return toolContentText(result.Content), nil
 }
 
+func (c *remoteClient) Probe(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, c.cfg.URL, nil)
+	if err != nil {
+		return err
+	}
+	for key, value := range c.cfg.Headers {
+		req.Header.Set(key, value)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return scrubURLError(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		return &mcpStatusError{method: "probe", status: resp.StatusCode}
+	}
+	return nil
+}
+
 func (c *remoteClient) Close() error { return nil }
 
 // callWithSession initializes the session if needed and issues the request. If
