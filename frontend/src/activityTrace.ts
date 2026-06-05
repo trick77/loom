@@ -53,7 +53,7 @@ export type SearchResultPreview = {
 
 export function appendReasoningDelta(events: ActivityTraceEvent[], delta: string): ActivityTraceEvent[] {
   if (delta === "") return events;
-  const last = events.at(-1);
+  const last = events[events.length - 1];
   if (last?.type === "reasoning" && last.status === "running") {
     return [...events.slice(0, -1), { ...last, content: last.content + delta }];
   }
