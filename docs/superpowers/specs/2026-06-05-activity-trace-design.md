@@ -10,6 +10,7 @@ The trace is not a second answer. It is provenance for the answer and should sta
 
 The frontend currently receives separate stream events for reasoning and tools:
 
+- `assistant_delta`
 - `assistant_reasoning_delta`
 - `tool_call`
 - `tool_result`
@@ -106,7 +107,7 @@ Prefer backend-provided normalized display metadata whenever raw MCP arguments o
 Known tool families should get specialized summaries:
 
 - Search tools: query, result count, result rows with title, domain, snippet, and favicon when a URL is available.
-- Fetch/read tools: URL, domain, page title or status, content length or short observation.
+- Fetch/read tools: URL, domain, page title or status when available, and at least a short text observation from the fetched content.
 - File and artifact tools: filename, MIME type, size, operation, and generated download context when available.
 - Image generation tools: prompt summary or generated filename, provider/model, dimensions when available, and an image thumbnail or artifact reference.
 - Unknown MCP tools: readable tool name, sanitized argument summary, status, and expandable raw detail.

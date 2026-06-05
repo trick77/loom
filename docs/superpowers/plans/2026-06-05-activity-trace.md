@@ -10,6 +10,8 @@
 
 **Command Context:** Run `npm ...` commands from `frontend/`. Run `git ...` commands from the repository root unless the command explicitly says otherwise.
 
+**Worktree Requirement:** Do not execute this plan on `master` or in the main checkout. Start from a clean isolated worktree on a feature branch.
+
 ---
 
 ## File Structure
@@ -34,6 +36,34 @@
   - `backend/internal/httpapi/message_stream_handlers.go`
   - Backend tests adjacent to stream handlers.
   - Only add these if current `tool_call.arguments` / `tool_result.content` do not carry enough structured data.
+
+---
+
+### Task 0: Confirm Isolated Worktree
+
+**Files:**
+- No source files.
+
+- [ ] **Step 1: Verify branch and worktree isolation**
+
+Run from the repository root:
+
+```bash
+git branch --show-current
+git rev-parse --git-dir
+git rev-parse --git-common-dir
+git status --short
+```
+
+Expected:
+
+- Branch is a feature branch, not `master`.
+- `git rev-parse --git-dir` and `git rev-parse --git-common-dir` differ, which indicates a linked worktree.
+- `git status --short` is empty.
+
+- [ ] **Step 2: Stop if not isolated**
+
+If the checkout is not isolated, create or switch into an isolated worktree before Task 1. Do not continue in the main checkout.
 
 ---
 
@@ -138,6 +168,44 @@ describe("activity trace model", () => {
     ]);
 
     expect(summary).toBe("Searched 1 query · read 1 page · 1 tool failed");
+  });
+
+  test("does not double-count a failed generic tool as used and failed", () => {
+    const summary = summarizeTrace([
+      {
+        id: "call_1",
+        type: "tool",
+        name: "custom__lookup",
+        status: "failed",
+        summary: { kind: "generic", title: "custom lookup", detail: "custom lookup" },
+        rawArguments: "{}",
+        rawOutput: "tool failed: timeout",
+      },
+    ]);
+
+    expect(summary).toBe("1 tool failed");
+  });
+
+  test("creates a fetch result preview for fetch-like tools", () => {
+    let events: ActivityTraceEvent[] = [];
+    events = upsertTraceToolCall(events, {
+      id: "call_1",
+      name: "fetch__fetch",
+      arguments: "{\"url\":\"https://example.com/docs\"}",
+    });
+    events = upsertTraceToolResult(events, {
+      id: "call_1",
+      name: "fetch__fetch",
+      content: "Example documentation page content",
+    });
+
+    expect(events[0]).toMatchObject({
+      preview: {
+        kind: "fetchResult",
+        domain: "example.com",
+        detail: "Example documentation page content",
+      },
+    });
   });
 });
 ```
@@ -256,7 +324,7 @@ export function upsertTraceToolResult(
     return {
       ...item,
       status: failed ? "failed" : "done",
-      preview: summarizeToolResult(item.name, event.content),
+      preview: summarizeToolResult(item, event.content),
       rawOutput: event.content,
     };
   });
@@ -277,9 +345,11 @@ export function summarizeTrace(events: ActivityTraceEvent[]): string {
   const parts: string[] = [];
   if (searches > 0) parts.push(`Searched ${searches} ${searches === 1 ? "query" : "queries"}`);
   if (reads > 0) parts.push(`read ${reads} ${reads === 1 ? "page" : "pages"}`);
-  const otherTools = tools.length - searches - reads;
+  const otherTools = tools.filter(
+    (event) => event.status !== "failed" && event.summary.kind !== "search" && event.summary.kind !== "fetch",
+  ).length;
   if (otherTools > 0) parts.push(`used ${otherTools} ${otherTools === 1 ? "tool" : "tools"}`);
-  if (failures > 0) parts.push(`${failures} tool ${failures === 1 ? "failed" : "failed"}`);
+  if (failures > 0) parts.push(`${failures} ${failures === 1 ? "tool" : "tools"} failed`);
   return parts.length > 0 ? parts.join(" · ") : "Reviewed work";
 }
 
@@ -300,10 +370,10 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   return { kind: "generic", title: readableToolName(name), detail: readableToolName(name) };
 }
 
-export function summarizeToolResult(name: string, rawOutput: string): ToolResultPreview {
+export function summarizeToolResult(tool: ActivityTraceToolEvent, rawOutput: string): ToolResultPreview {
   const parsed = parseJSONValue(rawOutput);
   const searchResults = extractSearchResults(parsed);
-  if (searchResults.length > 0 || isSearchTool(name)) {
+  if (searchResults.length > 0 || isSearchTool(tool.name)) {
     return {
       kind: "searchResults",
       resultCount: searchResults.length,
@@ -311,6 +381,15 @@ export function summarizeToolResult(name: string, rawOutput: string): ToolResult
     };
   }
   const text = rawOutput.trim();
+  if (tool.summary.kind === "fetch") {
+    const url = tool.rawArguments !== undefined ? stringValue(parseJSONRecord(tool.rawArguments), ["url", "uri", "href"]) : undefined;
+    return {
+      kind: "fetchResult",
+      url,
+      domain: url !== undefined ? domainFromURL(url) : undefined,
+      detail: text.length > 500 ? `${text.slice(0, 500)}...` : text,
+    };
+  }
   return { kind: "text", detail: text.length > 500 ? `${text.slice(0, 500)}...` : text };
 }
 
@@ -539,6 +618,8 @@ onAssistantMessage: (message) => {
 
 Update all `clearToolEvents()` call sites to `clearActivityTrace()`.
 
+Update all `updateToolEvents()` call sites to `updateActivityTrace()`.
+
 - [ ] **Step 4: Add minimal `ActivityTracePanel` renderer**
 
 Replace `ThinkingPanel` and `ToolActivityPanel` usage in `ChatPanel`:
@@ -635,19 +716,19 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
-          <span className="min-w-0 truncate text-[#d6d3ca]">{event.summary.title}</span>
+          <span className="spark-activity-tool-title">{event.summary.title}</span>
           <span className={`spark-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
-        <div className="truncate text-[#88857d]">{event.summary.detail}</div>
+        <div className="spark-activity-tool-detail">{event.summary.detail}</div>
       </div>
     </div>
   );
 }
 
 function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {
-  if (event.status === "failed") return { label: "Failed", className: "bg-[#b85c52] text-[#fffaf2]" };
-  if (event.status === "running") return { label: "Running", className: "bg-[#363632] text-[#c7c5bd]" };
-  return { label: "Done", className: "bg-[#363632] text-[#c7c5bd]" };
+  if (event.status === "failed") return { label: "Failed", className: "spark-activity-status-failed" };
+  if (event.status === "running") return { label: "Running", className: "spark-activity-status-neutral" };
+  return { label: "Done", className: "spark-activity-status-neutral" };
 }
 
 function GlobeTraceIcon() {
@@ -780,10 +861,10 @@ Extend `ActivityTraceRow` tool branch:
           <span className="spark-activity-favicon" aria-hidden="true" />
         )}
         <div className="min-w-0">
-          <div className="truncate text-[#d6d3ca]">{result.title}</div>
-          {result.snippet !== undefined && <div className="truncate text-[#aaa79e]">{result.snippet}</div>}
+          <div className="spark-activity-result-title">{result.title}</div>
+          {result.snippet !== undefined && <div className="spark-activity-result-snippet">{result.snippet}</div>}
         </div>
-        {result.domain !== undefined && <div className="shrink-0 text-[#88857d]">{result.domain}</div>}
+        {result.domain !== undefined && <div className="spark-activity-result-domain">{result.domain}</div>}
       </div>
     ))}
     </div>
@@ -931,7 +1012,7 @@ git commit -m "feat: handle activity trace failures"
 
 - [ ] **Step 1: Update CSS classes**
 
-In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but replace panel/body class names with:
+In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but replace panel/body class names with the classes below. Keep Activity Trace colors in CSS classes rather than adding new inline hex utility classes in TSX; the literal values intentionally mirror existing Spark thinking/sidebar colors.
 
 ```css
 .spark-activity-trace {
@@ -1035,6 +1116,31 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   text-align: center;
 }
 
+.spark-activity-status-neutral {
+  background: #363632;
+  color: #c7c5bd;
+}
+
+.spark-activity-status-failed {
+  background: #b85c52;
+  color: #fffaf2;
+}
+
+.spark-activity-tool-title {
+  min-width: 0;
+  overflow: hidden;
+  color: #d6d3ca;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spark-activity-tool-detail {
+  overflow: hidden;
+  color: #88857d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .spark-activity-result-count {
   margin-top: 0.25rem;
   color: #88857d;
@@ -1079,6 +1185,26 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   padding: 0.3rem 0.35rem;
 }
 
+.spark-activity-result-title,
+.spark-activity-result-snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spark-activity-result-title {
+  color: #d6d3ca;
+}
+
+.spark-activity-result-snippet {
+  color: #aaa79e;
+}
+
+.spark-activity-result-domain {
+  flex-shrink: 0;
+  color: #88857d;
+}
+
 .spark-activity-favicon {
   width: 1rem;
   height: 1rem;
@@ -1120,7 +1246,7 @@ npm run build
 Expected: PASS. After build, restore generated backend web placeholders if the build touched them:
 
 ```bash
-git checkout -- ../backend/web/dist/.gitkeep ../backend/web/dist/index.html
+git checkout -- ../backend/web/dist/index.html
 ```
 
 - [ ] **Step 5: Commit**
@@ -1212,7 +1338,7 @@ Expected: PASS.
 - [ ] **Step 3: Restore build placeholders if needed**
 
 ```bash
-git checkout -- ../backend/web/dist/.gitkeep ../backend/web/dist/index.html
+git checkout -- ../backend/web/dist/index.html
 ```
 
 - [ ] **Step 4: Check diff**
