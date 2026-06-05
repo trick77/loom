@@ -591,15 +591,15 @@ function ActivityTracePanel({
         type="button"
         onClick={() => setExpanded((current) => !current)}
       >
-        <span className="spark-thinking-panel-label">
+        <span className="spark-activity-trace-label">
           <span className={active ? "spark-thinking-status-active" : "spark-thinking-status-complete"} aria-hidden="true" />
           {active ? (
             <span className="spark-thinking-label-active" data-text="Thinking">Thinking</span>
           ) : (
             <span>{summary}</span>
           )}
+          <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
         </span>
-        <span aria-hidden="true" className={expanded ? "spark-thinking-chevron-expanded" : "spark-thinking-chevron"} />
       </button>
       {expanded && (
         <div className="spark-activity-trace-body">
@@ -620,7 +620,7 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   if (event.type === "reasoning") {
     return (
       <div className="spark-activity-trace-row">
-        <span className="spark-activity-trace-icon" aria-hidden="true">◌</span>
+        <span className="spark-activity-trace-icon spark-activity-trace-icon-reasoning" aria-hidden="true" />
         <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
           {event.content.trim()}
         </Markdown>
@@ -630,11 +630,13 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   const status = activityToolStatusMeta(event);
   return (
     <div className="spark-activity-trace-row">
-      <span className="spark-activity-trace-icon" aria-hidden="true">{event.summary.kind === "search" ? "⌕" : "↗"}</span>
+      <span className="spark-activity-trace-icon" aria-hidden="true">
+        {event.summary.kind === "search" ? <GlobeTraceIcon /> : <FetchTraceIcon />}
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
           <span className="min-w-0 truncate text-[#d6d3ca]">{event.summary.title}</span>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${status.className}`}>{status.label}</span>
+          <span className={`spark-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
         <div className="truncate text-[#88857d]">{event.summary.detail}</div>
       </div>
@@ -646,6 +648,26 @@ function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string;
   if (event.status === "failed") return { label: "Failed", className: "bg-[#b85c52] text-[#fffaf2]" };
   if (event.status === "running") return { label: "Running", className: "bg-[#363632] text-[#c7c5bd]" };
   return { label: "Done", className: "bg-[#363632] text-[#c7c5bd]" };
+}
+
+function GlobeTraceIcon() {
+  return (
+    <svg className="spark-activity-globe-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c2.25 2.45 3.35 5.45 3.35 9s-1.1 6.55-3.35 9" />
+      <path d="M12 3c-2.25 2.45-3.35 5.45-3.35 9s1.1 6.55 3.35 9" />
+    </svg>
+  );
+}
+
+function FetchTraceIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 17 17 7" />
+      <path d="M9 7h8v8" />
+    </svg>
+  );
 }
 ```
 
@@ -745,10 +767,11 @@ Extend `ActivityTraceRow` tool branch:
 
 ```tsx
 {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
-  <div className="spark-activity-result-list">
-    <div className="mb-1 text-right text-[#88857d]">
+  <>
+    <div className="spark-activity-result-count">
       {event.preview.resultCount} {event.preview.resultCount === 1 ? "result" : "results"}
     </div>
+    <div className="spark-activity-result-list">
     {event.preview.results.map((result, index) => (
       <div key={`${result.url ?? result.title}-${index}`} className="spark-activity-result-row">
         {result.url !== undefined ? (
@@ -763,7 +786,8 @@ Extend `ActivityTraceRow` tool branch:
         {result.domain !== undefined && <div className="shrink-0 text-[#88857d]">{result.domain}</div>}
       </div>
     ))}
-  </div>
+    </div>
+  </>
 )}
 ```
 
@@ -913,9 +937,9 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
 .spark-activity-trace {
   max-width: 46rem;
   overflow: hidden;
-  border: 1px solid #3e3d39;
-  border-radius: 0.5rem;
-  background: #282826;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: #9b9790;
   font-family: var(--font-sans);
   font-size: 0.8125rem;
@@ -926,9 +950,9 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   display: flex;
   width: 100%;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.75rem;
-  padding: 0.625rem 0.875rem;
+  padding: 0.125rem 0 0.25rem;
   color: #c7c5bd;
   text-align: left;
   transition: color 0.16s ease;
@@ -938,23 +962,30 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   color: #f3f0e8;
 }
 
+.spark-activity-trace-label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .spark-activity-trace-body {
-  border-top: 1px solid #3e3d39;
-  padding: 0.75rem 0.875rem 0.875rem;
+  border-top: 0;
+  padding: 0.125rem 0 0;
 }
 
 .spark-activity-trace-row {
   position: relative;
   display: flex;
-  gap: 0.75rem;
-  padding: 0.2rem 0 0.65rem;
+  gap: 0.875rem;
+  padding: 0.25rem 0 1rem;
 }
 
 .spark-activity-trace-row:not(:last-child)::before {
   position: absolute;
   bottom: -0.15rem;
-  left: 0.45rem;
-  top: 1.55rem;
+  left: 0.4375rem;
+  top: 1.5rem;
   width: 1px;
   background: #4a4741;
   content: "";
@@ -969,14 +1000,75 @@ In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but
   color: #88857d;
 }
 
+.spark-activity-trace-icon svg {
+  width: 0.625rem;
+  height: 0.625rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.spark-activity-trace-icon-reasoning::after {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  border-radius: 9999px;
+  background: currentColor;
+  content: "";
+  opacity: 0.72;
+}
+
+.spark-activity-globe-icon {
+  width: 1.0625rem !important;
+  height: 1.0625rem !important;
+  stroke-width: 1.35 !important;
+  transform: rotate(-18deg);
+  transform-origin: center;
+}
+
+.spark-activity-status-pill {
+  min-width: 3.625rem;
+  border-radius: 9999px;
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+.spark-activity-result-count {
+  margin-top: 0.25rem;
+  color: #88857d;
+  text-align: right;
+  font-size: 0.75rem;
+}
+
 .spark-activity-result-list {
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
   max-height: 10rem;
   overflow: auto;
   border: 1px solid #4a4741;
   border-radius: 0.375rem;
   background: #1f1f1d;
   padding: 0.45rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.spark-activity-result-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.spark-activity-result-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.spark-activity-result-list::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.spark-activity-result-list::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.18);
 }
 
 .spark-activity-result-row {

@@ -55,15 +55,21 @@ When a completed assistant message has stored trace data, rendering should keep 
 
 ## Visual Structure
 
-Use one compact vertical trace element:
+Use one compact vertical trace element that feels native to the transcript rather than like a nested panel:
 
-- A single bordered container, consistent with the existing warm editorial theme.
-- A header row with a disclosure control, status text, and summary.
+- No heavy outer border or background for the expanded trace.
+- A header row with the status circle, status text or summary, and disclosure chevron grouped together on the left.
+- The disclosure chevron sits directly next to `Thinking` or the completed summary, not at the far right.
 - A thin vertical line or equivalent alignment cue for chronological steps.
-- Small icons for reasoning, search, fetch/read, file/artifact, generic tool, success, and failure.
-- Lightly framed previews inside relevant tool steps only.
+- Reasoning steps use a marker that matches the existing 16px thinking status circle.
+- Web/search steps use a standalone tilted globe icon, slightly darker than primary text, with a thin stroke.
+- File, artifact, image, fetch/read, generic tool, success, and failure steps use equivalent stroke-style icons.
+- Status pills for `Running`, `Done`, and `Failed` share the same visual size.
+- Lightly framed previews appear inside relevant tool steps only.
+- Search result count appears outside the result preview box, top-right aligned above it.
+- Scrollable previews use the same scrollbar styling as the sidebar.
 
-Avoid nested full cards. The trace should feel like one timeline, not a dashboard inside a chat bubble.
+Avoid nested full cards. The trace should feel like one transcript timeline, not a dashboard inside a chat bubble.
 
 ## Trace Model
 
@@ -102,15 +108,22 @@ Known tool families should get specialized summaries:
 - Search tools: query, result count, result rows with title, domain, snippet, and favicon when a URL is available.
 - Fetch/read tools: URL, domain, page title or status, content length or short observation.
 - File and artifact tools: filename, MIME type, size, operation, and generated download context when available.
+- Image generation tools: prompt summary or generated filename, provider/model, dimensions when available, and an image thumbnail or artifact reference.
 - Unknown MCP tools: readable tool name, sanitized argument summary, status, and expandable raw detail.
 
 Raw arguments and raw output remain available behind a secondary detail toggle for debugging and transparency, but they should not be the primary visible UI.
 
 ## Favicons
 
-Favicons should be derived client-side from result URLs when URLs are present. The first pass can use a deterministic favicon URL or a small generated domain badge if external favicon loading is unreliable.
+Favicons should be derived client-side from result domains when URLs are present. Use Google's favicon service directly for v1:
 
-The UI must still be useful without favicons. Domain text is the fallback source of truth.
+```text
+https://www.google.com/s2/favicons?domain=example.com&sz=32
+```
+
+Use the domain parameter instead of the full URL. Let the browser cache naturally. Do not prefetch favicons for hidden or collapsed result rows.
+
+The UI must still be useful without favicons. Domain text is the fallback source of truth, and broken favicon requests should degrade to a generated domain badge or neutral placeholder.
 
 ## Accessibility
 
