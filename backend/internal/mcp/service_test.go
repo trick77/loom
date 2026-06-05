@@ -3,9 +3,11 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/trick77/spark/internal/llm"
@@ -13,7 +15,7 @@ import (
 
 func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
 	service, err := NewService(map[string]Client{
-		"search": fakeClient{
+		"search": &fakeClient{
 			tools: []Tool{{
 				Name:         "search__web",
 				OriginalName: "web",
@@ -43,11 +45,38 @@ func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
 
 func TestServiceRejectsDuplicateToolNames(t *testing.T) {
 	_, err := NewService(map[string]Client{
-		"a": fakeClient{tools: []Tool{{Name: "dup__tool", OriginalName: "tool", ServerName: "dup"}}},
-		"b": fakeClient{tools: []Tool{{Name: "dup__tool", OriginalName: "tool", ServerName: "dup"}}},
+		"a": &fakeClient{tools: []Tool{{Name: "dup__tool", OriginalName: "tool", ServerName: "dup"}}},
+		"b": &fakeClient{tools: []Tool{{Name: "dup__tool", OriginalName: "tool", ServerName: "dup"}}},
 	})
 	if err == nil {
 		t.Fatal("NewService() error = nil, want duplicate error")
+	}
+}
+
+func TestServiceFromConfigFailsWhenConfiguredServerIsUnavailable(t *testing.T) {
+	cfg := Config{Servers: map[string]ServerConfig{
+		"fetch": {Transport: TransportStreamableHTTP, URL: "http://127.0.0.1:1/mcp"},
+	}}
+
+	_, err := NewRequiredServiceFromConfig(context.Background(), cfg, http.DefaultClient)
+	if err == nil {
+		t.Fatal("NewRequiredServiceFromConfig() error = nil, want unavailable server error")
+	}
+	if !strings.Contains(err.Error(), "list MCP tools for fetch") {
+		t.Fatalf("NewRequiredServiceFromConfig() error = %q, want fetch discovery context", err)
+	}
+}
+
+func TestServiceFromConfigClosesUnavailableClient(t *testing.T) {
+	client := &fakeClient{err: errors.New("down")}
+	_, err := NewRequiredServiceFromClients(context.Background(), map[string]Client{
+		"fetch": client,
+	})
+	if err == nil {
+		t.Fatal("NewRequiredServiceFromClients() error = nil, want discovery error")
+	}
+	if !client.closed {
+		t.Fatal("unavailable client was not closed")
 	}
 }
 
@@ -200,16 +229,24 @@ func TestServiceServerStatusNilAndEmpty(t *testing.T) {
 type fakeClient struct {
 	tools  []Tool
 	result string
+	err    error
+	closed bool
 }
 
-func (f fakeClient) ListTools(context.Context) ([]Tool, error) {
+func (f *fakeClient) ListTools(context.Context) ([]Tool, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	return f.tools, nil
 }
 
-func (f fakeClient) CallTool(context.Context, string, map[string]any) (string, error) {
+func (f *fakeClient) CallTool(context.Context, string, map[string]any) (string, error) {
 	return f.result, nil
 }
 
-func (f fakeClient) Close() error { return nil }
+func (f *fakeClient) Close() error {
+	f.closed = true
+	return nil
+}
 
 var _ = llm.Tool{}
