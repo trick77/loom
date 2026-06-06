@@ -1,8 +1,6 @@
 services:
   slopr:
-    build:
-      context: .
-      dockerfile: backend/Containerfile
+    image: "${SLOPR_IMAGE:-ghcr.io/trick77/slopr:latest}"
     ports:
       - "8080:8080"
     environment:
@@ -60,9 +58,7 @@ services:
     # supergateway. Slopr discovers it via mcp.json at http://fetch:8090/mcp.
     # Keep it off the default app network so fetched URLs cannot resolve app
     # sidecars such as tika by Compose service name.
-    build:
-      context: ./fetch
-      dockerfile: Containerfile
+    image: "${SLOPR_FETCH_IMAGE:-ghcr.io/trick77/slopr-fetch:latest}"
     networks:
       - fetch-mcp
 
@@ -72,9 +68,7 @@ services:
     # surfaced to the LLM as obscura__<tool>.
     # Obscura is amd64-only (emulated on arm64 hosts).
     platform: linux/amd64
-    build:
-      context: ./obscura
-      dockerfile: Containerfile
+    image: "${SLOPR_OBSCURA_IMAGE:-ghcr.io/trick77/slopr-obscura:latest}"
 
 networks:
   default:
