@@ -36,8 +36,8 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		artifactCapability(cfg),
 		docgenCapability(runtime),
 		mcpCapability(mcpConfig, runtime),
-		tavilyCapability(cfg, mcpConfig),
-		context7Capability(cfg, mcpConfig),
+		tavilyCapability(cfg),
+		context7Capability(cfg),
 		bflImageCapability(cfg, runtime),
 		responseLoggingCapability(cfg),
 	}
@@ -96,26 +96,18 @@ func mcpCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapabili
 	return startupCapability{Name: "MCP tools", Status: "enabled", Detail: fmt.Sprintf("servers=%d discovered_tools=%d", len(mcpConfig.Servers), runtime.DiscoveredToolCount)}
 }
 
-func tavilyCapability(cfg config.Config, mcpConfig mcp.Config) startupCapability {
-	if !tavilyConfigured(cfg, mcpConfig) {
+func tavilyCapability(cfg config.Config) startupCapability {
+	if !tavilyConfigured(cfg) {
 		return startupCapability{Name: "Tavily web search", Status: "disabled", Detail: "set SLOPR_TAVILY_API_KEY"}
 	}
-	source := "mcp config"
-	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
-		source = "env"
-	}
-	return startupCapability{Name: "Tavily web search", Status: "enabled", Detail: "source=" + source}
+	return startupCapability{Name: "Tavily web search", Status: "enabled", Detail: "source=env"}
 }
 
-func context7Capability(cfg config.Config, mcpConfig mcp.Config) startupCapability {
-	if !context7Configured(cfg, mcpConfig) {
+func context7Capability(cfg config.Config) startupCapability {
+	if !context7Configured(cfg) {
 		return startupCapability{Name: "Context7 docs", Status: "disabled", Detail: "set SLOPR_CONTEXT7_API_KEY"}
 	}
-	source := "mcp config"
-	if strings.TrimSpace(cfg.Context7APIKey) != "" {
-		source = "env"
-	}
-	return startupCapability{Name: "Context7 docs", Status: "enabled", Detail: "source=" + source}
+	return startupCapability{Name: "Context7 docs", Status: "enabled", Detail: "source=env"}
 }
 
 func bflImageCapability(cfg config.Config, runtime startupRuntime) startupCapability {

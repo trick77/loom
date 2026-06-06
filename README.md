@@ -165,47 +165,16 @@ the remote Streamable HTTP endpoint `https://mcp.context7.com/mcp` by default; o
 `SLOPR_CONTEXT7_MCP_URL` if needed. Slopr sends the key as the `CONTEXT7_API_KEY` request header
 and exposes the remote tools as `context7__resolve-library-id` and `context7__query-docs`.
 
-Slopr also reads `SLOPR_MCP_CONFIG` at startup for external MCP tools. The file defaults to
-`/config/mcp.json`; if it is missing, Slopr starts with only built-in tools. Each configured external
-server is discovered once at boot. Servers that cannot be reached are logged and skipped, so one
-unavailable MCP server does not block startup.
-
-The default Compose setup includes two external MCP sidecars:
+The default Compose setup also includes two MCP sidecars configured with first-class env vars:
 
 - `fetch` exposes the reference `mcp-server-fetch` URL/document reader as `fetch__fetch`. Use it for
-  normal URL reading, article/document extraction, summarization, and quoting.
+  normal URL reading, article/document extraction, summarization, and quoting. Configure its endpoint
+  with `SLOPR_FETCH_MCP_URL`.
 - `obscura` exposes browser automation tools as `obscura__<tool>`. Use it only when a page needs
-  JavaScript rendering, visual inspection, navigation, screenshots, or interaction.
+  JavaScript rendering, visual inspection, navigation, screenshots, or interaction. Configure its
+  endpoint with `SLOPR_OBSCURA_MCP_URL`.
 
-Remote MCP servers should expose a Streamable HTTP endpoint:
-
-```json
-{
-  "servers": {
-    "fetch": {
-      "transport": "streamable-http",
-      "url": "http://fetch:8090/mcp",
-      "tools": ["fetch"]
-    }
-  }
-}
-```
-
-Local stdio servers are also supported:
-
-```json
-{
-  "servers": {
-    "fetch": {
-      "transport": "stdio",
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "mcp/fetch"]
-    }
-  }
-}
-```
-
-Built-in and discovered MCP tools are exposed to the chat model as OpenAI-compatible function tools
+Configured MCP tools are exposed to the chat model as OpenAI-compatible function tools
 named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Slopr pauses
 when the model emits `tool_calls`, runs the requested tools, streams tool status events to the UI,
 appends tool results to the model history, and resumes the assistant stream.

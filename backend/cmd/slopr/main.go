@@ -80,23 +80,7 @@ func run() error {
 		chatClient = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
 	}
 	var toolService httpapi.ToolService
-	mcpConfig := mcp.Config{}
-	if cfg.MCPConfigPath != "" {
-		loadedMCPConfig, err := mcp.LoadConfig(cfg.MCPConfigPath)
-		if err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-			slog.Warn("MCP config not found; external MCP tools disabled", "path", cfg.MCPConfigPath)
-		} else {
-			mcpConfig = loadedMCPConfig
-		}
-	}
-	var builtInToolNameCollision bool
-	mcpConfig, builtInToolNameCollision = toolConfigForConfig(cfg, mcpConfig)
-	if builtInToolNameCollision {
-		slog.Warn("built-in MCP tool disabled because MCP config already defines the same server name")
-	}
+	mcpConfig := toolConfigForConfig(cfg)
 	if len(mcpConfig.Servers) > 0 {
 		discoveryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		discovered, err := mcp.NewRequiredServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 15 * time.Second})
@@ -196,40 +180,29 @@ func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 	}
 }
 
-func toolConfigForConfig(cfg config.Config, base mcp.Config) (mcp.Config, bool) {
+func toolConfigForConfig(cfg config.Config) mcp.Config {
 	out := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
-	for name, server := range base.Servers {
-		out.Servers[name] = server
+	if strings.TrimSpace(cfg.FetchMCPURL) != "" {
+		out.Servers["fetch"] = mcp.FetchServerConfig(cfg.FetchMCPURL)
+	}
+	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
+		out.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL)
 	}
 	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
-		if _, exists := out.Servers["tavily"]; exists {
-			return out, true
-		}
 		out.Servers["tavily"] = mcp.TavilyServerConfig(cfg.TavilyURL, cfg.TavilyAPIKey)
 	}
 	if strings.TrimSpace(cfg.Context7APIKey) != "" {
-		if _, exists := out.Servers["context7"]; exists {
-			return out, true
-		}
 		out.Servers["context7"] = mcp.Context7ServerConfig(cfg.Context7MCPURL, cfg.Context7APIKey)
 	}
-	return out, false
+	return out
 }
 
-func context7Configured(cfg config.Config, base mcp.Config) bool {
-	if strings.TrimSpace(cfg.Context7APIKey) != "" {
-		return true
-	}
-	_, exists := base.Servers["context7"]
-	return exists
+func context7Configured(cfg config.Config) bool {
+	return strings.TrimSpace(cfg.Context7APIKey) != ""
 }
 
-func tavilyConfigured(cfg config.Config, base mcp.Config) bool {
-	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
-		return true
-	}
-	_, exists := base.Servers["tavily"]
-	return exists
+func tavilyConfigured(cfg config.Config) bool {
+	return strings.TrimSpace(cfg.TavilyAPIKey) != ""
 }
 
 func bflImageConfigured(cfg config.Config) bool {

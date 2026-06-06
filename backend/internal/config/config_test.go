@@ -40,6 +40,12 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.Context7APIKey != "" {
 		t.Errorf("Context7APIKey default = %q, want empty opt-in value", cfg.Context7APIKey)
 	}
+	if cfg.FetchMCPURL != "" {
+		t.Errorf("FetchMCPURL default = %q, want empty opt-in value", cfg.FetchMCPURL)
+	}
+	if cfg.ObscuraMCPURL != "" {
+		t.Errorf("ObscuraMCPURL default = %q, want empty opt-in value", cfg.ObscuraMCPURL)
+	}
 }
 
 func TestLoad_overrides_and_required(t *testing.T) {
@@ -88,6 +94,23 @@ func TestLoad_context7RequiresURLWhenEnabled(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when Context7 API key is set without MCP URL")
+	}
+}
+
+func TestLoad_firstClassMCPToolURLs(t *testing.T) {
+	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOPR_FETCH_MCP_URL", "http://fetch:8090/mcp")
+	t.Setenv("SLOPR_OBSCURA_MCP_URL", "http://obscura:8090/mcp")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.FetchMCPURL != "http://fetch:8090/mcp" {
+		t.Fatalf("FetchMCPURL = %q, want fetch MCP URL", cfg.FetchMCPURL)
+	}
+	if cfg.ObscuraMCPURL != "http://obscura:8090/mcp" {
+		t.Fatalf("ObscuraMCPURL = %q, want obscura MCP URL", cfg.ObscuraMCPURL)
 	}
 }
 

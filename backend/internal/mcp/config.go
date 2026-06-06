@@ -2,10 +2,7 @@
 package mcp
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/url"
-	"os"
 	"strings"
 )
 
@@ -21,7 +18,7 @@ const (
 	tavilySearchToolName = "tavily_search"
 )
 
-// Config is the on-disk MCP server configuration loaded from mcp.json.
+// Config is the runtime MCP server configuration built from first-class app settings.
 type Config struct {
 	Servers map[string]ServerConfig `json:"servers"`
 }
@@ -38,54 +35,6 @@ type ServerConfig struct {
 	// only tools whose original name appears here are exposed; an empty list
 	// exposes every tool the server advertises.
 	Tools []string `json:"tools"`
-}
-
-func LoadConfig(path string) (Config, error) {
-	bytes, err := os.ReadFile(path)
-	if err != nil {
-		return Config{}, err
-	}
-	var cfg Config
-	if err := json.Unmarshal(bytes, &cfg); err != nil {
-		return Config{}, fmt.Errorf("decode MCP config: %w", err)
-	}
-	if cfg.Servers == nil {
-		cfg.Servers = map[string]ServerConfig{}
-	}
-	for name, server := range cfg.Servers {
-		normalized, err := normalizeServerConfig(name, server)
-		if err != nil {
-			return Config{}, err
-		}
-		cfg.Servers[name] = normalized
-	}
-	return cfg, nil
-}
-
-func normalizeServerConfig(name string, server ServerConfig) (ServerConfig, error) {
-	if strings.TrimSpace(name) == "" {
-		return ServerConfig{}, fmt.Errorf("MCP server name is required")
-	}
-	switch server.Transport {
-	case "", "http", TransportStreamableHTTP:
-		server.Transport = TransportStreamableHTTP
-		if strings.TrimSpace(server.URL) == "" {
-			return ServerConfig{}, fmt.Errorf("MCP server %q requires url", name)
-		}
-	case TransportStdio:
-		if strings.TrimSpace(server.Command) == "" {
-			return ServerConfig{}, fmt.Errorf("MCP server %q requires command", name)
-		}
-	default:
-		return ServerConfig{}, fmt.Errorf("MCP server %q has unsupported transport %q", name, server.Transport)
-	}
-	if server.Headers == nil {
-		server.Headers = map[string]string{}
-	}
-	if server.Env == nil {
-		server.Env = map[string]string{}
-	}
-	return server, nil
 }
 
 func ExposedToolName(serverName, toolName string) string {
@@ -128,6 +77,21 @@ func TavilyServerConfig(baseURL, apiKey string) ServerConfig {
 	}
 	cfg.URL = baseURL + sep + "tavilyApiKey=" + url.QueryEscape(apiKey)
 	return cfg
+}
+
+func FetchServerConfig(url string) ServerConfig {
+	return ServerConfig{
+		Transport: TransportStreamableHTTP,
+		URL:       url,
+		Tools:     []string{"fetch"},
+	}
+}
+
+func ObscuraServerConfig(url string) ServerConfig {
+	return ServerConfig{
+		Transport: TransportStreamableHTTP,
+		URL:       url,
+	}
 }
 
 func Context7ServerConfig(url, apiKey string) ServerConfig {
