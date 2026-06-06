@@ -1,26 +1,15 @@
 # syntax=docker/dockerfile:1
 
-# --- Stage 1: build the frontend ---
-FROM node:22-alpine AS web
-WORKDIR /app/ui
-COPY ui/package.json ui/package-lock.json ./
-RUN npm ci
-COPY ui/ ./
-# Vite outDir is ../backend/web/dist (see vite.config.ts)
-RUN npm run build
-
-# --- Stage 2: build the Go binary (pure-Go, no cgo) ---
+# --- Stage 1: build the Go API binary (pure-Go, no cgo) ---
 FROM golang:1.25-alpine AS build
 ARG SLOPR_VERSION=dev
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-# bring in the built frontend so //go:embed all:dist has real assets
-COPY --from=web /app/backend/web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${SLOPR_VERSION}" -o /out/slopr ./cmd/slopr
 
-# --- Stage 3: minimal runtime ---
+# --- Stage 2: minimal runtime ---
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/slopr /slopr
 EXPOSE 8080

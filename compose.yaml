@@ -1,8 +1,14 @@
 services:
+  slopr-ui:
+    image: "${SLOPR_UI_IMAGE:-ghcr.io/trick77/slopr-ui:latest}"
+    ports:
+      - "8080:80"
+    depends_on:
+      slopr:
+        condition: service_started
+
   slopr:
     image: "${SLOPR_IMAGE:-ghcr.io/trick77/slopr:latest}"
-    ports:
-      - "8080:8080"
     environment:
       SLOPR_ADDR: ":8080"
       SLOPR_DB_PATH: "/data/slopr.db"

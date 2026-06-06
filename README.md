@@ -1,6 +1,6 @@
 <img src="ui/src/assets/sloppy-slopr.png" alt="Slopr" width="360">
 
-Self-hosted, multi-user LLM chat app with a Go backend, embedded React frontend, SQLite, SSE, and
+Self-hosted, multi-user LLM chat app with a Go backend, React frontend, SQLite, SSE, and
 authentik-backed authentication.
 
 ## Development
@@ -119,8 +119,10 @@ session secrets.
 
 ### 5. Reverse proxy notes
 
-Slopr OIDC does not require authentik ForwardAuth headers. Your reverse proxy only needs to route
-normal HTTPS traffic to Slopr.
+Slopr OIDC does not require authentik ForwardAuth headers. In the production Compose stack, the
+nginx UI container is the only externally reachable service and proxies `/api/*` to the backend over
+the internal Compose network. Any outer reverse proxy only needs to route normal HTTPS traffic to
+the UI container.
 
 Required externally reachable paths:
 

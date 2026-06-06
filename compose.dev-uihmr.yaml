@@ -5,9 +5,9 @@
 # UI is developed separately with Vite/HMR instead of the slow embedded build.
 #
 #   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build --remove-orphans  # backend on :8080
-#   cd frontend && npm run dev                                                # UI with hot-reload on :5173
+#   cd ui && npm run dev                                                      # UI with hot-reload on :5173
 #
-# Open http://localhost:5173 (NOT :8080). The Vite proxy (frontend/vite.config.ts)
+# Open http://localhost:5173 (NOT :8080). The Vite proxy (ui/vite.config.ts)
 # forwards /api to 127.0.0.1:8080, so API + streaming + the dev-auth session cookie
 # all stay same-origin. Everything else (env, host networking, volumes, depends_on)
 # is inherited from compose.dev.yaml.

@@ -6,10 +6,10 @@
 # stub UI on :8080 — the real UI runs separately via Vite/HMR:
 #
 #   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build --remove-orphans
-#   cd frontend && npm run dev        # real UI with hot-reload on http://localhost:5173
+#   cd ui && npm run dev              # real UI with hot-reload on http://localhost:5173
 #
-# The full-stack image with the real embedded UI stays in backend/Containerfile
-# (used by hack/refresh.sh and prod compose.yaml).
+# The production backend image in backend/Containerfile is also API-only; the
+# production UI runs in its own nginx image.
 
 # --- Stage 1: build the Go binary (pure-Go, no cgo) ---
 FROM golang:1.25-alpine AS build

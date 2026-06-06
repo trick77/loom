@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { proxy: { "/api": "http://127.0.0.1:8080" } },
   build: {
-    outDir: path.resolve(import.meta.dirname, "../backend/web/dist"),
+    outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
     rolldownOptions: {
       output: {
