@@ -246,6 +246,7 @@ body {
 }
 
 .slopr-activity-trace {
+  --slopr-activity-icon-offset: 0.225rem;
   max-width: 46rem;
   overflow: hidden;
   border: 0;
@@ -295,9 +296,9 @@ body {
 
 .slopr-activity-trace-row:not(:last-child)::before {
   position: absolute;
-  bottom: 0.5rem;
-  left: 0.4375rem;
-  top: 1.5rem;
+  bottom: -0.225rem;
+  left: calc(0.5rem - 0.5px);
+  top: calc(0.25rem + var(--slopr-activity-icon-offset) + 1rem + 0.25rem);
   width: 1px;
   background: #4a4741;
   content: "";
@@ -308,7 +309,7 @@ body {
   width: 1rem;
   height: 1rem;
   flex: 0 0 auto;
-  margin-top: 0.36rem;
+  margin-top: var(--slopr-activity-icon-offset);
   place-items: center;
   color: #88857d;
 }
@@ -336,7 +337,11 @@ body {
 .slopr-activity-trace-icon-reasoning {
   border: 1px solid currentColor;
   border-radius: 9999px;
-  margin-top: 0.67rem;
+}
+
+.slopr-activity-trace-icon-arrow {
+  border: 1px solid currentColor;
+  border-radius: 9999px;
 }
 
 .slopr-activity-trace-icon-reasoning-complete {
@@ -359,6 +364,11 @@ body {
   transform: rotate(-45deg);
 }
 
+.slopr-activity-reasoning p {
+  margin: 0;
+  transform: translateY(1px);
+}
+
 .slopr-activity-reasoning :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
   margin-top: 0;
 }
@@ -368,11 +378,15 @@ body {
 }
 
 .slopr-activity-globe-icon {
-  width: 1.0625rem !important;
-  height: 1.0625rem !important;
+  width: 1.125rem !important;
+  height: 1.125rem !important;
   stroke-width: 1.35 !important;
   transform: rotate(-18deg);
   transform-origin: center;
+}
+
+.slopr-activity-tool-header {
+  transform: translateY(-1px);
 }
 
 .slopr-activity-status-pill {

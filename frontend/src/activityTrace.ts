@@ -140,7 +140,8 @@ export function summarizeTrace(events: ActivityTraceEvent[]): string {
   if (reads > 0) parts.push(`read ${reads} ${reads === 1 ? "page" : "pages"}`);
   if (otherTools > 0) parts.push(`used ${otherTools} ${otherTools === 1 ? "tool" : "tools"}`);
   if (failures > 0) parts.push(`${failures} ${failures === 1 ? "tool" : "tools"} failed`);
-  return parts.length > 0 ? parts.join(" · ") : "Thought through response";
+  if (parts.length > 0) return parts.join(" · ");
+  return summarizeReasoningOnlyTrace(events);
 }
 
 export function summarizeToolCall(name: string, rawArguments: string): ToolSummary {
@@ -254,6 +255,32 @@ function nativeToolDetail(name: string): string | undefined {
 function titleCase(value: string): string {
   const readable = readableToolName(value);
   return readable === "" ? value : readable.charAt(0).toUpperCase() + readable.slice(1);
+}
+
+function summarizeReasoningOnlyTrace(events: ActivityTraceEvent[]): string {
+  const content = events
+    .filter((event) => event.type === "reasoning")
+    .map((event) => event.content)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (content === "") return "Activity complete";
+  const firstSentence = content.match(/^[^.!?]+[.!?]?/)?.[0] ?? content;
+  const summary = stripReasoningLeadIn(firstSentence)
+    .replace(/[.!?]+$/, "")
+    .replace(/\s+before\s+(?:answering|responding)$/i, "")
+    .trim();
+  if (summary === "") return "Activity complete";
+  return truncateText(summary.charAt(0).toUpperCase() + summary.slice(1), 72);
+}
+
+function stripReasoningLeadIn(value: string): string {
+  return value
+    .replace(/^(?:i|we)\s+should\s+compare\s+/i, "compared ")
+    .replace(/^(?:i|we)\s+(?:should|need to|will|can|must|am going to|\'ll)\s+/i, "")
+    .replace(/^let(?:'s| us)\s+/i, "")
+    .replace(/^thinking through\s+/i, "")
+    .replace(/^checking\s+/i, "checked ");
 }
 
 function stringValue(record: Record<string, unknown>, keys: string[]): string | undefined {

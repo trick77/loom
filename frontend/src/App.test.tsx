@@ -1057,7 +1057,7 @@ test("keeps active activity trace while assistant output streams without explici
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
-  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
@@ -1090,8 +1090,8 @@ test("keeps active activity trace visible while assistant text is streaming", as
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
   );
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
-  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
@@ -1138,11 +1138,15 @@ test("centers reasoning activity dots inside their row circles", () => {
     css.match(/\.slopr-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const reasoningDotRule =
     css.match(/\.slopr-activity-trace-icon-reasoning::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const reasoningParagraphRule =
+    css.match(/\.slopr-activity-reasoning p\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
   expect(reasoningIconRule).toContain("border: 1px solid currentColor");
   expect(reasoningDotRule).toContain("display: block");
   expect(reasoningDotRule).toContain("width: 0.25rem");
   expect(reasoningDotRule).toContain("height: 0.25rem");
+  expect(reasoningParagraphRule).toContain("margin: 0");
+  expect(reasoningParagraphRule).toContain("transform: translateY(1px)");
   expect(css).toContain(".slopr-activity-trace-icon-reasoning-complete::after");
   expect(css).toContain("border-bottom: 1.5px solid currentColor");
   expect(css).toContain("border-left: 1.5px solid currentColor");
@@ -1150,12 +1154,41 @@ test("centers reasoning activity dots inside their row circles", () => {
 
 test("spaces activity trace connector lines away from adjacent icons", () => {
   const css = readFileSync("src/index.css", "utf8");
+  const iconRule = css.match(/\.slopr-activity-trace-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const reasoningIconRule =
+    css.match(/\.slopr-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const connectorRule =
     css.match(/\.slopr-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
-  expect(connectorRule).toContain("top: 1.5rem");
-  expect(connectorRule).toContain("bottom: 0.5rem");
-  expect(connectorRule).toContain("left: 0.4375rem");
+  expect(css).toContain("--slopr-activity-icon-offset: 0.225rem");
+  expect(iconRule).toContain("margin-top: var(--slopr-activity-icon-offset)");
+  expect(iconRule).not.toContain("border: 1px solid currentColor");
+  expect(iconRule).not.toContain("border-radius: 9999px");
+  expect(reasoningIconRule).toContain("border-radius: 9999px");
+  expect(reasoningIconRule).not.toContain("margin-top:");
+  expect(connectorRule).toContain("top: calc(0.25rem + var(--slopr-activity-icon-offset) + 1rem + 0.25rem)");
+  expect(connectorRule).toContain("bottom: -0.225rem");
+  expect(connectorRule).toContain("left: calc(0.5rem - 0.5px)");
+});
+
+test("keeps existing search activity icon glyph design", () => {
+  const source = readFileSync("src/ChatShell.tsx", "utf8");
+  const css = readFileSync("src/index.css", "utf8");
+  const globeIcon = source.match(/function GlobeTraceIcon\(\) \{(?<body>[\s\S]*?)\n\}/)?.groups?.body ?? "";
+  const globeIconRule = css.match(/\.slopr-activity-globe-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const arrowIconRule = css.match(/\.slopr-activity-trace-icon-arrow\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const toolHeaderRule = css.match(/\.slopr-activity-tool-header\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+
+  expect(globeIcon).toContain("<circle");
+  expect(globeIconRule).toContain("width: 1.125rem !important");
+  expect(globeIconRule).toContain("height: 1.125rem !important");
+  expect(source).toContain("slopr-activity-trace-icon slopr-activity-trace-icon-arrow");
+  expect(source).toContain("slopr-activity-trace-row-reasoning");
+  expect(source).toContain("slopr-activity-trace-row-tool");
+  expect(toolHeaderRule).toContain("transform: translateY(-1px)");
+  expect(arrowIconRule).toContain("border: 1px solid currentColor");
+  expect(arrowIconRule).toContain("border-radius: 9999px");
+  expect(source).not.toContain("slopr-activity-trace-chevron-icon");
 });
 
 test("shows active activity trace with reasoning and tool activity before assistant output", async () => {
@@ -1185,13 +1218,8 @@ test("shows active activity trace with reasoning and tool activity before assist
   );
 
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
-  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
-  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
-  expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
-
-  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
-
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Running")).toBeInTheDocument();
@@ -1988,11 +2016,7 @@ test("surfaces the server error and keeps failed activity trace visible", async 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
   const trace = screen.getByRole("status", { name: /slopr activity trace/i });
-  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  expect(screen.queryByText("agentgateway")).not.toBeInTheDocument();
-
-  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
-
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Failed")).toBeInTheDocument();
 });

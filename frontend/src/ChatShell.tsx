@@ -100,6 +100,7 @@ export function ChatShell({
   const [streamingText, setStreamingText] = useState("");
   const [streamingArtifacts, setStreamingArtifacts] = useState<Artifact[]>([]);
   const [activityTrace, setActivityTrace] = useState<ActivityTraceEvent[]>([]);
+  const [activeActivityTraceUserExpanded, setActiveActivityTraceUserExpanded] = useState(false);
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -111,6 +112,11 @@ export function ChatShell({
   const streamAbortRef = useRef<AbortController | null>(null);
   const activityTraceRef = useRef<ActivityTraceEvent[]>([]);
   const activeActivityTraceExpandedRef = useRef(false);
+
+  const resetActiveActivityTraceExpansion = useCallback(() => {
+    activeActivityTraceExpandedRef.current = false;
+    setActiveActivityTraceUserExpanded(false);
+  }, []);
 
   const updateActivityTrace = useCallback((updater: (current: ActivityTraceEvent[]) => ActivityTraceEvent[]) => {
     const next = updater(activityTraceRef.current);
@@ -232,6 +238,7 @@ export function ChatShell({
       setStreamingText("");
       setStreamingArtifacts([]);
       clearActivityTrace();
+      resetActiveActivityTraceExpansion();
       setSendError("");
       return;
     }
@@ -241,6 +248,7 @@ export function ChatShell({
     // Drop any activity trace left over from the previous thread (e.g. a failed
     // turn whose trace is now kept) before this thread's transcript loads.
     clearActivityTrace();
+    resetActiveActivityTraceExpansion();
     getThread(route.threadID)
       .then((response) => {
         if (!active) return;
@@ -250,6 +258,7 @@ export function ChatShell({
         setStreamingText("");
         setStreamingArtifacts([]);
         clearActivityTrace();
+        resetActiveActivityTraceExpansion();
         setSendError("");
       })
       .catch((error: unknown) => {
@@ -259,7 +268,7 @@ export function ChatShell({
     return () => {
       active = false;
     };
-  }, [clearActivityTrace, handleActionError, route]);
+  }, [clearActivityTrace, handleActionError, resetActiveActivityTraceExpansion, route]);
 
   const displayName = user.displayName || user.username;
   const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
@@ -273,11 +282,11 @@ export function ChatShell({
     setStreamingText("");
     setStreamingArtifacts([]);
     clearActivityTrace();
-    activeActivityTraceExpandedRef.current = false;
+    resetActiveActivityTraceExpansion();
     setSendError("");
     navigate({ view: "new" });
     setRoute({ view: "new" });
-  }, [clearActivityTrace, onChat]);
+  }, [clearActivityTrace, onChat, resetActiveActivityTraceExpansion]);
 
   const navigateToChats = useCallback(() => {
     onChat();
@@ -389,6 +398,7 @@ export function ChatShell({
         setStreamingText("");
         setStreamingArtifacts([]);
         clearActivityTrace();
+        resetActiveActivityTraceExpansion();
         setSendError("");
         navigate({ view: "new" });
         setRoute({ view: "new" });
@@ -419,6 +429,7 @@ export function ChatShell({
     setStreamingText("");
     setStreamingArtifacts([]);
     clearActivityTrace();
+    resetActiveActivityTraceExpansion();
     setSendError("");
     let abortController: AbortController | null = null;
     let createdThreadForFallback: Thread | null = null;
@@ -468,17 +479,18 @@ export function ChatShell({
         onAssistantMessage: (message) => {
           if (!isCurrentThread()) return;
           const completedTrace = completeTrace(activityTraceRef.current);
+          const shouldInitiallyExpandTrace = activeActivityTraceExpandedRef.current;
           setMessages((current) => [
             ...current,
             completedTrace.length > 0
               ? {
                   ...message,
                   activityTrace: completedTrace,
-                  activityTraceInitiallyExpanded: activeActivityTraceExpandedRef.current,
+                  activityTraceInitiallyExpanded: shouldInitiallyExpandTrace,
                 }
               : message,
           ]);
-          activeActivityTraceExpandedRef.current = false;
+          resetActiveActivityTraceExpansion();
           setStreamingText("");
           setStreamingArtifacts([]);
           clearActivityTrace();
@@ -727,6 +739,7 @@ export function ChatShell({
             streamingText={streamingText}
             streamingArtifacts={streamingArtifacts}
             activityTrace={activityTrace}
+            activeActivityTraceUserExpanded={activeActivityTraceUserExpanded}
             sendError={sendError}
             isSending={isSending}
             mcpStatus={mcpStatus}
@@ -734,11 +747,12 @@ export function ChatShell({
             onDraftChange={setDraft}
             onSend={handleSend}
             onStop={handleStopResponse}
-        onRetry={handleRetry}
-        onActiveActivityTraceExpandedChange={(expanded) => {
-          activeActivityTraceExpandedRef.current = expanded;
-        }}
-        onDeleteThread={openDeleteModal}
+            onRetry={handleRetry}
+            onActiveActivityTraceExpandedChange={(expanded) => {
+              activeActivityTraceExpandedRef.current = expanded;
+              setActiveActivityTraceUserExpanded(expanded);
+            }}
+            onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}
             onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
             onToggleThreadMenu={(menuKey) =>
@@ -1260,6 +1274,7 @@ function ChatPanel({
   streamingText,
   streamingArtifacts,
   activityTrace,
+  activeActivityTraceUserExpanded,
   sendError,
   isSending,
   mcpStatus,
@@ -1281,6 +1296,7 @@ function ChatPanel({
   streamingText: string;
   streamingArtifacts: Artifact[];
   activityTrace: ActivityTraceEvent[];
+  activeActivityTraceUserExpanded: boolean;
   sendError: string;
   isSending: boolean;
   mcpStatus: McpStatusEvent | null;
@@ -1305,6 +1321,7 @@ function ChatPanel({
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   const hasActiveActivityTrace = activityTrace.length > 0;
   const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
+  const activeActivityTraceExpanded = streamingText === "" || activeActivityTraceUserExpanded;
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1373,6 +1390,7 @@ function ChatPanel({
     streamingArtifacts.length,
     streamingText,
     activityTrace.length,
+    activeActivityTraceExpanded,
   ]);
 
   useEffect(() => {
@@ -1474,6 +1492,7 @@ function ChatPanel({
               <ActivityTracePanel
                 events={activityTrace}
                 active={true}
+                expanded={activeActivityTraceExpanded}
                 onExpandedChange={onActiveActivityTraceExpandedChange}
               />
             )}
@@ -1531,15 +1550,18 @@ function ChatPanel({
 function ActivityTracePanel({
   events,
   active,
+  expanded: controlledExpanded,
   initiallyExpanded = false,
   onExpandedChange,
 }: {
   events: ActivityTraceEvent[];
   active: boolean;
+  expanded?: boolean;
   initiallyExpanded?: boolean;
   onExpandedChange?(expanded: boolean): void;
 }) {
-  const [expanded, setExpanded] = useState(initiallyExpanded);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(initiallyExpanded);
+  const expanded = controlledExpanded ?? uncontrolledExpanded;
   if (events.length === 0 && !active) return null;
   const summary = active ? "Thinking" : summarizeTrace(events);
   return (
@@ -1554,13 +1576,11 @@ function ActivityTracePanel({
         aria-label={expanded ? "Hide activity" : "Show activity"}
         className="slopr-activity-trace-toggle"
         type="button"
-        onClick={() =>
-          setExpanded((current) => {
-            const next = !current;
-            onExpandedChange?.(next);
-            return next;
-          })
-        }
+        onClick={() => {
+          const next = !expanded;
+          if (controlledExpanded === undefined) setUncontrolledExpanded(next);
+          onExpandedChange?.(next);
+        }}
       >
         <span className="slopr-activity-trace-label">
           <span className={active ? "slopr-thinking-status-active" : "slopr-thinking-status-complete"} aria-hidden="true" />
@@ -1592,7 +1612,7 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
         ? "slopr-activity-trace-icon slopr-activity-trace-icon-reasoning slopr-activity-trace-icon-reasoning-complete"
         : "slopr-activity-trace-icon slopr-activity-trace-icon-reasoning";
     return (
-      <div className="slopr-activity-trace-row">
+      <div className="slopr-activity-trace-row slopr-activity-trace-row-reasoning">
         <span className={iconClass} aria-hidden="true" />
         <div className="slopr-activity-reasoning">
           <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
@@ -1604,12 +1624,19 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   }
   const status = activityToolStatusMeta(event);
   return (
-    <div className="slopr-activity-trace-row">
-      <span className="slopr-activity-trace-icon" aria-hidden="true">
+    <div className="slopr-activity-trace-row slopr-activity-trace-row-tool">
+      <span
+        className={
+          event.summary.kind === "search"
+            ? "slopr-activity-trace-icon"
+            : "slopr-activity-trace-icon slopr-activity-trace-icon-arrow"
+        }
+        aria-hidden="true"
+      >
         {event.summary.kind === "search" ? <GlobeTraceIcon /> : <FetchTraceIcon />}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3">
+        <div className="slopr-activity-tool-header flex items-center justify-between gap-3">
           <span className="slopr-activity-tool-title">{event.summary.title}</span>
           <span className={`slopr-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
