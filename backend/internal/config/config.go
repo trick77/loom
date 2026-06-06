@@ -44,9 +44,10 @@ type Config struct {
 	TikaURL        string
 	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
 	TavilyAPIKey   string // enables built-in Tavily web search when set
+	FetchMCPURL    string
+	ObscuraMCPURL  string
 	Context7MCPURL string
 	Context7APIKey string
-	MCPConfigPath  string
 
 	AdminInitialPassword string // legacy; authentik owns credentials in Phase 2
 	SessionSecret        string
@@ -102,9 +103,10 @@ func Load() (Config, error) {
 		TikaURL:              env("SLOPR_TIKA_URL", "http://tika:9998"),
 		TavilyURL:            env("SLOPR_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
 		TavilyAPIKey:         env("SLOPR_TAVILY_API_KEY", ""),
+		FetchMCPURL:          env("SLOPR_FETCH_MCP_URL", ""),
+		ObscuraMCPURL:        env("SLOPR_OBSCURA_MCP_URL", ""),
 		Context7MCPURL:       env("SLOPR_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
 		Context7APIKey:       env("SLOPR_CONTEXT7_API_KEY", ""),
-		MCPConfigPath:        env("SLOPR_MCP_CONFIG", "/config/mcp.json"),
 		AdminInitialPassword: env("SLOPR_ADMIN_INITIAL_PASSWORD", ""),
 		SessionSecret:        env("SLOPR_SESSION_SECRET", ""),
 		AuthMode:             AuthMode(env("SLOPR_AUTH_MODE", "")),

@@ -8,7 +8,7 @@
 # (a 127.0.0.1 bind inside a bridge-network container is unreachable via -p).
 #
 # Built-in Tavily web search: set SLOPR_TAVILY_API_KEY to enable it (the adapter talks to
-# Tavily's hosted MCP server). External MCP tools can still be configured via mcp.dev.json.
+# Tavily's hosted MCP server).
 services:
   # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
   slopr-init:
@@ -31,7 +31,8 @@ services:
       SLOPR_USERS_DIR: /data/users
       SLOPR_TAVILY_URL: "${SLOPR_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
       SLOPR_TAVILY_API_KEY: "${SLOPR_TAVILY_API_KEY:-}"
-      SLOPR_MCP_CONFIG: /config/mcp.json
+      SLOPR_FETCH_MCP_URL: "http://localhost:8091/mcp"
+      SLOPR_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
       # Optional: point at a real OpenAI-compatible endpoint to actually chat.
       SLOPR_CHAT_BASE_URL: "${SLOPR_CHAT_BASE_URL:-}"
       SLOPR_CHAT_API_KEY: "${SLOPR_CHAT_API_KEY:-}"
@@ -44,7 +45,6 @@ services:
       SLOPR_BFL_MODEL: "${SLOPR_BFL_MODEL:-flux-2-klein-4b}"
     volumes:
       - slopr-dev-data:/data
-      - ./mcp.dev.json:/config/mcp.json:ro
     depends_on:
       slopr-init:
         condition: service_completed_successfully
@@ -57,7 +57,7 @@ services:
 
   fetch:
     # Lightweight URL/document fetch MCP. Slopr is host-networked here, so the
-    # bridge is published on a localhost port and reached via mcp.dev.json at
+    # bridge is published on a localhost port and reached via SLOPR_FETCH_MCP_URL at
     # http://localhost:8091/mcp.
     build:
       context: ./fetch
@@ -67,7 +67,7 @@ services:
 
   obscura:
     # Headless-browser MCP. Slopr is host-networked here, so the bridge is
-    # published on a localhost port and reached via mcp.dev.json at
+    # published on a localhost port and reached via SLOPR_OBSCURA_MCP_URL at
     # http://localhost:8090/mcp.
     # Obscura is amd64-only (emulated on arm64 hosts).
     platform: linux/amd64

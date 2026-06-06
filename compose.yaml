@@ -12,7 +12,8 @@ services:
       SLOPR_TIKA_URL: "http://tika:9998"
       SLOPR_TAVILY_URL: "${SLOPR_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
       SLOPR_TAVILY_API_KEY: "${SLOPR_TAVILY_API_KEY}"
-      SLOPR_MCP_CONFIG: "/config/mcp.json"
+      SLOPR_FETCH_MCP_URL: "http://fetch:8090/mcp"
+      SLOPR_OBSCURA_MCP_URL: "http://obscura:8090/mcp"
       SLOPR_OIDC_ISSUER: "${SLOPR_OIDC_ISSUER}"
       SLOPR_OIDC_CLIENT_ID: "${SLOPR_OIDC_CLIENT_ID}"
       SLOPR_OIDC_CLIENT_SECRET: "${SLOPR_OIDC_CLIENT_SECRET}"
@@ -34,7 +35,6 @@ services:
       SLOPR_SESSION_SECRET: "${SLOPR_SESSION_SECRET}"
     volumes:
       - slopr-data:/data
-      - ./mcp.json:/config/mcp.json:ro
       # per-user volumes are mounted manually under /data/users/<user-id>/
     networks:
       - default
@@ -55,7 +55,7 @@ services:
 
   fetch:
     # Lightweight URL/document fetch MCP, bridged to streamable-HTTP by
-    # supergateway. Slopr discovers it via mcp.json at http://fetch:8090/mcp.
+    # supergateway. Slopr reaches it via SLOPR_FETCH_MCP_URL.
     # Keep it off the default app network so fetched URLs cannot resolve app
     # sidecars such as tika by Compose service name.
     image: "${SLOPR_FETCH_IMAGE:-ghcr.io/trick77/slopr-fetch:latest}"
@@ -64,7 +64,7 @@ services:
 
   obscura:
     # Headless-browser MCP (Obscura) bridged to streamable-HTTP by supergateway.
-    # Slopr discovers it via mcp.json at http://obscura:8090/mcp; tools are
+    # Slopr reaches it via SLOPR_OBSCURA_MCP_URL; tools are
     # surfaced to the LLM as obscura__<tool>.
     # Obscura is amd64-only (emulated on arm64 hosts).
     platform: linux/amd64

@@ -21,7 +21,3 @@ opportunistically when touching the relevant code.
 - Remove the redundant `@testing-library/jest-dom/vitest` import in `src/App.test.tsx:1`
   (already provided by `vitest.setup.ts`).
 - `active` color/token is defined but unused until chat list items exist (Phase 3).
-
-## Config / deployment
-- **`mcp.json` transport**: currently `"http"` with `/sse` URLs. Align with the MCP client's schema in
-  Phase 4 (likely `"sse"`), once the client defines it.

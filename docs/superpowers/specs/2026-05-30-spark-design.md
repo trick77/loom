@@ -192,9 +192,10 @@ Errors are recorded in `documents.status/error` and surfaced in the UI.
 
 ### MCP integration
 
-An **`mcp.json`** at startup describes each server as either stdio (`command`,`args`,`env`) or remote
-(`url`, headers). On boot: connect, discover tools, offer them to the model as `tools`. The SearXNG
-MCP talks to the `searxng` container; Fetch is another server. The set is fixed at runtime.
+MCP-backed tools are first-class app integrations configured with `SLOPR_*` env vars. On boot: build
+the configured MCP server registry, connect, discover tools, and offer them to the model as `tools`.
+Tavily, Context7, Fetch, and Obscura are named integrations; there is no generic `mcp.json` runtime
+config surface.
 **Optional tool-approval card** (human-in-the-loop) for sensitive tools, enabled via configuration.
 
 **Citations mechanism:** generic MCP tool results are plain `content` blocks with no citation schema →
@@ -323,8 +324,7 @@ slopr/
   frontend/                    # React + Vite + Tailwind
     src/...
   Containerfile                # multi-stage: Node build → Go build → minimal image
-  compose.yaml                 # slopr + searxng + tika (+ MCP servers)
-  mcp.json                     # example MCP configuration
+  compose.yaml                 # slopr + searxng + tika + MCP sidecars
 ```
 
 ---

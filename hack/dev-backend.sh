@@ -10,7 +10,7 @@
 # backend, keeping API + streaming + the dev-auth session cookie same-origin.
 #
 # All required runtime vars (SLOPR_AUTH_MODE=dev, SLOPR_ADDR, SLOPR_SESSION_SECRET,
-# SLOPR_DB_PATH, SLOPR_USERS_DIR, SLOPR_MCP_CONFIG) are baked into compose.dev.yaml.
+# SLOPR_DB_PATH, SLOPR_USERS_DIR, sidecar MCP URLs) are baked into compose.dev.yaml.
 # For real chatting, set the optional chat vars in an uncommitted .env file at the
 # repo root (Docker Compose reads it automatically):
 #

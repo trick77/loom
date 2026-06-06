@@ -28,10 +28,10 @@ Full design: `docs/superpowers/specs/2026-05-30-slopr-design.md`. Per-phase plan
 - One SQLite file; `sqlite-vec` for vectors. No separate DB service.
 - HTTP: stdlib `net/http` (Go 1.22 method routing), no web framework. Streaming: **SSE**.
 - One OpenAI-compatible client for chat (MiMo) + embeddings (OpenAI). Extraction: Apache **Tika** sidecar.
-- Tools/agents are **MCP by default** (config-driven via `mcp.json`, separate HTTP/SSE containers).
-  Tavily web search is built-in: when `SLOPR_TAVILY_API_KEY` is set, `main.go` injects a synthetic
-  `tavily` MCP server (hosted at `SLOPR_TAVILY_URL`, auth via `?tavilyApiKey=`) handled by the normal
-  remote client, with a `ServerConfig.Tools` allowlist exposing only `tavily_search`.
+- Tools/agents are **first-class MCP-backed integrations**. Tavily web search is enabled with
+  `SLOPR_TAVILY_API_KEY`; Context7 docs with `SLOPR_CONTEXT7_API_KEY`; the Compose sidecars use
+  `SLOPR_FETCH_MCP_URL` and `SLOPR_OBSCURA_MCP_URL`. Do not add a generic `mcp.json` runtime config
+  surface without explicit agreement.
 
 ## Config
 - All runtime config comes from `SLOPR_*` env vars — see `backend/internal/config/config.go` and
