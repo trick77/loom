@@ -108,17 +108,17 @@ describe("activity trace model", () => {
     expect(summary).toBe("1 tool failed");
   });
 
-  test("summarizes reasoning-only traces without implying tool work", () => {
+  test("summarizes reasoning-only traces from cached reasoning content", () => {
     const summary = summarizeTrace([
       {
         id: "reasoning-1",
         type: "reasoning",
-        content: "Thinking through the response.",
+        content: "I should compare the active stream state with the completed assistant message before answering.",
         status: "done",
       },
     ]);
 
-    expect(summary).toBe("Thought through response");
+    expect(summary).toBe("Compared the active stream state with the completed assistant message");
   });
 
   test("creates a fetch result preview for fetch-like tools", () => {
