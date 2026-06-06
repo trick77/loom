@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+
+# --- Stage 1: build the SPA ---
+FROM node:22-alpine AS build
+WORKDIR /app/ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+COPY ui/ ./
+RUN npm run build
+
+# --- Stage 2: serve static assets and proxy API requests ---
+FROM nginx:1.29-alpine
+COPY ui/nginx.conf /etc/nginx/nginx.conf
+COPY --from=build /app/ui/dist /usr/share/nginx/html
+EXPOSE 80

@@ -88,6 +88,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push Slopr UI image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./ui/Containerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository }}-ui:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository }}-ui:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}
+            ghcr.io/${{ github.repository }}-ui:${{ steps.ver.outputs.major }}
+            ghcr.io/${{ github.repository }}-ui:${{ steps.ver.outputs.short }}
+            ghcr.io/${{ github.repository }}-ui:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Build and push fetch MCP image
         if: ${{ steps.companion_changes.outputs.fetch_changed == 'true' }}
         uses: docker/build-push-action@v7
