@@ -26,8 +26,8 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: cd frontend && npm ci
+          cache-dependency-path: ui/package-lock.json
+      - run: cd ui && npm ci
       - run: make fe-coverage
 
   image:

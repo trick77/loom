@@ -3,7 +3,7 @@
 
 # Node / frontend
 node_modules/
-frontend/dist/
+ui/dist/
 *.tsbuildinfo
 
 # Go
@@ -14,7 +14,7 @@ frontend/dist/
 
 # Coverage reports
 /coverage/
-/frontend/coverage/
+/ui/coverage/
 
 # macOS
 .DS_Store

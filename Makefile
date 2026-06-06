@@ -14,13 +14,13 @@ backend-coverage:
 	cd backend && go tool cover -func=../coverage/backend.out
 
 fe-test:
-	cd frontend && npm run test -- --run
+	cd ui && npm run test -- --run
 
 fe-coverage:
-	cd frontend && npm run test:coverage
+	cd ui && npm run test:coverage
 
 fe-build:
-	cd frontend && npm ci && npm run build
+	cd ui && npm ci && npm run build
 
 build: fe-build
 	cd backend && CGO_ENABLED=0 go build -o ../bin/slopr ./cmd/slopr

@@ -1,4 +1,4 @@
-<img src="frontend/src/assets/sloppy-slopr.png" alt="Slopr" width="360">
+<img src="ui/src/assets/sloppy-slopr.png" alt="Slopr" width="360">
 
 Self-hosted, multi-user LLM chat app with a Go backend, embedded React frontend, SQLite, SSE, and
 authentik-backed authentication.
