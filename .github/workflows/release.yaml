@@ -41,11 +41,26 @@ jobs:
           esac
           NEXT="$MA.$MI.$PA"
           SHORT=$(git rev-parse --short HEAD)
+          echo "previous=$LATEST" >> "$GITHUB_OUTPUT"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
           echo "major=$MA"     >> "$GITHUB_OUTPUT"
           echo "minor=$MI"     >> "$GITHUB_OUTPUT"
           echo "short=$SHORT"  >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEXT ($BUMP) at $SHORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - id: companion_changes
+        name: Detect companion image changes
+        run: |
+          if git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- fetch; then
+            echo "fetch_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "fetch_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          if git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- obscura; then
+            echo "obscura_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "obscura_changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/setup-buildx-action@v4
 
@@ -55,7 +70,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v7
+      - name: Build and push Slopr image
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./backend/Containerfile
@@ -72,8 +88,43 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Tag only AFTER a successful image build/push, so a failed build never
-      # leaves an orphan git tag behind.
+      - name: Build and push fetch MCP image
+        if: ${{ steps.companion_changes.outputs.fetch_changed == 'true' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ./fetch
+          file: ./fetch/Containerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}
+            ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.major }}
+            ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.short }}
+            ghcr.io/${{ github.repository }}-fetch:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Obscura MCP image
+        if: ${{ steps.companion_changes.outputs.obscura_changed == 'true' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ./obscura
+          file: ./obscura/Containerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}
+            ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.major }}
+            ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.short }}
+            ghcr.io/${{ github.repository }}-obscura:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Tag only AFTER required image pushes succeed, so a failed release never
+      # leaves an orphan git tag behind. Companion images are required only when
+      # their source directories changed since the previous release.
       - name: Create and push tag
         run: |
           git config user.name  "github-actions[bot]"
