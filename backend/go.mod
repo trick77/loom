@@ -1,11 +1,11 @@
 module github.com/trick77/slopr
 
-go 1.26.1
+go 1.25.0
 
 require (
 	github.com/asg017/sqlite-vec-go-bindings v0.1.7-alpha.2
 	github.com/coreos/go-oidc/v3 v3.18.0
-	github.com/johnfercher/maroto/v2 v2.4.0
+	github.com/johnfercher/maroto/v2 v2.3.3
 	github.com/ncruces/go-sqlite3 v0.23.3
 	github.com/xuri/excelize/v2 v2.10.1
 	golang.org/x/image v0.41.0
