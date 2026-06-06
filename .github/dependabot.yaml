@@ -16,7 +16,7 @@ updates:
 
   # React frontend
   - package-ecosystem: npm
-    directory: /frontend
+    directory: /ui
     schedule:
       interval: weekly
     groups:

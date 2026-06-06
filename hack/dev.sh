@@ -22,5 +22,5 @@ trap cleanup EXIT INT TERM
 ) &
 BACKEND_PID=$!
 
-cd "$ROOT/frontend"
+cd "$ROOT/ui"
 npm run dev -- --host 127.0.0.1
