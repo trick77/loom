@@ -1097,7 +1097,8 @@ test("keeps active activity trace visible while assistant text is streaming", as
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
+  // The trace rolls up once the answer streams; its body unmounts after the animation.
+  await waitFor(() => expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument());
 
   fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
 
@@ -1117,6 +1118,44 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
   expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+});
+
+test("hides the copy action until the assistant answer finishes streaming", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Partial"}\n\n'),
+  );
+
+  expect(await screen.findByText("Partial")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Copy response" })).not.toBeInTheDocument();
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Partial answer.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+    ),
+  );
+  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
+
+  expect(await screen.findByText("Partial answer.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
 });
 
 test("centers the active thinking status dot inside its circle", () => {
