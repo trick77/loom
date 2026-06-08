@@ -281,6 +281,34 @@ body {
   gap: 0.5rem;
 }
 
+.slopr-activity-trace-collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s ease;
+}
+
+.slopr-activity-trace-collapsible-expanded {
+  grid-template-rows: 1fr;
+}
+
+.slopr-activity-trace-collapsible-inner {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.32s ease;
+}
+
+.slopr-activity-trace-collapsible-expanded .slopr-activity-trace-collapsible-inner {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slopr-activity-trace-collapsible,
+  .slopr-activity-trace-collapsible-inner {
+    transition: none;
+  }
+}
+
 .slopr-activity-trace-body {
   border-top: 0;
   padding: 0.125rem 0 0;

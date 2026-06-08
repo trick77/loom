@@ -1326,10 +1326,26 @@ function ChatPanel({
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
     if (transcript === null) return;
-    const isAtBottom = isNearBottom(transcript);
-    shouldStickToBottomRef.current = isAtBottom;
-    setShowJumpToBottom(!isAtBottom);
+    // Only update the jump-to-bottom affordance here. Stick-to-bottom is never
+    // re-engaged automatically: once the user scrolls away mid-stream it stays
+    // disengaged until the next inference or an explicit jump-to-bottom.
+    setShowJumpToBottom(!isNearBottom(transcript));
   }, []);
+
+  const disengageAutoScroll = useCallback(() => {
+    shouldStickToBottomRef.current = false;
+    const transcript = transcriptRef.current;
+    setShowJumpToBottom(transcript === null ? true : !isNearBottom(transcript));
+  }, []);
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      // A user wheel/trackpad gesture upward means they want to read back; stop
+      // auto-scroll immediately so streaming content no longer yanks them down.
+      if (event.deltaY < 0) disengageAutoScroll();
+    },
+    [disengageAutoScroll],
+  );
 
   const scrollToLatest = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1389,7 +1405,7 @@ function ChatPanel({
     showActiveActivityTrace,
     streamingArtifacts.length,
     streamingText,
-    activityTrace.length,
+    activityTrace,
     activeActivityTraceExpanded,
   ]);
 
@@ -1456,6 +1472,8 @@ function ChatPanel({
           aria-label="Conversation transcript"
           className="flex h-full flex-col overflow-y-auto px-6 pt-10 [scrollbar-gutter:stable_both-edges] md:px-8"
           onScroll={refreshScrollState}
+          onTouchMove={disengageAutoScroll}
+          onWheel={handleWheel}
           role="region"
         >
           <div className="slopr-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
@@ -1499,7 +1517,7 @@ function ChatPanel({
             {streamingArtifacts.map((artifact) => (
               <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
             ))}
-            {streamingText !== "" && <AssistantText>{streamingText}</AssistantText>}
+            {streamingText !== "" && <AssistantText streaming>{streamingText}</AssistantText>}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
           <div
@@ -1562,6 +1580,18 @@ function ActivityTracePanel({
 }) {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(initiallyExpanded);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
+  // Keep the body mounted while it rolls up so the collapse animates instead of
+  // snapping shut; unmount only after the transition so collapsed traces stay out
+  // of the DOM. Matches the 0.32s grid transition in index.css.
+  const [bodyMounted, setBodyMounted] = useState(expanded);
+  useEffect(() => {
+    if (expanded) {
+      setBodyMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setBodyMounted(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [expanded]);
   if (events.length === 0 && !active) return null;
   const summary = active ? "Thinking" : summarizeTrace(events);
   return (
@@ -1594,11 +1624,22 @@ function ActivityTracePanel({
           <span aria-hidden="true" className={expanded ? "slopr-thinking-chevron-expanded" : "slopr-thinking-chevron"} />
         </span>
       </button>
-      {expanded && (
-        <div className="slopr-activity-trace-body">
-          {events.map((event) => (
-            <ActivityTraceRow key={event.id} event={event} />
-          ))}
+      {bodyMounted && (
+        <div
+          className={
+            expanded
+              ? "slopr-activity-trace-collapsible slopr-activity-trace-collapsible-expanded"
+              : "slopr-activity-trace-collapsible"
+          }
+          aria-hidden={expanded ? undefined : true}
+        >
+          <div className="slopr-activity-trace-collapsible-inner">
+            <div className="slopr-activity-trace-body">
+              {events.map((event) => (
+                <ActivityTraceRow key={event.id} event={event} />
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1925,10 +1966,12 @@ function AssistantText({
   children,
   onRetry,
   metricsMessage,
+  streaming = false,
 }: {
   children: string;
   onRetry?: () => void;
   metricsMessage?: Message;
+  streaming?: boolean;
 }) {
   const downloadable = downloadableResponse(children);
 
@@ -1948,6 +1991,7 @@ function AssistantText({
           retryLabel="Retry response"
           onRetry={onRetry}
           metricsMessage={metricsMessage}
+          streaming={streaming}
           speakable
         />
       </div>
@@ -1977,6 +2021,7 @@ function AssistantText({
         retryLabel="Retry response"
         onRetry={onRetry}
         metricsMessage={metricsMessage}
+        streaming={streaming}
         speakable
       />
     </div>
@@ -1991,6 +2036,7 @@ function MessageActions({
   metricsMessage,
   speakable = false,
   alignRight = false,
+  streaming = false,
 }: {
   copyLabel: string;
   copyText: string;
@@ -1999,6 +2045,7 @@ function MessageActions({
   metricsMessage?: Message;
   speakable?: boolean;
   alignRight?: boolean;
+  streaming?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -2053,15 +2100,17 @@ function MessageActions({
           <SpeakerIcon />
         </button>
       )}
-      <button
-        className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
-        onClick={handleCopy}
-        type="button"
-        title="Copy"
-        aria-label={copyLabel}
-      >
-        {copied ? <CheckIcon /> : <CopyIcon />}
-      </button>
+      {!streaming && (
+        <button
+          className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
+          onClick={handleCopy}
+          type="button"
+          title="Copy"
+          aria-label={copyLabel}
+        >
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </button>
+      )}
       {onRetry !== undefined && (
         <button
           className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
