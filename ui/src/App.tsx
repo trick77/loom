@@ -61,7 +61,7 @@ export default function App() {
 
   if (status === "loading") {
     return (
-      <div className="flex h-dvh items-center justify-center bg-bg font-sans text-muted">
+      <div className="flex h-svh items-center justify-center bg-bg font-sans text-muted">
         Loading
       </div>
     );
@@ -69,7 +69,7 @@ export default function App() {
 
   if (status === "signed-out") {
     return (
-      <main className="flex h-dvh items-center justify-center bg-bg px-6 font-sans text-ink">
+      <main className="flex h-svh items-center justify-center bg-bg px-6 font-sans text-ink">
         <section className="flex w-full max-w-md flex-col items-center gap-5 text-center">
           <img src={sloprImage} alt="Slopr" className="w-full max-w-sm rounded-slopr" />
           <p className="-mt-5 whitespace-nowrap font-sans text-xl text-muted">Semantic Language Operations &amp; Personal Reasoning</p>
@@ -86,7 +86,7 @@ export default function App() {
 
   if (status === "error" || user === null) {
     return (
-      <div className="flex h-dvh items-center justify-center bg-bg font-sans text-ink">
+      <div className="flex h-svh items-center justify-center bg-bg font-sans text-ink">
         Service unavailable
       </div>
     );
