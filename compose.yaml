@@ -3,9 +3,26 @@ services:
     image: "${SLOPR_UI_IMAGE:-ghcr.io/trick77/slopr-ui:latest}"
     ports:
       - "127.0.0.1:8081:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 60s
+      timeout: 5s
+      start_period: 10s
+      start_interval: 5s
+      retries: 3
     depends_on:
       slopr:
-        condition: service_started
+        condition: service_healthy
+    networks:
+      - default
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.slopr.rule: Host(`slopr.trick77.com`)
+      traefik.http.routers.slopr.entrypoints: https
+      traefik.http.routers.slopr.tls: "true"
+      traefik.http.services.slopr.loadbalancer.server.port: "80"
 
   slopr:
     image: "${SLOPR_IMAGE:-ghcr.io/trick77/slopr:latest}"
@@ -39,6 +56,13 @@ services:
       SLOPR_BFL_API_KEY: "${SLOPR_BFL_API_KEY:-}"
       SLOPR_BFL_MODEL: "${SLOPR_BFL_MODEL:-flux-2-klein-4b}"
       SLOPR_SESSION_SECRET: "${SLOPR_SESSION_SECRET}"
+    healthcheck:
+      test: ["CMD", "/slopr", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
     volumes:
       - slopr-data:/data
       # per-user volumes are mounted manually under /data/users/<user-id>/
@@ -47,17 +71,28 @@ services:
       - fetch-mcp
     depends_on:
       tika:
-        condition: service_started
+        condition: service_healthy
       obscura:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
         condition: service_healthy
       fetch:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
         condition: service_healthy
+    labels:
+      traefik.enable: "false"
 
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
     image: apache/tika:2.9.2.1-full
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9998"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+    labels:
+      traefik.enable: "false"
 
   fetch:
     # Lightweight URL/document fetch MCP, bridged to streamable-HTTP by
@@ -65,8 +100,17 @@ services:
     # Keep it off the default app network so fetched URLs cannot resolve app
     # sidecars such as tika by Compose service name.
     image: "${SLOPR_FETCH_IMAGE:-ghcr.io/trick77/slopr-fetch:latest}"
+    healthcheck:
+      test: ["CMD", "node", "-e", "const s=require('net').connect(8090,'127.0.0.1');s.setTimeout(3000);s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 6
     networks:
       - fetch-mcp
+    labels:
+      traefik.enable: "false"
 
   obscura:
     # Headless-browser MCP (Obscura) bridged to streamable-HTTP by supergateway.
@@ -75,10 +119,21 @@ services:
     # Obscura is amd64-only (emulated on arm64 hosts).
     platform: linux/amd64
     image: "${SLOPR_OBSCURA_IMAGE:-ghcr.io/trick77/slopr-obscura:latest}"
+    healthcheck:
+      test: ["CMD", "node", "-e", "const s=require('net').connect(8090,'127.0.0.1');s.setTimeout(3000);s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
+      interval: 60s
+      timeout: 5s
+      start_period: 90s
+      start_interval: 5s
+      retries: 6
+    labels:
+      traefik.enable: "false"
 
 networks:
   default:
   fetch-mcp:
+  traefik:
+    external: true
 
 volumes:
   slopr-data:

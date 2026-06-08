@@ -82,6 +82,70 @@ func TestProductionComposeOnlyPublishesUI(t *testing.T) {
 	}
 }
 
+func TestProductionComposeDefinesTraefikEntrypoint(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	compose := string(data)
+
+	uiService := composeService(t, compose, "slopr-ui")
+	for _, want := range []string{
+		"- traefik",
+		`traefik.enable: "true"`,
+		`traefik.docker.network: traefik`,
+		`traefik.http.services.slopr.loadbalancer.server.port: "80"`,
+		`traefik.http.routers.slopr.entrypoints: https`,
+		"`slopr.trick77.com`",
+		`traefik.http.routers.slopr.tls: "true"`,
+	} {
+		if !strings.Contains(uiService, want) {
+			t.Fatalf("slopr-ui service missing Traefik fragment %q", want)
+		}
+	}
+	for _, unwanted := range []string{"certresolver", "slopr-http", "redirect-to-https"} {
+		if strings.Contains(uiService, unwanted) {
+			t.Fatalf("slopr-ui service must not include unnecessary Traefik fragment %q", unwanted)
+		}
+	}
+
+	for _, name := range []string{"slopr", "tika", "fetch", "obscura"} {
+		service := composeService(t, compose, name)
+		if !strings.Contains(service, `traefik.enable: "false"`) {
+			t.Fatalf("%s service must disable Traefik", name)
+		}
+	}
+
+	if !strings.Contains(compose, "\n  traefik:\n    external: true") {
+		t.Fatal("compose.yaml must declare the external traefik network")
+	}
+}
+
+func TestProductionComposeHealthchecksUseSixtySecondIntervals(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	compose := string(data)
+
+	for _, name := range []string{"slopr-ui", "slopr", "tika", "fetch", "obscura"} {
+		service := composeService(t, compose, name)
+		if !strings.Contains(service, "\n    healthcheck:") {
+			t.Fatalf("%s service missing healthcheck", name)
+		}
+		if !strings.Contains(service, "\n      interval: 60s") {
+			t.Fatalf("%s healthcheck must use interval: 60s", name)
+		}
+		if strings.Contains(service, "interval=10s") || strings.Contains(service, "\n      interval: 30s") {
+			t.Fatalf("%s healthcheck must not use a 10s or 30s interval", name)
+		}
+	}
+
+	if !strings.Contains(composeService(t, compose, "slopr"), `test: ["CMD", "/slopr", "healthcheck"]`) {
+		t.Fatal("slopr service must use the built-in /slopr healthcheck command")
+	}
+}
+
 func TestUIContainerfileUsesSingleWorkerNginxProxy(t *testing.T) {
 	for _, path := range []string{
 		"../../../ui/Containerfile",
@@ -102,12 +166,30 @@ func TestUIContainerfileUsesSingleWorkerNginxProxy(t *testing.T) {
 		"set $slopr_upstream http://slopr:8080;",
 		"proxy_pass $slopr_upstream;",
 		"proxy_buffering off;",
+		"location = /health",
 		"try_files $uri $uri/ /index.html;",
 	} {
 		if !strings.Contains(conf, want) {
 			t.Fatalf("ui/nginx.conf missing %q", want)
 		}
 	}
+}
+
+func composeService(t *testing.T, compose, name string) string {
+	t.Helper()
+	start := strings.Index(compose, "\n  "+name+":")
+	if start < 0 {
+		t.Fatalf("compose.yaml missing %s service", name)
+	}
+	rest := compose[start+1:]
+	lines := strings.Split(rest, "\n")
+	for i := 1; i < len(lines); i++ {
+		line := lines[i]
+		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") && strings.HasSuffix(line, ":") {
+			return strings.Join(lines[:i], "\n")
+		}
+	}
+	return rest
 }
 
 func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {

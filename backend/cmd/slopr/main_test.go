@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -141,5 +143,36 @@ func TestContext7ConfiguredDetectsEnv(t *testing.T) {
 	}
 	if !context7Configured(config.Config{Context7APIKey: "ctx-key"}) {
 		t.Fatal("context7Configured() = false with API key, want true")
+	}
+}
+
+func TestHealthcheckURLUsesLoopbackForWildcardListenAddress(t *testing.T) {
+	if got, want := healthcheckURL(":8080"), "http://127.0.0.1:8080/api/health"; got != want {
+		t.Fatalf("healthcheckURL(:8080) = %q, want %q", got, want)
+	}
+}
+
+func TestRunHealthcheckRequiresHealthyResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/health" {
+			t.Fatalf("path = %q, want /api/health", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	if err := runHealthcheck(server.URL + "/api/health"); err != nil {
+		t.Fatalf("runHealthcheck() error = %v", err)
+	}
+}
+
+func TestRunHealthcheckFailsUnhealthyResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	if err := runHealthcheck(server.URL + "/api/health"); err == nil {
+		t.Fatal("runHealthcheck() error = nil, want failure")
 	}
 }
