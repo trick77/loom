@@ -165,7 +165,7 @@ func (c *BFLClient) poll(ctx context.Context, pollingURL string) (bflStatusRespo
 		case "request moderated":
 			return bflStatusResponse{}, fmt.Errorf("BFL blocked the prompt (request moderated); revise the prompt and try again")
 		case "content moderated":
-			return bflStatusResponse{}, fmt.Errorf("BFL blocked the generated image (content moderated); revise the prompt and try again")
+			return bflStatusResponse{}, fmt.Errorf("BFL blocked the generated image (content moderated); try a different prompt")
 		case "error", "failed":
 			return bflStatusResponse{}, fmt.Errorf("BFL generation failed (status: %s)", status.Status)
 		default:
