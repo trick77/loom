@@ -4,7 +4,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,10 +33,48 @@ func main() {
 	// Configure structured logging with an explicit handler so every line
 	// carries an RFC3339 timestamp (the package default does not guarantee one).
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		if err := runHealthcheck(healthcheckURL(envDefault("SLOPR_ADDR", ":8080"))); err != nil {
+			slog.Error("healthcheck failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
+}
+
+func envDefault(key, def string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return def
+}
+
+func healthcheckURL(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "http://127.0.0.1:8080/api/health"
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port) + "/api/health"
+}
+
+func runHealthcheck(url string) error {
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected health status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func run() error {
