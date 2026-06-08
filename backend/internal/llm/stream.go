@@ -48,6 +48,9 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	if parseInlineTools {
 		gate = &toolCallStreamGate{}
 	}
+	// Emitted at most once per turn, the moment we first know a tool call is
+	// underway — well before the parsed call surfaces at the end of the stream.
+	toolPendingEmitted := false
 	flushGate := func() error {
 		if gate == nil || onEvent == nil {
 			return nil
@@ -122,6 +125,22 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 						return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 					}
 				}
+				// The gate flips to suppressed the instant it sees the inline
+				// <tool_call> marker; tell the client a tool call is coming.
+				if gate != nil && gate.suppressed && !toolPendingEmitted {
+					toolPendingEmitted = true
+					if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
+						logInferenceFailed(ctx, c.model, time.Since(start), err)
+						return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+					}
+				}
+			}
+		}
+		if len(delta.ToolCalls) > 0 && !toolPendingEmitted && onEvent != nil {
+			toolPendingEmitted = true
+			if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
+				logInferenceFailed(ctx, c.model, time.Since(start), err)
+				return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 			}
 		}
 		for _, chunk := range delta.ToolCalls {

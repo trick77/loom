@@ -427,6 +427,9 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 		if event.ReasoningDelta != "" {
 			return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
 		}
+		if event.ToolPending {
+			return sendSSEJSON(stream, "tool_pending", struct{}{})
+		}
 		if event.Delta != "" && streamContent {
 			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
 		}

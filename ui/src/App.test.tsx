@@ -1150,6 +1150,39 @@ test("shows the reasoning abstract instead of Thinking once the answer streams",
   expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
 });
 
+test("keeps Thinking when pre-tool preamble streams before a pending tool call", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  // The model emits preamble text and then signals a pending tool call. Despite
+  // the streamed text, the label must stay "Thinking" — the answer phase has not
+  // begun, a tool is about to run.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Let me search."}\n\n'));
+  streamController.current?.enqueue(new TextEncoder().encode("event: tool_pending\ndata: {}\n\n"));
+
+  expect(await screen.findByText("Let me search.")).toBeInTheDocument();
+  expect(screen.getByText("Thinking")).toBeInTheDocument();
+  expect(screen.queryByText("Search current sources")).not.toBeInTheDocument();
+});
+
 test("keeps active activity trace visible while assistant text is streaming", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({

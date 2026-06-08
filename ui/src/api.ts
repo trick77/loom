@@ -93,6 +93,7 @@ type StreamHandlers = {
   onReasoningDelta?(delta: string): void;
   onAssistantMessage(message: Message): void;
   onThread(thread: Thread): void;
+  onToolPending?(): void;
   onToolCall?(event: ToolCallEvent): void;
   onToolResult?(event: ToolResultEvent): void;
   onMcpStatus?(event: McpStatusEvent): void;
@@ -358,6 +359,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "thread":
       handlers.onThread(payload as Thread);
+      break;
+    case "tool_pending":
+      handlers.onToolPending?.();
       break;
     case "tool_call":
       handlers.onToolCall?.(payload as ToolCallEvent);

@@ -1053,6 +1053,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
+		"event: tool_pending",
 		"event: tool_call",
 		`"name":"search__web"`,
 		"event: tool_result",
@@ -1065,6 +1066,9 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("SSE body missing %q:\n%s", want, body)
 		}
+	}
+	if pending, call := strings.Index(body, "event: tool_pending"), strings.Index(body, "event: tool_call"); pending == -1 || pending > call {
+		t.Fatalf("tool_pending should precede tool_call: pending=%d call=%d\n%s", pending, call, body)
 	}
 	if store.assistantContent != "I found Slopr." {
 		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)

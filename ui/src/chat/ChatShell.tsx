@@ -103,6 +103,7 @@ export function ChatShell({
   const [streamingText, setStreamingText] = useState("");
   const [streamingArtifacts, setStreamingArtifacts] = useState<Artifact[]>([]);
   const [activityTrace, setActivityTrace] = useState<ActivityTraceEvent[]>([]);
+  const [toolPending, setToolPending] = useState(false);
   const [activeActivityTraceUserExpanded, setActiveActivityTraceUserExpanded] = useState(false);
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
@@ -130,6 +131,7 @@ export function ChatShell({
   const clearActivityTrace = useCallback(() => {
     activityTraceRef.current = [];
     setActivityTrace([]);
+    setToolPending(false);
   }, []);
 
   const handleActionError = useCallback(
@@ -464,8 +466,15 @@ export function ChatShell({
           if (!isCurrentThread()) return;
           updateActivityTrace((current) => appendReasoningDelta(current, delta));
         },
+        onToolPending: () => {
+          if (!isCurrentThread()) return;
+          setToolPending(true);
+        },
         onToolCall: (event) => {
           if (!isCurrentThread()) return;
+          // The pending call is now a real (running) trace event; let the trace's
+          // own running status drive the "thinking" affordance from here.
+          setToolPending(false);
           updateActivityTrace((current) => upsertTraceToolCall(current, event));
         },
         onToolResult: (event) => {
@@ -742,6 +751,7 @@ export function ChatShell({
             streamingText={streamingText}
             streamingArtifacts={streamingArtifacts}
             activityTrace={activityTrace}
+            toolPending={toolPending}
             activeActivityTraceUserExpanded={activeActivityTraceUserExpanded}
             sendError={sendError}
             isSending={isSending}
@@ -1250,6 +1260,7 @@ function ChatPanel({
   streamingText,
   streamingArtifacts,
   activityTrace,
+  toolPending,
   activeActivityTraceUserExpanded,
   sendError,
   isSending,
@@ -1272,6 +1283,7 @@ function ChatPanel({
   streamingText: string;
   streamingArtifacts: Artifact[];
   activityTrace: ActivityTraceEvent[];
+  toolPending: boolean;
   activeActivityTraceUserExpanded: boolean;
   sendError: string;
   isSending: boolean;
@@ -1298,13 +1310,15 @@ function ChatPanel({
   const hasActiveActivityTrace = activityTrace.length > 0;
   const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
   const activeActivityTraceExpanded = streamingText === "" || activeActivityTraceUserExpanded;
-  // Once the final answer streams (and no tool is mid-run), the reasoning phase
-  // is over: show its abstract instead of "Thinking". Only applies to traces
-  // that actually have reasoning, so reasoning-free turns keep the "Thinking"
-  // affordance until they complete.
+  // Once the final answer streams (and no tool is running or pending), the
+  // reasoning phase is over: show its abstract instead of "Thinking". Only
+  // applies to traces that actually have reasoning, so reasoning-free turns keep
+  // the "Thinking" affordance until they complete. `toolPending` bridges the gap
+  // until a tool call the model has already started surfaces as a running event,
+  // so streamed pre-tool preamble text never settles the label early.
   const hasReasoning = activityTrace.some((event) => event.type === "reasoning");
   const toolRunning = activityTrace.some((event) => event.type === "tool" && event.status === "running");
-  const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning;
+  const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning && !toolPending;
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
