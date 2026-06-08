@@ -4,6 +4,7 @@ import { AuthExpiredError, bulkDeleteThreads, listThreads, type Thread } from ".
 import { BulkDeleteModal } from "./BulkDeleteModal";
 import { ChatRow } from "./ChatRow";
 import { PillButton } from "./PillButton";
+import { SidebarOpenButton } from "../SidebarOpenButton";
 
 const PAGE_LIMIT = 1000;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -146,17 +147,7 @@ export function ChatsPage({
       <div className="mx-auto w-full max-w-[860px] px-4 pb-16 pt-10 md:px-6">
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <button
-              type="button"
-              aria-label="Show sidebar"
-              onClick={onOpenSidebar}
-              className="-ml-1 grid h-7 w-7 shrink-0 place-items-center rounded text-[#aaa79e] transition-colors hover:text-white md:hidden"
-            >
-              <svg className="h-[20px] w-[20px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M9.5 5v14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
+            <SidebarOpenButton onClick={onOpenSidebar} />
             <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Chats</h1>
           </div>
           {selectMode ? (
