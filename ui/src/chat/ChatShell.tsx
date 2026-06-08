@@ -1584,12 +1584,30 @@ function Composer({
   // caps the box; once content exceeds it, overflow-y-auto shows the scrollbar.
   // Direction of growth follows layout anchoring (the chat dock is sticky-bottom
   // → grows upward; the start composer is top-anchored → grows downward).
-  useLayoutEffect(() => {
+  const autoGrow = useCallback(() => {
     const el = textareaRef.current;
     if (el === null) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [draft]);
+  }, []);
+  // Re-measure on every draft change (typing, and reset to base after send).
+  useLayoutEffect(autoGrow, [autoGrow, draft]);
+  // Re-measure when the textarea's width changes (window resize, breakpoint,
+  // rotation) — a different width re-wraps the text and changes the needed
+  // height. Guard on width only: autoGrow mutates the element's height, so
+  // reacting to height changes too would re-trigger the observer.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (el === null) return;
+    let lastWidth = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === lastWidth) return;
+      lastWidth = el.clientWidth;
+      autoGrow();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [autoGrow]);
   return (
     <form
       className={`slopr-composer relative flex flex-col rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
