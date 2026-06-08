@@ -527,7 +527,7 @@ export function ChatShell({
 
   return (
     <div
-      className={`grid h-dvh bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out ${
+      className={`grid h-svh bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out ${
         sidebarCollapsed ? "grid-cols-[56px_1fr]" : "grid-cols-[362px_1fr]"
       }`}
     >
@@ -1203,7 +1203,7 @@ function StartPanel({
   onStop(): void;
 }) {
   return (
-    <section className="flex h-dvh min-h-0 flex-col">
+    <section className="flex h-svh min-h-0 flex-col">
       <header
         aria-label="Chat header"
         className="slopr-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
@@ -1403,7 +1403,7 @@ function ChatPanel({
   }, [headerMenuOpen, onCloseThreadMenu]);
 
   return (
-    <section className="flex h-dvh min-h-0 flex-col">
+    <section className="flex h-svh min-h-0 flex-col">
       <header
         aria-label="Chat header"
         className="slopr-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
