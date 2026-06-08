@@ -212,6 +212,15 @@ func (s *Service) Tools() []llm.Tool {
 	return append([]llm.Tool(nil), s.tools...)
 }
 
+// HasTool reports whether an exposed tool with the given name is registered.
+func (s *Service) HasTool(name string) bool {
+	if s == nil {
+		return false
+	}
+	_, ok := s.routes[name]
+	return ok
+}
+
 func (s *Service) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
 	route, ok := s.routes[name]
 	if !ok {

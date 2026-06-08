@@ -136,6 +136,17 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
             </div>
           </>
         )}
+        {event.preview?.kind === "fetchResult" && event.preview.url !== undefined && (
+          <div className="slopr-activity-result-list">
+            <SearchResultRow
+              result={{
+                title: event.preview.title ?? event.preview.domain ?? event.preview.url,
+                url: event.preview.url,
+                domain: event.preview.domain,
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -605,6 +605,85 @@ func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 	}
 }
 
+func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
+	fetchCall := llm.ToolCall{
+		Function: llm.ToolCallFunction{
+			Name:      fetchToolName,
+			Arguments: `{"url":"https://example.com"}`,
+		},
+	}
+
+	t.Run("falls back to obscura when fetch fails", func(t *testing.T) {
+		var navigated bool
+		srv := &server{mcp: fakeMCPService{
+			available: map[string]bool{
+				obscuraNavigateToolName: true,
+				obscuraSnapshotToolName: true,
+			},
+			callFunc: func(_ context.Context, name string, args map[string]any) (string, error) {
+				switch name {
+				case fetchToolName:
+					return "", errFakeTool
+				case obscuraNavigateToolName:
+					if args["url"] != "https://example.com" {
+						t.Fatalf("navigate url = %v, want https://example.com", args["url"])
+					}
+					navigated = true
+					return "ok", nil
+				case obscuraSnapshotToolName:
+					if !navigated {
+						t.Fatal("snapshot called before navigate")
+					}
+					return "rendered page text", nil
+				}
+				return "", errFakeTool
+			},
+		}}
+
+		got := srv.executeToolCall(context.Background(), fetchCall, 0)
+
+		if got != "rendered page text" {
+			t.Fatalf("output = %q, want obscura snapshot", got)
+		}
+	})
+
+	t.Run("surfaces fetch failure when obscura is unavailable", func(t *testing.T) {
+		srv := &server{mcp: fakeMCPService{err: errFakeTool}}
+
+		got := srv.executeToolCall(context.Background(), fetchCall, 0)
+
+		if !strings.HasPrefix(got, "tool failed") {
+			t.Fatalf("output = %q, want tool failed prefix", got)
+		}
+	})
+
+	t.Run("does not fall back for non-fetch tools", func(t *testing.T) {
+		var obscuraCalled bool
+		srv := &server{mcp: fakeMCPService{
+			available: map[string]bool{
+				obscuraNavigateToolName: true,
+				obscuraSnapshotToolName: true,
+			},
+			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+				if name == obscuraNavigateToolName || name == obscuraSnapshotToolName {
+					obscuraCalled = true
+				}
+				return "", errFakeTool
+			},
+		}}
+		otherCall := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"query":"x"}`}}
+
+		got := srv.executeToolCall(context.Background(), otherCall, 0)
+
+		if obscuraCalled {
+			t.Fatal("obscura must not be called for non-fetch tools")
+		}
+		if !strings.HasPrefix(got, "tool failed") {
+			t.Fatalf("output = %q, want tool failed prefix", got)
+		}
+	})
+}
+
 type fakeImageProvider struct{}
 
 func (fakeImageProvider) Generate(_ context.Context, req imagegen.GenerateRequest) (imagegen.GenerateResult, error) {
