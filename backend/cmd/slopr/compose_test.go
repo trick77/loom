@@ -146,6 +146,27 @@ func TestProductionComposeHealthchecksUseSixtySecondIntervals(t *testing.T) {
 	}
 }
 
+func TestProductionComposeUsesPhysicalDataDirectory(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	compose := string(data)
+	service := composeService(t, compose, "slopr")
+
+	for _, want := range []string{
+		`user: "1000:1000"`,
+		"- ./data:/data",
+	} {
+		if !strings.Contains(service, want) {
+			t.Fatalf("slopr service missing physical data directory fragment %q", want)
+		}
+	}
+	if strings.Contains(compose, "slopr-data") {
+		t.Fatal("production compose must use ./data, not the slopr-data named volume")
+	}
+}
+
 func TestUIContainerfileUsesSingleWorkerNginxProxy(t *testing.T) {
 	for _, path := range []string{
 		"../../../ui/Containerfile",
