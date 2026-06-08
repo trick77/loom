@@ -15,6 +15,7 @@ let restoreURLObjectMethods: (() => void) | null = null;
 afterEach(() => {
   restoreURLObjectMethods?.();
   restoreURLObjectMethods = null;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -50,6 +51,40 @@ test("renders authenticated shell for signed-in users", async () => {
   expect(await screen.findByText(greetingPattern("Jan"))).toBeInTheDocument();
   expect(screen.getByText("Jan")).toBeInTheDocument();
   expect(window.location.pathname).toBe("/new");
+});
+
+test("greets signed-in users with up late after 22:00", async () => {
+  const realDate = Date;
+  type DateArgs = [] | [string | number | Date] | [number, number, number?, number?, number?, number?, number?];
+  class LateDate extends realDate {
+    constructor(...args: DateArgs) {
+      if (args.length === 0) {
+        super(2026, 5, 8, 22, 0, 0);
+        return;
+      }
+      if (args.length === 1) {
+        super(args[0]);
+        return;
+      }
+      super(...args);
+    }
+
+    static now() {
+      return new realDate(2026, 5, 8, 22, 0, 0).getTime();
+    }
+  }
+  vi.stubGlobal("Date", LateDate);
+  vi.stubGlobal("fetch", basicSignedInFetch());
+
+  render(<App />);
+
+  expect(await screen.findByText("Up late, Jan")).toBeInTheDocument();
+});
+
+test("uses Slopr as the HTML title", () => {
+  for (const path of ["../index.html", "../../backend/web/dist/index.html"]) {
+    expect(readFileSync(new URL(path, import.meta.url), "utf8")).toContain("<title>Slopr</title>");
+  }
 });
 
 test("bounds the active chat title in the top header", async () => {
@@ -2133,5 +2168,5 @@ function threadFixture() {
 }
 
 function greetingPattern(name: string) {
-  return new RegExp(`^((Morning|Afternoon|Evening), ${name}|${name} returns!)$`);
+  return new RegExp(`^((Morning|Afternoon|Evening|Up late), ${name}|${name} returns!)$`);
 }
