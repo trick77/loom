@@ -45,6 +45,7 @@ import {
 import logoImage from "../assets/sloppy.png";
 import { MessageMetrics } from "../MessageMetrics";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
+import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ChatsPage } from "../ChatsPage";
 import {
   buildImageStats,
@@ -59,6 +60,7 @@ import { navigate, routeFromLocation, type RouteState } from "./routing";
 import type { MessageWithActivityTrace, SidebarIconName } from "./types";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FileIcon, RetryIcon, SpeakerIcon } from "./icons";
+import { useMediaQuery } from "./useMediaQuery";
 
 export { buildImageStats } from "./artifacts";
 
@@ -110,6 +112,19 @@ export function ChatShell({
   const [isSending, setIsSending] = useState(false);
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  // On mobile the sidebar is an overlay drawer that always shows the full
+  // content; the rail-collapse only applies on desktop.
+  const railCollapsed = !isMobile && sidebarCollapsed;
+  useEffect(() => {
+    if (!mobileSidebarOpen) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileSidebarOpen(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileSidebarOpen]);
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -278,6 +293,7 @@ export function ChatShell({
 
   const navigateToNew = useCallback(() => {
     onChat();
+    setMobileSidebarOpen(false);
     streamAbortRef.current?.abort();
     activeThreadIDRef.current = null;
     setActiveThread(null);
@@ -293,6 +309,7 @@ export function ChatShell({
 
   const navigateToChats = useCallback(() => {
     onChat();
+    setMobileSidebarOpen(false);
     navigate({ view: "chats" });
     setRoute({ view: "chats" });
   }, [onChat]);
@@ -307,6 +324,7 @@ export function ChatShell({
 
   async function selectThread(threadID: string) {
     onChat();
+    setMobileSidebarOpen(false);
     navigate({ view: "chat", threadID });
     setRoute({ view: "chat", threadID });
   }
@@ -352,6 +370,7 @@ export function ChatShell({
 
   function openRenameModal(thread: Thread) {
     setOpenThreadMenuID(null);
+    setMobileSidebarOpen(false);
     setRenamingThread(thread);
     setRenameTitle(thread.title);
     setModalError("");
@@ -359,6 +378,7 @@ export function ChatShell({
 
   function openDeleteModal(thread: Thread) {
     setOpenThreadMenuID(null);
+    setMobileSidebarOpen(false);
     setDeletingThread(thread);
     setModalError("");
   }
@@ -527,17 +547,21 @@ export function ChatShell({
 
   return (
     <div
-      className={`grid h-svh bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out ${
-        sidebarCollapsed ? "grid-cols-[56px_1fr]" : "grid-cols-[362px_1fr]"
+      className={`grid h-svh bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out grid-cols-[1fr] ${
+        sidebarCollapsed ? "md:grid-cols-[56px_1fr]" : "md:grid-cols-[362px_1fr]"
       }`}
     >
-      <aside className="slopr-sidebar-text flex min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd]">
-        <div className={`flex h-11 items-center px-3 ${sidebarCollapsed ? "justify-center" : "justify-between"}`}>
-          {!sidebarCollapsed && (
+      <aside
+        className={`slopr-sidebar-text fixed inset-y-0 left-0 z-50 flex w-[300px] max-w-[85vw] min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd] transition-transform duration-200 ease-out md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 ${
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className={`flex h-11 items-center px-3 ${railCollapsed ? "justify-center" : "justify-between"}`}>
+          {!railCollapsed && (
             <div className="slopr-wordmark font-serif font-medium text-[#f4f0e8]">Slopr</div>
           )}
           <div className="flex items-center gap-3 text-[#aaa79e]">
-            {!sidebarCollapsed && (
+            {!railCollapsed && (
               <button
                 type="button"
                 aria-label="Search"
@@ -551,9 +575,11 @@ export function ChatShell({
             )}
             <button
               type="button"
-              aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-              aria-expanded={!sidebarCollapsed}
-              onClick={() => setSidebarCollapsed((value) => !value)}
+              aria-label={!isMobile && sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+              aria-expanded={isMobile ? mobileSidebarOpen : !sidebarCollapsed}
+              onClick={() =>
+                isMobile ? setMobileSidebarOpen(false) : setSidebarCollapsed((value) => !value)
+              }
               className="grid place-items-center rounded transition-colors hover:text-white"
             >
               <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -566,7 +592,7 @@ export function ChatShell({
         <nav className="slopr-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
           <button
             className={`flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
-              sidebarCollapsed ? "justify-center" : "gap-2.5"
+              railCollapsed ? "justify-center" : "gap-2.5"
             } ${route.view === "new" && !showAdmin ? "bg-[#111110]" : ""}`}
             onClick={navigateToNew}
             type="button"
@@ -577,17 +603,17 @@ export function ChatShell({
                 <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </span>
-            {!sidebarCollapsed && <span>New chat</span>}
+            {!railCollapsed && <span>New chat</span>}
           </button>
           <SidebarPrimaryItem
             label="Chats"
             icon="chats"
-            collapsed={sidebarCollapsed}
+            collapsed={railCollapsed}
             active={route.view === "chats" && !showAdmin}
             onClick={navigateToChats}
           />
-          <SidebarPrimaryItem label="Projects" icon="projects" collapsed={sidebarCollapsed} />
-          {!sidebarCollapsed && (
+          <SidebarPrimaryItem label="Projects" icon="projects" collapsed={railCollapsed} />
+          {!railCollapsed && (
             <>
           {loadError !== "" && (
             <div className="slopr-meta-text mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-accent">
@@ -691,11 +717,11 @@ export function ChatShell({
           )}
         </nav>
         <div className="border-t border-[#343432] px-3 py-3">
-          <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "gap-3"}`}>
+          <div className={`flex items-center ${railCollapsed ? "justify-center" : "gap-3"}`}>
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dedbd0] text-xs font-semibold text-[#1d1d1b]">
               {initialsFor(displayName)}
             </div>
-            {!sidebarCollapsed && (
+            {!railCollapsed && (
               <>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[#f4f0e8]">{displayName}</div>
@@ -709,12 +735,20 @@ export function ChatShell({
           </div>
         </div>
       </aside>
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       <main className="min-w-0 bg-bg">
         {showAdmin ? (
           adminPanel
         ) : route.view === "chats" ? (
           <ChatsPage
             mutationVersion={threadMutationVersion}
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
             onNewChat={navigateToNew}
             onSelectThread={(threadID) => void selectThread(threadID)}
             onRenameThread={openRenameModal}
@@ -730,6 +764,7 @@ export function ChatShell({
             isSending={isSending}
             mcpStatus={mcpStatus}
             sendError={sendError}
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
             onDraftChange={setDraft}
             onSend={handleSend}
             onStop={handleStopResponse}
@@ -737,6 +772,7 @@ export function ChatShell({
         ) : (
           <ChatPanel
             thread={activeThread}
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
         messages={messages}
             draft={draft}
             streamingText={streamingText}
@@ -1038,6 +1074,7 @@ function SidebarThreadItem({
         <ThreadActionsMenu
           menuKey={menuKey}
           thread={thread}
+          className="right-1 left-auto md:left-[174px] md:right-auto"
           onDelete={onDelete}
           onRename={onRename}
           onStarChange={onStarChange}
@@ -1163,7 +1200,7 @@ function ModalShell({
   }, [onCancel]);
   return (
     <div
-      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] pr-4 pl-[378px]"
+      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] px-4 md:pr-4 md:pl-[378px]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
@@ -1189,6 +1226,7 @@ function StartPanel({
   isSending,
   mcpStatus,
   sendError,
+  onOpenSidebar,
   onDraftChange,
   onSend,
   onStop,
@@ -1198,6 +1236,7 @@ function StartPanel({
   isSending: boolean;
   mcpStatus: McpStatusEvent | null;
   sendError: string;
+  onOpenSidebar(): void;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
@@ -1209,12 +1248,15 @@ function StartPanel({
         className="slopr-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
-        <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">New chat</h1>
+        <div className="flex min-w-0 items-center gap-2">
+          <SidebarOpenButton onClick={onOpenSidebar} />
+          <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">New chat</h1>
+        </div>
         {mcpStatus !== null && mcpStatus.configured > 0 && (
           <McpStatusIndicator compact status={mcpStatus} />
         )}
       </header>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 pb-[14vh]">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-[14vh] sm:px-8">
         <h2 className="slopr-greeting-text mb-8 flex items-center gap-4 font-serif">
           <img className="h-16 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
           {greetingForNow(displayName)}
@@ -1255,6 +1297,7 @@ function ChatPanel({
   isSending,
   mcpStatus,
   openThreadMenuID,
+  onOpenSidebar,
   onDraftChange,
   onSend,
   onStop,
@@ -1287,6 +1330,7 @@ function ChatPanel({
   onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
   onToggleThreadMenu(menuKey: string): void;
   onCloseThreadMenu(): void;
+  onOpenSidebar(): void;
 }) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1409,7 +1453,9 @@ function ChatPanel({
         className="slopr-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
-        <div ref={headerMenuRef} className="relative flex min-w-0 items-center">
+        <div className="flex min-w-0 items-center gap-2">
+          <SidebarOpenButton onClick={onOpenSidebar} />
+          <div ref={headerMenuRef} className="relative flex min-w-0 items-center">
           <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">
             {thread?.title ?? "New chat"}
           </h1>
@@ -1437,6 +1483,7 @@ function ChatPanel({
               onStarChange={onStarThread}
             />
           )}
+          </div>
         </div>
         {mcpStatus !== null && mcpStatus.configured > 0 && (
           <McpStatusIndicator compact status={mcpStatus} />
