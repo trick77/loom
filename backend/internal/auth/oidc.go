@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -151,17 +152,25 @@ func (b realOIDCBackend) VerifyClaims(ctx context.Context, token *oauth2.Token) 
 		PreferredUsername string   `json:"preferred_username"`
 		Email             string   `json:"email"`
 		Name              string   `json:"name"`
+		GivenName         string   `json:"given_name"`
+		FamilyName        string   `json:"family_name"`
 		Groups            []string `json:"groups"`
 	}
 	if err := idToken.Claims(&oidcClaims); err != nil {
 		return VerifiedClaims{}, err
+	}
+	// Prefer given_name + family_name so the full name (incl. last name) is
+	// shown; fall back to the single "name" claim when those are absent.
+	name := oidcClaims.Name
+	if composed := strings.TrimSpace(oidcClaims.GivenName + " " + oidcClaims.FamilyName); composed != "" {
+		name = composed
 	}
 	return VerifiedClaims{
 		Claims: Claims{
 			Subject:  idToken.Subject,
 			Username: oidcClaims.PreferredUsername,
 			Email:    oidcClaims.Email,
-			Name:     oidcClaims.Name,
+			Name:     name,
 			Groups:   oidcClaims.Groups,
 		},
 		Nonce: idToken.Nonce,

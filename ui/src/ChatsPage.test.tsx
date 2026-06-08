@@ -33,6 +33,7 @@ const FIXTURES = [thread("t1", "Greeting"), thread("t2", "Morning greeting"), th
 function renderPage(overrides: Partial<Parameters<typeof ChatsPage>[0]> = {}) {
   const props = {
     mutationVersion: 0,
+    onOpenSidebar: vi.fn(),
     onNewChat: vi.fn(),
     onSelectThread: vi.fn(),
     onRenameThread: vi.fn(),

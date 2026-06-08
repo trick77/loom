@@ -10,6 +10,7 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 export function ChatsPage({
   mutationVersion,
+  onOpenSidebar,
   onNewChat,
   onSelectThread,
   onRenameThread,
@@ -19,6 +20,7 @@ export function ChatsPage({
   onSessionExpired,
 }: {
   mutationVersion: number;
+  onOpenSidebar(): void;
   onNewChat(): void;
   onSelectThread(threadID: string): void;
   onRenameThread(thread: Thread): void;
@@ -141,11 +143,24 @@ export function ChatsPage({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-[860px] px-6 pb-16 pt-10">
-        <header className="flex items-center justify-between">
-          <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Chats</h1>
+      <div className="mx-auto w-full max-w-[860px] px-4 pb-16 pt-10 md:px-6">
+        <header className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              aria-label="Show sidebar"
+              onClick={onOpenSidebar}
+              className="-ml-1 grid h-7 w-7 shrink-0 place-items-center rounded text-[#aaa79e] transition-colors hover:text-white md:hidden"
+            >
+              <svg className="h-[20px] w-[20px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M9.5 5v14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Chats</h1>
+          </div>
           {selectMode ? (
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <span className="slopr-control-text text-[#9c9a92]">{selectedCount} selected</span>
               <PillButton variant="solid" onClick={toggleSelectAll}>
                 Select all
@@ -169,7 +184,7 @@ export function ChatsPage({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <PillButton variant="solid" onClick={() => setSelectMode(true)}>
                 Select chats
               </PillButton>
