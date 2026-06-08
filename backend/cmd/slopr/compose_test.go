@@ -41,16 +41,29 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if strings.Contains(compose, "\n    build:") {
 		t.Fatal("compose.yaml must use prebuilt images, not local build directives")
 	}
+	if strings.Contains(compose, "SLOPR_IMAGE") || strings.Contains(compose, "SLOPR_UI_IMAGE") ||
+		strings.Contains(compose, "SLOPR_FETCH_IMAGE") || strings.Contains(compose, "SLOPR_OBSCURA_IMAGE") {
+		t.Fatal("compose.yaml must hardcode production image refs instead of reading image refs from env")
+	}
 
 	for _, want := range []string{
-		`image: "${SLOPR_IMAGE:-ghcr.io/trick77/slopr:latest}"`,
-		`image: "${SLOPR_UI_IMAGE:-ghcr.io/trick77/slopr-ui:latest}"`,
-		`image: "${SLOPR_FETCH_IMAGE:-ghcr.io/trick77/slopr-fetch:latest}"`,
-		`image: "${SLOPR_OBSCURA_IMAGE:-ghcr.io/trick77/slopr-obscura:latest}"`,
+		`image: ghcr.io/trick77/slopr:latest`,
+		`image: ghcr.io/trick77/slopr-ui:latest`,
+		`image: ghcr.io/trick77/slopr-fetch:latest`,
+		`image: ghcr.io/trick77/slopr-obscura:latest`,
 	} {
 		if !strings.Contains(compose, want) {
 			t.Fatalf("compose.yaml missing production image reference %q", want)
 		}
+	}
+
+	envExample, err := os.ReadFile("../../../.env.example")
+	if err != nil {
+		t.Fatalf("read .env.example: %v", err)
+	}
+	if strings.Contains(string(envExample), "SLOPR_IMAGE") || strings.Contains(string(envExample), "SLOPR_UI_IMAGE") ||
+		strings.Contains(string(envExample), "SLOPR_FETCH_IMAGE") || strings.Contains(string(envExample), "SLOPR_OBSCURA_IMAGE") {
+		t.Fatal(".env.example must not expose production image overrides")
 	}
 }
 
