@@ -369,7 +369,12 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	if call.ID != "call_1" || call.Function.Name != "search__web" || call.Function.Arguments != `{"q":"slopr"}` {
 		t.Fatalf("tool call = %#v", call)
 	}
-	if len(events) != 1 || events[0].ToolCall.Function.Name != "search__web" {
+	// A pending signal fires the moment the first tool-call chunk arrives, ahead
+	// of the fully-reconstructed call emitted at the end of the stream.
+	if len(events) != 2 || !events[0].ToolPending {
+		t.Fatalf("events = %#v, want a tool-pending event first", events)
+	}
+	if events[1].ToolPending || events[1].ToolCall.Function.Name != "search__web" {
 		t.Fatalf("events = %#v, want final tool call event", events)
 	}
 }
@@ -412,6 +417,48 @@ func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
 	}
 	if !sawToolCall {
 		t.Fatalf("events = %#v, want a tool_call event", events)
+	}
+}
+
+func TestClient_StreamChatWithToolsSignalsPendingBeforeInlineToolCall(t *testing.T) {
+	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"Let me search. "}}]}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	var events []StreamEvent
+	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
+	_, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, offeredTools, func(event StreamEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	// The preamble streams as content, then a pending signal fires the instant the
+	// inline marker is seen — ahead of the parsed tool call at end of stream.
+	deltaIdx, pendingIdx, callIdx := -1, -1, -1
+	for i, e := range events {
+		switch {
+		case e.ToolPending:
+			pendingIdx = i
+		case e.ToolCall.Function.Name == "tavily__tavily_search":
+			callIdx = i
+		case e.Delta != "":
+			deltaIdx = i
+		}
+	}
+	if deltaIdx == -1 || pendingIdx == -1 || callIdx == -1 {
+		t.Fatalf("events = %#v, want a content, a pending and a tool-call event", events)
+	}
+	if !(deltaIdx < pendingIdx && pendingIdx < callIdx) {
+		t.Fatalf("events out of order: delta=%d pending=%d call=%d (%#v)", deltaIdx, pendingIdx, callIdx, events)
 	}
 }
 

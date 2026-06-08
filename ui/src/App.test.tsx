@@ -1114,6 +1114,75 @@ test("keeps active activity trace while assistant output streams without explici
   expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
 });
 
+test("shows the reasoning abstract instead of Thinking once the answer streams", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  // While reasoning streams (no answer text yet) the label shows "Thinking".
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  expect(await screen.findByText("Thinking")).toBeInTheDocument();
+
+  // Once the final answer starts streaming, the reasoning phase is over: the
+  // collapsed label flips to the abstract (no more live "Thinking" status). The
+  // assistant_message/done events are withheld so the active trace stays.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
+
+  expect(await screen.findByText("Here is")).toBeInTheDocument();
+  expect(screen.getByText("Search current sources")).toBeInTheDocument();
+  expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
+});
+
+test("keeps Thinking when pre-tool preamble streams before a pending tool call", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  // The model emits preamble text and then signals a pending tool call. Despite
+  // the streamed text, the label must stay "Thinking" — the answer phase has not
+  // begun, a tool is about to run.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Let me search."}\n\n'));
+  streamController.current?.enqueue(new TextEncoder().encode("event: tool_pending\ndata: {}\n\n"));
+
+  expect(await screen.findByText("Let me search.")).toBeInTheDocument();
+  expect(screen.getByText("Thinking")).toBeInTheDocument();
+  expect(screen.queryByText("Search current sources")).not.toBeInTheDocument();
+});
+
 test("keeps active activity trace visible while assistant text is streaming", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
@@ -2161,7 +2230,7 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
 
   const answer = await screen.findByText("I found the update.");
   const toggle = screen.getByRole("button", { name: /show activity/i });
-  expect(toggle).toHaveTextContent("Searched 1 query");
+  expect(toggle).toHaveTextContent("Search current sources");
   expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
   expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
   expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();

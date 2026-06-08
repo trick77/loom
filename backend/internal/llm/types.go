@@ -82,6 +82,11 @@ type StreamEvent struct {
 	Delta          string
 	ReasoningDelta string
 	ToolCall       ToolCall
+	// ToolPending signals that the model has begun a tool call (inline marker
+	// seen, or first native tool-call chunk) before the fully-parsed ToolCall is
+	// emitted at the end of the turn. Lets the client keep showing "thinking"
+	// instead of prematurely settling on a reasoning summary.
+	ToolPending bool
 }
 
 type StreamResult struct {

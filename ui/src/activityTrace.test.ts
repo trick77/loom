@@ -67,8 +67,14 @@ describe("activity trace model", () => {
     expect(events.every((event) => event.status === "done")).toBe(true);
   });
 
-  test("summarizes completed search and failed tool activity", () => {
+  test("shows the reasoning abstract, not tool stats, when a trace has tools", () => {
     const summary = summarizeTrace([
+      {
+        id: "reasoning-1",
+        type: "reasoning",
+        content: "I should compare the two proxies before answering.",
+        status: "done",
+      },
       {
         id: "call_1",
         type: "tool",
@@ -89,10 +95,10 @@ describe("activity trace model", () => {
       },
     ]);
 
-    expect(summary).toBe("Searched 1 query · read 1 page · 1 tool failed");
+    expect(summary).toBe("Compared the two proxies");
   });
 
-  test("does not double-count a failed generic tool as used and failed", () => {
+  test("falls back to a neutral label when a completed trace has tools but no reasoning", () => {
     const summary = summarizeTrace([
       {
         id: "call_1",
@@ -105,7 +111,7 @@ describe("activity trace model", () => {
       },
     ]);
 
-    expect(summary).toBe("1 tool failed");
+    expect(summary).toBe("Activity complete");
   });
 
   test("summarizes reasoning-only traces from cached reasoning content", () => {

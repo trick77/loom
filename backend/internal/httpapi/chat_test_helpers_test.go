@@ -359,6 +359,13 @@ func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []ll
 				return llm.StreamResult{}, err
 			}
 		}
+		// Mirror the real client: announce a pending tool call before the parsed
+		// call surfaces, so handler/SSE behavior is exercised faithfully.
+		if len(result.ToolCalls) > 0 {
+			if err := onEvent(llm.StreamEvent{ToolPending: true}); err != nil {
+				return llm.StreamResult{}, err
+			}
+		}
 		for _, call := range result.ToolCalls {
 			if err := onEvent(llm.StreamEvent{ToolCall: call}); err != nil {
 				return llm.StreamResult{}, err
