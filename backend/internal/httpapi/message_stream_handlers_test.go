@@ -889,6 +889,34 @@ func TestStreamMessageSystemPromptRoutesURLTools(t *testing.T) {
 	}
 }
 
+func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
+	var history []llm.Message
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{history: &history},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"What happened last week?"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if len(history) == 0 {
+		t.Fatal("history is empty")
+	}
+	if !strings.Contains(history[0].Content, "past your training cutoff") {
+		t.Fatalf("system prompt = %q, want knowledge-limit directive", history[0].Content)
+	}
+	if !strings.Contains(history[0].Content, "first use the available search and fetch tools to look it up") {
+		t.Fatalf("system prompt = %q, want tool-use-before-giving-up directive", history[0].Content)
+	}
+}
+
 func TestStreamMessageReturns503WhenLLMDependencyMissing(t *testing.T) {
 	store := &fakeChatStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
