@@ -1570,16 +1570,29 @@ function Composer({
   onSend(): void;
   onStop(): void;
 }) {
-  const height = variant === "start" ? "h-[122px]" : "h-[102px]";
+  // Base (empty) height per variant, preserved as the textarea's min-height so
+  // the composer keeps its current look before any auto-grow kicks in.
+  const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
   const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   const padX = "px-6";
   const canSend = !isSending && draft.trim() !== "";
   const actionButtonClass = isSending
     ? "bg-[#3a3a37] hover:bg-[#4b4a46]"
     : "bg-accent hover:bg-accent-strong disabled:bg-accent";
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Auto-grow: measure content height and apply it inline. The CSS max-height
+  // caps the box; once content exceeds it, overflow-y-auto shows the scrollbar.
+  // Direction of growth follows layout anchoring (the chat dock is sticky-bottom
+  // → grows upward; the start composer is top-anchored → grows downward).
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (el === null) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
   return (
     <form
-      className={`slopr-composer ${height} relative rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
+      className={`slopr-composer relative flex flex-col rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
       onSubmit={(event) => {
         event.preventDefault();
         if (isSending) {
@@ -1590,7 +1603,8 @@ function Composer({
       }}
     >
       <textarea
-        className={`slopr-composer-text h-full w-full resize-none overflow-hidden bg-transparent ${padX} pb-14 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]`}
+        ref={textareaRef}
+        className={`slopr-composer-text slopr-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} pb-3 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
         placeholder={placeholder}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
@@ -1601,7 +1615,7 @@ function Composer({
           }
         }}
       />
-      <div className={`absolute inset-x-0 bottom-0 flex h-11 items-center justify-between ${padX} text-[#d8d4ca]`}>
+      <div className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}>
         <button className="text-2xl leading-none" type="button" aria-label="Add attachment">
           +
         </button>
