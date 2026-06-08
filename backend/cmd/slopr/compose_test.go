@@ -108,7 +108,7 @@ func TestProductionComposeDefinesTraefikEntrypoint(t *testing.T) {
 		`traefik.enable: "true"`,
 		`traefik.docker.network: traefik`,
 		`traefik.http.services.slopr.loadbalancer.server.port: "80"`,
-		`traefik.http.routers.slopr.entrypoints: https`,
+		`traefik.http.routers.slopr.entrypoints: websecure`,
 		"`slopr.trick77.com`",
 		`traefik.http.routers.slopr.tls: "true"`,
 	} {
@@ -131,6 +131,42 @@ func TestProductionComposeDefinesTraefikEntrypoint(t *testing.T) {
 
 	if !strings.Contains(compose, "\n  traefik:\n    external: true") {
 		t.Fatal("compose.yaml must declare the external traefik network")
+	}
+}
+
+func TestProductionComposeUsesNamedPrivateNetworks(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	compose := string(data)
+
+	if strings.Contains(compose, "\n  default:") || strings.Contains(compose, "- default") {
+		t.Fatal("compose.yaml must use named private networks instead of the implicit default network")
+	}
+
+	uiService := composeService(t, compose, "slopr-ui")
+	for _, want := range []string{"- traefik", "- slopr"} {
+		if !strings.Contains(uiService, want) {
+			t.Fatalf("slopr-ui service missing network %q", want)
+		}
+	}
+
+	backendService := composeService(t, compose, "slopr")
+	for _, want := range []string{"- slopr", "- fetch-mcp"} {
+		if !strings.Contains(backendService, want) {
+			t.Fatalf("slopr service missing network %q", want)
+		}
+	}
+
+	for _, want := range []string{
+		"\n  slopr:",
+		"\n  fetch-mcp:",
+		"\n  traefik:\n    external: true",
+	} {
+		if !strings.Contains(compose, want) {
+			t.Fatalf("compose.yaml missing network declaration %q", want)
+		}
 	}
 }
 
