@@ -1298,6 +1298,13 @@ function ChatPanel({
   const hasActiveActivityTrace = activityTrace.length > 0;
   const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
   const activeActivityTraceExpanded = streamingText === "" || activeActivityTraceUserExpanded;
+  // Once the final answer streams (and no tool is mid-run), the reasoning phase
+  // is over: show its abstract instead of "Thinking". Only applies to traces
+  // that actually have reasoning, so reasoning-free turns keep the "Thinking"
+  // affordance until they complete.
+  const hasReasoning = activityTrace.some((event) => event.type === "reasoning");
+  const toolRunning = activityTrace.some((event) => event.type === "tool" && event.status === "running");
+  const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning;
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1485,7 +1492,7 @@ function ChatPanel({
             {showActiveActivityTrace && (
               <ActivityTracePanel
                 events={activityTrace}
-                active={true}
+                active={!reasoningSettled}
                 expanded={activeActivityTraceExpanded}
                 onExpandedChange={onActiveActivityTraceExpandedChange}
               />

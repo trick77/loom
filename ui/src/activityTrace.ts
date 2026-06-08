@@ -127,21 +127,11 @@ export function normalizeActivityTrace(events: ActivityTraceEvent[] | undefined)
   });
 }
 
+// The collapsed trace label always shows an abstract of the reasoning, never a
+// tool-call statistic — the per-tool details (and failures) are available by
+// expanding the activity panel.
 export function summarizeTrace(events: ActivityTraceEvent[]): string {
-  const tools = events.filter((event): event is ActivityTraceToolEvent => event.type === "tool");
-  const searches = tools.filter((event) => event.summary.kind === "search").length;
-  const reads = tools.filter((event) => event.summary.kind === "fetch").length;
-  const failures = tools.filter((event) => event.status === "failed").length;
-  const otherTools = tools.filter(
-    (event) => event.status !== "failed" && event.summary.kind !== "search" && event.summary.kind !== "fetch",
-  ).length;
-  const parts: string[] = [];
-  if (searches > 0) parts.push(`Searched ${searches} ${searches === 1 ? "query" : "queries"}`);
-  if (reads > 0) parts.push(`read ${reads} ${reads === 1 ? "page" : "pages"}`);
-  if (otherTools > 0) parts.push(`used ${otherTools} ${otherTools === 1 ? "tool" : "tools"}`);
-  if (failures > 0) parts.push(`${failures} ${failures === 1 ? "tool" : "tools"} failed`);
-  if (parts.length > 0) return parts.join(" · ");
-  return summarizeReasoningOnlyTrace(events);
+  return summarizeReasoning(events);
 }
 
 export function summarizeToolCall(name: string, rawArguments: string): ToolSummary {
@@ -257,7 +247,7 @@ function titleCase(value: string): string {
   return readable === "" ? value : readable.charAt(0).toUpperCase() + readable.slice(1);
 }
 
-function summarizeReasoningOnlyTrace(events: ActivityTraceEvent[]): string {
+function summarizeReasoning(events: ActivityTraceEvent[]): string {
   const content = events
     .filter((event) => event.type === "reasoning")
     .map((event) => event.content)
