@@ -459,7 +459,7 @@ body {
 
 .slopr-activity-result-list {
   margin-top: 0.25rem;
-  max-height: 10rem;
+  max-height: 12rem;
   overflow: auto;
   border: 1px solid #4a4741;
   border-radius: 0.375rem;
