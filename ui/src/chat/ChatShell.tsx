@@ -369,6 +369,7 @@ export function ChatShell({
 
   function openRenameModal(thread: Thread) {
     setOpenThreadMenuID(null);
+    setMobileSidebarOpen(false);
     setRenamingThread(thread);
     setRenameTitle(thread.title);
     setModalError("");
@@ -376,6 +377,7 @@ export function ChatShell({
 
   function openDeleteModal(thread: Thread) {
     setOpenThreadMenuID(null);
+    setMobileSidebarOpen(false);
     setDeletingThread(thread);
     setModalError("");
   }
@@ -1071,6 +1073,7 @@ function SidebarThreadItem({
         <ThreadActionsMenu
           menuKey={menuKey}
           thread={thread}
+          className="right-1 left-auto md:left-[174px] md:right-auto"
           onDelete={onDelete}
           onRename={onRename}
           onStarChange={onStarChange}
