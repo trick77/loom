@@ -69,8 +69,8 @@ func TestProductionComposeOnlyPublishesUI(t *testing.T) {
 	if apiService < 0 {
 		t.Fatal("compose.yaml missing slopr service")
 	}
-	if !strings.Contains(compose[uiService:], `- "8080:80"`) {
-		t.Fatal("slopr-ui must publish host port 8080 to container port 80")
+	if !strings.Contains(compose[uiService:], `- "${SLOPR_UI_BIND:-8080}:80"`) {
+		t.Fatal("slopr-ui must publish an env-configurable host bind to container port 80")
 	}
 	backendServiceEnd := strings.Index(compose[apiService+1:], "\n  tika:")
 	if backendServiceEnd < 0 {

@@ -2,7 +2,7 @@ services:
   slopr-ui:
     image: "${SLOPR_UI_IMAGE:-ghcr.io/trick77/slopr-ui:latest}"
     ports:
-      - "8080:80"
+      - "${SLOPR_UI_BIND:-8080}:80"
     depends_on:
       slopr:
         condition: service_started
