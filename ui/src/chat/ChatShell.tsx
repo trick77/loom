@@ -1260,7 +1260,6 @@ function StartPanel({
       >
         <div className="flex min-w-0 items-center gap-2">
           <SidebarOpenButton onClick={onOpenSidebar} />
-          <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">New chat</h1>
         </div>
         {mcpStatus !== null && mcpStatus.configured > 0 && (
           <McpStatusIndicator compact status={mcpStatus} />
@@ -1511,6 +1510,7 @@ function ChatPanel({
         )}
       </header>
       <div className="relative min-h-0 flex-1">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-bg to-transparent" />
         <div
           ref={transcriptRef}
           aria-label="Conversation transcript"
