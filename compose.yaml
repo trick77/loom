@@ -14,13 +14,13 @@ services:
       slopr:
         condition: service_healthy
     networks:
-      - default
       - traefik
+      - slopr
     labels:
       traefik.enable: "true"
       traefik.docker.network: traefik
       traefik.http.routers.slopr.rule: Host(`slopr.trick77.com`)
-      traefik.http.routers.slopr.entrypoints: https
+      traefik.http.routers.slopr.entrypoints: websecure
       traefik.http.routers.slopr.tls: "true"
       traefik.http.services.slopr.loadbalancer.server.port: "80"
 
@@ -68,7 +68,7 @@ services:
       - ./data:/data
       # per-user volumes are mounted manually under /data/users/<user-id>/
     networks:
-      - default
+      - slopr
       - fetch-mcp
     depends_on:
       tika:
@@ -131,7 +131,7 @@ services:
       traefik.enable: "false"
 
 networks:
-  default:
+  slopr:
   fetch-mcp:
   traefik:
     external: true
