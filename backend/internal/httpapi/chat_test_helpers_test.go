@@ -378,21 +378,30 @@ func (f *fakeToolChatClient) GenerateTitle(context.Context, string, string) (str
 }
 
 type fakeMCPService struct {
-	tools    []llm.Tool
-	result   string
-	err      error
-	statuses []mcp.ServerStatus
+	tools     []llm.Tool
+	result    string
+	err       error
+	statuses  []mcp.ServerStatus
+	available map[string]bool
+	callFunc  func(ctx context.Context, name string, args map[string]any) (string, error)
 }
 
 func (f fakeMCPService) Tools() []llm.Tool {
 	return f.tools
 }
 
-func (f fakeMCPService) CallTool(context.Context, string, map[string]any) (string, error) {
+func (f fakeMCPService) CallTool(ctx context.Context, name string, args map[string]any) (string, error) {
+	if f.callFunc != nil {
+		return f.callFunc(ctx, name, args)
+	}
 	if f.err != nil {
 		return "", f.err
 	}
 	return f.result, nil
+}
+
+func (f fakeMCPService) HasTool(name string) bool {
+	return f.available[name]
 }
 
 func (f fakeMCPService) ServerStatus(context.Context) []mcp.ServerStatus {

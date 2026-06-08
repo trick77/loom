@@ -455,10 +455,50 @@ func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall, round i
 	durationMS := time.Since(start).Milliseconds()
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
+		if fallback, ok := s.fetchObscuraFallback(callCtx, call.Function.Name, arguments, round); ok {
+			return fallback
+		}
 		return capToolOutput("tool failed: " + err.Error())
 	}
 	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
 	return capToolOutput(output)
+}
+
+// Tool names involved in the deterministic fetch->obscura fallback. fetch is the
+// lightweight HTTP reader; when it fails on a URL we retry with obscura's
+// headless browser (navigate, then snapshot the rendered page).
+const (
+	fetchToolName           = "fetch__fetch"
+	obscuraNavigateToolName = "obscura__browser_navigate"
+	obscuraSnapshotToolName = "obscura__browser_snapshot"
+)
+
+// fetchObscuraFallback retries a failed fetch via obscura's headless browser.
+// It only fires for the fetch tool when obscura is configured and the call
+// carried a URL. On success it returns the obscura snapshot and true; otherwise
+// it returns ok=false so the caller surfaces the original fetch failure.
+func (s *server) fetchObscuraFallback(ctx context.Context, toolName string, arguments map[string]any, round int) (string, bool) {
+	if toolName != fetchToolName {
+		return "", false
+	}
+	if !s.mcp.HasTool(obscuraNavigateToolName) || !s.mcp.HasTool(obscuraSnapshotToolName) {
+		return "", false
+	}
+	url, ok := arguments["url"].(string)
+	if !ok || strings.TrimSpace(url) == "" {
+		return "", false
+	}
+	if _, err := s.mcp.CallTool(ctx, obscuraNavigateToolName, map[string]any{"url": url}); err != nil {
+		slog.Warn("obscura fallback navigate failed", "url", url, "round", round, "err", err)
+		return "", false
+	}
+	snapshot, err := s.mcp.CallTool(ctx, obscuraSnapshotToolName, map[string]any{})
+	if err != nil {
+		slog.Warn("obscura fallback snapshot failed", "url", url, "round", round, "err", err)
+		return "", false
+	}
+	slog.Info("fetch failed, obscura fallback succeeded", "url", url, "round", round, "result_bytes", len(snapshot))
+	return capToolOutput(snapshot), true
 }
 
 func (s *server) availableTools() []llm.Tool {

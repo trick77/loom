@@ -44,9 +44,10 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=6 \
   CMD node -e "const s=require('net').connect(8090,'127.0.0.1');s.setTimeout(3000);s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"
 
 # Spawn `obscura mcp` (stdio) and serve it over streamable-HTTP, bound to all
-# interfaces so Slopr can reach it at http://obscura:8090/mcp.
+# interfaces so Slopr can reach it at http://obscura:8090/mcp. --stealth enables
+# obscura's anti-detection mode so bot protection is less likely to block fetches.
 CMD ["supergateway", \
-     "--stdio", "obscura mcp", \
+     "--stdio", "obscura mcp --stealth", \
      "--outputTransport", "streamableHttp", \
      "--stateful", "--sessionTimeout", "180000", \
      "--port", "8090", \

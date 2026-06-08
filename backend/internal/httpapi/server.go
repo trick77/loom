@@ -99,6 +99,7 @@ type ChatClient interface {
 type ToolService interface {
 	Tools() []llm.Tool
 	CallTool(context.Context, string, map[string]any) (string, error)
+	HasTool(string) bool
 	ServerStatus(context.Context) []mcp.ServerStatus
 }
 
