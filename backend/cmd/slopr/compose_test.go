@@ -189,3 +189,24 @@ func TestReleaseWorkflowBuildsCompanionImagesOnlyWhenChanged(t *testing.T) {
 		}
 	}
 }
+
+func TestReleaseWorkflowBuildsCompanionImagesWhenLatestTagIsMissing(t *testing.T) {
+	data, err := os.ReadFile("../../../.github/workflows/release.yaml")
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	workflow := string(data)
+
+	for _, want := range []string{
+		`docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-fetch:latest"`,
+		`docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-obscura:latest"`,
+		`fetch_missing=true`,
+		`obscura_missing=true`,
+		`if [ "$fetch_source_changed" = "true" ] || [ "$fetch_missing" = "true" ]; then`,
+		`if [ "$obscura_source_changed" = "true" ] || [ "$obscura_missing" = "true" ]; then`,
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Fatalf("release workflow missing missing-companion-image fragment %q", want)
+		}
+	}
+}

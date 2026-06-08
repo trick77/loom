@@ -48,20 +48,6 @@ jobs:
           echo "short=$SHORT"  >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEXT ($BUMP) at $SHORT" >> "$GITHUB_STEP_SUMMARY"
 
-      - id: companion_changes
-        name: Detect companion image changes
-        run: |
-          if git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- fetch; then
-            echo "fetch_changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "fetch_changed=true" >> "$GITHUB_OUTPUT"
-          fi
-          if git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- obscura; then
-            echo "obscura_changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "obscura_changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v4
@@ -69,6 +55,41 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: companion_changes
+        name: Detect companion image changes
+        run: |
+          if git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- fetch; then
+            fetch_source_changed=false
+          else
+            fetch_source_changed=true
+          fi
+          if docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-fetch:latest" >/dev/null 2>&1; then
+            fetch_missing=false
+          else
+            fetch_missing=true
+          fi
+          if [ "$fetch_source_changed" = "true" ] || [ "$fetch_missing" = "true" ]; then
+            echo "fetch_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fetch_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- obscura; then
+            obscura_source_changed=false
+          else
+            obscura_source_changed=true
+          fi
+          if docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-obscura:latest" >/dev/null 2>&1; then
+            obscura_missing=false
+          else
+            obscura_missing=true
+          fi
+          if [ "$obscura_source_changed" = "true" ] || [ "$obscura_missing" = "true" ]; then
+            echo "obscura_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "obscura_changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push Slopr image
         uses: docker/build-push-action@v7
