@@ -107,7 +107,7 @@ export default function App() {
             {adminUsers.map((adminUser) => (
               <div key={adminUser.id} className="flex justify-between py-3 text-sm">
                 <span>{adminUser.displayName || adminUser.username}</span>
-                <span className="text-muted">{adminUser.role}</span>
+                <span className="text-muted capitalize">{adminUser.role}</span>
               </div>
             ))}
           </div>
