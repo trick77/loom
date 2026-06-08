@@ -160,8 +160,16 @@ func (c *BFLClient) poll(ctx context.Context, pollingURL string) (bflStatusRespo
 		switch strings.ToLower(status.Status) {
 		case "ready", "completed", "succeeded":
 			return status, nil
+		case "pending", "processing", "queued":
+			// not terminal: keep polling
+		case "request moderated":
+			return bflStatusResponse{}, fmt.Errorf("BFL blocked the prompt (request moderated); revise the prompt and try again")
+		case "content moderated":
+			return bflStatusResponse{}, fmt.Errorf("BFL blocked the generated image (content moderated); try a different prompt")
 		case "error", "failed":
-			return bflStatusResponse{}, fmt.Errorf("BFL generation failed")
+			return bflStatusResponse{}, fmt.Errorf("BFL generation failed (status: %s)", status.Status)
+		default:
+			return bflStatusResponse{}, fmt.Errorf("BFL returned an unexpected status: %s", status.Status)
 		}
 		select {
 		case <-ctx.Done():

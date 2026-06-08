@@ -118,6 +118,93 @@ func TestBFLClientGenerateReturnsFailedStatus(t *testing.T) {
 	}
 }
 
+func TestBFLClientGenerateReturnsRequestModerated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/flux-2-klein-4b":
+			writeJSON(t, w, map[string]any{
+				"id":          "task-1",
+				"polling_url": serverURL(r) + "/v1/get_result?id=task-1",
+			})
+		case "/v1/get_result":
+			writeJSON(t, w, map[string]any{"id": "task-1", "status": "Request Moderated"})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewBFLClient(BFLConfig{
+		BaseURL:      server.URL + "/v1",
+		APIKey:       "test-key",
+		Model:        "flux-2-klein-4b",
+		PollInterval: time.Millisecond,
+		HTTPClient:   server.Client(),
+	})
+	_, err := client.Generate(context.Background(), GenerateRequest{Prompt: "x"})
+	if err == nil || !strings.Contains(err.Error(), "request moderated") {
+		t.Fatalf("Generate() error = %v, want request moderated", err)
+	}
+}
+
+func TestBFLClientGenerateReturnsContentModerated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/flux-2-klein-4b":
+			writeJSON(t, w, map[string]any{
+				"id":          "task-1",
+				"polling_url": serverURL(r) + "/v1/get_result?id=task-1",
+			})
+		case "/v1/get_result":
+			writeJSON(t, w, map[string]any{"id": "task-1", "status": "Content Moderated"})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewBFLClient(BFLConfig{
+		BaseURL:      server.URL + "/v1",
+		APIKey:       "test-key",
+		Model:        "flux-2-klein-4b",
+		PollInterval: time.Millisecond,
+		HTTPClient:   server.Client(),
+	})
+	_, err := client.Generate(context.Background(), GenerateRequest{Prompt: "x"})
+	if err == nil || !strings.Contains(err.Error(), "content moderated") {
+		t.Fatalf("Generate() error = %v, want content moderated", err)
+	}
+}
+
+func TestBFLClientGenerateReturnsUnexpectedStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/flux-2-klein-4b":
+			writeJSON(t, w, map[string]any{
+				"id":          "task-1",
+				"polling_url": serverURL(r) + "/v1/get_result?id=task-1",
+			})
+		case "/v1/get_result":
+			writeJSON(t, w, map[string]any{"id": "task-1", "status": "Task not found"})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewBFLClient(BFLConfig{
+		BaseURL:      server.URL + "/v1",
+		APIKey:       "test-key",
+		Model:        "flux-2-klein-4b",
+		PollInterval: time.Millisecond,
+		HTTPClient:   server.Client(),
+	})
+	_, err := client.Generate(context.Background(), GenerateRequest{Prompt: "x"})
+	if err == nil || !strings.Contains(err.Error(), "unexpected status") {
+		t.Fatalf("Generate() error = %v, want unexpected status", err)
+	}
+}
+
 func TestBFLClientGenerateTimesOutWhilePolling(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
