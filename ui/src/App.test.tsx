@@ -50,6 +50,8 @@ test("renders authenticated shell for signed-in users", async () => {
   expect(await screen.findByRole("button", { name: /new chat/i })).toBeInTheDocument();
   expect(await screen.findByText(greetingPattern("Jan"))).toBeInTheDocument();
   expect(screen.getByText("Jan")).toBeInTheDocument();
+  expect(screen.getByText("User")).toBeInTheDocument();
+  expect(screen.queryByText("user")).not.toBeInTheDocument();
   expect(window.location.pathname).toBe("/new");
 });
 
@@ -85,6 +87,16 @@ test("uses Slopr as the HTML title", () => {
   for (const path of ["../index.html", "../../backend/web/dist/index.html"]) {
     expect(readFileSync(new URL(path, import.meta.url), "utf8")).toContain("<title>Slopr</title>");
   }
+});
+
+test("uses Slopr as the web app manifest title", () => {
+  const manifest = JSON.parse(readFileSync("public/site.webmanifest", "utf8")) as {
+    name?: string;
+    short_name?: string;
+  };
+
+  expect(manifest.name).toBe("Slopr");
+  expect(manifest.short_name).toBe("Slopr");
 });
 
 test("bounds the active chat title in the top header", async () => {
@@ -1246,12 +1258,13 @@ test("spaces activity trace connector lines away from adjacent icons", () => {
 });
 
 test("keeps existing search activity icon glyph design", () => {
-  const source = readFileSync("src/ChatShell.tsx", "utf8");
+  const source = readFileSync("src/chat/ActivityTracePanel.tsx", "utf8");
   const css = readFileSync("src/index.css", "utf8");
   const globeIcon = source.match(/function GlobeTraceIcon\(\) \{(?<body>[\s\S]*?)\n\}/)?.groups?.body ?? "";
   const globeIconRule = css.match(/\.slopr-activity-globe-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const arrowIconRule = css.match(/\.slopr-activity-trace-icon-arrow\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const toolHeaderRule = css.match(/\.slopr-activity-tool-header\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const resultListRule = css.match(/\.slopr-activity-result-list\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
   expect(globeIcon).toContain("<circle");
   expect(globeIconRule).toContain("width: 1.125rem !important");
@@ -1262,6 +1275,7 @@ test("keeps existing search activity icon glyph design", () => {
   expect(toolHeaderRule).toContain("transform: translateY(-1px)");
   expect(arrowIconRule).toContain("border: 1px solid currentColor");
   expect(arrowIconRule).toContain("border-radius: 9999px");
+  expect(resultListRule).toContain("max-height: 12rem");
   expect(source).not.toContain("slopr-activity-trace-chevron-icon");
 });
 
