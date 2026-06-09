@@ -7,6 +7,7 @@ export type ActivityTraceEvent =
       id: string;
       type: "reasoning";
       content: string;
+      title?: string;
       status: "running" | "done";
     }
   | ActivityTraceToolEvent;
@@ -129,9 +130,25 @@ export function normalizeActivityTrace(events: ActivityTraceEvent[] | undefined)
 
 // The collapsed trace label always shows an abstract of the reasoning, never a
 // tool-call statistic — the per-tool details (and failures) are available by
-// expanding the activity panel.
+// expanding the activity panel. Prefer the backend-generated title of the most
+// recent reasoning round; fall back to the client-side heuristic while no title
+// has arrived yet.
 export function summarizeTrace(events: ActivityTraceEvent[]): string {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type === "reasoning" && event.title !== undefined && event.title.trim() !== "") {
+      return event.title;
+    }
+  }
   return summarizeReasoning(events);
+}
+
+// applyReasoningTitle stamps a background-generated title onto the matching
+// reasoning event, leaving the rest of the trace untouched.
+export function applyReasoningTitle(events: ActivityTraceEvent[], id: string, title: string): ActivityTraceEvent[] {
+  return events.map((event) =>
+    event.type === "reasoning" && event.id === id ? { ...event, title } : event,
+  );
 }
 
 export function summarizeToolCall(name: string, rawArguments: string): ToolSummary {

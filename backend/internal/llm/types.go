@@ -3,12 +3,20 @@ package llm
 import "time"
 
 type chatCompletionRequest struct {
-	Model           string         `json:"model"`
-	Messages        []Message      `json:"messages"`
-	Stream          bool           `json:"stream"`
-	Tools           []Tool         `json:"tools,omitempty"`
-	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
-	StreamOptions   *streamOptions `json:"stream_options,omitempty"`
+	Model               string          `json:"model"`
+	Messages            []Message       `json:"messages"`
+	Stream              bool            `json:"stream"`
+	Tools               []Tool          `json:"tools,omitempty"`
+	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
+	Thinking            *thinkingOption `json:"thinking,omitempty"`
+	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
+	StreamOptions       *streamOptions  `json:"stream_options,omitempty"`
+}
+
+// thinkingOption is MiMo's native switch for chain-of-thought. {"type":"disabled"}
+// turns thinking off entirely (no reasoning_content, zero reasoning tokens).
+type thinkingOption struct {
+	Type string `json:"type"`
 }
 
 type streamOptions struct {
@@ -21,7 +29,8 @@ type chatCompletionResponse struct {
 }
 
 type chatCompletionChoice struct {
-	Message chatCompletionMessage `json:"message"`
+	Message      chatCompletionMessage `json:"message"`
+	FinishReason string                `json:"finish_reason"`
 }
 
 type chatCompletionMessage struct {

@@ -106,6 +106,117 @@ func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
 	}
 }
 
+func TestStreamMessageEmitsAndPersistsReasoningTitle(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+	}
+	streamText := "Answer."
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM: fakeChatClient{
+			streamText:     &streamText,
+			reasoningText:  "The user wants the latest sources, so I will search.",
+			reasoningTitle: "Searching current sources",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: assistant_reasoning_title") {
+		t.Fatalf("body missing assistant_reasoning_title:\n%s", body)
+	}
+	if !strings.Contains(body, `"id":"reasoning-1"`) || !strings.Contains(body, `"title":"Searching current sources"`) {
+		t.Fatalf("title event payload wrong:\n%s", body)
+	}
+	// The title event must precede assistant_message so the live label settles in order.
+	if strings.Index(body, "event: assistant_reasoning_title") > strings.Index(body, "event: assistant_message") {
+		t.Fatalf("title event came after assistant_message:\n%s", body)
+	}
+	if len(store.messages) == 0 {
+		t.Fatal("no messages persisted")
+	}
+	last := store.messages[len(store.messages)-1]
+	if !strings.Contains(string(last.ActivityTrace), `"title":"Searching current sources"`) {
+		t.Fatalf("persisted activity trace missing title: %s", last.ActivityTrace)
+	}
+}
+
+func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+	}
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{
+				ReasoningContent: "alpha reasoning",
+				ToolCalls: []llm.ToolCall{{
+					ID:       "call_1",
+					Type:     "function",
+					Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"q":"slopr"}`},
+				}},
+			},
+			{ReasoningContent: "beta reasoning", Content: "Final answer."},
+		},
+		titleFor: func(reasoning string) string {
+			switch {
+			case strings.Contains(reasoning, "alpha"):
+				return "Alpha abstract"
+			case strings.Contains(reasoning, "beta"):
+				return "Beta abstract"
+			default:
+				return ""
+			}
+		},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{
+				Type:     "function",
+				Function: llm.ToolFunction{Name: "search__web", Description: "Search", Parameters: map[string]any{"type": "object"}},
+			}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if len(store.messages) == 0 {
+		t.Fatal("no messages persisted")
+	}
+	last := store.messages[len(store.messages)-1]
+	var trace []activityTraceEvent
+	if err := json.Unmarshal(last.ActivityTrace, &trace); err != nil {
+		t.Fatalf("unmarshal activity trace: %v\n%s", err, last.ActivityTrace)
+	}
+	// Each title must land on the reasoning block whose content it summarizes,
+	// even though the frontend and backend assign reasoning ids independently.
+	titleByContent := map[string]string{}
+	for _, event := range trace {
+		if event.Type == "reasoning" {
+			titleByContent[event.Content] = event.Title
+		}
+	}
+	if titleByContent["alpha reasoning"] != "Alpha abstract" {
+		t.Fatalf("alpha block title = %q, want Alpha abstract\ntrace=%s", titleByContent["alpha reasoning"], last.ActivityTrace)
+	}
+	if titleByContent["beta reasoning"] != "Beta abstract" {
+		t.Fatalf("beta block title = %q, want Beta abstract\ntrace=%s", titleByContent["beta reasoning"], last.ActivityTrace)
+	}
+}
+
 func TestStreamMessageExecutesBuiltInArtifactTool(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -1188,7 +1299,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 }
 
 func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
-	trace := activityTraceFromResult(nil, llm.StreamResult{
+	trace, _ := activityTraceFromResult(nil, llm.StreamResult{
 		ToolCalls: []llm.ToolCall{
 			{
 				ID:   "call_pdf",

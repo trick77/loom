@@ -9,21 +9,24 @@ import (
 	"time"
 )
 
-const titleSystemPrompt = "Write a chat title for the user's request as a neutral noun phrase. Use 2 to 6 words. Do not write a sentence. Ignore assistant refusals, apologies, or capability disclaimers. Do not use first person, second person, future tense, promises, or assistant actions. Prefer subject titles like \"Photorealistic cat image\" over action titles like \"I'll create a cat image\". Return only the title."
+const chatTitleSystemPrompt = "You write short chat titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
 
-func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
+func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
 	start := time.Now()
-	messages := []Message{
-		{Role: "system", Content: titleSystemPrompt},
-		{Role: "user", Content: userMessage},
-	}
-	// Only include the assistant turn when it has content. An assistant message
-	// with empty content serializes to {"role":"assistant"} (content is
-	// omitempty), which providers reject with "assistant must provide content".
+	// Frame the request as material to be titled, not a turn to answer. Passed as
+	// a bare user message, an imperative prompt ("Explain why glaciers are blue")
+	// makes the model answer the question and use the answer as the title; the
+	// quoted "First user message: ... Title:" framing keeps it summarizing.
+	framed := "First user message:\n\"\"\"\n" + strings.TrimSpace(userMessage) + "\n\"\"\""
 	if strings.TrimSpace(assistantMessage) != "" {
-		messages = append(messages, Message{Role: "assistant", Content: assistantMessage})
+		framed += "\n\nAssistant reply:\n\"\"\"\n" + strings.TrimSpace(assistantMessage) + "\n\"\"\""
 	}
-	resp, err := c.executeChatRequest(ctx, messages, false)
+	framed += "\n\nTitle:"
+	messages := []Message{
+		{Role: "system", Content: chatTitleSystemPrompt},
+		{Role: "user", Content: framed},
+	}
+	resp, err := c.executeUtilityChatRequest(ctx, messages)
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
@@ -40,10 +43,16 @@ func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessag
 	if len(completion.Choices) == 0 {
 		return "New chat", nil
 	}
-	return cleanTitle(completion.Choices[0].Message.Content), nil
+	choice := completion.Choices[0]
+	// A title cut off at the token cap is unreliable; fall back rather than store
+	// a half phrase as the thread title.
+	if choice.FinishReason == "length" {
+		return "New chat", nil
+	}
+	return cleanChatTitle(choice.Message.Content), nil
 }
 
-func cleanTitle(title string) string {
+func cleanChatTitle(title string) string {
 	title = strings.TrimSpace(title)
 	if unquoted, err := strconv.Unquote(title); err == nil {
 		title = strings.TrimSpace(unquoted)
@@ -58,12 +67,22 @@ func cleanTitle(title string) string {
 	if isAnswerLikeTitle(title) {
 		return "New chat"
 	}
+	title = trimTrailingDots(title)
+	if title == "" {
+		return "New chat"
+	}
 
 	runes := []rune(title)
-	if len(runes) > 80 {
-		title = string(runes[:80])
+	if len(runes) > 60 {
+		title = strings.TrimSpace(string(runes[:60]))
 	}
 	return title
+}
+
+// trimTrailingDots removes a trailing period (or ellipsis) and surrounding
+// whitespace so titles never end on a dangling ".".
+func trimTrailingDots(title string) string {
+	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(title), "."))
 }
 
 func rewriteFirstPersonCreationTitle(title string) string {

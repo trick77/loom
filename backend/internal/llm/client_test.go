@@ -613,9 +613,9 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
 
-	title, err := client.GenerateTitle(context.Background(), "Can you explain x?", "Sure.")
+	title, err := client.GenerateChatTitle(context.Background(), "Can you explain x?", "Sure.")
 	if err != nil {
-		t.Fatalf("GenerateTitle() error: %v", err)
+		t.Fatalf("GenerateChatTitle() error: %v", err)
 	}
 
 	if gotBody.Stream {
@@ -624,20 +624,102 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	if gotBody.Model != "mimo" {
 		t.Fatalf("model = %q, want mimo", gotBody.Model)
 	}
-	if len(gotBody.Messages) != 3 {
-		t.Fatalf("len(messages) = %d, want 3", len(gotBody.Messages))
+	// The user request and assistant reply are framed into a single user turn as
+	// material to be titled, not a turn to answer.
+	if len(gotBody.Messages) != 2 {
+		t.Fatalf("len(messages) = %d, want 2", len(gotBody.Messages))
 	}
-	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != titleSystemPrompt {
+	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != chatTitleSystemPrompt {
 		t.Fatalf("system message = %#v", gotBody.Messages[0])
 	}
-	if gotBody.Messages[1].Role != "user" || gotBody.Messages[1].Content != "Can you explain x?" {
+	if gotBody.Messages[1].Role != "user" || !strings.Contains(gotBody.Messages[1].Content, "Can you explain x?") || !strings.Contains(gotBody.Messages[1].Content, "Sure.") {
 		t.Fatalf("user message = %#v", gotBody.Messages[1])
-	}
-	if gotBody.Messages[2].Role != "assistant" || gotBody.Messages[2].Content != "Sure." {
-		t.Fatalf("assistant message = %#v", gotBody.Messages[2])
 	}
 	if title != "Algebra help" {
 		t.Fatalf("title = %q, want Algebra help", title)
+	}
+}
+
+func TestClient_UtilityCallsDisableThinking(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call func(c *Client) (string, error)
+	}{
+		{"chat title", func(c *Client) (string, error) { return c.GenerateChatTitle(context.Background(), "Hi", "") }},
+		{"reasoning title", func(c *Client) (string, error) {
+			return c.GenerateReasoningTitle(context.Background(), "some reasoning")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got struct {
+				ReasoningEffort string `json:"reasoning_effort"`
+				Thinking        *struct {
+					Type string `json:"type"`
+				} `json:"thinking"`
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"choices": []map[string]any{{"message": map[string]string{"content": "A title"}}},
+				})
+			}))
+			t.Cleanup(server.Close)
+
+			// reasoning_effort high would normally apply to MiMo; utility calls must override it.
+			client := NewClient(Config{BaseURL: server.URL, Model: "mimo", ReasoningEffort: "high"}, server.Client())
+			if _, err := tc.call(client); err != nil {
+				t.Fatalf("call error: %v", err)
+			}
+			if got.Thinking == nil || got.Thinking.Type != "disabled" {
+				t.Fatalf("thinking = %#v, want {disabled}", got.Thinking)
+			}
+			if got.ReasoningEffort != "" {
+				t.Fatalf("reasoning_effort = %q, want empty", got.ReasoningEffort)
+			}
+		})
+	}
+}
+
+func TestClient_TitlesSkippedWhenTruncatedAtTokenCap(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var got struct {
+			MaxCompletionTokens int `json:"max_completion_tokens"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		if got.MaxCompletionTokens == 0 {
+			t.Fatalf("utility call missing max_completion_tokens cap")
+		}
+		// Mid-phrase truncation: non-empty content but finish_reason "length".
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message":       map[string]string{"content": "Debugging syntax errors in framew"},
+				"finish_reason": "length",
+			}},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	if got, err := client.GenerateReasoningTitle(context.Background(), "some reasoning"); err != nil || got != "" {
+		t.Fatalf("reasoning title = %q, err = %v; want skipped (empty)", got, err)
+	}
+	if got, err := client.GenerateChatTitle(context.Background(), "Hi", ""); err != nil || got != "New chat" {
+		t.Fatalf("chat title = %q, err = %v; want New chat", got, err)
+	}
+}
+
+func TestCleanTitlesStripTrailingDot(t *testing.T) {
+	if got := cleanChatTitle("Blue sky explanation."); got != "Blue sky explanation" {
+		t.Fatalf("cleanChatTitle trailing dot = %q", got)
+	}
+	if got := cleanReasoningTitle("Contrasting TCP and UDP protocols."); got != "Contrasting TCP and UDP protocols" {
+		t.Fatalf("cleanReasoningTitle trailing dot = %q", got)
+	}
+	if got := cleanChatTitle("Done..."); got != "Done" {
+		t.Fatalf("cleanChatTitle ellipsis = %q", got)
 	}
 }
 
@@ -696,9 +778,9 @@ func TestClient_GenerateTitleOmitsEmptyAssistantMessage(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
 
-	title, err := client.GenerateTitle(context.Background(), "Hi", "")
+	title, err := client.GenerateChatTitle(context.Background(), "Hi", "")
 	if err != nil {
-		t.Fatalf("GenerateTitle() error: %v", err)
+		t.Fatalf("GenerateChatTitle() error: %v", err)
 	}
 	if title != "Greeting" {
 		t.Fatalf("title = %q, want Greeting", title)
@@ -730,9 +812,9 @@ func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
 
-	title, err := client.GenerateTitle(context.Background(), `Tell me about "Lens" by IPverse`, "")
+	title, err := client.GenerateChatTitle(context.Background(), `Tell me about "Lens" by IPverse`, "")
 	if err != nil {
-		t.Fatalf("GenerateTitle() error: %v", err)
+		t.Fatalf("GenerateChatTitle() error: %v", err)
 	}
 	if title != "New chat" {
 		t.Fatalf("title = %q, want New chat", title)
@@ -746,7 +828,7 @@ func TestCleanTitleFallsBackForRefusalLikeCompletion(t *testing.T) {
 		"As a text-based AI assistant, I cannot generate images.",
 	} {
 		t.Run(raw, func(t *testing.T) {
-			title := cleanTitle(raw)
+			title := cleanChatTitle(raw)
 			if title != "New chat" {
 				t.Fatalf("title = %q, want New chat", title)
 			}
@@ -755,14 +837,14 @@ func TestCleanTitleFallsBackForRefusalLikeCompletion(t *testing.T) {
 }
 
 func TestCleanTitleRewritesFirstPersonCreationSentence(t *testing.T) {
-	title := cleanTitle(`"I'll create a photorealistic image of a male Maine Coon cat for you."`)
+	title := cleanChatTitle(`"I'll create a photorealistic image of a male Maine Coon cat for you."`)
 
 	if title != "Creation of a photorealistic image of a male Maine Coon cat" {
 		t.Fatalf("title = %q, want passive creation title", title)
 	}
 }
 
-func TestClient_GenerateTitleIncludesAssistantMessageWhenPresent(t *testing.T) {
+func TestClient_GenerateTitleFramesAssistantReplyWhenPresent(t *testing.T) {
 	var gotMessages []Message
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -779,14 +861,15 @@ func TestClient_GenerateTitleIncludesAssistantMessageWhenPresent(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
 
-	if _, err := client.GenerateTitle(context.Background(), "Hi", "Hi there"); err != nil {
-		t.Fatalf("GenerateTitle() error: %v", err)
+	if _, err := client.GenerateChatTitle(context.Background(), "Hi", "Hi there"); err != nil {
+		t.Fatalf("GenerateChatTitle() error: %v", err)
 	}
-	if len(gotMessages) != 3 {
-		t.Fatalf("messages = %#v, want system, user and assistant message", gotMessages)
+	// Both the user request and the assistant reply are framed into one user turn
+	// (no separate assistant-role message that the model might continue answering).
+	if len(gotMessages) != 2 {
+		t.Fatalf("messages = %#v, want system and framed user message", gotMessages)
 	}
-	last := gotMessages[2]
-	if last.Role != "assistant" || last.Content != "Hi there" {
-		t.Fatalf("last message = %#v, want assistant with content", last)
+	if gotMessages[1].Role != "user" || !strings.Contains(gotMessages[1].Content, "Hi there") {
+		t.Fatalf("framed user message = %#v, want assistant reply included", gotMessages[1])
 	}
 }

@@ -247,6 +247,8 @@ body {
 
 .slopr-activity-trace {
   --slopr-activity-icon-offset: 0.225rem;
+  /* Breathing room between the collapsed trace label and the answer text. */
+  margin-bottom: 0.5rem;
   max-width: 46rem;
   overflow: hidden;
   border: 0;
@@ -265,13 +267,13 @@ body {
   justify-content: flex-start;
   gap: 0.75rem;
   padding: 0.125rem 0 0.25rem;
-  color: #c7c5bd;
+  color: #858178;
   text-align: left;
   transition: color 0.16s ease;
 }
 
 .slopr-activity-trace-toggle:hover {
-  color: #f3f0e8;
+  color: #b4b1a8;
 }
 
 .slopr-activity-trace-label {
@@ -390,6 +392,12 @@ body {
   content: "";
   opacity: 1;
   transform: rotate(-45deg);
+}
+
+.slopr-activity-reasoning-title {
+  margin-bottom: 0.25rem;
+  color: #d6d3ca;
+  font-weight: 500;
 }
 
 .slopr-activity-reasoning p {

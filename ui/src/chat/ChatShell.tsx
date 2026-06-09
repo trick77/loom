@@ -36,6 +36,7 @@ import {
 } from "../api";
 import {
   appendReasoningDelta,
+  applyReasoningTitle,
   completeTrace,
   normalizeActivityTrace,
   upsertTraceToolCall,
@@ -485,6 +486,10 @@ export function ChatShell({
         onReasoningDelta: (delta) => {
           if (!isCurrentThread()) return;
           updateActivityTrace((current) => appendReasoningDelta(current, delta));
+        },
+        onReasoningTitle: (event) => {
+          if (!isCurrentThread()) return;
+          updateActivityTrace((current) => applyReasoningTitle(current, event.id, event.title));
         },
         onToolPending: () => {
           if (!isCurrentThread()) return;
@@ -1358,10 +1363,18 @@ function ChatPanel({
   // applies to traces that actually have reasoning, so reasoning-free turns keep
   // the "Thinking" affordance until they complete. `toolPending` bridges the gap
   // until a tool call the model has already started surfaces as a running event,
-  // so streamed pre-tool preamble text never settles the label early.
+  // so streamed pre-tool preamble text never settles the label early. The label
+  // also stays on "Thinking" until the latest reasoning round's background title
+  // has arrived, so the raw-first-sentence fallback never flashes mid-stream.
   const hasReasoning = activityTrace.some((event) => event.type === "reasoning");
   const toolRunning = activityTrace.some((event) => event.type === "tool" && event.status === "running");
-  const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning && !toolPending;
+  const latestReasoning = activityTrace.reduce<ActivityTraceEvent | undefined>(
+    (acc, event) => (event.type === "reasoning" ? event : acc),
+    undefined,
+  );
+  const latestReasoningTitled =
+    latestReasoning?.type === "reasoning" && (latestReasoning.title?.trim() ?? "") !== "";
+  const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning && !toolPending && latestReasoningTitled;
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1554,6 +1567,7 @@ function ChatPanel({
               <ActivityTracePanel
                 events={activityTrace}
                 active={!reasoningSettled}
+                streaming={isSending}
                 expanded={activeActivityTraceExpanded}
                 onExpandedChange={onActiveActivityTraceExpandedChange}
               />
@@ -1962,7 +1976,7 @@ function MessageActions({
       {speakable && (
         <button
           className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
-            speaking ? "text-[#f3f0e8]" : "text-[#c7c5bd]"
+            speaking ? "text-[#f3f0e8]" : "text-[#858178]"
           }`}
           onClick={handleSpeak}
           type="button"
@@ -1974,7 +1988,7 @@ function MessageActions({
       )}
       {!streaming && (
         <button
-          className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
+          className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
           onClick={handleCopy}
           type="button"
           title="Copy"
@@ -1985,7 +1999,7 @@ function MessageActions({
       )}
       {onRetry !== undefined && (
         <button
-          className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
+          className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
           onClick={onRetry}
           type="button"
           title="Retry"

@@ -1,0 +1,191 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strings"
+
+	"github.com/trick77/slopr/internal/chat"
+	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/slopr/internal/sse"
+)
+
+const sloprSystemPrompt = "Default to prose; keep replies brief but written as sentences. Use lists only for genuine item lists or steps, never for ordinary explanations. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
+
+const imagePromptCompilerSystemPrompt = "The latest user request requires image generation or editing. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Transform the user's request into a concise, visually rich prompt that preserves subject, setting, style, composition, mood, medium, text requirements, and constraints. Add only helpful visual details consistent with the request. Use `filename` when obvious. After the tool result, provide a brief final response that refers to the created artifact. Never claim an image was created unless the tool result confirms an artifact."
+
+func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireChat(w, s) {
+		return
+	}
+	if s.llm == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
+		return
+	}
+	var body streamMessageRequest
+	if err := decodeJSONBody(w, r, &body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	threadID := r.PathValue("threadID")
+	thread, found, err := s.chat.GetThread(r.Context(), user.ID, threadID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "get thread failed")
+		return
+	}
+	if !found {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	priorMessages, found, err := s.chat.ListMessages(r.Context(), user.ID, threadID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "list messages failed")
+		return
+	}
+	if !found {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	userMessage, err := s.chat.AddMessage(r.Context(), user.ID, threadID, chat.RoleUser, body.Content)
+	if err != nil {
+		writeChatStoreError(w, err, http.StatusBadRequest, "message content is required", "message content is too long")
+		return
+	}
+	streamCtx, cancelStream := context.WithCancel(r.Context())
+	defer cancelStream()
+	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream)
+	defer unregisterStream()
+
+	stream, err := sse.NewWriter(w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := sendSSEJSON(stream, "user_message", userMessage); err != nil {
+		return
+	}
+
+	// Kick off the MCP reachability probe now so its latency overlaps with
+	// assistant generation instead of delaying the final events.
+	mcpStatusCh := s.startMCPStatus(streamCtx)
+
+	if thread.Title == chat.DefaultThreadTitle {
+		_ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
+	}
+
+	history := buildLLMHistory(user, priorMessages, userMessage)
+	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
+	// Background reasoning-title generation. The deferred wait is a safety net so
+	// no title goroutine writes to the SSE stream after the handler returns on an
+	// early error path.
+	titles := newReasoningTitleTracker(s, stream, streamCtx, inference)
+	defer titles.wait()
+	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, imageArtifactRequired)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		message := "stream failed"
+		var userErr streamUserError
+		if errors.As(err, &userErr) {
+			message = userErr.message
+		}
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
+		return
+	}
+	assistantContent := assistantResult.Content
+	if imageArtifactRequired && len(assistantResult.Artifacts) == 0 {
+		message := "image generation was not completed"
+		if strings.TrimSpace(assistantResult.ToolError) != "" {
+			message = assistantResult.ToolError
+		}
+		slog.Warn("image request completed without image artifact",
+			"thread_id", threadID,
+			"content_bytes", len(assistantResult.Content),
+			"tool_calls", len(assistantResult.ToolCalls),
+			"tool_error", assistantResult.ToolError)
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
+		return
+	}
+	if strings.TrimSpace(assistantContent) == "" {
+		slog.Warn("empty assistant response",
+			"thread_id", threadID,
+			"content_bytes", len(assistantResult.Content),
+			"reasoning_bytes", len(assistantResult.ReasoningContent),
+			"tool_calls", len(assistantResult.ToolCalls))
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
+		return
+	}
+
+	persistCtx := context.WithoutCancel(r.Context())
+	artifacts := assistantResult.Artifacts
+	if artifacts == nil {
+		artifacts = []artifactResponse{}
+	}
+	artifactsJSON, err := json.Marshal(artifacts)
+	if err != nil {
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
+		return
+	}
+	// Ensure every background title has landed and been emitted before persisting
+	// the trace; this also guarantees the title SSE events precede assistant_message.
+	titles.wait()
+	titles.mergeInto(assistantResult.ActivityTrace)
+	activityTraceJSON, err := json.Marshal(assistantResult.ActivityTrace)
+	if err != nil {
+		slog.Warn("marshal activity trace failed", "thread_id", threadID, "error", err)
+		activityTraceJSON = []byte("[]")
+	}
+	assistantMessage, err := s.chat.AddMessageWithActivityTrace(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromResult(assistantResult.StreamResult), artifactsJSON, activityTraceJSON)
+	if err != nil {
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
+		return
+	}
+	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
+		return
+	}
+
+	sendMCPStatus(stream, mcpStatusCh)
+	_ = stream.Send("done", "{}")
+}
+
+func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireChat(w, s) {
+		return
+	}
+	threadID := r.PathValue("threadID")
+	_, found, err := s.chat.GetThread(r.Context(), user.ID, threadID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "get thread failed")
+		return
+	}
+	if !found {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	s.activeStreams.stop(user.ID, threadID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type streamUserError struct {
+	message string
+}
+
+func (e streamUserError) Error() string {
+	return e.message
+}
+
+func sendSSEJSON(stream *sse.Writer, event string, data any) error {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return stream.Send(event, string(payload))
+}

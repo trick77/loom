@@ -1114,7 +1114,7 @@ test("keeps active activity trace while assistant output streams without explici
   expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
 });
 
-test("shows the reasoning abstract instead of Thinking once the answer streams", async () => {
+test("shows the reasoning abstract once its background title arrives", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1139,13 +1139,20 @@ test("shows the reasoning abstract instead of Thinking once the answer streams",
   );
   expect(await screen.findByText("Thinking")).toBeInTheDocument();
 
-  // Once the final answer starts streaming, the reasoning phase is over: the
-  // collapsed label flips to the abstract (no more live "Thinking" status). The
-  // assistant_message/done events are withheld so the active trace stays.
+  // The answer starts streaming, but the round has no background title yet: the
+  // label must stay "Thinking" rather than flashing the raw-first-sentence
+  // fallback. The assistant_message/done events are withheld so the trace stays.
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
-
   expect(await screen.findByText("Here is")).toBeInTheDocument();
-  expect(screen.getByText("Search current sources")).toBeInTheDocument();
+  expect(screen.getByText("Thinking")).toBeInTheDocument();
+  expect(screen.queryByText("Search current sources")).not.toBeInTheDocument();
+
+  // The background title lands: the collapsed label flips to the abstract and the
+  // live "Thinking" status is gone.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+  );
+  expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
   expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
 });

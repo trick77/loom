@@ -4,12 +4,16 @@ package sse
 import (
 	"fmt"
 	"net/http"
+	"sync"
 )
 
-// Writer streams SSE events to an http.ResponseWriter.
+// Writer streams SSE events to an http.ResponseWriter. Send is safe for
+// concurrent use: the main assistant loop and background workers (e.g.
+// reasoning-title generation) may emit events at the same time.
 type Writer struct {
 	w       http.ResponseWriter
 	flusher http.Flusher
+	mu      sync.Mutex
 }
 
 // NewWriter sets SSE headers and returns a Writer, or an error if the
@@ -27,6 +31,8 @@ func NewWriter(w http.ResponseWriter) (*Writer, error) {
 
 // Send writes one event with the given name and data payload, then flushes.
 func (s *Writer) Send(event, data string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, err := fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", event, data); err != nil {
 		return err
 	}

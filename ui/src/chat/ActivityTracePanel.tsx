@@ -13,12 +13,14 @@ import {
 export function ActivityTracePanel({
   events,
   active,
+  streaming = false,
   expanded: controlledExpanded,
   initiallyExpanded = false,
   onExpandedChange,
 }: {
   events: ActivityTraceEvent[];
   active: boolean;
+  streaming?: boolean;
   expanded?: boolean;
   initiallyExpanded?: boolean;
   onExpandedChange?(expanded: boolean): void;
@@ -35,7 +37,10 @@ export function ActivityTracePanel({
     return () => window.clearTimeout(timer);
   }, [expanded]);
   if (events.length === 0 && !active) return null;
-  const summary = active ? "Thinking" : summarizeTrace(events);
+  const label = active ? "Thinking" : summarizeTrace(events);
+  // Sweep the label for the whole turn: "Thinking" while reasoning, then the
+  // abstract once it settles — both shimmer until the answer finishes streaming.
+  const sweeping = active || streaming;
   return (
     <div
       aria-label={active ? "Slopr activity trace" : undefined}
@@ -56,12 +61,12 @@ export function ActivityTracePanel({
       >
         <span className="slopr-activity-trace-label">
           <span className={active ? "slopr-thinking-status-active" : "slopr-thinking-status-complete"} aria-hidden="true" />
-          {active ? (
-            <span className="slopr-thinking-label-active" data-text="Thinking">
-              Thinking
+          {sweeping ? (
+            <span className="slopr-thinking-label-active" data-text={label}>
+              {label}
             </span>
           ) : (
-            <span>{summary}</span>
+            <span>{label}</span>
           )}
           <span aria-hidden="true" className={expanded ? "slopr-thinking-chevron-expanded" : "slopr-thinking-chevron"} />
         </span>
@@ -97,10 +102,15 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
     return (
       <div className="slopr-activity-trace-row slopr-activity-trace-row-reasoning">
         <span className={iconClass} aria-hidden="true" />
-        <div className="slopr-activity-reasoning">
-          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-            {event.content.trim()}
-          </Markdown>
+        <div className="min-w-0 flex-1">
+          {event.title !== undefined && event.title.trim() !== "" && (
+            <div className="slopr-activity-reasoning-title">{event.title}</div>
+          )}
+          <div className="slopr-activity-reasoning">
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              {event.content.trim()}
+            </Markdown>
+          </div>
         </div>
       </div>
     );
