@@ -2251,6 +2251,40 @@ test("renders fetch tool rows with an inline favicon and a clickable URL", async
   expect(document.querySelector(".slopr-activity-result-list")).toBeNull();
 });
 
+test("reveals the message action icons only after the answer settles", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode('event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n'),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  // While the answer streams, none of the action icons are rendered.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is the answer."}\n\n'));
+  expect(await screen.findByText("Here is the answer.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /read aloud/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /copy response/i })).not.toBeInTheDocument();
+
+  // Once the message settles they appear together with the metrics footer.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Here is the answer.","createdAt":"2026-05-30T00:00:01Z"}\n\n'),
+  );
+  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
+
+  expect(await screen.findByRole("button", { name: /read aloud/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /copy response/i })).toBeInTheDocument();
+});
+
 test("keeps just-completed activity trace collapsed before the assistant answer until opened", async () => {
   const stream = new ReadableStream({
     start(controller) {

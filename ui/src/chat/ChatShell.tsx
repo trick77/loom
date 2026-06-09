@@ -1971,6 +1971,11 @@ function MessageActions({
     setSpeaking(true);
   }
 
+  // While the answer is still streaming we render no action row at all — the
+  // speaker, copy and retry icons appear together with the metrics footer
+  // (model name, token cost) only once the message has settled.
+  if (streaming) return null;
+
   return (
     <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
       {speakable && (
@@ -1986,17 +1991,15 @@ function MessageActions({
           <SpeakerIcon />
         </button>
       )}
-      {!streaming && (
-        <button
-          className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
-          onClick={handleCopy}
-          type="button"
-          title="Copy"
-          aria-label={copyLabel}
-        >
-          {copied ? <CheckIcon /> : <CopyIcon />}
-        </button>
-      )}
+      <button
+        className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
+        onClick={handleCopy}
+        type="button"
+        title="Copy"
+        aria-label={copyLabel}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
       {onRetry !== undefined && (
         <button
           className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
