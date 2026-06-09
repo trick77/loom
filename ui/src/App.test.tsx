@@ -1345,6 +1345,19 @@ test("keeps existing search activity icon glyph design", () => {
   expect(source).not.toContain("slopr-activity-trace-chevron-icon");
 });
 
+test("keeps the reasoning clamp height in sync with REASONING_CAP_PX", () => {
+  const source = readFileSync("src/chat/ActivityTracePanel.tsx", "utf8");
+  const css = readFileSync("src/index.css", "utf8");
+  const capPx = Number(source.match(/REASONING_CAP_PX\s*=\s*(?<px>\d+)/)?.groups?.px);
+  const clampRule = css.match(/\.slopr-activity-reasoning-clamp\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const maxHeightRem = Number(clampRule.match(/max-height:\s*(?<rem>[\d.]+)rem/)?.groups?.rem);
+
+  // The JS clamp threshold (px) and the CSS max-height (rem) must describe the
+  // same height, or the overflow measurement desyncs from the visual clamp/fade.
+  expect(capPx).toBe(192);
+  expect(maxHeightRem * 16).toBe(capPx);
+});
+
 test("shows active activity trace with reasoning and tool activity before assistant output", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
