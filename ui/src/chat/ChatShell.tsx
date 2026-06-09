@@ -1567,6 +1567,7 @@ function ChatPanel({
               <ActivityTracePanel
                 events={activityTrace}
                 active={!reasoningSettled}
+                streaming={isSending}
                 expanded={activeActivityTraceExpanded}
                 onExpandedChange={onActiveActivityTraceExpandedChange}
               />
