@@ -1284,19 +1284,6 @@ test("hides the copy action until the assistant answer finishes streaming", asyn
   expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
 });
 
-test("centers the active thinking status dot inside its circle", () => {
-  const css = readFileSync("src/index.css", "utf8");
-  const activeStatusRule = css.match(/\.slopr-thinking-status-active\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const activeDotRule =
-    css.match(/\.slopr-thinking-status-active::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-
-  expect(activeStatusRule).toContain("display: inline-grid");
-  expect(activeStatusRule).toContain("place-items: center");
-  expect(activeDotRule).toContain("width: 0.375rem");
-  expect(activeDotRule).toContain("height: 0.375rem");
-  expect(activeDotRule).not.toContain("inset:");
-});
-
 test("centers reasoning activity dots inside their row circles", () => {
   const css = readFileSync("src/index.css", "utf8");
   const reasoningIconRule =
@@ -2280,10 +2267,10 @@ test("does not repeat the collapsed headline as the reasoning row title", async 
   expect(await screen.findByText("The user is asking about Einstein.")).toBeInTheDocument();
   expect(screen.getAllByText("Summarizing Einstein's life and contributions")).toHaveLength(1);
   // No tools means no timeline: the reasoning row shows no node glyph and there
-  // is no connecting line, but the collapsed headline keeps its checkmark.
+  // is no connecting line. The collapsed headline has no status icon at all.
   expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
   expect(document.querySelector(".slopr-activity-trace-body-flat")).not.toBeNull();
-  expect(document.querySelector(".slopr-thinking-status-complete")).not.toBeNull();
+  expect(document.querySelector(".slopr-thinking-status-active, .slopr-thinking-status-complete")).toBeNull();
 });
 
 test("reveals the message action icons only after the answer settles", async () => {

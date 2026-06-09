@@ -66,7 +66,6 @@ export function ActivityTracePanel({
         }}
       >
         <span className="slopr-activity-trace-label">
-          <span className={active ? "slopr-thinking-status-active" : "slopr-thinking-status-complete"} aria-hidden="true" />
           {sweeping ? (
             <span className="slopr-thinking-label-active" data-text={label}>
               {label}
@@ -145,11 +144,10 @@ function ActivityTraceRow({
 }) {
   if (event.type === "reasoning") {
     // The node glyph is a timeline affordance — only show it when tools make the
-    // trace an actual timeline. Without tools the icon column stays (preserving
-    // the text indent) but renders empty.
-    const iconClass = !timeline
-      ? "slopr-activity-trace-icon"
-      : event.status === "done"
+    // trace an actual timeline. Without tools there is no icon column at all, so
+    // the reasoning sits flush-left, aligned with the headline and the answer.
+    const iconClass =
+      event.status === "done"
         ? "slopr-activity-trace-icon slopr-activity-trace-icon-reasoning slopr-activity-trace-icon-reasoning-complete"
         : "slopr-activity-trace-icon slopr-activity-trace-icon-reasoning";
     // Skip the per-round title when it just repeats the collapsed headline
@@ -158,7 +156,7 @@ function ActivityTraceRow({
     const showTitle = title !== undefined && title !== "" && title !== headline.trim();
     return (
       <div className="slopr-activity-trace-row slopr-activity-trace-row-reasoning">
-        <span className={iconClass} aria-hidden="true" />
+        {timeline && <span className={iconClass} aria-hidden="true" />}
         <div className="min-w-0 flex-1">
           {showTitle && <div className="slopr-activity-reasoning-title">{event.title}</div>}
           <ReasoningContent content={event.content.trim()} />

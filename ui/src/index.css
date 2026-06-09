@@ -187,34 +187,6 @@ body {
   animation: slopr-thinking-sweep 2.5s linear infinite;
 }
 
-.slopr-thinking-status-active,
-.slopr-thinking-status-complete {
-  display: inline-block;
-  width: 1rem;
-  height: 1rem;
-  border: 1px solid currentColor;
-  border-radius: 9999px;
-}
-
-.slopr-thinking-status-active {
-  display: inline-grid;
-  position: relative;
-  place-items: center;
-}
-
-.slopr-thinking-status-active::after {
-  display: block;
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 9999px;
-  background: currentColor;
-  content: "";
-}
-
-.slopr-thinking-status-complete {
-  position: relative;
-}
-
 .slopr-thinking-chevron,
 .slopr-thinking-chevron-expanded {
   display: inline-block;
@@ -372,12 +344,10 @@ body {
 }
 
 /*
- * The single checkmark-circle glyph used everywhere a completed step is shown:
- * the collapsed trace headline, completed reasoning rows, and the terminal Done
- * node. Defined once so all three stay pixel-identical. Sits after the reasoning
- * "running" dot rule so it overrides it on completed rows.
+ * The single checkmark-circle glyph, used by completed reasoning rows and the
+ * terminal Done node. Sits after the reasoning "running" dot rule so it
+ * overrides it on completed rows.
  */
-.slopr-thinking-status-complete::after,
 .slopr-activity-trace-icon-reasoning-complete::after {
   position: absolute;
   left: 0.25rem;
