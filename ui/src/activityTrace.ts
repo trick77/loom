@@ -25,7 +25,7 @@ export type ActivityTraceToolEvent = {
 
 export type ToolSummary =
   | { kind: "search"; title: string }
-  | { kind: "fetch"; title: string }
+  | { kind: "fetch"; title: string; url?: string }
   | { kind: "file"; title: string }
   | { kind: "generic"; title: string };
 
@@ -34,13 +34,6 @@ export type ToolResultPreview =
       kind: "searchResults";
       resultCount: number;
       results: SearchResultPreview[];
-    }
-  | {
-      kind: "fetchResult";
-      url?: string;
-      domain?: string;
-      title?: string;
-      detail: string;
     }
   | {
       kind: "text";
@@ -162,6 +155,7 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
     return {
       kind: "fetch",
       title: url !== undefined ? domainFromURL(url) ?? url : readableToolName(name),
+      url,
     };
   }
   const file = stringValue(args, ["filename", "file", "path", "displayFilename"]);
@@ -182,15 +176,6 @@ export function summarizeToolResult(tool: ActivityTraceToolEvent, rawOutput: str
     };
   }
   const text = truncateText(rawOutput.trim(), 500);
-  if (tool.summary.kind === "fetch") {
-    const url = tool.rawArguments !== undefined ? stringValue(parseJSONRecord(tool.rawArguments), ["url", "uri", "href"]) : undefined;
-    return {
-      kind: "fetchResult",
-      url,
-      domain: url !== undefined ? domainFromURL(url) : undefined,
-      detail: text,
-    };
-  }
   return { kind: "text", detail: text };
 }
 

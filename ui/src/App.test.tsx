@@ -2218,6 +2218,39 @@ test("renders unknown tool calls with safe fallback details", async () => {
   expect(doneNodes.some((node) => node.classList.contains("slopr-activity-done-label"))).toBe(true);
 });
 
+test("renders fetch tool rows with an inline favicon and a clickable URL", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"https://www.getmaxim.ai/bifrost/resources/governance\\"}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"fetch__fetch","content":"Page content"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByText("Done.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /show activity/i }));
+
+  // First line shows the domain title with the favicon right beside it.
+  expect(await screen.findByText("getmaxim.ai")).toBeInTheDocument();
+  const favicon = document.querySelector(".slopr-activity-tool-favicon");
+  expect(favicon).toHaveAttribute("src", "https://www.google.com/s2/favicons?domain=getmaxim.ai&sz=32");
+  // The full URL is a link that opens in a new tab — no redundant result frame.
+  const link = screen.getByRole("link", { name: "https://www.getmaxim.ai/bifrost/resources/governance" });
+  expect(link).toHaveAttribute("href", "https://www.getmaxim.ai/bifrost/resources/governance");
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", "noreferrer");
+  expect(document.querySelector(".slopr-activity-result-list")).toBeNull();
+});
+
 test("keeps just-completed activity trace collapsed before the assistant answer until opened", async () => {
   const stream = new ReadableStream({
     start(controller) {

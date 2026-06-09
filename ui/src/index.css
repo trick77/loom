@@ -472,6 +472,25 @@ body {
   white-space: nowrap;
 }
 
+.slopr-activity-tool-favicon {
+  flex: 0 0 auto;
+}
+
+.slopr-activity-tool-url {
+  display: block;
+  overflow: hidden;
+  color: #88857d;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.slopr-activity-tool-url:hover {
+  color: #aaa79e;
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
 .slopr-activity-result-count {
   margin-top: 0.25rem;
   color: #88857d;

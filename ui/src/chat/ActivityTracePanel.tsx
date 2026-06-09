@@ -120,6 +120,9 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
     );
   }
   const status = activityToolStatusMeta(event);
+  const fetchUrl = event.summary.kind === "fetch" ? event.summary.url : undefined;
+  const fetchFavicon = fetchUrl === undefined ? undefined : faviconURL(fetchUrl);
+  const fetchHref = fetchUrl === undefined ? undefined : externalHTTPURL(fetchUrl);
   return (
     <div className="slopr-activity-trace-row slopr-activity-trace-row-tool">
       <span
@@ -134,9 +137,22 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="slopr-activity-tool-header flex items-center justify-between gap-3">
-          <span className="slopr-activity-tool-title">{event.summary.title}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="slopr-activity-tool-title">{event.summary.title}</span>
+            {fetchFavicon !== undefined && (
+              <img className="slopr-activity-favicon slopr-activity-tool-favicon" src={fetchFavicon} alt="" />
+            )}
+          </span>
           <span className={`slopr-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
+        {fetchUrl !== undefined &&
+          (fetchHref !== undefined ? (
+            <a className="slopr-activity-tool-url" href={fetchHref} target="_blank" rel="noreferrer">
+              {fetchUrl}
+            </a>
+          ) : (
+            <span className="slopr-activity-tool-url">{fetchUrl}</span>
+          ))}
         {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
           <>
             <div className="slopr-activity-result-count">
@@ -148,17 +164,6 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
               ))}
             </div>
           </>
-        )}
-        {event.preview?.kind === "fetchResult" && event.preview.url !== undefined && (
-          <div className="slopr-activity-result-list">
-            <SearchResultRow
-              result={{
-                title: event.preview.title ?? event.preview.domain ?? event.preview.url,
-                url: event.preview.url,
-                domain: event.preview.domain,
-              }}
-            />
-          </div>
         )}
       </div>
     </div>

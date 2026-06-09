@@ -127,7 +127,7 @@ describe("activity trace model", () => {
     expect(summary).toBe("Compared the active stream state with the completed assistant message");
   });
 
-  test("creates a fetch result preview for fetch-like tools", () => {
+  test("keeps the fetched URL on the summary and renders no result frame", () => {
     let events: ActivityTraceEvent[] = [];
     events = upsertTraceToolCall(events, {
       id: "call_1",
@@ -141,11 +141,8 @@ describe("activity trace model", () => {
     });
 
     expect(events[0]).toMatchObject({
-      preview: {
-        kind: "fetchResult",
-        domain: "example.com",
-        detail: "Example documentation page content",
-      },
+      summary: { kind: "fetch", title: "example.com", url: "https://example.com/docs" },
+      preview: { kind: "text", detail: "Example documentation page content" },
     });
   });
 
