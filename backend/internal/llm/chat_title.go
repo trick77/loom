@@ -9,19 +9,22 @@ import (
 	"time"
 )
 
-const chatTitleSystemPrompt = "Write a chat title for the user's request as a neutral noun phrase. Use 2 to 6 words. Do not write a sentence. Ignore assistant refusals, apologies, or capability disclaimers. Do not use first person, second person, future tense, promises, or assistant actions. Prefer subject titles like \"Photorealistic cat image\" over action titles like \"I'll create a cat image\". Return only the title."
+const chatTitleSystemPrompt = "You write short chat titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
 
 func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
 	start := time.Now()
+	// Frame the request as material to be titled, not a turn to answer. Passed as
+	// a bare user message, an imperative prompt ("Explain why glaciers are blue")
+	// makes the model answer the question and use the answer as the title; the
+	// quoted "First user message: ... Title:" framing keeps it summarizing.
+	framed := "First user message:\n\"\"\"\n" + strings.TrimSpace(userMessage) + "\n\"\"\""
+	if strings.TrimSpace(assistantMessage) != "" {
+		framed += "\n\nAssistant reply:\n\"\"\"\n" + strings.TrimSpace(assistantMessage) + "\n\"\"\""
+	}
+	framed += "\n\nTitle:"
 	messages := []Message{
 		{Role: "system", Content: chatTitleSystemPrompt},
-		{Role: "user", Content: userMessage},
-	}
-	// Only include the assistant turn when it has content. An assistant message
-	// with empty content serializes to {"role":"assistant"} (content is
-	// omitempty), which providers reject with "assistant must provide content".
-	if strings.TrimSpace(assistantMessage) != "" {
-		messages = append(messages, Message{Role: "assistant", Content: assistantMessage})
+		{Role: "user", Content: framed},
 	}
 	resp, err := c.executeUtilityChatRequest(ctx, messages)
 	if err != nil {
@@ -64,8 +67,8 @@ func cleanChatTitle(title string) string {
 	}
 
 	runes := []rune(title)
-	if len(runes) > 80 {
-		title = string(runes[:80])
+	if len(runes) > 60 {
+		title = strings.TrimSpace(string(runes[:60]))
 	}
 	return title
 }

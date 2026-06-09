@@ -72,12 +72,25 @@ func isMiMoModel(model string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "mimo")
 }
 
+// utilityMaxCompletionTokens hard-caps secondary helper calls (titles). A clean
+// title is a handful of tokens; the cap is a guard so a misbehaving turn can
+// never run long.
+const utilityMaxCompletionTokens = 24
+
+type chatRequestOptions struct {
+	tools               []Tool
+	stream              bool
+	reasoningEffort     string
+	thinking            *thinkingOption
+	maxCompletionTokens int
+}
+
 func (c *Client) executeChatRequest(ctx context.Context, messages []Message, stream bool) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, nil, stream, c.reasoningEffort, nil)
+	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{stream: stream, reasoningEffort: c.reasoningEffort})
 }
 
 func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, tools, stream, c.reasoningEffort, nil)
+	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{tools: tools, stream: stream, reasoningEffort: c.reasoningEffort})
 }
 
 // executeUtilityChatRequest runs a non-streaming secondary helper call (title or
@@ -87,19 +100,23 @@ func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Mes
 // channel format as literal text instead of a clean title — besides burning ~1k
 // reasoning tokens per call.
 func (c *Client) executeUtilityChatRequest(ctx context.Context, messages []Message) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, nil, false, "", &thinkingOption{Type: "disabled"})
+	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
+		thinking:            &thinkingOption{Type: "disabled"},
+		maxCompletionTokens: utilityMaxCompletionTokens,
+	})
 }
 
-func (c *Client) executeChatRequestImpl(ctx context.Context, messages []Message, tools []Tool, stream bool, reasoningEffort string, thinking *thinkingOption) (*http.Response, error) {
+func (c *Client) executeChatRequestImpl(ctx context.Context, messages []Message, opts chatRequestOptions) (*http.Response, error) {
 	requestBody := chatCompletionRequest{
-		Model:           c.model,
-		Messages:        messages,
-		Stream:          stream,
-		Tools:           tools,
-		ReasoningEffort: reasoningEffort,
-		Thinking:        thinking,
+		Model:               c.model,
+		Messages:            messages,
+		Stream:              opts.stream,
+		Tools:               opts.tools,
+		ReasoningEffort:     opts.reasoningEffort,
+		Thinking:            opts.thinking,
+		MaxCompletionTokens: opts.maxCompletionTokens,
 	}
-	if stream {
+	if opts.stream {
 		requestBody.StreamOptions = &streamOptions{IncludeUsage: true}
 	}
 	body, err := json.Marshal(requestBody)

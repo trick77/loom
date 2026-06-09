@@ -624,17 +624,16 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	if gotBody.Model != "mimo" {
 		t.Fatalf("model = %q, want mimo", gotBody.Model)
 	}
-	if len(gotBody.Messages) != 3 {
-		t.Fatalf("len(messages) = %d, want 3", len(gotBody.Messages))
+	// The user request and assistant reply are framed into a single user turn as
+	// material to be titled, not a turn to answer.
+	if len(gotBody.Messages) != 2 {
+		t.Fatalf("len(messages) = %d, want 2", len(gotBody.Messages))
 	}
 	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != chatTitleSystemPrompt {
 		t.Fatalf("system message = %#v", gotBody.Messages[0])
 	}
-	if gotBody.Messages[1].Role != "user" || gotBody.Messages[1].Content != "Can you explain x?" {
+	if gotBody.Messages[1].Role != "user" || !strings.Contains(gotBody.Messages[1].Content, "Can you explain x?") || !strings.Contains(gotBody.Messages[1].Content, "Sure.") {
 		t.Fatalf("user message = %#v", gotBody.Messages[1])
-	}
-	if gotBody.Messages[2].Role != "assistant" || gotBody.Messages[2].Content != "Sure." {
-		t.Fatalf("assistant message = %#v", gotBody.Messages[2])
 	}
 	if title != "Algebra help" {
 		t.Fatalf("title = %q, want Algebra help", title)
@@ -816,7 +815,7 @@ func TestCleanTitleRewritesFirstPersonCreationSentence(t *testing.T) {
 	}
 }
 
-func TestClient_GenerateTitleIncludesAssistantMessageWhenPresent(t *testing.T) {
+func TestClient_GenerateTitleFramesAssistantReplyWhenPresent(t *testing.T) {
 	var gotMessages []Message
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -836,11 +835,12 @@ func TestClient_GenerateTitleIncludesAssistantMessageWhenPresent(t *testing.T) {
 	if _, err := client.GenerateChatTitle(context.Background(), "Hi", "Hi there"); err != nil {
 		t.Fatalf("GenerateChatTitle() error: %v", err)
 	}
-	if len(gotMessages) != 3 {
-		t.Fatalf("messages = %#v, want system, user and assistant message", gotMessages)
+	// Both the user request and the assistant reply are framed into one user turn
+	// (no separate assistant-role message that the model might continue answering).
+	if len(gotMessages) != 2 {
+		t.Fatalf("messages = %#v, want system and framed user message", gotMessages)
 	}
-	last := gotMessages[2]
-	if last.Role != "assistant" || last.Content != "Hi there" {
-		t.Fatalf("last message = %#v, want assistant with content", last)
+	if gotMessages[1].Role != "user" || !strings.Contains(gotMessages[1].Content, "Hi there") {
+		t.Fatalf("framed user message = %#v, want assistant reply included", gotMessages[1])
 	}
 }
