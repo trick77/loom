@@ -241,7 +241,7 @@ func (f fakeChatClient) StreamChatResult(_ context.Context, history []llm.Messag
 	return llm.StreamResult{Content: "Hello", Usage: f.usage}, nil
 }
 
-func (f fakeChatClient) GenerateTitle(context.Context, string, string) (string, error) {
+func (f fakeChatClient) GenerateChatTitle(context.Context, string, string) (string, error) {
 	if f.titleErr != nil {
 		return "", f.titleErr
 	}
@@ -311,7 +311,7 @@ func (f *blockingChatClient) StreamChatWithTools(ctx context.Context, _ []llm.Me
 	return f.StreamChatResult(ctx, nil, nil)
 }
 
-func (f *blockingChatClient) GenerateTitle(context.Context, string, string) (string, error) {
+func (f *blockingChatClient) GenerateChatTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
 
@@ -390,7 +390,7 @@ func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []ll
 	return result, nil
 }
 
-func (f *fakeToolChatClient) GenerateTitle(context.Context, string, string) (string, error) {
+func (f *fakeToolChatClient) GenerateChatTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
 

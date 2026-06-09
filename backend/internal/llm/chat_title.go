@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-const titleSystemPrompt = "Write a chat title for the user's request as a neutral noun phrase. Use 2 to 6 words. Do not write a sentence. Ignore assistant refusals, apologies, or capability disclaimers. Do not use first person, second person, future tense, promises, or assistant actions. Prefer subject titles like \"Photorealistic cat image\" over action titles like \"I'll create a cat image\". Return only the title."
+const chatTitleSystemPrompt = "Write a chat title for the user's request as a neutral noun phrase. Use 2 to 6 words. Do not write a sentence. Ignore assistant refusals, apologies, or capability disclaimers. Do not use first person, second person, future tense, promises, or assistant actions. Prefer subject titles like \"Photorealistic cat image\" over action titles like \"I'll create a cat image\". Return only the title."
 
-func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
+func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
 	start := time.Now()
 	messages := []Message{
-		{Role: "system", Content: titleSystemPrompt},
+		{Role: "system", Content: chatTitleSystemPrompt},
 		{Role: "user", Content: userMessage},
 	}
 	// Only include the assistant turn when it has content. An assistant message
@@ -23,7 +23,7 @@ func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessag
 	if strings.TrimSpace(assistantMessage) != "" {
 		messages = append(messages, Message{Role: "assistant", Content: assistantMessage})
 	}
-	resp, err := c.executeChatRequest(ctx, messages, false)
+	resp, err := c.executeUtilityChatRequest(ctx, messages)
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
@@ -40,10 +40,10 @@ func (c *Client) GenerateTitle(ctx context.Context, userMessage, assistantMessag
 	if len(completion.Choices) == 0 {
 		return "New chat", nil
 	}
-	return cleanTitle(completion.Choices[0].Message.Content), nil
+	return cleanChatTitle(completion.Choices[0].Message.Content), nil
 }
 
-func cleanTitle(title string) string {
+func cleanChatTitle(title string) string {
 	title = strings.TrimSpace(title)
 	if unquoted, err := strconv.Unquote(title); err == nil {
 		title = strings.TrimSpace(unquoted)
@@ -58,12 +58,22 @@ func cleanTitle(title string) string {
 	if isAnswerLikeTitle(title) {
 		return "New chat"
 	}
+	title = trimTrailingDots(title)
+	if title == "" {
+		return "New chat"
+	}
 
 	runes := []rune(title)
 	if len(runes) > 80 {
 		title = string(runes[:80])
 	}
 	return title
+}
+
+// trimTrailingDots removes a trailing period (or ellipsis) and surrounding
+// whitespace so titles never end on a dangling ".".
+func trimTrailingDots(title string) string {
+	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(title), "."))
 }
 
 func rewriteFirstPersonCreationTitle(title string) string {

@@ -24,7 +24,7 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning string) (
 		{Role: "system", Content: reasoningTitleSystemPrompt},
 		{Role: "user", Content: reasoning},
 	}
-	resp, err := c.executeChatRequest(ctx, messages, false)
+	resp, err := c.executeUtilityChatRequest(ctx, messages)
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
@@ -45,7 +45,7 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning string) (
 }
 
 // cleanReasoningTitle strips surrounding quotes and caps the length. Unlike
-// cleanTitle (tuned for thread titles), it never substitutes a placeholder: an
+// cleanChatTitle (tuned for thread titles), it never substitutes a placeholder: an
 // empty or unusable result yields "" so the caller omits the title entirely.
 func cleanReasoningTitle(title string) string {
 	title = strings.TrimSpace(title)
@@ -54,6 +54,7 @@ func cleanReasoningTitle(title string) string {
 	} else {
 		title = strings.TrimSpace(strings.Trim(title, `"'`))
 	}
+	title = trimTrailingDots(title)
 	if title == "" {
 		return ""
 	}

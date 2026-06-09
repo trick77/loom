@@ -43,7 +43,7 @@ func strPtr(value string) *string {
 
 func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage string) error {
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
-	title, err := s.llm.GenerateTitle(llm.WithInferenceMetadata(requestCtx, inference), userMessage, assistantMessage)
+	title, err := s.llm.GenerateChatTitle(llm.WithInferenceMetadata(requestCtx, inference), userMessage, assistantMessage)
 	if err != nil {
 		return err
 	}

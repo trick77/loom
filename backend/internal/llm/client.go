@@ -73,16 +73,31 @@ func isMiMoModel(model string) bool {
 }
 
 func (c *Client) executeChatRequest(ctx context.Context, messages []Message, stream bool) (*http.Response, error) {
-	return c.executeChatRequestWithTools(ctx, messages, nil, stream)
+	return c.executeChatRequestImpl(ctx, messages, nil, stream, c.reasoningEffort, nil)
 }
 
 func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool) (*http.Response, error) {
+	return c.executeChatRequestImpl(ctx, messages, tools, stream, c.reasoningEffort, nil)
+}
+
+// executeUtilityChatRequest runs a non-streaming secondary helper call (title or
+// reasoning-abstract generation) with thinking turned off via MiMo's native
+// {"thinking":{"type":"disabled"}}. Default thinking makes MiMo overthink a
+// trivial summarization and even echo its internal "reasoning>/response>"
+// channel format as literal text instead of a clean title — besides burning ~1k
+// reasoning tokens per call.
+func (c *Client) executeUtilityChatRequest(ctx context.Context, messages []Message) (*http.Response, error) {
+	return c.executeChatRequestImpl(ctx, messages, nil, false, "", &thinkingOption{Type: "disabled"})
+}
+
+func (c *Client) executeChatRequestImpl(ctx context.Context, messages []Message, tools []Tool, stream bool, reasoningEffort string, thinking *thinkingOption) (*http.Response, error) {
 	requestBody := chatCompletionRequest{
 		Model:           c.model,
 		Messages:        messages,
 		Stream:          stream,
 		Tools:           tools,
-		ReasoningEffort: c.reasoningEffort,
+		ReasoningEffort: reasoningEffort,
+		Thinking:        thinking,
 	}
 	if stream {
 		requestBody.StreamOptions = &streamOptions{IncludeUsage: true}

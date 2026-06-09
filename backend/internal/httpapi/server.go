@@ -92,7 +92,7 @@ type ChatClient interface {
 	StreamChat(context.Context, []llm.Message, func(string) error) (string, error)
 	StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error)
 	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
-	GenerateTitle(context.Context, string, string) (string, error)
+	GenerateChatTitle(context.Context, string, string) (string, error)
 	GenerateReasoningTitle(context.Context, string) (string, error)
 }
 
