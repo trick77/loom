@@ -39,7 +39,7 @@ func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMe
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
 	}
-	logInferenceCompleted(ctx, c.model, time.Since(start), completion.Usage)
+	observeInference(ctx, c.model, time.Since(start), completion.Usage)
 	if len(completion.Choices) == 0 {
 		return "New chat", nil
 	}

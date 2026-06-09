@@ -871,6 +871,120 @@ func derefInt(value *int) int {
 	return *value
 }
 
+// The persisted stats must include the background helper calls — the reasoning
+// abstract and the thread title — not just the answer turn.
+func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
+	store := &fakeChatStore{
+		// Default title so the thread-title helper call fires this turn.
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM: fakeChatClient{
+			title:          "Fresh title",
+			reasoningTitle: "Explaining things",
+			reasoningText:  "Let me think about this.",
+			usage: llm.TokenUsage{
+				PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10,
+				PromptTokensDetails:    llm.PromptTokenDetails{CachedTokens: 5},
+				CompletionTokenDetails: llm.CompletionTokenDetails{ReasoningTokens: 2},
+			},
+			// Reasoning-title call runs with thinking disabled: cost is almost all
+			// prompt (it re-sends the whole reasoning), no reasoning tokens.
+			reasoningTitleUsage: llm.TokenUsage{PromptTokens: 100, CompletionTokens: 1, TotalTokens: 101},
+			titleUsage:          llm.TokenUsage{PromptTokens: 20, CompletionTokens: 4, TotalTokens: 24},
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if len(store.messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	}
+	assistant := store.messages[1]
+	// 7+100+20 prompt, 3+1+4 completion, 10+101+24 total. The accumulator sums
+	// cached/reasoning detail fields too; here only the answer turn sets them in
+	// the fakes (the helpers leave them 0), so the totals stay 5 and 2 — this is
+	// the test data, not a code limitation.
+	for _, c := range []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"PromptTokens", derefInt(assistant.PromptTokens), 127},
+		{"CompletionTokens", derefInt(assistant.CompletionTokens), 8},
+		{"TotalTokens", derefInt(assistant.TotalTokens), 135},
+		{"CachedTokens", derefInt(assistant.CachedTokens), 5},
+		{"ReasoningTokens", derefInt(assistant.ReasoningTokens), 2},
+	} {
+		if c.got != c.want {
+			t.Fatalf("%s = %d, want %d", c.name, c.got, c.want)
+		}
+	}
+}
+
+// The persisted stats must sum every tool round, not just the final answer turn.
+func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{
+				ReasoningContent: "I should search first.",
+				ToolCalls: []llm.ToolCall{{
+					ID:       "call_1",
+					Type:     "function",
+					Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"q":"slopr"}`},
+				}},
+				Usage: llm.TokenUsage{PromptTokens: 11, CompletionTokens: 5, TotalTokens: 16},
+			},
+			{
+				Content: "I found Slopr.",
+				Usage:   llm.TokenUsage{PromptTokens: 30, CompletionTokens: 7, TotalTokens: 37},
+			},
+		},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{
+				Type: "function",
+				Function: llm.ToolFunction{
+					Name:        "search__web",
+					Description: "Search the web",
+					Parameters:  map[string]any{"type": "object"},
+				},
+			}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if len(store.messages) < 2 {
+		t.Fatalf("persisted messages = %#v, want assistant message", store.messages)
+	}
+	assistant := store.messages[len(store.messages)-1]
+	if got := derefInt(assistant.PromptTokens); got != 41 {
+		t.Fatalf("PromptTokens = %d, want 41 (11+30)", got)
+	}
+	if got := derefInt(assistant.CompletionTokens); got != 12 {
+		t.Fatalf("CompletionTokens = %d, want 12 (5+7)", got)
+	}
+	if got := derefInt(assistant.TotalTokens); got != 53 {
+		t.Fatalf("TotalTokens = %d, want 53 (16+37)", got)
+	}
+}
+
 func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
 	store := &fakeChatStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},

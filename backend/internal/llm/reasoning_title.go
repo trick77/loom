@@ -37,7 +37,7 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning string) (
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
 	}
-	logInferenceCompleted(ctx, c.model, time.Since(start), completion.Usage)
+	observeInference(ctx, c.model, time.Since(start), completion.Usage)
 	if len(completion.Choices) == 0 {
 		return "", nil
 	}

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/trick77/slopr/internal/chat"
 	"github.com/trick77/slopr/internal/llm"
@@ -58,6 +59,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	streamCtx, cancelStream := context.WithCancel(r.Context())
 	defer cancelStream()
+	// Sum token usage across every model call this turn makes — answer turns, tool
+	// rounds, and the background reasoning/thread-title helpers — so the persisted
+	// per-message stats reflect the whole turn, not just the final answer call.
+	// turnStart times the full turn wall-clock for the same reason.
+	usageTotal := llm.NewUsageAccumulator()
+	streamCtx = llm.WithUsageAccumulator(streamCtx, usageTotal)
+	turnStart := time.Now()
 	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream)
 	defer unregisterStream()
 
@@ -142,7 +150,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("marshal activity trace failed", "thread_id", threadID, "error", err)
 		activityTraceJSON = []byte("[]")
 	}
-	assistantMessage, err := s.chat.AddMessageWithActivityTrace(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromResult(assistantResult.StreamResult), artifactsJSON, activityTraceJSON)
+	assistantMessage, err := s.chat.AddMessageWithActivityTrace(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return

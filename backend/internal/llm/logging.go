@@ -25,6 +25,16 @@ func inferenceMetadataFromContext(ctx context.Context) InferenceMetadata {
 	return metadata
 }
 
+// observeInference records a completed model call: it emits the structured log
+// line and adds this call's usage to the request's UsageAccumulator (if one is
+// attached to ctx). Every successful model call funnels through here so the
+// per-message token stats cover helper calls (reasoning/thread titles) and every
+// tool round, not just the final answer turn.
+func observeInference(ctx context.Context, model string, duration time.Duration, usage TokenUsage) {
+	logInferenceCompleted(ctx, model, duration, usage)
+	RecordUsage(ctx, usage)
+}
+
 func logInferenceCompleted(ctx context.Context, model string, duration time.Duration, usage TokenUsage) {
 	attrs := inferenceLogAttrs(ctx, model, duration, usage)
 	slog.LogAttrs(ctx, slog.LevelInfo, "llm inference completed", attrs...)
