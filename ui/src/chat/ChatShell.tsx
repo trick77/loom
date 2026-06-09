@@ -1976,7 +1976,7 @@ function MessageActions({
       {speakable && (
         <button
           className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
-            speaking ? "text-[#f3f0e8]" : "text-[#c7c5bd]"
+            speaking ? "text-[#f3f0e8]" : "text-[#858178]"
           }`}
           onClick={handleSpeak}
           type="button"
@@ -1988,7 +1988,7 @@ function MessageActions({
       )}
       {!streaming && (
         <button
-          className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
+          className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
           onClick={handleCopy}
           type="button"
           title="Copy"
@@ -1999,7 +1999,7 @@ function MessageActions({
       )}
       {onRetry !== undefined && (
         <button
-          className="grid h-6 w-6 place-items-center text-[#c7c5bd] hover:text-[#f3f0e8]"
+          className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
           onClick={onRetry}
           type="button"
           title="Retry"
