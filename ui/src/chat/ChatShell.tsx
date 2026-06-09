@@ -1977,7 +1977,7 @@ function MessageActions({
   if (streaming) return null;
 
   return (
-    <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
+    <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : "pl-1.5"}`}>
       {speakable && (
         <button
           className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${

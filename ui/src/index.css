@@ -209,6 +209,9 @@ body {
   --slopr-activity-icon-offset: 0.225rem;
   /* Breathing room between the collapsed trace label and the answer text. */
   margin-bottom: 0.5rem;
+  /* Match the answer prose's left inset (.slopr-markdown has padding-left: 8px)
+     so the headline and reasoning line up with the answer text below. */
+  padding-left: 0.5rem;
   max-width: 46rem;
   overflow: hidden;
   border: 0;
