@@ -42,8 +42,11 @@ export function ActivityTracePanel({
   // abstract once it settles — both shimmer until the answer finishes streaming.
   const sweeping = active || streaming;
   // Cap the timeline with a "Done" node once the whole turn has settled (no
-  // longer thinking and no longer streaming the answer).
-  const complete = !active && !streaming;
+  // longer thinking and no longer streaming the answer) — but only when there
+  // was an actual tool timeline to end. A reasoning-only trace has no timeline,
+  // so it gets no terminal node.
+  const usedTools = events.some((event) => event.type === "tool");
+  const complete = usedTools && !active && !streaming;
   return (
     <div
       aria-label={active ? "Slopr activity trace" : undefined}
@@ -84,9 +87,9 @@ export function ActivityTracePanel({
           aria-hidden={expanded ? undefined : true}
         >
           <div className="slopr-activity-trace-collapsible-inner">
-            <div className="slopr-activity-trace-body">
+            <div className={`slopr-activity-trace-body${usedTools ? "" : " slopr-activity-trace-body-flat"}`}>
               {events.map((event) => (
-                <ActivityTraceRow key={event.id} event={event} />
+                <ActivityTraceRow key={event.id} event={event} headline={label} timeline={usedTools} />
               ))}
               {complete && <ActivityTraceDoneRow />}
             </div>
@@ -97,19 +100,33 @@ export function ActivityTracePanel({
   );
 }
 
-function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
+function ActivityTraceRow({
+  event,
+  headline,
+  timeline,
+}: {
+  event: ActivityTraceEvent;
+  headline: string;
+  timeline: boolean;
+}) {
   if (event.type === "reasoning") {
-    const iconClass =
-      event.status === "done"
+    // The node glyph is a timeline affordance — only show it when tools make the
+    // trace an actual timeline. Without tools the icon column stays (preserving
+    // the text indent) but renders empty.
+    const iconClass = !timeline
+      ? "slopr-activity-trace-icon"
+      : event.status === "done"
         ? "slopr-activity-trace-icon slopr-activity-trace-icon-reasoning slopr-activity-trace-icon-reasoning-complete"
         : "slopr-activity-trace-icon slopr-activity-trace-icon-reasoning";
+    // Skip the per-round title when it just repeats the collapsed headline
+    // above (the common single-round case) — otherwise it reads as a duplicate.
+    const title = event.title?.trim();
+    const showTitle = title !== undefined && title !== "" && title !== headline.trim();
     return (
       <div className="slopr-activity-trace-row slopr-activity-trace-row-reasoning">
         <span className={iconClass} aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          {event.title !== undefined && event.title.trim() !== "" && (
-            <div className="slopr-activity-reasoning-title">{event.title}</div>
-          )}
+          {showTitle && <div className="slopr-activity-reasoning-title">{event.title}</div>}
           <div className="slopr-activity-reasoning">
             <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {event.content.trim()}
@@ -173,9 +190,10 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
 function ActivityTraceDoneRow() {
   return (
     <div className="slopr-activity-trace-row slopr-activity-trace-row-done">
-      <span className="slopr-activity-trace-icon slopr-activity-trace-icon-done" aria-hidden="true">
-        <DoneTraceIcon />
-      </span>
+      <span
+        className="slopr-activity-trace-icon slopr-activity-trace-icon-reasoning slopr-activity-trace-icon-reasoning-complete"
+        aria-hidden="true"
+      />
       <div className="min-w-0 flex-1">
         <span className="slopr-activity-done-label">Done</span>
       </div>
@@ -245,14 +263,6 @@ function FetchTraceIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M7 17 17 7" />
       <path d="M9 7h8v8" />
-    </svg>
-  );
-}
-
-function DoneTraceIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 13l4 4L19 7" />
     </svg>
   );
 }

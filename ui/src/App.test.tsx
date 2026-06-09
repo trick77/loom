@@ -1032,7 +1032,8 @@ test("keeps just-completed reasoning trace collapsed until opened", async () => 
 
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  // Reasoning-only trace has no timeline: the reasoning row shows no node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
 });
 
 test("restores persisted activity trace when reopening a chat", async () => {
@@ -1081,7 +1082,8 @@ test("restores persisted activity trace when reopening a chat", async () => {
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(screen.getByText("Agentgateway")).toBeInTheDocument();
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  // This trace used a tool, so the reasoning row keeps its timeline node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).not.toBeNull();
 });
 
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
@@ -1240,7 +1242,8 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(await screen.findByText("Hello.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  // Reasoning-only trace has no timeline: the reasoning row shows no node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
 });
 
 test("hides the copy action until the assistant answer finishes streaming", async () => {
@@ -2251,6 +2254,38 @@ test("renders fetch tool rows with an inline favicon and a clickable URL", async
   expect(document.querySelector(".slopr-activity-result-list")).toBeNull();
 });
 
+test("does not repeat the collapsed headline as the reasoning row title", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"The user is asking about Einstein."}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Summarizing Einstein\'s life and contributions"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Albert Einstein was a physicist.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Tell me about einstein" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  const toggle = await screen.findByRole("button", { name: /show activity/i });
+  expect(toggle).toHaveTextContent("Summarizing Einstein's life and contributions");
+  fireEvent.click(toggle);
+
+  // The headline appears once (the toggle); the reasoning row drops the duplicate.
+  expect(await screen.findByText("The user is asking about Einstein.")).toBeInTheDocument();
+  expect(screen.getAllByText("Summarizing Einstein's life and contributions")).toHaveLength(1);
+  // No tools means no timeline: the reasoning row shows no node glyph and there
+  // is no connecting line, but the collapsed headline keeps its checkmark.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
+  expect(document.querySelector(".slopr-activity-trace-body-flat")).not.toBeNull();
+  expect(document.querySelector(".slopr-thinking-status-complete")).not.toBeNull();
+});
+
 test("reveals the message action icons only after the answer settles", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
@@ -2318,6 +2353,9 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
+  // Tools make this a real timeline: the reasoning row keeps its node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).not.toBeNull();
+  expect(document.querySelector(".slopr-activity-trace-body-flat")).toBeNull();
   const agentgatewayLink = screen.getByRole("link", { name: /Agentgateway/ });
   expect(agentgatewayLink).toHaveAttribute("href", "https://agentgateway.dev/");
   expect(agentgatewayLink).toHaveAttribute("target", "_blank");
