@@ -133,7 +133,6 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
           <span className="slopr-activity-tool-title">{event.summary.title}</span>
           <span className={`slopr-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
-        <div className="slopr-activity-tool-detail">{event.summary.detail}</div>
         {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
           <>
             <div className="slopr-activity-result-count">

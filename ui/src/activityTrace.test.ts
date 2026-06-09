@@ -59,7 +59,7 @@ describe("activity trace model", () => {
         type: "tool",
         name: "search__web",
         status: "running",
-        summary: { kind: "search", title: "agentgateway", detail: "search__web" },
+        summary: { kind: "search", title: "agentgateway" },
         rawArguments: "{}",
       },
     ]);
@@ -80,7 +80,7 @@ describe("activity trace model", () => {
         type: "tool",
         name: "search__web",
         status: "done",
-        summary: { kind: "search", title: "agentgateway", detail: "search__web" },
+        summary: { kind: "search", title: "agentgateway" },
         preview: { kind: "searchResults", resultCount: 2, results: [] },
         rawArguments: "{}",
       },
@@ -89,7 +89,7 @@ describe("activity trace model", () => {
         type: "tool",
         name: "fetch__fetch",
         status: "failed",
-        summary: { kind: "fetch", title: "example.com", detail: "https://example.com" },
+        summary: { kind: "fetch", title: "example.com" },
         rawArguments: "{}",
         rawOutput: "tool failed: timeout",
       },
@@ -105,7 +105,7 @@ describe("activity trace model", () => {
         type: "tool",
         name: "custom__lookup",
         status: "failed",
-        summary: { kind: "generic", title: "custom lookup", detail: "custom lookup" },
+        summary: { kind: "generic", title: "custom lookup" },
         rawArguments: "{}",
         rawOutput: "tool failed: timeout",
       },
@@ -178,26 +178,21 @@ describe("activity trace model", () => {
     });
   });
 
-  test("formats tool details with source label and deduplicated action", () => {
+  test("derives tool titles from query, url, filename and readable name", () => {
     expect(summarizeToolCall("tavily__tavily_search", "{\"query\":\"balcony glazing\"}")).toMatchObject({
       title: "balcony glazing",
-      detail: "Tavily: search",
     });
     expect(summarizeToolCall("fetch__fetch", "{\"url\":\"https://example.com\"}")).toMatchObject({
       title: "example.com",
-      detail: "https://example.com",
     });
     expect(summarizeToolCall("generate_image", "{\"prompt\":\"a cabin\"}")).toMatchObject({
       title: "generate image",
-      detail: "Black Forest Labs: generate image",
     });
     expect(summarizeToolCall("create_pptx_presentation", "{\"filename\":\"deck.pptx\"}")).toMatchObject({
       title: "deck.pptx",
-      detail: "Native: create presentation",
     });
     expect(summarizeToolCall("custom__lookup", "not-json")).toMatchObject({
       title: "custom lookup",
-      detail: "Custom: lookup",
     });
   });
 

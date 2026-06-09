@@ -451,13 +451,6 @@ body {
   white-space: nowrap;
 }
 
-.slopr-activity-tool-detail {
-  overflow: hidden;
-  color: #88857d;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .slopr-activity-result-count {
   margin-top: 0.25rem;
   color: #88857d;
