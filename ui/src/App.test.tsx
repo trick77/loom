@@ -1032,7 +1032,8 @@ test("keeps just-completed reasoning trace collapsed until opened", async () => 
 
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  // Reasoning-only trace has no timeline: the reasoning row shows no node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
 });
 
 test("restores persisted activity trace when reopening a chat", async () => {
@@ -1081,7 +1082,8 @@ test("restores persisted activity trace when reopening a chat", async () => {
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(screen.getByText("Agentgateway")).toBeInTheDocument();
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  // This trace used a tool, so the reasoning row keeps its timeline node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).not.toBeNull();
 });
 
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
@@ -1240,7 +1242,8 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(await screen.findByText("Hello.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeInTheDocument();
+  // Reasoning-only trace has no timeline: the reasoning row shows no node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
 });
 
 test("hides the copy action until the assistant answer finishes streaming", async () => {
@@ -1279,19 +1282,6 @@ test("hides the copy action until the assistant answer finishes streaming", asyn
 
   expect(await screen.findByText("Partial answer.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
-});
-
-test("centers the active thinking status dot inside its circle", () => {
-  const css = readFileSync("src/index.css", "utf8");
-  const activeStatusRule = css.match(/\.slopr-thinking-status-active\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const activeDotRule =
-    css.match(/\.slopr-thinking-status-active::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-
-  expect(activeStatusRule).toContain("display: inline-grid");
-  expect(activeStatusRule).toContain("place-items: center");
-  expect(activeDotRule).toContain("width: 0.375rem");
-  expect(activeDotRule).toContain("height: 0.375rem");
-  expect(activeDotRule).not.toContain("inset:");
 });
 
 test("centers reasoning activity dots inside their row circles", () => {
@@ -1355,6 +1345,19 @@ test("keeps existing search activity icon glyph design", () => {
   expect(source).not.toContain("slopr-activity-trace-chevron-icon");
 });
 
+test("keeps the reasoning clamp height in sync with REASONING_CAP_PX", () => {
+  const source = readFileSync("src/chat/ActivityTracePanel.tsx", "utf8");
+  const css = readFileSync("src/index.css", "utf8");
+  const capPx = Number(source.match(/REASONING_CAP_PX\s*=\s*(?<px>\d+)/)?.groups?.px);
+  const clampRule = css.match(/\.slopr-activity-reasoning-clamp\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const maxHeightRem = Number(clampRule.match(/max-height:\s*(?<rem>[\d.]+)rem/)?.groups?.rem);
+
+  // The JS clamp threshold (px) and the CSS max-height (rem) must describe the
+  // same height, or the overflow measurement desyncs from the visual clamp/fade.
+  expect(capPx).toBe(192);
+  expect(maxHeightRem * 16).toBe(capPx);
+});
+
 test("shows active activity trace with reasoning and tool activity before assistant output", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
@@ -1387,6 +1390,8 @@ test("shows active activity trace with reasoning and tool activity before assist
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Running")).toBeInTheDocument();
+  // While the turn is still active, the timeline is not yet capped with a "Done" node.
+  expect(within(trace).queryByText("Done")).toBeNull();
 });
 
 test("hides empty activity trace when the stream fails", async () => {
@@ -2210,7 +2215,109 @@ test("renders unknown tool calls with safe fallback details", async () => {
   fireEvent.click(toggle);
 
   expect(await screen.findByText("custom lookup")).toBeInTheDocument();
-  expect(screen.getByText("Done")).toBeInTheDocument();
+  // Both the tool status pill and the terminal timeline node read "Done".
+  const doneNodes = screen.getAllByText("Done");
+  expect(doneNodes.some((node) => node.classList.contains("slopr-activity-status-pill"))).toBe(true);
+  expect(doneNodes.some((node) => node.classList.contains("slopr-activity-done-label"))).toBe(true);
+});
+
+test("renders fetch tool rows with an inline favicon and a clickable URL", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"https://www.getmaxim.ai/bifrost/resources/governance\\"}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"fetch__fetch","content":"Page content"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByText("Done.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /show activity/i }));
+
+  // First line shows the domain title with the favicon right beside it.
+  expect(await screen.findByText("getmaxim.ai")).toBeInTheDocument();
+  const favicon = document.querySelector(".slopr-activity-tool-favicon");
+  expect(favicon).toHaveAttribute("src", "https://www.google.com/s2/favicons?domain=getmaxim.ai&sz=32");
+  // The full URL is a link that opens in a new tab — no redundant result frame.
+  const link = screen.getByRole("link", { name: "https://www.getmaxim.ai/bifrost/resources/governance" });
+  expect(link).toHaveAttribute("href", "https://www.getmaxim.ai/bifrost/resources/governance");
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", "noreferrer");
+  expect(document.querySelector(".slopr-activity-result-list")).toBeNull();
+});
+
+test("does not repeat the collapsed headline as the reasoning row title", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"The user is asking about Einstein."}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Summarizing Einstein\'s life and contributions"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Albert Einstein was a physicist.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Tell me about einstein" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  const toggle = await screen.findByRole("button", { name: /show activity/i });
+  expect(toggle).toHaveTextContent("Summarizing Einstein's life and contributions");
+  fireEvent.click(toggle);
+
+  // The headline appears once (the toggle); the reasoning row drops the duplicate.
+  expect(await screen.findByText("The user is asking about Einstein.")).toBeInTheDocument();
+  expect(screen.getAllByText("Summarizing Einstein's life and contributions")).toHaveLength(1);
+  // No tools means no timeline: the reasoning row shows no node glyph and there
+  // is no connecting line. The collapsed headline has no status icon at all.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
+  expect(document.querySelector(".slopr-activity-trace-body-flat")).not.toBeNull();
+  expect(document.querySelector(".slopr-thinking-status-active, .slopr-thinking-status-complete")).toBeNull();
+});
+
+test("reveals the message action icons only after the answer settles", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode('event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n'),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  // While the answer streams, none of the action icons are rendered.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is the answer."}\n\n'));
+  expect(await screen.findByText("Here is the answer.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /read aloud/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /copy response/i })).not.toBeInTheDocument();
+
+  // Once the message settles they appear together with the metrics footer.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Here is the answer.","createdAt":"2026-05-30T00:00:01Z"}\n\n'),
+  );
+  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
+
+  expect(await screen.findByRole("button", { name: /read aloud/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /copy response/i })).toBeInTheDocument();
 });
 
 test("keeps just-completed activity trace collapsed before the assistant answer until opened", async () => {
@@ -2246,6 +2353,9 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
+  // Tools make this a real timeline: the reasoning row keeps its node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).not.toBeNull();
+  expect(document.querySelector(".slopr-activity-trace-body-flat")).toBeNull();
   const agentgatewayLink = screen.getByRole("link", { name: /Agentgateway/ });
   expect(agentgatewayLink).toHaveAttribute("href", "https://agentgateway.dev/");
   expect(agentgatewayLink).toHaveAttribute("target", "_blank");
