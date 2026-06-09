@@ -422,6 +422,34 @@ body {
   margin-bottom: 0;
 }
 
+.slopr-activity-reasoning-clamp {
+  position: relative;
+  max-height: 12rem; /* == REASONING_CAP_PX (192px @16px) */
+  overflow: hidden;
+}
+
+.slopr-activity-reasoning-clamp::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 3.5rem;
+  background: linear-gradient(to bottom, transparent, var(--color-bg));
+  pointer-events: none;
+}
+
+.slopr-activity-reasoning-more {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  transition: color 0.16s ease;
+}
+
+.slopr-activity-reasoning-more:hover {
+  color: #d6d3ca;
+}
+
 .slopr-activity-globe-icon {
   width: 1.125rem !important;
   height: 1.125rem !important;

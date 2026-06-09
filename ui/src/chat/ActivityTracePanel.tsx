@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -100,6 +100,40 @@ export function ActivityTracePanel({
   );
 }
 
+// Cap a long reasoning block at this many pixels; beyond it the text fades out
+// and a "Show more" toggle reveals the rest. Must match the CSS max-height on
+// .slopr-activity-reasoning-clamp (12rem @ 16px root).
+const REASONING_CAP_PX = 192;
+
+function ReasoningContent({ content }: { content: string }) {
+  const [showFull, setShowFull] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  // scrollHeight reports the full content height even while max-height/overflow
+  // clamp it, so this measures correctly in both states and re-runs on every
+  // streaming delta as the content grows.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    setOverflowing(el.scrollHeight > REASONING_CAP_PX);
+  }, [content]);
+  const clamped = overflowing && !showFull;
+  return (
+    <>
+      <div ref={ref} className={clamped ? "slopr-activity-reasoning slopr-activity-reasoning-clamp" : "slopr-activity-reasoning"}>
+        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          {content}
+        </Markdown>
+      </div>
+      {overflowing && (
+        <button className="slopr-activity-reasoning-more" type="button" onClick={() => setShowFull((value) => !value)}>
+          {showFull ? "Show less" : "Show more"}
+        </button>
+      )}
+    </>
+  );
+}
+
 function ActivityTraceRow({
   event,
   headline,
@@ -127,11 +161,7 @@ function ActivityTraceRow({
         <span className={iconClass} aria-hidden="true" />
         <div className="min-w-0 flex-1">
           {showTitle && <div className="slopr-activity-reasoning-title">{event.title}</div>}
-          <div className="slopr-activity-reasoning">
-            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-              {event.content.trim()}
-            </Markdown>
-          </div>
+          <ReasoningContent content={event.content.trim()} />
         </div>
       </div>
     );
