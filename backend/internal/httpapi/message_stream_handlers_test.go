@@ -904,8 +904,10 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
 	}
 	assistant := store.messages[1]
-	// 7+100+20 prompt, 3+1+4 completion, 10+101+24 total; cached/reasoning only
-	// the answer turn contributes.
+	// 7+100+20 prompt, 3+1+4 completion, 10+101+24 total. The accumulator sums
+	// cached/reasoning detail fields too; here only the answer turn sets them in
+	// the fakes (the helpers leave them 0), so the totals stay 5 and 2 — this is
+	// the test data, not a code limitation.
 	for _, c := range []struct {
 		name string
 		got  int
