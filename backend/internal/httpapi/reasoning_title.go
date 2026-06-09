@@ -4,10 +4,16 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/trick77/slopr/internal/llm"
 	"github.com/trick77/slopr/internal/sse"
 )
+
+// reasoningTitleTimeout bounds a single background title call. wait() blocks the
+// final assistant_message on outstanding title goroutines and the shared HTTP
+// client has no timeout, so without this a hung title call would stall delivery.
+const reasoningTitleTimeout = 10 * time.Second
 
 // reasoningTitleTracker generates a short abstract title for each reasoning
 // round in the background. Titles are emitted over SSE as they become ready and
@@ -48,7 +54,12 @@ func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) {
 		defer t.wg.Done()
 		inf := t.inf
 		inf.Purpose = "reasoning_title"
-		title, err := t.s.llm.GenerateReasoningTitle(llm.WithInferenceMetadata(t.ctx, inf), reasoning)
+		// Bound the call so a hung title request can never delay delivery of the
+		// final answer: wait() blocks assistant_message on this goroutine, and the
+		// shared HTTP client has no timeout. On timeout the title is simply skipped.
+		ctx, cancel := context.WithTimeout(t.ctx, reasoningTitleTimeout)
+		defer cancel()
+		title, err := t.s.llm.GenerateReasoningTitle(llm.WithInferenceMetadata(ctx, inf), reasoning)
 		if err != nil || strings.TrimSpace(title) == "" {
 			return
 		}

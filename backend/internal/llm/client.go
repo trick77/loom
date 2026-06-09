@@ -74,8 +74,9 @@ func isMiMoModel(model string) bool {
 
 // utilityMaxCompletionTokens hard-caps secondary helper calls (titles). A clean
 // title is a handful of tokens; the cap is a guard so a misbehaving turn can
-// never run long.
-const utilityMaxCompletionTokens = 24
+// never run long. Sized with headroom for an 8-word gerund title — a call that
+// still hits the cap is treated as truncated and discarded (see title decoders).
+const utilityMaxCompletionTokens = 32
 
 type chatRequestOptions struct {
 	tools               []Tool

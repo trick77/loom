@@ -43,7 +43,13 @@ func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMe
 	if len(completion.Choices) == 0 {
 		return "New chat", nil
 	}
-	return cleanChatTitle(completion.Choices[0].Message.Content), nil
+	choice := completion.Choices[0]
+	// A title cut off at the token cap is unreliable; fall back rather than store
+	// a half phrase as the thread title.
+	if choice.FinishReason == "length" {
+		return "New chat", nil
+	}
+	return cleanChatTitle(choice.Message.Content), nil
 }
 
 func cleanChatTitle(title string) string {

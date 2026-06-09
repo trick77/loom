@@ -41,7 +41,13 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning string) (
 	if len(completion.Choices) == 0 {
 		return "", nil
 	}
-	return cleanReasoningTitle(completion.Choices[0].Message.Content), nil
+	choice := completion.Choices[0]
+	// A title that hit the token cap is cut mid-phrase; skip it rather than
+	// persist a half title (the caller falls back to the client-side heuristic).
+	if choice.FinishReason == "length" {
+		return "", nil
+	}
+	return cleanReasoningTitle(choice.Message.Content), nil
 }
 
 // cleanReasoningTitle strips surrounding quotes and caps the length. Unlike

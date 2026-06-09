@@ -682,6 +682,35 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 	}
 }
 
+func TestClient_TitlesSkippedWhenTruncatedAtTokenCap(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var got struct {
+			MaxCompletionTokens int `json:"max_completion_tokens"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		if got.MaxCompletionTokens == 0 {
+			t.Fatalf("utility call missing max_completion_tokens cap")
+		}
+		// Mid-phrase truncation: non-empty content but finish_reason "length".
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message":       map[string]string{"content": "Debugging syntax errors in framew"},
+				"finish_reason": "length",
+			}},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	if got, err := client.GenerateReasoningTitle(context.Background(), "some reasoning"); err != nil || got != "" {
+		t.Fatalf("reasoning title = %q, err = %v; want skipped (empty)", got, err)
+	}
+	if got, err := client.GenerateChatTitle(context.Background(), "Hi", ""); err != nil || got != "New chat" {
+		t.Fatalf("chat title = %q, err = %v; want New chat", got, err)
+	}
+}
+
 func TestCleanTitlesStripTrailingDot(t *testing.T) {
 	if got := cleanChatTitle("Blue sky explanation."); got != "Blue sky explanation" {
 		t.Fatalf("cleanChatTitle trailing dot = %q", got)
