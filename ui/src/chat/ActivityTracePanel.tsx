@@ -41,6 +41,9 @@ export function ActivityTracePanel({
   // Sweep the label for the whole turn: "Thinking" while reasoning, then the
   // abstract once it settles — both shimmer until the answer finishes streaming.
   const sweeping = active || streaming;
+  // Cap the timeline with a "Done" node once the whole turn has settled (no
+  // longer thinking and no longer streaming the answer).
+  const complete = !active && !streaming;
   return (
     <div
       aria-label={active ? "Slopr activity trace" : undefined}
@@ -85,6 +88,7 @@ export function ActivityTracePanel({
               {events.map((event) => (
                 <ActivityTraceRow key={event.id} event={event} />
               ))}
+              {complete && <ActivityTraceDoneRow />}
             </div>
           </div>
         </div>
@@ -161,6 +165,19 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
   );
 }
 
+function ActivityTraceDoneRow() {
+  return (
+    <div className="slopr-activity-trace-row slopr-activity-trace-row-done">
+      <span className="slopr-activity-trace-icon slopr-activity-trace-icon-done" aria-hidden="true">
+        <DoneTraceIcon />
+      </span>
+      <div className="min-w-0 flex-1">
+        <span className="slopr-activity-done-label">Done</span>
+      </div>
+    </div>
+  );
+}
+
 function SearchResultRow({
   result,
 }: {
@@ -223,6 +240,14 @@ function FetchTraceIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M7 17 17 7" />
       <path d="M9 7h8v8" />
+    </svg>
+  );
+}
+
+function DoneTraceIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 13l4 4L19 7" />
     </svg>
   );
 }

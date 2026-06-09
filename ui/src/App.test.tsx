@@ -1387,6 +1387,8 @@ test("shows active activity trace with reasoning and tool activity before assist
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Running")).toBeInTheDocument();
+  // While the turn is still active, the timeline is not yet capped with a "Done" node.
+  expect(within(trace).queryByText("Done")).toBeNull();
 });
 
 test("hides empty activity trace when the stream fails", async () => {
@@ -2210,7 +2212,10 @@ test("renders unknown tool calls with safe fallback details", async () => {
   fireEvent.click(toggle);
 
   expect(await screen.findByText("custom lookup")).toBeInTheDocument();
-  expect(screen.getByText("Done")).toBeInTheDocument();
+  // Both the tool status pill and the terminal timeline node read "Done".
+  const doneNodes = screen.getAllByText("Done");
+  expect(doneNodes.some((node) => node.classList.contains("slopr-activity-status-pill"))).toBe(true);
+  expect(doneNodes.some((node) => node.classList.contains("slopr-activity-done-label"))).toBe(true);
 });
 
 test("keeps just-completed activity trace collapsed before the assistant answer until opened", async () => {

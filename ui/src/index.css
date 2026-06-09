@@ -400,6 +400,27 @@ body {
   font-weight: 500;
 }
 
+.slopr-activity-trace-row-done {
+  padding-bottom: 0.25rem;
+}
+
+.slopr-activity-trace-icon-done {
+  border-radius: 9999px;
+  background: #3f5b3b;
+  color: #d7ecd2;
+}
+
+.slopr-activity-trace-icon-done svg {
+  width: 0.55rem;
+  height: 0.55rem;
+  stroke-width: 2.5;
+}
+
+.slopr-activity-done-label {
+  color: #d6d3ca;
+  font-weight: 500;
+}
+
 .slopr-activity-reasoning p {
   margin: 0;
   transform: translateY(1px);
