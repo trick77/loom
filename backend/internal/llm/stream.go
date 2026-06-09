@@ -85,7 +85,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			result.Duration = time.Since(start)
 			result.Model = c.model
 			result.ReasoningEffort = c.reasoningEffort
-			logInferenceCompleted(ctx, c.model, result.Duration, result.Usage)
+			observeInference(ctx, c.model, result.Duration, result.Usage)
 			return result, nil
 		}
 
@@ -181,7 +181,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	result.Duration = time.Since(start)
 	result.Model = c.model
 	result.ReasoningEffort = c.reasoningEffort
-	logInferenceCompleted(ctx, c.model, result.Duration, result.Usage)
+	observeInference(ctx, c.model, result.Duration, result.Usage)
 	return result, nil
 }
 

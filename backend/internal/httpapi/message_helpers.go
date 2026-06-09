@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/trick77/slopr/internal/auth"
 	"github.com/trick77/slopr/internal/chat"
@@ -12,7 +13,12 @@ import (
 	"golang.org/x/text/language/display"
 )
 
-func messageMetricsFromResult(result llm.StreamResult) chat.MessageTokenUsage {
+// messageMetricsFromTurn builds the persisted per-message stats. Model, reasoning
+// effort, and reasoning content describe the final answer call (result), while
+// usage and duration cover the whole turn: usage is the sum across every model
+// call (answer turns, tool rounds, and the reasoning/thread-title helpers) and
+// duration is the turn's wall-clock.
+func messageMetricsFromTurn(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration) chat.MessageTokenUsage {
 	metrics := chat.MessageTokenUsage{ReasoningContent: result.ReasoningContent}
 	if result.Model != "" {
 		metrics.Model = strPtr(result.Model)
@@ -20,15 +26,15 @@ func messageMetricsFromResult(result llm.StreamResult) chat.MessageTokenUsage {
 	if result.ReasoningEffort != "" {
 		metrics.ReasoningEffort = strPtr(result.ReasoningEffort)
 	}
-	if result.Duration > 0 {
-		metrics.DurationMs = intPtr(int(result.Duration.Milliseconds()))
+	if duration > 0 {
+		metrics.DurationMs = intPtr(int(duration.Milliseconds()))
 	}
-	if result.Usage.Present() {
-		metrics.PromptTokens = intPtr(result.Usage.PromptTokens)
-		metrics.CompletionTokens = intPtr(result.Usage.CompletionTokens)
-		metrics.TotalTokens = intPtr(result.Usage.TotalTokens)
-		metrics.CachedTokens = intPtr(result.Usage.PromptTokensDetails.CachedTokens)
-		metrics.ReasoningTokens = intPtr(result.Usage.CompletionTokenDetails.ReasoningTokens)
+	if usage.Present() {
+		metrics.PromptTokens = intPtr(usage.PromptTokens)
+		metrics.CompletionTokens = intPtr(usage.CompletionTokens)
+		metrics.TotalTokens = intPtr(usage.TotalTokens)
+		metrics.CachedTokens = intPtr(usage.PromptTokensDetails.CachedTokens)
+		metrics.ReasoningTokens = intPtr(usage.CompletionTokenDetails.ReasoningTokens)
 	}
 	return metrics
 }

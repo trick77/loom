@@ -207,14 +207,16 @@ func (f *fakeChatStore) ListMessages(context.Context, string, string) ([]chat.Me
 }
 
 type fakeChatClient struct {
-	title          string
-	titleErr       error
-	reasoningTitle string
-	history        *[]llm.Message
-	streamText     *string
-	reasoningText  string
-	usage          llm.TokenUsage
-	afterStream    func()
+	title               string
+	titleErr            error
+	reasoningTitle      string
+	history             *[]llm.Message
+	streamText          *string
+	reasoningText       string
+	usage               llm.TokenUsage
+	titleUsage          llm.TokenUsage
+	reasoningTitleUsage llm.TokenUsage
+	afterStream         func()
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -241,18 +243,22 @@ func (f fakeChatClient) StreamChatResult(_ context.Context, history []llm.Messag
 	return llm.StreamResult{Content: "Hello", Usage: f.usage}, nil
 }
 
-func (f fakeChatClient) GenerateChatTitle(context.Context, string, string) (string, error) {
+func (f fakeChatClient) GenerateChatTitle(ctx context.Context, _, _ string) (string, error) {
 	if f.titleErr != nil {
 		return "", f.titleErr
 	}
+	// Mirror the real client: a completed helper call records its usage into the
+	// request accumulator on ctx.
+	llm.RecordUsage(ctx, f.titleUsage)
 	return f.title, nil
 }
 
-func (f fakeChatClient) GenerateReasoningTitle(context.Context, string) (string, error) {
+func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _ string) (string, error) {
+	llm.RecordUsage(ctx, f.reasoningTitleUsage)
 	return f.reasoningTitle, nil
 }
 
-func (f fakeChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	if f.history != nil {
 		*f.history = append((*f.history)[:0], history...)
 	}
@@ -281,6 +287,7 @@ func (f fakeChatClient) StreamChatWithTools(_ context.Context, history []llm.Mes
 	if f.afterStream != nil {
 		f.afterStream()
 	}
+	llm.RecordUsage(ctx, f.usage)
 	return llm.StreamResult{Content: content, ReasoningContent: f.reasoningText, Usage: f.usage}, nil
 }
 
@@ -339,7 +346,7 @@ func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, fu
 	return llm.StreamResult{Content: f.plain}, nil
 }
 
-func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+func (f *fakeToolChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	f.histories = append(f.histories, append([]llm.Message(nil), history...))
 	f.tools = append(f.tools, append([]llm.Tool(nil), tools...))
 	if len(tools) == 0 {
@@ -359,6 +366,7 @@ func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []ll
 				}
 			}
 		}
+		llm.RecordUsage(ctx, result.Usage)
 		return result, nil
 	}
 	result := f.results[0]
@@ -387,6 +395,7 @@ func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []ll
 			}
 		}
 	}
+	llm.RecordUsage(ctx, result.Usage)
 	return result, nil
 }
 
