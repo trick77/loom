@@ -11,17 +11,23 @@ type activityTraceEvent struct {
 	ID           string `json:"id"`
 	Type         string `json:"type"`
 	Content      string `json:"content,omitempty"`
+	Title        string `json:"title,omitempty"`
 	Name         string `json:"name,omitempty"`
 	Status       string `json:"status"`
 	RawArguments string `json:"rawArguments,omitempty"`
 	RawOutput    string `json:"rawOutput,omitempty"`
 }
 
-func activityTraceFromResult(current []activityTraceEvent, result llm.StreamResult) []activityTraceEvent {
+// activityTraceFromResult appends a turn's reasoning and tool calls to the
+// trace. It returns the id assigned to the reasoning event (or "" when the turn
+// produced no reasoning) so the caller can attach a background-generated title.
+func activityTraceFromResult(current []activityTraceEvent, result llm.StreamResult) ([]activityTraceEvent, string) {
 	next := append([]activityTraceEvent(nil), current...)
+	reasoningID := ""
 	if strings.TrimSpace(result.ReasoningContent) != "" {
+		reasoningID = fmt.Sprintf("reasoning-%d", countActivityTraceReasoning(next)+1)
 		next = append(next, activityTraceEvent{
-			ID:      fmt.Sprintf("reasoning-%d", countActivityTraceReasoning(next)+1),
+			ID:      reasoningID,
 			Type:    "reasoning",
 			Content: result.ReasoningContent,
 			Status:  "done",
@@ -36,7 +42,7 @@ func activityTraceFromResult(current []activityTraceEvent, result llm.StreamResu
 			RawArguments: call.Function.Arguments,
 		})
 	}
-	return next
+	return next, reasoningID
 }
 
 func activityTraceWithToolResult(current []activityTraceEvent, toolCallID, output string) []activityTraceEvent {
@@ -53,6 +59,13 @@ func activityTraceWithToolResult(current []activityTraceEvent, toolCallID, outpu
 		return next
 	}
 	return next
+}
+
+// nextReasoningID is the id activityTraceFromResult will assign to the next
+// reasoning event appended to this trace. Computed up front so a title can be
+// spawned at the reasoning->content boundary mid-turn, before the turn returns.
+func nextReasoningID(events []activityTraceEvent) string {
+	return fmt.Sprintf("reasoning-%d", countActivityTraceReasoning(events)+1)
 }
 
 func countActivityTraceReasoning(events []activityTraceEvent) int {

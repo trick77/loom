@@ -392,6 +392,12 @@ body {
   transform: rotate(-45deg);
 }
 
+.slopr-activity-reasoning-title {
+  margin-bottom: 0.25rem;
+  color: #d6d3ca;
+  font-weight: 500;
+}
+
 .slopr-activity-reasoning p {
   margin: 0;
   transform: translateY(1px);

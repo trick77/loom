@@ -29,18 +29,18 @@ type assistantLoopResult struct {
 	ActivityTrace []activityTraceEvent
 }
 
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool) (assistantLoopResult, error) {
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool) (assistantLoopResult, error) {
 	tools := s.availableTools()
 	if len(tools) == 0 {
-		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat", 1), nil)
+		result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(nil), history, inferenceWithPurpose(inference, "chat", 1), nil)
 		if persistCanceledPartial(result, err) {
-			return assistantLoopResult{StreamResult: result, ActivityTrace: activityTraceFromResult(nil, result)}, nil
+			return assistantLoopResult{StreamResult: result, ActivityTrace: s.appendTraceAndSpawnTitle(titles, nil, result)}, nil
 		}
-		return assistantLoopResult{StreamResult: result, ActivityTrace: activityTraceFromResult(nil, result)}, err
+		return assistantLoopResult{StreamResult: result, ActivityTrace: s.appendTraceAndSpawnTitle(titles, nil, result)}, err
 	}
 	if imageArtifactRequired {
 		if imageTool := findGenerateImageTool(tools); imageTool != nil {
-			return s.runRequiredImageAssistantLoop(ctx, stream, history, inference, user, thread, *imageTool)
+			return s.runRequiredImageAssistantLoop(ctx, stream, titles, history, inference, user, thread, *imageTool)
 		}
 		slog.Warn("image artifact required but generate_image tool is unavailable", "thread_id", thread.ID, "tools", len(tools))
 	}
@@ -49,14 +49,14 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 	var artifacts []artifactResponse
 	var trace []activityTraceEvent
 	for round := 1; round <= maxToolRounds; round++ {
-		result, err := s.streamAssistantTurn(ctx, stream, history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
+		result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
 			if persistCanceledPartial(result, err) {
-				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: activityTraceFromResult(trace, result)}, nil
+				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: s.appendTraceAndSpawnTitle(titles, trace, result)}, nil
 			}
 			return assistantLoopResult{}, err
 		}
-		trace = activityTraceFromResult(trace, result)
+		trace = s.appendTraceAndSpawnTitle(titles, trace, result)
 		if len(result.ToolCalls) == 0 {
 			// A normal textual answer ends the loop. But if the model stops
 			// after running tools without producing any text, fall through to a
@@ -111,21 +111,21 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, histo
 		Role:    "system",
 		Content: "Provide your final answer now using the information already gathered above. Do not call any more tools.",
 	})
-	result, err := s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
-	trace = activityTraceFromResult(trace, result)
+	result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
+	trace = s.appendTraceAndSpawnTitle(titles, trace, result)
 	if persistCanceledPartial(result, err) {
 		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
 	}
 	return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, err
 }
 
-func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool) (assistantLoopResult, error) {
+func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool) (assistantLoopResult, error) {
 	compilerHistory := append(history[:len(history):len(history)], llm.Message{
 		Role:    "system",
 		Content: imagePromptCompilerSystemPrompt,
 	})
-	result, err := s.streamAssistantTurnSuppressingContent(ctx, stream, compilerHistory, inferenceWithPurpose(inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
-	trace := activityTraceFromResult(nil, result)
+	result, err := s.streamAssistantTurnSuppressingContent(ctx, stream, titles, nextReasoningID(nil), compilerHistory, inferenceWithPurpose(inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
+	trace := s.appendTraceAndSpawnTitle(titles, nil, result)
 	if err != nil {
 		return assistantLoopResult{}, err
 	}
@@ -161,8 +161,8 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		Role:    "system",
 		Content: "Provide a brief final response that refers to the created artifact. Do not call any more tools. Never claim an image was created unless the tool result confirms an artifact.",
 	})
-	final, err := s.streamAssistantTurn(ctx, stream, finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
-	trace = activityTraceFromResult(trace, final)
+	final, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
+	trace = s.appendTraceAndSpawnTitle(titles, trace, final)
 	if persistCanceledPartial(final, err) {
 		return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: trace}, nil
 	}
@@ -184,28 +184,47 @@ func persistCanceledPartial(result llm.StreamResult, err error) bool {
 }
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
-// tool-call events to the SSE stream.
-func (s *server) streamAssistantTurn(ctx context.Context, stream *sse.Writer, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
-	return s.streamAssistantTurnWithContentStreaming(ctx, stream, history, meta, tools, true)
+// tool-call events to the SSE stream. titles/reasoningID let it spawn the
+// reasoning abstract the instant the model stops reasoning and starts answering
+// (or calling a tool), so the title overlaps the answer stream instead of
+// waiting for the turn to finish.
+func (s *server) streamAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, true)
 }
 
-func (s *server) streamAssistantTurnSuppressingContent(ctx context.Context, stream *sse.Writer, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
-	return s.streamAssistantTurnWithContentStreaming(ctx, stream, history, meta, tools, false)
+func (s *server) streamAssistantTurnSuppressingContent(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, false)
 }
 
-func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, stream *sse.Writer, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
+func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
 	callCtx := llm.WithInferenceMetadata(ctx, meta)
+	var reasoningBuf strings.Builder
+	titleSpawned := false
+	// The reasoning->content (or reasoning->tool) boundary: the model has
+	// finished thinking, so the round's reasoning is complete and its title can
+	// generate while the answer streams.
+	spawnTitle := func() {
+		if titleSpawned {
+			return
+		}
+		titleSpawned = true
+		titles.spawn(reasoningID, reasoningBuf.String())
+	}
 	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
+			reasoningBuf.WriteString(event.ReasoningDelta)
 			return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
 		}
 		if event.ToolPending {
+			spawnTitle()
 			return sendSSEJSON(stream, "tool_pending", struct{}{})
 		}
 		if event.Delta != "" && streamContent {
+			spawnTitle()
 			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
 		}
 		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
+			spawnTitle()
 			return sendSSEJSON(stream, "tool_call", toolCallResponse{
 				ID:        event.ToolCall.ID,
 				Name:      event.ToolCall.Function.Name,

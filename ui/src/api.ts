@@ -91,6 +91,7 @@ type StreamHandlers = {
   onUserMessage(message: Message): void;
   onDelta(delta: string): void;
   onReasoningDelta?(delta: string): void;
+  onReasoningTitle?(event: { id: string; title: string }): void;
   onAssistantMessage(message: Message): void;
   onThread(thread: Thread): void;
   onToolPending?(): void;
@@ -353,6 +354,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "assistant_reasoning_delta":
       handlers.onReasoningDelta?.((payload as { content: string }).content);
+      break;
+    case "assistant_reasoning_title":
+      handlers.onReasoningTitle?.(payload as { id: string; title: string });
       break;
     case "assistant_message":
       handlers.onAssistantMessage(payload as Message);

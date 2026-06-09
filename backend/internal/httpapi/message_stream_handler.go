@@ -81,7 +81,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	history := buildLLMHistory(user, priorMessages, userMessage)
 	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
-	assistantResult, err := s.runAssistantLoop(streamCtx, stream, history, inference, user, thread, imageArtifactRequired)
+	// Background reasoning-title generation. The deferred wait is a safety net so
+	// no title goroutine writes to the SSE stream after the handler returns on an
+	// early error path.
+	titles := newReasoningTitleTracker(s, stream, streamCtx, inference)
+	defer titles.wait()
+	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, imageArtifactRequired)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return
@@ -128,6 +133,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
 	}
+	// Ensure every background title has landed and been emitted before persisting
+	// the trace; this also guarantees the title SSE events precede assistant_message.
+	titles.wait()
+	titles.mergeInto(assistantResult.ActivityTrace)
 	activityTraceJSON, err := json.Marshal(assistantResult.ActivityTrace)
 	if err != nil {
 		slog.Warn("marshal activity trace failed", "thread_id", threadID, "error", err)

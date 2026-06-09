@@ -97,10 +97,15 @@ function ActivityTraceRow({ event }: { event: ActivityTraceEvent }) {
     return (
       <div className="slopr-activity-trace-row slopr-activity-trace-row-reasoning">
         <span className={iconClass} aria-hidden="true" />
-        <div className="slopr-activity-reasoning">
-          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-            {event.content.trim()}
-          </Markdown>
+        <div className="min-w-0 flex-1">
+          {event.title !== undefined && event.title.trim() !== "" && (
+            <div className="slopr-activity-reasoning-title">{event.title}</div>
+          )}
+          <div className="slopr-activity-reasoning">
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              {event.content.trim()}
+            </Markdown>
+          </div>
         </div>
       </div>
     );

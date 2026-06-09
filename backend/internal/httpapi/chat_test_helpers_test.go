@@ -207,13 +207,14 @@ func (f *fakeChatStore) ListMessages(context.Context, string, string) ([]chat.Me
 }
 
 type fakeChatClient struct {
-	title         string
-	titleErr      error
-	history       *[]llm.Message
-	streamText    *string
-	reasoningText string
-	usage         llm.TokenUsage
-	afterStream   func()
+	title          string
+	titleErr       error
+	reasoningTitle string
+	history        *[]llm.Message
+	streamText     *string
+	reasoningText  string
+	usage          llm.TokenUsage
+	afterStream    func()
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -245,6 +246,10 @@ func (f fakeChatClient) GenerateTitle(context.Context, string, string) (string, 
 		return "", f.titleErr
 	}
 	return f.title, nil
+}
+
+func (f fakeChatClient) GenerateReasoningTitle(context.Context, string) (string, error) {
+	return f.reasoningTitle, nil
 }
 
 func (f fakeChatClient) StreamChatWithTools(_ context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
@@ -310,11 +315,16 @@ func (f *blockingChatClient) GenerateTitle(context.Context, string, string) (str
 	return "", nil
 }
 
+func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string) (string, error) {
+	return "", nil
+}
+
 type fakeToolChatClient struct {
 	results   []llm.StreamResult
 	histories [][]llm.Message
 	tools     [][]llm.Tool
 	plain     string
+	titleFor  func(reasoning string) string
 }
 
 func (f *fakeToolChatClient) StreamChat(context.Context, []llm.Message, func(string) error) (string, error) {
@@ -381,6 +391,13 @@ func (f *fakeToolChatClient) StreamChatWithTools(_ context.Context, history []ll
 }
 
 func (f *fakeToolChatClient) GenerateTitle(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning string) (string, error) {
+	if f.titleFor != nil {
+		return f.titleFor(reasoning), nil
+	}
 	return "", nil
 }
 
