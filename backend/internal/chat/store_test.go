@@ -359,6 +359,128 @@ func TestStore_NormalizesThreadTitles(t *testing.T) {
 	}
 }
 
+func TestStore_UpdateThreadProjectMembership(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Notes"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	updated, ok, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{
+		ProjectID: ProjectIDUpdate{Set: true, Value: &project.ID},
+	})
+	if err != nil {
+		t.Fatalf("UpdateThread(set project) error: %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateThread(set project) ok = false, want true")
+	}
+	if updated.ProjectID == nil || *updated.ProjectID != project.ID {
+		t.Fatalf("updated.ProjectID = %v, want %q", updated.ProjectID, project.ID)
+	}
+
+	projectThreads, err := store.ListThreads(ctx, userID, ListThreadsOptions{ProjectID: &project.ID})
+	if err != nil {
+		t.Fatalf("ListThreads(project) error: %v", err)
+	}
+	if len(projectThreads) != 1 || projectThreads[0].ID != thread.ID {
+		t.Fatalf("project threads = %#v, want only %q", projectThreads, thread.ID)
+	}
+
+	projectlessThreads, err := store.ListThreads(ctx, userID, ListThreadsOptions{ProjectlessOnly: true})
+	if err != nil {
+		t.Fatalf("ListThreads(projectless) error: %v", err)
+	}
+	if len(projectlessThreads) != 0 {
+		t.Fatalf("projectless thread count = %d, want 0", len(projectlessThreads))
+	}
+
+	cleared, ok, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{
+		ProjectID: ProjectIDUpdate{Set: true, Value: nil},
+	})
+	if err != nil {
+		t.Fatalf("UpdateThread(clear project) error: %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateThread(clear project) ok = false, want true")
+	}
+	if cleared.ProjectID != nil {
+		t.Fatalf("cleared.ProjectID = %v, want nil", cleared.ProjectID)
+	}
+}
+
+func TestStore_UpdateThreadRejectsAnotherUsersProject(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	aliceID := insertTestUser(t, db, "alice")
+	bobID := insertTestUser(t, db, "bob")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, aliceID, CreateThreadInput{Title: "Private"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	bobProject, err := store.CreateProject(ctx, bobID, CreateProjectInput{Name: "Bob"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+
+	_, ok, err := store.UpdateThread(ctx, aliceID, thread.ID, UpdateThreadInput{
+		ProjectID: ProjectIDUpdate{Set: true, Value: &bobProject.ID},
+	})
+	if err == nil {
+		t.Fatal("UpdateThread() error = nil, want project not found")
+	}
+	if ok {
+		t.Fatal("UpdateThread() ok = true, want false")
+	}
+	if err.Error() != "project not found" {
+		t.Fatalf("UpdateThread() error = %q, want project not found", err.Error())
+	}
+}
+
+func TestStore_UpdateThreadTitleAndProjectTogether(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Draft"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	title := "Final notes"
+
+	updated, ok, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{
+		Title:     &title,
+		ProjectID: ProjectIDUpdate{Set: true, Value: &project.ID},
+	})
+	if err != nil {
+		t.Fatalf("UpdateThread() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateThread() ok = false, want true")
+	}
+	if updated.Title != "Final notes" {
+		t.Fatalf("updated.Title = %q, want Final notes", updated.Title)
+	}
+	if updated.ProjectID == nil || *updated.ProjectID != project.ID {
+		t.Fatalf("updated.ProjectID = %v, want %q", updated.ProjectID, project.ID)
+	}
+}
+
 func TestStore_KeepsOnlyFirstLineOfMultilineTitles(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

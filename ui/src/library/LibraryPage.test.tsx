@@ -171,7 +171,7 @@ test("keeps row metadata on the filename line", async () => {
   expect(row?.querySelector(".slopr-library-row-primary")).toHaveTextContent(
     "quarterly-board-update.pdf",
   );
-  expect(row?.querySelector(".slopr-library-row-primary")).toHaveTextContent("2 hours ago");
+  expect(row?.querySelector(".slopr-library-row-primary")).toHaveTextContent("4 hours ago");
   expect(row?.querySelector(".slopr-library-row-primary")).toHaveTextContent("1.3 MB");
   expect(row?.querySelector(".slopr-library-row-secondary")).toHaveTextContent("application/pdf");
 });

@@ -98,7 +98,7 @@ test("places library before projects in the primary sidebar navigation", async (
   render(<App />);
 
   const libraryButton = await screen.findByRole("button", { name: "Library" });
-  const projectsItem = screen.getAllByText("Projects")[0].closest("div");
+  const projectsItem = screen.getByRole("button", { name: "Projects" });
 
   expect(projectsItem).not.toBeNull();
   expect(libraryButton.compareDocumentPosition(projectsItem as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -366,6 +366,164 @@ test("creates a project from the sidebar", async () => {
   );
 });
 
+test("opens the projects page from the sidebar without example or share affordances", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30") return Response.json([]);
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Projects" }));
+
+  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Research" }).length).toBeGreaterThan(0);
+  expect(screen.queryByText("Example project")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+});
+
+test("loads a project detail page and creates new chats inside the project", async () => {
+  window.history.replaceState({}, "", "/projects/p1");
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: thread\ndata: {"id":"t-project-new","projectId":"p1","title":"Project brief","starred":false,"createdAt":"2026-05-30T00:00:00Z","updatedAt":"2026-05-30T00:00:01Z"}\n\n' +
+            'event: assistant_message\ndata: {"id":"m1","threadId":"t-project-new","role":"assistant","content":"Done","createdAt":"2026-05-30T00:00:01Z"}\n\n' +
+            "event: done\ndata: {}\n\n",
+        ),
+      );
+      controller.close();
+    },
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([projectFixture()]);
+    if (url === "/api/threads?limit=30") return Response.json([]);
+    if (url === "/api/threads?projectId=p1&limit=1000") {
+      return Response.json([{ ...threadFixture(), id: "t-project", title: "Project chat", projectId: "p1" }]);
+    }
+    if (url === "/api/threads" && init?.method === "POST") {
+      return Response.json({
+        id: "t-project-new",
+        projectId: "p1",
+        title: "New chat",
+        starred: false,
+        createdAt: "2026-05-30T00:00:00Z",
+        updatedAt: "2026-05-30T00:00:00Z",
+      });
+    }
+    if (url === "/api/threads/t-project-new/messages:stream" && init?.method === "POST") {
+      return new Response(stream, { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "Research" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Project chat" })).toBeInTheDocument();
+  expect(screen.queryByText("Files")).not.toBeInTheDocument();
+  expect(screen.queryByText("Memory")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {
+    target: { value: "Draft a brief" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ projectId: "p1" }),
+      }),
+    ),
+  );
+  await waitFor(() => expect(window.location.pathname).toBe("/chat/t-project-new"));
+});
+
+test("adds a single chat to a project from the chat actions menu", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([projectFixture()]);
+    if (url === "/api/threads?limit=30") return Response.json([threadFixture()]);
+    if (url === "/api/threads/t1") {
+      if (init?.method === "PATCH") return Response.json({ ...threadFixture(), projectId: "p1" });
+      return Response.json({ thread: threadFixture(), messages: [] });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Add to project" }));
+  fireEvent.click(within(await screen.findByRole("dialog", { name: "Add to project" })).getByRole("button", { name: "Research" }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ projectId: "p1" }),
+      }),
+    ),
+  );
+  expect(screen.queryByRole("dialog", { name: "Add to project" })).not.toBeInTheDocument();
+});
+
+test("moves selected chats to a project from the chats page", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([projectFixture()]);
+    if (url === "/api/threads?limit=30") return Response.json([]);
+    if (url === "/api/threads?limit=1000") {
+      return Response.json([
+        { ...threadFixture(), id: "t1", title: "Loose chat one" },
+        { ...threadFixture(), id: "t2", title: "Loose chat two" },
+      ]);
+    }
+    if (url === "/api/threads/t1" && init?.method === "PATCH") {
+      return Response.json({ ...threadFixture(), id: "t1", title: "Loose chat one", projectId: "p1" });
+    }
+    if (url === "/api/threads/t2" && init?.method === "PATCH") {
+      return Response.json({ ...threadFixture(), id: "t2", title: "Loose chat two", projectId: "p1" });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Chats" }));
+  await screen.findByText("Loose chat one");
+  fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+  fireEvent.click(screen.getByRole("button", { name: "Move to project" }));
+  fireEvent.click(within(await screen.findByRole("dialog", { name: "Move to project" })).getByRole("button", { name: "Research" }));
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ projectId: "p1" }) }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t2",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ projectId: "p1" }) }),
+    );
+  });
+  expect(screen.queryByRole("dialog", { name: "Move to project" })).not.toBeInTheDocument();
+});
+
 test("renders the new-chat plus icon and the new-project plus control", async () => {
   vi.stubGlobal(
     "fetch",
@@ -549,15 +707,15 @@ test("closes the active sidebar chat menu when clicking outside it", async () =>
   expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
 });
 
-test("add to project is inert", async () => {
+test("add to project stays disabled until projects exist", async () => {
   const fetchMock = chatThreadFetch(null);
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
   fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Add to project" }));
 
+  expect(await screen.findByRole("menuitem", { name: "Add to project" })).toBeDisabled();
   expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("project"))).toHaveLength(1);
 });
 
@@ -2462,6 +2620,16 @@ function threadFixture() {
     starred: false,
     createdAt: "2026-05-30T00:00:00Z",
     updatedAt: "2026-05-30T00:00:00Z",
+  };
+}
+
+function projectFixture() {
+  return {
+    id: "p1",
+    name: "Research",
+    description: "Project notes",
+    createdAt: "2026-05-30T00:00:00Z",
+    updatedAt: "2026-05-31T00:00:00Z",
   };
 }
 
