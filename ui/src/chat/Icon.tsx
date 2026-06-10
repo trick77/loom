@@ -15,7 +15,7 @@ import type { CSSProperties } from "react";
  */
 const CODEPOINTS = {
   send: 0xe09e,
-  copy: 0xe056,
+  copy: 0xe0e2,
   edit: 0xe064,
   feather: 0xe0ed,
   trash: 0xe101,

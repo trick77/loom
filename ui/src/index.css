@@ -44,6 +44,19 @@
   font-display: block;
 }
 
+/* Sidebar-Icon: die Variable-Font hat eine ANIM-Achse (0–100), die die
+   Trennlinie im Glyph horizontal verschiebt. Beim Hover (oder Tastatur-Fokus)
+   des umschliessenden Buttons morpht das Glyph sanft von ANIM 0 → 100 und
+   beim Verlassen wieder zurück. Nur für die Sidebar-Icons gedacht. */
+.slopr-sidebar-icon {
+  font-variation-settings: "ANIM" 0;
+  transition: font-variation-settings 220ms ease;
+}
+.slopr-sidebar-btn:hover .slopr-sidebar-icon,
+.slopr-sidebar-btn:focus-visible .slopr-sidebar-icon {
+  font-variation-settings: "ANIM" 100;
+}
+
 /* UI direction A — Warm Editorial, dark. These tokens drive the Tailwind v4
    theme, generating the bg, text, border, font, and rounded-slopr utilities.
    Palette: warm charcoal surfaces, off-white ink, clay accent.
