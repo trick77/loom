@@ -196,6 +196,7 @@ function ActivityTraceRow({
           (fetchHref !== undefined ? (
             <a className="slopr-activity-tool-url" href={fetchHref} target="_blank" rel="noreferrer">
               {fetchUrl}
+              <Icon name="externalLink" size="0.8em" className="ml-1 inline-block align-[-0.1em]" />
             </a>
           ) : (
             <span className="slopr-activity-tool-url">{fetchUrl}</span>

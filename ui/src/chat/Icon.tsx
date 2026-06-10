@@ -69,6 +69,8 @@ const CODEPOINTS = {
   moreVertical: 0xe062,
   moreHorizontal: 0xe061,
   artifact: 0xe017,
+  plus: 0xe001,
+  externalLink: 0xe00e,
 } as const;
 
 export type IconName = keyof typeof CODEPOINTS;

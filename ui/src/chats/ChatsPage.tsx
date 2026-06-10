@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AuthExpiredError, bulkDeleteThreads, listThreads, type Thread } from "../api";
 import { BulkDeleteModal } from "./BulkDeleteModal";
 import { ChatRow } from "./ChatRow";
+import { Icon } from "../chat/Icon";
 import { PillButton } from "./PillButton";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 
@@ -187,15 +188,11 @@ export function ChatsPage({
         </header>
 
         <div className="relative mt-6">
-          <svg
-            className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#807d74]"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="6" stroke="currentColor" strokeWidth="1.5" />
-            <path d="m20 20-3.6-3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
+          <Icon
+            name="search"
+            size="18px"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#807d74]"
+          />
           <input
             type="text"
             value={searchInput}

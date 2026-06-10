@@ -581,10 +581,7 @@ export function ChatShell({
                 aria-label="Search"
                 className="grid place-items-center rounded transition-colors hover:text-white"
               >
-                <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="m20 20-3.6-3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
+                <Icon name="search" size="18px" />
               </button>
             )}
             <button
@@ -1713,8 +1710,8 @@ function Composer({
         }}
       />
       <div className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}>
-        <button className="text-2xl leading-none" type="button" aria-label="Add attachment">
-          +
+        <button className="leading-none" type="button" aria-label="Add attachment">
+          <Icon name="plus" size="24px" />
         </button>
         <div className="slopr-meta-text flex items-center text-[#d8d4ca]">
           <button
