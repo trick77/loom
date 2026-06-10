@@ -18,8 +18,8 @@ export function ProjectDetailPage({
   onRenameThread,
   onDeleteThread,
   onStarThread,
-  onArchiveThread: _onArchiveThread,
-  onRemoveFromProject: _onRemoveFromProject,
+  onArchiveThread,
+  onRemoveFromProject,
   onToggleThreadMenu,
   onCloseThreadMenu: _onCloseThreadMenu,
   onEditProject,
@@ -165,6 +165,8 @@ export function ProjectDetailPage({
                       className="right-0 top-10"
                       onDelete={onDeleteThread}
                       onRename={onRenameThread}
+                      onArchive={onArchiveThread}
+                      onRemoveFromProject={onRemoveFromProject}
                       onStarChange={onStarThread}
                     />
                   )}

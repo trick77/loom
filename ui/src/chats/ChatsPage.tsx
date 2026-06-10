@@ -11,22 +11,26 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 export function ChatsPage({
   mutationVersion,
+  projectsAvailable = false,
   onOpenSidebar,
   onNewChat,
   onSelectThread,
   onRenameThread,
   onDeleteThread,
   onStarThread,
+  onMoveSelectedToProject,
   onAfterBulkDelete,
   onSessionExpired,
 }: {
   mutationVersion: number;
+  projectsAvailable?: boolean;
   onOpenSidebar(): void;
   onNewChat(): void;
   onSelectThread(threadID: string): void;
   onRenameThread(thread: Thread): void;
   onDeleteThread(thread: Thread): void;
   onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
+  onMoveSelectedToProject?(threads: Thread[]): void;
   onAfterBulkDelete(): void;
   onSessionExpired(): void;
 }) {
@@ -156,7 +160,15 @@ export function ChatsPage({
               <PillButton variant="solid" onClick={toggleSelectAll}>
                 Select all
               </PillButton>
-              <PillButton variant="muted" enabled={hasSelection} title="Projects are not available yet">
+              <PillButton
+                variant="muted"
+                enabled={hasSelection && projectsAvailable}
+                title={projectsAvailable ? undefined : "Create a project before moving chats"}
+                onClick={() => {
+                  if (!hasSelection || !projectsAvailable || onMoveSelectedToProject === undefined) return;
+                  onMoveSelectedToProject(threads.filter((thread) => selectedIds.has(thread.id)));
+                }}
+              >
                 Move to project
               </PillButton>
               <PillButton
