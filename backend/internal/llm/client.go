@@ -16,14 +16,17 @@ import (
 )
 
 const maxErrorBodyBytes = 4096
+const defaultMaxCompletionTokens = 2048
 
 // Config holds the OpenAI-compatible chat completion settings.
 type Config struct {
-	BaseURL         string
-	APIKey          string
-	Model           string
-	ReasoningEffort string
-	ResponseLogDir  string
+	BaseURL             string
+	APIKey              string
+	Model               string
+	ReasoningEffort     string
+	MaxCompletionTokens int
+	Timeout             time.Duration
+	ResponseLogDir      string
 }
 
 // Message is one OpenAI-compatible chat message.
@@ -37,12 +40,14 @@ type Message struct {
 
 // Client calls an OpenAI-compatible chat completion API.
 type Client struct {
-	baseURL         string
-	apiKey          string
-	model           string
-	reasoningEffort string
-	httpClient      *http.Client
-	responseLogDir  string
+	baseURL             string
+	apiKey              string
+	model               string
+	reasoningEffort     string
+	maxCompletionTokens int
+	timeout             time.Duration
+	httpClient          *http.Client
+	responseLogDir      string
 }
 
 var responseLogSequence uint64
@@ -55,13 +60,19 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 	if reasoningEffort == "" && isMiMoModel(cfg.Model) {
 		reasoningEffort = "high"
 	}
+	maxCompletionTokens := cfg.MaxCompletionTokens
+	if maxCompletionTokens <= 0 {
+		maxCompletionTokens = defaultMaxCompletionTokens
+	}
 	return &Client{
-		baseURL:         strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:          cfg.APIKey,
-		model:           cfg.Model,
-		reasoningEffort: reasoningEffort,
-		httpClient:      httpClient,
-		responseLogDir:  cfg.ResponseLogDir,
+		baseURL:             strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:              cfg.APIKey,
+		model:               cfg.Model,
+		reasoningEffort:     reasoningEffort,
+		maxCompletionTokens: maxCompletionTokens,
+		timeout:             cfg.Timeout,
+		httpClient:          httpClient,
+		responseLogDir:      cfg.ResponseLogDir,
 	}
 }
 
@@ -87,11 +98,20 @@ type chatRequestOptions struct {
 }
 
 func (c *Client) executeChatRequest(ctx context.Context, messages []Message, stream bool) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{stream: stream, reasoningEffort: c.reasoningEffort})
+	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
+		stream:              stream,
+		reasoningEffort:     c.reasoningEffort,
+		maxCompletionTokens: c.maxCompletionTokens,
+	})
 }
 
 func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{tools: tools, stream: stream, reasoningEffort: c.reasoningEffort})
+	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
+		tools:               tools,
+		stream:              stream,
+		reasoningEffort:     c.reasoningEffort,
+		maxCompletionTokens: c.maxCompletionTokens,
+	})
 }
 
 // executeUtilityChatRequest runs a non-streaming secondary helper call (title or

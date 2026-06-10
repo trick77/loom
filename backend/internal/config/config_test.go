@@ -28,6 +28,12 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatReasoningEffort != "high" {
 		t.Errorf("ChatReasoningEffort default = %q, want high", cfg.ChatReasoningEffort)
 	}
+	if cfg.ChatMaxCompletionTokens != 2048 {
+		t.Errorf("ChatMaxCompletionTokens default = %d, want 2048", cfg.ChatMaxCompletionTokens)
+	}
+	if cfg.ChatTimeout != 2*time.Minute {
+		t.Errorf("ChatTimeout default = %s, want 2m0s", cfg.ChatTimeout)
+	}
 	if cfg.TavilyURL != "https://mcp.tavily.com/mcp/" {
 		t.Errorf("TavilyURL default = %q, want https://mcp.tavily.com/mcp/", cfg.TavilyURL)
 	}
@@ -67,6 +73,67 @@ func TestLoad_chatReasoningEffort(t *testing.T) {
 	}
 	if cfg.ChatReasoningEffort != "low" {
 		t.Fatalf("ChatReasoningEffort = %q, want low", cfg.ChatReasoningEffort)
+	}
+}
+
+func TestLoad_chatGenerationBounds(t *testing.T) {
+	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
+	t.Setenv("SLOPR_CHAT_MAX_COMPLETION_TOKENS", "4096")
+	t.Setenv("SLOPR_CHAT_TIMEOUT", "45s")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.ChatMaxCompletionTokens != 4096 {
+		t.Fatalf("ChatMaxCompletionTokens = %d, want 4096", cfg.ChatMaxCompletionTokens)
+	}
+	if cfg.ChatTimeout != 45*time.Second {
+		t.Fatalf("ChatTimeout = %s, want 45s", cfg.ChatTimeout)
+	}
+}
+
+func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		key     string
+		value   string
+		wantErr string
+	}{
+		{
+			name:    "non-integer max completion tokens",
+			key:     "SLOPR_CHAT_MAX_COMPLETION_TOKENS",
+			value:   "many",
+			wantErr: "SLOPR_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0",
+		},
+		{
+			name:    "zero max completion tokens",
+			key:     "SLOPR_CHAT_MAX_COMPLETION_TOKENS",
+			value:   "0",
+			wantErr: "SLOPR_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0",
+		},
+		{
+			name:    "invalid timeout",
+			key:     "SLOPR_CHAT_TIMEOUT",
+			value:   "soon",
+			wantErr: "SLOPR_CHAT_TIMEOUT must be a duration greater than 0",
+		},
+		{
+			name:    "zero timeout",
+			key:     "SLOPR_CHAT_TIMEOUT",
+			value:   "0s",
+			wantErr: "SLOPR_CHAT_TIMEOUT must be a duration greater than 0",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
+			t.Setenv(tc.key, tc.value)
+
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("Load() error = %v, want %q", err, tc.wantErr)
+			}
+		})
 	}
 }
 

@@ -110,8 +110,10 @@ SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL=https://slopr.example.com/
 SLOPR_OIDC_ADMIN_GROUP=slopr-admins
 SLOPR_CHAT_BASE_URL=http://your-mimo-host/v1
 SLOPR_CHAT_API_KEY=replace-with-chat-api-key
-SLOPR_CHAT_MODEL=MiMo
+SLOPR_CHAT_MODEL=mimo-v2.5-pro
 SLOPR_CHAT_REASONING_EFFORT=high
+SLOPR_CHAT_MAX_COMPLETION_TOKENS=2048
+SLOPR_CHAT_TIMEOUT=2m
 ```
 
 Keep secrets in environment variables or an uncommitted `.env` file. Do not commit client secrets or
@@ -146,14 +148,19 @@ Slopr uses an OpenAI-compatible chat endpoint:
 ```bash
 SLOPR_CHAT_BASE_URL=http://your-mimo-host/v1
 SLOPR_CHAT_API_KEY=replace-with-chat-api-key
-SLOPR_CHAT_MODEL=MiMo
+SLOPR_CHAT_MODEL=mimo-v2.5-pro
 SLOPR_CHAT_REASONING_EFFORT=high
+SLOPR_CHAT_MAX_COMPLETION_TOKENS=2048
+SLOPR_CHAT_TIMEOUT=2m
 ```
 
 The backend calls `POST <SLOPR_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
-`messages`, `model`, `stream`, and `reasoning_effort` fields. `SLOPR_CHAT_REASONING_EFFORT`
-defaults to `high` when unset. If `SLOPR_CHAT_BASE_URL` is empty, the authenticated shell still loads
-but sending a chat message returns a service-unavailable error.
+`messages`, `model`, `stream`, `reasoning_effort`, and `max_completion_tokens` fields.
+`SLOPR_CHAT_REASONING_EFFORT` defaults to `high` when unset. `SLOPR_CHAT_MAX_COMPLETION_TOKENS`
+defaults to `2048`, and `SLOPR_CHAT_TIMEOUT` defaults to `2m`, so long-running reasoning streams are
+bounded even when the model is configured for high reasoning effort. If `SLOPR_CHAT_BASE_URL` is
+empty, the authenticated shell still loads but sending a chat message returns a service-unavailable
+error.
 
 ### MCP Tools
 

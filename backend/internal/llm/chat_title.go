@@ -39,11 +39,12 @@ func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMe
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
 	}
-	observeInference(ctx, c.model, time.Since(start), completion.Usage)
 	if len(completion.Choices) == 0 {
+		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
 		return "New chat", nil
 	}
 	choice := completion.Choices[0]
+	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
 	// A title cut off at the token cap is unreliable; fall back rather than store
 	// a half phrase as the thread title.
 	if choice.FinishReason == "length" {

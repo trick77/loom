@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/slopr/internal/config"
 	"github.com/trick77/slopr/internal/mcp"
@@ -24,12 +25,14 @@ func TestResponseLogDirForConfigOnlyEnablesDevMode(t *testing.T) {
 
 func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
 	cfg := config.Config{
-		ChatBaseURL:         "https://chat.example/v1",
-		ChatAPIKey:          "secret",
-		ChatModel:           "mimo",
-		ChatReasoningEffort: "low",
-		ChatLogDir:          "logs/llm-responses",
-		AuthMode:            config.AuthModeDev,
+		ChatBaseURL:             "https://chat.example/v1",
+		ChatAPIKey:              "secret",
+		ChatModel:               "mimo",
+		ChatReasoningEffort:     "low",
+		ChatMaxCompletionTokens: 4096,
+		ChatTimeout:             90 * time.Second,
+		ChatLogDir:              "logs/llm-responses",
+		AuthMode:                config.AuthModeDev,
 	}
 
 	got := chatClientConfigFromConfig(cfg)
@@ -44,6 +47,12 @@ func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
 	}
 	if got.ReasoningEffort != cfg.ChatReasoningEffort {
 		t.Fatalf("ReasoningEffort = %q, want %q", got.ReasoningEffort, cfg.ChatReasoningEffort)
+	}
+	if got.MaxCompletionTokens != cfg.ChatMaxCompletionTokens {
+		t.Fatalf("MaxCompletionTokens = %d, want %d", got.MaxCompletionTokens, cfg.ChatMaxCompletionTokens)
+	}
+	if got.Timeout != cfg.ChatTimeout {
+		t.Fatalf("Timeout = %s, want %s", got.Timeout, cfg.ChatTimeout)
 	}
 	if got.ResponseLogDir != cfg.ChatLogDir {
 		t.Fatalf("ResponseLogDir = %q, want %q", got.ResponseLogDir, cfg.ChatLogDir)

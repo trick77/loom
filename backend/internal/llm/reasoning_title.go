@@ -37,11 +37,12 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning string) (
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
 	}
-	observeInference(ctx, c.model, time.Since(start), completion.Usage)
 	if len(completion.Choices) == 0 {
+		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
 		return "", nil
 	}
 	choice := completion.Choices[0]
+	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
 	// A title that hit the token cap is cut mid-phrase; skip it rather than
 	// persist a half title (the caller falls back to the client-side heuristic).
 	if choice.FinishReason == "length" {

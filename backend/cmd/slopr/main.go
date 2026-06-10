@@ -212,11 +212,13 @@ func responseLogDirForConfig(cfg config.Config) string {
 
 func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 	return llm.Config{
-		BaseURL:         cfg.ChatBaseURL,
-		APIKey:          cfg.ChatAPIKey,
-		Model:           cfg.ChatModel,
-		ReasoningEffort: cfg.ChatReasoningEffort,
-		ResponseLogDir:  responseLogDirForConfig(cfg),
+		BaseURL:             cfg.ChatBaseURL,
+		APIKey:              cfg.ChatAPIKey,
+		Model:               cfg.ChatModel,
+		ReasoningEffort:     cfg.ChatReasoningEffort,
+		MaxCompletionTokens: cfg.ChatMaxCompletionTokens,
+		Timeout:             cfg.ChatTimeout,
+		ResponseLogDir:      responseLogDirForConfig(cfg),
 	}
 }
 
