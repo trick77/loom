@@ -9,6 +9,12 @@ import (
 
 // sqliteTimeLayout matches the textual datetime format SQLite stores and orders
 // by, so cursor bounds line up with the lexical ORDER BY on created_at.
+//
+// Invariant: created_at is written via datetime('now'), i.e. always UTC in
+// exactly this layout. The modified-sort cursor compares this rendered bound
+// lexically against the raw column text, so a row stored with a different
+// format (fractional seconds, 'T'/'Z', offset) would silently shift the page
+// boundary. The existing ORDER BY depends on the same invariant.
 const sqliteTimeLayout = "2006-01-02 15:04:05"
 
 const (

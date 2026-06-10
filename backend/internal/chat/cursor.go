@@ -9,6 +9,14 @@ import (
 // sqliteTimeLayout is the textual datetime format SQLite stores (and orders)
 // timestamps in. Rendering cursor bounds with this exact layout keeps the
 // keyset comparison aligned with the lexical ORDER BY on these columns.
+//
+// Invariant: created_at/updated_at/last_message_at are written via
+// datetime('now') (schema defaults / store writes), i.e. always UTC and in
+// exactly this layout — no fractional seconds, 'T'/'Z', or timezone offset.
+// The keyset bound is compared lexically against the raw column text, so any
+// row stored in a different format would silently shift the page boundary
+// (skipped/duplicated rows). The existing ORDER BY relies on the same lexical
+// invariant, so this does not add a new assumption.
 const sqliteTimeLayout = "2006-01-02 15:04:05"
 
 const (
