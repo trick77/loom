@@ -108,11 +108,15 @@ export function ThreadActionsMenu({
         type="button"
         onClick={() => onDelete(thread)}
       >
-        <Icon name="trash" size="19px" className="grid h-[21px] w-[21px] shrink-0 place-items-center" />
+        <TrashMenuIcon />
         Delete
       </button>
     </div>
   );
+}
+
+export function TrashMenuIcon() {
+  return <Icon name="trash" size="19px" className="grid h-[21px] w-[21px] shrink-0 place-items-center" />;
 }
 
 function ArchiveMenuIcon() {
