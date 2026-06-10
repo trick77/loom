@@ -83,3 +83,49 @@ test("uses sidebar icon sizing for menu icons", () => {
     expect(icon).toHaveClass("w-[21px]");
   }
 });
+
+test("shows enabled add to project for project-less chats when handler is provided", () => {
+  render(
+    <ThreadActionsMenu
+      menuKey="t1"
+      thread={threadFixture()}
+      onDelete={vi.fn()}
+      onRename={vi.fn()}
+      onAddToProject={vi.fn()}
+      onStarChange={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("menuitem", { name: "Add to project" })).toBeEnabled();
+});
+
+test("shows remove from project for project chats when handler is provided", () => {
+  render(
+    <ThreadActionsMenu
+      menuKey="t1"
+      thread={{ ...threadFixture(), projectId: "p1" }}
+      onDelete={vi.fn()}
+      onRename={vi.fn()}
+      onRemoveFromProject={vi.fn()}
+      onStarChange={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("menuitem", { name: "Remove from project" })).toBeEnabled();
+  expect(screen.queryByRole("menuitem", { name: "Add to project" })).not.toBeInTheDocument();
+});
+
+test("shows archive when handler is provided", () => {
+  render(
+    <ThreadActionsMenu
+      menuKey="t1"
+      thread={threadFixture()}
+      onDelete={vi.fn()}
+      onRename={vi.fn()}
+      onArchive={vi.fn()}
+      onStarChange={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("menuitem", { name: "Archive" })).toBeInTheDocument();
+});

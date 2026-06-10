@@ -55,6 +55,45 @@ test("updateThread patches the thread title", async () => {
   });
 });
 
+test("updateThread sends project membership changes", async () => {
+  const updated = {
+    id: "t1",
+    projectId: "p1",
+    title: "Chat",
+    starred: false,
+    createdAt: "2026-06-10T00:00:00Z",
+    updatedAt: "2026-06-10T00:00:00Z",
+  };
+  const fetchMock = vi.fn().mockResolvedValue(Response.json(updated));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(updateThread("t1", { projectId: "p1" })).resolves.toEqual(updated);
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId: "p1" }),
+  });
+});
+
+test("updateThread sends null project membership", async () => {
+  const updated = {
+    id: "t1",
+    title: "Chat",
+    starred: false,
+    createdAt: "2026-06-10T00:00:00Z",
+    updatedAt: "2026-06-10T00:00:00Z",
+  };
+  const fetchMock = vi.fn().mockResolvedValue(Response.json(updated));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(updateThread("t1", { projectId: null })).resolves.toEqual(updated);
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId: null }),
+  });
+});
+
 test("deleteThread deletes a thread", async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
   vi.stubGlobal("fetch", fetchMock);

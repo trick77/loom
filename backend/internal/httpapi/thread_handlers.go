@@ -108,9 +108,13 @@ func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	thread, found, err := s.chat.UpdateThread(r.Context(), user.ID, r.PathValue("threadID"), chat.UpdateThreadInput{Title: body.Title})
+	thread, found, err := s.chat.UpdateThread(r.Context(), user.ID, r.PathValue("threadID"), body.chatInput())
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "thread title is required", "thread title is too long")
+		writeMappedChatStoreError(w, err, map[string]int{
+			"thread title is required": http.StatusBadRequest,
+			"thread title is too long": http.StatusBadRequest,
+			"project not found":        http.StatusNotFound,
+		})
 		return
 	}
 	if !found {

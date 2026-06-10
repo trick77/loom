@@ -171,11 +171,27 @@ func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in Up
 		}
 	}
 
+	var projectID any
+	if thread.ProjectID != nil {
+		projectID = *thread.ProjectID
+	}
+	if in.ProjectID.Set {
+		projectID = nil
+		if in.ProjectID.Value != nil {
+			if ok, err := s.projectExists(ctx, userID, *in.ProjectID.Value); err != nil {
+				return Thread{}, false, err
+			} else if !ok {
+				return Thread{}, false, errors.New("project not found")
+			}
+			projectID = *in.ProjectID.Value
+		}
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 UPDATE threads
-SET title = ?, updated_at = datetime('now')
+SET title = ?, project_id = ?, updated_at = datetime('now')
 WHERE user_id = ? AND id = ?`,
-		title, userID, threadID,
+		title, projectID, userID, threadID,
 	)
 	if err != nil {
 		return Thread{}, false, fmt.Errorf("update thread: %w", err)

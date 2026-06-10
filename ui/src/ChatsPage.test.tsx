@@ -41,6 +41,8 @@ function renderPage(overrides: Partial<Parameters<typeof ChatsPage>[0]> = {}) {
     onRenameThread: vi.fn(),
     onDeleteThread: vi.fn(),
     onStarThread: vi.fn(),
+    projectsAvailable: true,
+    onMoveSelectedToProject: vi.fn(),
     onAfterBulkDelete: vi.fn(),
     onSessionExpired: vi.fn(),
     ...overrides,
@@ -152,14 +154,14 @@ test("bulk delete confirms then calls the API with the selected ids", async () =
   });
 });
 
-test("Move to project never triggers an action (no-op button)", async () => {
-  renderPage();
+test("Move to project sends selected chats to the move handler", async () => {
+  const props = renderPage();
   await screen.findByText("Greeting");
   fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+  await screen.findByText("3 selected");
 
   fireEvent.click(screen.getByRole("button", { name: "Move to project" }));
-  // No modal, no delete call — it is intentionally inert.
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(props.onMoveSelectedToProject).toHaveBeenCalledWith(FIXTURES);
   expect(bulkDeleteThreadsMock).not.toHaveBeenCalled();
 });

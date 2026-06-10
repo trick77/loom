@@ -163,6 +163,61 @@ func TestArchiveAndDeleteThreadReturn204(t *testing.T) {
 	}
 }
 
+func TestUpdateThreadCanMoveIntoProject(t *testing.T) {
+	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", `{"projectId":"proj_1"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !store.updateThreadInput.ProjectID.Set {
+		t.Fatal("ProjectID.Set = false, want true")
+	}
+	if store.updateThreadInput.ProjectID.Value == nil || *store.updateThreadInput.ProjectID.Value != "proj_1" {
+		t.Fatalf("ProjectID.Value = %v, want proj_1", store.updateThreadInput.ProjectID.Value)
+	}
+}
+
+func TestUpdateThreadCanRemoveFromProject(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Thread"}}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", `{"projectId":null}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !store.updateThreadInput.ProjectID.Set {
+		t.Fatal("ProjectID.Set = false, want true")
+	}
+	if store.updateThreadInput.ProjectID.Value != nil {
+		t.Fatalf("ProjectID.Value = %v, want nil", store.updateThreadInput.ProjectID.Value)
+	}
+}
+
+func TestUpdateThreadProjectNotFoundReturns404(t *testing.T) {
+	store := &fakeChatStore{
+		thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
+		updateThreadErr: errors.New("project not found"),
+	}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", `{"projectId":"missing"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDeleteThreadRemovesGeneratedArtifactFiles(t *testing.T) {
 	usersDir := t.TempDir()
 	relPath := "files/outputs/report.txt"
