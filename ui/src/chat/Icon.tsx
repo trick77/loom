@@ -71,6 +71,9 @@ const CODEPOINTS = {
   artifact: 0xe017,
   plus: 0xe001,
   externalLink: 0xe00e,
+  volume: 0xe0e4,
+  sortUp: 0xe013,
+  sortDown: 0xe009,
 } as const;
 
 export type IconName = keyof typeof CODEPOINTS;

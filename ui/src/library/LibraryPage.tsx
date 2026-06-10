@@ -219,7 +219,7 @@ function SortButton({
       onClick={onClick}
     >
       <span>{label}</span>
-      {active && <span aria-hidden="true">{order === "asc" ? "↑" : "↓"}</span>}
+      {active && <Icon name={order === "asc" ? "sortUp" : "sortDown"} size="0.9em" />}
     </button>
   );
 }

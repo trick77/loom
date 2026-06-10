@@ -61,7 +61,7 @@ import {
 import { navigate, routeFromLocation, type RouteState } from "./routing";
 import type { MessageWithActivityTrace, SidebarIconName } from "./types";
 import { ActivityTracePanel } from "./ActivityTracePanel";
-import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FileIcon, SpeakerIcon } from "./icons";
+import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FileIcon } from "./icons";
 import { Icon } from "./Icon";
 import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
@@ -593,10 +593,7 @@ export function ChatShell({
               }
               className="grid place-items-center rounded transition-colors hover:text-white"
             >
-              <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M9.5 5v14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
+              <Icon name="sidebar" size="18px" />
             </button>
           </div>
         </div>
@@ -1982,7 +1979,7 @@ function MessageActions({
           title={speaking ? "Stop" : "Read aloud"}
           aria-label={speaking ? "Stop reading" : "Read aloud"}
         >
-          <SpeakerIcon />
+          <Icon name="volume" />
         </button>
       )}
       <button

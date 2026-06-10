@@ -45,7 +45,7 @@ export function ThreadActionsMenu({
         onClick={() => onStarChange(thread, !thread.starred, menuKey)}
       >
         <span className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[19px] leading-none" aria-hidden="true">
-          {thread.starred ? "★" : "☆"}
+          <Icon name={thread.starred ? "starFilled" : "star"} size="19px" />
         </span>
         {thread.starred ? "Unstar" : "Star"}
       </button>
