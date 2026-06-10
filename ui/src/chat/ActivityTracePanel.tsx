@@ -221,10 +221,9 @@ function ActivityTraceRow({
 function ActivityTraceDoneRow() {
   return (
     <div className="slopr-activity-trace-row slopr-activity-trace-row-done">
-      <span
-        className="slopr-activity-trace-icon slopr-activity-trace-icon-reasoning slopr-activity-trace-icon-reasoning-complete"
-        aria-hidden="true"
-      />
+      <span className="slopr-activity-trace-icon slopr-activity-trace-icon-done" aria-hidden="true">
+        <Icon name="checkCircle" size="1.125rem" />
+      </span>
       <div className="min-w-0 flex-1">
         <span className="slopr-activity-done-label">Done</span>
       </div>

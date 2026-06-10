@@ -2414,8 +2414,8 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
-  // Tools make this a real timeline: the reasoning row keeps its node glyph.
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).not.toBeNull();
+  // Tools make this a real timeline: the turn is capped with the Done node glyph.
+  expect(document.querySelector(".slopr-activity-trace-icon-done")).not.toBeNull();
   expect(document.querySelector(".slopr-activity-trace-body-flat")).toBeNull();
   const agentgatewayLink = screen.getByRole("link", { name: /Agentgateway/ });
   expect(agentgatewayLink).toHaveAttribute("href", "https://agentgateway.dev/");
