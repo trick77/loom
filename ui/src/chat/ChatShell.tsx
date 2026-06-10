@@ -1288,23 +1288,7 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
     return <Icon name="archive" size="21px" className={className} />;
   }
   if (name === "artifacts") {
-    return (
-      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-        <path
-          d="M8 5.5h6.8L18 8.7v9.8H8z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M14.8 5.8V9H18M5.5 8.5v10h9.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
+    return <Icon name="artifact" size="21px" className={className} />;
   }
   return null;
 }

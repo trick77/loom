@@ -101,11 +101,13 @@ export function ArtifactsPage({
         )}
 
         <div className="mt-3">
-          <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center border-b border-[#343432] px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
-            <SortButton active={sort === "name"} label="Name" order={order} onClick={() => updateSort("name")} />
-            <SortButton active={sort === "modified"} label="Modified" order={order} onClick={() => updateSort("modified")} />
-            <SortButton active={sort === "size"} label="Size" order={order} onClick={() => updateSort("size")} />
-          </div>
+          {artifacts.length > 0 && (
+            <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center border-b border-[#343432] px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
+              <SortButton active={sort === "name"} label="Name" order={order} onClick={() => updateSort("name")} />
+              <SortButton active={sort === "modified"} label="Modified" order={order} onClick={() => updateSort("modified")} />
+              <SortButton active={sort === "size"} label="Size" order={order} onClick={() => updateSort("size")} />
+            </div>
+          )}
           {artifacts.length === 0 && loadError === "" ? (
             loaded && (
               <div className="py-10 text-center text-[#807d74]">

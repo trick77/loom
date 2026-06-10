@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type { Project } from "../api";
+import { Icon } from "../chat/Icon";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 
@@ -36,21 +37,21 @@ export function ProjectsPage({
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-[860px] px-4 pb-16 pt-10 md:px-6">
-        <header className="flex flex-wrap items-center justify-between gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <SidebarOpenButton onClick={onOpenSidebar} />
             <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Projects</h1>
           </div>
           <div className="flex items-center gap-2.5">
             <button
-              className="slopr-control-text cursor-default rounded-lg bg-[#3a3a37] px-3 py-2 text-[#d5d2c9] opacity-70"
+              className="slopr-control-text cursor-default rounded-lg bg-[#3a3a37] px-3 py-1.5 text-[#d5d2c9] opacity-70"
               type="button"
               disabled
             >
               Sort by <span className="font-semibold text-white">Recent activity</span>
             </button>
             <button
-              className="slopr-control-text rounded-lg bg-white px-3 py-2 font-medium text-[#1d1d1b]"
+              className="slopr-control-text rounded-lg bg-white px-3 py-1.5 font-medium text-[#1d1d1b]"
               type="button"
               onClick={onCreateProject}
             >
@@ -58,17 +59,30 @@ export function ProjectsPage({
             </button>
           </div>
         </header>
-        <input
-          className="slopr-composer-text mt-6 h-10 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] px-4 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
-          placeholder="Search projects..."
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="relative mt-6">
+          <Icon
+            name="search"
+            size="18px"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#807d74]"
+          />
+          <input
+            className="slopr-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
+            placeholder="Search projects..."
+            aria-label="Search projects"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
         {loadError !== "" && (
           <div className="slopr-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
             {loadError}
           </div>
         )}
+        {filtered.length === 0 ? (
+          <div className="py-10 text-center text-[#807d74]">
+            {query.trim() === "" ? "No projects yet." : "No projects match your search."}
+          </div>
+        ) : (
         <div className="mt-7 grid gap-6 md:grid-cols-2">
           {filtered.map((project) => (
             <article
@@ -96,7 +110,7 @@ export function ProjectsPage({
                   type="button"
                   onClick={() => setOpenMenuID((current) => (current === project.id ? null : project.id))}
                 >
-                  ...
+                  <Icon name="moreHorizontal" size="18px" />
                 </button>
                 {openMenuID === project.id && (
                   <ProjectActionsMenu
@@ -110,6 +124,7 @@ export function ProjectsPage({
             </article>
           ))}
         </div>
+        )}
       </div>
     </div>
   );
