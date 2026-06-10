@@ -851,7 +851,7 @@ function greetingForNow(fullName: string) {
   const name = fullName.trim().split(/\s+/)[0];
   const hour = new Date().getHours();
   if (hour < 10) return `Morning, ${name}`;
-  if (hour >= 22) return `Up late, ${name}`;
+  if (hour >= 22) return `Up late, ${name}?`;
   if (hour >= 18) return `Evening, ${name}`;
   if (hour >= 13) return `Afternoon, ${name}`;
   return `${name} returns!`;
