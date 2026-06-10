@@ -107,6 +107,33 @@ test("places library before projects in the primary sidebar navigation", async (
   expect(artifactsButton.compareDocumentPosition(projectsItem as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
+test("places project rows above starred chats with matching chat row sizing", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({ items: [{ ...threadFixture(), starred: true }], nextCursor: null });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+
+  const projectRow = await screen.findByRole("button", { name: "Research" });
+  const starredHeading = screen.getByText("Starred");
+  const chatRow = screen.getAllByRole("button", { name: "Existing chat" })[0];
+
+  expect(projectRow.compareDocumentPosition(starredHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(projectRow).toHaveClass("h-7");
+  expect(projectRow).toHaveClass("px-1.5");
+  expect(projectRow).not.toHaveClass("text-xs");
+  expect(chatRow).toHaveClass("h-7");
+});
+
 test("greets signed-in users with up late after 22:00", async () => {
   const realDate = Date;
   type DateArgs = [] | [string | number | Date] | [number, number, number?, number?, number?, number?, number?];

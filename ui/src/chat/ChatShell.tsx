@@ -879,50 +879,6 @@ export function ChatShell({
               {loadError}
             </div>
           )}
-          <SidebarSection
-            title="Starred"
-            threads={starredThreads}
-            activeThreadID={route.view === "chat" ? route.threadID : null}
-            openThreadMenuID={openThreadMenuID}
-            onSelect={selectThread}
-            onDelete={openDeleteModal}
-            onRename={openRenameModal}
-            onAddToProject={
-              projects.length === 0
-                ? undefined
-                : (thread) => {
-                    setMovingThreads([thread]);
-                    setModalError("");
-                  }
-            }
-            onStarChange={handleSetThreadStarred}
-            onToggleMenu={(menuKey) =>
-              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
-            }
-            onCloseMenu={() => setOpenThreadMenuID(null)}
-          />
-          <SidebarSection
-            title="Recents"
-            threads={threads}
-            activeThreadID={route.view === "chat" ? route.threadID : null}
-            openThreadMenuID={openThreadMenuID}
-            onSelect={selectThread}
-            onDelete={openDeleteModal}
-            onRename={openRenameModal}
-            onAddToProject={
-              projects.length === 0
-                ? undefined
-                : (thread) => {
-                    setMovingThreads([thread]);
-                    setModalError("");
-                  }
-            }
-            onStarChange={handleSetThreadStarred}
-            onToggleMenu={(menuKey) =>
-              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
-            }
-            onCloseMenu={() => setOpenThreadMenuID(null)}
-          />
           <section className="mt-5">
             <div className="slopr-meta-text mb-2 flex items-center justify-between px-1.5 text-[#97958c]">
               <span>Projects</span>
@@ -976,7 +932,7 @@ export function ChatShell({
                 <button
                   key={project.id}
                   type="button"
-                  className={`block w-full truncate rounded-md px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-[#2a2a28] ${
+                  className={`block h-7 w-full truncate rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
                     route.view === "project" && route.projectID === project.id ? "bg-[#111110] text-white" : ""
                   }`}
                   onClick={() => navigateToProject(project)}
@@ -986,6 +942,50 @@ export function ChatShell({
               ))}
             </div>
           </section>
+          <SidebarSection
+            title="Starred"
+            threads={starredThreads}
+            activeThreadID={route.view === "chat" ? route.threadID : null}
+            openThreadMenuID={openThreadMenuID}
+            onSelect={selectThread}
+            onDelete={openDeleteModal}
+            onRename={openRenameModal}
+            onAddToProject={
+              projects.length === 0
+                ? undefined
+                : (thread) => {
+                    setMovingThreads([thread]);
+                    setModalError("");
+                  }
+            }
+            onStarChange={handleSetThreadStarred}
+            onToggleMenu={(menuKey) =>
+              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+            }
+            onCloseMenu={() => setOpenThreadMenuID(null)}
+          />
+          <SidebarSection
+            title="Recents"
+            threads={threads}
+            activeThreadID={route.view === "chat" ? route.threadID : null}
+            openThreadMenuID={openThreadMenuID}
+            onSelect={selectThread}
+            onDelete={openDeleteModal}
+            onRename={openRenameModal}
+            onAddToProject={
+              projects.length === 0
+                ? undefined
+                : (thread) => {
+                    setMovingThreads([thread]);
+                    setModalError("");
+                  }
+            }
+            onStarChange={handleSetThreadStarred}
+            onToggleMenu={(menuKey) =>
+              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+            }
+            onCloseMenu={() => setOpenThreadMenuID(null)}
+          />
           {user.role === "admin" && (
             <button
               className="mt-3 flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28]"
