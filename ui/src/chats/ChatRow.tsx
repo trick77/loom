@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import type { Thread } from "../api";
+import { Icon } from "../chat/Icon";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { formatTimeAgo } from "../timeago";
 
@@ -96,11 +97,7 @@ export function ChatRow({
             }}
             type="button"
           >
-            <span aria-hidden="true" className="flex h-[10px] flex-col items-center justify-between">
-              <span className="h-0.5 w-0.5 rounded-full bg-current" />
-              <span className="h-0.5 w-0.5 rounded-full bg-current" />
-              <span className="h-0.5 w-0.5 rounded-full bg-current" />
-            </span>
+            <Icon name="moreVertical" size="18px" />
           </button>
         )}
       </div>

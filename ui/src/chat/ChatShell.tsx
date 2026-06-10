@@ -61,7 +61,8 @@ import {
 import { navigate, routeFromLocation, type RouteState } from "./routing";
 import type { MessageWithActivityTrace, SidebarIconName } from "./types";
 import { ActivityTracePanel } from "./ActivityTracePanel";
-import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FileIcon, RetryIcon, SpeakerIcon } from "./icons";
+import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FileIcon, SpeakerIcon } from "./icons";
+import { Icon } from "./Icon";
 import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
 
@@ -912,36 +913,10 @@ function SidebarPrimaryItem({
 function SidebarIcon({ name }: { name: SidebarIconName }) {
   const className = "h-[21px] w-[21px] shrink-0 text-[#f0eee7]";
   if (name === "chats") {
-    return (
-      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-        <path
-          d="M6.5 15.5c-2.2-.2-3.5-1.6-3.5-3.8V8.8C3 6.3 4.5 5 7.1 5h5.1c2.6 0 4.1 1.3 4.1 3.8v2.9c0 2.5-1.5 3.8-4.1 3.8H9l-3.3 2.3v-2.3Z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M17.2 9.2c2.5.1 3.8 1.4 3.8 3.8v2.4c0 2.2-1.3 3.5-3.6 3.7v2l-2.9-2h-3.2c-1.8 0-3-.7-3.5-2"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
+    return <Icon name="messages" size="21px" className={className} />;
   }
   if (name === "projects") {
-    return (
-      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-        <path
-          d="M4.5 8.5h5l1.6 2h8.4v7.2c0 1.2-.7 1.8-2 1.8h-11c-1.3 0-2-.6-2-1.8V8.5Z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path d="M4.5 8.5V6.8c0-1.1.7-1.7 1.9-1.7h3.1l1.6 2h6.5c1.2 0 1.9.6 1.9 1.7v1.7" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      </svg>
-    );
+    return <Icon name="archive" size="21px" className={className} />;
   }
   if (name === "library") {
     return (
@@ -1105,11 +1080,7 @@ function SidebarThreadItem({
           }}
           type="button"
         >
-          <span aria-hidden="true" className="flex h-[10px] flex-col items-center justify-between">
-            <span className="h-0.5 w-0.5 rounded-full bg-current" />
-            <span className="h-0.5 w-0.5 rounded-full bg-current" />
-            <span className="h-0.5 w-0.5 rounded-full bg-current" />
-          </span>
+          <Icon name="moreVertical" size="18px" />
         </button>
       </div>
       {menuOpen && (
@@ -1529,10 +1500,7 @@ function ChatPanel({
               onClick={() => onToggleThreadMenu(headerMenuKey)}
               type="button"
             >
-              <span
-                aria-hidden="true"
-                className={headerMenuOpen ? "slopr-thinking-chevron-expanded" : "slopr-thinking-chevron"}
-              />
+              <Icon name={headerMenuOpen ? "chevronDown" : "chevronRight"} size="16px" />
             </button>
           )}
           {thread !== null && headerMenuKey !== null && headerMenuOpen && (
@@ -2037,7 +2005,7 @@ function MessageActions({
           title="Retry"
           aria-label={retryLabel}
         >
-          <RetryIcon />
+          <Icon name="retry" />
         </button>
       )}
       {metricsMessage && <MessageMetrics message={metricsMessage} />}
