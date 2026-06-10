@@ -62,6 +62,7 @@ import type { MessageWithActivityTrace, SidebarIconName } from "./types";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FileIcon, RetryIcon, SpeakerIcon } from "./icons";
 import { useMediaQuery } from "./useMediaQuery";
+import { useActivityTrace } from "./useActivityTrace";
 
 export { buildImageStats } from "./artifacts";
 
@@ -105,9 +106,18 @@ export function ChatShell({
   const [isMutatingThread, setIsMutatingThread] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [streamingArtifacts, setStreamingArtifacts] = useState<Artifact[]>([]);
-  const [activityTrace, setActivityTrace] = useState<ActivityTraceEvent[]>([]);
-  const [toolPending, setToolPending] = useState(false);
-  const [activeActivityTraceUserExpanded, setActiveActivityTraceUserExpanded] = useState(false);
+  const {
+    trace: activityTrace,
+    traceRef: activityTraceRef,
+    toolPending,
+    setToolPending,
+    userExpanded: activeActivityTraceUserExpanded,
+    expandedRef: activeActivityTraceExpandedRef,
+    update: updateActivityTrace,
+    clear: clearActivityTrace,
+    setUserExpanded: setActiveActivityTraceExpanded,
+    resetExpansion: resetActiveActivityTraceExpansion,
+  } = useActivityTrace();
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -130,25 +140,6 @@ export function ChatShell({
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
-  const activityTraceRef = useRef<ActivityTraceEvent[]>([]);
-  const activeActivityTraceExpandedRef = useRef(false);
-
-  const resetActiveActivityTraceExpansion = useCallback(() => {
-    activeActivityTraceExpandedRef.current = false;
-    setActiveActivityTraceUserExpanded(false);
-  }, []);
-
-  const updateActivityTrace = useCallback((updater: (current: ActivityTraceEvent[]) => ActivityTraceEvent[]) => {
-    const next = updater(activityTraceRef.current);
-    activityTraceRef.current = next;
-    setActivityTrace(next);
-  }, []);
-
-  const clearActivityTrace = useCallback(() => {
-    activityTraceRef.current = [];
-    setActivityTrace([]);
-    setToolPending(false);
-  }, []);
 
   const handleActionError = useCallback(
     (error: unknown, fallback: string, setError: (message: string) => void) => {
@@ -802,10 +793,7 @@ export function ChatShell({
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
-            onActiveActivityTraceExpandedChange={(expanded) => {
-              activeActivityTraceExpandedRef.current = expanded;
-              setActiveActivityTraceUserExpanded(expanded);
-            }}
+            onActiveActivityTraceExpandedChange={setActiveActivityTraceExpanded}
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}
             onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
