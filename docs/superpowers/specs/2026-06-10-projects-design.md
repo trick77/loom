@@ -13,6 +13,7 @@ Projects v1 includes:
 - Project create, edit details, archive, and delete flows.
 - Chat project membership management:
   - Add a non-project chat to a project.
+  - Move selected chats from the `/chats` bulk-selection toolbar into a project.
   - Remove a project chat from its project.
   - Create a new chat inside a project.
   - Keep normal project-less chats fully supported.
@@ -180,6 +181,8 @@ Non-project chat menu:
 
 `Add to project` opens a project picker. Selecting a project updates the chat's `projectId`, removes it from project-less lists when applicable, and adds it to the target project's list on the next load.
 
+The `/chats` page `Move to project` button is active when one or more chats are selected. It opens the same project picker, applies the selected project to every selected chat, exits selection mode on success, and reloads the chats list so moved project chats disappear from project-less views when applicable.
+
 `Remove from project` sets `projectId` to `null`, removes the row from the current project list, and keeps the chat available in normal Recents/Chats.
 
 Archive and delete behavior remains chat behavior:
@@ -224,6 +227,7 @@ Frontend tests:
 - Project detail loads project chats via `projectId`.
 - Sending from a project detail creates a thread with the current project id.
 - Non-project chat menu shows `Add to project`.
+- Selected chats on `/chats` can be moved through the `Move to project` toolbar button.
 - Project chat menu shows `Remove from project`.
 - Moving a chat into a project calls `PATCH /api/threads/{threadID}` with `projectId`.
 - Removing a chat from a project calls `PATCH /api/threads/{threadID}` with `projectId: null`.
@@ -237,6 +241,6 @@ Visual verification:
 
 ## Implementation Notes
 
-Keep frontend files focused. Add a `ui/src/projects/` area for project list/detail components instead of growing `ui/src/chat/ChatShell.tsx` further. Reuse existing shared menu styling from `ui/src/ThreadActionsMenu.tsx` where practical so project menus align with chat menus.
+Keep frontend files focused. Add a `ui/src/projects/` area for project list/detail components and project-specific hooks/helpers instead of growing `ui/src/chat/ChatShell.tsx` further. Do not create god components or god classes: `ChatShell` may coordinate routes and shared state, but project page rendering, project modals, picker UI, and reusable project mutation helpers must live in focused files. Reuse existing shared menu styling from `ui/src/ThreadActionsMenu.tsx` where practical so project menus align with chat menus.
 
 Use the existing Slopr design tokens and avoid introducing a new visual system. Buttons, menus, modal shapes, search fields, and row/card hover treatments should match the current Chats and sidebar surfaces.
