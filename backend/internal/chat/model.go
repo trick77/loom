@@ -96,8 +96,14 @@ type CreateThreadInput struct {
 	Title     string
 }
 
+type ProjectIDUpdate struct {
+	Set   bool
+	Value *string
+}
+
 type UpdateThreadInput struct {
-	Title *string
+	Title     *string
+	ProjectID ProjectIDUpdate
 }
 
 type ListThreadsOptions struct {
@@ -107,4 +113,7 @@ type ListThreadsOptions struct {
 	Archived        bool
 	Search          string
 	Limit           int
+	// Cursor is an opaque keyset position from a previous page; empty for the
+	// first page. Ignored by ListThreadIDs.
+	Cursor string
 }

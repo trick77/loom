@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import {
   AuthExpiredError,
@@ -14,20 +14,18 @@ import { Icon } from "../chat/Icon";
 import { CloseIcon, FileIcon } from "../chat/icons";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
+import { useInfiniteList } from "../useInfiniteList";
 
-const PAGE_LIMIT = 1000;
+const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
 
-export function LibraryPage({
+export function ArtifactsPage({
   onOpenSidebar,
   onSessionExpired,
 }: {
   onOpenSidebar(): void;
   onSessionExpired(): void;
 }) {
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [loadError, setLoadError] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [type, setType] = useState<ArtifactListType>("all");
@@ -39,27 +37,22 @@ export function LibraryPage({
     return () => window.clearTimeout(handle);
   }, [searchInput]);
 
+  // The server owns filtering and ordering; the client renders pages in the
+  // exact order they arrive so cursor boundaries stay aligned (no client re-sort).
+  const fetchPage = useCallback(
+    (cursor: string | null) =>
+      listArtifacts({ type, sort, order, search: searchTerm, limit: PAGE_SIZE, cursor }),
+    [type, sort, order, searchTerm],
+  );
+  const { items: artifacts, loaded, loadingMore, hasMore, error, sentinelRef } = useInfiniteList(
+    fetchPage,
+    [type, sort, order, searchTerm],
+  );
+
   useEffect(() => {
-    let active = true;
-    listArtifacts({ type, sort, order, search: searchTerm, limit: PAGE_LIMIT })
-      .then((next) => {
-        if (!active) return;
-        setArtifacts(next);
-        setLoaded(true);
-        setLoadError("");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        if (error instanceof AuthExpiredError) {
-          onSessionExpired();
-          return;
-        }
-        setLoadError("Artifacts failed to load.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [onSessionExpired, order, searchTerm, sort, type]);
+    if (error instanceof AuthExpiredError) onSessionExpired();
+  }, [error, onSessionExpired]);
+  const loadError = error !== null && !(error instanceof AuthExpiredError) ? "Artifacts failed to load." : "";
 
   function updateSort(nextSort: ArtifactSort) {
     if (sort === nextSort) {
@@ -70,18 +63,13 @@ export function LibraryPage({
     setOrder(nextSort === "modified" ? "desc" : "asc");
   }
 
-  const visibleArtifacts = useMemo(
-    () => projectArtifacts(artifacts, { type, sort, order, search: searchTerm }),
-    [artifacts, order, searchTerm, sort, type],
-  );
-
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-[860px] px-4 pb-16 pt-10 md:px-6">
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <SidebarOpenButton onClick={onOpenSidebar} />
-            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Library</h1>
+            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Artifacts</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <FilterButton active={type === "all"} label="All" onClick={() => setType("all")} />
@@ -118,7 +106,7 @@ export function LibraryPage({
             <SortButton active={sort === "modified"} label="Modified" order={order} onClick={() => updateSort("modified")} />
             <SortButton active={sort === "size"} label="Size" order={order} onClick={() => updateSort("size")} />
           </div>
-          {visibleArtifacts.length === 0 && loadError === "" ? (
+          {artifacts.length === 0 && loadError === "" ? (
             loaded && (
               <div className="py-10 text-center text-[#807d74]">
                 {searchTerm === "" ? "No artifacts yet." : "No artifacts match your search."}
@@ -126,54 +114,20 @@ export function LibraryPage({
             )
           ) : (
             <ul>
-              {visibleArtifacts.map((artifact) => (
+              {artifacts.map((artifact) => (
                 <ArtifactRow key={artifact.id} artifact={artifact} />
               ))}
             </ul>
           )}
-          {loaded && artifacts.length >= PAGE_LIMIT && (
-            <div className="slopr-meta-text mt-3 px-1.5 text-[#8a887f]">
-              Showing the latest {PAGE_LIMIT} artifacts.
-            </div>
+          {/* Sentinel observed for infinite scroll; loads the next page when in view. */}
+          <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+          {loadingMore && hasMore && (
+            <div className="slopr-meta-text mt-3 px-1.5 text-[#8a887f]">Loading more…</div>
           )}
         </div>
       </div>
     </div>
   );
-}
-
-function projectArtifacts(
-  artifacts: Artifact[],
-  opts: { type: ArtifactListType; sort: ArtifactSort; order: SortOrder; search: string },
-) {
-  const search = opts.search.trim().toLowerCase();
-  const direction = opts.order === "asc" ? 1 : -1;
-  return artifacts
-    .filter((artifact) => {
-      const isImage = artifact.mimeType.startsWith("image/");
-      if (opts.type === "images" && !isImage) return false;
-      if (opts.type === "files" && isImage) return false;
-      if (search !== "" && !artifact.displayFilename.toLowerCase().includes(search)) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      let result = 0;
-      if (opts.sort === "name") {
-        result = a.displayFilename.localeCompare(b.displayFilename, undefined, { sensitivity: "base" });
-      } else if (opts.sort === "size") {
-        result = a.sizeBytes - b.sizeBytes;
-      } else {
-        result = timeValue(a.modifiedAt) - timeValue(b.modifiedAt);
-      }
-      if (result === 0) result = a.id.localeCompare(b.id);
-      return result * direction;
-    });
-}
-
-function timeValue(value: string | undefined) {
-  if (value === undefined) return 0;
-  const ms = new Date(value).getTime();
-  return Number.isNaN(ms) ? 0 : ms;
 }
 
 function FilterButton({
@@ -249,7 +203,7 @@ function ArtifactRowFrame({
     <li className="relative border-b border-[#343432]">
       <div
         aria-label={ariaLabel}
-        className={`slopr-library-row-surface min-h-[56px] rounded-md px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
+        className={`slopr-artifacts-row-surface min-h-[56px] rounded-md px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
           interactive ? "cursor-pointer" : ""
         }`}
         onClick={onClick}
@@ -263,12 +217,12 @@ function ArtifactRowFrame({
         role={interactive ? "button" : undefined}
         tabIndex={interactive ? 0 : undefined}
       >
-        <div className="slopr-library-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
+        <div className="slopr-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
           <div className="min-w-0 pr-3">{action}</div>
           <div className="shrink-0 text-[13px] text-[#8a887f]">{formatTimeAgo(modifiedAt)}</div>
           <div className="shrink-0 text-[13px] text-[#c7c5bd]">{formatFileSize(artifact.sizeBytes)}</div>
         </div>
-        <div className="slopr-library-row-secondary ml-12 mt-0.5 truncate text-xs text-[#8a887f]">
+        <div className="slopr-artifacts-row-secondary ml-12 mt-0.5 truncate text-xs text-[#8a887f]">
           {artifact.mimeType}
         </div>
       </div>

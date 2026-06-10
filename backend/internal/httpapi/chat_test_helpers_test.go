@@ -90,6 +90,8 @@ type fakeChatStore struct {
 	assistantContent    string
 	assistantContextErr error
 	createThreadErr     error
+	updateThreadInput   chat.UpdateThreadInput
+	updateThreadErr     error
 }
 
 func (f *fakeChatStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
@@ -144,7 +146,20 @@ func (f *fakeChatStore) ListThreads(_ context.Context, userID string, opts chat.
 	return []chat.Thread{f.thread}, nil
 }
 
+func (f *fakeChatStore) ListThreadIDs(_ context.Context, userID string, opts chat.ListThreadsOptions) ([]string, error) {
+	f.listThreadsUserID = userID
+	f.listThreadsOptions = opts
+	if f.thread.ID == "" {
+		return []string{}, nil
+	}
+	return []string{f.thread.ID}, nil
+}
+
 func (f *fakeChatStore) UpdateThread(_ context.Context, userID, threadID string, in chat.UpdateThreadInput) (chat.Thread, bool, error) {
+	f.updateThreadInput = in
+	if f.updateThreadErr != nil {
+		return chat.Thread{}, false, f.updateThreadErr
+	}
 	if f.thread.ID == "" {
 		f.thread = chat.Thread{ID: threadID, UserID: userID, Title: chat.DefaultThreadTitle}
 	}
@@ -154,6 +169,9 @@ func (f *fakeChatStore) UpdateThread(_ context.Context, userID, threadID string,
 			return chat.Thread{}, false, errors.New("thread title is required")
 		}
 		f.thread.Title = title
+	}
+	if in.ProjectID.Set {
+		f.thread.ProjectID = in.ProjectID.Value
 	}
 	return f.thread, true, nil
 }

@@ -359,6 +359,128 @@ func TestStore_NormalizesThreadTitles(t *testing.T) {
 	}
 }
 
+func TestStore_UpdateThreadProjectMembership(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Notes"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	updated, ok, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{
+		ProjectID: ProjectIDUpdate{Set: true, Value: &project.ID},
+	})
+	if err != nil {
+		t.Fatalf("UpdateThread(set project) error: %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateThread(set project) ok = false, want true")
+	}
+	if updated.ProjectID == nil || *updated.ProjectID != project.ID {
+		t.Fatalf("updated.ProjectID = %v, want %q", updated.ProjectID, project.ID)
+	}
+
+	projectThreads, err := store.ListThreads(ctx, userID, ListThreadsOptions{ProjectID: &project.ID})
+	if err != nil {
+		t.Fatalf("ListThreads(project) error: %v", err)
+	}
+	if len(projectThreads) != 1 || projectThreads[0].ID != thread.ID {
+		t.Fatalf("project threads = %#v, want only %q", projectThreads, thread.ID)
+	}
+
+	projectlessThreads, err := store.ListThreads(ctx, userID, ListThreadsOptions{ProjectlessOnly: true})
+	if err != nil {
+		t.Fatalf("ListThreads(projectless) error: %v", err)
+	}
+	if len(projectlessThreads) != 0 {
+		t.Fatalf("projectless thread count = %d, want 0", len(projectlessThreads))
+	}
+
+	cleared, ok, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{
+		ProjectID: ProjectIDUpdate{Set: true, Value: nil},
+	})
+	if err != nil {
+		t.Fatalf("UpdateThread(clear project) error: %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateThread(clear project) ok = false, want true")
+	}
+	if cleared.ProjectID != nil {
+		t.Fatalf("cleared.ProjectID = %v, want nil", cleared.ProjectID)
+	}
+}
+
+func TestStore_UpdateThreadRejectsAnotherUsersProject(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	aliceID := insertTestUser(t, db, "alice")
+	bobID := insertTestUser(t, db, "bob")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, aliceID, CreateThreadInput{Title: "Private"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	bobProject, err := store.CreateProject(ctx, bobID, CreateProjectInput{Name: "Bob"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+
+	_, ok, err := store.UpdateThread(ctx, aliceID, thread.ID, UpdateThreadInput{
+		ProjectID: ProjectIDUpdate{Set: true, Value: &bobProject.ID},
+	})
+	if err == nil {
+		t.Fatal("UpdateThread() error = nil, want project not found")
+	}
+	if ok {
+		t.Fatal("UpdateThread() ok = true, want false")
+	}
+	if err.Error() != "project not found" {
+		t.Fatalf("UpdateThread() error = %q, want project not found", err.Error())
+	}
+}
+
+func TestStore_UpdateThreadTitleAndProjectTogether(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Draft"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	title := "Final notes"
+
+	updated, ok, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{
+		Title:     &title,
+		ProjectID: ProjectIDUpdate{Set: true, Value: &project.ID},
+	})
+	if err != nil {
+		t.Fatalf("UpdateThread() error: %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateThread() ok = false, want true")
+	}
+	if updated.Title != "Final notes" {
+		t.Fatalf("updated.Title = %q, want Final notes", updated.Title)
+	}
+	if updated.ProjectID == nil || *updated.ProjectID != project.ID {
+		t.Fatalf("updated.ProjectID = %v, want %q", updated.ProjectID, project.ID)
+	}
+}
+
 func TestStore_KeepsOnlyFirstLineOfMultilineTitles(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -725,5 +847,69 @@ func TestStore_CreateProjectlessThreadAndListMessagesScopesByUser(t *testing.T) 
 	}
 	if string(messages[0].ToolCalls) != "[]" || string(messages[0].Citations) != "[]" {
 		t.Fatalf("message JSON defaults = %q, %q; want [], []", messages[0].ToolCalls, messages[0].Citations)
+	}
+}
+
+func TestStore_ListThreadsPaginatesWithCursor(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	// Explicit timestamps make ordering deterministic; t_c uses last_message_at
+	// to exercise the COALESCE(last_message_at, updated_at) keyset.
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO threads (id, user_id, title, created_at, updated_at, last_message_at)
+VALUES ('t_a', ?, 'A', '2026-06-10 09:00:00', '2026-06-10 09:00:00', NULL),
+       ('t_b', ?, 'B', '2026-06-10 09:00:01', '2026-06-10 09:00:01', NULL),
+       ('t_c', ?, 'C', '2026-06-10 08:00:00', '2026-06-10 08:00:00', '2026-06-10 09:00:05'),
+       ('t_d', ?, 'D', '2026-06-10 09:00:03', '2026-06-10 09:00:03', NULL),
+       ('t_e', ?, 'E', '2026-06-10 09:00:02', '2026-06-10 09:00:02', NULL)`,
+		userID, userID, userID, userID, userID); err != nil {
+		t.Fatalf("insert threads: %v", err)
+	}
+
+	// Activity DESC: t_c(09:00:05), t_d(09:00:03), t_e(09:00:02), t_b(09:00:01), t_a(09:00:00).
+	want := []string{"t_c", "t_d", "t_e", "t_b", "t_a"}
+
+	var got []string
+	opts := ListThreadsOptions{Limit: 2}
+	limit := EffectiveThreadLimit(opts.Limit)
+	for {
+		page, err := store.ListThreads(ctx, userID, opts)
+		if err != nil {
+			t.Fatalf("ListThreads(cursor=%q) error: %v", opts.Cursor, err)
+		}
+		if len(page) > limit {
+			t.Fatalf("page size = %d, want <= %d", len(page), limit)
+		}
+		for _, thread := range page {
+			got = append(got, thread.ID)
+		}
+		if len(page) < limit {
+			break
+		}
+		opts.Cursor = EncodeThreadCursor(page[len(page)-1])
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("paged ids = %v, want %v", got, want)
+	}
+
+	// ListThreadIDs returns every match in the same order, ignoring limit/cursor.
+	ids, err := store.ListThreadIDs(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreadIDs() error: %v", err)
+	}
+	if strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Fatalf("ListThreadIDs = %v, want %v", ids, want)
+	}
+
+	// Search filter narrows the id set.
+	filtered, err := store.ListThreadIDs(ctx, userID, ListThreadsOptions{Search: "C"})
+	if err != nil {
+		t.Fatalf("ListThreadIDs(search) error: %v", err)
+	}
+	if len(filtered) != 1 || filtered[0] != "t_c" {
+		t.Fatalf("ListThreadIDs(search) = %v, want [t_c]", filtered)
 	}
 }

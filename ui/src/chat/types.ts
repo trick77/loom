@@ -6,4 +6,4 @@ export type MessageWithActivityTrace = Message & {
   activityTraceInitiallyExpanded?: boolean;
 };
 
-export type SidebarIconName = "chats" | "projects" | "library";
+export type SidebarIconName = "chats" | "projects" | "artifacts";

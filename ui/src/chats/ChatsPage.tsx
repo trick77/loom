@@ -1,38 +1,49 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { AuthExpiredError, bulkDeleteThreads, listThreads, type Thread } from "../api";
+import {
+  AuthExpiredError,
+  bulkDeleteThreads,
+  listThreadIds,
+  listThreads,
+  type Thread,
+} from "../api";
+import { useInfiniteList } from "../useInfiniteList";
 import { BulkDeleteModal } from "./BulkDeleteModal";
 import { ChatRow } from "./ChatRow";
 import { Icon } from "../chat/Icon";
 import { PillButton } from "./PillButton";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 
-const PAGE_LIMIT = 1000;
+const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
 
 export function ChatsPage({
   mutationVersion,
+  projectsAvailable = false,
   onOpenSidebar,
   onNewChat,
   onSelectThread,
   onRenameThread,
   onDeleteThread,
   onStarThread,
+  onAddThreadToProject,
+  onMoveSelectedToProject,
   onAfterBulkDelete,
   onSessionExpired,
 }: {
   mutationVersion: number;
+  projectsAvailable?: boolean;
   onOpenSidebar(): void;
   onNewChat(): void;
   onSelectThread(threadID: string): void;
   onRenameThread(thread: Thread): void;
   onDeleteThread(thread: Thread): void;
   onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
+  onAddThreadToProject?(thread: Thread): void;
+  onMoveSelectedToProject?(threads: Thread[]): void;
   onAfterBulkDelete(): void;
   onSessionExpired(): void;
 }) {
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -50,39 +61,35 @@ export function ChatsPage({
     return () => window.clearTimeout(handle);
   }, [searchInput]);
 
-  // Load the full thread list for the current search; refetch when an external
-  // mutation (star/rename/single-delete from a row menu) bumps the version.
+  // Infinite scroll: load page one (and reset to it) whenever the search changes
+  // or an external mutation (star/rename/single-delete from a row menu) or a bulk
+  // delete bumps a token; further pages append as the sentinel scrolls into view.
+  const fetchPage = useCallback(
+    (cursor: string | null) => listThreads({ search: searchTerm, limit: PAGE_SIZE, cursor }),
+    [searchTerm],
+  );
+  const {
+    items: threads,
+    setItems: setThreads,
+    loaded,
+    loadingMore,
+    hasMore,
+    error,
+    sentinelRef,
+  } = useInfiniteList(fetchPage, [searchTerm, mutationVersion, reloadToken]);
+
   useEffect(() => {
-    let active = true;
-    listThreads({ search: searchTerm, limit: PAGE_LIMIT })
-      .then((next) => {
-        if (!active) return;
-        setThreads(next);
-        setLoaded(true);
-        setLoadError("");
-        // Drop selections that no longer exist in the current result set.
-        setSelectedIds((current) => {
-          if (current.size === 0) return current;
-          const allowed = new Set(next.map((thread) => thread.id));
-          const filtered = new Set<string>();
-          current.forEach((id) => {
-            if (allowed.has(id)) filtered.add(id);
-          });
-          return filtered;
-        });
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        if (error instanceof AuthExpiredError) {
-          onSessionExpired();
-          return;
-        }
-        setLoadError("Chats failed to load.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [searchTerm, mutationVersion, reloadToken, onSessionExpired]);
+    if (error instanceof AuthExpiredError) {
+      onSessionExpired();
+      return;
+    }
+    setLoadError(error !== null ? "Chats failed to load." : "");
+  }, [error, onSessionExpired]);
+
+  // A new search changes what "all" means, so clear any selection it carried.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [searchTerm]);
 
   const selectedCount = selectedIds.size;
   const hasSelection = selectedCount > 0;
@@ -104,11 +111,26 @@ export function ChatsPage({
     });
   }, []);
 
+  // "Select all" acts on every thread matching the current search — including
+  // ones not yet loaded into the list — by fetching the full id set. Clicking
+  // again, when everything is already selected, clears the selection.
   const toggleSelectAll = useCallback(() => {
-    setSelectedIds((current) =>
-      current.size === threads.length ? new Set() : new Set(threads.map((thread) => thread.id)),
-    );
-  }, [threads]);
+    void (async () => {
+      try {
+        const ids = await listThreadIds({ search: searchTerm });
+        setSelectedIds((current) => {
+          const allSelected = ids.length > 0 && ids.every((id) => current.has(id));
+          return allSelected ? new Set() : new Set(ids);
+        });
+      } catch (error) {
+        if (error instanceof AuthExpiredError) {
+          onSessionExpired();
+          return;
+        }
+        setLoadError("Chats failed to load.");
+      }
+    })();
+  }, [searchTerm, onSessionExpired]);
 
   const startSelectModeWith = useCallback((thread: Thread) => {
     setOpenMenuID(null);
@@ -157,7 +179,15 @@ export function ChatsPage({
               <PillButton variant="solid" onClick={toggleSelectAll}>
                 Select all
               </PillButton>
-              <PillButton variant="muted" enabled={hasSelection} title="Projects are not available yet">
+              <PillButton
+                variant="muted"
+                enabled={hasSelection && projectsAvailable}
+                title={projectsAvailable ? undefined : "Create a project before moving chats"}
+                onClick={() => {
+                  if (!hasSelection || !projectsAvailable || onMoveSelectedToProject === undefined) return;
+                  onMoveSelectedToProject(threads.filter((thread) => selectedIds.has(thread.id)));
+                }}
+              >
                 Move to project
               </PillButton>
               <PillButton
@@ -235,11 +265,17 @@ export function ChatsPage({
                 onSelectFromMenu={() => startSelectModeWith(thread)}
                 onRename={onRenameThread}
                 onDelete={onDeleteThread}
+                onAddToProject={projectsAvailable ? onAddThreadToProject : undefined}
                 onStarChange={onStarThread}
               />
             ))
           )}
         </ul>
+        {/* Sentinel observed for infinite scroll; loads the next page when in view. */}
+        <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+        {loadingMore && hasMore && (
+          <div className="slopr-meta-text mt-3 px-1.5 text-[#8a887f]">Loading more…</div>
+        )}
       </div>
 
       {confirmingDelete && (

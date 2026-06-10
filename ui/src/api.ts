@@ -160,13 +160,57 @@ export async function createProject(input: { name: string; description?: string 
   return expectJSON<Project>(response, "failed to create project");
 }
 
+export async function updateProject(
+  projectId: string,
+  input: { name?: string; description?: string },
+): Promise<Project> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return expectJSON<Project>(response, "failed to update project");
+}
+
+export async function archiveProject(projectId: string): Promise<void> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/archive`, {
+    method: "POST",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to archive project");
+  }
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+    method: "DELETE",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to delete project");
+  }
+}
+
+// Page is the cursor-pagination envelope returned by list endpoints.
+// nextCursor is null when there are no further pages.
+export type Page<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
 export async function listThreads(params: {
   projectId?: string | null;
   starred?: boolean;
   archived?: boolean;
   search?: string;
   limit?: number;
-} = {}): Promise<Thread[]> {
+  cursor?: string | null;
+} = {}): Promise<Page<Thread>> {
   const query = new URLSearchParams();
   if (params.projectId !== undefined) {
     query.set("projectId", params.projectId === null ? "null" : params.projectId);
@@ -183,9 +227,25 @@ export async function listThreads(params: {
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
   }
+  if (params.cursor !== undefined && params.cursor !== null && params.cursor !== "") {
+    query.set("cursor", params.cursor);
+  }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
   const response = await fetch(`/api/threads${suffix}`);
-  return expectJSON<Thread[]>(response, "failed to load threads");
+  return expectJSON<Page<Thread>>(response, "failed to load threads");
+}
+
+// listThreadIds returns the ids of every thread matching the search, with no
+// pagination — used by "select all matches" so the client can act on threads
+// it has not loaded into the list.
+export async function listThreadIds(params: { search?: string } = {}): Promise<string[]> {
+  const query = new URLSearchParams();
+  if (params.search !== undefined && params.search !== "") {
+    query.set("search", params.search);
+  }
+  const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
+  const response = await fetch(`/api/threads/ids${suffix}`);
+  return expectJSON<string[]>(response, "failed to load thread ids");
 }
 
 export async function listArtifacts(params: {
@@ -194,7 +254,8 @@ export async function listArtifacts(params: {
   order?: SortOrder;
   search?: string;
   limit?: number;
-} = {}): Promise<Artifact[]> {
+  cursor?: string | null;
+} = {}): Promise<Page<Artifact>> {
   const query = new URLSearchParams();
   if (params.type !== undefined) {
     query.set("type", params.type);
@@ -211,9 +272,12 @@ export async function listArtifacts(params: {
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
   }
+  if (params.cursor !== undefined && params.cursor !== null && params.cursor !== "") {
+    query.set("cursor", params.cursor);
+  }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
   const response = await fetch(`/api/artifacts${suffix}`);
-  return expectJSON<Artifact[]>(response, "failed to load artifacts");
+  return expectJSON<Page<Artifact>>(response, "failed to load artifacts");
 }
 
 export async function createThread(input: { projectId?: string | null; title?: string } = {}): Promise<Thread> {
@@ -238,13 +302,28 @@ export async function setThreadStarred(threadId: string, starred: boolean): Prom
   return expectJSON<Thread>(response, "failed to update thread");
 }
 
-export async function updateThread(threadId: string, input: { title?: string }): Promise<Thread> {
+export async function updateThread(
+  threadId: string,
+  input: { title?: string; projectId?: string | null },
+): Promise<Thread> {
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   return expectJSON<Thread>(response, "failed to update thread");
+}
+
+export async function archiveThread(threadId: string): Promise<void> {
+  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/archive`, {
+    method: "POST",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to archive thread");
+  }
 }
 
 export async function deleteThread(threadId: string): Promise<void> {

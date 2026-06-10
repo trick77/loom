@@ -15,11 +15,15 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import {
   AuthExpiredError,
+  archiveProject,
+  archiveThread,
   createProject,
   createThread,
+  deleteProject,
   deleteThread,
   downloadArtifact,
   updateThread,
+  updateProject,
   getMcpStatus,
   getThread,
   listProjects,
@@ -48,7 +52,7 @@ import { MessageMetrics } from "../MessageMetrics";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ChatsPage } from "../ChatsPage";
-import { LibraryPage } from "../library/LibraryPage";
+import { ArtifactsPage } from "../artifacts/ArtifactsPage";
 import {
   buildImageStats,
   downloadableResponse,
@@ -65,6 +69,12 @@ import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FileIcon } from "./icons"
 import { Icon } from "./Icon";
 import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
+import { DeleteProjectModal } from "../projects/DeleteProjectModal";
+import { ProjectDetailPage } from "../projects/ProjectDetailPage";
+import { ProjectDialog } from "../projects/ProjectDialog";
+import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
+import { ProjectsPage } from "../projects/ProjectsPage";
+import { removeThreadsById, replaceThreadById, upsertThreadById } from "../projects/projectMembership";
 
 export { buildImageStats } from "./artifacts";
 
@@ -93,6 +103,8 @@ export function ChatShell({
 }: ChatShellProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [projectThreads, setProjectThreads] = useState<Thread[]>([]);
+  const [chatDataLoaded, setChatDataLoaded] = useState(false);
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<MessageWithActivityTrace[]>([]);
@@ -100,6 +112,11 @@ export function ChatShell({
   const [projectName, setProjectName] = useState("");
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  // undefined = closed, null = create, Project = edit.
+  const [editingProject, setEditingProject] = useState<Project | null | undefined>(undefined);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [movingThreads, setMovingThreads] = useState<Thread[]>([]);
+  const [isMutatingProject, setIsMutatingProject] = useState(false);
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [renamingThread, setRenamingThread] = useState<Thread | null>(null);
   const [deletingThread, setDeletingThread] = useState<Thread | null>(null);
@@ -209,11 +226,13 @@ export function ChatShell({
       .then(([nextProjects, nextThreads]) => {
         if (!active) return;
         setProjects(nextProjects);
-        setThreads(nextThreads);
+        setThreads(nextThreads.items);
+        setChatDataLoaded(true);
         setLoadError("");
       })
       .catch((error: unknown) => {
         if (!active) return;
+        setChatDataLoaded(true);
         if (error instanceof AuthExpiredError) {
           onSessionExpired();
           return;
@@ -284,8 +303,33 @@ export function ChatShell({
     };
   }, [clearActivityTrace, handleActionError, resetActiveActivityTraceExpansion, route]);
 
+  useEffect(() => {
+    if (route.view !== "project") {
+      setProjectThreads([]);
+      return;
+    }
+    let active = true;
+    listThreads({ projectId: route.projectID, limit: 1000 })
+      .then((nextThreads) => {
+        if (!active) return;
+        setProjectThreads(nextThreads.items);
+        setLoadError("");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        handleActionError(error, "Project chats failed to load.", setLoadError);
+      });
+    return () => {
+      active = false;
+    };
+  }, [handleActionError, route]);
+
   const displayName = user.displayName || user.username;
   const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
+  const activeProject = useMemo(() => {
+    if (route.view !== "project") return null;
+    return projects.find((project) => project.id === route.projectID) ?? null;
+  }, [projects, route]);
 
   const navigateToNew = useCallback(() => {
     onChat();
@@ -310,16 +354,33 @@ export function ChatShell({
     setRoute({ view: "chats" });
   }, [onChat]);
 
-  const navigateToLibrary = useCallback(() => {
+  const navigateToArtifacts = useCallback(() => {
     onChat();
     setMobileSidebarOpen(false);
-    navigate({ view: "library" });
-    setRoute({ view: "library" });
+    navigate({ view: "artifacts" });
+    setRoute({ view: "artifacts" });
   }, [onChat]);
+
+  const navigateToProjects = useCallback(() => {
+    onChat();
+    setMobileSidebarOpen(false);
+    navigate({ view: "projects" });
+    setRoute({ view: "projects" });
+  }, [onChat]);
+
+  const navigateToProject = useCallback(
+    (project: Project) => {
+      onChat();
+      setMobileSidebarOpen(false);
+      navigate({ view: "project", projectID: project.id });
+      setRoute({ view: "project", projectID: project.id });
+    },
+    [onChat],
+  );
 
   const reloadThreads = useCallback(() => {
     listThreads({ limit: 30 })
-      .then((nextThreads) => setThreads(nextThreads))
+      .then((nextThreads) => setThreads(nextThreads.items))
       .catch((error: unknown) => {
         if (error instanceof AuthExpiredError) onSessionExpired();
       });
@@ -348,6 +409,72 @@ export function ChatShell({
     }
   }
 
+  function openProjectDialog(project: Project | null) {
+    setEditingProject(project);
+    setModalError("");
+    setOpenThreadMenuID(null);
+  }
+
+  async function handleProjectDialogSubmit(input: { name: string; description: string }) {
+    if (editingProject === undefined || isMutatingProject) return;
+    setIsMutatingProject(true);
+    try {
+      const project =
+        editingProject === null
+          ? await createProject(input)
+          : await updateProject(editingProject.id, input);
+      setProjects((current) => [project, ...current.filter((item) => item.id !== project.id)]);
+      setEditingProject(undefined);
+      setModalError("");
+      if (editingProject === null) {
+        navigateToProject(project);
+      }
+    } catch (error) {
+      handleActionError(error, "Project failed to save.", setModalError);
+    } finally {
+      setIsMutatingProject(false);
+    }
+  }
+
+  async function handleArchiveProject(project: Project) {
+    if (isMutatingProject) return;
+    setIsMutatingProject(true);
+    try {
+      await archiveProject(project.id);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      if (route.view === "project" && route.projectID === project.id) {
+        navigateToProjects();
+      }
+      setOpenThreadMenuID(null);
+      setModalError("");
+    } catch (error) {
+      handleActionError(error, "Project failed to archive.", setModalError);
+    } finally {
+      setIsMutatingProject(false);
+    }
+  }
+
+  async function handleDeleteProjectConfirm() {
+    if (deletingProject === null || isMutatingProject) return;
+    const project = deletingProject;
+    setIsMutatingProject(true);
+    try {
+      await deleteProject(project.id);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      setThreads((current) => current.filter((thread) => thread.projectId !== project.id));
+      setProjectThreads([]);
+      setDeletingProject(null);
+      if (route.view === "project" && route.projectID === project.id) {
+        navigateToProjects();
+      }
+      setModalError("");
+    } catch (error) {
+      handleActionError(error, "Project failed to delete.", setModalError);
+    } finally {
+      setIsMutatingProject(false);
+    }
+  }
+
   async function handleSetThreadStarred(thread: Thread, starred: boolean, menuKey?: string) {
     if (isUpdatingStar) return;
     setIsUpdatingStar(true);
@@ -359,6 +486,7 @@ export function ChatShell({
       setThreads((current) =>
         current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
       );
+      setProjectThreads((current) => replaceThreadById(current, updatedThread));
       setThreadMutationVersion((value) => value + 1);
       if (menuKey !== undefined) {
         setOpenThreadMenuID(null);
@@ -399,6 +527,7 @@ export function ChatShell({
       setThreads((current) =>
         current.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread)),
       );
+      setProjectThreads((current) => replaceThreadById(current, updatedThread));
       setThreadMutationVersion((value) => value + 1);
       setRenamingThread(null);
       setModalError("");
@@ -415,6 +544,7 @@ export function ChatShell({
     try {
       await deleteThread(deletingThread.id);
       setThreads((current) => current.filter((thread) => thread.id !== deletingThread.id));
+      setProjectThreads((current) => current.filter((thread) => thread.id !== deletingThread.id));
       setThreadMutationVersion((value) => value + 1);
       if (activeThreadIDRef.current === deletingThread.id) {
         streamAbortRef.current?.abort();
@@ -433,6 +563,96 @@ export function ChatShell({
       setModalError("");
     } catch (error) {
       handleActionError(error, "Thread failed to delete.", setModalError);
+    } finally {
+      setIsMutatingThread(false);
+    }
+  }
+
+  async function handleArchiveThread(thread: Thread) {
+    if (isMutatingThread) return;
+    setIsMutatingThread(true);
+    try {
+      await archiveThread(thread.id);
+      setThreads((current) => current.filter((item) => item.id !== thread.id));
+      setProjectThreads((current) => current.filter((item) => item.id !== thread.id));
+      setThreadMutationVersion((value) => value + 1);
+      if (activeThreadIDRef.current === thread.id) {
+        navigateToNew();
+      }
+      setOpenThreadMenuID(null);
+      setModalError("");
+    } catch (error) {
+      handleActionError(error, "Thread failed to archive.", setModalError);
+    } finally {
+      setIsMutatingThread(false);
+    }
+  }
+
+  async function handleMoveThreadsToProject(targetThreads: Thread[], project: Project) {
+    if (targetThreads.length === 0 || isMutatingThread) return;
+    setIsMutatingThread(true);
+    try {
+      const results = await Promise.allSettled(
+        targetThreads.map(async (thread) => ({
+          original: thread,
+          updated: await updateThread(thread.id, { projectId: project.id }),
+        })),
+      );
+      const updatedThreads = results
+        .filter((result): result is PromiseFulfilledResult<{ original: Thread; updated: Thread }> => result.status === "fulfilled")
+        .map((result) => result.value.updated);
+      if (updatedThreads.length === 0) {
+        throw new Error("No chats moved.");
+      }
+      const failedThreads = results
+        .map((result, index) => (result.status === "rejected" ? targetThreads[index] : null))
+        .filter((thread): thread is Thread => thread !== null);
+      const updatedIDs = new Set(updatedThreads.map((thread) => thread.id));
+      setThreads((current) =>
+        current.map((thread) => updatedThreads.find((updated) => updated.id === thread.id) ?? thread),
+      );
+      setProjectThreads((current) => {
+        let next = current;
+        if (route.view === "project" && route.projectID !== project.id) {
+          next = removeThreadsById(next, updatedIDs);
+        }
+        if (route.view === "project" && route.projectID === project.id) {
+          for (const thread of updatedThreads) {
+            next = upsertThreadById(next, thread);
+          }
+        }
+        return next;
+      });
+      if (activeThread !== null) {
+        const updatedActive = updatedThreads.find((thread) => thread.id === activeThread.id);
+        if (updatedActive !== undefined) setActiveThread(updatedActive);
+      }
+      setMovingThreads(failedThreads);
+      setThreadMutationVersion((value) => value + 1);
+      const failedCount = failedThreads.length;
+      setModalError(failedCount > 0 ? `${failedCount} chat${failedCount === 1 ? "" : "s"} failed to move.` : "");
+    } catch (error) {
+      handleActionError(error, "Chats failed to move.", setModalError);
+    } finally {
+      setIsMutatingThread(false);
+    }
+  }
+
+  async function handleRemoveThreadFromProject(thread: Thread) {
+    if (isMutatingThread) return;
+    setIsMutatingThread(true);
+    try {
+      const updatedThread = await updateThread(thread.id, { projectId: null });
+      setThreads((current) => replaceThreadById(current, updatedThread));
+      setProjectThreads((current) => current.filter((item) => item.id !== updatedThread.id));
+      if (activeThreadIDRef.current === updatedThread.id) {
+        setActiveThread(updatedThread);
+      }
+      setThreadMutationVersion((value) => value + 1);
+      setOpenThreadMenuID(null);
+      setModalError("");
+    } catch (error) {
+      handleActionError(error, "Chat failed to remove from project.", setModalError);
     } finally {
       setIsMutatingThread(false);
     }
@@ -460,10 +680,14 @@ export function ChatShell({
     let abortController: AbortController | null = null;
     let createdThreadForFallback: Thread | null = null;
     let receivedThreadEvent = false;
+    const projectIDForNewThread = route.view === "project" ? route.projectID : null;
     try {
       let targetThread = activeThread;
       if (targetThread === null) {
-        targetThread = await createThread();
+        targetThread =
+          projectIDForNewThread === null
+            ? await createThread()
+            : await createThread({ projectId: projectIDForNewThread });
         createdThreadForFallback = targetThread;
         setActiveThread(targetThread);
         setMessages([]);
@@ -536,12 +760,26 @@ export function ChatShell({
           receivedThreadEvent = true;
           if (isCurrentThread()) setActiveThread(updatedThread);
           setThreads((current) => upsertThread(current, updatedThread));
+          if (
+            route.view === "project" &&
+            updatedThread.projectId !== undefined &&
+            updatedThread.projectId === route.projectID
+          ) {
+            setProjectThreads((current) => upsertThreadById(current, updatedThread));
+          }
         },
         onMcpStatus: (event) => setMcpStatus(event),
       }, abortController.signal);
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
+        if (
+          route.view === "project" &&
+          fallbackThread.projectId !== undefined &&
+          fallbackThread.projectId === route.projectID
+        ) {
+          setProjectThreads((current) => upsertThreadById(current, fallbackThread));
+        }
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -621,13 +859,19 @@ export function ChatShell({
             onClick={navigateToChats}
           />
           <SidebarPrimaryItem
-            label="Library"
-            icon="library"
+            label="Artifacts"
+            icon="artifacts"
             collapsed={railCollapsed}
-            active={route.view === "library" && !showAdmin}
-            onClick={navigateToLibrary}
+            active={route.view === "artifacts" && !showAdmin}
+            onClick={navigateToArtifacts}
           />
-          <SidebarPrimaryItem label="Projects" icon="projects" collapsed={railCollapsed} />
+          <SidebarPrimaryItem
+            label="Projects"
+            icon="projects"
+            collapsed={railCollapsed}
+            active={(route.view === "projects" || route.view === "project") && !showAdmin}
+            onClick={navigateToProjects}
+          />
           {!railCollapsed && (
             <>
           {loadError !== "" && (
@@ -643,6 +887,14 @@ export function ChatShell({
             onSelect={selectThread}
             onDelete={openDeleteModal}
             onRename={openRenameModal}
+            onAddToProject={
+              projects.length === 0
+                ? undefined
+                : (thread) => {
+                    setMovingThreads([thread]);
+                    setModalError("");
+                  }
+            }
             onStarChange={handleSetThreadStarred}
             onToggleMenu={(menuKey) =>
               setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
@@ -657,6 +909,14 @@ export function ChatShell({
             onSelect={selectThread}
             onDelete={openDeleteModal}
             onRename={openRenameModal}
+            onAddToProject={
+              projects.length === 0
+                ? undefined
+                : (thread) => {
+                    setMovingThreads([thread]);
+                    setModalError("");
+                  }
+            }
             onStarChange={handleSetThreadStarred}
             onToggleMenu={(menuKey) =>
               setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
@@ -713,9 +973,16 @@ export function ChatShell({
             )}
             <div className="space-y-1.5">
               {projects.map((project) => (
-                <div key={project.id} className="truncate rounded-md px-1.5 py-1.5 text-xs">
+                <button
+                  key={project.id}
+                  type="button"
+                  className={`block w-full truncate rounded-md px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-[#2a2a28] ${
+                    route.view === "project" && route.projectID === project.id ? "bg-[#111110] text-white" : ""
+                  }`}
+                  onClick={() => navigateToProject(project)}
+                >
                   {project.name}
-                </div>
+                </button>
               ))}
             </div>
           </section>
@@ -763,20 +1030,92 @@ export function ChatShell({
         ) : route.view === "chats" ? (
           <ChatsPage
             mutationVersion={threadMutationVersion}
+            projectsAvailable={projects.length > 0}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onNewChat={navigateToNew}
             onSelectThread={(threadID) => void selectThread(threadID)}
             onRenameThread={openRenameModal}
             onDeleteThread={openDeleteModal}
             onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
+            onAddThreadToProject={(thread) => {
+              setMovingThreads([thread]);
+              setModalError("");
+            }}
+            onMoveSelectedToProject={(selectedThreads) => {
+              setMovingThreads(selectedThreads);
+              setModalError("");
+            }}
             onAfterBulkDelete={reloadThreads}
             onSessionExpired={onSessionExpired}
           />
-        ) : route.view === "library" ? (
-          <LibraryPage
+        ) : route.view === "artifacts" ? (
+          <ArtifactsPage
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onSessionExpired={onSessionExpired}
           />
+        ) : route.view === "projects" ? (
+          <ProjectsPage
+            projects={projects}
+            loadError={loadError}
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
+            onCreateProject={() => openProjectDialog(null)}
+            onOpenProject={navigateToProject}
+            onEditProject={openProjectDialog}
+            onArchiveProject={(project) => void handleArchiveProject(project)}
+            onDeleteProject={(project) => {
+              setDeletingProject(project);
+              setModalError("");
+              setOpenThreadMenuID(null);
+            }}
+          />
+        ) : route.view === "project" ? (
+          activeProject === null ? (
+            <ProjectsPage
+              projects={projects}
+              loadError={loadError === "" && chatDataLoaded ? "Project not found." : loadError}
+              onOpenSidebar={() => setMobileSidebarOpen(true)}
+              onCreateProject={() => openProjectDialog(null)}
+              onOpenProject={navigateToProject}
+              onEditProject={openProjectDialog}
+              onArchiveProject={(project) => void handleArchiveProject(project)}
+              onDeleteProject={(project) => {
+                setDeletingProject(project);
+                setModalError("");
+                setOpenThreadMenuID(null);
+              }}
+            />
+          ) : (
+            <ProjectDetailPage
+              project={activeProject}
+              threads={projectThreads}
+              draft={draft}
+              sendError={sendError}
+              isSending={isSending}
+              openThreadMenuID={openThreadMenuID}
+              onBack={navigateToProjects}
+              onDraftChange={setDraft}
+              onSend={handleSend}
+              onStop={handleStopResponse}
+              onOpenThread={(threadID) => void selectThread(threadID)}
+              onRenameThread={openRenameModal}
+              onDeleteThread={openDeleteModal}
+              onArchiveThread={(thread) => void handleArchiveThread(thread)}
+              onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
+              onRemoveFromProject={(thread) => void handleRemoveThreadFromProject(thread)}
+              onToggleThreadMenu={(menuKey) =>
+                setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+              }
+              onCloseThreadMenu={() => setOpenThreadMenuID(null)}
+              onEditProject={openProjectDialog}
+              onArchiveProject={(project) => void handleArchiveProject(project)}
+              onDeleteProject={(project) => {
+                setDeletingProject(project);
+                setModalError("");
+                setOpenThreadMenuID(null);
+              }}
+              onOpenSidebar={() => setMobileSidebarOpen(true)}
+            />
+          )
         ) : route.view === "new" ? (
           <StartPanel
             displayName={displayName}
@@ -811,6 +1150,14 @@ export function ChatShell({
             onActiveActivityTraceExpandedChange={setActiveActivityTraceExpanded}
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}
+            onAddToProject={
+              projects.length === 0
+                ? undefined
+                : (thread) => {
+                    setMovingThreads([thread]);
+                    setModalError("");
+                  }
+            }
             onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
             onToggleThreadMenu={(menuKey) =>
               setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
@@ -835,6 +1182,34 @@ export function ChatShell({
           disabled={isMutatingThread}
           onCancel={() => setDeletingThread(null)}
           onDelete={handleDeleteConfirm}
+        />
+      )}
+      {editingProject !== undefined && (
+        <ProjectDialog
+          project={editingProject}
+          error={modalError}
+          disabled={isMutatingProject}
+          onCancel={() => setEditingProject(undefined)}
+          onSubmit={(input) => void handleProjectDialogSubmit(input)}
+        />
+      )}
+      {deletingProject !== null && (
+        <DeleteProjectModal
+          project={deletingProject}
+          error={modalError}
+          disabled={isMutatingProject}
+          onCancel={() => setDeletingProject(null)}
+          onDelete={() => void handleDeleteProjectConfirm()}
+        />
+      )}
+      {movingThreads.length > 0 && (
+        <ProjectPickerDialog
+          threads={movingThreads}
+          projects={projects}
+          error={modalError}
+          disabled={isMutatingThread}
+          onCancel={() => setMovingThreads([])}
+          onSelect={(project) => void handleMoveThreadsToProject(movingThreads, project)}
         />
       )}
     </div>
@@ -912,7 +1287,7 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
   if (name === "projects") {
     return <Icon name="archive" size="21px" className={className} />;
   }
-  if (name === "library") {
+  if (name === "artifacts") {
     return (
       <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
         <path
@@ -964,6 +1339,7 @@ function SidebarSection({
   onSelect,
   onDelete,
   onRename,
+  onAddToProject,
   onStarChange,
   onToggleMenu,
   onCloseMenu,
@@ -975,6 +1351,7 @@ function SidebarSection({
   onSelect(threadID: string): void;
   onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
+  onAddToProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
   onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
@@ -993,6 +1370,7 @@ function SidebarSection({
             onSelect={onSelect}
             onDelete={onDelete}
             onRename={onRename}
+            onAddToProject={onAddToProject}
             onStarChange={onStarChange}
             onToggleMenu={onToggleMenu}
             onCloseMenu={onCloseMenu}
@@ -1011,6 +1389,7 @@ function SidebarThreadItem({
   onSelect,
   onDelete,
   onRename,
+  onAddToProject,
   onStarChange,
   onToggleMenu,
   onCloseMenu,
@@ -1022,6 +1401,7 @@ function SidebarThreadItem({
   onSelect(threadID: string): void;
   onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
+  onAddToProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
   onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
@@ -1084,6 +1464,7 @@ function SidebarThreadItem({
           className="right-1 left-auto md:left-[174px] md:right-auto"
           onDelete={onDelete}
           onRename={onRename}
+          onAddToProject={onAddToProject}
           onStarChange={onStarChange}
         />
       )}
@@ -1312,6 +1693,7 @@ function ChatPanel({
   onActiveActivityTraceExpandedChange,
   onDeleteThread,
   onRenameThread,
+  onAddToProject,
   onStarThread,
   onToggleThreadMenu,
   onCloseThreadMenu,
@@ -1335,6 +1717,7 @@ function ChatPanel({
   onActiveActivityTraceExpandedChange(expanded: boolean): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
+  onAddToProject?(thread: Thread): void;
   onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
   onToggleThreadMenu(menuKey: string): void;
   onCloseThreadMenu(): void;
@@ -1504,6 +1887,7 @@ function ChatPanel({
               className="right-0 top-full"
               onDelete={onDeleteThread}
               onRename={onRenameThread}
+              onAddToProject={onAddToProject}
               onStarChange={onStarThread}
             />
           )}

@@ -19,6 +19,9 @@ export function ChatRow({
   onSelectFromMenu,
   onRename,
   onDelete,
+  onArchive,
+  onAddToProject,
+  onRemoveFromProject,
   onStarChange,
 }: {
   thread: Thread;
@@ -34,6 +37,9 @@ export function ChatRow({
   onSelectFromMenu(): void;
   onRename(thread: Thread): void;
   onDelete(thread: Thread): void;
+  onArchive?(thread: Thread): void;
+  onAddToProject?(thread: Thread): void;
+  onRemoveFromProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
 }) {
   const rowRef = useRef<HTMLLIElement | null>(null);
@@ -115,6 +121,30 @@ export function ChatRow({
             onCloseMenu();
             onRename(target);
           }}
+          onArchive={
+            onArchive === undefined
+              ? undefined
+              : (target) => {
+                  onCloseMenu();
+                  onArchive(target);
+                }
+          }
+          onAddToProject={
+            onAddToProject === undefined
+              ? undefined
+              : (target) => {
+                  onCloseMenu();
+                  onAddToProject(target);
+                }
+          }
+          onRemoveFromProject={
+            onRemoveFromProject === undefined
+              ? undefined
+              : (target) => {
+                  onCloseMenu();
+                  onRemoveFromProject(target);
+                }
+          }
           onStarChange={(target, starred, menuKey) => {
             onCloseMenu();
             onStarChange(target, starred, menuKey);

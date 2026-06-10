@@ -8,6 +8,9 @@ export function ThreadActionsMenu({
   onSelect,
   onDelete,
   onRename,
+  onArchive,
+  onAddToProject,
+  onRemoveFromProject,
   onStarChange,
 }: {
   menuKey: string;
@@ -16,8 +19,12 @@ export function ThreadActionsMenu({
   onSelect?(thread: Thread): void;
   onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
+  onArchive?(thread: Thread): void;
+  onAddToProject?(thread: Thread): void;
+  onRemoveFromProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
 }) {
+  const hasProject = thread.projectId !== undefined && thread.projectId !== null;
   return (
     <div
       aria-label="Chat actions"
@@ -60,16 +67,41 @@ export function ThreadActionsMenu({
         </span>
         Rename
       </button>
-      <button
-        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8] disabled:cursor-default disabled:opacity-100"
-        disabled
-        role="menuitem"
-        type="button"
-      >
-        <ProjectMenuIcon />
-        Add to project
-      </button>
+      {hasProject ? (
+        <button
+          className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8] disabled:cursor-default disabled:opacity-100"
+          disabled={onRemoveFromProject === undefined}
+          role="menuitem"
+          type="button"
+          onClick={() => onRemoveFromProject?.(thread)}
+        >
+          <ProjectMenuIcon />
+          Remove from project
+        </button>
+      ) : (
+        <button
+          className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8] disabled:cursor-default disabled:opacity-100"
+          disabled={onAddToProject === undefined}
+          role="menuitem"
+          type="button"
+          onClick={() => onAddToProject?.(thread)}
+        >
+          <ProjectMenuIcon />
+          Add to project
+        </button>
+      )}
       <MenuSeparator />
+      {onArchive !== undefined && (
+        <button
+          className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+          role="menuitem"
+          type="button"
+          onClick={() => onArchive(thread)}
+        >
+          <ArchiveMenuIcon />
+          Archive
+        </button>
+      )}
       <button
         className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#d98278]"
         role="menuitem"
@@ -80,6 +112,16 @@ export function ThreadActionsMenu({
         Delete
       </button>
     </div>
+  );
+}
+
+function ArchiveMenuIcon() {
+  return (
+    <svg className="h-[21px] w-[21px] shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      <path d="M5 8h14v11H5V8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M4 5h16v3H4V5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M9 12h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
 }
 

@@ -21,7 +21,30 @@ func (s *server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "list threads failed")
 		return
 	}
-	writeJSON(w, threads)
+	var nextCursor *string
+	if limit := chat.EffectiveThreadLimit(opts.Limit); len(threads) == limit {
+		cursor := chat.EncodeThreadCursor(threads[len(threads)-1])
+		nextCursor = &cursor
+	}
+	writeJSON(w, listThreadsResponse{Items: threads, NextCursor: nextCursor})
+}
+
+func (s *server) handleListThreadIDs(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireChat(w, s) {
+		return
+	}
+	opts, err := listThreadsOptionsFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ids, err := s.chat.ListThreadIDs(r.Context(), user.ID, opts)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "list thread ids failed")
+		return
+	}
+	writeJSON(w, ids)
 }
 
 func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +108,13 @@ func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	thread, found, err := s.chat.UpdateThread(r.Context(), user.ID, r.PathValue("threadID"), chat.UpdateThreadInput{Title: body.Title})
+	thread, found, err := s.chat.UpdateThread(r.Context(), user.ID, r.PathValue("threadID"), body.chatInput())
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "thread title is required", "thread title is too long")
+		writeMappedChatStoreError(w, err, map[string]int{
+			"thread title is required": http.StatusBadRequest,
+			"thread title is too long": http.StatusBadRequest,
+			"project not found":        http.StatusNotFound,
+		})
 		return
 	}
 	if !found {
@@ -234,5 +261,6 @@ func listThreadsOptionsFromRequest(r *http.Request) (chat.ListThreadsOptions, er
 	}
 	opts.Limit = limit
 	opts.Search = query.Get("search")
+	opts.Cursor = query.Get("cursor")
 	return opts, nil
 }
