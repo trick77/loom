@@ -1221,6 +1221,34 @@ func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 	}
 }
 
+func TestStreamMessageSystemPromptBoundsOpenEndedBrainstorming(t *testing.T) {
+	var history []llm.Message
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{history: &history},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Name my chatbot"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if len(history) == 0 {
+		t.Fatal("history is empty")
+	}
+	if !strings.Contains(history[0].Content, "For brainstorming, naming, or idea-generation requests without an explicit count") {
+		t.Fatalf("system prompt = %q, want bounded brainstorming directive", history[0].Content)
+	}
+	if !strings.Contains(history[0].Content, "give at most 12 options and recommend one") {
+		t.Fatalf("system prompt = %q, want finite option count directive", history[0].Content)
+	}
+}
+
 func TestStreamMessageReturns503WhenLLMDependencyMissing(t *testing.T) {
 	store := &fakeChatStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},

@@ -6,11 +6,14 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 )
 
 // Keep in sync with imagegen's direct-client fallback default.
 const defaultBFLPollTimeout = 1 * time.Minute
+const defaultChatMaxCompletionTokens = 2048
+const defaultChatTimeout = 2 * time.Minute
 
 // AuthMode selects how Slopr signs users in.
 type AuthMode string
@@ -28,18 +31,20 @@ type Config struct {
 	UsersDir  string // root for per-user volumes: <UsersDir>/<user-id>/
 	PublicURL string // externally reachable base URL
 
-	ChatBaseURL         string // OpenAI-compatible chat endpoint (MiMo)
-	ChatAPIKey          string
-	ChatModel           string
-	ChatReasoningEffort string
-	ChatLogDir          string
-	EmbedBaseURL        string // OpenAI embeddings endpoint
-	EmbedAPIKey         string
-	EmbedModel          string
-	BFLBaseURL          string
-	BFLAPIKey           string
-	BFLModel            string
-	BFLPollTimeout      time.Duration
+	ChatBaseURL             string // OpenAI-compatible chat endpoint (MiMo)
+	ChatAPIKey              string
+	ChatModel               string
+	ChatReasoningEffort     string
+	ChatMaxCompletionTokens int
+	ChatTimeout             time.Duration
+	ChatLogDir              string
+	EmbedBaseURL            string // OpenAI embeddings endpoint
+	EmbedAPIKey             string
+	EmbedModel              string
+	BFLBaseURL              string
+	BFLAPIKey               string
+	BFLModel                string
+	BFLPollTimeout          time.Duration
 
 	TikaURL        string
 	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
@@ -85,31 +90,32 @@ func env(key, def string) string {
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:                 env("SLOPR_ADDR", ":8080"),
-		DBPath:               env("SLOPR_DB_PATH", "/data/slopr.db"),
-		UsersDir:             env("SLOPR_USERS_DIR", "/data/users"),
-		PublicURL:            env("SLOPR_PUBLIC_URL", ""),
-		ChatBaseURL:          env("SLOPR_CHAT_BASE_URL", ""),
-		ChatAPIKey:           env("SLOPR_CHAT_API_KEY", ""),
-		ChatModel:            env("SLOPR_CHAT_MODEL", "MiMo"),
-		ChatReasoningEffort:  env("SLOPR_CHAT_REASONING_EFFORT", "high"),
-		ChatLogDir:           env("SLOPR_CHAT_LOG_DIR", "logs/llm-responses"),
-		EmbedBaseURL:         env("SLOPR_EMBED_BASE_URL", ""),
-		EmbedAPIKey:          env("SLOPR_EMBED_API_KEY", ""),
-		EmbedModel:           env("SLOPR_EMBED_MODEL", "text-embedding-3-small"),
-		BFLBaseURL:           env("SLOPR_BFL_BASE_URL", "https://api.bfl.ai/v1"),
-		BFLAPIKey:            env("SLOPR_BFL_API_KEY", ""),
-		BFLModel:             env("SLOPR_BFL_MODEL", "flux-2-klein-4b"),
-		TikaURL:              env("SLOPR_TIKA_URL", "http://tika:9998"),
-		TavilyURL:            env("SLOPR_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
-		TavilyAPIKey:         env("SLOPR_TAVILY_API_KEY", ""),
-		FetchMCPURL:          env("SLOPR_FETCH_MCP_URL", ""),
-		ObscuraMCPURL:        env("SLOPR_OBSCURA_MCP_URL", ""),
-		Context7MCPURL:       env("SLOPR_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
-		Context7APIKey:       env("SLOPR_CONTEXT7_API_KEY", ""),
-		AdminInitialPassword: env("SLOPR_ADMIN_INITIAL_PASSWORD", ""),
-		SessionSecret:        env("SLOPR_SESSION_SECRET", ""),
-		AuthMode:             AuthMode(env("SLOPR_AUTH_MODE", "")),
+		Addr:                    env("SLOPR_ADDR", ":8080"),
+		DBPath:                  env("SLOPR_DB_PATH", "/data/slopr.db"),
+		UsersDir:                env("SLOPR_USERS_DIR", "/data/users"),
+		PublicURL:               env("SLOPR_PUBLIC_URL", ""),
+		ChatBaseURL:             env("SLOPR_CHAT_BASE_URL", ""),
+		ChatAPIKey:              env("SLOPR_CHAT_API_KEY", ""),
+		ChatModel:               env("SLOPR_CHAT_MODEL", "MiMo"),
+		ChatReasoningEffort:     env("SLOPR_CHAT_REASONING_EFFORT", "high"),
+		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
+		ChatLogDir:              env("SLOPR_CHAT_LOG_DIR", "logs/llm-responses"),
+		EmbedBaseURL:            env("SLOPR_EMBED_BASE_URL", ""),
+		EmbedAPIKey:             env("SLOPR_EMBED_API_KEY", ""),
+		EmbedModel:              env("SLOPR_EMBED_MODEL", "text-embedding-3-small"),
+		BFLBaseURL:              env("SLOPR_BFL_BASE_URL", "https://api.bfl.ai/v1"),
+		BFLAPIKey:               env("SLOPR_BFL_API_KEY", ""),
+		BFLModel:                env("SLOPR_BFL_MODEL", "flux-2-klein-4b"),
+		TikaURL:                 env("SLOPR_TIKA_URL", "http://tika:9998"),
+		TavilyURL:               env("SLOPR_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
+		TavilyAPIKey:            env("SLOPR_TAVILY_API_KEY", ""),
+		FetchMCPURL:             env("SLOPR_FETCH_MCP_URL", ""),
+		ObscuraMCPURL:           env("SLOPR_OBSCURA_MCP_URL", ""),
+		Context7MCPURL:          env("SLOPR_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
+		Context7APIKey:          env("SLOPR_CONTEXT7_API_KEY", ""),
+		AdminInitialPassword:    env("SLOPR_ADMIN_INITIAL_PASSWORD", ""),
+		SessionSecret:           env("SLOPR_SESSION_SECRET", ""),
+		AuthMode:                AuthMode(env("SLOPR_AUTH_MODE", "")),
 		OIDC: OIDCConfig{
 			Issuer:                env("SLOPR_OIDC_ISSUER", ""),
 			ClientID:              env("SLOPR_OIDC_CLIENT_ID", ""),
@@ -131,6 +137,16 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("SLOPR_BFL_POLL_TIMEOUT must be a duration greater than 0")
 	}
 	cfg.BFLPollTimeout = bflPollTimeout
+	maxCompletionTokens, err := strconv.Atoi(env("SLOPR_CHAT_MAX_COMPLETION_TOKENS", strconv.Itoa(defaultChatMaxCompletionTokens)))
+	if err != nil || maxCompletionTokens <= 0 {
+		return Config{}, fmt.Errorf("SLOPR_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0")
+	}
+	cfg.ChatMaxCompletionTokens = maxCompletionTokens
+	chatTimeout, err := time.ParseDuration(env("SLOPR_CHAT_TIMEOUT", defaultChatTimeout.String()))
+	if err != nil || chatTimeout <= 0 {
+		return Config{}, fmt.Errorf("SLOPR_CHAT_TIMEOUT must be a duration greater than 0")
+	}
+	cfg.ChatTimeout = chatTimeout
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("SLOPR_SESSION_SECRET is required")
 	}

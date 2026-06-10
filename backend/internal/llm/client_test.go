@@ -10,17 +10,19 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	var gotPath string
 	var gotAuth string
 	var gotBody struct {
-		Model           string    `json:"model"`
-		Messages        []Message `json:"messages"`
-		Stream          bool      `json:"stream"`
-		ReasoningEffort string    `json:"reasoning_effort"`
-		StreamOptions   struct {
+		Model               string    `json:"model"`
+		Messages            []Message `json:"messages"`
+		Stream              bool      `json:"stream"`
+		ReasoningEffort     string    `json:"reasoning_effort"`
+		MaxCompletionTokens int       `json:"max_completion_tokens"`
+		StreamOptions       struct {
 			IncludeUsage bool `json:"include_usage"`
 		} `json:"stream_options"`
 	}
@@ -74,6 +76,9 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	if gotBody.ReasoningEffort != "high" {
 		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
 	}
+	if gotBody.MaxCompletionTokens != 2048 {
+		t.Fatalf("max_completion_tokens = %d, want 2048", gotBody.MaxCompletionTokens)
+	}
 	if len(gotBody.Messages) != 1 || gotBody.Messages[0].Role != "user" || gotBody.Messages[0].Content != "Hi" {
 		t.Fatalf("messages = %#v, want user message", gotBody.Messages)
 	}
@@ -82,6 +87,51 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	}
 	if final != "Hello" {
 		t.Fatalf("final = %q, want Hello", final)
+	}
+}
+
+func TestClient_StreamChatUsesConfiguredMaxCompletionTokens(t *testing.T) {
+	var gotBody struct {
+		MaxCompletionTokens int `json:"max_completion_tokens"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", MaxCompletionTokens: 4096}, server.Client())
+	result, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
+	if err != nil {
+		t.Fatalf("StreamChatResult() error: %v", err)
+	}
+	if gotBody.MaxCompletionTokens != 4096 {
+		t.Fatalf("max_completion_tokens = %d, want 4096", gotBody.MaxCompletionTokens)
+	}
+	if result.FinishReason != "stop" {
+		t.Fatalf("finish reason = %q, want stop", result.FinishReason)
+	}
+}
+
+func TestClient_StreamChatTimeoutCancelsPrimaryStream(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"still thinking\"}}]}\n\n"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", Timeout: 10 * time.Millisecond}, server.Client())
+	_, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("StreamChatResult() error = %v, want context deadline exceeded", err)
 	}
 }
 

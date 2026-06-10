@@ -44,7 +44,8 @@ type chatCompletionChunk struct {
 }
 
 type chatCompletionChunkChoice struct {
-	Delta chatCompletionDelta `json:"delta"`
+	Delta        chatCompletionDelta `json:"delta"`
+	FinishReason string              `json:"finish_reason"`
 }
 
 type chatCompletionDelta struct {
@@ -106,6 +107,7 @@ type StreamResult struct {
 	Duration         time.Duration
 	Model            string
 	ReasoningEffort  string
+	FinishReason     string
 }
 
 type TokenUsage struct {

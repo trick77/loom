@@ -30,13 +30,16 @@ func inferenceMetadataFromContext(ctx context.Context) InferenceMetadata {
 // attached to ctx). Every successful model call funnels through here so the
 // per-message token stats cover helper calls (reasoning/thread titles) and every
 // tool round, not just the final answer turn.
-func observeInference(ctx context.Context, model string, duration time.Duration, usage TokenUsage) {
-	logInferenceCompleted(ctx, model, duration, usage)
+func observeInference(ctx context.Context, model string, duration time.Duration, usage TokenUsage, finishReason string) {
+	logInferenceCompleted(ctx, model, duration, usage, finishReason)
 	RecordUsage(ctx, usage)
 }
 
-func logInferenceCompleted(ctx context.Context, model string, duration time.Duration, usage TokenUsage) {
+func logInferenceCompleted(ctx context.Context, model string, duration time.Duration, usage TokenUsage, finishReason string) {
 	attrs := inferenceLogAttrs(ctx, model, duration, usage)
+	if finishReason != "" {
+		attrs = append(attrs, slog.String("finish_reason", finishReason))
+	}
 	slog.LogAttrs(ctx, slog.LevelInfo, "llm inference completed", attrs...)
 }
 

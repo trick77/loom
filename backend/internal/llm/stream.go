@@ -26,7 +26,13 @@ func (c *Client) StreamChatResult(ctx context.Context, messages []Message, onDel
 
 func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, tools []Tool, onEvent func(StreamEvent) error) (StreamResult, error) {
 	start := time.Now()
-	resp, err := c.executeChatRequestWithTools(ctx, messages, tools, true)
+	callCtx := ctx
+	var cancel context.CancelFunc
+	if c.timeout > 0 {
+		callCtx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+	resp, err := c.executeChatRequestWithTools(callCtx, messages, tools, true)
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return StreamResult{}, err
@@ -36,6 +42,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	var content strings.Builder
 	var reasoning strings.Builder
 	var usage TokenUsage
+	var finishReason string
 	toolCalls := map[int]*ToolCall{}
 	var toolCallOrder []int
 	// MiMo emits tool calls as inline XML in the content; gate the streamed
@@ -77,7 +84,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 				logInferenceFailed(ctx, c.model, time.Since(start), err)
 				return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 			}
-			result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
+			result, err := finishStream(content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 			if err != nil {
 				logInferenceFailed(ctx, c.model, time.Since(start), err)
 				return result, err
@@ -85,7 +92,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			result.Duration = time.Since(start)
 			result.Model = c.model
 			result.ReasoningEffort = c.reasoningEffort
-			observeInference(ctx, c.model, result.Duration, result.Usage)
+			observeInference(ctx, c.model, result.Duration, result.Usage, result.FinishReason)
 			return result, nil
 		}
 
@@ -101,7 +108,11 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		if len(chunk.Choices) == 0 {
 			continue
 		}
-		delta := chunk.Choices[0].Delta
+		choice := chunk.Choices[0]
+		if choice.FinishReason != "" {
+			finishReason = choice.FinishReason
+		}
+		delta := choice.Delta
 
 		if delta.ReasoningContent != "" {
 			reasoning.WriteString(delta.ReasoningContent)
@@ -173,7 +184,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 	}
-	result, err := finishStream(content.String(), reasoning.String(), usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
+	result, err := finishStream(content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 	if err != nil {
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return result, err
@@ -181,14 +192,15 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	result.Duration = time.Since(start)
 	result.Model = c.model
 	result.ReasoningEffort = c.reasoningEffort
-	observeInference(ctx, c.model, result.Duration, result.Usage)
+	observeInference(ctx, c.model, result.Duration, result.Usage, result.FinishReason)
 	return result, nil
 }
 
-func finishStream(content string, reasoningContent string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error, parseInlineTools bool) (StreamResult, error) {
+func finishStream(content string, reasoningContent string, finishReason string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error, parseInlineTools bool) (StreamResult, error) {
 	result := StreamResult{
 		Content:          content,
 		ReasoningContent: reasoningContent,
+		FinishReason:     finishReason,
 		ToolCalls:        make([]ToolCall, 0, len(order)),
 		Usage:            usage,
 	}
