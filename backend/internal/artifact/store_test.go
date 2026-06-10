@@ -117,6 +117,70 @@ VALUES ('art_pdf', 'user_1', 'thread_1', 'Quarterly Board.pdf', 'files/outputs/b
 	assertArtifactIDs(t, bySize, []string{"art_csv", "art_png", "art_pdf"})
 }
 
+func TestStoreListPaginatesWithCursor(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO threads (id, user_id, title) VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
+		t.Fatal(err)
+	}
+	// Mixed casing on names exercises the COLLATE NOCASE keyset boundary.
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO artifacts (id, user_id, thread_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at)
+VALUES ('art_a', 'user_1', 'thread_1', 'alpha.txt', 'f/a.txt', 'text/plain', 1, 'uploaded', '2026-06-10 09:00:00'),
+       ('art_b', 'user_1', 'thread_1', 'Bravo.txt', 'f/b.txt', 'text/plain', 2, 'uploaded', '2026-06-10 09:00:01'),
+       ('art_c', 'user_1', 'thread_1', 'charlie.txt', 'f/c.txt', 'text/plain', 3, 'uploaded', '2026-06-10 09:00:02'),
+       ('art_d', 'user_1', 'thread_1', 'Delta.txt', 'f/d.txt', 'text/plain', 4, 'uploaded', '2026-06-10 09:00:03'),
+       ('art_e', 'user_1', 'thread_1', 'echo.txt', 'f/e.txt', 'text/plain', 5, 'uploaded', '2026-06-10 09:00:04')`); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewStore(db)
+
+	// modified DESC: newest first.
+	wantModified := []string{"art_e", "art_d", "art_c", "art_b", "art_a"}
+	assertArtifactIDs(t, collectPages(t, s, ListOptions{Sort: SortByModified, Order: SortDesc, Limit: 2}), wantModified)
+
+	// name ASC with case-insensitive collation: alpha, Bravo, charlie, Delta, echo.
+	wantName := []string{"art_a", "art_b", "art_c", "art_d", "art_e"}
+	assertArtifactIDs(t, collectPages(t, s, ListOptions{Sort: SortByName, Order: SortAsc, Limit: 2}), wantName)
+
+	// size DESC.
+	wantSize := []string{"art_e", "art_d", "art_c", "art_b", "art_a"}
+	assertArtifactIDs(t, collectPages(t, s, ListOptions{Sort: SortBySize, Order: SortDesc, Limit: 2}), wantSize)
+}
+
+// collectPages walks every page via the returned next cursor and concatenates
+// the results, asserting no page exceeds the limit.
+func collectPages(t *testing.T, s *Store, opts ListOptions) []Artifact {
+	t.Helper()
+	ctx := context.Background()
+	var all []Artifact
+	limit := EffectiveArtifactLimit(opts.Limit)
+	for {
+		page, err := s.List(ctx, "user_1", opts)
+		if err != nil {
+			t.Fatalf("List(cursor=%q) error = %v", opts.Cursor, err)
+		}
+		all = append(all, page...)
+		if len(page) < limit {
+			break
+		}
+		opts.Cursor = EncodeArtifactCursor(page[len(page)-1], opts.Sort)
+	}
+	return all
+}
+
 func assertArtifactIDs(t *testing.T, artifacts []Artifact, want []string) {
 	t.Helper()
 	got := make([]string, 0, len(artifacts))

@@ -11,11 +11,13 @@ vi.mock("./api", async () => {
   return {
     ...actual,
     listThreads: vi.fn(),
+    listThreadIds: vi.fn(),
     bulkDeleteThreads: vi.fn(),
   };
 });
 
 const listThreadsMock = vi.mocked(api.listThreads);
+const listThreadIdsMock = vi.mocked(api.listThreadIds);
 const bulkDeleteThreadsMock = vi.mocked(api.bulkDeleteThreads);
 
 function thread(id: string, title: string): Thread {
@@ -49,11 +51,20 @@ function renderPage(overrides: Partial<Parameters<typeof ChatsPage>[0]> = {}) {
   return props;
 }
 
+function matching(search: string): Thread[] {
+  const term = search.toLowerCase();
+  return FIXTURES.filter((item) => item.title.toLowerCase().includes(term));
+}
+
 beforeEach(() => {
-  listThreadsMock.mockImplementation(async (params) => {
-    const search = (params?.search ?? "").toLowerCase();
-    return FIXTURES.filter((item) => item.title.toLowerCase().includes(search));
-  });
+  listThreadsMock.mockImplementation(async (params) => ({
+    items: matching(params?.search ?? ""),
+    nextCursor: null,
+  }));
+  // "Select all" resolves the full matching id set from the server.
+  listThreadIdsMock.mockImplementation(async (params) =>
+    matching(params?.search ?? "").map((item) => item.id),
+  );
   bulkDeleteThreadsMock.mockResolvedValue({ deleted: 0 });
 });
 
@@ -117,7 +128,8 @@ test("Select all selects the filtered set and toggles button states", async () =
 
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
 
-  expect(screen.getByText("3 selected")).toBeInTheDocument();
+  // Selecting all resolves the full id set from the server asynchronously.
+  expect(await screen.findByText("3 selected")).toBeInTheDocument();
   expect(deleteButton).toBeEnabled();
   expect(moveButton).toBeEnabled();
 });
@@ -128,6 +140,7 @@ test("bulk delete confirms then calls the API with the selected ids", async () =
 
   fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+  await screen.findByText("3 selected");
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
   const dialog = await screen.findByRole("dialog");
@@ -146,6 +159,7 @@ test("Move to project sends selected chats to the move handler", async () => {
   await screen.findByText("Greeting");
   fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+  await screen.findByText("3 selected");
 
   fireEvent.click(screen.getByRole("button", { name: "Move to project" }));
   expect(props.onMoveSelectedToProject).toHaveBeenCalledWith(FIXTURES);

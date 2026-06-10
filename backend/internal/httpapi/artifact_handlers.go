@@ -42,7 +42,12 @@ func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 			DownloadURL:     item.DownloadURL,
 		})
 	}
-	writeJSON(w, response)
+	var nextCursor *string
+	if limit := artifact.EffectiveArtifactLimit(opts.Limit); len(items) == limit {
+		cursor := artifact.EncodeArtifactCursor(items[len(items)-1], opts.Sort)
+		nextCursor = &cursor
+	}
+	writeJSON(w, artifactListResponse{Items: response, NextCursor: nextCursor})
 }
 
 func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +128,7 @@ func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, err
 		}
 		opts.Limit = limit
 	}
+	opts.Cursor = query.Get("cursor")
 	return opts, nil
 }
 

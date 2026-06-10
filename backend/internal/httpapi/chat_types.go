@@ -74,6 +74,11 @@ func (r updateThreadRequest) chatInput() chat.UpdateThreadInput {
 	}
 }
 
+type listThreadsResponse struct {
+	Items      []chat.Thread `json:"items"`
+	NextCursor *string       `json:"nextCursor"`
+}
+
 type bulkDeleteThreadsRequest struct {
 	ThreadIDs []string `json:"threadIds"`
 }
@@ -130,6 +135,11 @@ type artifactResponse struct {
 	Width           int     `json:"width,omitempty"`
 	Height          int     `json:"height,omitempty"`
 	DurationMs      int64   `json:"durationMs,omitempty"`
+}
+
+type artifactListResponse struct {
+	Items      []artifactListItemResponse `json:"items"`
+	NextCursor *string                    `json:"nextCursor"`
 }
 
 type artifactListItemResponse struct {

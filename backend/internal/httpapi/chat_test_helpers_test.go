@@ -146,6 +146,15 @@ func (f *fakeChatStore) ListThreads(_ context.Context, userID string, opts chat.
 	return []chat.Thread{f.thread}, nil
 }
 
+func (f *fakeChatStore) ListThreadIDs(_ context.Context, userID string, opts chat.ListThreadsOptions) ([]string, error) {
+	f.listThreadsUserID = userID
+	f.listThreadsOptions = opts
+	if f.thread.ID == "" {
+		return []string{}, nil
+	}
+	return []string{f.thread.ID}, nil
+}
+
 func (f *fakeChatStore) UpdateThread(_ context.Context, userID, threadID string, in chat.UpdateThreadInput) (chat.Thread, bool, error) {
 	f.updateThreadInput = in
 	if f.updateThreadErr != nil {

@@ -44,14 +44,17 @@ func TestListArtifactsReturnsCurrentUsersArtifacts(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	var got []artifactListItemResponse
+	var got artifactListResponse
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("len(response) = %d, want 1: %#v", len(got), got)
+	if len(got.Items) != 1 {
+		t.Fatalf("len(response items) = %d, want 1: %#v", len(got.Items), got)
 	}
-	if got[0].ID != "art_1" || got[0].DisplayFilename != "robot.png" || got[0].ModifiedAt.IsZero() {
-		t.Fatalf("response item = %#v", got[0])
+	if got.Items[0].ID != "art_1" || got.Items[0].DisplayFilename != "robot.png" || got.Items[0].ModifiedAt.IsZero() {
+		t.Fatalf("response item = %#v", got.Items[0])
+	}
+	if got.NextCursor != nil {
+		t.Fatalf("nextCursor = %q, want nil for a partial page", *got.NextCursor)
 	}
 }
