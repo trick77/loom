@@ -1032,8 +1032,9 @@ test("keeps just-completed reasoning trace collapsed until opened", async () => 
 
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  // Reasoning-only trace has no timeline: the reasoning row shows no node glyph.
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
+  // Reasoning row shows the clock timeline node; the turn is capped with a Done node.
+  expect(document.querySelector(".slopr-activity-clock-icon")).not.toBeNull();
+  expect(screen.getByText("Done")).toBeInTheDocument();
 });
 
 test("restores persisted activity trace when reopening a chat", async () => {
@@ -1082,8 +1083,8 @@ test("restores persisted activity trace when reopening a chat", async () => {
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(screen.getByText("Agentgateway")).toBeInTheDocument();
-  // This trace used a tool, so the reasoning row keeps its timeline node glyph.
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).not.toBeNull();
+  // The reasoning row shows the clock timeline node.
+  expect(document.querySelector(".slopr-activity-clock-icon")).not.toBeNull();
 });
 
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
@@ -1106,14 +1107,16 @@ test("keeps active activity trace while assistant output streams without explici
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
+  // No reasoning has streamed yet: just the sweeping label, no chevron to expand.
+  expect(trace.querySelector(".slopr-thinking-chevron")).toBeNull();
+  expect(trace.querySelector(".slopr-thinking-chevron-expanded")).toBeNull();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
   expect(screen.getByRole("status", { name: /slopr activity trace/i })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(screen.getByText("Thinking")).toBeInTheDocument();
 });
 
 test("shows the reasoning abstract once its background title arrives", async () => {
@@ -1215,20 +1218,22 @@ test("keeps active activity trace visible while assistant text is streaming", as
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
   );
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
+  // Reasoning is collapsed by default — the body stays hidden until the user opens it.
+  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument());
+
+  // Open it to reveal the reasoning row.
+  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
+  expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  // The trace rolls up once the answer streams; its body unmounts after the animation.
-  await waitFor(() => expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument());
-
-  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
-
+  // Once opened it stays open while the answer streams; the trace remains visible.
   expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  // Reasoning rows use the clock node — no per-row completion checkmark mid-stream.
   expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeNull();
 
   streamController.current?.enqueue(
@@ -1242,8 +1247,9 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(await screen.findByText("Hello.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
-  // Reasoning-only trace has no timeline: the reasoning row shows no node glyph.
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
+  // Reasoning row shows the clock timeline node; the turn is capped with a Done node.
+  expect(document.querySelector(".slopr-activity-clock-icon")).not.toBeNull();
+  expect(screen.getByText("Done")).toBeInTheDocument();
 });
 
 test("hides the copy action until the assistant answer finishes streaming", async () => {
@@ -1385,8 +1391,10 @@ test("shows active activity trace with reasoning and tool activity before assist
   );
 
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
+  // Collapsed by default — open it to inspect the live timeline.
+  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
+  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Running")).toBeInTheDocument();
@@ -2185,6 +2193,8 @@ test("surfaces the server error and keeps failed activity trace visible", async 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
   const trace = screen.getByRole("status", { name: /slopr activity trace/i });
+  // Collapsed by default — open it to inspect the failed timeline.
+  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Failed")).toBeInTheDocument();
@@ -2272,17 +2282,17 @@ test("does not repeat the collapsed headline as the reasoning row title", async 
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Tell me about einstein" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  const toggle = await screen.findByRole("button", { name: /show activity/i });
+  expect(await screen.findByText("Albert Einstein was a physicist.")).toBeInTheDocument();
+  const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toHaveTextContent("Summarizing Einstein's life and contributions");
   fireEvent.click(toggle);
 
   // The headline appears once (the toggle); the reasoning row drops the duplicate.
   expect(await screen.findByText("The user is asking about Einstein.")).toBeInTheDocument();
   expect(screen.getAllByText("Summarizing Einstein's life and contributions")).toHaveLength(1);
-  // No tools means no timeline: the reasoning row shows no node glyph and there
-  // is no connecting line. The collapsed headline has no status icon at all.
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning")).toBeNull();
-  expect(document.querySelector(".slopr-activity-trace-body-flat")).not.toBeNull();
+  // The reasoning row shows the clock timeline node; the turn ends with a Done node.
+  expect(document.querySelector(".slopr-activity-clock-icon")).not.toBeNull();
+  expect(screen.getByText("Done")).toBeInTheDocument();
   expect(document.querySelector(".slopr-thinking-status-active, .slopr-thinking-status-complete")).toBeNull();
 });
 
