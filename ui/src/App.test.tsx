@@ -80,7 +80,7 @@ test("greets signed-in users with up late after 22:00", async () => {
 
   render(<App />);
 
-  expect(await screen.findByText("Up late, Jan")).toBeInTheDocument();
+  expect(await screen.findByText("Up late, Jan?")).toBeInTheDocument();
 });
 
 test("uses Slopr as the HTML title", () => {
@@ -2417,5 +2417,5 @@ function threadFixture() {
 }
 
 function greetingPattern(name: string) {
-  return new RegExp(`^((Morning|Afternoon|Evening|Up late), ${name}|${name} returns!)$`);
+  return new RegExp(`^((Morning|Afternoon|Evening), ${name}|Up late, ${name}\\?|${name} returns!)$`);
 }
