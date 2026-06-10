@@ -21,6 +21,37 @@ type Artifact struct {
 	DownloadURL     string    `json:"downloadUrl"`
 }
 
+type ListType string
+
+const (
+	ListTypeAll    ListType = "all"
+	ListTypeImages ListType = "images"
+	ListTypeFiles  ListType = "files"
+)
+
+type SortBy string
+
+const (
+	SortByModified SortBy = "modified"
+	SortByName     SortBy = "name"
+	SortBySize     SortBy = "size"
+)
+
+type SortOrder string
+
+const (
+	SortAsc  SortOrder = "asc"
+	SortDesc SortOrder = "desc"
+)
+
+type ListOptions struct {
+	Search string
+	Type   ListType
+	Sort   SortBy
+	Order  SortOrder
+	Limit  int
+}
+
 type OutputRequest struct {
 	UsersDir        string
 	UserID          string

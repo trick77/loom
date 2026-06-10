@@ -55,6 +55,55 @@ test("renders authenticated shell for signed-in users", async () => {
   expect(window.location.pathname).toBe("/new");
 });
 
+test("opens the artifact library from the sidebar", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") {
+        return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
+      }
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/mcp/status") return Response.json({ active: 0, configured: 0 });
+      if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=1000") {
+        return Response.json([
+          {
+            id: "art_1",
+            threadId: "t1",
+            displayFilename: "robot.png",
+            mimeType: "image/png",
+            sizeBytes: 1024,
+            modifiedAt: "2026-06-10T12:00:00Z",
+            downloadUrl: "/api/artifacts/art_1/download",
+          },
+        ]);
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Library" }));
+
+  expect(await screen.findByRole("heading", { name: "Library" })).toBeInTheDocument();
+  expect(await screen.findByText("robot.png")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/library");
+});
+
+test("places library before projects in the primary sidebar navigation", async () => {
+  vi.stubGlobal("fetch", basicSignedInFetch());
+
+  render(<App />);
+
+  const libraryButton = await screen.findByRole("button", { name: "Library" });
+  const projectsItem = screen.getAllByText("Projects")[0].closest("div");
+
+  expect(projectsItem).not.toBeNull();
+  expect(libraryButton.compareDocumentPosition(projectsItem as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
 test("greets signed-in users with up late after 22:00", async () => {
   const realDate = Date;
   type DateArgs = [] | [string | number | Date] | [number, number, number?, number?, number?, number?, number?];

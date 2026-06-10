@@ -48,6 +48,7 @@ import { MessageMetrics } from "../MessageMetrics";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ChatsPage } from "../ChatsPage";
+import { LibraryPage } from "../library/LibraryPage";
 import {
   buildImageStats,
   downloadableResponse,
@@ -306,6 +307,13 @@ export function ChatShell({
     setMobileSidebarOpen(false);
     navigate({ view: "chats" });
     setRoute({ view: "chats" });
+  }, [onChat]);
+
+  const navigateToLibrary = useCallback(() => {
+    onChat();
+    setMobileSidebarOpen(false);
+    navigate({ view: "library" });
+    setRoute({ view: "library" });
   }, [onChat]);
 
   const reloadThreads = useCallback(() => {
@@ -617,6 +625,13 @@ export function ChatShell({
             active={route.view === "chats" && !showAdmin}
             onClick={navigateToChats}
           />
+          <SidebarPrimaryItem
+            label="Library"
+            icon="library"
+            collapsed={railCollapsed}
+            active={route.view === "library" && !showAdmin}
+            onClick={navigateToLibrary}
+          />
           <SidebarPrimaryItem label="Projects" icon="projects" collapsed={railCollapsed} />
           {!railCollapsed && (
             <>
@@ -760,6 +775,11 @@ export function ChatShell({
             onDeleteThread={openDeleteModal}
             onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
             onAfterBulkDelete={reloadThreads}
+            onSessionExpired={onSessionExpired}
+          />
+        ) : route.view === "library" ? (
+          <LibraryPage
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
             onSessionExpired={onSessionExpired}
           />
         ) : route.view === "new" ? (
@@ -920,6 +940,25 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
           strokeLinejoin="round"
         />
         <path d="M4.5 8.5V6.8c0-1.1.7-1.7 1.9-1.7h3.1l1.6 2h6.5c1.2 0 1.9.6 1.9 1.7v1.7" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (name === "library") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path
+          d="M8 5.5h6.8L18 8.7v9.8H8z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M14.8 5.8V9H18M5.5 8.5v10h9.5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     );
   }

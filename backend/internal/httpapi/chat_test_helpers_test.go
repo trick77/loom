@@ -35,6 +35,16 @@ func (f fakeArtifactStore) Get(context.Context, string, string) (artifact.Artifa
 	return artifact.Artifact{}, false, nil
 }
 
+func (f fakeArtifactStore) List(_ context.Context, userID string, opts artifact.ListOptions) ([]artifact.Artifact, error) {
+	var out []artifact.Artifact
+	for _, item := range f.artifacts {
+		if item.UserID == userID {
+			out = append(out, item)
+		}
+	}
+	return out, nil
+}
+
 func (f fakeArtifactStore) ListForThread(_ context.Context, _ string, threadID string) ([]artifact.Artifact, error) {
 	var out []artifact.Artifact
 	for _, item := range f.artifacts {

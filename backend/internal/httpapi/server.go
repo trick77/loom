@@ -83,6 +83,7 @@ type ChatStore interface {
 type ArtifactStore interface {
 	Create(context.Context, artifact.CreateInput) (artifact.Artifact, error)
 	Get(context.Context, string, string) (artifact.Artifact, bool, error)
+	List(context.Context, string, artifact.ListOptions) ([]artifact.Artifact, error)
 	ListForThread(context.Context, string, string) ([]artifact.Artifact, error)
 	ListForProject(context.Context, string, string) ([]artifact.Artifact, error)
 }
@@ -173,6 +174,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("DELETE /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleDeleteThread)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
+	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))
 	if d.Static != nil {
 		mux.Handle("/", d.Static)

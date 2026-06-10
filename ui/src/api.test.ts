@@ -4,6 +4,7 @@ import {
   deleteThread,
   downloadArtifact,
   getMcpStatus,
+  listArtifacts,
   listProjects,
   listThreads,
   streamMessage,
@@ -22,6 +23,17 @@ test("listThreads builds query parameters", async () => {
   await listThreads({ starred: true, limit: 10 });
 
   expect(fetchMock).toHaveBeenCalledWith("/api/threads?starred=true&limit=10");
+});
+
+test("listArtifacts builds query parameters", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(Response.json([]));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await listArtifacts({ type: "images", sort: "size", order: "asc", search: "robot", limit: 50 });
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/artifacts?type=images&sort=size&order=asc&search=robot&limit=50",
+  );
 });
 
 test("updateThread patches the thread title", async () => {
