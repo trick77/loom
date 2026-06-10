@@ -68,6 +68,7 @@ const CODEPOINTS = {
   clock: 0xe068,
   moreVertical: 0xe062,
   moreHorizontal: 0xe061,
+  artifact: 0xe017,
 } as const;
 
 export type IconName = keyof typeof CODEPOINTS;

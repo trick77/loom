@@ -1387,7 +1387,9 @@ test("keeps existing search activity icon glyph design", () => {
   const toolHeaderRule = css.match(/\.slopr-activity-tool-header\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const resultListRule = css.match(/\.slopr-activity-result-list\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
-  expect(globeIcon).toContain("<circle");
+  // The search node now renders the Anthropicons globe glyph via <Icon> instead
+  // of a hand-drawn SVG; the .slopr-activity-globe-icon sizing rule is preserved.
+  expect(globeIcon).toContain('name="globe"');
   expect(globeIconRule).toContain("width: 1.125rem !important");
   expect(globeIconRule).toContain("height: 1.125rem !important");
   expect(source).toContain("slopr-activity-trace-icon slopr-activity-trace-icon-arrow");

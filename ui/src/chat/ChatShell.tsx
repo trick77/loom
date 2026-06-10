@@ -2166,7 +2166,7 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
       <div className="flex items-center gap-3 px-4 py-3">
         {!isImage && (
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-            <FileIcon />
+            <Icon name="artifact" size="20px" />
           </div>
         )}
         <div className="min-w-0 flex-1">

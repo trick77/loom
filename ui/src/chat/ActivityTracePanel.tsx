@@ -9,6 +9,7 @@ import {
   type ActivityTraceEvent,
   type ActivityTraceToolEvent,
 } from "../activityTrace";
+import { Icon } from "./Icon";
 
 export function ActivityTracePanel({
   events,
@@ -277,28 +278,13 @@ function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string;
 }
 
 function GlobeTraceIcon() {
-  return (
-    <svg className="slopr-activity-globe-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18" />
-      <path d="M12 3c2.25 2.45 3.35 5.45 3.35 9s-1.1 6.55-3.35 9" />
-      <path d="M12 3c-2.25 2.45-3.35 5.45-3.35 9s1.1 6.55 3.35 9" />
-    </svg>
-  );
+  return <Icon name="globe" size="1.125rem" className="slopr-activity-globe-icon" />;
 }
 
 function ClockTraceIcon() {
-  // Clock with hands at 12 and ~4 o'clock; the upper-left arc dissolves into
-  // three dots — the reasoning timeline node, matching the reference glyph.
-  return (
-    <svg className="slopr-activity-clock-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8.24 1.66 A 11 11 0 1 1 1.01 12.38" />
-      <circle className="slopr-activity-clock-dot" cx="1.37" cy="9.15" r="1.1" />
-      <circle className="slopr-activity-clock-dot" cx="2.99" cy="5.69" r="1.1" />
-      <circle className="slopr-activity-clock-dot" cx="5.69" cy="2.99" r="1.1" />
-      <path d="M12 5.89v6.11l4.28 1.83" />
-    </svg>
-  );
+  // Reasoning timeline node — the Anthropicons clock-with-arc glyph (the same
+  // reference design the previous hand-tuned SVG approximated).
+  return <Icon name="clock" size="1.125rem" className="slopr-activity-clock-icon" />;
 }
 
 function FetchTraceIcon() {
