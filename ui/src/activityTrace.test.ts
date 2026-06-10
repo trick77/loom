@@ -219,4 +219,32 @@ describe("activity trace model", () => {
       },
     });
   });
+
+  test("renders all search results so the count matches the list (no slice)", () => {
+    let events: ActivityTraceEvent[] = [];
+
+    const results = Array.from({ length: 10 }, (_, i) => ({
+      url: `https://example.com/${i}`,
+    }));
+
+    events = upsertTraceToolCall(events, {
+      id: "call_1",
+      name: "tavily__tavily_search",
+      arguments: "{\"query\":\"example\"}",
+    });
+    events = upsertTraceToolResult(events, {
+      id: "call_1",
+      name: "tavily__tavily_search",
+      content: JSON.stringify({ results }),
+    });
+
+    const event = events[0];
+    expect(event.type).toBe("tool");
+    if (event.type === "tool" && event.preview?.kind === "searchResults") {
+      expect(event.preview.resultCount).toBe(10);
+      expect(event.preview.results).toHaveLength(10);
+    } else {
+      throw new Error("expected a tool event with searchResults preview");
+    }
+  });
 });
