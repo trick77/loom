@@ -7,9 +7,9 @@ export function SidebarOpenButton({ onClick }: { onClick(): void }) {
       type="button"
       aria-label="Show sidebar"
       onClick={onClick}
-      className="-ml-1 grid h-7 w-7 shrink-0 place-items-center rounded text-[#aaa79e] transition-colors hover:text-white md:hidden"
+      className="slopr-sidebar-btn -ml-1 grid h-7 w-7 shrink-0 place-items-center rounded text-[#aaa79e] transition-colors hover:text-white md:hidden"
     >
-      <Icon name="sidebar" size="18px" />
+      <Icon name="sidebar" size="18px" className="slopr-sidebar-icon" />
     </button>
   );
 }

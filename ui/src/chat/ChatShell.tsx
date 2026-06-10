@@ -65,7 +65,7 @@ import {
 import { navigate, routeFromLocation, type RouteState } from "./routing";
 import type { MessageWithActivityTrace, SidebarIconName } from "./types";
 import { ActivityTracePanel } from "./ActivityTracePanel";
-import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FileIcon } from "./icons";
+import { CheckIcon, CloseIcon, DownloadIcon, FileIcon } from "./icons";
 import { Icon } from "./Icon";
 import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
@@ -829,9 +829,9 @@ export function ChatShell({
               onClick={() =>
                 isMobile ? setMobileSidebarOpen(false) : setSidebarCollapsed((value) => !value)
               }
-              className="grid place-items-center rounded transition-colors hover:text-white"
+              className="slopr-sidebar-btn grid place-items-center rounded transition-colors hover:text-white"
             >
-              <Icon name="sidebar" size="18px" />
+              <Icon name="sidebar" size="18px" className="slopr-sidebar-icon" />
             </button>
           </div>
         </div>
@@ -2175,7 +2175,7 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
         aria-label={copied ? "Kopiert" : "Code kopieren"}
         title={copied ? "Kopiert" : "Code kopieren"}
       >
-        {copied ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+        {copied ? <CheckIcon className="h-4 w-4" /> : <Icon name="copy" size="1rem" />}
       </button>
       <pre ref={preRef} {...props}>
         {children}
@@ -2347,7 +2347,7 @@ function MessageActions({
           title={speaking ? "Stop" : "Read aloud"}
           aria-label={speaking ? "Stop reading" : "Read aloud"}
         >
-          <Icon name="volume" />
+          <Icon name="volume" size="1.15rem" />
         </button>
       )}
       <button
@@ -2357,7 +2357,7 @@ function MessageActions({
         title="Copy"
         aria-label={copyLabel}
       >
-        {copied ? <CheckIcon /> : <CopyIcon />}
+        {copied ? <CheckIcon className="h-[1.15rem] w-[1.15rem]" /> : <Icon name="copy" size="1.15rem" />}
       </button>
       {onRetry !== undefined && (
         <button
@@ -2367,7 +2367,7 @@ function MessageActions({
           title="Retry"
           aria-label={retryLabel}
         >
-          <Icon name="retry" />
+          <Icon name="retry" size="1.15rem" />
         </button>
       )}
       {metricsMessage && <MessageMetrics message={metricsMessage} />}
