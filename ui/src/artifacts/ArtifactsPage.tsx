@@ -10,6 +10,7 @@ import {
   type SortOrder,
 } from "../api";
 import { formatFileSize } from "../chat/artifacts";
+import { Icon } from "../chat/Icon";
 import { CloseIcon, FileIcon } from "../chat/icons";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
@@ -78,15 +79,11 @@ export function ArtifactsPage({
         </header>
 
         <div className="relative mt-6">
-          <svg
-            className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#807d74]"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="6" stroke="currentColor" strokeWidth="1.5" />
-            <path d="m20 20-3.6-3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
+          <Icon
+            name="search"
+            size="18px"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#807d74]"
+          />
           <input
             type="text"
             value={searchInput}
@@ -104,11 +101,13 @@ export function ArtifactsPage({
         )}
 
         <div className="mt-3">
-          <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center border-b border-[#343432] px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
-            <SortButton active={sort === "name"} label="Name" order={order} onClick={() => updateSort("name")} />
-            <SortButton active={sort === "modified"} label="Modified" order={order} onClick={() => updateSort("modified")} />
-            <SortButton active={sort === "size"} label="Size" order={order} onClick={() => updateSort("size")} />
-          </div>
+          {artifacts.length > 0 && (
+            <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center border-b border-[#343432] px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
+              <SortButton active={sort === "name"} label="Name" order={order} onClick={() => updateSort("name")} />
+              <SortButton active={sort === "modified"} label="Modified" order={order} onClick={() => updateSort("modified")} />
+              <SortButton active={sort === "size"} label="Size" order={order} onClick={() => updateSort("size")} />
+            </div>
+          )}
           {artifacts.length === 0 && loadError === "" ? (
             loaded && (
               <div className="py-10 text-center text-[#807d74]">
@@ -176,7 +175,7 @@ function SortButton({
       onClick={onClick}
     >
       <span>{label}</span>
-      {active && <span aria-hidden="true">{order === "asc" ? "↑" : "↓"}</span>}
+      {active && <Icon name={order === "asc" ? "sortUp" : "sortDown"} size="0.9em" />}
     </button>
   );
 }

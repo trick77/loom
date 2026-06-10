@@ -34,6 +34,16 @@
   font-display: swap;
 }
 
+/* Anthropicons — Variable Icon-Font (PUA-Glyphen U+E000–U+E11E).
+   Genutzt über die <Icon>-Komponente in src/chat/Icon.tsx. */
+@font-face {
+  font-family: "Anthropic Icons";
+  src: url("./fonts/Icons-Variable.woff2") format("woff2-variations");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: block;
+}
+
 /* UI direction A — Warm Editorial, dark. These tokens drive the Tailwind v4
    theme, generating the bg, text, border, font, and rounded-slopr utilities.
    Palette: warm charcoal surfaces, off-white ink, clay accent.

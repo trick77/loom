@@ -1,4 +1,5 @@
 import type { Thread } from "./api";
+import { Icon } from "./chat/Icon";
 
 export function ThreadActionsMenu({
   menuKey,
@@ -51,7 +52,7 @@ export function ThreadActionsMenu({
         onClick={() => onStarChange(thread, !thread.starred, menuKey)}
       >
         <span className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[19px] leading-none" aria-hidden="true">
-          {thread.starred ? "★" : "☆"}
+          <Icon name={thread.starred ? "starFilled" : "star"} size="19px" />
         </span>
         {thread.starred ? "Unstar" : "Star"}
       </button>
@@ -114,6 +115,10 @@ export function ThreadActionsMenu({
   );
 }
 
+export function TrashMenuIcon() {
+  return <Icon name="trash" size="19px" className="grid h-[21px] w-[21px] shrink-0 place-items-center" />;
+}
+
 function ArchiveMenuIcon() {
   return (
     <svg className="h-[21px] w-[21px] shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
@@ -155,23 +160,3 @@ export function ProjectMenuIcon() {
   );
 }
 
-export function TrashMenuIcon() {
-  return (
-    <svg className="h-[21px] w-[21px] shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <path
-        d="M8 7.5V6.2c0-.9.6-1.4 1.5-1.4h5c.9 0 1.5.5 1.5 1.4v1.3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path d="M5.5 7.5h13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path
-        d="M7.2 9.5l.6 8.1c.1 1 .8 1.6 1.8 1.6h4.8c1 0 1.7-.6 1.8-1.6l.6-8.1"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path d="M10.4 11.3v5M13.6 11.3v5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
