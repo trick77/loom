@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/trick77/slopr/internal/chat"
@@ -84,6 +85,43 @@ WHERE user_id = ? AND id = ?`, userID, artifactID).Scan(
 	return out, true, nil
 }
 
+func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Artifact, error) {
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 1000
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	filters := []string{"user_id = ?"}
+	args := []any{userID}
+	if search := strings.TrimSpace(opts.Search); search != "" {
+		filters = append(filters, `display_filename LIKE ? ESCAPE '\'`)
+		args = append(args, "%"+escapeLike(search)+"%")
+	}
+	switch opts.Type {
+	case ListTypeImages:
+		filters = append(filters, `mime_type LIKE 'image/%'`)
+	case ListTypeFiles:
+		filters = append(filters, `mime_type NOT LIKE 'image/%'`)
+	}
+	args = append(args, limit)
+
+	query := fmt.Sprintf(`
+SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
+FROM artifacts
+WHERE %s
+ORDER BY %s
+LIMIT ?`, strings.Join(filters, " AND "), listOrderBy(opts.Sort, opts.Order))
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list artifacts: %w", err)
+	}
+	defer rows.Close()
+	return scanArtifacts(rows)
+}
+
 func (s *Store) ListForThread(ctx context.Context, userID, threadID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
@@ -95,6 +133,26 @@ ORDER BY created_at ASC`, userID, threadID)
 	}
 	defer rows.Close()
 	return scanArtifacts(rows)
+}
+
+func listOrderBy(sort SortBy, order SortOrder) string {
+	direction := "DESC"
+	if order == SortAsc {
+		direction = "ASC"
+	}
+	switch sort {
+	case SortByName:
+		return "display_filename COLLATE NOCASE " + direction + ", id " + direction
+	case SortBySize:
+		return "size_bytes " + direction + ", id " + direction
+	default:
+		return "created_at " + direction + ", id " + direction
+	}
+}
+
+func escapeLike(term string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(term)
 }
 
 func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([]Artifact, error) {

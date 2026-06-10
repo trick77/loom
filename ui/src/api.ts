@@ -52,10 +52,12 @@ export type Message = {
 
 export type Artifact = {
   id: string;
+  threadId?: string;
   displayFilename: string;
   mimeType: string;
   sizeBytes: number;
   projectId?: string;
+  modifiedAt?: string;
   downloadUrl: string;
   model?: string;
   provider?: string;
@@ -63,6 +65,10 @@ export type Artifact = {
   height?: number;
   durationMs?: number;
 };
+
+export type ArtifactListType = "all" | "images" | "files";
+export type ArtifactSort = "name" | "modified" | "size";
+export type SortOrder = "asc" | "desc";
 
 export type ToolCallEvent = {
   id: string;
@@ -180,6 +186,34 @@ export async function listThreads(params: {
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
   const response = await fetch(`/api/threads${suffix}`);
   return expectJSON<Thread[]>(response, "failed to load threads");
+}
+
+export async function listArtifacts(params: {
+  type?: ArtifactListType;
+  sort?: ArtifactSort;
+  order?: SortOrder;
+  search?: string;
+  limit?: number;
+} = {}): Promise<Artifact[]> {
+  const query = new URLSearchParams();
+  if (params.type !== undefined) {
+    query.set("type", params.type);
+  }
+  if (params.sort !== undefined) {
+    query.set("sort", params.sort);
+  }
+  if (params.order !== undefined) {
+    query.set("order", params.order);
+  }
+  if (params.search !== undefined && params.search !== "") {
+    query.set("search", params.search);
+  }
+  if (params.limit !== undefined) {
+    query.set("limit", String(params.limit));
+  }
+  const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
+  const response = await fetch(`/api/artifacts${suffix}`);
+  return expectJSON<Artifact[]>(response, "failed to load artifacts");
 }
 
 export async function createThread(input: { projectId?: string | null; title?: string } = {}): Promise<Thread> {

@@ -1,12 +1,49 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/trick77/slopr/internal/artifact"
 )
+
+func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	if s.artifacts == nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	opts, err := listArtifactsOptionsFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	items, err := s.artifacts.List(r.Context(), user.ID, opts)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "list artifacts failed")
+		return
+	}
+	response := make([]artifactListItemResponse, 0, len(items))
+	for _, item := range items {
+		response = append(response, artifactListItemResponse{
+			ID:              item.ID,
+			ThreadID:        item.ThreadID,
+			ProjectID:       item.ProjectID,
+			DisplayFilename: item.DisplayFilename,
+			MIMEType:        item.MIMEType,
+			SizeBytes:       item.SizeBytes,
+			ModifiedAt:      item.CreatedAt,
+			DownloadURL:     item.DownloadURL,
+		})
+	}
+	writeJSON(w, response)
+}
 
 func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
@@ -44,6 +81,49 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", found.MIMEType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+headerSafeFilename(found.DisplayFilename)+`"`)
 	http.ServeContent(w, r, found.DisplayFilename, found.CreatedAt, file)
+}
+
+func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, error) {
+	query := r.URL.Query()
+	opts := artifact.ListOptions{
+		Search: query.Get("search"),
+		Type:   artifact.ListTypeAll,
+		Sort:   artifact.SortByModified,
+		Order:  artifact.SortDesc,
+	}
+	switch value := query.Get("type"); value {
+	case "", string(artifact.ListTypeAll):
+	case string(artifact.ListTypeImages):
+		opts.Type = artifact.ListTypeImages
+	case string(artifact.ListTypeFiles):
+		opts.Type = artifact.ListTypeFiles
+	default:
+		return artifact.ListOptions{}, fmt.Errorf("invalid type")
+	}
+	switch value := query.Get("sort"); value {
+	case "", string(artifact.SortByModified):
+	case string(artifact.SortByName):
+		opts.Sort = artifact.SortByName
+	case string(artifact.SortBySize):
+		opts.Sort = artifact.SortBySize
+	default:
+		return artifact.ListOptions{}, fmt.Errorf("invalid sort")
+	}
+	switch value := query.Get("order"); value {
+	case "", string(artifact.SortDesc):
+	case string(artifact.SortAsc):
+		opts.Order = artifact.SortAsc
+	default:
+		return artifact.ListOptions{}, fmt.Errorf("invalid order")
+	}
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil || limit < 0 {
+			return artifact.ListOptions{}, fmt.Errorf("invalid limit")
+		}
+		opts.Limit = limit
+	}
+	return opts, nil
 }
 
 func headerSafeFilename(filename string) string {

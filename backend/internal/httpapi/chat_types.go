@@ -1,6 +1,10 @@
 package httpapi
 
-import "github.com/trick77/slopr/internal/chat"
+import (
+	"time"
+
+	"github.com/trick77/slopr/internal/chat"
+)
 
 type createProjectRequest struct {
 	Name        string `json:"name"`
@@ -84,4 +88,15 @@ type artifactResponse struct {
 	Width           int     `json:"width,omitempty"`
 	Height          int     `json:"height,omitempty"`
 	DurationMs      int64   `json:"durationMs,omitempty"`
+}
+
+type artifactListItemResponse struct {
+	ID              string    `json:"id"`
+	ThreadID        string    `json:"threadId"`
+	ProjectID       *string   `json:"projectId,omitempty"`
+	DisplayFilename string    `json:"displayFilename"`
+	MIMEType        string    `json:"mimeType"`
+	SizeBytes       int64     `json:"sizeBytes"`
+	ModifiedAt      time.Time `json:"modifiedAt"`
+	DownloadURL     string    `json:"downloadUrl"`
 }
