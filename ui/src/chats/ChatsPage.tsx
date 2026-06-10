@@ -18,6 +18,7 @@ export function ChatsPage({
   onRenameThread,
   onDeleteThread,
   onStarThread,
+  onAddThreadToProject,
   onMoveSelectedToProject,
   onAfterBulkDelete,
   onSessionExpired,
@@ -30,6 +31,7 @@ export function ChatsPage({
   onRenameThread(thread: Thread): void;
   onDeleteThread(thread: Thread): void;
   onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
+  onAddThreadToProject?(thread: Thread): void;
   onMoveSelectedToProject?(threads: Thread[]): void;
   onAfterBulkDelete(): void;
   onSessionExpired(): void;
@@ -250,6 +252,7 @@ export function ChatsPage({
                 onSelectFromMenu={() => startSelectModeWith(thread)}
                 onRename={onRenameThread}
                 onDelete={onDeleteThread}
+                onAddToProject={projectsAvailable ? onAddThreadToProject : undefined}
                 onStarChange={onStarThread}
               />
             ))

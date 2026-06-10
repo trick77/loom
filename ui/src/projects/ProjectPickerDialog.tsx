@@ -44,6 +44,7 @@ export function ProjectPickerDialog({
             projects.map((project) => (
               <button
                 key={project.id}
+                aria-label={project.name}
                 className="flex w-full flex-col rounded-md px-3 py-2 text-left hover:bg-[#2a2a28] disabled:opacity-50"
                 type="button"
                 disabled={disabled}
