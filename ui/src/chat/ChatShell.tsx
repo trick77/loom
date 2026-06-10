@@ -1357,7 +1357,9 @@ function ChatPanel({
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   const hasActiveActivityTrace = activityTrace.length > 0;
   const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
-  const activeActivityTraceExpanded = streamingText === "" || activeActivityTraceUserExpanded;
+  // Reasoning stays collapsed by default the whole turn — only the sweeping
+  // label shows until the user opens it. No auto-expand while reasoning streams.
+  const activeActivityTraceExpanded = activeActivityTraceUserExpanded;
   // Once the final answer streams (and no tool is running or pending), the
   // reasoning phase is over: show its abstract instead of "Thinking". Only
   // applies to traces that actually have reasoning, so reasoning-free turns keep

@@ -41,12 +41,14 @@ export function ActivityTracePanel({
   // Sweep the label for the whole turn: "Thinking" while reasoning, then the
   // abstract once it settles — both shimmer until the answer finishes streaming.
   const sweeping = active || streaming;
-  // Cap the timeline with a "Done" node once the whole turn has settled (no
-  // longer thinking and no longer streaming the answer) — but only when there
-  // was an actual tool timeline to end. A reasoning-only trace has no timeline,
-  // so it gets no terminal node.
-  const usedTools = events.some((event) => event.type === "tool");
-  const complete = usedTools && !active && !streaming;
+  // The trace is always a timeline: reasoning rows get a clock node, the line
+  // connects them, and a terminal "Done" node caps the turn once it has settled
+  // (no longer thinking and no longer streaming the answer).
+  const complete = events.length > 0 && !active && !streaming;
+  // The chevron only appears once there is something to reveal — i.e. once
+  // reasoning (or a tool) has started streaming. During the bare "Thinking"
+  // phase there is just the sweeping label, with no toggle affordance.
+  const hasBody = events.length > 0;
   return (
     <div
       aria-label={active ? "Slopr activity trace" : undefined}
@@ -58,6 +60,7 @@ export function ActivityTracePanel({
         aria-expanded={expanded}
         aria-label={expanded ? "Hide activity" : "Show activity"}
         className="slopr-activity-trace-toggle"
+        disabled={!hasBody}
         type="button"
         onClick={() => {
           const next = !expanded;
@@ -73,7 +76,9 @@ export function ActivityTracePanel({
           ) : (
             <span>{label}</span>
           )}
-          <span aria-hidden="true" className={expanded ? "slopr-thinking-chevron-expanded" : "slopr-thinking-chevron"} />
+          {hasBody && (
+            <span aria-hidden="true" className={expanded ? "slopr-thinking-chevron-expanded" : "slopr-thinking-chevron"} />
+          )}
         </span>
       </button>
       {bodyMounted && (
@@ -86,9 +91,9 @@ export function ActivityTracePanel({
           aria-hidden={expanded ? undefined : true}
         >
           <div className="slopr-activity-trace-collapsible-inner">
-            <div className={`slopr-activity-trace-body${usedTools ? "" : " slopr-activity-trace-body-flat"}`}>
+            <div className="slopr-activity-trace-body">
               {events.map((event) => (
-                <ActivityTraceRow key={event.id} event={event} headline={label} timeline={usedTools} />
+                <ActivityTraceRow key={event.id} event={event} headline={label} />
               ))}
               {complete && <ActivityTraceDoneRow />}
             </div>
@@ -136,27 +141,23 @@ function ReasoningContent({ content }: { content: string }) {
 function ActivityTraceRow({
   event,
   headline,
-  timeline,
 }: {
   event: ActivityTraceEvent;
   headline: string;
-  timeline: boolean;
 }) {
   if (event.type === "reasoning") {
-    // The node glyph is a timeline affordance — only show it when tools make the
-    // trace an actual timeline. Without tools there is no icon column at all, so
-    // the reasoning sits flush-left, aligned with the headline and the answer.
-    const iconClass =
-      event.status === "done"
-        ? "slopr-activity-trace-icon slopr-activity-trace-icon-reasoning slopr-activity-trace-icon-reasoning-complete"
-        : "slopr-activity-trace-icon slopr-activity-trace-icon-reasoning";
+    // Every reasoning round is a timeline node marked with the clock glyph,
+    // regardless of running/done — the terminal "Done" node carries the
+    // checkmark that ends the turn.
     // Skip the per-round title when it just repeats the collapsed headline
     // above (the common single-round case) — otherwise it reads as a duplicate.
     const title = event.title?.trim();
     const showTitle = title !== undefined && title !== "" && title !== headline.trim();
     return (
       <div className="slopr-activity-trace-row slopr-activity-trace-row-reasoning">
-        {timeline && <span className={iconClass} aria-hidden="true" />}
+        <span className="slopr-activity-trace-icon slopr-activity-trace-icon-clock" aria-hidden="true">
+          <ClockTraceIcon />
+        </span>
         <div className="min-w-0 flex-1">
           {showTitle && <div className="slopr-activity-reasoning-title">{event.title}</div>}
           <ReasoningContent content={event.content.trim()} />
@@ -282,6 +283,20 @@ function GlobeTraceIcon() {
       <path d="M3 12h18" />
       <path d="M12 3c2.25 2.45 3.35 5.45 3.35 9s-1.1 6.55-3.35 9" />
       <path d="M12 3c-2.25 2.45-3.35 5.45-3.35 9s1.1 6.55 3.35 9" />
+    </svg>
+  );
+}
+
+function ClockTraceIcon() {
+  // Clock with hands at 12 and ~4 o'clock; the upper-left arc dissolves into
+  // three dots — the reasoning timeline node, matching the reference glyph.
+  return (
+    <svg className="slopr-activity-clock-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8.24 1.66 A 11 11 0 1 1 1.01 12.38" />
+      <circle className="slopr-activity-clock-dot" cx="1.37" cy="9.15" r="1.1" />
+      <circle className="slopr-activity-clock-dot" cx="2.99" cy="5.69" r="1.1" />
+      <circle className="slopr-activity-clock-dot" cx="5.69" cy="2.99" r="1.1" />
+      <path d="M12 5.89v6.11l4.28 1.83" />
     </svg>
   );
 }
