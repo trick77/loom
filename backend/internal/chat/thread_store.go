@@ -48,18 +48,13 @@ func (s *Store) GetThread(ctx context.Context, userID, threadID string) (Thread,
 	return s.getThread(ctx, userID, threadID)
 }
 
-func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreadsOptions) ([]Thread, error) {
+// threadFilters builds the shared WHERE clauses (and their args) for thread
+// listing, excluding cursor keyset and limit so both ListThreads and
+// ListThreadIDs stay in sync on which rows match.
+func threadFilters(userID string, opts ListThreadsOptions) ([]string, []any, error) {
 	if opts.ProjectID != nil && opts.ProjectlessOnly {
-		return nil, errors.New("project filter cannot be combined with projectless filter")
+		return nil, nil, errors.New("project filter cannot be combined with projectless filter")
 	}
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 30
-	}
-	if limit > 1000 {
-		limit = 1000
-	}
-
 	filters := []string{"user_id = ?"}
 	args := []any{userID}
 	if opts.Archived {
@@ -80,6 +75,26 @@ func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreads
 	if search := strings.TrimSpace(opts.Search); search != "" {
 		filters = append(filters, `title LIKE ? ESCAPE '\'`)
 		args = append(args, "%"+escapeLike(search)+"%")
+	}
+	return filters, args, nil
+}
+
+func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreadsOptions) ([]Thread, error) {
+	filters, args, err := threadFilters(userID, opts)
+	if err != nil {
+		return nil, err
+	}
+	limit := EffectiveThreadLimit(opts.Limit)
+
+	if opts.Cursor != "" {
+		cursor, err := decodeThreadCursor(opts.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		// Keyset bound for ORDER BY (activity, updated_at, id) DESC. SQLite
+		// row-value comparison preserves the exact tie-break ordering.
+		filters = append(filters, "(COALESCE(last_message_at, updated_at), updated_at, id) < (?, ?, ?)")
+		args = append(args, cursor.Activity, cursor.Updated, cursor.ID)
 	}
 	args = append(args, limit)
 
@@ -107,6 +122,39 @@ LIMIT ?`, strings.Join(filters, " AND "))
 		return nil, fmt.Errorf("iterate threads: %w", err)
 	}
 	return threads, nil
+}
+
+// ListThreadIDs returns the ids of every thread matching the same filters as
+// ListThreads (search/archived/project), without limit or cursor. Used by the
+// "select all matches" flow so the client can act on threads it hasn't loaded.
+func (s *Store) ListThreadIDs(ctx context.Context, userID string, opts ListThreadsOptions) ([]string, error) {
+	filters, args, err := threadFilters(userID, opts)
+	if err != nil {
+		return nil, err
+	}
+	query := fmt.Sprintf(`
+SELECT id
+FROM threads
+WHERE %s
+ORDER BY COALESCE(last_message_at, updated_at) DESC, updated_at DESC, id DESC`, strings.Join(filters, " AND "))
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list thread ids: %w", err)
+	}
+	defer rows.Close()
+
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan thread id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate thread ids: %w", err)
+	}
+	return ids, nil
 }
 
 func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in UpdateThreadInput) (Thread, bool, error) {

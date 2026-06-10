@@ -1,7 +1,7 @@
 export type RouteState =
   | { view: "new" }
   | { view: "chats" }
-  | { view: "library" }
+  | { view: "artifacts" }
   | { view: "chat"; threadID: string };
 
 export function routeFromLocation(): RouteState {
@@ -11,14 +11,14 @@ export function routeFromLocation(): RouteState {
     if (threadID !== "") return { view: "chat", threadID };
   }
   if (path === "/chats") return { view: "chats" };
-  if (path === "/library") return { view: "library" };
+  if (path === "/artifacts") return { view: "artifacts" };
   return { view: "new" };
 }
 
 export function pathForRoute(route: RouteState): string {
   if (route.view === "new") return "/new";
   if (route.view === "chats") return "/chats";
-  if (route.view === "library") return "/library";
+  if (route.view === "artifacts") return "/artifacts";
   return `/chat/${encodeURIComponent(route.threadID)}`;
 }
 

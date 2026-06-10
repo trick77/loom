@@ -86,13 +86,7 @@ WHERE user_id = ? AND id = ?`, userID, artifactID).Scan(
 }
 
 func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Artifact, error) {
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 1000
-	}
-	if limit > 1000 {
-		limit = 1000
-	}
+	limit := EffectiveArtifactLimit(opts.Limit)
 
 	filters := []string{"user_id = ?"}
 	args := []any{userID}
@@ -105,6 +99,16 @@ func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Ar
 		filters = append(filters, `mime_type LIKE 'image/%'`)
 	case ListTypeFiles:
 		filters = append(filters, `mime_type NOT LIKE 'image/%'`)
+	}
+	if opts.Cursor != "" {
+		clause, boundValue, err := artifactKeysetClause(opts.Sort, opts.Order, opts.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		// Keyset bound; the comparison expression (incl. COLLATE NOCASE for name)
+		// must match listOrderBy so the page boundary aligns with the sort.
+		filters = append(filters, clause.expr)
+		args = append(args, boundValue, clause.id)
 	}
 	args = append(args, limit)
 

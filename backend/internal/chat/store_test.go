@@ -727,3 +727,67 @@ func TestStore_CreateProjectlessThreadAndListMessagesScopesByUser(t *testing.T) 
 		t.Fatalf("message JSON defaults = %q, %q; want [], []", messages[0].ToolCalls, messages[0].Citations)
 	}
 }
+
+func TestStore_ListThreadsPaginatesWithCursor(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	// Explicit timestamps make ordering deterministic; t_c uses last_message_at
+	// to exercise the COALESCE(last_message_at, updated_at) keyset.
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO threads (id, user_id, title, created_at, updated_at, last_message_at)
+VALUES ('t_a', ?, 'A', '2026-06-10 09:00:00', '2026-06-10 09:00:00', NULL),
+       ('t_b', ?, 'B', '2026-06-10 09:00:01', '2026-06-10 09:00:01', NULL),
+       ('t_c', ?, 'C', '2026-06-10 08:00:00', '2026-06-10 08:00:00', '2026-06-10 09:00:05'),
+       ('t_d', ?, 'D', '2026-06-10 09:00:03', '2026-06-10 09:00:03', NULL),
+       ('t_e', ?, 'E', '2026-06-10 09:00:02', '2026-06-10 09:00:02', NULL)`,
+		userID, userID, userID, userID, userID); err != nil {
+		t.Fatalf("insert threads: %v", err)
+	}
+
+	// Activity DESC: t_c(09:00:05), t_d(09:00:03), t_e(09:00:02), t_b(09:00:01), t_a(09:00:00).
+	want := []string{"t_c", "t_d", "t_e", "t_b", "t_a"}
+
+	var got []string
+	opts := ListThreadsOptions{Limit: 2}
+	limit := EffectiveThreadLimit(opts.Limit)
+	for {
+		page, err := store.ListThreads(ctx, userID, opts)
+		if err != nil {
+			t.Fatalf("ListThreads(cursor=%q) error: %v", opts.Cursor, err)
+		}
+		if len(page) > limit {
+			t.Fatalf("page size = %d, want <= %d", len(page), limit)
+		}
+		for _, thread := range page {
+			got = append(got, thread.ID)
+		}
+		if len(page) < limit {
+			break
+		}
+		opts.Cursor = EncodeThreadCursor(page[len(page)-1])
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("paged ids = %v, want %v", got, want)
+	}
+
+	// ListThreadIDs returns every match in the same order, ignoring limit/cursor.
+	ids, err := store.ListThreadIDs(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreadIDs() error: %v", err)
+	}
+	if strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Fatalf("ListThreadIDs = %v, want %v", ids, want)
+	}
+
+	// Search filter narrows the id set.
+	filtered, err := store.ListThreadIDs(ctx, userID, ListThreadsOptions{Search: "C"})
+	if err != nil {
+		t.Fatalf("ListThreadIDs(search) error: %v", err)
+	}
+	if len(filtered) != 1 || filtered[0] != "t_c" {
+		t.Fatalf("ListThreadIDs(search) = %v, want [t_c]", filtered)
+	}
+}

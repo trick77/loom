@@ -50,6 +50,9 @@ type ListOptions struct {
 	Sort   SortBy
 	Order  SortOrder
 	Limit  int
+	// Cursor is an opaque keyset position from a previous page; empty for the
+	// first page.
+	Cursor string
 }
 
 type OutputRequest struct {

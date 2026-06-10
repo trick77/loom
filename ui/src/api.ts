@@ -160,13 +160,21 @@ export async function createProject(input: { name: string; description?: string 
   return expectJSON<Project>(response, "failed to create project");
 }
 
+// Page is the cursor-pagination envelope returned by list endpoints.
+// nextCursor is null when there are no further pages.
+export type Page<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
 export async function listThreads(params: {
   projectId?: string | null;
   starred?: boolean;
   archived?: boolean;
   search?: string;
   limit?: number;
-} = {}): Promise<Thread[]> {
+  cursor?: string | null;
+} = {}): Promise<Page<Thread>> {
   const query = new URLSearchParams();
   if (params.projectId !== undefined) {
     query.set("projectId", params.projectId === null ? "null" : params.projectId);
@@ -183,9 +191,25 @@ export async function listThreads(params: {
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
   }
+  if (params.cursor !== undefined && params.cursor !== null && params.cursor !== "") {
+    query.set("cursor", params.cursor);
+  }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
   const response = await fetch(`/api/threads${suffix}`);
-  return expectJSON<Thread[]>(response, "failed to load threads");
+  return expectJSON<Page<Thread>>(response, "failed to load threads");
+}
+
+// listThreadIds returns the ids of every thread matching the search, with no
+// pagination — used by "select all matches" so the client can act on threads
+// it has not loaded into the list.
+export async function listThreadIds(params: { search?: string } = {}): Promise<string[]> {
+  const query = new URLSearchParams();
+  if (params.search !== undefined && params.search !== "") {
+    query.set("search", params.search);
+  }
+  const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
+  const response = await fetch(`/api/threads/ids${suffix}`);
+  return expectJSON<string[]>(response, "failed to load thread ids");
 }
 
 export async function listArtifacts(params: {
@@ -194,7 +218,8 @@ export async function listArtifacts(params: {
   order?: SortOrder;
   search?: string;
   limit?: number;
-} = {}): Promise<Artifact[]> {
+  cursor?: string | null;
+} = {}): Promise<Page<Artifact>> {
   const query = new URLSearchParams();
   if (params.type !== undefined) {
     query.set("type", params.type);
@@ -211,9 +236,12 @@ export async function listArtifacts(params: {
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
   }
+  if (params.cursor !== undefined && params.cursor !== null && params.cursor !== "") {
+    query.set("cursor", params.cursor);
+  }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
   const response = await fetch(`/api/artifacts${suffix}`);
-  return expectJSON<Artifact[]>(response, "failed to load artifacts");
+  return expectJSON<Page<Artifact>>(response, "failed to load artifacts");
 }
 
 export async function createThread(input: { projectId?: string | null; title?: string } = {}): Promise<Thread> {

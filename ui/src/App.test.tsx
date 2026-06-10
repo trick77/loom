@@ -64,20 +64,23 @@ test("opens the artifact library from the sidebar", async () => {
         return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
       }
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
       if (url === "/api/mcp/status") return Response.json({ active: 0, configured: 0 });
-      if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=1000") {
-        return Response.json([
-          {
-            id: "art_1",
-            threadId: "t1",
-            displayFilename: "robot.png",
-            mimeType: "image/png",
-            sizeBytes: 1024,
-            modifiedAt: "2026-06-10T12:00:00Z",
-            downloadUrl: "/api/artifacts/art_1/download",
-          },
-        ]);
+      if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
+        return Response.json({
+          items: [
+            {
+              id: "art_1",
+              threadId: "t1",
+              displayFilename: "robot.png",
+              mimeType: "image/png",
+              sizeBytes: 1024,
+              modifiedAt: "2026-06-10T12:00:00Z",
+              downloadUrl: "/api/artifacts/art_1/download",
+            },
+          ],
+          nextCursor: null,
+        });
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -85,11 +88,11 @@ test("opens the artifact library from the sidebar", async () => {
 
   render(<App />);
 
-  fireEvent.click(await screen.findByRole("button", { name: "Library" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Artifacts" }));
 
-  expect(await screen.findByRole("heading", { name: "Library" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Artifacts" })).toBeInTheDocument();
   expect(await screen.findByText("robot.png")).toBeInTheDocument();
-  expect(window.location.pathname).toBe("/library");
+  expect(window.location.pathname).toBe("/artifacts");
 });
 
 test("places library before projects in the primary sidebar navigation", async () => {
@@ -97,11 +100,11 @@ test("places library before projects in the primary sidebar navigation", async (
 
   render(<App />);
 
-  const libraryButton = await screen.findByRole("button", { name: "Library" });
+  const artifactsButton = await screen.findByRole("button", { name: "Artifacts" });
   const projectsItem = screen.getAllByText("Projects")[0].closest("div");
 
   expect(projectsItem).not.toBeNull();
-  expect(libraryButton.compareDocumentPosition(projectsItem as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(artifactsButton.compareDocumentPosition(projectsItem as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 test("greets signed-in users with up late after 22:00", async () => {
@@ -158,12 +161,12 @@ test("bounds the active chat title in the top header", async () => {
       }
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json([
+        return Response.json({ items: [
           {
             ...threadFixture(),
             title: "Albert Einstein The legendary physicist who revolutionized modern physics",
           },
-        ]);
+        ], nextCursor: null });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
@@ -221,7 +224,7 @@ test("shows MCP status on the new chat screen", async () => {
         return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
       }
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
       if (url === "/api/mcp/status") {
         return Response.json({
           active: 3,
@@ -255,7 +258,7 @@ test("renders admin user list for admin users", async () => {
         return Response.json({ id: "u1", username: "jan", role: "admin", displayName: "Jan" });
       }
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
       if (url === "/api/admin/users") {
         return Response.json([{ id: "u2", username: "sam", role: "user", displayName: "Sam" }]);
       }
@@ -290,7 +293,7 @@ test("loads projects and recent threads after sign in", async () => {
         ]);
       }
       if (url === "/api/threads?limit=30") {
-        return Response.json([
+        return Response.json({ items: [
           {
             id: "t1",
             title: "Algebra",
@@ -298,7 +301,7 @@ test("loads projects and recent threads after sign in", async () => {
             createdAt: "2026-05-30T00:00:00Z",
             updatedAt: "2026-05-30T00:00:00Z",
           },
-        ]);
+        ], nextCursor: null });
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -317,7 +320,7 @@ test("shows chat data load errors", async () => {
       const url = String(input);
       if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return new Response("", { status: 500 });
-      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
@@ -332,7 +335,7 @@ test("creates a project from the sidebar", async () => {
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects" && init?.method === undefined) return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
     if (url === "/api/projects" && init?.method === "POST") {
       return new Response(
         JSON.stringify({
@@ -373,7 +376,7 @@ test("renders the new-chat plus icon and the new-project plus control", async ()
       const url = String(input);
       if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
@@ -396,7 +399,7 @@ test("new chat navigation does not create a thread or sidebar entry", async () =
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([{ ...threadFixture(), id: "existing", title: "Existing chat" }]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [{ ...threadFixture(), id: "existing", title: "Existing chat" }], nextCursor: null });
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -425,7 +428,7 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
     if (url === "/api/threads" && init?.method === "POST") {
       return new Response(
         JSON.stringify({
@@ -567,7 +570,7 @@ test("stars and unstars a chat from the sidebar action menu and closes the menu"
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([{ ...threadFixture(), starred }]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [{ ...threadFixture(), starred }], nextCursor: null });
     if (url === "/api/threads/t1") {
       return Response.json({ thread: { ...threadFixture(), starred }, messages: [] });
     }
@@ -606,7 +609,7 @@ test("renames a chat from the sidebar menu", async () => {
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json([{ ...threadFixture(), title: "Existing chat" }]);
+      return Response.json({ items: [{ ...threadFixture(), title: "Existing chat" }], nextCursor: null });
     }
     if (url === "/api/threads/t1" && init?.method === "PATCH") {
       return Response.json({ ...threadFixture(), title: "Renamed chat" });
@@ -648,7 +651,7 @@ test("deletes the active chat from the sidebar menu after confirmation", async (
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json([{ ...threadFixture(), title: "Existing chat" }]);
+      return Response.json({ items: [{ ...threadFixture(), title: "Existing chat" }], nextCursor: null });
     }
     if (url === "/api/threads/t1" && init?.method === "DELETE") {
       return new Response(null, { status: 204 });
@@ -683,7 +686,7 @@ test("closes a chat modal when clicking the backdrop", async () => {
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json([{ ...threadFixture(), title: "Existing chat" }]);
+      return Response.json({ items: [{ ...threadFixture(), title: "Existing chat" }], nextCursor: null });
     }
     if (url === "/api/threads/t1") {
       return Response.json({
@@ -718,7 +721,7 @@ test("shows MCP status in the active chat header without the header star action"
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([thread()]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [thread()], nextCursor: null });
     if (url === "/api/threads/t1") return Response.json({ thread: thread(), messages: [] });
     if (url === "/api/mcp/status") return Response.json({ active: 2, configured: 3 });
     throw new Error(`unexpected fetch ${url}`);
@@ -739,7 +742,7 @@ test("starting chat exits the admin panel", async () => {
       const url = String(input);
       if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "admin" });
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json([]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
       if (url === "/api/admin/users") {
         return Response.json([{ id: "u2", username: "sam", role: "user", displayName: "Sam" }]);
       }
@@ -808,7 +811,7 @@ test("renders streamed assistant response", async () => {
       if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json([
+        return Response.json({ items: [
           {
             id: "t1",
             title: "Existing chat",
@@ -816,7 +819,7 @@ test("renders streamed assistant response", async () => {
             createdAt: "2026-05-30T00:00:00Z",
             updatedAt: "2026-05-30T00:00:00Z",
           },
-        ]);
+        ], nextCursor: null });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
@@ -1618,9 +1621,9 @@ function mcpStreamFetch(streamBody: string) {
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json([
+      return Response.json({ items: [
         { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
-      ]);
+      ], nextCursor: null });
     }
     if (url === "/api/threads/t1") {
       return Response.json({
@@ -1656,9 +1659,9 @@ function chatThreadFetch(
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json([
+      return Response.json({ items: [
         { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
-      ]);
+      ], nextCursor: null });
     }
     if (url === "/api/threads/t1") {
       return Response.json({
@@ -1682,7 +1685,7 @@ function stoppingChatFetch() {
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([threadFixture()]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [threadFixture()], nextCursor: null });
     if (url === "/api/threads/t1") return Response.json({ thread: threadFixture(), messages: [] });
     if (url === "/api/threads/t1/messages:stop" && init?.method === "POST") {
       return new Response("", { status: 204 });
@@ -1715,9 +1718,9 @@ function persistedMarkdownChatFetch() {
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json([
+      return Response.json({ items: [
         { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
-      ]);
+      ], nextCursor: null });
     }
     if (url === "/api/threads/t1") {
       return Response.json({
@@ -1816,7 +1819,7 @@ test("loads MCP status into the chat header", async () => {
       const url = String(input);
       if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json([threadFixture()]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [threadFixture()], nextCursor: null });
       if (url === "/api/threads/t1") return Response.json({ thread: threadFixture(), messages: [] });
       if (url === "/api/mcp/status") return Response.json({ active: 1, configured: 2 });
       throw new Error(`unexpected fetch ${url}`);
@@ -2157,7 +2160,7 @@ test("ignores stream events after switching threads", async () => {
       if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json([
+        return Response.json({ items: [
           {
             id: "t1",
             title: "First chat",
@@ -2172,7 +2175,7 @@ test("ignores stream events after switching threads", async () => {
             createdAt: "2026-05-30T00:00:00Z",
             updatedAt: "2026-05-30T00:00:00Z",
           },
-        ]);
+        ], nextCursor: null });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
@@ -2450,7 +2453,7 @@ function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {
       });
     }
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
     throw new Error(`unexpected fetch ${url}`);
   });
 }

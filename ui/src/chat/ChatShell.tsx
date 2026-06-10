@@ -48,7 +48,7 @@ import { MessageMetrics } from "../MessageMetrics";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ChatsPage } from "../ChatsPage";
-import { LibraryPage } from "../library/LibraryPage";
+import { ArtifactsPage } from "../artifacts/ArtifactsPage";
 import {
   buildImageStats,
   downloadableResponse,
@@ -208,7 +208,7 @@ export function ChatShell({
       .then(([nextProjects, nextThreads]) => {
         if (!active) return;
         setProjects(nextProjects);
-        setThreads(nextThreads);
+        setThreads(nextThreads.items);
         setLoadError("");
       })
       .catch((error: unknown) => {
@@ -309,16 +309,16 @@ export function ChatShell({
     setRoute({ view: "chats" });
   }, [onChat]);
 
-  const navigateToLibrary = useCallback(() => {
+  const navigateToArtifacts = useCallback(() => {
     onChat();
     setMobileSidebarOpen(false);
-    navigate({ view: "library" });
-    setRoute({ view: "library" });
+    navigate({ view: "artifacts" });
+    setRoute({ view: "artifacts" });
   }, [onChat]);
 
   const reloadThreads = useCallback(() => {
     listThreads({ limit: 30 })
-      .then((nextThreads) => setThreads(nextThreads))
+      .then((nextThreads) => setThreads(nextThreads.items))
       .catch((error: unknown) => {
         if (error instanceof AuthExpiredError) onSessionExpired();
       });
@@ -626,11 +626,11 @@ export function ChatShell({
             onClick={navigateToChats}
           />
           <SidebarPrimaryItem
-            label="Library"
-            icon="library"
+            label="Artifacts"
+            icon="artifacts"
             collapsed={railCollapsed}
-            active={route.view === "library" && !showAdmin}
-            onClick={navigateToLibrary}
+            active={route.view === "artifacts" && !showAdmin}
+            onClick={navigateToArtifacts}
           />
           <SidebarPrimaryItem label="Projects" icon="projects" collapsed={railCollapsed} />
           {!railCollapsed && (
@@ -777,8 +777,8 @@ export function ChatShell({
             onAfterBulkDelete={reloadThreads}
             onSessionExpired={onSessionExpired}
           />
-        ) : route.view === "library" ? (
-          <LibraryPage
+        ) : route.view === "artifacts" ? (
+          <ArtifactsPage
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onSessionExpired={onSessionExpired}
           />
@@ -943,7 +943,7 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
       </svg>
     );
   }
-  if (name === "library") {
+  if (name === "artifacts") {
     return (
       <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="none">
         <path

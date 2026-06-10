@@ -107,4 +107,7 @@ type ListThreadsOptions struct {
 	Archived        bool
 	Search          string
 	Limit           int
+	// Cursor is an opaque keyset position from a previous page; empty for the
+	// first page. Ignored by ListThreadIDs.
+	Cursor string
 }
