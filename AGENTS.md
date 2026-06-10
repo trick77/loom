@@ -16,7 +16,7 @@ Full design: `docs/superpowers/specs/2026-05-30-slopr-design.md`. Per-phase plan
 - `make fe-test` — frontend Vitest
 - `make fe-build` — build the SPA into `backend/web/dist` (embedded by Go)
 - `make build` — full build → `bin/slopr` (CGO_ENABLED=0)
-- `make run` — run locally (needs `SLOPR_SESSION_SECRET` + `SLOPR_ADMIN_INITIAL_PASSWORD`)
+- `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_ADMIN_INITIAL_PASSWORD`)
 - `docker compose up --build` — full stack (copy `.env.example` → `.env` and fill it first)
 
 ## Locked technical choices (do not change without explicit agreement)
@@ -29,13 +29,13 @@ Full design: `docs/superpowers/specs/2026-05-30-slopr-design.md`. Per-phase plan
 - HTTP: stdlib `net/http` (Go 1.22 method routing), no web framework. Streaming: **SSE**.
 - One OpenAI-compatible client for chat (MiMo) + embeddings (OpenAI). Extraction: Apache **Tika** sidecar.
 - Tools/agents are **first-class MCP-backed integrations**. Tavily web search is enabled with
-  `SLOPR_TAVILY_API_KEY`; Context7 docs with `SLOPR_CONTEXT7_API_KEY`; the Compose sidecars use
-  `SLOPR_FETCH_MCP_URL` and `SLOPR_OBSCURA_MCP_URL`. Do not add a generic `mcp.json` runtime config
+  `BACKEND_TAVILY_API_KEY`; Context7 docs with `BACKEND_CONTEXT7_API_KEY`; the Compose sidecars use
+  `BACKEND_FETCH_MCP_URL` and `BACKEND_OBSCURA_MCP_URL`. Do not add a generic `mcp.json` runtime config
   surface without explicit agreement.
 
 ## Config
-- All runtime config comes from `SLOPR_*` env vars — see `backend/internal/config/config.go` and
-  `.env.example`. Required to boot: `SLOPR_SESSION_SECRET`, `SLOPR_ADMIN_INITIAL_PASSWORD`.
+- All runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and
+  `.env.example`. Required to boot: `BACKEND_SESSION_SECRET`, `BACKEND_ADMIN_INITIAL_PASSWORD`.
 - Secrets via env only; never commit them. The `admin` account is seeded from env on first boot only.
 
 ## Database / migrations
@@ -45,8 +45,8 @@ Full design: `docs/superpowers/specs/2026-05-30-slopr-design.md`. Per-phase plan
 
 ## Frontend
 - Vite + React + TS + Tailwind. UI is **direction A (Warm Editorial)**: design tokens are CSS variables
-  `--slopr-*` in `src/theme/tokens.css`; use the themed Tailwind classes (`bg-bg`, `bg-panel`,
-  `text-ink`, `text-muted`, `bg-accent`, `rounded-slopr`, `font-serif`/`font-sans`). The real Anthropic
+  `--ui-*` in `src/theme/tokens.css`; use the themed Tailwind classes (`bg-bg`, `bg-panel`,
+  `text-ink`, `text-muted`, `bg-accent`, `rounded-ui`, `font-serif`/`font-sans`). The real Anthropic
   font is a documented swap point in `tokens.css` + `index.css`.
 - `npm run build` empties `backend/web/dist` and overwrites the tracked `.gitkeep` + placeholder
   `index.html`. Do NOT commit built assets — only those two placeholders are tracked; restore them

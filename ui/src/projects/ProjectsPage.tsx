@@ -44,14 +44,14 @@ export function ProjectsPage({
           </div>
           <div className="flex items-center gap-2.5">
             <button
-              className="slopr-control-text cursor-default rounded-lg bg-[#3a3a37] px-3 py-1.5 text-[#d5d2c9] opacity-70"
+              className="ui-control-text cursor-default rounded-lg bg-[#3a3a37] px-3 py-1.5 text-[#d5d2c9] opacity-70"
               type="button"
               disabled
             >
               Sort by <span className="font-semibold text-white">Recent activity</span>
             </button>
             <button
-              className="slopr-control-text rounded-lg bg-white px-3 py-1.5 font-medium text-[#1d1d1b]"
+              className="ui-control-text rounded-lg bg-white px-3 py-1.5 font-medium text-[#1d1d1b]"
               type="button"
               onClick={onCreateProject}
             >
@@ -66,7 +66,7 @@ export function ProjectsPage({
             className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#807d74]"
           />
           <input
-            className="slopr-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
+            className="ui-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
             placeholder="Search projects..."
             aria-label="Search projects"
             value={query}
@@ -74,7 +74,7 @@ export function ProjectsPage({
           />
         </div>
         {loadError !== "" && (
-          <div className="slopr-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
+          <div className="ui-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
             {loadError}
           </div>
         )}

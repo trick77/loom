@@ -175,7 +175,7 @@ export function ChatsPage({
           </div>
           {selectMode ? (
             <div className="flex flex-wrap items-center gap-2.5">
-              <span className="slopr-control-text text-[#9c9a92]">{selectedCount} selected</span>
+              <span className="ui-control-text text-[#9c9a92]">{selectedCount} selected</span>
               <PillButton variant="solid" onClick={toggleSelectAll}>
                 Select all
               </PillButton>
@@ -199,7 +199,7 @@ export function ChatsPage({
               </PillButton>
               <button
                 type="button"
-                className="slopr-control-text rounded-lg px-3 py-1.5 text-[#c7c5bd] transition-colors hover:text-white"
+                className="ui-control-text rounded-lg px-3 py-1.5 text-[#c7c5bd] transition-colors hover:text-white"
                 onClick={exitSelectMode}
               >
                 Cancel
@@ -229,12 +229,12 @@ export function ChatsPage({
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Search chats…"
             aria-label="Search chats"
-            className="slopr-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
+            className="ui-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
           />
         </div>
 
         {loadError !== "" && (
-          <div className="slopr-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
+          <div className="ui-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
             {loadError}
           </div>
         )}
@@ -274,7 +274,7 @@ export function ChatsPage({
         {/* Sentinel observed for infinite scroll; loads the next page when in view. */}
         <div ref={sentinelRef} aria-hidden="true" className="h-px" />
         {loadingMore && hasMore && (
-          <div className="slopr-meta-text mt-3 px-1.5 text-[#8a887f]">Loading more…</div>
+          <div className="ui-meta-text mt-3 px-1.5 text-[#8a887f]">Loading more…</div>
         )}
       </div>
 

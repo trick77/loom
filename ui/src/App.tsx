@@ -71,11 +71,11 @@ export default function App() {
     return (
       <main className="flex h-svh items-center justify-center bg-bg px-6 font-sans text-ink">
         <section className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <img src={sloprImage} alt="Slopr" className="w-full max-w-sm rounded-slopr" />
+          <img src={sloprImage} alt="Slopr" className="w-full max-w-sm rounded-ui" />
           <p className="-mt-5 whitespace-nowrap font-sans text-xl text-muted">Semantic Language Operations &amp; Personal Reasoning</p>
           <a
             href="/api/auth/login"
-            className="mt-6 rounded-slopr bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"
+            className="mt-6 rounded-ui bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"
           >
             Sign in
           </a>

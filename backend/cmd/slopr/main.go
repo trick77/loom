@@ -34,7 +34,7 @@ func main() {
 	// carries an RFC3339 timestamp (the package default does not guarantee one).
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		if err := runHealthcheck(healthcheckURL(envDefault("SLOPR_ADDR", ":8080"))); err != nil {
+		if err := runHealthcheck(healthcheckURL(envDefault("BACKEND_ADDR", ":8080"))); err != nil {
 			slog.Error("healthcheck failed", "err", err)
 			os.Exit(1)
 		}

@@ -90,12 +90,12 @@ export function ArtifactsPage({
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Search filenames..."
             aria-label="Search filenames"
-            className="slopr-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
+            className="ui-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
           />
         </div>
 
         {loadError !== "" && (
-          <div className="slopr-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
+          <div className="ui-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
             {loadError}
           </div>
         )}
@@ -124,7 +124,7 @@ export function ArtifactsPage({
           {/* Sentinel observed for infinite scroll; loads the next page when in view. */}
           <div ref={sentinelRef} aria-hidden="true" className="h-px" />
           {loadingMore && hasMore && (
-            <div className="slopr-meta-text mt-3 px-1.5 text-[#8a887f]">Loading more…</div>
+            <div className="ui-meta-text mt-3 px-1.5 text-[#8a887f]">Loading more…</div>
           )}
         </div>
       </div>
@@ -145,7 +145,7 @@ function FilterButton({
     <button
       type="button"
       aria-pressed={active}
-      className={`slopr-control-text rounded-lg px-3 py-1.5 font-medium transition-colors ${
+      className={`ui-control-text rounded-lg px-3 py-1.5 font-medium transition-colors ${
         active ? "bg-[#343433] text-[#f5f3ee]" : "bg-[#282827] text-[#c7c5bd] hover:text-white"
       }`}
       onClick={onClick}
@@ -205,7 +205,7 @@ function ArtifactRowFrame({
     <li className="relative border-b border-[#343432]">
       <div
         aria-label={ariaLabel}
-        className={`slopr-artifacts-row-surface min-h-[56px] rounded-md px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
+        className={`ui-artifacts-row-surface min-h-[56px] rounded-md px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
           interactive ? "cursor-pointer" : ""
         }`}
         onClick={onClick}
@@ -219,12 +219,12 @@ function ArtifactRowFrame({
         role={interactive ? "button" : undefined}
         tabIndex={interactive ? 0 : undefined}
       >
-        <div className="slopr-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
+        <div className="ui-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
           <div className="min-w-0 pr-3">{action}</div>
           <div className="shrink-0 text-[13px] text-[#8a887f]">{formatTimeAgo(modifiedAt)}</div>
           <div className="shrink-0 text-[13px] text-[#c7c5bd]">{formatFileSize(artifact.sizeBytes)}</div>
         </div>
-        <div className="slopr-artifacts-row-secondary ml-12 mt-0.5 truncate text-xs text-[#8a887f]">
+        <div className="ui-artifacts-row-secondary ml-12 mt-0.5 truncate text-xs text-[#8a887f]">
           {artifact.mimeType}
         </div>
       </div>

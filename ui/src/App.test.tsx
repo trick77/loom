@@ -1128,7 +1128,7 @@ test("renders artifact card from historical assistant message", async () => {
 });
 
 test("renders image artifact preview from generated artifact card", async () => {
-  const objectURL = "blob:slopr-image-preview";
+  const objectURL = "blob:ui-image-preview";
   const createObjectURL = vi.fn(() => objectURL);
   const revokeObjectURL = vi.fn();
   stubURLObjectMethods(createObjectURL, revokeObjectURL);
@@ -1167,7 +1167,7 @@ test("renders image artifact preview from generated artifact card", async () => 
 });
 
 test("clicking an image artifact opens a lightbox preview in the browser", async () => {
-  const objectURL = "blob:slopr-image-preview";
+  const objectURL = "blob:ui-image-preview";
   stubURLObjectMethods(vi.fn(() => objectURL), vi.fn());
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     if (String(input) === "/api/artifacts/art_1/download") {
@@ -1245,7 +1245,7 @@ test("keeps just-completed reasoning trace collapsed until opened", async () => 
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   // Reasoning row shows the clock timeline node; the turn is capped with a Done node.
-  expect(document.querySelector(".slopr-activity-clock-icon")).not.toBeNull();
+  expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
   expect(screen.getByText("Done")).toBeInTheDocument();
 });
 
@@ -1296,7 +1296,7 @@ test("restores persisted activity trace when reopening a chat", async () => {
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
   expect(screen.getByText("Agentgateway")).toBeInTheDocument();
   // The reasoning row shows the clock timeline node.
-  expect(document.querySelector(".slopr-activity-clock-icon")).not.toBeNull();
+  expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
 });
 
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
@@ -1321,8 +1321,8 @@ test("keeps active activity trace while assistant output streams without explici
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
   // No reasoning has streamed yet: just the sweeping label, no chevron to expand.
-  expect(trace.querySelector(".slopr-thinking-chevron")).toBeNull();
-  expect(trace.querySelector(".slopr-thinking-chevron-expanded")).toBeNull();
+  expect(trace.querySelector(".ui-thinking-chevron")).toBeNull();
+  expect(trace.querySelector(".ui-thinking-chevron-expanded")).toBeNull();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
@@ -1446,7 +1446,7 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   // Reasoning rows use the clock node — no per-row completion checkmark mid-stream.
-  expect(document.querySelector(".slopr-activity-trace-icon-reasoning-complete")).toBeNull();
+  expect(document.querySelector(".ui-activity-trace-icon-reasoning-complete")).toBeNull();
 
   streamController.current?.enqueue(
     new TextEncoder().encode(
@@ -1460,7 +1460,7 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
   // Reasoning row shows the clock timeline node; the turn is capped with a Done node.
-  expect(document.querySelector(".slopr-activity-clock-icon")).not.toBeNull();
+  expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
   expect(screen.getByText("Done")).toBeInTheDocument();
 });
 
@@ -1505,11 +1505,11 @@ test("hides the copy action until the assistant answer finishes streaming", asyn
 test("centers reasoning activity dots inside their row circles", () => {
   const css = readFileSync("src/index.css", "utf8");
   const reasoningIconRule =
-    css.match(/\.slopr-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const reasoningDotRule =
-    css.match(/\.slopr-activity-trace-icon-reasoning::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-trace-icon-reasoning::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const reasoningParagraphRule =
-    css.match(/\.slopr-activity-reasoning p\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-reasoning p\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
   expect(reasoningIconRule).toContain("border: 1px solid currentColor");
   expect(reasoningDotRule).toContain("display: block");
@@ -1517,26 +1517,26 @@ test("centers reasoning activity dots inside their row circles", () => {
   expect(reasoningDotRule).toContain("height: 0.25rem");
   expect(reasoningParagraphRule).toContain("margin: 0");
   expect(reasoningParagraphRule).toContain("transform: translateY(1px)");
-  expect(css).toContain(".slopr-activity-trace-icon-reasoning-complete::after");
+  expect(css).toContain(".ui-activity-trace-icon-reasoning-complete::after");
   expect(css).toContain("border-bottom: 1.5px solid currentColor");
   expect(css).toContain("border-left: 1.5px solid currentColor");
 });
 
 test("spaces activity trace connector lines away from adjacent icons", () => {
   const css = readFileSync("src/index.css", "utf8");
-  const iconRule = css.match(/\.slopr-activity-trace-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const iconRule = css.match(/\.ui-activity-trace-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const reasoningIconRule =
-    css.match(/\.slopr-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const connectorRule =
-    css.match(/\.slopr-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
-  expect(css).toContain("--slopr-activity-icon-offset: 0.225rem");
-  expect(iconRule).toContain("margin-top: var(--slopr-activity-icon-offset)");
+  expect(css).toContain("--ui-activity-icon-offset: 0.225rem");
+  expect(iconRule).toContain("margin-top: var(--ui-activity-icon-offset)");
   expect(iconRule).not.toContain("border: 1px solid currentColor");
   expect(iconRule).not.toContain("border-radius: 9999px");
   expect(reasoningIconRule).toContain("border-radius: 9999px");
   expect(reasoningIconRule).not.toContain("margin-top:");
-  expect(connectorRule).toContain("top: calc(0.25rem + var(--slopr-activity-icon-offset) + 1rem + 0.25rem)");
+  expect(connectorRule).toContain("top: calc(0.25rem + var(--ui-activity-icon-offset) + 1rem + 0.25rem)");
   expect(connectorRule).toContain("bottom: -0.225rem");
   expect(connectorRule).toContain("left: calc(0.5rem - 0.5px)");
 });
@@ -1545,31 +1545,31 @@ test("keeps existing search activity icon glyph design", () => {
   const source = readFileSync("src/chat/ActivityTracePanel.tsx", "utf8");
   const css = readFileSync("src/index.css", "utf8");
   const globeIcon = source.match(/function GlobeTraceIcon\(\) \{(?<body>[\s\S]*?)\n\}/)?.groups?.body ?? "";
-  const globeIconRule = css.match(/\.slopr-activity-globe-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const arrowIconRule = css.match(/\.slopr-activity-trace-icon-arrow\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const toolHeaderRule = css.match(/\.slopr-activity-tool-header\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const resultListRule = css.match(/\.slopr-activity-result-list\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const globeIconRule = css.match(/\.ui-activity-globe-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const arrowIconRule = css.match(/\.ui-activity-trace-icon-arrow\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const toolHeaderRule = css.match(/\.ui-activity-tool-header\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const resultListRule = css.match(/\.ui-activity-result-list\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
   // The search node now renders the Anthropicons globe glyph via <Icon> instead
-  // of a hand-drawn SVG; the .slopr-activity-globe-icon sizing rule is preserved.
+  // of a hand-drawn SVG; the .ui-activity-globe-icon sizing rule is preserved.
   expect(globeIcon).toContain('name="globe"');
   expect(globeIconRule).toContain("width: 1.125rem !important");
   expect(globeIconRule).toContain("height: 1.125rem !important");
-  expect(source).toContain("slopr-activity-trace-icon slopr-activity-trace-icon-arrow");
-  expect(source).toContain("slopr-activity-trace-row-reasoning");
-  expect(source).toContain("slopr-activity-trace-row-tool");
+  expect(source).toContain("ui-activity-trace-icon ui-activity-trace-icon-arrow");
+  expect(source).toContain("ui-activity-trace-row-reasoning");
+  expect(source).toContain("ui-activity-trace-row-tool");
   expect(toolHeaderRule).toContain("transform: translateY(-1px)");
   expect(arrowIconRule).toContain("border: 1px solid currentColor");
   expect(arrowIconRule).toContain("border-radius: 9999px");
   expect(resultListRule).toContain("max-height: 12rem");
-  expect(source).not.toContain("slopr-activity-trace-chevron-icon");
+  expect(source).not.toContain("ui-activity-trace-chevron-icon");
 });
 
 test("keeps the reasoning clamp height in sync with REASONING_CAP_PX", () => {
   const source = readFileSync("src/chat/ActivityTracePanel.tsx", "utf8");
   const css = readFileSync("src/index.css", "utf8");
   const capPx = Number(source.match(/REASONING_CAP_PX\s*=\s*(?<px>\d+)/)?.groups?.px);
-  const clampRule = css.match(/\.slopr-activity-reasoning-clamp\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const clampRule = css.match(/\.ui-activity-reasoning-clamp\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const maxHeightRem = Number(clampRule.match(/max-height:\s*(?<rem>[\d.]+)rem/)?.groups?.rem);
 
   // The JS clamp threshold (px) and the CSS max-height (rem) must describe the
@@ -2019,7 +2019,7 @@ test("renders assistant markdown without rendering raw HTML", async () => {
   expect(screen.getByText("classic").tagName).toBe("STRONG");
   expect(screen.getByRole("list")).toBeInTheDocument();
   expect(screen.getByText(/<div>raw html<\/div>/)).toBeInTheDocument();
-  expect(document.querySelector(".slopr-markdown div")).toBeNull();
+  expect(document.querySelector(".ui-markdown div")).toBeNull();
   expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Download response" })).not.toBeInTheDocument();
 });
@@ -2046,10 +2046,10 @@ test("aligns chat messages and composer to the same readable rail", async () => 
   const transcript = await screen.findByRole("region", { name: "Conversation transcript" });
   const composerDock = screen.getByLabelText("Message composer dock");
 
-  expect(transcript.querySelector(".slopr-chat-rail")).toBeInTheDocument();
-  expect(composerDock.querySelector(".slopr-chat-rail")).toBeInTheDocument();
-  expect(transcript.querySelector(".slopr-user-message")).toHaveClass("ml-auto");
-  expect(transcript.querySelector(".slopr-assistant-message")).toBeInTheDocument();
+  expect(transcript.querySelector(".ui-chat-rail")).toBeInTheDocument();
+  expect(composerDock.querySelector(".ui-chat-rail")).toBeInTheDocument();
+  expect(transcript.querySelector(".ui-user-message")).toHaveClass("ml-auto");
+  expect(transcript.querySelector(".ui-assistant-message")).toBeInTheDocument();
 });
 
 test("anchors the chat send button inside the composer action area", async () => {
@@ -2060,8 +2060,8 @@ test("anchors the chat send button inside the composer action area", async () =>
 
   const sendButton = screen.getByRole("button", { name: "Send message" });
 
-  expect(sendButton.closest("form")).toHaveClass("slopr-composer");
-  expect(sendButton).toHaveClass("slopr-composer-send");
+  expect(sendButton.closest("form")).toHaveClass("ui-composer");
+  expect(sendButton).toHaveClass("ui-composer-send");
 });
 
 test("copying a markdown assistant response writes rendered plain text", async () => {
@@ -2126,7 +2126,7 @@ test("renders raw file-like assistant output inline", async () => {
     await screen.findByText(
       (_, element) =>
         element !== null &&
-        element.classList.contains("slopr-markdown") &&
+        element.classList.contains("ui-markdown") &&
         element.textContent?.includes("<!doctype html>") === true,
     ),
   ).toBeInTheDocument();
@@ -2264,7 +2264,7 @@ test("renders inline triple backticks without treating them as a download fence"
 });
 
 test("downloads fenced generated data without markdown fences", async () => {
-  const objectURL = "blob:slopr-response";
+  const objectURL = "blob:ui-response";
   let downloadedBlob: Blob | undefined;
   const createObjectURL = vi.fn((blob: Blob) => {
     downloadedBlob = blob;
@@ -2441,8 +2441,8 @@ test("renders unknown tool calls with safe fallback details", async () => {
   expect(await screen.findByText("custom lookup")).toBeInTheDocument();
   // Both the tool status pill and the terminal timeline node read "Done".
   const doneNodes = screen.getAllByText("Done");
-  expect(doneNodes.some((node) => node.classList.contains("slopr-activity-status-pill"))).toBe(true);
-  expect(doneNodes.some((node) => node.classList.contains("slopr-activity-done-label"))).toBe(true);
+  expect(doneNodes.some((node) => node.classList.contains("ui-activity-status-pill"))).toBe(true);
+  expect(doneNodes.some((node) => node.classList.contains("ui-activity-done-label"))).toBe(true);
 });
 
 test("renders fetch tool rows with an inline favicon and a clickable URL", async () => {
@@ -2468,14 +2468,14 @@ test("renders fetch tool rows with an inline favicon and a clickable URL", async
 
   // First line shows the domain title with the favicon right beside it.
   expect(await screen.findByText("getmaxim.ai")).toBeInTheDocument();
-  const favicon = document.querySelector(".slopr-activity-tool-favicon");
+  const favicon = document.querySelector(".ui-activity-tool-favicon");
   expect(favicon).toHaveAttribute("src", "https://www.google.com/s2/favicons?domain=getmaxim.ai&sz=32");
   // The full URL is a link that opens in a new tab — no redundant result frame.
   const link = screen.getByRole("link", { name: "https://www.getmaxim.ai/bifrost/resources/governance" });
   expect(link).toHaveAttribute("href", "https://www.getmaxim.ai/bifrost/resources/governance");
   expect(link).toHaveAttribute("target", "_blank");
   expect(link).toHaveAttribute("rel", "noreferrer");
-  expect(document.querySelector(".slopr-activity-result-list")).toBeNull();
+  expect(document.querySelector(".ui-activity-result-list")).toBeNull();
 });
 
 test("does not repeat the collapsed headline as the reasoning row title", async () => {
@@ -2505,9 +2505,9 @@ test("does not repeat the collapsed headline as the reasoning row title", async 
   expect(await screen.findByText("The user is asking about Einstein.")).toBeInTheDocument();
   expect(screen.getAllByText("Summarizing Einstein's life and contributions")).toHaveLength(1);
   // The reasoning row shows the clock timeline node; the turn ends with a Done node.
-  expect(document.querySelector(".slopr-activity-clock-icon")).not.toBeNull();
+  expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
   expect(screen.getByText("Done")).toBeInTheDocument();
-  expect(document.querySelector(".slopr-thinking-status-active, .slopr-thinking-status-complete")).toBeNull();
+  expect(document.querySelector(".ui-thinking-status-active, .ui-thinking-status-complete")).toBeNull();
 });
 
 test("reveals the message action icons only after the answer settles", async () => {
@@ -2578,8 +2578,8 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
   // Tools make this a real timeline: the turn is capped with the Done node glyph.
-  expect(document.querySelector(".slopr-activity-trace-icon-done")).not.toBeNull();
-  expect(document.querySelector(".slopr-activity-trace-body-flat")).toBeNull();
+  expect(document.querySelector(".ui-activity-trace-icon-done")).not.toBeNull();
+  expect(document.querySelector(".ui-activity-trace-body-flat")).toBeNull();
   const agentgatewayLink = screen.getByRole("link", { name: /Agentgateway/ });
   expect(agentgatewayLink).toHaveAttribute("href", "https://agentgateway.dev/");
   expect(agentgatewayLink).toHaveAttribute("target", "_blank");
@@ -2589,8 +2589,8 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   expect(screen.getByRole("link", { name: /Our Story and Lumon Brand/ })).toHaveAttribute("href", "https://lumon.com/story");
   expect(screen.queryByText("# Our Story and Lumon Brand")).not.toBeInTheDocument();
   expect(screen.getByText("Malformed source")).toBeInTheDocument();
-  const resultList = document.querySelector(".slopr-activity-result-list");
-  const faviconImages = resultList?.querySelectorAll("img.slopr-activity-favicon");
+  const resultList = document.querySelector(".ui-activity-result-list");
+  const faviconImages = resultList?.querySelectorAll("img.ui-activity-favicon");
   expect(faviconImages).toHaveLength(2);
   expect(faviconImages?.[0]).toHaveAttribute(
     "src",

@@ -9,7 +9,7 @@ Required for local backend startup:
 
 - Go 1.25
 - Node.js/npm for frontend builds
-- `SLOPR_SESSION_SECRET`
+- `BACKEND_SESSION_SECRET`
 - OIDC configuration for authentik, or local-only development auth
 
 Common commands:
@@ -36,16 +36,16 @@ The script binds both services to IPv4 loopback so Vite proxies `/api` to Slopr 
 To run only the backend from `backend/`:
 
 ```bash
-SLOPR_SESSION_SECRET=dev-secret \
-SLOPR_AUTH_MODE=dev \
-SLOPR_ADDR=127.0.0.1:8080 \
-SLOPR_PUBLIC_URL=http://localhost:8080 \
-SLOPR_DB_PATH=/tmp/slopr-dev.db \
+BACKEND_SESSION_SECRET=dev-secret \
+BACKEND_AUTH_MODE=dev \
+BACKEND_ADDR=127.0.0.1:8080 \
+BACKEND_PUBLIC_URL=http://localhost:8080 \
+BACKEND_DB_PATH=/tmp/slopr-dev.db \
 go run ./cmd/slopr
 ```
 
-This mode is guarded at startup. `SLOPR_AUTH_MODE=dev` is rejected unless `SLOPR_ADDR` binds to
-`localhost`, `127.0.0.1`, or `::1`, and `SLOPR_PUBLIC_URL` is empty or loopback. It always creates an
+This mode is guarded at startup. `BACKEND_AUTH_MODE=dev` is rejected unless `BACKEND_ADDR` binds to
+`localhost`, `127.0.0.1`, or `::1`, and `BACKEND_PUBLIC_URL` is empty or loopback. It always creates an
 admin session for the fixed local development user; there is no user switcher.
 
 ## Authentik OIDC Setup
@@ -99,21 +99,21 @@ mapped to `user`.
 Set these variables for Slopr:
 
 ```bash
-SLOPR_AUTH_MODE=oidc
-SLOPR_PUBLIC_URL=https://slopr.example.com
-SLOPR_SESSION_SECRET=replace-with-a-long-random-secret
-SLOPR_OIDC_ISSUER=https://auth.example.com/application/o/slopr/
-SLOPR_OIDC_CLIENT_ID=replace-with-authentik-client-id
-SLOPR_OIDC_CLIENT_SECRET=replace-with-authentik-client-secret
-SLOPR_OIDC_REDIRECT_URL=https://slopr.example.com/api/auth/callback
-SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL=https://slopr.example.com/
-SLOPR_OIDC_ADMIN_GROUP=slopr-admins
-SLOPR_CHAT_BASE_URL=http://your-mimo-host/v1
-SLOPR_CHAT_API_KEY=replace-with-chat-api-key
-SLOPR_CHAT_MODEL=mimo-v2.5-pro
-SLOPR_CHAT_REASONING_EFFORT=high
-SLOPR_CHAT_MAX_COMPLETION_TOKENS=2048
-SLOPR_CHAT_TIMEOUT=2m
+BACKEND_AUTH_MODE=oidc
+BACKEND_PUBLIC_URL=https://slopr.example.com
+BACKEND_SESSION_SECRET=replace-with-a-long-random-secret
+BACKEND_OIDC_ISSUER=https://auth.example.com/application/o/slopr/
+BACKEND_OIDC_CLIENT_ID=replace-with-authentik-client-id
+BACKEND_OIDC_CLIENT_SECRET=replace-with-authentik-client-secret
+BACKEND_OIDC_REDIRECT_URL=https://slopr.example.com/api/auth/callback
+BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL=https://slopr.example.com/
+BACKEND_OIDC_ADMIN_GROUP=slopr-admins
+BACKEND_CHAT_BASE_URL=http://your-mimo-host/v1
+BACKEND_CHAT_API_KEY=replace-with-chat-api-key
+BACKEND_CHAT_MODEL=mimo-v2.5-pro
+BACKEND_CHAT_REASONING_EFFORT=high
+BACKEND_CHAT_MAX_COMPLETION_TOKENS=2048
+BACKEND_CHAT_TIMEOUT=2m
 ```
 
 Keep secrets in environment variables or an uncommitted `.env` file. Do not commit client secrets or
@@ -136,7 +136,7 @@ Required externally reachable paths:
 - `/api/projects`
 - `/api/threads`
 
-The callback URL configured in authentik must exactly match `SLOPR_OIDC_REDIRECT_URL`.
+The callback URL configured in authentik must exactly match `BACKEND_OIDC_REDIRECT_URL`.
 
 ## Chat Setup
 
@@ -146,42 +146,42 @@ streaming, first-exchange thread naming, and MCP-backed tool calls.
 Slopr uses an OpenAI-compatible chat endpoint:
 
 ```bash
-SLOPR_CHAT_BASE_URL=http://your-mimo-host/v1
-SLOPR_CHAT_API_KEY=replace-with-chat-api-key
-SLOPR_CHAT_MODEL=mimo-v2.5-pro
-SLOPR_CHAT_REASONING_EFFORT=high
-SLOPR_CHAT_MAX_COMPLETION_TOKENS=2048
-SLOPR_CHAT_TIMEOUT=2m
+BACKEND_CHAT_BASE_URL=http://your-mimo-host/v1
+BACKEND_CHAT_API_KEY=replace-with-chat-api-key
+BACKEND_CHAT_MODEL=mimo-v2.5-pro
+BACKEND_CHAT_REASONING_EFFORT=high
+BACKEND_CHAT_MAX_COMPLETION_TOKENS=2048
+BACKEND_CHAT_TIMEOUT=2m
 ```
 
-The backend calls `POST <SLOPR_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
+The backend calls `POST <BACKEND_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
 `messages`, `model`, `stream`, `reasoning_effort`, and `max_completion_tokens` fields.
-`SLOPR_CHAT_REASONING_EFFORT` defaults to `high` when unset. `SLOPR_CHAT_MAX_COMPLETION_TOKENS`
-defaults to `2048`, and `SLOPR_CHAT_TIMEOUT` defaults to `2m`, so long-running reasoning streams are
-bounded even when the model is configured for high reasoning effort. If `SLOPR_CHAT_BASE_URL` is
+`BACKEND_CHAT_REASONING_EFFORT` defaults to `high` when unset. `BACKEND_CHAT_MAX_COMPLETION_TOKENS`
+defaults to `2048`, and `BACKEND_CHAT_TIMEOUT` defaults to `2m`, so long-running reasoning streams are
+bounded even when the model is configured for high reasoning effort. If `BACKEND_CHAT_BASE_URL` is
 empty, the authenticated shell still loads but sending a chat message returns a service-unavailable
 error.
 
 ### MCP Tools
 
-Slopr exposes built-in Tavily web search when `SLOPR_TAVILY_API_KEY` is set (web search is opt-in;
+Slopr exposes built-in Tavily web search when `BACKEND_TAVILY_API_KEY` is set (web search is opt-in;
 without a key there is no built-in search tool). Slopr connects to Tavily's hosted MCP server at
-`SLOPR_TAVILY_URL` (default `https://mcp.tavily.com/mcp/`), authenticating via the `tavilyApiKey`
+`BACKEND_TAVILY_URL` (default `https://mcp.tavily.com/mcp/`), authenticating via the `tavilyApiKey`
 query parameter, and exposes only the `tavily_search` tool.
 
-Slopr can also expose Context7 documentation tools when `SLOPR_CONTEXT7_API_KEY` is set. It uses
+Slopr can also expose Context7 documentation tools when `BACKEND_CONTEXT7_API_KEY` is set. It uses
 the remote Streamable HTTP endpoint `https://mcp.context7.com/mcp` by default; override it with
-`SLOPR_CONTEXT7_MCP_URL` if needed. Slopr sends the key as the `CONTEXT7_API_KEY` request header
+`BACKEND_CONTEXT7_MCP_URL` if needed. Slopr sends the key as the `CONTEXT7_API_KEY` request header
 and exposes the remote tools as `context7__resolve-library-id` and `context7__query-docs`.
 
 The default Compose setup also includes two MCP sidecars configured with first-class env vars:
 
 - `fetch` exposes the reference `mcp-server-fetch` URL/document reader as `fetch__fetch`. Use it for
   normal URL reading, article/document extraction, summarization, and quoting. Configure its endpoint
-  with `SLOPR_FETCH_MCP_URL`.
+  with `BACKEND_FETCH_MCP_URL`.
 - `obscura` exposes browser automation tools as `obscura__<tool>`. Use it only when a page needs
   JavaScript rendering, visual inspection, navigation, screenshots, or interaction. Configure its
-  endpoint with `SLOPR_OBSCURA_MCP_URL`.
+  endpoint with `BACKEND_OBSCURA_MCP_URL`.
 
 Configured MCP tools are exposed to the chat model as OpenAI-compatible function tools
 named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Slopr pauses
@@ -215,7 +215,7 @@ Still planned for later phases:
 3. Click **Sign in**.
 4. Complete authentik login.
 5. Confirm Slopr opens the authenticated app shell.
-6. Sign in as a member of `SLOPR_OIDC_ADMIN_GROUP` and confirm admin features appear.
+6. Sign in as a member of `BACKEND_OIDC_ADMIN_GROUP` and confirm admin features appear.
 7. Create a new chat.
 8. Send a message and confirm the assistant response streams into the conversation.
 9. If MCP servers are configured and reachable, ask a question that requires a configured tool and
@@ -226,6 +226,6 @@ Still planned for later phases:
 ### Logout behavior
 
 Slopr logout revokes the local Slopr session and redirects to
-`SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL`. It does not currently perform RP-initiated logout against
+`BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL`. It does not currently perform RP-initiated logout against
 authentik's `end_session_endpoint`. If the browser still has an active authentik SSO session, clicking
 **Sign in** again can immediately create a new Slopr session without showing the authentik login form.

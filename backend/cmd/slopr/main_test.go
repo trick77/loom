@@ -85,7 +85,7 @@ func TestToolConfigForConfigAddsBuiltInTavily(t *testing.T) {
 func TestToolConfigForConfigLeavesTavilyDisabledWhenKeyIsEmpty(t *testing.T) {
 	got := toolConfigForConfig(config.Config{TavilyURL: "https://mcp.tavily.com/mcp/"})
 	if _, exists := got.Servers["tavily"]; exists {
-		t.Fatalf("tavily server exists when SLOPR_TAVILY_API_KEY is empty: %#v", got.Servers["tavily"])
+		t.Fatalf("tavily server exists when BACKEND_TAVILY_API_KEY is empty: %#v", got.Servers["tavily"])
 	}
 }
 

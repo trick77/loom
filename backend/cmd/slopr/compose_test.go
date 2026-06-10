@@ -19,9 +19,9 @@ func TestComposePassesBFLImageGenerationEnv(t *testing.T) {
 			compose := string(data)
 
 			for _, want := range []string{
-				`SLOPR_BFL_BASE_URL: "${SLOPR_BFL_BASE_URL:-https://api.bfl.ai/v1}"`,
-				`SLOPR_BFL_API_KEY: "${SLOPR_BFL_API_KEY:-}"`,
-				`SLOPR_BFL_MODEL: "${SLOPR_BFL_MODEL:-flux-2-klein-4b}"`,
+				`BACKEND_BFL_BASE_URL: "${BACKEND_BFL_BASE_URL:-https://api.bfl.ai/v1}"`,
+				`BACKEND_BFL_API_KEY: "${BACKEND_BFL_API_KEY:-}"`,
+				`BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"`,
 			} {
 				if !strings.Contains(compose, want) {
 					t.Fatalf("%s does not pass %s into the slopr container", path, strings.Split(want, ":")[0])
@@ -41,8 +41,8 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if strings.Contains(compose, "\n    build:") {
 		t.Fatal("compose.yaml must use prebuilt images, not local build directives")
 	}
-	if strings.Contains(compose, "SLOPR_IMAGE") || strings.Contains(compose, "SLOPR_UI_IMAGE") ||
-		strings.Contains(compose, "SLOPR_FETCH_IMAGE") || strings.Contains(compose, "SLOPR_OBSCURA_IMAGE") {
+	if strings.Contains(compose, "BACKEND_IMAGE") || strings.Contains(compose, "BACKEND_UI_IMAGE") ||
+		strings.Contains(compose, "BACKEND_FETCH_IMAGE") || strings.Contains(compose, "BACKEND_OBSCURA_IMAGE") {
 		t.Fatal("compose.yaml must hardcode production image refs instead of reading image refs from env")
 	}
 
@@ -61,8 +61,8 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read .env.example: %v", err)
 	}
-	if strings.Contains(string(envExample), "SLOPR_IMAGE") || strings.Contains(string(envExample), "SLOPR_UI_IMAGE") ||
-		strings.Contains(string(envExample), "SLOPR_FETCH_IMAGE") || strings.Contains(string(envExample), "SLOPR_OBSCURA_IMAGE") {
+	if strings.Contains(string(envExample), "BACKEND_IMAGE") || strings.Contains(string(envExample), "BACKEND_UI_IMAGE") ||
+		strings.Contains(string(envExample), "BACKEND_FETCH_IMAGE") || strings.Contains(string(envExample), "BACKEND_OBSCURA_IMAGE") {
 		t.Fatal(".env.example must not expose production image overrides")
 	}
 }

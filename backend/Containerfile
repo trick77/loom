@@ -2,12 +2,12 @@
 
 # --- Stage 1: build the Go API binary (pure-Go, no cgo) ---
 FROM golang:1.25-alpine AS build
-ARG SLOPR_VERSION=dev
+ARG BACKEND_VERSION=dev
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${SLOPR_VERSION}" -o /out/slopr ./cmd/slopr
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${BACKEND_VERSION}" -o /out/slopr ./cmd/slopr
 
 # --- Stage 2: minimal runtime ---
 FROM gcr.io/distroless/static-debian12:nonroot
