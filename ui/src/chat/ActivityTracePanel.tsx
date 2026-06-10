@@ -60,6 +60,7 @@ export function ActivityTracePanel({
         aria-expanded={expanded}
         aria-label={expanded ? "Hide activity" : "Show activity"}
         className="slopr-activity-trace-toggle"
+        disabled={!hasBody}
         type="button"
         onClick={() => {
           const next = !expanded;
@@ -291,11 +292,11 @@ function ClockTraceIcon() {
   // three dots — the reasoning timeline node, matching the reference glyph.
   return (
     <svg className="slopr-activity-clock-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8.92 3.54 A 9 9 0 1 1 3.00 12.31" />
-      <circle className="slopr-activity-clock-dot" cx="3.31" cy="9.67" r="1" />
-      <circle className="slopr-activity-clock-dot" cx="4.63" cy="6.84" r="1" />
-      <circle className="slopr-activity-clock-dot" cx="6.84" cy="4.63" r="1" />
-      <path d="M12 7v5l3.5 1.5" />
+      <path d="M8.24 1.66 A 11 11 0 1 1 1.01 12.38" />
+      <circle className="slopr-activity-clock-dot" cx="1.37" cy="9.15" r="1.1" />
+      <circle className="slopr-activity-clock-dot" cx="2.99" cy="5.69" r="1.1" />
+      <circle className="slopr-activity-clock-dot" cx="5.69" cy="2.99" r="1.1" />
+      <path d="M12 5.89v6.11l4.28 1.83" />
     </svg>
   );
 }

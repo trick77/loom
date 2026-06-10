@@ -319,10 +319,12 @@ body {
 
 /* Clock glyph for reasoning timeline nodes — a touch larger than the default
    trace icon so the hands read clearly, matching the reference screenshot. */
-.slopr-activity-clock-icon {
-  width: 1rem !important;
-  height: 1rem !important;
-  stroke-width: 1.6 !important;
+/* Two-class selector outweighs `.slopr-activity-trace-icon svg`, so the clock
+   keeps its own size/stroke without needing !important. */
+.slopr-activity-trace-icon .slopr-activity-clock-icon {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 1.6;
 }
 
 /* The dissolved upper-left arc is drawn as filled dots, not strokes. */
