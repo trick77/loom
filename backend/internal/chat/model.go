@@ -96,8 +96,14 @@ type CreateThreadInput struct {
 	Title     string
 }
 
+type ProjectIDUpdate struct {
+	Set   bool
+	Value *string
+}
+
 type UpdateThreadInput struct {
-	Title *string
+	Title     *string
+	ProjectID ProjectIDUpdate
 }
 
 type ListThreadsOptions struct {
