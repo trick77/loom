@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/trick77/slopr/internal/chat"
@@ -29,7 +30,48 @@ type createThreadRequest struct {
 }
 
 type updateThreadRequest struct {
-	Title *string `json:"title"`
+	Title             *string
+	ProjectID         *string
+	ProjectIDProvided bool
+}
+
+func (r *updateThreadRequest) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Title *string `json:"title"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	r.Title = raw.Title
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	rawProjectID, ok := fields["projectId"]
+	if !ok {
+		return nil
+	}
+	r.ProjectIDProvided = true
+	if string(rawProjectID) == "null" {
+		r.ProjectID = nil
+		return nil
+	}
+	var projectID string
+	if err := json.Unmarshal(rawProjectID, &projectID); err != nil {
+		return err
+	}
+	r.ProjectID = &projectID
+	return nil
+}
+
+func (r updateThreadRequest) chatInput() chat.UpdateThreadInput {
+	return chat.UpdateThreadInput{
+		Title: r.Title,
+		ProjectID: chat.ProjectIDUpdate{
+			Set:   r.ProjectIDProvided,
+			Value: r.ProjectID,
+		},
+	}
 }
 
 type bulkDeleteThreadsRequest struct {
