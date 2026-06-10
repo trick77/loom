@@ -172,7 +172,7 @@ export function summarizeToolResult(tool: ActivityTraceToolEvent, rawOutput: str
     return {
       kind: "searchResults",
       resultCount: searchResults.length,
-      results: searchResults.slice(0, 6),
+      results: searchResults,
     };
   }
   const text = truncateText(rawOutput.trim(), 500);
