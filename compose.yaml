@@ -28,35 +28,35 @@ services:
     image: ghcr.io/trick77/slopr:latest
     user: "1000:1000"
     environment:
-      SLOPR_ADDR: ":8080"
-      SLOPR_DB_PATH: "/data/slopr.db"
-      SLOPR_USERS_DIR: "/data/users"
-      SLOPR_PUBLIC_URL: "${SLOPR_PUBLIC_URL}"
-      SLOPR_AUTH_MODE: "${SLOPR_AUTH_MODE:-oidc}"
-      SLOPR_TIKA_URL: "http://tika:9998"
-      SLOPR_TAVILY_URL: "${SLOPR_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
-      SLOPR_TAVILY_API_KEY: "${SLOPR_TAVILY_API_KEY}"
-      SLOPR_FETCH_MCP_URL: "http://fetch:8090/mcp"
-      SLOPR_OBSCURA_MCP_URL: "http://obscura:8090/mcp"
-      SLOPR_OIDC_ISSUER: "${SLOPR_OIDC_ISSUER}"
-      SLOPR_OIDC_CLIENT_ID: "${SLOPR_OIDC_CLIENT_ID}"
-      SLOPR_OIDC_CLIENT_SECRET: "${SLOPR_OIDC_CLIENT_SECRET}"
-      SLOPR_OIDC_REDIRECT_URL: "${SLOPR_OIDC_REDIRECT_URL}"
-      SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL: "${SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL}"
-      SLOPR_OIDC_ADMIN_GROUP: "${SLOPR_OIDC_ADMIN_GROUP:-slopr-admins}"
-      SLOPR_CHAT_BASE_URL: "${SLOPR_CHAT_BASE_URL}"
-      SLOPR_CHAT_API_KEY: "${SLOPR_CHAT_API_KEY}"
-      SLOPR_CHAT_MODEL: "${SLOPR_CHAT_MODEL:-MiMo}"
-      SLOPR_CHAT_REASONING_EFFORT: "${SLOPR_CHAT_REASONING_EFFORT:-high}"
-      SLOPR_EMBED_BASE_URL: "${SLOPR_EMBED_BASE_URL}"
-      SLOPR_EMBED_API_KEY: "${SLOPR_EMBED_API_KEY}"
-      SLOPR_EMBED_MODEL: "${SLOPR_EMBED_MODEL:-text-embedding-3-small}"
-      SLOPR_CONTEXT7_API_KEY: "${SLOPR_CONTEXT7_API_KEY:-}"
-      SLOPR_CONTEXT7_MCP_URL: "${SLOPR_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
-      SLOPR_BFL_BASE_URL: "${SLOPR_BFL_BASE_URL:-https://api.bfl.ai/v1}"
-      SLOPR_BFL_API_KEY: "${SLOPR_BFL_API_KEY:-}"
-      SLOPR_BFL_MODEL: "${SLOPR_BFL_MODEL:-flux-2-klein-4b}"
-      SLOPR_SESSION_SECRET: "${SLOPR_SESSION_SECRET}"
+      BACKEND_ADDR: ":8080"
+      BACKEND_DB_PATH: "/data/slopr.db"
+      BACKEND_USERS_DIR: "/data/users"
+      BACKEND_PUBLIC_URL: "${BACKEND_PUBLIC_URL}"
+      BACKEND_AUTH_MODE: "${BACKEND_AUTH_MODE:-oidc}"
+      BACKEND_TIKA_URL: "http://tika:9998"
+      BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
+      BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY}"
+      BACKEND_FETCH_MCP_URL: "http://fetch:8090/mcp"
+      BACKEND_OBSCURA_MCP_URL: "http://obscura:8090/mcp"
+      BACKEND_OIDC_ISSUER: "${BACKEND_OIDC_ISSUER}"
+      BACKEND_OIDC_CLIENT_ID: "${BACKEND_OIDC_CLIENT_ID}"
+      BACKEND_OIDC_CLIENT_SECRET: "${BACKEND_OIDC_CLIENT_SECRET}"
+      BACKEND_OIDC_REDIRECT_URL: "${BACKEND_OIDC_REDIRECT_URL}"
+      BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL: "${BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL}"
+      BACKEND_OIDC_ADMIN_GROUP: "${BACKEND_OIDC_ADMIN_GROUP:-slopr-admins}"
+      BACKEND_CHAT_BASE_URL: "${BACKEND_CHAT_BASE_URL}"
+      BACKEND_CHAT_API_KEY: "${BACKEND_CHAT_API_KEY}"
+      BACKEND_CHAT_MODEL: "${BACKEND_CHAT_MODEL:-MiMo}"
+      BACKEND_CHAT_REASONING_EFFORT: "${BACKEND_CHAT_REASONING_EFFORT:-high}"
+      BACKEND_EMBED_BASE_URL: "${BACKEND_EMBED_BASE_URL}"
+      BACKEND_EMBED_API_KEY: "${BACKEND_EMBED_API_KEY}"
+      BACKEND_EMBED_MODEL: "${BACKEND_EMBED_MODEL:-text-embedding-3-small}"
+      BACKEND_CONTEXT7_API_KEY: "${BACKEND_CONTEXT7_API_KEY:-}"
+      BACKEND_CONTEXT7_MCP_URL: "${BACKEND_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
+      BACKEND_BFL_BASE_URL: "${BACKEND_BFL_BASE_URL:-https://api.bfl.ai/v1}"
+      BACKEND_BFL_API_KEY: "${BACKEND_BFL_API_KEY:-}"
+      BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"
+      BACKEND_SESSION_SECRET: "${BACKEND_SESSION_SECRET}"
     healthcheck:
       test: ["CMD", "/slopr", "healthcheck"]
       interval: 60s
@@ -97,7 +97,7 @@ services:
 
   fetch:
     # Lightweight URL/document fetch MCP, bridged to streamable-HTTP by
-    # supergateway. Slopr reaches it via SLOPR_FETCH_MCP_URL.
+    # supergateway. Slopr reaches it via BACKEND_FETCH_MCP_URL.
     # Keep it off the default app network so fetched URLs cannot resolve app
     # sidecars such as tika by Compose service name.
     image: ghcr.io/trick77/slopr-fetch:latest
@@ -115,7 +115,7 @@ services:
 
   obscura:
     # Headless-browser MCP (Obscura) bridged to streamable-HTTP by supergateway.
-    # Slopr reaches it via SLOPR_OBSCURA_MCP_URL; tools are
+    # Slopr reaches it via BACKEND_OBSCURA_MCP_URL; tools are
     # surfaced to the LLM as obscura__<tool>.
     # Obscura is amd64-only (emulated on arm64 hosts).
     platform: linux/amd64

@@ -5,9 +5,9 @@
 #
 # Optional chat API config for local dev:
 #
-#   SLOPR_CHAT_BASE_URL=https://your-openai-compatible-host/v1 \
-#   SLOPR_CHAT_API_KEY=your-api-key \
-#   SLOPR_CHAT_MODEL=your-model \
+#   BACKEND_CHAT_BASE_URL=https://your-openai-compatible-host/v1 \
+#   BACKEND_CHAT_API_KEY=your-api-key \
+#   BACKEND_CHAT_MODEL=your-model \
 #   ./hack/refresh.sh
 #
 # Or place the same values in an uncommitted .env file; Docker Compose reads it

@@ -13,7 +13,7 @@ export function PillButton({
   onClick?(): void;
   title?: string;
 }) {
-  let className = "slopr-control-text rounded-lg px-3 py-1.5 font-medium transition-colors ";
+  let className = "ui-control-text rounded-lg px-3 py-1.5 font-medium transition-colors ";
   if (variant === "solid") {
     className += "bg-[#343433] text-[#f5f3ee] hover:bg-[#3d3d3b]";
   } else if (variant === "white") {

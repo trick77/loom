@@ -26,7 +26,7 @@ test("uses sidebar text sizing regardless of render location", () => {
     />,
   );
 
-  expect(screen.getByRole("menu", { name: "Chat actions" })).toHaveClass("slopr-sidebar-text");
+  expect(screen.getByRole("menu", { name: "Chat actions" })).toHaveClass("ui-sidebar-text");
 });
 
 test("adds a divider after select when select is available", () => {

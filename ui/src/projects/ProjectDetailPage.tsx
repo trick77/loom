@@ -71,7 +71,7 @@ export function ProjectDetailPage({
       <div className="mx-auto w-full max-w-[920px] px-4 pb-16 pt-10 md:px-6">
         <button
           aria-label="All projects"
-          className="slopr-control-text flex items-center gap-2 text-[#c7c5bd] hover:text-white"
+          className="ui-control-text flex items-center gap-2 text-[#c7c5bd] hover:text-white"
           type="button"
           onClick={onBack}
         >
@@ -141,7 +141,7 @@ export function ProjectDetailPage({
           </div>
         </form>
         {sendError !== "" && (
-          <div className="slopr-meta-text mt-3 rounded-md border border-accent px-3 py-2 text-accent">
+          <div className="ui-meta-text mt-3 rounded-md border border-accent px-3 py-2 text-accent">
             {sendError}
           </div>
         )}

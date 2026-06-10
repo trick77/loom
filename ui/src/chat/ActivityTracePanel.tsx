@@ -54,13 +54,13 @@ export function ActivityTracePanel({
     <div
       aria-label={active ? "Slopr activity trace" : undefined}
       aria-live={active ? "polite" : undefined}
-      className="slopr-activity-trace"
+      className="ui-activity-trace"
       role={active ? "status" : undefined}
     >
       <button
         aria-expanded={expanded}
         aria-label={expanded ? "Hide activity" : "Show activity"}
-        className="slopr-activity-trace-toggle"
+        className="ui-activity-trace-toggle"
         disabled={!hasBody}
         type="button"
         onClick={() => {
@@ -69,16 +69,16 @@ export function ActivityTracePanel({
           onExpandedChange?.(next);
         }}
       >
-        <span className="slopr-activity-trace-label">
+        <span className="ui-activity-trace-label">
           {sweeping ? (
-            <span className="slopr-thinking-label-active" data-text={label}>
+            <span className="ui-thinking-label-active" data-text={label}>
               {label}
             </span>
           ) : (
             <span>{label}</span>
           )}
           {hasBody && (
-            <span aria-hidden="true" className={expanded ? "slopr-thinking-chevron-expanded" : "slopr-thinking-chevron"} />
+            <span aria-hidden="true" className={expanded ? "ui-thinking-chevron-expanded" : "ui-thinking-chevron"} />
           )}
         </span>
       </button>
@@ -86,13 +86,13 @@ export function ActivityTracePanel({
         <div
           className={
             expanded
-              ? "slopr-activity-trace-collapsible slopr-activity-trace-collapsible-expanded"
-              : "slopr-activity-trace-collapsible"
+              ? "ui-activity-trace-collapsible ui-activity-trace-collapsible-expanded"
+              : "ui-activity-trace-collapsible"
           }
           aria-hidden={expanded ? undefined : true}
         >
-          <div className="slopr-activity-trace-collapsible-inner">
-            <div className="slopr-activity-trace-body">
+          <div className="ui-activity-trace-collapsible-inner">
+            <div className="ui-activity-trace-body">
               {events.map((event) => (
                 <ActivityTraceRow key={event.id} event={event} headline={label} />
               ))}
@@ -107,7 +107,7 @@ export function ActivityTracePanel({
 
 // Cap a long reasoning block at this many pixels; beyond it the text fades out
 // and a "Show more" toggle reveals the rest. Must match the CSS max-height on
-// .slopr-activity-reasoning-clamp (12rem @ 16px root).
+// .ui-activity-reasoning-clamp (12rem @ 16px root).
 const REASONING_CAP_PX = 192;
 
 function ReasoningContent({ content }: { content: string }) {
@@ -125,13 +125,13 @@ function ReasoningContent({ content }: { content: string }) {
   const clamped = overflowing && !showFull;
   return (
     <>
-      <div ref={ref} className={clamped ? "slopr-activity-reasoning slopr-activity-reasoning-clamp" : "slopr-activity-reasoning"}>
+      <div ref={ref} className={clamped ? "ui-activity-reasoning ui-activity-reasoning-clamp" : "ui-activity-reasoning"}>
         <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
           {content}
         </Markdown>
       </div>
       {overflowing && (
-        <button className="slopr-activity-reasoning-more" type="button" onClick={() => setShowFull((value) => !value)}>
+        <button className="ui-activity-reasoning-more" type="button" onClick={() => setShowFull((value) => !value)}>
           {showFull ? "Show less" : "Show more"}
         </button>
       )}
@@ -155,12 +155,12 @@ function ActivityTraceRow({
     const title = event.title?.trim();
     const showTitle = title !== undefined && title !== "" && title !== headline.trim();
     return (
-      <div className="slopr-activity-trace-row slopr-activity-trace-row-reasoning">
-        <span className="slopr-activity-trace-icon slopr-activity-trace-icon-clock" aria-hidden="true">
+      <div className="ui-activity-trace-row ui-activity-trace-row-reasoning">
+        <span className="ui-activity-trace-icon ui-activity-trace-icon-clock" aria-hidden="true">
           <ClockTraceIcon />
         </span>
         <div className="min-w-0 flex-1">
-          {showTitle && <div className="slopr-activity-reasoning-title">{event.title}</div>}
+          {showTitle && <div className="ui-activity-reasoning-title">{event.title}</div>}
           <ReasoningContent content={event.content.trim()} />
         </div>
       </div>
@@ -171,42 +171,42 @@ function ActivityTraceRow({
   const fetchFavicon = fetchUrl === undefined ? undefined : faviconURL(fetchUrl);
   const fetchHref = fetchUrl === undefined ? undefined : externalHTTPURL(fetchUrl);
   return (
-    <div className="slopr-activity-trace-row slopr-activity-trace-row-tool">
+    <div className="ui-activity-trace-row ui-activity-trace-row-tool">
       <span
         className={
           event.summary.kind === "search"
-            ? "slopr-activity-trace-icon"
-            : "slopr-activity-trace-icon slopr-activity-trace-icon-arrow"
+            ? "ui-activity-trace-icon"
+            : "ui-activity-trace-icon ui-activity-trace-icon-arrow"
         }
         aria-hidden="true"
       >
         {event.summary.kind === "search" ? <GlobeTraceIcon /> : <FetchTraceIcon />}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="slopr-activity-tool-header flex items-center justify-between gap-3">
+        <div className="ui-activity-tool-header flex items-center justify-between gap-3">
           <span className="flex min-w-0 items-center gap-2">
-            <span className="slopr-activity-tool-title">{event.summary.title}</span>
+            <span className="ui-activity-tool-title">{event.summary.title}</span>
             {fetchFavicon !== undefined && (
-              <img className="slopr-activity-favicon slopr-activity-tool-favicon" src={fetchFavicon} alt="" />
+              <img className="ui-activity-favicon ui-activity-tool-favicon" src={fetchFavicon} alt="" />
             )}
           </span>
-          <span className={`slopr-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
+          <span className={`ui-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
         {fetchUrl !== undefined &&
           (fetchHref !== undefined ? (
-            <a className="slopr-activity-tool-url" href={fetchHref} target="_blank" rel="noreferrer">
+            <a className="ui-activity-tool-url" href={fetchHref} target="_blank" rel="noreferrer">
               {fetchUrl}
               <Icon name="externalLink" size="0.8em" className="ml-1 inline-block align-[-0.1em]" />
             </a>
           ) : (
-            <span className="slopr-activity-tool-url">{fetchUrl}</span>
+            <span className="ui-activity-tool-url">{fetchUrl}</span>
           ))}
         {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
           <>
-            <div className="slopr-activity-result-count">
+            <div className="ui-activity-result-count">
               {event.preview.resultCount} {event.preview.resultCount === 1 ? "result" : "results"}
             </div>
-            <div className="slopr-activity-result-list">
+            <div className="ui-activity-result-list">
               {event.preview.results.map((result, index) => (
                 <SearchResultRow key={`${result.url ?? result.title}-${index}`} result={result} />
               ))}
@@ -220,12 +220,12 @@ function ActivityTraceRow({
 
 function ActivityTraceDoneRow() {
   return (
-    <div className="slopr-activity-trace-row slopr-activity-trace-row-done">
-      <span className="slopr-activity-trace-icon slopr-activity-trace-icon-done" aria-hidden="true">
+    <div className="ui-activity-trace-row ui-activity-trace-row-done">
+      <span className="ui-activity-trace-icon ui-activity-trace-icon-done" aria-hidden="true">
         <Icon name="checkCircle" size="1.125rem" />
       </span>
       <div className="min-w-0 flex-1">
-        <span className="slopr-activity-done-label">Done</span>
+        <span className="ui-activity-done-label">Done</span>
       </div>
     </div>
   );
@@ -238,13 +238,13 @@ function SearchResultRow({
 }) {
   const favicon = result.url === undefined ? undefined : faviconURL(result.url);
   const href = result.url === undefined ? undefined : externalHTTPURL(result.url);
-  const title = <div className="slopr-activity-result-title">{result.title}</div>;
+  const title = <div className="ui-activity-result-title">{result.title}</div>;
   return (
-    <div className="slopr-activity-result-row">
+    <div className="ui-activity-result-row">
       {favicon !== undefined ? (
-        <img alt="" className="slopr-activity-favicon" src={favicon} />
+        <img alt="" className="ui-activity-favicon" src={favicon} />
       ) : (
-        <span className="slopr-activity-favicon" aria-hidden="true">
+        <span className="ui-activity-favicon" aria-hidden="true">
           {faviconInitial(result.domain ?? result.title)}
         </span>
       )}
@@ -252,12 +252,12 @@ function SearchResultRow({
         {href === undefined ? (
           title
         ) : (
-          <a className="slopr-activity-result-link" href={href} target="_blank" rel="noreferrer">
+          <a className="ui-activity-result-link" href={href} target="_blank" rel="noreferrer">
             {title}
           </a>
         )}
       </div>
-      {result.domain !== undefined && <div className="slopr-activity-result-domain">{result.domain}</div>}
+      {result.domain !== undefined && <div className="ui-activity-result-domain">{result.domain}</div>}
     </div>
   );
 }
@@ -272,19 +272,19 @@ function externalHTTPURL(value: string): string | undefined {
 }
 
 function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {
-  if (event.status === "failed") return { label: "Failed", className: "slopr-activity-status-failed" };
-  if (event.status === "running") return { label: "Running", className: "slopr-activity-status-neutral" };
-  return { label: "Done", className: "slopr-activity-status-neutral" };
+  if (event.status === "failed") return { label: "Failed", className: "ui-activity-status-failed" };
+  if (event.status === "running") return { label: "Running", className: "ui-activity-status-neutral" };
+  return { label: "Done", className: "ui-activity-status-neutral" };
 }
 
 function GlobeTraceIcon() {
-  return <Icon name="globe" size="1.125rem" className="slopr-activity-globe-icon" />;
+  return <Icon name="globe" size="1.125rem" className="ui-activity-globe-icon" />;
 }
 
 function ClockTraceIcon() {
   // Reasoning timeline node — the Anthropicons clock-with-arc glyph (the same
   // reference design the previous hand-tuned SVG approximated).
-  return <Icon name="clock" size="1.125rem" className="slopr-activity-clock-icon" />;
+  return <Icon name="clock" size="1.125rem" className="ui-activity-clock-icon" />;
 }
 
 function FetchTraceIcon() {

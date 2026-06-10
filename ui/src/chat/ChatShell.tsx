@@ -804,13 +804,13 @@ export function ChatShell({
       }`}
     >
       <aside
-        className={`slopr-sidebar-text fixed inset-y-0 left-0 z-50 flex w-[300px] max-w-[85vw] min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd] transition-transform duration-200 ease-out md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 ${
+        className={`ui-sidebar-text fixed inset-y-0 left-0 z-50 flex w-[300px] max-w-[85vw] min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd] transition-transform duration-200 ease-out md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className={`flex h-11 items-center px-3 ${railCollapsed ? "justify-center" : "justify-between"}`}>
           {!railCollapsed && (
-            <div className="slopr-wordmark font-serif font-medium text-[#f4f0e8]">Slopr</div>
+            <div className="ui-wordmark font-serif font-medium text-[#f4f0e8]">Slopr</div>
           )}
           <div className="flex items-center gap-3 text-[#aaa79e]">
             {!railCollapsed && (
@@ -829,13 +829,13 @@ export function ChatShell({
               onClick={() =>
                 isMobile ? setMobileSidebarOpen(false) : setSidebarCollapsed((value) => !value)
               }
-              className="slopr-sidebar-btn grid place-items-center rounded transition-colors hover:text-white"
+              className="ui-sidebar-btn grid place-items-center rounded transition-colors hover:text-white"
             >
-              <Icon name="sidebar" size="18px" className="slopr-sidebar-icon" />
+              <Icon name="sidebar" size="18px" className="ui-sidebar-icon" />
             </button>
           </div>
         </div>
-        <nav className="slopr-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
+        <nav className="ui-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
           <button
             className={`flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
               railCollapsed ? "justify-center" : "gap-2.5"
@@ -875,12 +875,12 @@ export function ChatShell({
           {!railCollapsed && (
             <>
           {loadError !== "" && (
-            <div className="slopr-meta-text mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-accent">
+            <div className="ui-meta-text mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-accent">
               {loadError}
             </div>
           )}
           <section className="mt-5">
-            <div className="slopr-meta-text mb-2 flex items-center justify-between px-1.5 text-[#97958c]">
+            <div className="ui-meta-text mb-2 flex items-center justify-between px-1.5 text-[#97958c]">
               <span>Projects</span>
               <button
                 className="rounded px-1 text-[#aaa79e] transition-colors hover:text-white"
@@ -901,21 +901,21 @@ export function ChatShell({
               >
                 <input
                   autoFocus
-                  className="slopr-sidebar-text w-full rounded-md border border-[#3b3b38] bg-[#20201f] px-2 py-1.5 text-ink outline-none placeholder:text-muted focus:border-[#69665f]"
+                  className="ui-sidebar-text w-full rounded-md border border-[#3b3b38] bg-[#20201f] px-2 py-1.5 text-ink outline-none placeholder:text-muted focus:border-[#69665f]"
                   placeholder="Project name"
                   value={projectName}
                   onChange={(event) => setProjectName(event.target.value)}
                 />
                 <div className="flex gap-2">
                   <button
-                    className="slopr-sidebar-text rounded-md bg-[#393936] px-3 py-1.5 font-medium text-white disabled:opacity-50"
+                    className="ui-sidebar-text rounded-md bg-[#393936] px-3 py-1.5 font-medium text-white disabled:opacity-50"
                     disabled={projectName.trim() === "" || isCreatingProject}
                     type="submit"
                   >
                     Create
                   </button>
                   <button
-                    className="slopr-sidebar-text px-2 py-1.5 text-muted transition-colors hover:text-ink"
+                    className="ui-sidebar-text px-2 py-1.5 text-muted transition-colors hover:text-ink"
                     onClick={() => {
                       setProjectName("");
                       setIsProjectFormOpen(false);
@@ -1304,7 +1304,7 @@ function McpStatusIndicator({ compact = false, status }: { compact?: boolean; st
       : `${status.active} of ${status.configured} MCP servers active`;
   return (
     <div
-      className={`slopr-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
+      className={`ui-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
       title={tooltip}
     >
       <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
@@ -1342,7 +1342,7 @@ function SidebarSection({
 }) {
   return (
     <section className="mt-5">
-      <div className="slopr-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
+      <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
       <div className="space-y-1.5">
         {threads.map((thread) => (
           <SidebarThreadItem
@@ -1488,7 +1488,7 @@ function RenameThreadModal({
         <input
           ref={inputRef}
           aria-label="Chat title"
-          className="slopr-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
+          className="ui-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
         />
@@ -1617,7 +1617,7 @@ function StartPanel({
     <section className="flex h-svh min-h-0 flex-col">
       <header
         aria-label="Chat header"
-        className="slopr-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
+        className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -1628,7 +1628,7 @@ function StartPanel({
         )}
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-[14vh] sm:px-8">
-        <h2 className="slopr-greeting-text mb-8 flex items-center gap-4 font-serif">
+        <h2 className="ui-greeting-text mb-8 flex items-center gap-4 font-serif">
           <img className="h-16 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
           {greetingForNow(displayName)}
         </h2>
@@ -1643,7 +1643,7 @@ function StartPanel({
             onStop={onStop}
           />
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-          <div className="slopr-meta-text mt-4 flex flex-wrap justify-center gap-2 text-[#e8e4da]">
+          <div className="ui-meta-text mt-4 flex flex-wrap justify-center gap-2 text-[#e8e4da]">
             <PromptChip icon="◇" label="Write" />
             <PromptChip icon="▱" label="Learn" />
             <PromptChip icon="‹/›" label="Code" />
@@ -1844,7 +1844,7 @@ function ChatPanel({
     <section className="flex h-svh min-h-0 flex-col">
       <header
         aria-label="Chat header"
-        className="slopr-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
+        className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -1892,7 +1892,7 @@ function ChatPanel({
           onWheel={handleWheel}
           role="region"
         >
-          <div className="slopr-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
+          <div className="ui-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
             {messages.map((message, index) => (
               <div key={message.id} className="space-y-6">
                 {message.role === "assistant" && message.activityTrace !== undefined && (
@@ -1942,7 +1942,7 @@ function ChatPanel({
             className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
-            <div className="slopr-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
+            <div className="ui-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
               <Composer
                 variant="chat"
                 draft={draft}
@@ -1952,7 +1952,7 @@ function ChatPanel({
                 onSend={handleSendRequest}
                 onStop={onStop}
               />
-              <div className="slopr-meta-text mt-2 text-center text-[#858178]">
+              <div className="ui-meta-text mt-2 text-center text-[#858178]">
                 Slopr can make mistakes. Please double-check responses.
               </div>
             </div>
@@ -2051,7 +2051,7 @@ function Composer({
   }, [autoGrow]);
   return (
     <form
-      className={`slopr-composer relative flex flex-col rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
+      className={`ui-composer relative flex flex-col rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
       onSubmit={(event) => {
         event.preventDefault();
         if (isSending) {
@@ -2063,7 +2063,7 @@ function Composer({
     >
       <textarea
         ref={textareaRef}
-        className={`slopr-composer-text slopr-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} pb-3 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
+        className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} pb-3 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
         placeholder={placeholder}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
@@ -2078,9 +2078,9 @@ function Composer({
         <button className="leading-none" type="button" aria-label="Add attachment">
           <Icon name="plus" size="24px" />
         </button>
-        <div className="slopr-meta-text flex items-center text-[#d8d4ca]">
+        <div className="ui-meta-text flex items-center text-[#d8d4ca]">
           <button
-            className={`slopr-composer-send grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
+            className={`ui-composer-send grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
             disabled={!isSending && !canSend}
             type="submit"
             aria-label={isSending ? "Stop response" : "Send message"}
@@ -2103,7 +2103,7 @@ function Composer({
 
 function PromptChip({ icon, label }: { icon: string; label: string }) {
   return (
-    <button className="slopr-meta-text flex h-8 items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 text-[#eeeae2]" type="button">
+    <button className="ui-meta-text flex h-8 items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 text-[#eeeae2]" type="button">
       <span className="text-[#aaa79e]">{icon}</span>
       {label}
     </button>
@@ -2121,8 +2121,8 @@ function MessageBubble({
 }) {
   if (message.role === "user") {
     return (
-      <div className="slopr-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
-        <div className="slopr-message-text slopr-user-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
+      <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
+        <div className="ui-message-text ui-user-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
           {message.content}
         </div>
         <MessageActions
@@ -2167,10 +2167,10 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
   }, []);
 
   return (
-    <div className="slopr-codeblock">
+    <div className="ui-codeblock">
       <button
         type="button"
-        className="slopr-codeblock-copy"
+        className="ui-codeblock-copy"
         onClick={handleCopy}
         aria-label={copied ? "Kopiert" : "Code kopieren"}
         title={copied ? "Kopiert" : "Code kopieren"}
@@ -2186,7 +2186,7 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
 
 export function ProseMarkdown({ children }: { children: string }) {
   return (
-    <div className="slopr-message-text slopr-markdown text-[#f3f0e8]">
+    <div className="ui-message-text ui-markdown text-[#f3f0e8]">
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
@@ -2226,7 +2226,7 @@ function AssistantText({
       return <DownloadResponseBubble artifact={artifact} />;
     }
     return (
-      <div className="slopr-assistant-message group w-full space-y-3">
+      <div className="ui-assistant-message group w-full space-y-3">
         {before !== "" && <ProseMarkdown>{before}</ProseMarkdown>}
         <DownloadResponseBubble artifact={artifact} />
         {after !== "" && <ProseMarkdown>{after}</ProseMarkdown>}
@@ -2250,7 +2250,7 @@ function AssistantText({
       return <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />;
     }
     return (
-      <div className="slopr-assistant-message group w-full space-y-3">
+      <div className="ui-assistant-message group w-full space-y-3">
         <ProseMarkdown>{before}</ProseMarkdown>
         <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />
       </div>
@@ -2258,7 +2258,7 @@ function AssistantText({
   }
 
   return (
-    <div className="slopr-assistant-message group w-full">
+    <div className="ui-assistant-message group w-full">
       <ProseMarkdown>{children}</ProseMarkdown>
       <MessageActions
         copyLabel="Copy response"
@@ -2385,8 +2385,8 @@ function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string
           <FileIcon />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="slopr-message-text truncate">{label} response</div>
-          <div className="slopr-meta-text text-[#aaa79e]">{progressText}</div>
+          <div className="ui-message-text truncate">{label} response</div>
+          <div className="ui-meta-text text-[#aaa79e]">{progressText}</div>
         </div>
       </div>
     </div>
@@ -2401,8 +2401,8 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
           <FileIcon />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="slopr-message-text truncate">{artifact.label} response</div>
-          <div className="slopr-meta-text text-[#aaa79e]">Ready to download</div>
+          <div className="ui-message-text truncate">{artifact.label} response</div>
+          <div className="ui-meta-text text-[#aaa79e]">Ready to download</div>
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
@@ -2532,14 +2532,14 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="slopr-message-text truncate">{artifact.displayFilename}</div>
-          <div className="slopr-meta-text text-[#aaa79e]">
+          <div className="ui-message-text truncate">{artifact.displayFilename}</div>
+          <div className="ui-meta-text text-[#aaa79e]">
             {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
           </div>
           {imageStats !== null && (
             <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>
           )}
-          {error !== "" && <div className="slopr-meta-text text-[#d36f67]">{error}</div>}
+          {error !== "" && <div className="ui-meta-text text-[#d36f67]">{error}</div>}
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
@@ -2588,7 +2588,7 @@ function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
   const url = URL.createObjectURL(new Blob([artifact.content], { type: artifact.mimeType }));
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `slopr-response.${artifact.extension}`;
+  anchor.download = `ui-response.${artifact.extension}`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
@@ -2597,7 +2597,7 @@ function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
 
 function ErrorText({ children }: { children: React.ReactNode }) {
   return (
-    <div className="slopr-meta-text mt-3 max-w-3xl rounded-lg border border-accent bg-[#282826] px-4 py-3 text-accent">
+    <div className="ui-meta-text mt-3 max-w-3xl rounded-lg border border-accent bg-[#282826] px-4 py-3 text-accent">
       {children}
     </div>
   );

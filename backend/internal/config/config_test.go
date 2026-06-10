@@ -7,7 +7,7 @@ import (
 )
 
 func TestLoad_defaults(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
 
 	cfg, err := Load()
 	if err != nil {
@@ -55,17 +55,17 @@ func TestLoad_defaults(t *testing.T) {
 }
 
 func TestLoad_overrides_and_required(t *testing.T) {
-	t.Setenv("SLOPR_ADDR", ":9000")
-	t.Setenv("SLOPR_SESSION_SECRET", "")
+	t.Setenv("BACKEND_ADDR", ":9000")
+	t.Setenv("BACKEND_SESSION_SECRET", "")
 
 	if _, err := Load(); err == nil {
-		t.Fatal("expected error when SLOPR_SESSION_SECRET is empty")
+		t.Fatal("expected error when BACKEND_SESSION_SECRET is empty")
 	}
 }
 
 func TestLoad_chatReasoningEffort(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_CHAT_REASONING_EFFORT", "low")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_CHAT_REASONING_EFFORT", "low")
 
 	cfg, err := Load()
 	if err != nil {
@@ -77,9 +77,9 @@ func TestLoad_chatReasoningEffort(t *testing.T) {
 }
 
 func TestLoad_chatGenerationBounds(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_CHAT_MAX_COMPLETION_TOKENS", "4096")
-	t.Setenv("SLOPR_CHAT_TIMEOUT", "45s")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_CHAT_MAX_COMPLETION_TOKENS", "4096")
+	t.Setenv("BACKEND_CHAT_TIMEOUT", "45s")
 
 	cfg, err := Load()
 	if err != nil {
@@ -102,31 +102,31 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 	}{
 		{
 			name:    "non-integer max completion tokens",
-			key:     "SLOPR_CHAT_MAX_COMPLETION_TOKENS",
+			key:     "BACKEND_CHAT_MAX_COMPLETION_TOKENS",
 			value:   "many",
-			wantErr: "SLOPR_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0",
+			wantErr: "BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0",
 		},
 		{
 			name:    "zero max completion tokens",
-			key:     "SLOPR_CHAT_MAX_COMPLETION_TOKENS",
+			key:     "BACKEND_CHAT_MAX_COMPLETION_TOKENS",
 			value:   "0",
-			wantErr: "SLOPR_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0",
+			wantErr: "BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0",
 		},
 		{
 			name:    "invalid timeout",
-			key:     "SLOPR_CHAT_TIMEOUT",
+			key:     "BACKEND_CHAT_TIMEOUT",
 			value:   "soon",
-			wantErr: "SLOPR_CHAT_TIMEOUT must be a duration greater than 0",
+			wantErr: "BACKEND_CHAT_TIMEOUT must be a duration greater than 0",
 		},
 		{
 			name:    "zero timeout",
-			key:     "SLOPR_CHAT_TIMEOUT",
+			key:     "BACKEND_CHAT_TIMEOUT",
 			value:   "0s",
-			wantErr: "SLOPR_CHAT_TIMEOUT must be a duration greater than 0",
+			wantErr: "BACKEND_CHAT_TIMEOUT must be a duration greater than 0",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
+			t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
 			t.Setenv(tc.key, tc.value)
 
 			_, err := Load()
@@ -138,9 +138,9 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 }
 
 func TestLoad_context7Settings(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_CONTEXT7_API_KEY", "ctx-key")
-	t.Setenv("SLOPR_CONTEXT7_MCP_URL", "https://context7.example/mcp")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_CONTEXT7_API_KEY", "ctx-key")
+	t.Setenv("BACKEND_CONTEXT7_MCP_URL", "https://context7.example/mcp")
 
 	cfg, err := Load()
 	if err != nil {
@@ -155,9 +155,9 @@ func TestLoad_context7Settings(t *testing.T) {
 }
 
 func TestLoad_context7RequiresURLWhenEnabled(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_CONTEXT7_API_KEY", "ctx-key")
-	t.Setenv("SLOPR_CONTEXT7_MCP_URL", "")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_CONTEXT7_API_KEY", "ctx-key")
+	t.Setenv("BACKEND_CONTEXT7_MCP_URL", "")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when Context7 API key is set without MCP URL")
@@ -165,9 +165,9 @@ func TestLoad_context7RequiresURLWhenEnabled(t *testing.T) {
 }
 
 func TestLoad_firstClassMCPToolURLs(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_FETCH_MCP_URL", "http://fetch:8090/mcp")
-	t.Setenv("SLOPR_OBSCURA_MCP_URL", "http://obscura:8090/mcp")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_FETCH_MCP_URL", "http://fetch:8090/mcp")
+	t.Setenv("BACKEND_OBSCURA_MCP_URL", "http://obscura:8090/mcp")
 
 	cfg, err := Load()
 	if err != nil {
@@ -182,7 +182,7 @@ func TestLoad_firstClassMCPToolURLs(t *testing.T) {
 }
 
 func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "secret")
+	t.Setenv("BACKEND_SESSION_SECRET", "secret")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -202,19 +202,19 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 }
 
 func TestLoadBFLImageRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "secret")
-	t.Setenv("SLOPR_BFL_API_KEY", "bfl-test")
-	t.Setenv("SLOPR_BFL_BASE_URL", "")
+	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	t.Setenv("BACKEND_BFL_API_KEY", "bfl-test")
+	t.Setenv("BACKEND_BFL_BASE_URL", "")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "SLOPR_BFL_BASE_URL is required") {
-		t.Fatalf("Load() error = %v, want SLOPR_BFL_BASE_URL required", err)
+	if err == nil || !strings.Contains(err.Error(), "BACKEND_BFL_BASE_URL is required") {
+		t.Fatalf("Load() error = %v, want BACKEND_BFL_BASE_URL required", err)
 	}
 }
 
 func TestLoadBFLImageConfiguredByAPIKey(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "secret")
-	t.Setenv("SLOPR_BFL_API_KEY", "bfl-test")
-	t.Setenv("SLOPR_BFL_MODEL", "flux-2-klein-9b")
+	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	t.Setenv("BACKEND_BFL_API_KEY", "bfl-test")
+	t.Setenv("BACKEND_BFL_MODEL", "flux-2-klein-9b")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -228,8 +228,8 @@ func TestLoadBFLImageConfiguredByAPIKey(t *testing.T) {
 }
 
 func TestLoadBFLImagePollTimeoutOverride(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "secret")
-	t.Setenv("SLOPR_BFL_POLL_TIMEOUT", "7m")
+	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	t.Setenv("BACKEND_BFL_POLL_TIMEOUT", "7m")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -240,16 +240,16 @@ func TestLoadBFLImagePollTimeoutOverride(t *testing.T) {
 }
 
 func TestLoadBFLImageRejectsInvalidPollTimeout(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "secret")
-	t.Setenv("SLOPR_BFL_POLL_TIMEOUT", "soon")
+	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	t.Setenv("BACKEND_BFL_POLL_TIMEOUT", "soon")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "SLOPR_BFL_POLL_TIMEOUT must be a duration") {
+	if err == nil || !strings.Contains(err.Error(), "BACKEND_BFL_POLL_TIMEOUT must be a duration") {
 		t.Fatalf("Load() error = %v, want invalid poll timeout", err)
 	}
 }
 
 func TestLoad_defaultsDoNotRequireAdminPassword(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
 
 	cfg, err := Load()
 	if err != nil {
@@ -261,14 +261,14 @@ func TestLoad_defaultsDoNotRequireAdminPassword(t *testing.T) {
 }
 
 func TestLoad_oidcSettings(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_PUBLIC_URL", "https://slopr.example.com")
-	t.Setenv("SLOPR_OIDC_ISSUER", "https://auth.example.com/application/o/slopr/")
-	t.Setenv("SLOPR_OIDC_CLIENT_ID", "slopr-client")
-	t.Setenv("SLOPR_OIDC_CLIENT_SECRET", "slopr-secret")
-	t.Setenv("SLOPR_OIDC_REDIRECT_URL", "https://slopr.example.com/api/auth/callback")
-	t.Setenv("SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL", "https://slopr.example.com/")
-	t.Setenv("SLOPR_OIDC_ADMIN_GROUP", "slopr-admins")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_PUBLIC_URL", "https://slopr.example.com")
+	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/slopr/")
+	t.Setenv("BACKEND_OIDC_CLIENT_ID", "slopr-client")
+	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "slopr-secret")
+	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://slopr.example.com/api/auth/callback")
+	t.Setenv("BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL", "https://slopr.example.com/")
+	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "slopr-admins")
 
 	cfg, err := Load()
 	if err != nil {
@@ -283,10 +283,10 @@ func TestLoad_oidcSettings(t *testing.T) {
 }
 
 func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_OIDC_ISSUER", "https://auth.example.com/application/o/slopr/")
-	t.Setenv("SLOPR_OIDC_CLIENT_ID", "slopr-client")
-	t.Setenv("SLOPR_OIDC_REDIRECT_URL", "https://slopr.example.com/api/auth/callback")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/slopr/")
+	t.Setenv("BACKEND_OIDC_CLIENT_ID", "slopr-client")
+	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://slopr.example.com/api/auth/callback")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when OIDC issuer is set without client secret")
@@ -294,9 +294,9 @@ func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
 }
 
 func TestLoad_devAuthRequiresLoopbackAddr(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_AUTH_MODE", "dev")
-	t.Setenv("SLOPR_ADDR", ":8080")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", ":8080")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when dev auth listens on all interfaces")
@@ -304,10 +304,10 @@ func TestLoad_devAuthRequiresLoopbackAddr(t *testing.T) {
 }
 
 func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_AUTH_MODE", "dev")
-	t.Setenv("SLOPR_ADDR", "localhost:8080")
-	t.Setenv("SLOPR_PUBLIC_URL", "https://slopr.example.com")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "localhost:8080")
+	t.Setenv("BACKEND_PUBLIC_URL", "https://slopr.example.com")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when dev auth has a non-loopback public URL")
@@ -315,10 +315,10 @@ func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
 }
 
 func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
-	t.Setenv("SLOPR_SESSION_SECRET", "test-secret")
-	t.Setenv("SLOPR_AUTH_MODE", "dev")
-	t.Setenv("SLOPR_ADDR", "127.0.0.1:8080")
-	t.Setenv("SLOPR_PUBLIC_URL", "http://localhost:8080")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
+	t.Setenv("BACKEND_PUBLIC_URL", "http://localhost:8080")
 
 	cfg, err := Load()
 	if err != nil {

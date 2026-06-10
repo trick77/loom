@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-DB_PATH=${SLOPR_DB_PATH:-/tmp/slopr-dev.db}
+DB_PATH=${BACKEND_DB_PATH:-/tmp/slopr-dev.db}
 
 cleanup() {
   if [ -n "${BACKEND_PID:-}" ]; then
@@ -13,11 +13,11 @@ trap cleanup EXIT INT TERM
 
 (
   cd "$ROOT/backend"
-  SLOPR_SESSION_SECRET=${SLOPR_SESSION_SECRET:-dev-secret} \
-  SLOPR_AUTH_MODE=dev \
-  SLOPR_ADDR=127.0.0.1:8080 \
-  SLOPR_PUBLIC_URL=http://127.0.0.1:8080 \
-  SLOPR_DB_PATH="$DB_PATH" \
+  BACKEND_SESSION_SECRET=${BACKEND_SESSION_SECRET:-dev-secret} \
+  BACKEND_AUTH_MODE=dev \
+  BACKEND_ADDR=127.0.0.1:8080 \
+  BACKEND_PUBLIC_URL=http://127.0.0.1:8080 \
+  BACKEND_DB_PATH="$DB_PATH" \
   go run ./cmd/slopr
 ) &
 BACKEND_PID=$!

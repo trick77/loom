@@ -90,65 +90,65 @@ func env(key, def string) string {
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:                    env("SLOPR_ADDR", ":8080"),
-		DBPath:                  env("SLOPR_DB_PATH", "/data/slopr.db"),
-		UsersDir:                env("SLOPR_USERS_DIR", "/data/users"),
-		PublicURL:               env("SLOPR_PUBLIC_URL", ""),
-		ChatBaseURL:             env("SLOPR_CHAT_BASE_URL", ""),
-		ChatAPIKey:              env("SLOPR_CHAT_API_KEY", ""),
-		ChatModel:               env("SLOPR_CHAT_MODEL", "MiMo"),
-		ChatReasoningEffort:     env("SLOPR_CHAT_REASONING_EFFORT", "high"),
+		Addr:                    env("BACKEND_ADDR", ":8080"),
+		DBPath:                  env("BACKEND_DB_PATH", "/data/slopr.db"),
+		UsersDir:                env("BACKEND_USERS_DIR", "/data/users"),
+		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
+		ChatBaseURL:             env("BACKEND_CHAT_BASE_URL", ""),
+		ChatAPIKey:              env("BACKEND_CHAT_API_KEY", ""),
+		ChatModel:               env("BACKEND_CHAT_MODEL", "MiMo"),
+		ChatReasoningEffort:     env("BACKEND_CHAT_REASONING_EFFORT", "high"),
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
-		ChatLogDir:              env("SLOPR_CHAT_LOG_DIR", "logs/llm-responses"),
-		EmbedBaseURL:            env("SLOPR_EMBED_BASE_URL", ""),
-		EmbedAPIKey:             env("SLOPR_EMBED_API_KEY", ""),
-		EmbedModel:              env("SLOPR_EMBED_MODEL", "text-embedding-3-small"),
-		BFLBaseURL:              env("SLOPR_BFL_BASE_URL", "https://api.bfl.ai/v1"),
-		BFLAPIKey:               env("SLOPR_BFL_API_KEY", ""),
-		BFLModel:                env("SLOPR_BFL_MODEL", "flux-2-klein-4b"),
-		TikaURL:                 env("SLOPR_TIKA_URL", "http://tika:9998"),
-		TavilyURL:               env("SLOPR_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
-		TavilyAPIKey:            env("SLOPR_TAVILY_API_KEY", ""),
-		FetchMCPURL:             env("SLOPR_FETCH_MCP_URL", ""),
-		ObscuraMCPURL:           env("SLOPR_OBSCURA_MCP_URL", ""),
-		Context7MCPURL:          env("SLOPR_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
-		Context7APIKey:          env("SLOPR_CONTEXT7_API_KEY", ""),
-		AdminInitialPassword:    env("SLOPR_ADMIN_INITIAL_PASSWORD", ""),
-		SessionSecret:           env("SLOPR_SESSION_SECRET", ""),
-		AuthMode:                AuthMode(env("SLOPR_AUTH_MODE", "")),
+		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
+		EmbedBaseURL:            env("BACKEND_EMBED_BASE_URL", ""),
+		EmbedAPIKey:             env("BACKEND_EMBED_API_KEY", ""),
+		EmbedModel:              env("BACKEND_EMBED_MODEL", "text-embedding-3-small"),
+		BFLBaseURL:              env("BACKEND_BFL_BASE_URL", "https://api.bfl.ai/v1"),
+		BFLAPIKey:               env("BACKEND_BFL_API_KEY", ""),
+		BFLModel:                env("BACKEND_BFL_MODEL", "flux-2-klein-4b"),
+		TikaURL:                 env("BACKEND_TIKA_URL", "http://tika:9998"),
+		TavilyURL:               env("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
+		TavilyAPIKey:            env("BACKEND_TAVILY_API_KEY", ""),
+		FetchMCPURL:             env("BACKEND_FETCH_MCP_URL", ""),
+		ObscuraMCPURL:           env("BACKEND_OBSCURA_MCP_URL", ""),
+		Context7MCPURL:          env("BACKEND_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
+		Context7APIKey:          env("BACKEND_CONTEXT7_API_KEY", ""),
+		AdminInitialPassword:    env("BACKEND_ADMIN_INITIAL_PASSWORD", ""),
+		SessionSecret:           env("BACKEND_SESSION_SECRET", ""),
+		AuthMode:                AuthMode(env("BACKEND_AUTH_MODE", "")),
 		OIDC: OIDCConfig{
-			Issuer:                env("SLOPR_OIDC_ISSUER", ""),
-			ClientID:              env("SLOPR_OIDC_CLIENT_ID", ""),
-			ClientSecret:          env("SLOPR_OIDC_CLIENT_SECRET", ""),
-			RedirectURL:           env("SLOPR_OIDC_REDIRECT_URL", ""),
-			PostLogoutRedirectURL: env("SLOPR_OIDC_POST_LOGOUT_REDIRECT_URL", ""),
-			AdminGroup:            env("SLOPR_OIDC_ADMIN_GROUP", ""),
+			Issuer:                env("BACKEND_OIDC_ISSUER", ""),
+			ClientID:              env("BACKEND_OIDC_CLIENT_ID", ""),
+			ClientSecret:          env("BACKEND_OIDC_CLIENT_SECRET", ""),
+			RedirectURL:           env("BACKEND_OIDC_REDIRECT_URL", ""),
+			PostLogoutRedirectURL: env("BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL", ""),
+			AdminGroup:            env("BACKEND_OIDC_ADMIN_GROUP", ""),
 		},
 		DevUser: DevUserConfig{
-			Subject:     env("SLOPR_DEV_USER_SUBJECT", "dev-admin"),
-			Username:    env("SLOPR_DEV_USER_USERNAME", "dev"),
-			Email:       env("SLOPR_DEV_USER_EMAIL", "dev@example.local"),
-			DisplayName: env("SLOPR_DEV_USER_NAME", "Dev Admin"),
+			Subject:     env("BACKEND_DEV_USER_SUBJECT", "dev-admin"),
+			Username:    env("BACKEND_DEV_USER_USERNAME", "dev"),
+			Email:       env("BACKEND_DEV_USER_EMAIL", "dev@example.local"),
+			DisplayName: env("BACKEND_DEV_USER_NAME", "Dev Admin"),
 			Role:        "admin",
 		},
 	}
-	bflPollTimeout, err := time.ParseDuration(env("SLOPR_BFL_POLL_TIMEOUT", defaultBFLPollTimeout.String()))
+	bflPollTimeout, err := time.ParseDuration(env("BACKEND_BFL_POLL_TIMEOUT", defaultBFLPollTimeout.String()))
 	if err != nil || bflPollTimeout <= 0 {
-		return Config{}, fmt.Errorf("SLOPR_BFL_POLL_TIMEOUT must be a duration greater than 0")
+		return Config{}, fmt.Errorf("BACKEND_BFL_POLL_TIMEOUT must be a duration greater than 0")
 	}
 	cfg.BFLPollTimeout = bflPollTimeout
-	maxCompletionTokens, err := strconv.Atoi(env("SLOPR_CHAT_MAX_COMPLETION_TOKENS", strconv.Itoa(defaultChatMaxCompletionTokens)))
+	maxCompletionTokens, err := strconv.Atoi(env("BACKEND_CHAT_MAX_COMPLETION_TOKENS", strconv.Itoa(defaultChatMaxCompletionTokens)))
 	if err != nil || maxCompletionTokens <= 0 {
-		return Config{}, fmt.Errorf("SLOPR_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0")
+		return Config{}, fmt.Errorf("BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0")
 	}
 	cfg.ChatMaxCompletionTokens = maxCompletionTokens
-	chatTimeout, err := time.ParseDuration(env("SLOPR_CHAT_TIMEOUT", defaultChatTimeout.String()))
+	chatTimeout, err := time.ParseDuration(env("BACKEND_CHAT_TIMEOUT", defaultChatTimeout.String()))
 	if err != nil || chatTimeout <= 0 {
-		return Config{}, fmt.Errorf("SLOPR_CHAT_TIMEOUT must be a duration greater than 0")
+		return Config{}, fmt.Errorf("BACKEND_CHAT_TIMEOUT must be a duration greater than 0")
 	}
 	cfg.ChatTimeout = chatTimeout
 	if cfg.SessionSecret == "" {
-		return Config{}, fmt.Errorf("SLOPR_SESSION_SECRET is required")
+		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
 	}
 	if cfg.AuthMode == AuthModeNone && cfg.OIDC.Issuer != "" {
 		cfg.AuthMode = AuthModeOIDC
@@ -157,33 +157,33 @@ func Load() (Config, error) {
 	case AuthModeNone:
 	case AuthModeOIDC:
 		if cfg.OIDC.Issuer == "" {
-			return Config{}, fmt.Errorf("SLOPR_OIDC_ISSUER is required when SLOPR_AUTH_MODE=oidc")
+			return Config{}, fmt.Errorf("BACKEND_OIDC_ISSUER is required when BACKEND_AUTH_MODE=oidc")
 		}
 		if cfg.OIDC.ClientID == "" {
-			return Config{}, fmt.Errorf("SLOPR_OIDC_CLIENT_ID is required when SLOPR_OIDC_ISSUER is set")
+			return Config{}, fmt.Errorf("BACKEND_OIDC_CLIENT_ID is required when BACKEND_OIDC_ISSUER is set")
 		}
 		if cfg.OIDC.ClientSecret == "" {
-			return Config{}, fmt.Errorf("SLOPR_OIDC_CLIENT_SECRET is required when SLOPR_OIDC_ISSUER is set")
+			return Config{}, fmt.Errorf("BACKEND_OIDC_CLIENT_SECRET is required when BACKEND_OIDC_ISSUER is set")
 		}
 		if cfg.OIDC.RedirectURL == "" {
-			return Config{}, fmt.Errorf("SLOPR_OIDC_REDIRECT_URL is required when SLOPR_OIDC_ISSUER is set")
+			return Config{}, fmt.Errorf("BACKEND_OIDC_REDIRECT_URL is required when BACKEND_OIDC_ISSUER is set")
 		}
 	case AuthModeDev:
 		if err := validateDevAuthLocalOnly(cfg); err != nil {
 			return Config{}, err
 		}
 	default:
-		return Config{}, fmt.Errorf("SLOPR_AUTH_MODE must be one of: oidc, dev")
+		return Config{}, fmt.Errorf("BACKEND_AUTH_MODE must be one of: oidc, dev")
 	}
 	if cfg.Context7APIKey != "" && cfg.Context7MCPURL == "" {
-		return Config{}, fmt.Errorf("SLOPR_CONTEXT7_MCP_URL is required when SLOPR_CONTEXT7_API_KEY is set")
+		return Config{}, fmt.Errorf("BACKEND_CONTEXT7_MCP_URL is required when BACKEND_CONTEXT7_API_KEY is set")
 	}
 	if cfg.BFLAPIKey != "" {
 		if cfg.BFLBaseURL == "" {
-			return Config{}, fmt.Errorf("SLOPR_BFL_BASE_URL is required when SLOPR_BFL_API_KEY is set")
+			return Config{}, fmt.Errorf("BACKEND_BFL_BASE_URL is required when BACKEND_BFL_API_KEY is set")
 		}
 		if cfg.BFLModel == "" {
-			return Config{}, fmt.Errorf("SLOPR_BFL_MODEL is required when SLOPR_BFL_API_KEY is set")
+			return Config{}, fmt.Errorf("BACKEND_BFL_MODEL is required when BACKEND_BFL_API_KEY is set")
 		}
 	}
 	return cfg, nil
@@ -191,10 +191,10 @@ func Load() (Config, error) {
 
 func validateDevAuthLocalOnly(cfg Config) error {
 	if !isLoopbackAddr(cfg.Addr) {
-		return fmt.Errorf("SLOPR_AUTH_MODE=dev requires SLOPR_ADDR to bind to localhost or a loopback address")
+		return fmt.Errorf("BACKEND_AUTH_MODE=dev requires BACKEND_ADDR to bind to localhost or a loopback address")
 	}
 	if cfg.PublicURL != "" && !isLoopbackPublicURL(cfg.PublicURL) {
-		return fmt.Errorf("SLOPR_AUTH_MODE=dev requires SLOPR_PUBLIC_URL to be empty or loopback")
+		return fmt.Errorf("BACKEND_AUTH_MODE=dev requires BACKEND_PUBLIC_URL to be empty or loopback")
 	}
 	return nil
 }

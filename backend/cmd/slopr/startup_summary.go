@@ -56,28 +56,28 @@ func authCapability(cfg config.Config) startupCapability {
 
 func chatCapability(cfg config.Config) startupCapability {
 	if strings.TrimSpace(cfg.ChatBaseURL) == "" {
-		return startupCapability{Name: "chat", Status: "disabled", Detail: "set SLOPR_CHAT_BASE_URL"}
+		return startupCapability{Name: "chat", Status: "disabled", Detail: "set BACKEND_CHAT_BASE_URL"}
 	}
 	return startupCapability{Name: "chat", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", cfg.ChatModel, cfg.ChatBaseURL)}
 }
 
 func embeddingsCapability(cfg config.Config) startupCapability {
 	if strings.TrimSpace(cfg.EmbedBaseURL) == "" || strings.TrimSpace(cfg.EmbedAPIKey) == "" {
-		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set SLOPR_EMBED_BASE_URL and SLOPR_EMBED_API_KEY"}
+		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set BACKEND_EMBED_BASE_URL and BACKEND_EMBED_API_KEY"}
 	}
 	return startupCapability{Name: "embeddings", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", cfg.EmbedModel, cfg.EmbedBaseURL)}
 }
 
 func tikaCapability(cfg config.Config) startupCapability {
 	if strings.TrimSpace(cfg.TikaURL) == "" {
-		return startupCapability{Name: "document extraction", Status: "disabled", Detail: "set SLOPR_TIKA_URL"}
+		return startupCapability{Name: "document extraction", Status: "disabled", Detail: "set BACKEND_TIKA_URL"}
 	}
 	return startupCapability{Name: "document extraction", Status: "enabled", Detail: "url=" + cfg.TikaURL}
 }
 
 func artifactCapability(cfg config.Config) startupCapability {
 	if strings.TrimSpace(cfg.UsersDir) == "" {
-		return startupCapability{Name: "artifacts", Status: "disabled", Detail: "set SLOPR_USERS_DIR"}
+		return startupCapability{Name: "artifacts", Status: "disabled", Detail: "set BACKEND_USERS_DIR"}
 	}
 	return startupCapability{Name: "artifacts", Status: "enabled", Detail: "users_dir=" + cfg.UsersDir}
 }
@@ -98,21 +98,21 @@ func mcpCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapabili
 
 func tavilyCapability(cfg config.Config) startupCapability {
 	if !tavilyConfigured(cfg) {
-		return startupCapability{Name: "Tavily web search", Status: "disabled", Detail: "set SLOPR_TAVILY_API_KEY"}
+		return startupCapability{Name: "Tavily web search", Status: "disabled", Detail: "set BACKEND_TAVILY_API_KEY"}
 	}
 	return startupCapability{Name: "Tavily web search", Status: "enabled", Detail: "source=env"}
 }
 
 func context7Capability(cfg config.Config) startupCapability {
 	if !context7Configured(cfg) {
-		return startupCapability{Name: "Context7 docs", Status: "disabled", Detail: "set SLOPR_CONTEXT7_API_KEY"}
+		return startupCapability{Name: "Context7 docs", Status: "disabled", Detail: "set BACKEND_CONTEXT7_API_KEY"}
 	}
 	return startupCapability{Name: "Context7 docs", Status: "enabled", Detail: "source=env"}
 }
 
 func bflImageCapability(cfg config.Config, runtime startupRuntime) startupCapability {
 	if !bflImageConfigured(cfg) {
-		return startupCapability{Name: "BFL image generation", Status: "disabled", Detail: "set SLOPR_BFL_API_KEY"}
+		return startupCapability{Name: "BFL image generation", Status: "disabled", Detail: "set BACKEND_BFL_API_KEY"}
 	}
 	return startupCapability{Name: "BFL image generation", Status: "enabled", Detail: fmt.Sprintf("model=%s tools=%d", cfg.BFLModel, runtime.ImageToolCount)}
 }

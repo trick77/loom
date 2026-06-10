@@ -48,17 +48,17 @@
    Trennlinie im Glyph horizontal verschiebt. Beim Hover (oder Tastatur-Fokus)
    des umschliessenden Buttons morpht das Glyph sanft von ANIM 0 → 100 und
    beim Verlassen wieder zurück. Nur für die Sidebar-Icons gedacht. */
-.slopr-sidebar-icon {
+.ui-sidebar-icon {
   font-variation-settings: "ANIM" 0;
   transition: font-variation-settings 220ms ease;
 }
-.slopr-sidebar-btn:hover .slopr-sidebar-icon,
-.slopr-sidebar-btn:focus-visible .slopr-sidebar-icon {
+.ui-sidebar-btn:hover .ui-sidebar-icon,
+.ui-sidebar-btn:focus-visible .ui-sidebar-icon {
   font-variation-settings: "ANIM" 100;
 }
 
 /* UI direction A — Warm Editorial, dark. These tokens drive the Tailwind v4
-   theme, generating the bg, text, border, font, and rounded-slopr utilities.
+   theme, generating the bg, text, border, font, and rounded-ui utilities.
    Palette: warm charcoal surfaces, off-white ink, clay accent.
    Fonts are self-hosted Variable Fonts under src/fonts/. */
 @theme {
@@ -75,7 +75,7 @@
   --font-sans: "Anthropic Sans", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-serif: "Anthropic Serif", Georgia, "Times New Roman", Times, serif;
   --font-mono: "Anthropic Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --radius-slopr: 10px;
+  --radius-ui: 10px;
 }
 
 html {
@@ -93,73 +93,73 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.slopr-wordmark {
+.ui-wordmark {
   font-size: 1.1875rem;
   line-height: 1.75rem;
 }
 
-.slopr-greeting-text {
+.ui-greeting-text {
   color: #c3c2b7;
   font-size: 2.125rem;
   font-weight: 300;
   line-height: 1;
 }
 
-.slopr-sidebar-text {
+.ui-sidebar-text {
   font-size: 0.875rem;
   font-weight: 400;
   line-height: 1.25rem;
 }
 
 /* Sidebar scrollbar: slimmer and toned down */
-.slopr-sidebar-scroll {
+.ui-sidebar-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
-.slopr-sidebar-scroll::-webkit-scrollbar {
+.ui-sidebar-scroll::-webkit-scrollbar {
   width: 8px;
 }
 
-.slopr-sidebar-scroll::-webkit-scrollbar-track {
+.ui-sidebar-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.slopr-sidebar-scroll::-webkit-scrollbar-thumb {
+.ui-sidebar-scroll::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.1);
   border-radius: 9999px;
 }
 
-.slopr-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+.ui-sidebar-scroll::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.18);
 }
 
-.slopr-meta-text {
+.ui-meta-text {
   font-size: 0.75rem;
   font-weight: 400;
   line-height: 1rem;
 }
 
-.slopr-control-text {
+.ui-control-text {
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
 
-.slopr-composer-text {
+.ui-composer-text {
   font-size: 1rem;
   line-height: 1.4rem;
 }
 
-.slopr-message-text {
+.ui-message-text {
   font-size: 1rem;
   line-height: 1.4rem;
 }
 
-.slopr-user-message-text {
+.ui-user-message-text {
   line-height: 1.4;
 }
 
-.slopr-thinking-panel {
+.ui-thinking-panel {
   max-width: 46rem;
   color: #9b9790;
   font-family: var(--font-sans);
@@ -167,7 +167,7 @@ body {
   line-height: 1.45rem;
 }
 
-.slopr-thinking-panel-toggle {
+.ui-thinking-panel-toggle {
   display: flex;
   width: fit-content;
   align-items: center;
@@ -177,17 +177,17 @@ body {
   transition: color 0.16s ease;
 }
 
-.slopr-thinking-panel-toggle:hover {
+.ui-thinking-panel-toggle:hover {
   color: #c7c5bd;
 }
 
-.slopr-thinking-panel-label {
+.ui-thinking-panel-label {
   display: inline-flex;
   align-items: center;
   gap: 0.625rem;
 }
 
-.slopr-thinking-label-active {
+.ui-thinking-label-active {
   position: relative;
   display: inline-block;
   overflow: hidden;
@@ -195,7 +195,7 @@ body {
   font-weight: 500;
 }
 
-.slopr-thinking-label-active::after {
+.ui-thinking-label-active::after {
   position: absolute;
   inset: 0;
   background-image: linear-gradient(90deg, transparent 0%, #f3f0e8 50%, transparent 100%);
@@ -207,11 +207,11 @@ body {
   color: transparent;
   content: attr(data-text);
   opacity: 0;
-  animation: slopr-thinking-sweep 2.5s linear infinite;
+  animation: ui-thinking-sweep 2.5s linear infinite;
 }
 
-.slopr-thinking-chevron,
-.slopr-thinking-chevron-expanded {
+.ui-thinking-chevron,
+.ui-thinking-chevron-expanded {
   display: inline-block;
   padding: 0.18rem;
   border: solid currentColor;
@@ -220,19 +220,19 @@ body {
 }
 
 /* Border-drawn chevron: points right when collapsed, rotates down when expanded. */
-.slopr-thinking-chevron {
+.ui-thinking-chevron {
   transform: rotate(-45deg);
 }
 
-.slopr-thinking-chevron-expanded {
+.ui-thinking-chevron-expanded {
   transform: rotate(45deg);
 }
 
-.slopr-activity-trace {
-  --slopr-activity-icon-offset: 0.225rem;
+.ui-activity-trace {
+  --ui-activity-icon-offset: 0.225rem;
   /* Breathing room between the collapsed trace label and the answer text. */
   margin-bottom: 0.5rem;
-  /* Match the answer prose's left inset (.slopr-markdown has padding-left: 8px)
+  /* Match the answer prose's left inset (.ui-markdown has padding-left: 8px)
      so the headline and reasoning line up with the answer text below. */
   padding-left: 0.5rem;
   max-width: 46rem;
@@ -246,7 +246,7 @@ body {
   line-height: 1.45rem;
 }
 
-.slopr-activity-trace-toggle {
+.ui-activity-trace-toggle {
   display: flex;
   width: 100%;
   align-items: center;
@@ -258,51 +258,51 @@ body {
   transition: color 0.16s ease;
 }
 
-.slopr-activity-trace-toggle:hover {
+.ui-activity-trace-toggle:hover {
   color: #b4b1a8;
 }
 
-.slopr-activity-trace-label {
+.ui-activity-trace-label {
   display: inline-flex;
   min-width: 0;
   align-items: center;
   gap: 0.5rem;
 }
 
-.slopr-activity-trace-collapsible {
+.ui-activity-trace-collapsible {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.32s ease;
 }
 
-.slopr-activity-trace-collapsible-expanded {
+.ui-activity-trace-collapsible-expanded {
   grid-template-rows: 1fr;
 }
 
-.slopr-activity-trace-collapsible-inner {
+.ui-activity-trace-collapsible-inner {
   min-height: 0;
   overflow: hidden;
   opacity: 0;
   transition: opacity 0.32s ease;
 }
 
-.slopr-activity-trace-collapsible-expanded .slopr-activity-trace-collapsible-inner {
+.ui-activity-trace-collapsible-expanded .ui-activity-trace-collapsible-inner {
   opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .slopr-activity-trace-collapsible,
-  .slopr-activity-trace-collapsible-inner {
+  .ui-activity-trace-collapsible,
+  .ui-activity-trace-collapsible-inner {
     transition: none;
   }
 }
 
-.slopr-activity-trace-body {
+.ui-activity-trace-body {
   border-top: 0;
   padding: 0.125rem 0 0;
 }
 
-.slopr-activity-trace-row {
+.ui-activity-trace-row {
   position: relative;
   display: flex;
   align-items: flex-start;
@@ -310,27 +310,27 @@ body {
   padding: 0.25rem 0 1rem;
 }
 
-.slopr-activity-trace-row:not(:last-child)::before {
+.ui-activity-trace-row:not(:last-child)::before {
   position: absolute;
   bottom: -0.225rem;
   left: calc(0.5rem - 0.5px);
-  top: calc(0.25rem + var(--slopr-activity-icon-offset) + 1rem + 0.25rem);
+  top: calc(0.25rem + var(--ui-activity-icon-offset) + 1rem + 0.25rem);
   width: 1px;
   background: #4a4741;
   content: "";
 }
 
-.slopr-activity-trace-icon {
+.ui-activity-trace-icon {
   display: grid;
   width: 1rem;
   height: 1rem;
   flex: 0 0 auto;
-  margin-top: var(--slopr-activity-icon-offset);
+  margin-top: var(--ui-activity-icon-offset);
   place-items: center;
   color: #88857d;
 }
 
-.slopr-activity-trace-icon svg {
+.ui-activity-trace-icon svg {
   width: 0.625rem;
   height: 0.625rem;
   fill: none;
@@ -342,21 +342,21 @@ body {
 
 /* Clock glyph for reasoning timeline nodes — a touch larger than the default
    trace icon so the hands read clearly, matching the reference screenshot. */
-/* Two-class selector outweighs `.slopr-activity-trace-icon svg`, so the clock
+/* Two-class selector outweighs `.ui-activity-trace-icon svg`, so the clock
    keeps its own size/stroke without needing !important. */
-.slopr-activity-trace-icon .slopr-activity-clock-icon {
+.ui-activity-trace-icon .ui-activity-clock-icon {
   width: 1rem;
   height: 1rem;
   stroke-width: 1.6;
 }
 
 /* The dissolved upper-left arc is drawn as filled dots, not strokes. */
-.slopr-activity-clock-dot {
+.ui-activity-clock-dot {
   fill: currentColor;
   stroke: none;
 }
 
-.slopr-activity-trace-icon-reasoning::after {
+.ui-activity-trace-icon-reasoning::after {
   display: block;
   width: 0.25rem;
   height: 0.25rem;
@@ -366,17 +366,17 @@ body {
   opacity: 0.72;
 }
 
-.slopr-activity-trace-icon-reasoning {
+.ui-activity-trace-icon-reasoning {
   border: 1px solid currentColor;
   border-radius: 9999px;
 }
 
-.slopr-activity-trace-icon-arrow {
+.ui-activity-trace-icon-arrow {
   border: 1px solid currentColor;
   border-radius: 9999px;
 }
 
-.slopr-activity-trace-icon-reasoning-complete {
+.ui-activity-trace-icon-reasoning-complete {
   position: relative;
 }
 
@@ -385,7 +385,7 @@ body {
  * terminal Done node. Sits after the reasoning "running" dot rule so it
  * overrides it on completed rows.
  */
-.slopr-activity-trace-icon-reasoning-complete::after {
+.ui-activity-trace-icon-reasoning-complete::after {
   position: absolute;
   left: 0.25rem;
   top: calc(0.2rem + 1px);
@@ -401,41 +401,41 @@ body {
   transform: rotate(-45deg);
 }
 
-.slopr-activity-reasoning-title {
+.ui-activity-reasoning-title {
   margin-bottom: 0.25rem;
   color: #d6d3ca;
   font-weight: 500;
 }
 
-.slopr-activity-trace-row-done {
+.ui-activity-trace-row-done {
   padding-bottom: 0.25rem;
 }
 
-.slopr-activity-done-label {
+.ui-activity-done-label {
   color: #d6d3ca;
   font-weight: 500;
 }
 
-.slopr-activity-reasoning p {
+.ui-activity-reasoning p {
   margin: 0;
   transform: translateY(1px);
 }
 
-.slopr-activity-reasoning :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
+.ui-activity-reasoning :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
   margin-top: 0;
 }
 
-.slopr-activity-reasoning :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
+.ui-activity-reasoning :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
   margin-bottom: 0;
 }
 
-.slopr-activity-reasoning-clamp {
+.ui-activity-reasoning-clamp {
   position: relative;
   max-height: 12rem; /* == REASONING_CAP_PX (192px @16px) */
   overflow: hidden;
 }
 
-.slopr-activity-reasoning-clamp::after {
+.ui-activity-reasoning-clamp::after {
   content: "";
   position: absolute;
   inset-inline: 0;
@@ -445,7 +445,7 @@ body {
   pointer-events: none;
 }
 
-.slopr-activity-reasoning-more {
+.ui-activity-reasoning-more {
   display: block;
   margin-top: 0.5rem;
   font-size: 0.8125rem;
@@ -453,11 +453,11 @@ body {
   transition: color 0.16s ease;
 }
 
-.slopr-activity-reasoning-more:hover {
+.ui-activity-reasoning-more:hover {
   color: #d6d3ca;
 }
 
-.slopr-activity-globe-icon {
+.ui-activity-globe-icon {
   width: 1.125rem !important;
   height: 1.125rem !important;
   stroke-width: 1.35 !important;
@@ -465,11 +465,11 @@ body {
   transform-origin: center;
 }
 
-.slopr-activity-tool-header {
+.ui-activity-tool-header {
   transform: translateY(-1px);
 }
 
-.slopr-activity-status-pill {
+.ui-activity-status-pill {
   min-width: 3.625rem;
   border-radius: 9999px;
   padding: 0.0625rem 0.5rem;
@@ -477,17 +477,17 @@ body {
   text-align: center;
 }
 
-.slopr-activity-status-neutral {
+.ui-activity-status-neutral {
   background: #363632;
   color: #c7c5bd;
 }
 
-.slopr-activity-status-failed {
+.ui-activity-status-failed {
   background: #b85c52;
   color: #fffaf2;
 }
 
-.slopr-activity-tool-title {
+.ui-activity-tool-title {
   min-width: 0;
   overflow: hidden;
   color: #d6d3ca;
@@ -495,11 +495,11 @@ body {
   white-space: nowrap;
 }
 
-.slopr-activity-tool-favicon {
+.ui-activity-tool-favicon {
   flex: 0 0 auto;
 }
 
-.slopr-activity-tool-url {
+.ui-activity-tool-url {
   display: block;
   overflow: hidden;
   color: #88857d;
@@ -508,20 +508,20 @@ body {
   white-space: nowrap;
 }
 
-a.slopr-activity-tool-url:hover {
+a.ui-activity-tool-url:hover {
   color: #aaa79e;
   text-decoration: underline;
   text-underline-offset: 0.14em;
 }
 
-.slopr-activity-result-count {
+.ui-activity-result-count {
   margin-top: 0.25rem;
   color: #88857d;
   font-size: 0.75rem;
   text-align: right;
 }
 
-.slopr-activity-result-list {
+.ui-activity-result-list {
   margin-top: 0.25rem;
   max-height: 12rem;
   overflow: auto;
@@ -533,24 +533,24 @@ a.slopr-activity-tool-url:hover {
   scrollbar-width: thin;
 }
 
-.slopr-activity-result-list::-webkit-scrollbar {
+.ui-activity-result-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.slopr-activity-result-list::-webkit-scrollbar-track {
+.ui-activity-result-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.slopr-activity-result-list::-webkit-scrollbar-thumb {
+.ui-activity-result-list::-webkit-scrollbar-thumb {
   border-radius: 9999px;
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.slopr-activity-result-list::-webkit-scrollbar-thumb:hover {
+.ui-activity-result-list::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.18);
 }
 
-.slopr-activity-result-row {
+.ui-activity-result-row {
   display: grid;
   grid-template-columns: 1rem minmax(0, 1fr) auto;
   align-items: center;
@@ -558,34 +558,34 @@ a.slopr-activity-tool-url:hover {
   padding: 0.3rem 0.35rem;
 }
 
-.slopr-activity-result-title,
-.slopr-activity-result-snippet {
+.ui-activity-result-title,
+.ui-activity-result-snippet {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.slopr-activity-result-title {
+.ui-activity-result-title {
   color: #d6d3ca;
 }
 
-.slopr-activity-result-link {
+.ui-activity-result-link {
   display: block;
   color: inherit;
   text-decoration: none;
 }
 
-.slopr-activity-result-link:hover .slopr-activity-result-title {
+.ui-activity-result-link:hover .ui-activity-result-title {
   color: #f3f0e8;
   text-decoration: underline;
   text-underline-offset: 0.14em;
 }
 
-.slopr-activity-result-snippet {
+.ui-activity-result-snippet {
   color: #aaa79e;
 }
 
-.slopr-activity-result-domain {
+.ui-activity-result-domain {
   max-width: 12rem;
   overflow: hidden;
   color: #88857d;
@@ -594,7 +594,7 @@ a.slopr-activity-tool-url:hover {
   white-space: nowrap;
 }
 
-.slopr-activity-favicon {
+.ui-activity-favicon {
   display: grid;
   width: 1rem;
   height: 1rem;
@@ -614,7 +614,7 @@ a.slopr-activity-tool-url:hover {
  * this mirrors that exactly. The loudspeaker is excluded (always visible).
  */
 
-.slopr-thinking-panel-body {
+.ui-thinking-panel-body {
   margin-left: 0.5rem;
   margin-top: 0.45rem;
   border-left: 1px solid #4a4741;
@@ -622,12 +622,12 @@ a.slopr-activity-tool-url:hover {
   color: #b8b3aa;
 }
 
-.slopr-thinking-panel-body :where(p, ul, ol, blockquote, pre, table),
-.slopr-activity-trace-body :where(p, ul, ol, blockquote, pre, table) {
+.ui-thinking-panel-body :where(p, ul, ol, blockquote, pre, table),
+.ui-activity-trace-body :where(p, ul, ol, blockquote, pre, table) {
   margin-block: 0.45rem;
 }
 
-@keyframes slopr-thinking-sweep {
+@keyframes ui-thinking-sweep {
   0% {
     background-position: -62% 0;
     opacity: 0;
@@ -654,7 +654,7 @@ a.slopr-activity-tool-url:hover {
   }
 }
 
-.slopr-markdown {
+.ui-markdown {
   font-family: var(--font-serif);
   font-weight: 360;
   line-height: 1.5;
@@ -662,89 +662,89 @@ a.slopr-activity-tool-url:hover {
   padding-right: 2rem;
 }
 
-.slopr-markdown :where(p, ul, ol, blockquote, pre, table) {
+.ui-markdown :where(p, ul, ol, blockquote, pre, table) {
   margin-block: 0.75rem;
 }
 
-.slopr-markdown :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
+.ui-markdown :where(p:first-child, ul:first-child, ol:first-child, blockquote:first-child, pre:first-child, table:first-child) {
   margin-top: 0;
 }
 
-.slopr-markdown :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
+.ui-markdown :where(p:last-child, ul:last-child, ol:last-child, blockquote:last-child, pre:last-child, table:last-child) {
   margin-bottom: 0;
 }
 
-.slopr-markdown :where(h1, h2, h3, h4) {
+.ui-markdown :where(h1, h2, h3, h4) {
   margin: 1.1rem 0 0.45rem;
   color: #f3f0e8;
   font-weight: 530;
   line-height: 1.3;
 }
 
-.slopr-markdown :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
+.ui-markdown :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
   margin-top: 0;
 }
 
-.slopr-markdown h1 {
+.ui-markdown h1 {
   font-size: 1.65rem;
 }
 
-.slopr-markdown h2 {
+.ui-markdown h2 {
   font-size: 1.4rem;
 }
 
-.slopr-markdown h3 {
+.ui-markdown h3 {
   font-size: 1.2rem;
 }
 
-.slopr-markdown h4 {
+.ui-markdown h4 {
   font-size: 1.15rem;
 }
 
-.slopr-markdown :where(ul, ol) {
+.ui-markdown :where(ul, ol) {
   padding-left: 1.35rem;
 }
 
-.slopr-markdown ul {
+.ui-markdown ul {
   list-style: disc;
 }
 
-.slopr-markdown ol {
+.ui-markdown ol {
   list-style: decimal;
 }
 
-.slopr-markdown li + li {
+.ui-markdown li + li {
   margin-top: 0.25rem;
 }
 
-.slopr-markdown strong {
+.ui-markdown strong {
   color: #faf9f5;
   font-weight: 530;
 }
 
-.slopr-markdown em {
+.ui-markdown em {
   color: #e2ded4;
 }
 
-.slopr-markdown a {
+.ui-markdown a {
   color: #d97757;
   text-decoration: underline;
   text-underline-offset: 0.16em;
 }
 
-.slopr-markdown blockquote {
+.ui-markdown blockquote {
   border-left: 2px solid #4b4a46;
   color: #c3c2b7;
   padding-left: 0.9rem;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) hr {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) hr {
   border: 0;
   border-top: 1px solid #4a4741;
   margin-block: 1.8rem;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) code {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) code {
   border-radius: 0.25rem;
   background: #2a2a28;
   font-family: var(--font-mono);
@@ -753,7 +753,7 @@ a.slopr-activity-tool-url:hover {
   padding: 0.1rem 0.28rem;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) pre {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) pre {
   overflow-x: auto;
   border: 1px solid #3e3d39;
   border-radius: 0.5rem;
@@ -761,18 +761,18 @@ a.slopr-activity-tool-url:hover {
   padding: 0.85rem 1rem;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) pre code {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) pre code {
   border-radius: 0;
   background: transparent;
   padding: 0;
 }
 
 /* Code-Block-Wrapper mit Copy-Button */
-.slopr-codeblock {
+.ui-codeblock {
   position: relative;
 }
 
-.slopr-codeblock .slopr-codeblock-copy {
+.ui-codeblock .ui-codeblock-copy {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -789,101 +789,101 @@ a.slopr-activity-tool-url:hover {
   transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
 }
 
-.slopr-codeblock .slopr-codeblock-copy:hover {
+.ui-codeblock .ui-codeblock-copy:hover {
   opacity: 1;
   background: #2a2a28;
   color: #f3f0e8;
 }
 
 /* Platz schaffen, damit der Button nicht über dem Code liegt */
-.slopr-codeblock pre {
+.ui-codeblock pre {
   padding-right: 2.75rem;
 }
 
 /* Syntax-Highlighting (highlight.js) — an Slopr-Dunkeltheme angepasst */
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs {
   color: #f3f0e8;
   background: transparent;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-comment,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-quote {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-comment,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-quote {
   color: #7d8a72;
   font-style: italic;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-keyword,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-selector-tag,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-literal,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-doctag {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-keyword,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-selector-tag,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-literal,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-doctag {
   color: #e0915f;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-string,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-regexp,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-addition {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-string,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-regexp,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-addition {
   color: #a3b565;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-number,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-symbol,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-bullet {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-number,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-symbol,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-bullet {
   color: #c08bc4;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-title,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-title.function_,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-section,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-name {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-title,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-title.function_,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-section,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-name {
   color: #6fb3c9;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-built_in,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-class .hljs-title,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-title.class_,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-type {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-built_in,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-class .hljs-title,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-title.class_,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-type {
   color: #d8c06a;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-attr,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-attribute,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-variable,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-template-variable,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-property {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-attr,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-attribute,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-variable,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-template-variable,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-property {
   color: #d2b07a;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-meta,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-operator,
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-punctuation {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-meta,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-operator,
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-punctuation {
   color: #9b9789;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-deletion {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-deletion {
   color: #d97c6b;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-emphasis {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-emphasis {
   font-style: italic;
 }
 
-:is(.slopr-markdown, .slopr-thinking-panel-body, .slopr-activity-trace-body) .hljs-strong {
+:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-strong {
   font-weight: 600;
 }
 
-.slopr-markdown table {
+.ui-markdown table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
 }
 
-.slopr-markdown :where(th, td) {
+.ui-markdown :where(th, td) {
   border: 1px solid #3e3d39;
   padding: 0.45rem 0.6rem;
   text-align: left;
 }
 
-.slopr-markdown th {
+.ui-markdown th {
   background: #282826;
   color: #faf9f5;
   font-weight: 500;

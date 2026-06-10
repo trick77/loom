@@ -10,7 +10,7 @@ const (
 	TransportStreamableHTTP = "streamable-http"
 	TransportStdio          = "stdio"
 	// defaultTavilyURL is the hosted Tavily MCP endpoint used by the built-in
-	// Tavily web-search adapter when SLOPR_TAVILY_URL is unset.
+	// Tavily web-search adapter when BACKEND_TAVILY_URL is unset.
 	defaultTavilyURL = "https://mcp.tavily.com/mcp/"
 	// tavilySearchToolName is the server-side name of Tavily's web search tool.
 	// It is the only tool the built-in adapter exposes; Tavily's other tools

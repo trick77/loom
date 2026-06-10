@@ -91,7 +91,7 @@ test("renders artifacts with chats-page controls and default modified descending
   renderPage();
 
   expect(await screen.findByRole("heading", { name: "Artifacts" })).toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Search filenames" })).toHaveClass("slopr-composer-text");
+  expect(screen.getByRole("textbox", { name: "Search filenames" })).toHaveClass("ui-composer-text");
   expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByText("robot.png")).toBeInTheDocument();
   expect(screen.getByText("842 KB")).toBeInTheDocument();
@@ -192,13 +192,13 @@ test("keeps row metadata on the filename line", async () => {
 
   const row = screen.getByText("quarterly-board-update.pdf").closest("li");
   expect(row).not.toBeNull();
-  expect(row?.querySelector(".slopr-artifacts-row-primary")).toHaveTextContent(
+  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(
     "quarterly-board-update.pdf",
   );
   // Relative timestamps are clock-dependent; assert a relative label is present.
-  expect(row?.querySelector(".slopr-artifacts-row-primary")).toHaveTextContent(/ago/);
-  expect(row?.querySelector(".slopr-artifacts-row-primary")).toHaveTextContent("1.3 MB");
-  expect(row?.querySelector(".slopr-artifacts-row-secondary")).toHaveTextContent("application/pdf");
+  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(/ago/);
+  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent("1.3 MB");
+  expect(row?.querySelector(".ui-artifacts-row-secondary")).toHaveTextContent("application/pdf");
 });
 
 test("loads further pages via the infinite-scroll sentinel", async () => {
@@ -257,7 +257,7 @@ test("opens image previews when clicking empty row space", async () => {
   expect(await screen.findByRole("img", { name: "robot.png thumbnail" })).toBeInTheDocument();
   const row = screen.getByText("robot.png").closest("li");
   expect(row).not.toBeNull();
-  const rowSurface = row?.querySelector(".slopr-artifacts-row-surface");
+  const rowSurface = row?.querySelector(".ui-artifacts-row-surface");
   expect(rowSurface).not.toBeNull();
   fireEvent.click(rowSurface!);
 

@@ -15,7 +15,7 @@ cat > "$TMP_DIR/bin/docker" <<'STUB'
 #!/bin/sh
 set -eu
 
-LOG_FILE=${SLOPR_REFRESH_TEST_LOG:?}
+LOG_FILE=${BACKEND_REFRESH_TEST_LOG:?}
 
 printf '%s\n' "$*" >> "$LOG_FILE"
 
@@ -42,7 +42,7 @@ STUB
 chmod +x "$TMP_DIR/bin/docker"
 
 LOG_FILE="$TMP_DIR/docker.log"
-PATH="$TMP_DIR/bin:$PATH" SLOPR_REFRESH_TEST_LOG="$LOG_FILE" "$ROOT/hack/refresh.sh"
+PATH="$TMP_DIR/bin:$PATH" BACKEND_REFRESH_TEST_LOG="$LOG_FILE" "$ROOT/hack/refresh.sh"
 
 build_start_line=$(grep -n '^build-start$' "$LOG_FILE" | cut -d: -f1)
 down_start_line=$(grep -n '^down-start$' "$LOG_FILE" | cut -d: -f1)

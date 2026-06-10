@@ -191,7 +191,7 @@ func TestRemoteClientProbeUsesLightweightHTTPRequest(t *testing.T) {
 }
 
 func TestStdioClientListsTools(t *testing.T) {
-	if os.Getenv("SLOPR_MCP_TEST_HELPER") == "1" {
+	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
 		runMCPTestHelper(t)
 		return
 	}
@@ -200,7 +200,7 @@ func TestStdioClientListsTools(t *testing.T) {
 		Transport: TransportStdio,
 		Command:   os.Args[0],
 		Args:      []string{"-test.run=TestStdioClientListsTools"},
-		Env:       map[string]string{"SLOPR_MCP_TEST_HELPER": "1"},
+		Env:       map[string]string{"BACKEND_MCP_TEST_HELPER": "1"},
 	})
 	defer client.Close()
 
@@ -419,7 +419,7 @@ func TestStdioClientCommandFailure(t *testing.T) {
 }
 
 func TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock(t *testing.T) {
-	if os.Getenv("SLOPR_MCP_HANG_HELPER") == "1" {
+	if os.Getenv("BACKEND_MCP_HANG_HELPER") == "1" {
 		time.Sleep(10 * time.Second)
 		return
 	}
@@ -427,7 +427,7 @@ func TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock(t *testing.T) {
 		Transport: TransportStdio,
 		Command:   os.Args[0],
 		Args:      []string{"-test.run=TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock"},
-		Env:       map[string]string{"SLOPR_MCP_HANG_HELPER": "1"},
+		Env:       map[string]string{"BACKEND_MCP_HANG_HELPER": "1"},
 	})
 	defer client.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
