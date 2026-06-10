@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import type { Project, Thread } from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
@@ -21,7 +23,7 @@ export function ProjectDetailPage({
   onArchiveThread,
   onRemoveFromProject,
   onToggleThreadMenu,
-  onCloseThreadMenu: _onCloseThreadMenu,
+  onCloseThreadMenu,
   onEditProject,
   onArchiveProject,
   onDeleteProject,
@@ -52,6 +54,18 @@ export function ProjectDetailPage({
 }) {
   const projectMenuKey = `Project:${project.id}`;
 
+  useEffect(() => {
+    if (openThreadMenuID === null) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-project-detail-menu-root]") !== null) return;
+      onCloseThreadMenu();
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [onCloseThreadMenu, openThreadMenuID]);
+
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-[920px] px-4 pb-16 pt-10 md:px-6">
@@ -77,7 +91,7 @@ export function ProjectDetailPage({
               </p>
             )}
           </div>
-          <div className="relative">
+          <div className="relative" data-project-detail-menu-root>
             <button
               aria-expanded={openThreadMenuID === projectMenuKey}
               aria-label="Open project actions"
@@ -110,10 +124,7 @@ export function ProjectDetailPage({
             value={draft}
             onChange={(event) => onDraftChange(event.target.value)}
           />
-          <div className="flex justify-between">
-            <button className="grid h-9 w-9 place-items-center rounded-md text-xl text-white hover:bg-[#3a3a37]" type="button">
-              +
-            </button>
+          <div className="flex justify-end">
             {isSending ? (
               <button className="rounded-md bg-[#3a3a37] px-3 py-2 text-sm text-white" type="button" onClick={onStop}>
                 Stop
@@ -141,7 +152,11 @@ export function ProjectDetailPage({
             threads.map((thread) => {
               const menuKey = `ProjectThread:${thread.id}`;
               return (
-                <li key={thread.id} className="relative flex items-center justify-between py-4">
+                <li
+                  key={thread.id}
+                  className="relative flex items-center justify-between py-4"
+                  data-project-detail-menu-root
+                >
                   <button
                     className="min-w-0 truncate text-left text-sm font-medium text-[#f4f0e8]"
                     type="button"

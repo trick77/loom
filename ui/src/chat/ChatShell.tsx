@@ -111,6 +111,7 @@ export function ChatShell({
   const [projectName, setProjectName] = useState("");
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  // undefined = closed, null = create, Project = edit.
   const [editingProject, setEditingProject] = useState<Project | null | undefined>(undefined);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [movingThreads, setMovingThreads] = useState<Thread[]>([]);
@@ -590,9 +591,21 @@ export function ChatShell({
     if (targetThreads.length === 0 || isMutatingThread) return;
     setIsMutatingThread(true);
     try {
-      const updatedThreads = await Promise.all(
-        targetThreads.map((thread) => updateThread(thread.id, { projectId: project.id })),
+      const results = await Promise.allSettled(
+        targetThreads.map(async (thread) => ({
+          original: thread,
+          updated: await updateThread(thread.id, { projectId: project.id }),
+        })),
       );
+      const updatedThreads = results
+        .filter((result): result is PromiseFulfilledResult<{ original: Thread; updated: Thread }> => result.status === "fulfilled")
+        .map((result) => result.value.updated);
+      if (updatedThreads.length === 0) {
+        throw new Error("No chats moved.");
+      }
+      const failedThreads = results
+        .map((result, index) => (result.status === "rejected" ? targetThreads[index] : null))
+        .filter((thread): thread is Thread => thread !== null);
       const updatedIDs = new Set(updatedThreads.map((thread) => thread.id));
       setThreads((current) =>
         current.map((thread) => updatedThreads.find((updated) => updated.id === thread.id) ?? thread),
@@ -613,9 +626,10 @@ export function ChatShell({
         const updatedActive = updatedThreads.find((thread) => thread.id === activeThread.id);
         if (updatedActive !== undefined) setActiveThread(updatedActive);
       }
-      setMovingThreads([]);
+      setMovingThreads(failedThreads);
       setThreadMutationVersion((value) => value + 1);
-      setModalError("");
+      const failedCount = failedThreads.length;
+      setModalError(failedCount > 0 ? `${failedCount} chat${failedCount === 1 ? "" : "s"} failed to move.` : "");
     } catch (error) {
       handleActionError(error, "Chats failed to move.", setModalError);
     } finally {
@@ -745,7 +759,11 @@ export function ChatShell({
           receivedThreadEvent = true;
           if (isCurrentThread()) setActiveThread(updatedThread);
           setThreads((current) => upsertThread(current, updatedThread));
-          if (updatedThread.projectId !== undefined && updatedThread.projectId !== null) {
+          if (
+            route.view === "project" &&
+            updatedThread.projectId !== undefined &&
+            updatedThread.projectId === route.projectID
+          ) {
             setProjectThreads((current) => upsertThreadById(current, updatedThread));
           }
         },
@@ -754,7 +772,11 @@ export function ChatShell({
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
-        if (fallbackThread.projectId !== undefined && fallbackThread.projectId !== null) {
+        if (
+          route.view === "project" &&
+          fallbackThread.projectId !== undefined &&
+          fallbackThread.projectId === route.projectID
+        ) {
           setProjectThreads((current) => upsertThreadById(current, fallbackThread));
         }
       }

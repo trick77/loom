@@ -42,7 +42,11 @@ export function ProjectsPage({
             <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Projects</h1>
           </div>
           <div className="flex items-center gap-2.5">
-            <button className="slopr-control-text rounded-lg bg-[#3a3a37] px-3 py-2 text-[#d5d2c9]" type="button">
+            <button
+              className="slopr-control-text cursor-default rounded-lg bg-[#3a3a37] px-3 py-2 text-[#d5d2c9] opacity-70"
+              type="button"
+              disabled
+            >
               Sort by <span className="font-semibold text-white">Recent activity</span>
             </button>
             <button

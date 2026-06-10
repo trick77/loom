@@ -98,7 +98,7 @@ test("places library before projects in the primary sidebar navigation", async (
   render(<App />);
 
   const libraryButton = await screen.findByRole("button", { name: "Library" });
-  const projectsItem = screen.getAllByText("Projects")[0].closest("div");
+  const projectsItem = screen.getByRole("button", { name: "Projects" });
 
   expect(projectsItem).not.toBeNull();
   expect(libraryButton.compareDocumentPosition(projectsItem as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
