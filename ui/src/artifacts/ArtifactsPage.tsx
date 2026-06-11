@@ -201,11 +201,18 @@ function ArtifactRowFrame({
 }) {
   const modifiedAt = artifact.modifiedAt ?? "";
   const interactive = onClick !== undefined;
+  const [hovered, setHovered] = useState(false);
   return (
-    <li className="relative border-b border-[#343432]">
+    <li
+      className={`relative border-b ${hovered ? "border-transparent" : "border-[#343432]"}`}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+    >
       <div
         aria-label={ariaLabel}
-        className={`ui-artifacts-row-surface min-h-[56px] rounded-md px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
+        className={`ui-artifacts-row-surface min-h-[56px] rounded-xl px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
+          hovered ? "bg-[#2a2a28]" : ""
+        } ${
           interactive ? "cursor-pointer" : ""
         }`}
         onClick={onClick}
