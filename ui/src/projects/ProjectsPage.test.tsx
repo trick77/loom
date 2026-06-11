@@ -5,6 +5,7 @@ import { expect, test, vi } from "vitest";
 
 import type { Project, Thread } from "../api";
 import { ICONS } from "../chat/Icon";
+import { ProjectDialog } from "./ProjectDialog";
 import { ProjectDetailPage } from "./ProjectDetailPage";
 import { ProjectsPage } from "./ProjectsPage";
 
@@ -306,6 +307,21 @@ test("project action triggers use vertical overflow icons", () => {
 
   expect(screen.getByRole("button", { name: "Open project actions" })).toHaveTextContent(ICONS.moreVertical);
   expect(screen.getByRole("button", { name: "Open chat actions" })).toHaveTextContent(ICONS.moreVertical);
+});
+
+test("ProjectDialog uses the verified close icon glyph", () => {
+  render(
+    <ProjectDialog
+      project={null}
+      error=""
+      disabled={false}
+      onCancel={vi.fn()}
+      onSubmit={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("button", { name: "Close" })).toHaveTextContent(String.fromCodePoint(0xe10f));
+  expect(ICONS.close).toBe(String.fromCodePoint(0xe10f));
 });
 
 test("ProjectDetailPage thread menu items remain clickable after pointerdown", () => {

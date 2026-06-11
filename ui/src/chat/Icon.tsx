@@ -57,7 +57,7 @@ const CODEPOINTS = {
   chevronDown: 0xe027,
   chevronLeft: 0xe029,
   chevronRight: 0xe02a,
-  close: 0xe028,
+  close: 0xe10f,
   message: 0xe037,
   messages: 0xe039,
   addCircle: 0xe032,

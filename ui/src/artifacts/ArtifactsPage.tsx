@@ -9,6 +9,7 @@ import {
   type ArtifactSort,
   type SortOrder,
 } from "../api";
+import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
 import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
 import { CloseIcon, FileIcon } from "../chat/icons";
@@ -31,6 +32,7 @@ export function ArtifactsPage({
   const [type, setType] = useState<ArtifactListType>("all");
   const [sort, setSort] = useState<ArtifactSort>("modified");
   const [order, setOrder] = useState<SortOrder>("desc");
+  const [hoveredArtifactID, setHoveredArtifactID] = useState<string | null>(null);
 
   useEffect(() => {
     const handle = window.setTimeout(() => setSearchTerm(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -102,7 +104,11 @@ export function ArtifactsPage({
 
         <div className="mt-3">
           {artifacts.length > 0 && (
-            <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center border-b border-[#343432] px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
+            <div
+              className={`grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center border-b px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem] ${
+                hoveredArtifactID === artifacts[0]?.id ? "border-transparent" : "border-[#343432]"
+              }`}
+            >
               <SortButton active={sort === "name"} label="Name" order={order} onClick={() => updateSort("name")} />
               <SortButton active={sort === "modified"} label="Modified" order={order} onClick={() => updateSort("modified")} />
               <SortButton active={sort === "size"} label="Size" order={order} onClick={() => updateSort("size")} />
@@ -116,9 +122,20 @@ export function ArtifactsPage({
             )
           ) : (
             <ul>
-              {artifacts.map((artifact) => (
-                <ArtifactRow key={artifact.id} artifact={artifact} />
-              ))}
+              {artifacts.map((artifact, index) => {
+                const nextArtifact = artifacts[index + 1];
+                const hovered = hoveredArtifactID === artifact.id;
+                const nextHovered = nextArtifact !== undefined && hoveredArtifactID === nextArtifact.id;
+                return (
+                  <ArtifactRow
+                    key={artifact.id}
+                    artifact={artifact}
+                    hovered={hovered}
+                    hideDivider={hovered || nextHovered}
+                    onHoverChange={(hovered) => setHoveredArtifactID(hovered ? artifact.id : null)}
+                  />
+                );
+              })}
             </ul>
           )}
           {/* Sentinel observed for infinite scroll; loads the next page when in view. */}
@@ -180,11 +197,36 @@ function SortButton({
   );
 }
 
-function ArtifactRow({ artifact }: { artifact: Artifact }) {
+function ArtifactRow({
+  artifact,
+  hideDivider,
+  hovered,
+  onHoverChange,
+}: {
+  artifact: Artifact;
+  hideDivider: boolean;
+  hovered: boolean;
+  onHoverChange(hovered: boolean): void;
+}) {
   const isImage = artifact.mimeType.startsWith("image/");
-  if (isImage) return <ImageArtifactRow artifact={artifact} />;
+  if (isImage) {
+    return (
+      <ImageArtifactRow
+        artifact={artifact}
+        hideDivider={hideDivider}
+        hovered={hovered}
+        onHoverChange={onHoverChange}
+      />
+    );
+  }
   return (
-    <ArtifactRowFrame artifact={artifact} action={<FileArtifactButton artifact={artifact} />} />
+    <ArtifactRowFrame
+      artifact={artifact}
+      action={<FileArtifactButton artifact={artifact} />}
+      hideDivider={hideDivider}
+      hovered={hovered}
+      onHoverChange={onHoverChange}
+    />
   );
 }
 
@@ -192,50 +234,48 @@ function ArtifactRowFrame({
   action,
   artifact,
   ariaLabel,
+  hideDivider,
+  hovered,
   onClick,
+  onHoverChange,
 }: {
   action: ReactNode;
   artifact: Artifact;
   ariaLabel?: string;
+  hideDivider: boolean;
+  hovered: boolean;
   onClick?: () => void;
+  onHoverChange(hovered: boolean): void;
 }) {
   const modifiedAt = artifact.modifiedAt ?? "";
   const interactive = onClick !== undefined;
-  const [hovered, setHovered] = useState(false);
   return (
-    <li
-      className={`relative border-b ${hovered ? "border-transparent" : "border-[#343432]"}`}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
+    <BrowsingListRowFrame
+      active={hovered}
+      hideDivider={hideDivider}
+      surfaceAriaLabel={ariaLabel}
+      surfaceClassName={`ui-artifacts-row-surface min-h-[56px] rounded-xl px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
+        interactive ? "cursor-pointer" : ""
+      }`}
+      surfaceRole={interactive ? "button" : undefined}
+      surfaceTabIndex={interactive ? 0 : undefined}
+      onPointerEnter={() => onHoverChange(true)}
+      onPointerLeave={() => onHoverChange(false)}
+      onSurfaceClick={onClick}
+      onSurfaceKeyDown={(event) => {
+        if (!interactive) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
     >
-      <div
-        aria-label={ariaLabel}
-        className={`ui-artifacts-row-surface min-h-[56px] rounded-xl px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
-          hovered ? "bg-[#2a2a28]" : ""
-        } ${
-          interactive ? "cursor-pointer" : ""
-        }`}
-        onClick={onClick}
-        onKeyDown={(event) => {
-          if (!interactive) return;
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onClick();
-          }
-        }}
-        role={interactive ? "button" : undefined}
-        tabIndex={interactive ? 0 : undefined}
-      >
-        <div className="ui-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
-          <div className="min-w-0 pr-3">{action}</div>
-          <div className="shrink-0 text-[13px] text-[#8a887f]">{formatTimeAgo(modifiedAt)}</div>
-          <div className="shrink-0 text-[13px] text-[#c7c5bd]">{formatFileSize(artifact.sizeBytes)}</div>
-        </div>
-        <div className="ui-artifacts-row-secondary ml-12 mt-0.5 truncate text-xs text-[#8a887f]">
-          {artifact.mimeType}
-        </div>
+      <div className="ui-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
+        <div className="min-w-0 pr-3">{action}</div>
+        <div className="shrink-0 text-[13px] text-[#8a887f]">{formatTimeAgo(modifiedAt)}</div>
+        <div className="shrink-0 text-[13px] text-[#c7c5bd]">{formatFileSize(artifact.sizeBytes)}</div>
       </div>
-    </li>
+    </BrowsingListRowFrame>
   );
 }
 
@@ -243,19 +283,34 @@ function FileArtifactButton({ artifact }: { artifact: Artifact }) {
   return (
     <button
       type="button"
-      className="flex w-full min-w-0 items-center gap-3 text-left"
+      className="flex w-full min-w-0 items-start gap-3 text-left"
       aria-label={`Download ${artifact.displayFilename}`}
       onClick={() => void downloadToBrowser(artifact)}
     >
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
         <FileIcon />
       </span>
-      <span className="block min-w-0 truncate text-[15px] text-[#ecece6]">{artifact.displayFilename}</span>
+      <span className="block min-w-0">
+        <span className="block truncate text-[15px] leading-5 text-[#ecece6]">{artifact.displayFilename}</span>
+        <span className="ui-artifacts-row-secondary block truncate text-xs leading-4 text-[#8a887f]">
+          {artifact.mimeType}
+        </span>
+      </span>
     </button>
   );
 }
 
-function ImageArtifactRow({ artifact }: { artifact: Artifact }) {
+function ImageArtifactRow({
+  artifact,
+  hideDivider,
+  hovered,
+  onHoverChange,
+}: {
+  artifact: Artifact;
+  hideDivider: boolean;
+  hovered: boolean;
+  onHoverChange(hovered: boolean): void;
+}) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
@@ -276,10 +331,13 @@ function ImageArtifactRow({ artifact }: { artifact: Artifact }) {
       <ArtifactRowFrame
         ariaLabel={`Preview ${artifact.displayFilename}`}
         artifact={artifact}
+        hideDivider={hideDivider}
+        hovered={hovered}
+        onHoverChange={onHoverChange}
         onClick={openPreview}
         action={
           <div
-            className="flex w-full min-w-0 items-center gap-3 text-left"
+            className="flex w-full min-w-0 items-start gap-3 text-left"
             title={`Preview ${artifact.displayFilename}`}
           >
             <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#1f1f1d] text-[#c7c5bd]">
@@ -290,7 +348,12 @@ function ImageArtifactRow({ artifact }: { artifact: Artifact }) {
                 loading="lazy"
               />
             </span>
-            <span className="block min-w-0 truncate text-[15px] text-[#ecece6]">{artifact.displayFilename}</span>
+            <span className="block min-w-0">
+              <span className="block truncate text-[15px] leading-5 text-[#ecece6]">{artifact.displayFilename}</span>
+              <span className="ui-artifacts-row-secondary block truncate text-xs leading-4 text-[#8a887f]">
+                {artifact.mimeType}
+              </span>
+            </span>
           </div>
         }
       />
