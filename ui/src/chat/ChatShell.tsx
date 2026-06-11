@@ -53,6 +53,7 @@ import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ChatsPage } from "../ChatsPage";
 import { ArtifactsPage } from "../artifacts/ArtifactsPage";
+import { MemoryPage } from "../MemoryPage";
 import {
   buildImageStats,
   downloadableResponse,
@@ -367,6 +368,13 @@ export function ChatShell({
     setMobileSidebarOpen(false);
     navigate({ view: "projects" });
     setRoute({ view: "projects" });
+  }, [onChat]);
+
+  const navigateToMemory = useCallback(() => {
+    onChat();
+    setMobileSidebarOpen(false);
+    navigate({ view: "memory" });
+    setRoute({ view: "memory" });
   }, [onChat]);
 
   const navigateToProject = useCallback(
@@ -873,6 +881,13 @@ export function ChatShell({
             active={(route.view === "projects" || route.view === "project") && !showAdmin}
             onClick={navigateToProjects}
           />
+          <SidebarPrimaryItem
+            label="Memory"
+            icon="memory"
+            collapsed={railCollapsed}
+            active={route.view === "memory" && !showAdmin}
+            onClick={navigateToMemory}
+          />
           {!railCollapsed && (
             <>
           {loadError !== "" && (
@@ -1054,6 +1069,8 @@ export function ChatShell({
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onSessionExpired={onSessionExpired}
           />
+        ) : route.view === "memory" ? (
+          <MemoryPage onOpenSidebar={() => setMobileSidebarOpen(true)} />
         ) : route.view === "projects" ? (
           <ProjectsPage
             projects={projects}
@@ -1290,6 +1307,9 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
   }
   if (name === "artifacts") {
     return <Icon name="artifact" size="21px" className={className} />;
+  }
+  if (name === "memory") {
+    return <Icon name="wave" size="21px" className={className} />;
   }
   return null;
 }

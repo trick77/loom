@@ -8,33 +8,43 @@ import (
 	"time"
 )
 
-// memoryMaxCompletionTokens caps project-memory generation. A memory is a short
-// markdown digest (a handful of lines), so this is far above a title's 32-token
-// cap but still small enough to keep the helper call cheap.
+// memoryMaxCompletionTokens caps memory generation. A memory is a short markdown
+// digest (a handful of lines), so this is far above a title's 32-token cap but
+// still small enough to keep the helper call cheap.
 const memoryMaxCompletionTokens = 512
 
-const projectMemorySystemPrompt = "You maintain a compact, durable memory for a chat project so separate chats share context. " +
+// ProjectMemorySystemPrompt drives project-memory generation: a compact,
+// topic-grouped digest shared across the project's chats.
+const ProjectMemorySystemPrompt = "You maintain a compact, durable memory for a chat project so separate chats share context. " +
 	"Given the project name, description, the existing memory, and recent conversation, output an UPDATED memory. " +
 	"Keep ONLY durable, project-wide facts, decisions, and open questions (dates, budgets, people, hard constraints, choices made). " +
 	"Drop chit-chat and one-off details. Replace outdated facts with their newest value instead of listing both. " +
 	"Use short markdown bullet lines, grouped under brief headings if helpful. Be terse. " +
 	"Stay well under 1000 characters. Output ONLY the memory content, no preamble."
 
-// GenerateProjectMemory re-summarizes a project's memory. It is given the prior
-// memory plus a transcript of recent messages and returns a fresh, compact
-// memory (re-summarize, not append) so the result stays bounded. It takes plain
+// UserMemorySystemPrompt drives user-memory generation: a flat list of atomic,
+// single-sentence facts about the user, injected into all of their chats.
+const UserMemorySystemPrompt = "You maintain a compact, durable memory of facts about the user so the assistant can stay personalized across all of their chats. " +
+	"Given the existing memory and recent conversation, output an UPDATED memory. " +
+	"Keep ONLY durable, personal facts the user revealed about THEMSELVES (employer/role, location, languages, lasting preferences, recurring goals). " +
+	"Each fact must be a single, self-contained sentence on its own line, prefixed with '- '. Do NOT group under headings. " +
+	"Drop chit-chat, one-off details, and anything about other people. Replace outdated facts with their newest value instead of listing both. " +
+	"NEVER store passwords, API keys, secrets, payment details, or other sensitive credentials. " +
+	"Be terse. Stay well under 800 characters. Output ONLY the memory content, no preamble."
+
+// GenerateMemory re-summarizes a memory. It is given a scope-specific header
+// block (for example a project's name/description, or empty for user memory),
+// the prior memory, and a transcript of recent messages, and returns a fresh,
+// compact memory (re-summarize, not append) so the result stays bounded. The
+// systemPrompt selects the memory's style (project vs. user). It takes plain
 // strings to avoid a dependency on the chat package.
-func (c *Client) GenerateProjectMemory(ctx context.Context, projectName, projectDescription, priorMemory, transcript string) (string, error) {
+func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transcript, systemPrompt string) (string, error) {
 	start := time.Now()
 
 	var b strings.Builder
-	b.WriteString("Project name:\n\"\"\"\n")
-	b.WriteString(strings.TrimSpace(projectName))
-	b.WriteString("\n\"\"\"\n")
-	if strings.TrimSpace(projectDescription) != "" {
-		b.WriteString("\nProject description:\n\"\"\"\n")
-		b.WriteString(strings.TrimSpace(projectDescription))
-		b.WriteString("\n\"\"\"\n")
+	if h := strings.TrimSpace(header); h != "" {
+		b.WriteString(h)
+		b.WriteString("\n")
 	}
 	b.WriteString("\nExisting memory (may be empty):\n\"\"\"\n")
 	b.WriteString(strings.TrimSpace(priorMemory))
@@ -44,7 +54,7 @@ func (c *Client) GenerateProjectMemory(ctx context.Context, projectName, project
 	b.WriteString("\n\"\"\"\n\nUpdated memory:")
 
 	messages := []Message{
-		{Role: "system", Content: projectMemorySystemPrompt},
+		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: b.String()},
 	}
 	resp, err := c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
@@ -59,13 +69,13 @@ func (c *Client) GenerateProjectMemory(ctx context.Context, projectName, project
 
 	var completion chatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
-		err := fmt.Errorf("decode project memory completion response: %w", err)
+		err := fmt.Errorf("decode memory completion response: %w", err)
 		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
 	}
 	if len(completion.Choices) == 0 {
 		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
-		return "", fmt.Errorf("project memory completion returned no choices")
+		return "", fmt.Errorf("memory completion returned no choices")
 	}
 	choice := completion.Choices[0]
 	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)

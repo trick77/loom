@@ -92,8 +92,11 @@ func sendMCPStatus(stream *sse.Writer, ch <-chan mcpStatusResponse) {
 	_ = sendSSEJSON(stream, "mcp_status", status)
 }
 
-func buildLLMHistory(user auth.User, projectContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+func buildLLMHistory(user auth.User, userContext, projectContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	systemContent := systemPromptForUser(user)
+	if strings.TrimSpace(userContext) != "" {
+		systemContent += "\n\n" + userContext
+	}
 	if strings.TrimSpace(projectContext) != "" {
 		systemContent += "\n\n" + projectContext
 	}

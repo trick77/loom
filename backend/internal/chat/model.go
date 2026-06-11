@@ -50,6 +50,22 @@ type ProjectMemory struct {
 // never blow up the prompt; generation is asked to stay well under this.
 const MaxProjectMemoryLength = 4000
 
+// UserMemory is a compact, auto-generated set of durable facts about the user
+// (employer, location, lasting preferences) that is injected into every chat the
+// user has — project-bound or not — so the assistant stays personalized. Like
+// ProjectMemory it is re-summarized (not appended) so it stays small and bounded.
+type UserMemory struct {
+	Content string `json:"content"`
+	// SourceMessageCount records the total user message count at the last
+	// refresh; it gates the background auto-refresh (see CountUserMessages).
+	SourceMessageCount int        `json:"-"`
+	UpdatedAt          *time.Time `json:"updatedAt"`
+}
+
+// MaxUserMemoryLength hard-caps the stored user memory. It is smaller than the
+// project cap because user memory is a short, flat list of personal facts.
+const MaxUserMemoryLength = 2000
+
 // Thread is a single chat conversation.
 type Thread struct {
 	ID            string     `json:"id"`
