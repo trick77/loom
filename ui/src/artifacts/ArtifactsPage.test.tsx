@@ -44,6 +44,11 @@ function page(items: Artifact[], nextCursor: string | null = null): Page<Artifac
   return { items, nextCursor };
 }
 
+// Relative to "now" so the row's relative-time label ("… ago") is deterministic
+// regardless of when the suite runs (a fixed date crosses the "yesterday"
+// boundary as the day progresses).
+const recentIso = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+
 function artifact(overrides: Partial<Artifact>): Artifact {
   return {
     id: "art_file",
@@ -51,7 +56,7 @@ function artifact(overrides: Partial<Artifact>): Artifact {
     displayFilename: "quarterly-board-update.pdf",
     mimeType: "application/pdf",
     sizeBytes: 1_400_000,
-    modifiedAt: "2026-06-10T12:00:00Z",
+    modifiedAt: recentIso,
     downloadUrl: "/api/artifacts/art_file/download",
     ...overrides,
   };

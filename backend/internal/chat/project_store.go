@@ -41,6 +41,12 @@ VALUES (?, ?, ?, ?)`,
 	return project, nil
 }
 
+// GetProject returns a single project by id. The bool is false when no such
+// project exists for the user.
+func (s *Store) GetProject(ctx context.Context, userID, projectID string) (Project, bool, error) {
+	return s.getProject(ctx, userID, projectID)
+}
+
 func (s *Store) ListProjects(ctx context.Context, userID string, archived bool) ([]Project, error) {
 	archiveFilter := "archived_at IS NULL"
 	if archived {

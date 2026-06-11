@@ -61,6 +61,7 @@ type server struct {
 // ChatStore is the chat persistence dependency used by chat handlers.
 type ChatStore interface {
 	CreateProject(context.Context, string, chat.CreateProjectInput) (chat.Project, error)
+	GetProject(context.Context, string, string) (chat.Project, bool, error)
 	ListProjects(context.Context, string, bool) ([]chat.Project, error)
 	UpdateProject(context.Context, string, string, chat.UpdateProjectInput) (chat.Project, bool, error)
 	SetProjectArchived(context.Context, string, string, bool) (bool, error)
@@ -78,6 +79,10 @@ type ChatStore interface {
 	AddMessageWithArtifacts(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage) (chat.Message, error)
 	AddMessageWithActivityTrace(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
+	GetProjectMemory(context.Context, string, string) (chat.ProjectMemory, bool, error)
+	UpsertProjectMemory(context.Context, string, string, string, int) (chat.ProjectMemory, error)
+	CountProjectMessages(context.Context, string, string) (int, error)
+	ListProjectMessages(context.Context, string, string, int) ([]chat.Message, error)
 }
 
 // ArtifactStore persists and looks up generated artifact metadata.
@@ -96,6 +101,7 @@ type ChatClient interface {
 	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
 	GenerateChatTitle(context.Context, string, string) (string, error)
 	GenerateReasoningTitle(context.Context, string) (string, error)
+	GenerateProjectMemory(context.Context, string, string, string, string) (string, error)
 }
 
 // ToolService exposes configured MCP tools to chat handlers.
@@ -163,6 +169,8 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/projects/{projectID}/archive", s.requireAuth(http.HandlerFunc(s.handleArchiveProject)))
 	mux.Handle("POST /api/projects/{projectID}/unarchive", s.requireAuth(http.HandlerFunc(s.handleUnarchiveProject)))
 	mux.Handle("DELETE /api/projects/{projectID}", s.requireAuth(http.HandlerFunc(s.handleDeleteProject)))
+	mux.Handle("GET /api/projects/{projectID}/memory", s.requireAuth(http.HandlerFunc(s.handleGetProjectMemory)))
+	mux.Handle("POST /api/projects/{projectID}/memory:refresh", s.requireAuth(http.HandlerFunc(s.handleRefreshProjectMemory)))
 	mux.Handle("GET /api/threads", s.requireAuth(http.HandlerFunc(s.handleListThreads)))
 	mux.Handle("POST /api/threads", s.requireAuth(http.HandlerFunc(s.handleCreateThread)))
 	mux.Handle("POST /api/threads:delete", s.requireAuth(http.HandlerFunc(s.handleBulkDeleteThreads)))

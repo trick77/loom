@@ -20,6 +20,12 @@ export type Project = {
   updatedAt: string;
 };
 
+export type ProjectMemory = {
+  projectId: string;
+  content: string;
+  updatedAt: string | null;
+};
+
 export type Thread = {
   id: string;
   projectId?: string;
@@ -194,6 +200,18 @@ export async function deleteProject(projectId: string): Promise<void> {
   if (!response.ok) {
     throw new Error("failed to delete project");
   }
+}
+
+export async function getProjectMemory(projectId: string): Promise<ProjectMemory> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/memory`);
+  return expectJSON<ProjectMemory>(response, "failed to load project memory");
+}
+
+export async function refreshProjectMemory(projectId: string): Promise<ProjectMemory> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/memory:refresh`, {
+    method: "POST",
+  });
+  return expectJSON<ProjectMemory>(response, "failed to refresh project memory");
 }
 
 // Page is the cursor-pagination envelope returned by list endpoints.

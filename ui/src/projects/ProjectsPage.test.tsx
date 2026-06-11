@@ -18,6 +18,11 @@ const projects: Project[] = [
   },
 ];
 
+// Relative to "now" so the row's relative-time label ("… ago") is deterministic
+// regardless of when the suite runs (a fixed date crosses the "yesterday"
+// boundary as the day progresses).
+const recentIso = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+
 const threads: Thread[] = [
   {
     id: "t1",
@@ -26,6 +31,7 @@ const threads: Thread[] = [
     starred: false,
     createdAt: "2026-06-10T00:00:00Z",
     updatedAt: "2026-06-10T12:00:00Z",
+    lastMessageAt: recentIso,
   },
 ];
 

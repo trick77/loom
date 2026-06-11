@@ -34,6 +34,22 @@ type Project struct {
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
+// ProjectMemory is a compact, auto-generated summary of a project's chats that
+// is injected into every chat in the project so sibling chats share context.
+// It is re-summarized (not appended) so it stays small and bounded.
+type ProjectMemory struct {
+	ProjectID string `json:"projectId"`
+	Content   string `json:"content"`
+	// SourceMessageCount records the total project message count at the last
+	// refresh; it gates the background auto-refresh (see CountProjectMessages).
+	SourceMessageCount int        `json:"-"`
+	UpdatedAt          *time.Time `json:"updatedAt"`
+}
+
+// MaxProjectMemoryLength hard-caps the stored memory so a misbehaving model can
+// never blow up the prompt; generation is asked to stay well under this.
+const MaxProjectMemoryLength = 4000
+
 // Thread is a single chat conversation.
 type Thread struct {
 	ID            string     `json:"id"`
