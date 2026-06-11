@@ -92,8 +92,12 @@ func sendMCPStatus(stream *sse.Writer, ch <-chan mcpStatusResponse) {
 	_ = sendSSEJSON(stream, "mcp_status", status)
 }
 
-func buildLLMHistory(user auth.User, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
-	history := []llm.Message{{Role: "system", Content: systemPromptForUser(user)}}
+func buildLLMHistory(user auth.User, projectContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+	systemContent := systemPromptForUser(user)
+	if strings.TrimSpace(projectContext) != "" {
+		systemContent += "\n\n" + projectContext
+	}
+	history := []llm.Message{{Role: "system", Content: systemContent}}
 	for _, message := range messages {
 		switch message.Role {
 		case chat.RoleUser, chat.RoleAssistant:

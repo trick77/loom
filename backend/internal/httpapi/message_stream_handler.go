@@ -86,7 +86,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
 	}
 
-	history := buildLLMHistory(user, priorMessages, userMessage)
+	projectContext := s.projectContextForThread(r.Context(), user.ID, thread)
+	history := buildLLMHistory(user, projectContext, priorMessages, userMessage)
 	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	// Background reasoning-title generation. The deferred wait is a safety net so
@@ -158,6 +159,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
 		return
 	}
+
+	// Best-effort, gated background refresh of the project's shared memory so
+	// sibling chats stay aware of this turn. Detaches from the request context so
+	// it survives the handler returning.
+	threadMessages := append(append(append([]chat.Message{}, priorMessages...), userMessage), assistantMessage)
+	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread, threadMessages)
 
 	sendMCPStatus(stream, mcpStatusCh)
 	_ = stream.Send("done", "{}")

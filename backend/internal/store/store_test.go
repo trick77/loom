@@ -29,8 +29,8 @@ func TestOpen_runsMigrations(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("schema_migrations query: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("applied migrations = %d, want 1", count)
+	if count != 2 {
+		t.Errorf("applied migrations = %d, want 2", count)
 	}
 }
 
@@ -53,8 +53,8 @@ func TestOpen_migrationsAreIdempotent(t *testing.T) {
 	if err := db2.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("schema_migrations query: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("applied migrations after re-open = %d, want 1", count)
+	if count != 2 {
+		t.Errorf("applied migrations after re-open = %d, want 2", count)
 	}
 }
 

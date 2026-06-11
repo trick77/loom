@@ -92,6 +92,8 @@ type fakeChatStore struct {
 	createThreadErr     error
 	updateThreadInput   chat.UpdateThreadInput
 	updateThreadErr     error
+	projectMemory       chat.ProjectMemory
+	projectMessageCount int
 }
 
 func (f *fakeChatStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
@@ -100,7 +102,10 @@ func (f *fakeChatStore) CreateProject(_ context.Context, userID string, in chat.
 }
 
 func (f *fakeChatStore) ListProjects(context.Context, string, bool) ([]chat.Project, error) {
-	return []chat.Project{}, nil
+	if f.project.ID == "" {
+		return []chat.Project{}, nil
+	}
+	return []chat.Project{f.project}, nil
 }
 
 func (f *fakeChatStore) UpdateProject(_ context.Context, _ string, projectID string, _ chat.UpdateProjectInput) (chat.Project, bool, error) {
@@ -234,6 +239,26 @@ func (f *fakeChatStore) ListMessages(context.Context, string, string) ([]chat.Me
 	return append([]chat.Message(nil), f.messages...), true, nil
 }
 
+func (f *fakeChatStore) GetProjectMemory(_ context.Context, _ string, projectID string) (chat.ProjectMemory, bool, error) {
+	if f.projectMemory.ProjectID == "" {
+		return chat.ProjectMemory{ProjectID: projectID}, false, nil
+	}
+	return f.projectMemory, true, nil
+}
+
+func (f *fakeChatStore) UpsertProjectMemory(_ context.Context, _ string, projectID, content string, sourceMessageCount int) (chat.ProjectMemory, error) {
+	f.projectMemory = chat.ProjectMemory{ProjectID: projectID, Content: content, SourceMessageCount: sourceMessageCount}
+	return f.projectMemory, nil
+}
+
+func (f *fakeChatStore) CountProjectMessages(context.Context, string, string) (int, error) {
+	return f.projectMessageCount, nil
+}
+
+func (f *fakeChatStore) ListProjectMessages(_ context.Context, _ string, _ string, _ int) ([]chat.Message, error) {
+	return append([]chat.Message(nil), f.messages...), nil
+}
+
 type fakeChatClient struct {
 	title               string
 	titleErr            error
@@ -245,6 +270,7 @@ type fakeChatClient struct {
 	titleUsage          llm.TokenUsage
 	reasoningTitleUsage llm.TokenUsage
 	afterStream         func()
+	projectMemory       string
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -284,6 +310,10 @@ func (f fakeChatClient) GenerateChatTitle(ctx context.Context, _, _ string) (str
 func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _ string) (string, error) {
 	llm.RecordUsage(ctx, f.reasoningTitleUsage)
 	return f.reasoningTitle, nil
+}
+
+func (f fakeChatClient) GenerateProjectMemory(_ context.Context, _, _, _, _ string) (string, error) {
+	return f.projectMemory, nil
 }
 
 func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
@@ -351,6 +381,10 @@ func (f *blockingChatClient) GenerateChatTitle(context.Context, string, string) 
 }
 
 func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (f *blockingChatClient) GenerateProjectMemory(context.Context, string, string, string, string) (string, error) {
 	return "", nil
 }
 
@@ -435,6 +469,10 @@ func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning
 	if f.titleFor != nil {
 		return f.titleFor(reasoning), nil
 	}
+	return "", nil
+}
+
+func (f *fakeToolChatClient) GenerateProjectMemory(_ context.Context, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 

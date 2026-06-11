@@ -48,6 +48,7 @@ const CODEPOINTS = {
   ghost: 0xe075,
   folder: 0xe072,
   folderPlus: 0xe074,
+  wave: 0xe085,
   sidebar: 0xe0dd,
   code: 0xe048,
   braces: 0xe04a,
