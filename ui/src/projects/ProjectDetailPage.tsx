@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 
 import type { Project, Thread } from "../api";
+import { Composer } from "../chat/Composer";
+import { Icon } from "../chat/Icon";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
@@ -99,7 +101,7 @@ export function ProjectDetailPage({
               type="button"
               onClick={() => onToggleThreadMenu(projectMenuKey)}
             >
-              ...
+              <Icon name="moreVertical" size="18px" />
             </button>
             {openThreadMenuID === projectMenuKey && (
               <ProjectActionsMenu
@@ -111,35 +113,17 @@ export function ProjectDetailPage({
             )}
           </div>
         </header>
-        <form
-          className="mt-10 rounded-[14px] bg-[#2f2f2c] p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSend();
-          }}
-        >
-          <textarea
-            className="min-h-[72px] w-full resize-none bg-transparent text-[17px] text-[#f4f0e8] outline-none placeholder:text-[#8f8b82]"
+        <div className="mt-10">
+          <Composer
+            variant="start"
+            draft={draft}
+            isSending={isSending}
             placeholder="How can I help you today?"
-            value={draft}
-            onChange={(event) => onDraftChange(event.target.value)}
+            onDraftChange={onDraftChange}
+            onSend={onSend}
+            onStop={onStop}
           />
-          <div className="flex justify-end">
-            {isSending ? (
-              <button className="rounded-md bg-[#3a3a37] px-3 py-2 text-sm text-white" type="button" onClick={onStop}>
-                Stop
-              </button>
-            ) : (
-              <button
-                className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-                type="submit"
-                disabled={draft.trim() === ""}
-              >
-                Send
-              </button>
-            )}
-          </div>
-        </form>
+        </div>
         {sendError !== "" && (
           <div className="ui-meta-text mt-3 rounded-md border border-accent px-3 py-2 text-accent">
             {sendError}
@@ -171,7 +155,7 @@ export function ProjectDetailPage({
                     type="button"
                     onClick={() => onToggleThreadMenu(menuKey)}
                   >
-                    ...
+                    <Icon name="moreVertical" size="18px" />
                   </button>
                   {openThreadMenuID === menuKey && (
                     <ThreadActionsMenu
