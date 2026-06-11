@@ -247,28 +247,35 @@ export function ChatsPage({
               </li>
             )
           ) : (
-            threads.map((thread) => (
-              <ChatRow
-                key={thread.id}
-                thread={thread}
-                selectMode={selectMode}
-                selected={selectedIds.has(thread.id)}
-                menuOpen={openMenuID === thread.id}
-                hovered={hoveredID === thread.id}
-                onHoverChange={(hovered) => setHoveredID(hovered ? thread.id : null)}
-                onOpen={() => onSelectThread(thread.id)}
-                onToggleSelected={() => toggleSelected(thread.id)}
-                onToggleMenu={() =>
-                  setOpenMenuID((current) => (current === thread.id ? null : thread.id))
-                }
-                onCloseMenu={() => setOpenMenuID(null)}
-                onSelectFromMenu={() => startSelectModeWith(thread)}
-                onRename={onRenameThread}
-                onDelete={onDeleteThread}
-                onAddToProject={projectsAvailable ? onAddThreadToProject : undefined}
-                onStarChange={onStarThread}
-              />
-            ))
+            threads.map((thread, index) => {
+              const nextThread = threads[index + 1];
+              const nextActive =
+                nextThread !== undefined &&
+                (hoveredID === nextThread.id || openMenuID === nextThread.id || selectedIds.has(nextThread.id));
+              return (
+                <ChatRow
+                  key={thread.id}
+                  thread={thread}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(thread.id)}
+                  menuOpen={openMenuID === thread.id}
+                  hovered={hoveredID === thread.id}
+                  hideDivider={nextActive}
+                  onHoverChange={(hovered) => setHoveredID(hovered ? thread.id : null)}
+                  onOpen={() => onSelectThread(thread.id)}
+                  onToggleSelected={() => toggleSelected(thread.id)}
+                  onToggleMenu={() =>
+                    setOpenMenuID((current) => (current === thread.id ? null : thread.id))
+                  }
+                  onCloseMenu={() => setOpenMenuID(null)}
+                  onSelectFromMenu={() => startSelectModeWith(thread)}
+                  onRename={onRenameThread}
+                  onDelete={onDeleteThread}
+                  onAddToProject={projectsAvailable ? onAddThreadToProject : undefined}
+                  onStarChange={onStarThread}
+                />
+              );
+            })
           )}
         </ul>
         {/* Sentinel observed for infinite scroll; loads the next page when in view. */}

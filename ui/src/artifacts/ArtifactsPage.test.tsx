@@ -204,6 +204,10 @@ test("keeps row metadata on the filename line", async () => {
   expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(/ago/);
   expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent("1.3 MB");
   expect(row?.querySelector(".ui-artifacts-row-secondary")).toHaveTextContent("application/pdf");
+  expect(row?.querySelector(".ui-artifacts-row-secondary")).not.toHaveClass("mt-0.5");
+  expect(within(row!).getByRole("button", { name: "Download quarterly-board-update.pdf" })).toHaveClass(
+    "items-start",
+  );
 });
 
 test("artifact rows fade dividers behind the rounded hover surface", async () => {
@@ -211,14 +215,30 @@ test("artifact rows fade dividers behind the rounded hover surface", async () =>
   await screen.findByText("robot.png");
 
   const row = screen.getByText("quarterly-board-update.pdf").closest("li");
+  const previousRow = screen.getByText("robot.png").closest("li");
   expect(row).toHaveClass("border-[#343432]");
+  expect(previousRow).toHaveClass("border-[#343432]");
 
   fireEvent.pointerEnter(row!);
 
   expect(row).toHaveClass("border-transparent");
+  expect(previousRow).toHaveClass("border-transparent");
   const rowSurface = row?.querySelector(".ui-artifacts-row-surface");
   expect(rowSurface).toHaveClass("rounded-xl");
   expect(rowSurface).toHaveClass("bg-[#2a2a28]");
+});
+
+test("artifact header divider fades when the first row is hovered", async () => {
+  renderPage();
+  await screen.findByText("robot.png");
+
+  const header = screen.getByRole("button", { name: "Name" }).closest("div");
+  const firstRow = screen.getByText("robot.png").closest("li");
+  expect(header).toHaveClass("border-[#343432]");
+
+  fireEvent.pointerEnter(firstRow!);
+
+  expect(header).toHaveClass("border-transparent");
 });
 
 test("loads further pages via the infinite-scroll sentinel", async () => {

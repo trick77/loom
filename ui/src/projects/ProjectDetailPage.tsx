@@ -137,27 +137,34 @@ export function ProjectDetailPage({
               {threads.length === 0 ? (
                 <li className="py-10 text-center text-[#807d74]">No chats in this project yet.</li>
               ) : (
-                threads.map((thread) => (
-                  <ChatRow
-                    key={thread.id}
-                    thread={thread}
-                    selectMode={false}
-                    selected={false}
-                    menuOpen={openThreadMenuID === thread.id}
-                    hovered={hoveredThreadID === thread.id}
-                    onHoverChange={(hovered) => setHoveredThreadID(hovered ? thread.id : null)}
-                    onOpen={() => onOpenThread(thread.id)}
-                    onToggleSelected={() => undefined}
-                    onToggleMenu={() => onToggleThreadMenu(thread.id)}
-                    onCloseMenu={onCloseThreadMenu}
-                    onSelectFromMenu={() => undefined}
-                    onRename={onRenameThread}
-                    onDelete={onDeleteThread}
-                    onArchive={onArchiveThread}
-                    onRemoveFromProject={onRemoveFromProject}
-                    onStarChange={onStarThread}
-                  />
-                ))
+                threads.map((thread, index) => {
+                  const nextThread = threads[index + 1];
+                  const nextActive =
+                    nextThread !== undefined &&
+                    (hoveredThreadID === nextThread.id || openThreadMenuID === nextThread.id);
+                  return (
+                    <ChatRow
+                      key={thread.id}
+                      thread={thread}
+                      selectMode={false}
+                      selected={false}
+                      menuOpen={openThreadMenuID === thread.id}
+                      hovered={hoveredThreadID === thread.id}
+                      hideDivider={nextActive}
+                      onHoverChange={(hovered) => setHoveredThreadID(hovered ? thread.id : null)}
+                      onOpen={() => onOpenThread(thread.id)}
+                      onToggleSelected={() => undefined}
+                      onToggleMenu={() => onToggleThreadMenu(thread.id)}
+                      onCloseMenu={onCloseThreadMenu}
+                      onSelectFromMenu={() => undefined}
+                      onRename={onRenameThread}
+                      onDelete={onDeleteThread}
+                      onArchive={onArchiveThread}
+                      onRemoveFromProject={onRemoveFromProject}
+                      onStarChange={onStarThread}
+                    />
+                  );
+                })
               )}
             </ul>
           </div>

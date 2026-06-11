@@ -102,6 +102,20 @@ test("chat rows use the sidebar hover surface", async () => {
   expect(actionButton).toHaveClass("right-3");
 });
 
+test("chat rows fade adjacent dividers behind the rounded hover surface", async () => {
+  renderPage();
+
+  const firstRow = (await screen.findByText("Greeting")).closest("li");
+  const secondRow = screen.getByText("Morning greeting").closest("li");
+  expect(firstRow).toHaveClass("border-[#343432]");
+  expect(secondRow).toHaveClass("border-[#343432]");
+
+  fireEvent.pointerEnter(secondRow!);
+
+  expect(firstRow).toHaveClass("border-transparent");
+  expect(secondRow).toHaveClass("border-transparent");
+});
+
 test("search input uses the standard input text size", async () => {
   renderPage();
 
