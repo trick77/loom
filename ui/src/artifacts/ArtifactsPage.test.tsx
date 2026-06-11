@@ -206,6 +206,21 @@ test("keeps row metadata on the filename line", async () => {
   expect(row?.querySelector(".ui-artifacts-row-secondary")).toHaveTextContent("application/pdf");
 });
 
+test("artifact rows fade dividers behind the rounded hover surface", async () => {
+  renderPage();
+  await screen.findByText("robot.png");
+
+  const row = screen.getByText("quarterly-board-update.pdf").closest("li");
+  expect(row).toHaveClass("border-[#343432]");
+
+  fireEvent.pointerEnter(row!);
+
+  expect(row).toHaveClass("border-transparent");
+  const rowSurface = row?.querySelector(".ui-artifacts-row-surface");
+  expect(rowSurface).toHaveClass("rounded-xl");
+  expect(rowSurface).toHaveClass("bg-[#2a2a28]");
+});
+
 test("loads further pages via the infinite-scroll sentinel", async () => {
   const first = artifact({
     id: "art_first",
