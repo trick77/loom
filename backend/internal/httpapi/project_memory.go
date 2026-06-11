@@ -5,28 +5,49 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/trick77/slopr/internal/auth"
 	"github.com/trick77/slopr/internal/chat"
 	"github.com/trick77/slopr/internal/llm"
 )
 
-// Project-memory tuning.
-const (
-	// projectMemoryRefreshThreshold is how many new project messages must
-	// accumulate (since the last refresh) before the background auto-refresh
-	// runs — the "after a few chats" gate.
-	projectMemoryRefreshThreshold = 4
-	// projectMemoryRebuildLimit caps how many recent project messages a full
-	// rebuild reads, so it never loads the entire project history.
-	projectMemoryRebuildLimit = 200
-	// projectMemoryTranscriptLimit caps how many recent project messages feed an
-	// incremental refresh.
-	projectMemoryTranscriptLimit = 40
-	// projectMemoryBackgroundTimeout bounds a background refresh's LLM call.
-	projectMemoryBackgroundTimeout = 2 * time.Minute
-)
+// projectMemoryScope wires the project memory into the shared memory mechanism.
+func (s *server) projectMemoryScope(user auth.User, project chat.Project) memoryScope {
+	return memoryScope{
+		name:         "project",
+		purpose:      "project_memory",
+		header:       projectMemoryHeader(project),
+		systemPrompt: llm.ProjectMemorySystemPrompt,
+		get: func(ctx context.Context) (string, int, error) {
+			memory, _, err := s.chat.GetProjectMemory(ctx, user.ID, project.ID)
+			return memory.Content, memory.SourceMessageCount, err
+		},
+		upsert: func(ctx context.Context, content string, sourceCount int) error {
+			_, err := s.chat.UpsertProjectMemory(ctx, user.ID, project.ID, content, sourceCount)
+			return err
+		},
+		count: func(ctx context.Context) (int, error) {
+			return s.chat.CountProjectMessages(ctx, user.ID, project.ID)
+		},
+		list: func(ctx context.Context, limit int) ([]chat.Message, error) {
+			return s.chat.ListProjectMessages(ctx, user.ID, project.ID, limit)
+		},
+	}
+}
+
+// projectMemoryHeader builds the generation header block describing the project.
+func projectMemoryHeader(project chat.Project) string {
+	var b strings.Builder
+	b.WriteString("Project name:\n\"\"\"\n")
+	b.WriteString(strings.TrimSpace(project.Name))
+	b.WriteString("\n\"\"\"\n")
+	if strings.TrimSpace(project.Description) != "" {
+		b.WriteString("\nProject description:\n\"\"\"\n")
+		b.WriteString(strings.TrimSpace(project.Description))
+		b.WriteString("\n\"\"\"\n")
+	}
+	return b.String()
+}
 
 // projectContextForThread loads the project + memory for a thread and renders
 // the system-prompt context block. Returns "" when the thread has no project or
@@ -69,37 +90,6 @@ func renderProjectContext(project chat.Project, memory string) string {
 	return b.String()
 }
 
-// transcriptFromMessages renders messages as a plain "Role: content" transcript
-// for memory generation. Only user/assistant turns are included.
-func transcriptFromMessages(messages []chat.Message) string {
-	var b strings.Builder
-	for _, m := range messages {
-		if m.Role != chat.RoleUser && m.Role != chat.RoleAssistant {
-			continue
-		}
-		content := strings.TrimSpace(m.Content)
-		if content == "" {
-			continue
-		}
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
-		}
-		b.WriteString(roleLabel(m.Role))
-		b.WriteString(": ")
-		b.WriteString(content)
-	}
-	return b.String()
-}
-
-func roleLabel(role chat.Role) string {
-	switch role {
-	case chat.RoleAssistant:
-		return "Assistant"
-	default:
-		return "User"
-	}
-}
-
 // maybeRefreshProjectMemoryAsync incrementally refreshes a project's memory in
 // the background after an assistant turn, gated so it only runs once enough new
 // messages have accumulated. It detaches from the request context so it survives
@@ -110,7 +100,7 @@ func (s *server) maybeRefreshProjectMemoryAsync(parent context.Context, user aut
 	}
 	projectID := *thread.ProjectID
 	go func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), projectMemoryBackgroundTimeout)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), memoryBackgroundTimeout)
 		defer cancel()
 		if err := s.refreshProjectMemoryIfDue(ctx, user, projectID); err != nil {
 			slog.Warn("background project memory refresh failed", "project_id", projectID, "error", err)
@@ -118,54 +108,23 @@ func (s *server) maybeRefreshProjectMemoryAsync(parent context.Context, user aut
 	}()
 }
 
-// refreshProjectMemoryIfDue runs an incremental refresh when the gate is met. It
-// is the synchronous core of the background job (split out so it is testable
-// without a goroutine).
+// refreshProjectMemoryIfDue runs an incremental refresh when the gate is met.
 func (s *server) refreshProjectMemoryIfDue(ctx context.Context, user auth.User, projectID string) error {
-	count, err := s.chat.CountProjectMessages(ctx, user.ID, projectID)
-	if err != nil {
-		return err
-	}
-	memory, _, err := s.chat.GetProjectMemory(ctx, user.ID, projectID)
-	if err != nil {
-		return err
-	}
-	if count-memory.SourceMessageCount < projectMemoryRefreshThreshold {
-		return nil
-	}
-	// Fold the prior memory with the most recent project messages across ALL
-	// threads (bounded by projectMemoryTranscriptLimit) — not just the thread
-	// that crossed the gate — so a sibling chat's new content is captured.
-	messages, err := s.chat.ListProjectMessages(ctx, user.ID, projectID, projectMemoryTranscriptLimit)
-	if err != nil {
-		return err
-	}
-	return s.refreshProjectMemory(ctx, user, projectID, memory.Content, messages, count)
-}
-
-// refreshProjectMemory generates and stores an updated memory. When priorMemory
-// is non-empty it folds the given transcript into it (incremental); the caller
-// passes the recent (bounded) messages for that. The project's name/description
-// come from the loaded project.
-func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, projectID, priorMemory string, transcriptMessages []chat.Message, sourceCount int) error {
 	project, err := s.findProject(ctx, user.ID, projectID)
 	if err != nil || project == nil {
 		return err
 	}
-	transcript := transcriptFromMessages(transcriptMessages)
-	if strings.TrimSpace(transcript) == "" {
-		return nil
-	}
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "project_memory", Round: 1}
-	content, err := s.llm.GenerateProjectMemory(llm.WithInferenceMetadata(ctx, inference), project.Name, project.Description, priorMemory, transcript)
-	if err != nil {
+	return s.refreshMemoryIfDue(ctx, user, s.projectMemoryScope(user, *project))
+}
+
+// refreshProjectMemory generates and stores an updated memory from the given
+// (bounded) messages. When prior is non-empty it folds the transcript into it.
+func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, projectID, prior string, transcriptMessages []chat.Message, sourceCount int) error {
+	project, err := s.findProject(ctx, user.ID, projectID)
+	if err != nil || project == nil {
 		return err
 	}
-	if strings.TrimSpace(content) == "" {
-		return nil
-	}
-	_, err = s.chat.UpsertProjectMemory(ctx, user.ID, projectID, content, sourceCount)
-	return err
+	return s.refreshMemory(ctx, user, s.projectMemoryScope(user, *project), prior, transcriptMessages, sourceCount)
 }
 
 func (s *server) findProject(ctx context.Context, userID, projectID string) (*chat.Project, error) {
@@ -200,7 +159,7 @@ func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleRefreshProjectMemory forces a full rebuild from the most recent messages
-// across all of the project's threads (bounded by projectMemoryRebuildLimit).
+// across all of the project's threads (bounded by memoryRebuildLimit).
 func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok || !requireChat(w, s) {
@@ -225,7 +184,7 @@ func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Reque
 		writeJSONError(w, http.StatusInternalServerError, "refresh project memory failed")
 		return
 	}
-	messages, err := s.chat.ListProjectMessages(r.Context(), user.ID, projectID, projectMemoryRebuildLimit)
+	messages, err := s.chat.ListProjectMessages(r.Context(), user.ID, projectID, memoryRebuildLimit)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "refresh project memory failed")
 		return

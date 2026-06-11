@@ -461,7 +461,9 @@ test("loads a project detail page and creates new chats inside the project", asy
   expect(await screen.findByRole("heading", { name: "Research" })).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: /Project chat/ })).toBeInTheDocument();
   expect(screen.queryByText("Files")).not.toBeInTheDocument();
-  expect(screen.queryByText("Memory")).not.toBeInTheDocument();
+  // The Memory sidebar nav item is always present; assert we are not on the
+  // Memory page itself (its page heading is absent).
+  expect(screen.queryByRole("heading", { name: "Memory" })).not.toBeInTheDocument();
   fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {
     target: { value: "Draft a brief" },
   });

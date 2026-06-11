@@ -26,6 +26,11 @@ export type ProjectMemory = {
   updatedAt: string | null;
 };
 
+export type UserMemory = {
+  content: string;
+  updatedAt: string | null;
+};
+
 export type Thread = {
   id: string;
   projectId?: string;
@@ -212,6 +217,16 @@ export async function refreshProjectMemory(projectId: string): Promise<ProjectMe
     method: "POST",
   });
   return expectJSON<ProjectMemory>(response, "failed to refresh project memory");
+}
+
+export async function getUserMemory(): Promise<UserMemory> {
+  const response = await fetch(`/api/me/memory`);
+  return expectJSON<UserMemory>(response, "failed to load user memory");
+}
+
+export async function refreshUserMemory(): Promise<UserMemory> {
+  const response = await fetch(`/api/me/memory:refresh`, { method: "POST" });
+  return expectJSON<UserMemory>(response, "failed to refresh user memory");
 }
 
 // Page is the cursor-pagination envelope returned by list endpoints.

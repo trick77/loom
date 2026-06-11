@@ -94,6 +94,8 @@ type fakeChatStore struct {
 	updateThreadErr     error
 	projectMemory       chat.ProjectMemory
 	projectMessageCount int
+	userMemory          chat.UserMemory
+	userMessageCount    int
 }
 
 func (f *fakeChatStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
@@ -266,6 +268,26 @@ func (f *fakeChatStore) ListProjectMessages(_ context.Context, _ string, _ strin
 	return append([]chat.Message(nil), f.messages...), nil
 }
 
+func (f *fakeChatStore) GetUserMemory(context.Context, string) (chat.UserMemory, bool, error) {
+	if f.userMemory.Content == "" {
+		return chat.UserMemory{}, false, nil
+	}
+	return f.userMemory, true, nil
+}
+
+func (f *fakeChatStore) UpsertUserMemory(_ context.Context, _ string, content string, sourceMessageCount int) (chat.UserMemory, error) {
+	f.userMemory = chat.UserMemory{Content: content, SourceMessageCount: sourceMessageCount}
+	return f.userMemory, nil
+}
+
+func (f *fakeChatStore) CountUserMessages(context.Context, string) (int, error) {
+	return f.userMessageCount, nil
+}
+
+func (f *fakeChatStore) ListUserMessages(_ context.Context, _ string, _ int) ([]chat.Message, error) {
+	return append([]chat.Message(nil), f.messages...), nil
+}
+
 type fakeChatClient struct {
 	title               string
 	titleErr            error
@@ -319,7 +341,7 @@ func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _ string) (s
 	return f.reasoningTitle, nil
 }
 
-func (f fakeChatClient) GenerateProjectMemory(_ context.Context, _, _, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _ string) (string, error) {
 	return f.projectMemory, nil
 }
 
@@ -391,7 +413,7 @@ func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string) (st
 	return "", nil
 }
 
-func (f *blockingChatClient) GenerateProjectMemory(context.Context, string, string, string, string) (string, error) {
+func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string) (string, error) {
 	return "", nil
 }
 
@@ -479,7 +501,7 @@ func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning
 	return "", nil
 }
 
-func (f *fakeToolChatClient) GenerateProjectMemory(_ context.Context, _, _, _, _ string) (string, error) {
+func (f *fakeToolChatClient) GenerateMemory(_ context.Context, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 

@@ -83,6 +83,10 @@ type ChatStore interface {
 	UpsertProjectMemory(context.Context, string, string, string, int) (chat.ProjectMemory, error)
 	CountProjectMessages(context.Context, string, string) (int, error)
 	ListProjectMessages(context.Context, string, string, int) ([]chat.Message, error)
+	GetUserMemory(context.Context, string) (chat.UserMemory, bool, error)
+	UpsertUserMemory(context.Context, string, string, int) (chat.UserMemory, error)
+	CountUserMessages(context.Context, string) (int, error)
+	ListUserMessages(context.Context, string, int) ([]chat.Message, error)
 }
 
 // ArtifactStore persists and looks up generated artifact metadata.
@@ -101,7 +105,7 @@ type ChatClient interface {
 	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
 	GenerateChatTitle(context.Context, string, string) (string, error)
 	GenerateReasoningTitle(context.Context, string) (string, error)
-	GenerateProjectMemory(context.Context, string, string, string, string) (string, error)
+	GenerateMemory(context.Context, string, string, string, string) (string, error)
 }
 
 // ToolService exposes configured MCP tools to chat handlers.
@@ -161,6 +165,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/auth/callback", s.handleAuthCallback)
 	mux.Handle("POST /api/auth/logout", s.requireAuth(http.HandlerFunc(s.handleAuthLogout)))
 	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
+	mux.Handle("GET /api/me/memory", s.requireAuth(http.HandlerFunc(s.handleGetUserMemory)))
+	mux.Handle("POST /api/me/memory:refresh", s.requireAuth(http.HandlerFunc(s.handleRefreshUserMemory)))
 	mux.Handle("GET /api/admin/users", s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdminUsers))))
 	mux.Handle("GET /api/mcp/status", s.requireAuth(http.HandlerFunc(s.handleMCPStatus)))
 	mux.Handle("GET /api/projects", s.requireAuth(http.HandlerFunc(s.handleListProjects)))

@@ -16,7 +16,7 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 	user := auth.User{ID: "u1", ResponseLanguage: "auto"}
 	newMsg := chat.Message{Role: chat.RoleUser, Content: "Hi"}
 
-	without := buildLLMHistory(user, "", nil, newMsg)
+	without := buildLLMHistory(user, "", "", nil, newMsg)
 	if without[0].Role != "system" {
 		t.Fatalf("first message role = %q, want system", without[0].Role)
 	}
@@ -24,7 +24,7 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 		t.Fatalf("system prompt unexpectedly contains project context: %q", without[0].Content)
 	}
 
-	with := buildLLMHistory(user, "Project name: Amsterdam Trip", nil, newMsg)
+	with := buildLLMHistory(user, "", "Project name: Amsterdam Trip", nil, newMsg)
 	if !strings.Contains(with[0].Content, "Project name: Amsterdam Trip") {
 		t.Fatalf("system prompt missing project context: %q", with[0].Content)
 	}
@@ -144,7 +144,7 @@ func TestRefreshProjectMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeChatStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		projectMessageCount: projectMemoryRefreshThreshold - 1,
+		projectMessageCount: memoryRefreshThreshold - 1,
 		messages:            []chat.Message{{Role: chat.RoleUser, Content: "When?"}},
 	}
 	s := &server{chat: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
@@ -163,7 +163,7 @@ func TestRefreshProjectMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeChatStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		projectMessageCount: projectMemoryRefreshThreshold,
+		projectMessageCount: memoryRefreshThreshold,
 		messages:            []chat.Message{{Role: chat.RoleUser, Content: "Traveling in May"}},
 	}
 	s := &server{chat: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
@@ -174,8 +174,8 @@ func TestRefreshProjectMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
 	if store.projectMemory.Content != "Travel month: May" {
 		t.Fatalf("memory = %q, want refreshed content", store.projectMemory.Content)
 	}
-	if store.projectMemory.SourceMessageCount != projectMemoryRefreshThreshold {
-		t.Fatalf("source count = %d, want %d", store.projectMemory.SourceMessageCount, projectMemoryRefreshThreshold)
+	if store.projectMemory.SourceMessageCount != memoryRefreshThreshold {
+		t.Fatalf("source count = %d, want %d", store.projectMemory.SourceMessageCount, memoryRefreshThreshold)
 	}
 }
 
