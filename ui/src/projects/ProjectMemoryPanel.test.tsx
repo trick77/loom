@@ -53,3 +53,15 @@ test("refresh button rebuilds the memory", async () => {
   await waitFor(() => expect(refreshProjectMemoryMock).toHaveBeenCalledWith("p1"));
   expect(await screen.findByText("Travel month: June")).toBeInTheDocument();
 });
+
+test("shows an error when refresh fails", async () => {
+  getProjectMemoryMock.mockResolvedValue({ projectId: "p1", content: "", updatedAt: null });
+  refreshProjectMemoryMock.mockRejectedValue(new Error("502"));
+
+  render(<ProjectMemoryPanel projectId="p1" />);
+  await screen.findByText(/Project memory will show here/);
+
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn.t refresh memory/);
+});

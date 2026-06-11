@@ -101,6 +101,13 @@ func (f *fakeChatStore) CreateProject(_ context.Context, userID string, in chat.
 	return f.project, nil
 }
 
+func (f *fakeChatStore) GetProject(_ context.Context, _ string, projectID string) (chat.Project, bool, error) {
+	if f.project.ID == "" || f.project.ID != projectID {
+		return chat.Project{}, false, nil
+	}
+	return f.project, true, nil
+}
+
 func (f *fakeChatStore) ListProjects(context.Context, string, bool) ([]chat.Project, error) {
 	if f.project.ID == "" {
 		return []chat.Project{}, nil

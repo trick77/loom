@@ -61,6 +61,7 @@ type server struct {
 // ChatStore is the chat persistence dependency used by chat handlers.
 type ChatStore interface {
 	CreateProject(context.Context, string, chat.CreateProjectInput) (chat.Project, error)
+	GetProject(context.Context, string, string) (chat.Project, bool, error)
 	ListProjects(context.Context, string, bool) ([]chat.Project, error)
 	UpdateProject(context.Context, string, string, chat.UpdateProjectInput) (chat.Project, bool, error)
 	SetProjectArchived(context.Context, string, string, bool) (bool, error)

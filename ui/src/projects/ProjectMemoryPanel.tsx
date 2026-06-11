@@ -12,6 +12,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -33,9 +34,10 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
 
   function handleRefresh() {
     setRefreshing(true);
+    setError(false);
     refreshProjectMemory(projectId)
       .then((memory) => setContent(memory.content))
-      .catch(() => undefined)
+      .catch(() => setError(true))
       .finally(() => setRefreshing(false));
   }
 
@@ -47,7 +49,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
       className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
     >
       <div className="flex items-start justify-between gap-3">
-        <Icon name="wave" size="22px" className="text-[#d5d2c9]" label="Project memory" />
+        <Icon name="wave" size="22px" className="text-[#d5d2c9]" />
         <button
           type="button"
           className="ui-meta-text text-[#8f8b82] hover:text-[#c7c5bd] disabled:opacity-50"
@@ -58,6 +60,11 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
         </button>
       </div>
       <h2 className="mt-3 text-sm font-medium text-[#ecece6]">Project memory</h2>
+      {error && (
+        <p className="ui-meta-text mt-2 text-accent" role="alert">
+          Couldn’t refresh memory. Please try again.
+        </p>
+      )}
       {loading ? (
         <p className="mt-2 text-sm text-[#807d74]">Loading…</p>
       ) : hasContent ? (

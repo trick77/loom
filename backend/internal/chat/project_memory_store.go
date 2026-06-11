@@ -28,8 +28,10 @@ WHERE user_id = ? AND project_id = ?`,
 // content is re-summarized on every refresh, so this overwrites rather than
 // appends.
 func (s *Store) UpsertProjectMemory(ctx context.Context, userID, projectID, content string, sourceMessageCount int) (ProjectMemory, error) {
-	if len(content) > MaxProjectMemoryLength {
-		content = content[:MaxProjectMemoryLength]
+	// Truncate on rune boundaries so the hard cap can never split a multi-byte
+	// character and produce invalid UTF-8.
+	if runes := []rune(content); len(runes) > MaxProjectMemoryLength {
+		content = string(runes[:MaxProjectMemoryLength])
 	}
 	if ok, err := s.projectExists(ctx, userID, projectID); err != nil {
 		return ProjectMemory{}, err

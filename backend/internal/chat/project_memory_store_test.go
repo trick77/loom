@@ -2,8 +2,35 @@ package chat
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
+
+func TestStore_UpsertProjectMemoryTruncatesOnRuneBoundary(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "P"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+
+	// Multi-byte runes that exceed the cap; byte-slicing would split one.
+	oversized := strings.Repeat("é", MaxProjectMemoryLength+50)
+	memory, err := store.UpsertProjectMemory(ctx, userID, project.ID, oversized, 1)
+	if err != nil {
+		t.Fatalf("UpsertProjectMemory() error: %v", err)
+	}
+	if !utf8.ValidString(memory.Content) {
+		t.Fatalf("stored content is not valid UTF-8")
+	}
+	if got := utf8.RuneCountInString(memory.Content); got != MaxProjectMemoryLength {
+		t.Fatalf("rune count = %d, want %d", got, MaxProjectMemoryLength)
+	}
+}
 
 func TestStore_ProjectMemoryLifecycle(t *testing.T) {
 	ctx := context.Background()

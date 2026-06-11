@@ -21,8 +21,8 @@ const (
 	// projectMemoryRebuildLimit caps how many recent project messages a full
 	// rebuild reads, so it never loads the entire project history.
 	projectMemoryRebuildLimit = 200
-	// projectMemoryTranscriptLimit caps how many messages of the current thread
-	// feed an incremental refresh.
+	// projectMemoryTranscriptLimit caps how many recent project messages feed an
+	// incremental refresh.
 	projectMemoryTranscriptLimit = 40
 	// projectMemoryBackgroundTimeout bounds a background refresh's LLM call.
 	projectMemoryBackgroundTimeout = 2 * time.Minute
@@ -104,7 +104,7 @@ func roleLabel(role chat.Role) string {
 // the background after an assistant turn, gated so it only runs once enough new
 // messages have accumulated. It detaches from the request context so it survives
 // the handler returning, and is best-effort (errors are logged, never surfaced).
-func (s *server) maybeRefreshProjectMemoryAsync(parent context.Context, user auth.User, thread chat.Thread, threadMessages []chat.Message) {
+func (s *server) maybeRefreshProjectMemoryAsync(parent context.Context, user auth.User, thread chat.Thread) {
 	if thread.ProjectID == nil {
 		return
 	}
@@ -112,29 +112,40 @@ func (s *server) maybeRefreshProjectMemoryAsync(parent context.Context, user aut
 	go func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), projectMemoryBackgroundTimeout)
 		defer cancel()
-
-		count, err := s.chat.CountProjectMessages(ctx, user.ID, projectID)
-		if err != nil {
-			slog.Warn("count project messages failed", "project_id", projectID, "error", err)
-			return
-		}
-		memory, _, err := s.chat.GetProjectMemory(ctx, user.ID, projectID)
-		if err != nil {
-			slog.Warn("get project memory failed", "project_id", projectID, "error", err)
-			return
-		}
-		if count-memory.SourceMessageCount < projectMemoryRefreshThreshold {
-			return
-		}
-		if err := s.refreshProjectMemory(ctx, user, projectID, memory.Content, threadMessages, count); err != nil {
-			slog.Warn("refresh project memory failed", "project_id", projectID, "error", err)
+		if err := s.refreshProjectMemoryIfDue(ctx, user, projectID); err != nil {
+			slog.Warn("background project memory refresh failed", "project_id", projectID, "error", err)
 		}
 	}()
 }
 
+// refreshProjectMemoryIfDue runs an incremental refresh when the gate is met. It
+// is the synchronous core of the background job (split out so it is testable
+// without a goroutine).
+func (s *server) refreshProjectMemoryIfDue(ctx context.Context, user auth.User, projectID string) error {
+	count, err := s.chat.CountProjectMessages(ctx, user.ID, projectID)
+	if err != nil {
+		return err
+	}
+	memory, _, err := s.chat.GetProjectMemory(ctx, user.ID, projectID)
+	if err != nil {
+		return err
+	}
+	if count-memory.SourceMessageCount < projectMemoryRefreshThreshold {
+		return nil
+	}
+	// Fold the prior memory with the most recent project messages across ALL
+	// threads (bounded by projectMemoryTranscriptLimit) — not just the thread
+	// that crossed the gate — so a sibling chat's new content is captured.
+	messages, err := s.chat.ListProjectMessages(ctx, user.ID, projectID, projectMemoryTranscriptLimit)
+	if err != nil {
+		return err
+	}
+	return s.refreshProjectMemory(ctx, user, projectID, memory.Content, messages, count)
+}
+
 // refreshProjectMemory generates and stores an updated memory. When priorMemory
 // is non-empty it folds the given transcript into it (incremental); the caller
-// passes the recent thread messages for that. The project's name/description
+// passes the recent (bounded) messages for that. The project's name/description
 // come from the loaded project.
 func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, projectID, priorMemory string, transcriptMessages []chat.Message, sourceCount int) error {
 	project, err := s.findProject(ctx, user.ID, projectID)
@@ -158,16 +169,11 @@ func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, proje
 }
 
 func (s *server) findProject(ctx context.Context, userID, projectID string) (*chat.Project, error) {
-	projects, err := s.chat.ListProjects(ctx, userID, false)
-	if err != nil {
+	project, found, err := s.chat.GetProject(ctx, userID, projectID)
+	if err != nil || !found {
 		return nil, err
 	}
-	for i := range projects {
-		if projects[i].ID == projectID {
-			return &projects[i], nil
-		}
-	}
-	return nil, nil
+	return &project, nil
 }
 
 func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) {

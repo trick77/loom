@@ -163,8 +163,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Best-effort, gated background refresh of the project's shared memory so
 	// sibling chats stay aware of this turn. Detaches from the request context so
 	// it survives the handler returning.
-	threadMessages := append(append(append([]chat.Message{}, priorMessages...), userMessage), assistantMessage)
-	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread, threadMessages)
+	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread)
 
 	sendMCPStatus(stream, mcpStatusCh)
 	_ = stream.Send("done", "{}")

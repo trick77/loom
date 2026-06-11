@@ -138,6 +138,47 @@ func TestRefreshProjectMemory_GeneratesAndStores(t *testing.T) {
 	}
 }
 
+// TestRefreshProjectMemoryIfDue_BelowThresholdIsNoOp guards the gate: too few
+// new messages must not trigger a refresh.
+func TestRefreshProjectMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeChatStore{
+		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		projectMessageCount: projectMemoryRefreshThreshold - 1,
+		messages:            []chat.Message{{Role: chat.RoleUser, Content: "When?"}},
+	}
+	s := &server{chat: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
+
+	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
+		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
+	}
+	if store.projectMemory.Content != "" {
+		t.Fatalf("memory = %q, want no refresh below the gate", store.projectMemory.Content)
+	}
+}
+
+// TestRefreshProjectMemoryIfDue_AtThresholdRefreshes proves the gate fires and
+// the incremental refresh folds in the recent (cross-thread) project messages.
+func TestRefreshProjectMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeChatStore{
+		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		projectMessageCount: projectMemoryRefreshThreshold,
+		messages:            []chat.Message{{Role: chat.RoleUser, Content: "Traveling in May"}},
+	}
+	s := &server{chat: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
+
+	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
+		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
+	}
+	if store.projectMemory.Content != "Travel month: May" {
+		t.Fatalf("memory = %q, want refreshed content", store.projectMemory.Content)
+	}
+	if store.projectMemory.SourceMessageCount != projectMemoryRefreshThreshold {
+		t.Fatalf("source count = %d, want %d", store.projectMemory.SourceMessageCount, projectMemoryRefreshThreshold)
+	}
+}
+
 func TestTranscriptFromMessages_SkipsNonChatRoles(t *testing.T) {
 	transcript := transcriptFromMessages([]chat.Message{
 		{Role: chat.RoleUser, Content: "When?"},
