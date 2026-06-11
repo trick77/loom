@@ -465,7 +465,7 @@ test("loads a project detail page and creates new chats inside the project", asy
   fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {
     target: { value: "Draft a brief" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(

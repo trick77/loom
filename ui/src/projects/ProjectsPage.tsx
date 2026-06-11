@@ -5,6 +5,14 @@ import { Icon } from "../chat/Icon";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 
+type ProjectSort = "recent" | "edited" | "created";
+
+const SORT_LABELS: Record<ProjectSort, string> = {
+  recent: "Recent activity",
+  edited: "Last edited",
+  created: "Date created",
+};
+
 export function ProjectsPage({
   projects,
   loadError,
@@ -26,13 +34,18 @@ export function ProjectsPage({
 }) {
   const [query, setQuery] = useState("");
   const [openMenuID, setOpenMenuID] = useState<string | null>(null);
+  const [sort, setSort] = useState<ProjectSort>("recent");
+  const [sortOpen, setSortOpen] = useState(false);
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
-    if (term === "") return projects;
-    return projects.filter((project) =>
+    const matches = term === "" ? projects : projects.filter((project) =>
       `${project.name} ${project.description}`.toLowerCase().includes(term),
     );
-  }, [projects, query]);
+    return [...matches].sort((a, b) => {
+      if (sort === "created") return compareDatesDesc(a.createdAt, b.createdAt);
+      return compareDatesDesc(a.updatedAt, b.updatedAt);
+    });
+  }, [projects, query, sort]);
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -43,13 +56,41 @@ export function ProjectsPage({
             <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Projects</h1>
           </div>
           <div className="flex items-center gap-2.5">
-            <button
-              className="ui-control-text cursor-default rounded-lg bg-[#3a3a37] px-3 py-1.5 text-[#d5d2c9] opacity-70"
-              type="button"
-              disabled
-            >
-              Sort by <span className="font-semibold text-white">Recent activity</span>
-            </button>
+            <div className="relative">
+              <button
+                aria-expanded={sortOpen}
+                className="ui-control-text flex items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 py-1.5 text-[#d5d2c9] hover:bg-[#4a4a46]"
+                type="button"
+                onClick={() => setSortOpen((value) => !value)}
+              >
+                Sort by <span className="font-semibold text-white">{SORT_LABELS[sort]}</span>
+                <Icon name="chevronDown" size="14px" />
+              </button>
+              {sortOpen && (
+                <div
+                  aria-label="Project sort options"
+                  className="ui-sidebar-text absolute right-0 top-full z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
+                  role="menu"
+                >
+                  {(["recent", "edited", "created"] as const).map((option) => (
+                    <button
+                      key={option}
+                      aria-checked={sort === option}
+                      className="flex h-[34px] w-full items-center justify-between gap-2.5 px-3 text-left text-[#f3f0e8] hover:bg-[#2a2a28]"
+                      role="menuitemradio"
+                      type="button"
+                      onClick={() => {
+                        setSort(option);
+                        setSortOpen(false);
+                      }}
+                    >
+                      {SORT_LABELS[option]}
+                      {sort === option && <Icon name="check" size="16px" className="text-[#4f8cff]" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               className="ui-control-text rounded-lg bg-white px-3 py-1.5 font-medium text-[#1d1d1b]"
               type="button"
@@ -87,12 +128,16 @@ export function ProjectsPage({
           {filtered.map((project) => (
             <article
               key={project.id}
-              className="relative min-h-[160px] rounded-[10px] border border-[#343432] bg-[#181817] p-4"
+              className="relative min-h-[160px] cursor-pointer rounded-[10px] border border-[#343432] bg-[#181817] p-4 transition-colors hover:bg-[#2a2a28]"
+              onClick={() => onOpenProject(project)}
             >
               <button
                 className="block max-w-[calc(100%-42px)] text-left text-sm font-semibold text-[#f4f0e8]"
                 type="button"
-                onClick={() => onOpenProject(project)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenProject(project);
+                }}
               >
                 {project.name}
               </button>
@@ -102,15 +147,18 @@ export function ProjectsPage({
               <p className="absolute bottom-4 left-4 text-xs text-[#8f8b82]">
                 Updated {formatProjectDate(project.updatedAt)}
               </p>
-              <div className="absolute right-3 top-3">
+              <div className="absolute right-3 top-3" onClick={(event) => event.stopPropagation()}>
                 <button
                   aria-expanded={openMenuID === project.id}
                   aria-label={`Open project actions for ${project.name}`}
                   className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
                   type="button"
-                  onClick={() => setOpenMenuID((current) => (current === project.id ? null : project.id))}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenMenuID((current) => (current === project.id ? null : project.id));
+                  }}
                 >
-                  <Icon name="moreHorizontal" size="18px" />
+                  <Icon name="moreVertical" size="18px" />
                 </button>
                 {openMenuID === project.id && (
                   <ProjectActionsMenu
@@ -128,6 +176,10 @@ export function ProjectsPage({
       </div>
     </div>
   );
+}
+
+function compareDatesDesc(a: string, b: string): number {
+  return new Date(b).getTime() - new Date(a).getTime();
 }
 
 function formatProjectDate(value: string): string {
