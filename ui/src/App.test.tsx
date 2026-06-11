@@ -459,7 +459,7 @@ test("loads a project detail page and creates new chats inside the project", asy
   render(<App />);
 
   expect(await screen.findByRole("heading", { name: "Research" })).toBeInTheDocument();
-  expect(await screen.findByRole("button", { name: "Project chat" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /Project chat/ })).toBeInTheDocument();
   expect(screen.queryByText("Files")).not.toBeInTheDocument();
   expect(screen.queryByText("Memory")).not.toBeInTheDocument();
   fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {

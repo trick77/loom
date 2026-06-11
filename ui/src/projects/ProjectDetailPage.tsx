@@ -1,10 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
 import { Icon } from "../chat/Icon";
+import { ChatRow } from "../chats/ChatRow";
 import { SidebarOpenButton } from "../SidebarOpenButton";
-import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 
 export function ProjectDetailPage({
@@ -55,9 +55,10 @@ export function ProjectDetailPage({
   onOpenSidebar(): void;
 }) {
   const projectMenuKey = `Project:${project.id}`;
+  const [hoveredThreadID, setHoveredThreadID] = useState<string | null>(null);
 
   useEffect(() => {
-    if (openThreadMenuID === null) return;
+    if (openThreadMenuID !== projectMenuKey) return;
     function handlePointerDown(event: PointerEvent) {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -66,7 +67,7 @@ export function ProjectDetailPage({
     }
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [onCloseThreadMenu, openThreadMenuID]);
+  }, [onCloseThreadMenu, openThreadMenuID, projectMenuKey]);
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -129,49 +130,31 @@ export function ProjectDetailPage({
             {sendError}
           </div>
         )}
-        <ul className="mt-6 divide-y divide-[#343432]">
+        <ul className="mt-6">
           {threads.length === 0 ? (
             <li className="py-10 text-center text-[#807d74]">No chats in this project yet.</li>
           ) : (
-            threads.map((thread) => {
-              const menuKey = `ProjectThread:${thread.id}`;
-              return (
-                <li
-                  key={thread.id}
-                  className="relative flex items-center justify-between py-4"
-                  data-project-detail-menu-root
-                >
-                  <button
-                    className="min-w-0 truncate text-left text-sm font-medium text-[#f4f0e8]"
-                    type="button"
-                    onClick={() => onOpenThread(thread.id)}
-                  >
-                    {thread.title}
-                  </button>
-                  <button
-                    aria-expanded={openThreadMenuID === menuKey}
-                    aria-label="Open chat actions"
-                    className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
-                    type="button"
-                    onClick={() => onToggleThreadMenu(menuKey)}
-                  >
-                    <Icon name="moreVertical" size="18px" />
-                  </button>
-                  {openThreadMenuID === menuKey && (
-                    <ThreadActionsMenu
-                      menuKey={menuKey}
-                      thread={thread}
-                      className="right-0 top-10"
-                      onDelete={onDeleteThread}
-                      onRename={onRenameThread}
-                      onArchive={onArchiveThread}
-                      onRemoveFromProject={onRemoveFromProject}
-                      onStarChange={onStarThread}
-                    />
-                  )}
-                </li>
-              );
-            })
+            threads.map((thread) => (
+              <ChatRow
+                key={thread.id}
+                thread={thread}
+                selectMode={false}
+                selected={false}
+                menuOpen={openThreadMenuID === thread.id}
+                hovered={hoveredThreadID === thread.id}
+                onHoverChange={(hovered) => setHoveredThreadID(hovered ? thread.id : null)}
+                onOpen={() => onOpenThread(thread.id)}
+                onToggleSelected={() => undefined}
+                onToggleMenu={() => onToggleThreadMenu(thread.id)}
+                onCloseMenu={onCloseThreadMenu}
+                onSelectFromMenu={() => undefined}
+                onRename={onRenameThread}
+                onDelete={onDeleteThread}
+                onArchive={onArchiveThread}
+                onRemoveFromProject={onRemoveFromProject}
+                onStarChange={onStarThread}
+              />
+            ))
           )}
         </ul>
       </div>
