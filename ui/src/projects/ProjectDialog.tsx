@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type { Project } from "../api";
+import { Icon } from "../chat/Icon";
 
 export function ProjectDialog({
   project,
@@ -17,7 +18,8 @@ export function ProjectDialog({
 }) {
   const [name, setName] = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
-  const title = project === null ? "New project" : "Edit details";
+  const isCreate = project === null;
+  const title = isCreate ? "Create a project" : "Edit details";
 
   useEffect(() => {
     setName(project?.name ?? "");
@@ -39,26 +41,29 @@ export function ProjectDialog({
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-sans text-[22px] font-semibold text-[#f4f0e8]">{title}</h2>
           <button
-            className="text-2xl leading-none text-[#d5d2c9] hover:text-white"
+            className="leading-none text-[#d5d2c9] hover:text-white"
             type="button"
             aria-label="Close"
             onClick={onCancel}
           >
-            x
+            <Icon name="close" size="1.25rem" />
           </button>
         </div>
         <label className="mt-4 block text-sm text-[#f4f0e8]">
-          Name
+          {isCreate ? "What are you working on?" : "Name"}
           <input
             className="mt-2 h-9 w-full rounded-md border border-transparent bg-[#555550] px-3 text-sm text-white outline-none focus:border-[#8d897f]"
+            placeholder="Name your project"
+            autoFocus
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
         </label>
         <label className="mt-4 block text-sm text-[#f4f0e8]">
-          Description
+          {isCreate ? "What are you trying to achieve?" : "Description"}
           <textarea
             className="mt-2 min-h-[136px] w-full resize-none rounded-md border border-transparent bg-[#555550] px-3 py-3 text-sm text-white outline-none focus:border-[#8d897f]"
+            placeholder="Describe your project, goals, subject, etc…"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
@@ -77,7 +82,7 @@ export function ProjectDialog({
             type="submit"
             disabled={disabled || name.trim() === ""}
           >
-            {project === null ? "Create" : "Save"}
+            {isCreate ? "Create project" : "Save"}
           </button>
         </div>
       </form>
