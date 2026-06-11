@@ -57,15 +57,20 @@ export function ChatRow({
 
   const timeLabel = formatTimeAgo(thread.lastMessageAt ?? thread.updatedAt);
   const showMenuButton = hovered || menuOpen;
+  const activeSurface = hovered || selected || menuOpen;
 
   return (
     <li
       ref={rowRef}
-      className="relative border-b border-[#343432]"
+      className={`relative border-b ${activeSurface ? "border-transparent" : "border-[#343432]"}`}
       onPointerEnter={() => onHoverChange(true)}
       onPointerLeave={() => onHoverChange(false)}
     >
-      <div className="flex h-[49px] items-center gap-3 rounded-md px-1.5 transition-colors hover:bg-[#2a2a28]">
+      <div
+        className={`group relative flex h-[49px] items-center gap-3 rounded-xl px-3 transition-colors hover:bg-[#2a2a28] ${
+          activeSurface ? "bg-[#2a2a28]" : ""
+        }`}
+      >
         {selectMode && (
           <button
             type="button"
@@ -88,13 +93,20 @@ export function ChatRow({
           onClick={() => (selectMode ? onToggleSelected() : onOpen())}
         >
           <span className="truncate text-[15px] text-[#ecece6]">{thread.title}</span>
-          <span className="shrink-0 text-[13px] text-[#8a887f]">{timeLabel}</span>
+          <span
+            className={`ml-auto shrink-0 text-[13px] text-[#8a887f] group-hover:hidden ${
+              activeSurface ? "hidden" : ""
+            }`}
+            data-chat-row-time
+          >
+            {timeLabel}
+          </span>
         </button>
         {!selectMode && (
           <button
             aria-expanded={menuOpen}
             aria-label="Open chat actions"
-            className={`grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
+            className={`absolute right-3 grid h-7 w-7 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
               showMenuButton ? "" : "invisible"
             }`}
             onClick={(event) => {

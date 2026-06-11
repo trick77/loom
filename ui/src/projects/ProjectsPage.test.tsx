@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
@@ -47,6 +48,8 @@ test("ProjectsPage renders projects without reference-only controls", () => {
   expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument();
   expect(screen.getByText("Research")).toBeInTheDocument();
   expect(screen.getByText("Paper notes")).toBeInTheDocument();
+  expect(screen.getByText(/Updated /)).toHaveClass("text-sm");
+  expect(screen.getByText(/Updated /)).not.toHaveClass("text-xs");
   expect(screen.getByRole("button", { name: "Sort by Recent activity" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Open project actions for Research" })).toHaveTextContent(
     ICONS.moreVertical,
@@ -133,9 +136,58 @@ test("ProjectDetailPage renders project chats and project chat menu", () => {
   expect(screen.getByRole("button", { name: "All projects" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Research" })).toBeInTheDocument();
   expect(screen.getByText("Paper notes")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Literature review" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Literature review/ })).toBeInTheDocument();
   expect(screen.queryByText("Example project")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+});
+
+test("ProjectDetailPage renders project chats with the shared chats-list row", () => {
+  render(
+    <ProjectDetailPage
+      project={projects[0]}
+      threads={threads}
+      draft=""
+      sendError=""
+      isSending={false}
+      openThreadMenuID={null}
+      onBack={vi.fn()}
+      onDraftChange={vi.fn()}
+      onSend={vi.fn()}
+      onStop={vi.fn()}
+      onOpenThread={vi.fn()}
+      onRenameThread={vi.fn()}
+      onDeleteThread={vi.fn()}
+      onArchiveThread={vi.fn()}
+      onStarThread={vi.fn()}
+      onRemoveFromProject={vi.fn()}
+      onToggleThreadMenu={vi.fn()}
+      onCloseThreadMenu={vi.fn()}
+      onEditProject={vi.fn()}
+      onArchiveProject={vi.fn()}
+      onDeleteProject={vi.fn()}
+      onOpenSidebar={vi.fn()}
+    />,
+  );
+
+  const rowButton = screen.getByRole("button", { name: /Literature review/ });
+  const rowSurface = rowButton.closest("div");
+  const row = rowButton.closest("li");
+
+  expect(rowButton).toHaveTextContent("ago");
+  expect(row).toHaveClass("border-b");
+  expect(rowSurface).toHaveClass("h-[49px]");
+  expect(rowSurface).toHaveClass("rounded-xl");
+  expect(rowSurface).not.toHaveClass("border-b");
+  expect(rowSurface).toHaveClass("px-3");
+  expect(rowSurface).not.toHaveClass("px-1.5");
+  expect(rowSurface).toHaveClass("hover:bg-[#2a2a28]");
+  expect(rowSurface).not.toBeNull();
+  const timeLabel = rowSurface?.querySelector("[data-chat-row-time]");
+  expect(timeLabel).toHaveClass("ml-auto");
+  expect(timeLabel).toHaveClass("group-hover:hidden");
+  const actionButton = within(rowSurface!).getByRole("button", { name: "Open chat actions" });
+  expect(actionButton).toHaveClass("absolute");
+  expect(actionButton).toHaveClass("right-3");
 });
 
 test("ProjectDetailPage uses the same composer surface as new chat", () => {
@@ -196,6 +248,28 @@ test("project action menus expose edit archive delete", () => {
   expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
 });
 
+test("ProjectsPage closes project action menu when clicking outside", () => {
+  render(
+    <ProjectsPage
+      projects={projects}
+      loadError=""
+      onOpenSidebar={vi.fn()}
+      onCreateProject={vi.fn()}
+      onOpenProject={vi.fn()}
+      onEditProject={vi.fn()}
+      onArchiveProject={vi.fn()}
+      onDeleteProject={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Open project actions for Research" }));
+  expect(screen.getByRole("menu", { name: "Project actions" })).toBeInTheDocument();
+
+  fireEvent.pointerDown(document.body);
+
+  expect(screen.queryByRole("menu", { name: "Project actions" })).not.toBeInTheDocument();
+});
+
 test("project action triggers use vertical overflow icons", () => {
   render(
     <ProjectDetailPage
@@ -226,4 +300,46 @@ test("project action triggers use vertical overflow icons", () => {
 
   expect(screen.getByRole("button", { name: "Open project actions" })).toHaveTextContent(ICONS.moreVertical);
   expect(screen.getByRole("button", { name: "Open chat actions" })).toHaveTextContent(ICONS.moreVertical);
+});
+
+test("ProjectDetailPage thread menu items remain clickable after pointerdown", () => {
+  const onRemoveFromProject = vi.fn();
+
+  function Harness() {
+    const [openMenuID, setOpenMenuID] = useState<string | null>(threads[0].id);
+    return (
+      <ProjectDetailPage
+        project={projects[0]}
+        threads={threads}
+        draft=""
+        sendError=""
+        isSending={false}
+        openThreadMenuID={openMenuID}
+        onBack={vi.fn()}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onOpenThread={vi.fn()}
+        onRenameThread={vi.fn()}
+        onDeleteThread={vi.fn()}
+        onArchiveThread={vi.fn()}
+        onStarThread={vi.fn()}
+        onRemoveFromProject={onRemoveFromProject}
+        onToggleThreadMenu={(menuKey) => setOpenMenuID((current) => (current === menuKey ? null : menuKey))}
+        onCloseThreadMenu={() => setOpenMenuID(null)}
+        onEditProject={vi.fn()}
+        onArchiveProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+        onOpenSidebar={vi.fn()}
+      />
+    );
+  }
+
+  render(<Harness />);
+
+  const removeItem = screen.getByRole("menuitem", { name: "Remove from project" });
+  fireEvent.pointerDown(removeItem);
+  fireEvent.click(removeItem);
+
+  expect(onRemoveFromProject).toHaveBeenCalledWith(threads[0]);
 });

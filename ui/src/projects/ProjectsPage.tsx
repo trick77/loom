@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Project } from "../api";
 import { Icon } from "../chat/Icon";
@@ -46,6 +46,18 @@ export function ProjectsPage({
       return compareDatesDesc(a.updatedAt, b.updatedAt);
     });
   }, [projects, query, sort]);
+
+  useEffect(() => {
+    if (openMenuID === null) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-project-card-menu-root]") !== null) return;
+      setOpenMenuID(null);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [openMenuID]);
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -144,10 +156,14 @@ export function ProjectsPage({
               {project.description !== "" && (
                 <p className="mt-5 line-clamp-3 text-sm leading-5 text-[#c7c5bd]">{project.description}</p>
               )}
-              <p className="absolute bottom-4 left-4 text-xs text-[#8f8b82]">
+              <p className="absolute bottom-4 left-4 text-sm text-[#8f8b82]">
                 Updated {formatProjectDate(project.updatedAt)}
               </p>
-              <div className="absolute right-3 top-3" onClick={(event) => event.stopPropagation()}>
+              <div
+                className="absolute right-3 top-3"
+                data-project-card-menu-root
+                onClick={(event) => event.stopPropagation()}
+              >
                 <button
                   aria-expanded={openMenuID === project.id}
                   aria-label={`Open project actions for ${project.name}`}

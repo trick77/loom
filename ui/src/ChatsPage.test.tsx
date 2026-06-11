@@ -84,10 +84,22 @@ test("chat rows use the sidebar hover surface", async () => {
 
   const rowButton = await screen.findByRole("button", { name: /Greeting/ });
   const rowSurface = rowButton.closest("div");
+  const row = rowButton.closest("li");
 
-  expect(rowSurface).toHaveClass("rounded-md");
+  expect(row).toHaveClass("border-b");
+  expect(rowSurface).toHaveClass("rounded-xl");
+  expect(rowSurface).not.toHaveClass("border-b");
+  expect(rowSurface).toHaveClass("px-3");
+  expect(rowSurface).not.toHaveClass("px-1.5");
   expect(rowSurface).toHaveClass("transition-colors");
   expect(rowSurface).toHaveClass("hover:bg-[#2a2a28]");
+  expect(rowSurface).not.toBeNull();
+  const timeLabel = rowSurface?.querySelector("[data-chat-row-time]");
+  expect(timeLabel).toHaveClass("ml-auto");
+  expect(timeLabel).toHaveClass("group-hover:hidden");
+  const actionButton = within(rowSurface!).getByRole("button", { name: "Open chat actions" });
+  expect(actionButton).toHaveClass("absolute");
+  expect(actionButton).toHaveClass("right-3");
 });
 
 test("search input uses the standard input text size", async () => {
