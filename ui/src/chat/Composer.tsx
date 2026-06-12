@@ -13,6 +13,13 @@ function filterAcceptedFiles(files: File[]): File[] {
   });
 }
 
+// True only for OS file drags. Dragging selected text or a link also fires the
+// drag events, but carries no "Files" type - we ignore those so the highlight
+// doesn't flash for drags we can't attach.
+function isFileDrag(event: { dataTransfer: DataTransfer }): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
+}
+
 export function Composer({
   variant,
   draft,
@@ -103,6 +110,7 @@ export function Composer({
       onDragEnter={
         dropEnabled
           ? (event) => {
+              if (!isFileDrag(event)) return;
               event.preventDefault();
               dragDepth.current += 1;
               setIsDragging(true);
@@ -112,6 +120,7 @@ export function Composer({
       onDragOver={
         dropEnabled
           ? (event) => {
+              if (!isFileDrag(event)) return;
               event.preventDefault();
               event.dataTransfer.dropEffect = "copy";
             }
@@ -120,6 +129,7 @@ export function Composer({
       onDragLeave={
         dropEnabled
           ? (event) => {
+              if (!isFileDrag(event)) return;
               event.preventDefault();
               dragDepth.current = Math.max(0, dragDepth.current - 1);
               if (dragDepth.current === 0) setIsDragging(false);
@@ -129,6 +139,7 @@ export function Composer({
       onDrop={
         dropEnabled
           ? (event) => {
+              if (!isFileDrag(event)) return;
               event.preventDefault();
               dragDepth.current = 0;
               setIsDragging(false);
