@@ -190,6 +190,13 @@ func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
 // knowledge scope. It is best-effort for callers: an embedding failure surfaces
 // as an error the caller may choose to ignore.
 func (s *Service) Retrieve(ctx context.Context, userID string, projectID *string, query string, k int) ([]rag.RetrievedChunk, error) {
+	// Avoid an embedding round-trip on every chat turn when the user has nothing
+	// indexed in scope.
+	if has, err := s.store.HasIndexedChunks(ctx, userID, projectID); err != nil {
+		return nil, err
+	} else if !has {
+		return nil, nil
+	}
 	vecs, err := s.embedder.Embed(ctx, []string{query})
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)

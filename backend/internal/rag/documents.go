@@ -87,6 +87,28 @@ func (s *Store) UpdateStatus(ctx context.Context, userID, id, status, errMsg str
 	return nil
 }
 
+// HasIndexedChunks reports whether the user has any indexed chunks in the given
+// knowledge scope (project + global for a project thread; global only otherwise).
+// Callers use it to skip embedding a query when there is nothing to retrieve.
+func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID *string) (bool, error) {
+	query := `SELECT 1 FROM chunks WHERE user_id = ? AND (project_id IS NULL`
+	args := []any{userID}
+	if projectID != nil {
+		query += ` OR project_id = ?`
+		args = append(args, *projectID)
+	}
+	query += `) LIMIT 1`
+	var one int
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check indexed chunks: %w", err)
+	}
+	return true, nil
+}
+
 // ResetStuckIngestions marks documents left mid-ingestion (extracting/embedding)
 // by a crash or restart as errored, so they aren't stranded in a transient
 // state. Called once at boot.

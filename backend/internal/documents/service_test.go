@@ -113,6 +113,44 @@ func TestService_Delete_removesFileArtifactAndDocument(t *testing.T) {
 	}
 }
 
+type countingEmbedder struct{ calls int }
+
+func (c *countingEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, error) {
+	c.calls++
+	out := make([][]float32, len(inputs))
+	for i := range inputs {
+		v := make([]float32, 1536)
+		v[0] = 1
+		out[i] = v
+	}
+	return out, nil
+}
+
+func TestService_Retrieve_skipsEmbeddingWhenNoChunks(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if _, err := db.Exec(`INSERT INTO users (id, oidc_subject, username, role) VALUES ('u','s','u','user')`); err != nil {
+		t.Fatal(err)
+	}
+	emb := &countingEmbedder{}
+	svc := NewService(rag.NewStore(db), artifact.NewStore(db), &fakeIndexer{}, emb, filepath.Join(dir, "users"))
+
+	res, err := svc.Retrieve(context.Background(), "u", nil, "anything", 5)
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if len(res) != 0 {
+		t.Errorf("Retrieve = %d, want 0 with nothing indexed", len(res))
+	}
+	if emb.calls != 0 {
+		t.Errorf("embedder called %d times, want 0 (guarded)", emb.calls)
+	}
+}
+
 func TestService_Retrieve_embedsQueryAndReturnsChunks(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
