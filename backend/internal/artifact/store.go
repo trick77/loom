@@ -61,6 +61,16 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return artifact, nil
 }
 
+// Delete removes an artifact row scoped to the user. It does not touch the file
+// on disk; the caller handles volume cleanup.
+func (s *Store) Delete(ctx context.Context, userID, artifactID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM artifacts WHERE user_id = ? AND id = ?`, userID, artifactID)
+	if err != nil {
+		return fmt.Errorf("delete artifact: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, bool, error) {
 	var out Artifact
 	var createdAt string

@@ -87,6 +87,20 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 	return tx.Commit()
 }
 
+// ClearChunks removes a document's chunks and embeddings but keeps the document
+// row, so it can be re-indexed later (used by "unindex").
+func (s *Store) ClearChunks(ctx context.Context, userID, documentID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := deleteChunksTx(ctx, tx, userID, documentID); err != nil {
+		return fmt.Errorf("clear chunks: %w", err)
+	}
+	return tx.Commit()
+}
+
 // DeleteDocument removes a document, its chunks, and their embeddings.
 func (s *Store) DeleteDocument(ctx context.Context, userID, id string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
