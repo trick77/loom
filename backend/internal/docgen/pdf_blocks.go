@@ -125,10 +125,10 @@ func renderBlock(m core.Maroto, b pdfBlock) {
 		if b.Level >= 2 {
 			size = 13.0
 		}
-		m.AddRow(size*0.7+4, text.NewCol(12, b.Text, props.Text{Size: size, Style: fontstyle.Bold, Color: rgbColor(Theme.Accent), Top: 2}))
+		m.AddAutoRow(text.NewCol(12, b.Text, props.Text{Size: size, Style: fontstyle.Bold, Color: rgbColor(Theme.Accent), Top: 2, Bottom: 2, VerticalPadding: 0.5}))
 	case "bullets":
 		for _, it := range b.Items {
-			m.AddRow(6, text.NewCol(12, "•  "+it, props.Text{Size: 11, Color: rgbColor(Theme.Ink), Left: 4, Top: 1}))
+			m.AddAutoRow(text.NewCol(12, "•  "+it, props.Text{Size: 11, Color: rgbColor(Theme.Ink), Left: 4, Top: 1, Bottom: 3, VerticalPadding: 0.5}))
 		}
 	case "table":
 		// Column count is the widest row, so columns align even when rows are ragged
@@ -164,20 +164,20 @@ func renderBlock(m core.Maroto, b pdfBlock) {
 				if ci < len(r) {
 					cell = r[ci]
 				}
-				cells = append(cells, text.NewCol(span, cell, props.Text{Size: 10, Style: style, Color: textColor, Top: 1, Left: 2}).WithStyle(cellStyle))
+				cells = append(cells, text.NewCol(span, cell, props.Text{Size: 10, Style: style, Color: textColor, Top: 1, Bottom: 2, Left: 2, Right: 2, VerticalPadding: 0.5}).WithStyle(cellStyle))
 			}
-			m.AddRow(8, cells...)
+			m.AddAutoRow(cells...)
 		}
 	case "columns":
-		m.AddRow(6,
-			text.NewCol(6, strings.Join(b.Left, "\n"), props.Text{Size: 11, Color: rgbColor(Theme.Ink), Top: 1, Left: 2}),
-			text.NewCol(6, strings.Join(b.Right, "\n"), props.Text{Size: 11, Color: rgbColor(Theme.Ink), Top: 1, Left: 2}),
+		m.AddAutoRow(
+			text.NewCol(6, strings.Join(b.Left, "\n"), props.Text{Size: 11, Color: rgbColor(Theme.Ink), Top: 1, Bottom: 3, Left: 2, Right: 2, VerticalPadding: 0.5}),
+			text.NewCol(6, strings.Join(b.Right, "\n"), props.Text{Size: 11, Color: rgbColor(Theme.Ink), Top: 1, Bottom: 3, Left: 2, Right: 2, VerticalPadding: 0.5}),
 		)
 	case "callout":
 		c := col.New(12).WithStyle(&props.Cell{BackgroundColor: &props.Color{Red: 244, Green: 238, Blue: 226}})
-		c.Add(text.New(b.Text, props.Text{Size: 11, Style: fontstyle.Italic, Color: rgbColor(Theme.Accent), Top: 2, Left: 4}))
-		m.AddRow(12, c)
+		c.Add(text.New(b.Text, props.Text{Size: 11, Style: fontstyle.Italic, Color: rgbColor(Theme.Accent), Top: 2, Bottom: 4, Left: 4, Right: 4, VerticalPadding: 0.5}))
+		m.AddAutoRow(c)
 	default: // paragraph
-		m.AddRow(7, text.NewCol(12, b.Text, props.Text{Size: 11, Color: rgbColor(Theme.Ink), Top: 1}))
+		m.AddAutoRow(text.NewCol(12, b.Text, props.Text{Size: 11, Color: rgbColor(Theme.Ink), Top: 1, Bottom: 3, VerticalPadding: 0.5}))
 	}
 }

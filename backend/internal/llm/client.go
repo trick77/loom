@@ -24,6 +24,10 @@ const defaultMaxCompletionTokens = 2048
 // forced to consume it.
 const documentToolMaxCompletionTokens = 8192
 
+// documentToolTimeout gives model turns that are serializing complete document
+// payloads enough wall-clock time to reach the tool call.
+const documentToolTimeout = 5 * time.Minute
+
 // Config holds the OpenAI-compatible chat completion settings.
 type Config struct {
 	BaseURL             string
@@ -181,6 +185,13 @@ func (c *Client) maxCompletionTokensForTools(tools []Tool) int {
 		return c.maxCompletionTokens
 	}
 	return documentToolMaxCompletionTokens
+}
+
+func (c *Client) timeoutForTools(tools []Tool) time.Duration {
+	if c.timeout == 0 || !hasDocumentGenerationTool(tools) || c.timeout >= documentToolTimeout {
+		return c.timeout
+	}
+	return documentToolTimeout
 }
 
 func hasDocumentGenerationTool(tools []Tool) bool {

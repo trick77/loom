@@ -2900,14 +2900,19 @@ test("surfaces the server error and keeps failed activity trace visible", async 
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
-  const trace = screen.getByRole("status", { name: /slopr activity trace/i });
+  const traceToggle = screen.getByRole("button", { name: /activity/i });
+  const trace = traceToggle.closest(".ui-activity-trace");
+  expect(trace).not.toBeNull();
+  expect(trace?.querySelector(".ui-thinking-label-active")).toBeNull();
   // The turn has ended (the request failed), so the trace collapses itself. Wait
   // for that collapse — isSending flips and the collapse effect runs after the
   // error text renders — then open it to inspect the failed timeline.
-  fireEvent.click(await within(trace).findByRole("button", { name: /show activity/i }));
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
-  expect(within(trace).getByText("Failed")).toBeInTheDocument();
+  if (traceToggle.getAttribute("aria-expanded") === "false") {
+    fireEvent.click(traceToggle);
+  }
+  expect(within(trace as HTMLElement).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(within(trace as HTMLElement).getByText("agentgateway")).toBeInTheDocument();
+  expect(within(trace as HTMLElement).getByText("Failed")).toBeInTheDocument();
 });
 
 test("renders unknown tool calls with safe fallback details", async () => {

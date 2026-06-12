@@ -2165,7 +2165,7 @@ function ChatPanel({
             {showActiveActivityTrace && (
               <ActivityTracePanel
                 events={activityTrace}
-                active={!reasoningSettled}
+                active={liveTraceThinking}
                 streaming={isSending}
                 expanded={liveTraceExpanded}
                 onExpandedChange={setLiveTraceExpanded}
