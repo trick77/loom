@@ -20,7 +20,10 @@ test("shows the empty state when there is no memory yet", async () => {
 
   render(<ProjectMemoryPanel projectId="p1" />);
 
-  expect(await screen.findByText(/Project memory will show here after a few chats/)).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Memory" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Memory" })).toBeInTheDocument();
+  expect(await screen.findByText(/Memory will show here after a few chats/)).toBeInTheDocument();
+  expect(screen.queryByText(/Project memory/i)).not.toBeInTheDocument();
 });
 
 test("renders memory content when present", async () => {

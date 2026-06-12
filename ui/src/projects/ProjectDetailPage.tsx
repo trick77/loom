@@ -123,6 +123,7 @@ export function ProjectDetailPage({
                 draft={draft}
                 isSending={isSending}
                 placeholder="How can I help you today?"
+                autoFocus
                 onDraftChange={onDraftChange}
                 onSend={onSend}
                 onStop={onStop}

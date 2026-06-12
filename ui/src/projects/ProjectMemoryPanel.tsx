@@ -36,10 +36,10 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
 
   return (
     <section
-      aria-label="Project memory"
+      aria-label="Memory"
       className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
     >
-      <h2 className="text-[15px] font-medium text-[#ecece6]">Project memory</h2>
+      <h2 className="text-[15px] font-medium text-[#ecece6]">Memory</h2>
       {loading ? (
         <p className="mt-2 text-sm text-[#8f8b82]">Loading…</p>
       ) : hasContent ? (
@@ -64,7 +64,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <p className="mt-2 text-sm leading-5 text-[#8f8b82]">
-          Project memory will show here after a few chats.
+          Memory will show here after a few chats.
         </p>
       )}
     </section>
