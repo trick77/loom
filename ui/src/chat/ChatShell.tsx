@@ -1555,10 +1555,12 @@ function SidebarProjectItem({
         <button
           aria-expanded={menuOpen}
           aria-label="Open project actions"
-          // Only reveal the kebab on hover, when the row is active, or while its
-          // menu is open - so unselected rows don't carry a permanent 3-dot menu.
+          // Keep inactive rows visually quiet for pointer users while preserving
+          // keyboard and touch access to the project actions.
           className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
-            active || menuOpen ? "" : "invisible group-hover:visible"
+            active || menuOpen
+              ? ""
+              : "invisible group-hover:visible group-focus-within:visible [@media(hover:none)]:visible"
           }`}
           onClick={(event) => {
             event.stopPropagation();

@@ -163,6 +163,28 @@ test("places project rows below starred chats with matching chat row sizing", as
   expect(chatRow).toHaveClass("h-7");
 });
 
+test("inactive sidebar project actions become visible for keyboard and non-hover users", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+
+  const actionButton = await screen.findByRole("button", { name: "Open project actions" });
+
+  expect(actionButton).toHaveClass("invisible");
+  expect(actionButton).toHaveClass("group-hover:visible");
+  expect(actionButton).toHaveClass("group-focus-within:visible");
+  expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
+});
+
 test("greets signed-in users with up late after 22:00", async () => {
   const realDate = Date;
   type DateArgs = [] | [string | number | Date] | [number, number, number?, number?, number?, number?, number?];
