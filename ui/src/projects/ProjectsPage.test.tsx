@@ -16,7 +16,7 @@ const projects: Project[] = [
     description: "Paper notes",
     starred: false,
     createdAt: "2026-06-10T00:00:00Z",
-    updatedAt: "2026-06-10T12:00:00Z",
+    updatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   },
 ];
 
@@ -56,8 +56,8 @@ test("ProjectsPage renders projects without reference-only controls", () => {
   expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument();
   expect(screen.getByText("Research")).toBeInTheDocument();
   expect(screen.getByText("Paper notes")).toBeInTheDocument();
-  expect(screen.getByText(/Updated /)).toHaveClass("text-sm");
-  expect(screen.getByText(/Updated /)).not.toHaveClass("text-xs");
+  expect(screen.getByText("Updated 3 hours ago")).toHaveClass("text-sm");
+  expect(screen.getByText("Updated 3 hours ago")).not.toHaveClass("text-xs");
   expect(screen.getByRole("button", { name: "Sort by Recent activity" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Open project actions for Research" })).toHaveTextContent(
     ICONS.moreVertical,

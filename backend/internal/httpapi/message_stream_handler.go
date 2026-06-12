@@ -203,6 +203,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	turnMessages := make([]chat.Message, 0, len(priorMessages)+2)
+	turnMessages = append(turnMessages, priorMessages...)
+	turnMessages = append(turnMessages, userMessage, assistantMessage)
+	s.maybeAutoDescribeProject(r.Context(), persistCtx, stream, user, thread, turnMessages)
+
 	// Best-effort, gated background refresh of the project's shared memory so
 	// sibling chats stay aware of this turn. Detaches from the request context so
 	// it survives the handler returning.

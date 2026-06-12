@@ -102,6 +102,40 @@ func TestStore_CreateProjectAndThreadScopesByUser(t *testing.T) {
 	}
 }
 
+func TestStore_SetProjectDescriptionIfEmptyIsOneShot(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+
+	updated, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "  Early research plan.  ")
+	if err != nil {
+		t.Fatalf("SetProjectDescriptionIfEmpty() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("changed = false, want true for initially empty description")
+	}
+	if updated.Description != "Early research plan." {
+		t.Fatalf("Description = %q, want trimmed generated description", updated.Description)
+	}
+
+	again, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "Replacement")
+	if err != nil {
+		t.Fatalf("second SetProjectDescriptionIfEmpty() error: %v", err)
+	}
+	if changed {
+		t.Fatal("changed = true, want false after auto-description marker is set")
+	}
+	if again.Description != "Early research plan." {
+		t.Fatalf("Description after second attempt = %q, want original", again.Description)
+	}
+}
+
 func TestStore_ListMethodsReturnEmptySlices(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

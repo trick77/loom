@@ -14,15 +14,19 @@ type rowScanner interface {
 
 func scanProject(row rowScanner) (Project, error) {
 	var project Project
-	var archivedAt sql.NullString
+	var archivedAt, autoDescriptionGeneratedAt sql.NullString
 	var createdAt, updatedAt string
-	if err := row.Scan(&project.ID, &project.UserID, &project.Name, &project.Description, &project.Starred, &archivedAt, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&project.ID, &project.UserID, &project.Name, &project.Description, &project.Starred, &archivedAt, &autoDescriptionGeneratedAt, &createdAt, &updatedAt); err != nil {
 		return Project{}, err
 	}
 	var err error
 	project.ArchivedAt, err = nullableTime(archivedAt)
 	if err != nil {
 		return Project{}, fmt.Errorf("parse archived_at: %w", err)
+	}
+	project.AutoDescriptionGeneratedAt, err = nullableTime(autoDescriptionGeneratedAt)
+	if err != nil {
+		return Project{}, fmt.Errorf("parse auto_description_generated_at: %w", err)
 	}
 	project.CreatedAt, err = parseSQLiteTime(createdAt)
 	if err != nil {

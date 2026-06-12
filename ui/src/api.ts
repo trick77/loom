@@ -140,6 +140,7 @@ type StreamHandlers = {
   onReasoningTitle?(event: { id: string; title: string }): void;
   onAssistantMessage(message: Message): void;
   onThread(thread: Thread): void;
+  onProject?(project: Project): void;
   onToolPending?(): void;
   onToolCall?(event: ToolCallEvent): void;
   onToolResult?(event: ToolResultEvent): void;
@@ -625,6 +626,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "thread":
       handlers.onThread(payload as Thread);
+      break;
+    case "project":
+      handlers.onProject?.(payload as Project);
       break;
     case "tool_pending":
       handlers.onToolPending?.();

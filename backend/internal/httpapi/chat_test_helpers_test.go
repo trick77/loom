@@ -82,21 +82,22 @@ func authenticatedRequest(method, target, body string) *http.Request {
 }
 
 type fakeChatStore struct {
-	thread              chat.Thread
-	project             chat.Project
-	messages            []chat.Message
-	listThreadsUserID   string
-	listThreadsOptions  chat.ListThreadsOptions
-	assistantContent    string
-	assistantContextErr error
-	lastCitations       json.RawMessage
-	createThreadErr     error
-	updateThreadInput   chat.UpdateThreadInput
-	updateThreadErr     error
-	projectMemory       chat.ProjectMemory
-	projectMessageCount int
-	userMemory          chat.UserMemory
-	userMessageCount    int
+	thread                    chat.Thread
+	project                   chat.Project
+	messages                  []chat.Message
+	listThreadsUserID         string
+	listThreadsOptions        chat.ListThreadsOptions
+	assistantContent          string
+	assistantContextErr       error
+	lastCitations             json.RawMessage
+	createThreadErr           error
+	updateThreadInput         chat.UpdateThreadInput
+	updateThreadErr           error
+	projectMemory             chat.ProjectMemory
+	projectMessageCount       int
+	projectDescriptionChanged bool
+	userMemory                chat.UserMemory
+	userMessageCount          int
 }
 
 func (f *fakeChatStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
@@ -122,6 +123,18 @@ func (f *fakeChatStore) UpdateProject(_ context.Context, _ string, projectID str
 	if f.project.ID == "" || f.project.ID != projectID {
 		return chat.Project{}, false, nil
 	}
+	return f.project, true, nil
+}
+
+func (f *fakeChatStore) SetProjectDescriptionIfEmpty(_ context.Context, _ string, projectID, description string) (chat.Project, bool, error) {
+	if f.project.ID == "" || f.project.ID != projectID {
+		return chat.Project{}, false, nil
+	}
+	if f.project.Description != "" {
+		return f.project, false, nil
+	}
+	f.project.Description = description
+	f.projectDescriptionChanged = true
 	return f.project, true, nil
 }
 
@@ -318,6 +331,7 @@ type fakeChatClient struct {
 	reasoningTitleUsage llm.TokenUsage
 	afterStream         func()
 	projectMemory       string
+	projectDescription  string
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -361,6 +375,10 @@ func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _ string) (s
 
 func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _ string) (string, error) {
 	return f.projectMemory, nil
+}
+
+func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _, _ string) (string, error) {
+	return f.projectDescription, nil
 }
 
 func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
@@ -434,6 +452,10 @@ func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string) (st
 }
 
 func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string) (string, error) {
+	return "", nil
+}
+
+func (f *blockingChatClient) GenerateProjectDescription(context.Context, string, string) (string, error) {
 	return "", nil
 }
 
@@ -522,6 +544,10 @@ func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning
 }
 
 func (f *fakeToolChatClient) GenerateMemory(_ context.Context, _, _, _, _ string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeToolChatClient) GenerateProjectDescription(context.Context, string, string) (string, error) {
 	return "", nil
 }
 
