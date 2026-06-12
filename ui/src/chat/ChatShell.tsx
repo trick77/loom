@@ -32,6 +32,8 @@ import {
   setThreadStarred,
   stopMessage,
   streamMessage,
+  uploadDocument,
+  indexDocument,
   type Artifact,
   type McpStatusEvent,
   type Message,
@@ -68,6 +70,7 @@ import { navigate, routeFromLocation, type RouteState } from "./routing";
 import type { MessageWithActivityTrace, SidebarIconName } from "./types";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import { Composer } from "./Composer";
+import { MessageCitations } from "./Citations";
 import { CheckIcon, CloseIcon, DownloadIcon, FileIcon } from "./icons";
 import { Icon } from "./Icon";
 import { useMediaQuery } from "./useMediaQuery";
@@ -1908,6 +1911,32 @@ function ChatPanel({
     onSend();
   }, [onSend, pinToLatest]);
 
+  const [attachNote, setAttachNote] = useState("");
+  const handleAttachFiles = useCallback(
+    (files: File[]) => {
+      if (thread === null) return;
+      void (async () => {
+        for (const file of files) {
+          setAttachNote(`Uploading ${file.name}…`);
+          try {
+            const doc = await uploadDocument(file, {
+              threadId: thread.id,
+              projectId: threadProject?.id,
+            });
+            // Composer uploads are added to knowledge automatically.
+            setAttachNote(`Indexing ${file.name}…`);
+            await indexDocument(doc.id);
+            setAttachNote(`Added ${file.name} to knowledge.`);
+          } catch (error) {
+            setAttachNote(error instanceof Error ? error.message : `Failed to upload ${file.name}.`);
+            return;
+          }
+        }
+      })();
+    },
+    [thread, threadProject?.id],
+  );
+
   const handleRetryRequest = useCallback(
     (content: string) => {
       pinToLatest();
@@ -2076,7 +2105,11 @@ function ChatPanel({
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}
                 onStop={onStop}
+                onAttachFiles={thread === null ? undefined : handleAttachFiles}
               />
+              {attachNote !== "" && (
+                <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
+              )}
               <div className="ui-meta-text mt-2 text-center text-[#858178]">
                 Slopr can make mistakes. Please double-check responses.
               </div>
@@ -2161,6 +2194,7 @@ function MessageBubble({
       {message.artifacts?.map((artifact) => (
         <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
       ))}
+      <MessageCitations citations={message.citations} />
     </div>
   );
 }
