@@ -16,6 +16,7 @@ import (
 	"github.com/trick77/slopr/internal/docgen"
 	"github.com/trick77/slopr/internal/imagegen"
 	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/slopr/internal/mcp"
 	"github.com/trick77/slopr/internal/sse"
 )
 
@@ -66,10 +67,15 @@ const (
 	fetchToolName           = "fetch__fetch"
 	obscuraNavigateToolName = "obscura__browser_navigate"
 	obscuraSnapshotToolName = "obscura__browser_snapshot"
-	// tavilySearchExposedName is the namespaced web-search tool as dispatched
-	// (server "tavily" + tool "tavily_search"); see internal/mcp ExposedToolName.
-	tavilySearchExposedName = "tavily__tavily_search"
+	// tavilyServerName is the map key under which the built-in Tavily web-search
+	// server is registered (see cmd/slopr/main.go).
+	tavilyServerName = "tavily"
 )
+
+// tavilySearchExposedName is the namespaced web-search tool as dispatched. It is
+// derived from the mcp package's source-of-truth names so a rename there fails
+// the build / shifts here instead of silently zeroing the counter.
+var tavilySearchExposedName = mcp.ExposedToolName(tavilyServerName, mcp.TavilySearchToolName)
 
 // fetchObscuraFallback retries a failed fetch via obscura's headless browser.
 // It only fires for the fetch tool when obscura is configured and the call

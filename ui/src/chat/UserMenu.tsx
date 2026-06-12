@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import { Icon } from "./Icon";
 
 /**
@@ -16,6 +18,14 @@ export function UserMenu({
   onClose(): void;
   className?: string;
 }) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       aria-label="User menu"

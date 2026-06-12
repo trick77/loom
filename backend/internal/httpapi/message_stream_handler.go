@@ -167,15 +167,17 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// is read here after titles.wait() above so helper-call tokens are included —
 	// matching the per-message stats persisted just above.
 	turnUsage := usageTotal.Total()
-	s.recordUsage("tokens", func() error {
-		return s.usage.AddTokens(persistCtx, user.ID, usage.TokenDelta{
-			PromptTokens:     turnUsage.PromptTokens,
-			CompletionTokens: turnUsage.CompletionTokens,
-			CachedTokens:     turnUsage.PromptTokensDetails.CachedTokens,
-			ReasoningTokens:  turnUsage.CompletionTokenDetails.ReasoningTokens,
-			TotalTokens:      turnUsage.TotalTokens,
+	if turnUsage.Present() {
+		s.recordUsage("tokens", func() error {
+			return s.usage.AddTokens(persistCtx, user.ID, usage.TokenDelta{
+				PromptTokens:     turnUsage.PromptTokens,
+				CompletionTokens: turnUsage.CompletionTokens,
+				CachedTokens:     turnUsage.PromptTokensDetails.CachedTokens,
+				ReasoningTokens:  turnUsage.CompletionTokenDetails.ReasoningTokens,
+				TotalTokens:      turnUsage.TotalTokens,
+			})
 		})
-	})
+	}
 
 	// Best-effort, gated background refresh of the project's shared memory so
 	// sibling chats stay aware of this turn. Detaches from the request context so
