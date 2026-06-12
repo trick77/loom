@@ -1010,27 +1010,30 @@ export function ChatShell({
           )}
         </nav>
         <div className="relative border-t border-[#343432] px-3 py-3">
-          <div className={`flex items-center ${railCollapsed ? "justify-center" : "gap-3"}`}>
+          {/* The whole row (avatar circle + name) is the menu trigger, so clicking
+              the round user circle opens the account menu too — and it works while
+              the rail is collapsed, where only the avatar is shown. */}
+          <button
+            className={`flex w-full items-center rounded-md transition-colors hover:bg-[#2a2a28] ${
+              railCollapsed ? "justify-center p-1" : "gap-3 px-1.5 py-1"
+            }`}
+            type="button"
+            aria-label="Account menu"
+            aria-haspopup="menu"
+            aria-expanded={userMenuOpen}
+            onClick={() => setUserMenuOpen((open) => !open)}
+          >
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dedbd0] text-xs font-semibold text-[#1d1d1b]">
               {initialsFor(displayName)}
             </div>
             {!railCollapsed && (
-              <button
-                className="flex min-w-0 flex-1 items-center rounded-md px-1.5 py-1 text-left transition-colors hover:bg-[#2a2a28]"
-                type="button"
-                aria-label="Account menu"
-                aria-haspopup="menu"
-                aria-expanded={userMenuOpen}
-                onClick={() => setUserMenuOpen((open) => !open)}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[#f4f0e8]">{displayName}</div>
-                  <div className="truncate font-normal text-[#8f8b82]">{roleLabel(user.role)}</div>
-                </div>
-              </button>
+              <div className="min-w-0 flex-1 text-left">
+                <div className="truncate text-[#f4f0e8]">{displayName}</div>
+                <div className="truncate font-normal text-[#8f8b82]">{roleLabel(user.role)}</div>
+              </div>
             )}
-          </div>
-          {userMenuOpen && !railCollapsed && (
+          </button>
+          {userMenuOpen && (
             <>
               <div className="fixed inset-0 z-20" aria-hidden="true" onClick={() => setUserMenuOpen(false)} />
               <UserMenu
