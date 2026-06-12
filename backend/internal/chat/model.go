@@ -25,14 +25,15 @@ const (
 
 // Project groups related chat threads for one user.
 type Project struct {
-	ID          string     `json:"id"`
-	UserID      string     `json:"-"`
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Starred     bool       `json:"starred"`
-	ArchivedAt  *time.Time `json:"archivedAt"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID                         string     `json:"id"`
+	UserID                     string     `json:"-"`
+	Name                       string     `json:"name"`
+	Description                string     `json:"description"`
+	Starred                    bool       `json:"starred"`
+	ArchivedAt                 *time.Time `json:"archivedAt"`
+	AutoDescriptionGeneratedAt *time.Time `json:"-"`
+	CreatedAt                  time.Time  `json:"createdAt"`
+	UpdatedAt                  time.Time  `json:"updatedAt"`
 }
 
 // ProjectMemory is a compact, auto-generated summary of a project's chats that

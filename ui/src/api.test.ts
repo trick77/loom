@@ -94,6 +94,39 @@ test("updateThread sends null project membership", async () => {
   });
 });
 
+test("streamMessage dispatches project updates", async () => {
+  const project = {
+    id: "p1",
+    name: "Research",
+    description: "Tracks paper research.",
+    starred: false,
+    createdAt: "2026-06-10T00:00:00Z",
+    updatedAt: "2026-06-10T12:00:00Z",
+  };
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(`event: project\ndata: ${JSON.stringify(project)}\n\n`));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body)));
+  const onProject = vi.fn();
+
+  await streamMessage(
+    "t1",
+    "hello",
+    {
+      onUserMessage: vi.fn(),
+      onDelta: vi.fn(),
+      onAssistantMessage: vi.fn(),
+      onThread: vi.fn(),
+      onProject,
+    },
+  );
+
+  expect(onProject).toHaveBeenCalledWith(project);
+});
+
 test("deleteThread deletes a thread", async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
   vi.stubGlobal("fetch", fetchMock);

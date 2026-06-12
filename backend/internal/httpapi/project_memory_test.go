@@ -86,6 +86,66 @@ func TestStreamMessageInjectsProjectMemory(t *testing.T) {
 	}
 }
 
+func TestStreamMessageAutoFillsEmptyProjectDescriptionAfterTwoTurns(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeChatStore{
+		thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Planning"},
+		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
+		messages: []chat.Message{
+			{ID: "msg_1", ThreadID: "thr_1", Role: chat.RoleUser, Content: "Collect the papers."},
+			{ID: "msg_2", ThreadID: "thr_1", Role: chat.RoleAssistant, Content: "I will track the reading list."},
+		},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{projectDescription: "Tracks paper research and reading priorities."},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Add comparison notes."}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: project") {
+		t.Fatalf("stream missing project event:\n%s", body)
+	}
+	if !strings.Contains(body, `"description":"Tracks paper research and reading priorities."`) {
+		t.Fatalf("stream missing generated description:\n%s", body)
+	}
+	if !store.projectDescriptionChanged {
+		t.Fatal("project description was not persisted")
+	}
+}
+
+func TestStreamMessageDoesNotAutoFillProjectDescriptionBeforeTwoTurns(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeChatStore{
+		thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Planning"},
+		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{projectDescription: "Must not be used."},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Start notes."}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "event: project") {
+		t.Fatalf("stream unexpectedly emitted project event:\n%s", rec.Body.String())
+	}
+	if store.projectDescriptionChanged {
+		t.Fatal("project description changed before threshold")
+	}
+}
+
 // TestStreamMessageOmitsProjectContextForProjectlessThread guards that chats
 // without a project get no injected context.
 func TestStreamMessageOmitsProjectContextForProjectlessThread(t *testing.T) {

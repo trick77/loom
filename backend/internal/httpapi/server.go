@@ -70,6 +70,7 @@ type ChatStore interface {
 	GetProject(context.Context, string, string) (chat.Project, bool, error)
 	ListProjects(context.Context, string, bool) ([]chat.Project, error)
 	UpdateProject(context.Context, string, string, chat.UpdateProjectInput) (chat.Project, bool, error)
+	SetProjectDescriptionIfEmpty(context.Context, string, string, string) (chat.Project, bool, error)
 	SetProjectStarred(context.Context, string, string, bool) (chat.Project, bool, error)
 	SetProjectArchived(context.Context, string, string, bool) (bool, error)
 	DeleteProject(context.Context, string, string) (bool, error)
@@ -139,6 +140,7 @@ type ChatClient interface {
 	GenerateChatTitle(context.Context, string, string) (string, error)
 	GenerateReasoningTitle(context.Context, string) (string, error)
 	GenerateMemory(context.Context, string, string, string, string) (string, error)
+	GenerateProjectDescription(context.Context, string, string) (string, error)
 }
 
 // ToolService exposes configured MCP tools to chat handlers.

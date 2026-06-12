@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Project } from "../api";
 import { Icon } from "../chat/Icon";
 import { SidebarOpenButton } from "../SidebarOpenButton";
+import { formatTimeAgo } from "../timeago";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 
 type ProjectSort = "recent" | "edited" | "created";
@@ -158,7 +159,7 @@ export function ProjectsPage({
                 <p className="mt-5 line-clamp-3 text-sm leading-5 text-[#c7c5bd]">{project.description}</p>
               )}
               <p className="absolute bottom-4 left-4 text-sm text-[#8f8b82]">
-                Updated {formatProjectDate(project.updatedAt)}
+                Updated {formatTimeAgo(project.updatedAt)}
               </p>
               <div
                 className="absolute right-3 top-3"
@@ -197,8 +198,4 @@ export function ProjectsPage({
 
 function compareDatesDesc(a: string, b: string): number {
   return new Date(b).getTime() - new Date(a).getTime();
-}
-
-function formatProjectDate(value: string): string {
-  return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

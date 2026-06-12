@@ -26,6 +26,7 @@ ui/dist/
 
 # Codex (local, machine-specific)
 .codex/
+.worktrees/
 
 # Local agent/browser tooling (machine-specific)
 .claude/
