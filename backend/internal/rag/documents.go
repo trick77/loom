@@ -118,10 +118,13 @@ func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID, 
 	return true, nil
 }
 
+// reconcileLegacyMarker records, in schema_migrations, that the one-time legacy
+// scope reconciliation has run, so it never executes again.
+const reconcileLegacyMarker = "reconcile_legacy_document_scopes_v1"
+
 // ReconcileLegacyDocumentScopes fixes documents uploaded before thread-private
 // scoping existed, which were stored user-global (project_id IS NULL, thread_id
-// IS NULL) and therefore leaked into every project-less chat. It runs once at
-// boot and is idempotent.
+// IS NULL) and therefore leaked into every project-less chat.
 //
 //   - Recoverable: a composer upload still linked to its originating artifact
 //     (which records the source thread) is rebound to that thread — thread_id is
@@ -130,14 +133,31 @@ func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID, 
 //   - Unrecoverable: a global document whose origin thread cannot be determined
 //     (no linked artifact, or the artifact has no thread) cannot be migrated to a
 //     specific chat, so it is deleted (chunks + embeddings) rather than left to
-//     leak. There is no intentional user-global upload path, so these are all
-//     stranded composer uploads.
+//     leak. When this ran there was no intentional user-global upload path, so
+//     every such document was a stranded composer upload.
+//
+// It is a strict ONE-TIME data fix, gated on a schema_migrations marker: the
+// blanket delete of globals must not fire again on later boots, so that a future
+// deliberate global-upload feature (which would also be project/thread-less)
+// cannot be silently wiped by it.
 func (s *Store) ReconcileLegacyDocumentScopes(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+
+	// Already reconciled on a prior boot? Then do nothing — never touch newer data.
+	var done int
+	switch err := tx.QueryRowContext(ctx,
+		`SELECT 1 FROM schema_migrations WHERE version = ?`, reconcileLegacyMarker).Scan(&done); err {
+	case nil:
+		return nil
+	case sql.ErrNoRows:
+		// not yet run — proceed
+	default:
+		return fmt.Errorf("check reconcile marker: %w", err)
+	}
 
 	// Recover: backfill thread_id from the originating artifact's provenance.
 	if _, err := tx.ExecContext(ctx, `
@@ -191,6 +211,11 @@ func (s *Store) ReconcileLegacyDocumentScopes(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM documents WHERE project_id IS NULL AND thread_id IS NULL`); err != nil {
 		return fmt.Errorf("delete stranded documents: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO schema_migrations (version) VALUES (?)`, reconcileLegacyMarker); err != nil {
+		return fmt.Errorf("record reconcile marker: %w", err)
 	}
 
 	return tx.Commit()

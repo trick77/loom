@@ -98,8 +98,17 @@ func TestStore_reconcileLegacyDocumentScopes(t *testing.T) {
 		t.Errorf("project document no longer retrievable in its project")
 	}
 
-	// Idempotent: a second run changes nothing.
+	// One-time: a global document created AFTER the first reconcile (e.g. a future
+	// deliberate global-upload feature) must survive a later run untouched.
+	_ = s.CreateDocument(ctx, Document{ID: "dG2", UserID: "u1", VolumeRelpath: "u/g2.txt", Filename: "g2.txt", MIME: "text/plain", Status: StatusPending})
+	if err := s.ReplaceChunks(ctx, "u1", "dG2", []TextChunk{{Text: "future global"}}, [][]float32{vecAt(1, 0)}); err != nil {
+		t.Fatalf("seed dG2 chunks: %v", err)
+	}
 	run()
+	if _, ok, _ := s.GetDocument(ctx, "u1", "dG2"); !ok {
+		t.Errorf("global document created after the one-time reconcile was wrongly deleted")
+	}
+	// And the original recovery still holds.
 	if doc, ok, _ := s.GetDocument(ctx, "u1", "dR"); !ok || doc.ThreadID == nil || *doc.ThreadID != "t1" {
 		t.Errorf("dR scope changed on second reconcile run")
 	}
