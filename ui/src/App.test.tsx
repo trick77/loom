@@ -385,43 +385,22 @@ test("shows chat data load errors", async () => {
   expect(await screen.findByText("Chat data failed to load.")).toBeInTheDocument();
 });
 
-test("creates a project from the sidebar", async () => {
+test("does not expose project creation from the sidebar", async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects" && init?.method === undefined) return Response.json([]);
     if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/projects" && init?.method === "POST") {
-      return new Response(
-        JSON.stringify({
-          id: "p1",
-          name: "School",
-          description: "",
-          createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        }),
-        { status: 201 },
-      );
-    }
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /new project/i }));
-  const projectNameInput = screen.getByPlaceholderText(/project name/i);
-  fireEvent.change(projectNameInput, { target: { value: "School" } });
-  await waitFor(() => expect(screen.getByRole("button", { name: "Create" })).toBeEnabled());
-  fireEvent.submit(projectNameInput.closest("form")!);
 
-  expect(await screen.findByText("School")).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith(
-    "/api/projects",
-    expect.objectContaining({
-      method: "POST",
-      body: JSON.stringify({ name: "School" }),
-    }),
-  );
+  await screen.findByRole("button", { name: "New chat" });
+  expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument();
+  expect(screen.queryByPlaceholderText(/project name/i)).not.toBeInTheDocument();
+  expect(fetchMock).not.toHaveBeenCalledWith("/api/projects", expect.objectContaining({ method: "POST" }));
 });
 
 test("opens the projects page from the sidebar without example or share affordances", async () => {
@@ -489,10 +468,10 @@ test("loads a project detail page and creates new chats inside the project", asy
   expect(await screen.findByRole("heading", { name: "Research" })).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: /Project chat/ })).toBeInTheDocument();
   expect(screen.queryByText("Files")).not.toBeInTheDocument();
-  // The Memory sidebar nav item is always present; assert we are not on the
-  // Memory page itself (its page heading is absent).
-  expect(screen.queryByRole("heading", { name: "Memory" })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {
+  expect(window.location.pathname).toBe("/projects/p1");
+  const projectComposer = screen.getByPlaceholderText("How can I help you today?");
+  expect(projectComposer).toHaveFocus();
+  fireEvent.change(projectComposer, {
     target: { value: "Draft a brief" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
@@ -586,7 +565,7 @@ test("moves selected chats to a project from the chats page", async () => {
   expect(screen.queryByRole("dialog", { name: "Move to project" })).not.toBeInTheDocument();
 });
 
-test("renders the new-chat plus icon and the new-project plus control", async () => {
+test("renders the new-chat plus icon without a new-project sidebar control", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -601,14 +580,12 @@ test("renders the new-chat plus icon and the new-project plus control", async ()
   render(<App />);
 
   const newChatButton = await screen.findByRole("button", { name: "New chat" });
-  const newProjectButton = await screen.findByRole("button", { name: "New project" });
 
   // New chat: a thin SVG plus inside a circle (no literal "+").
   expect(newChatButton.querySelector("svg")).toBeInTheDocument();
   expect(newChatButton.querySelector("svg")).toHaveClass("h-[13px]", "w-[13px]");
   expect(newChatButton).not.toHaveTextContent("+");
-  // New project: literal plus control.
-  expect(newProjectButton).toHaveTextContent("+");
+  expect(screen.queryByRole("button", { name: "New project" })).not.toBeInTheDocument();
 });
 
 test("new chat navigation does not create a thread or sidebar entry", async () => {
@@ -751,6 +728,40 @@ test("active chat header chevron opens the shared chat actions menu", async () =
   fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename" }));
 
   expect(await screen.findByRole("dialog", { name: "Rename chat" })).toBeInTheDocument();
+});
+
+test("project chat header prefixes the title with a clickable project name", async () => {
+  const project = { ...projectFixture(), name: "AI Gateway Comparison" };
+  const thread = { ...threadFixture(), title: "Inference Spend Statistics Access", projectId: project.id };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([project]);
+      if (url === "/api/threads?limit=30") return Response.json({ items: [thread], nextCursor: null });
+      if (url === "/api/threads/t1") return Response.json({ thread, messages: [] });
+      if (url === "/api/threads?projectId=p1&limit=1000") {
+        return Response.json({ items: [thread], nextCursor: null });
+      }
+      if (url === "/api/projects/p1/memory") {
+        return Response.json({ projectId: "p1", content: "", updatedAt: null });
+      }
+      if (url === "/api/mcp/status") return Response.json({ active: 0, configured: 0 });
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Inference Spend Statistics Access" }));
+
+  const header = await screen.findByRole("banner", { name: "Chat header" });
+  expect(within(header).getByRole("heading", { name: /AI Gateway Comparison.*Inference Spend Statistics Access/ })).toBeInTheDocument();
+
+  fireEvent.click(within(header).getByRole("button", { name: "AI Gateway Comparison" }));
+
+  expect(await screen.findByRole("heading", { name: "AI Gateway Comparison" })).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/projects/p1");
 });
 
 test("closes the active sidebar chat menu when clicking outside it", async () => {

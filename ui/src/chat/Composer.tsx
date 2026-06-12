@@ -7,6 +7,7 @@ export function Composer({
   draft,
   isSending,
   placeholder,
+  autoFocus = false,
   onDraftChange,
   onSend,
   onStop,
@@ -15,6 +16,7 @@ export function Composer({
   draft: string;
   isSending: boolean;
   placeholder: string;
+  autoFocus?: boolean;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
@@ -41,6 +43,9 @@ export function Composer({
   }, []);
   // Re-measure on every draft change (typing, and reset to base after send).
   useLayoutEffect(autoGrow, [autoGrow, draft]);
+  useLayoutEffect(() => {
+    if (autoFocus) textareaRef.current?.focus();
+  }, [autoFocus]);
   // Re-measure when the textarea's width changes (window resize, breakpoint,
   // rotation) - a different width re-wraps the text and changes the needed
   // height. Guard on width only: autoGrow mutates the element's height, so

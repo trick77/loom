@@ -129,9 +129,6 @@ export function ChatShell({
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<MessageWithActivityTrace[]>([]);
   const [draft, setDraft] = useState("");
-  const [projectName, setProjectName] = useState("");
-  const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
-  const [isCreatingProject, setIsCreatingProject] = useState(false);
   // undefined = closed, null = create, Project = edit.
   const [editingProject, setEditingProject] = useState<Project | null | undefined>(undefined);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
@@ -352,6 +349,10 @@ export function ChatShell({
     if (route.view !== "project") return null;
     return projects.find((project) => project.id === route.projectID) ?? null;
   }, [projects, route]);
+  const activeThreadProject = useMemo(() => {
+    if (activeThread?.projectId === undefined) return null;
+    return projects.find((project) => project.id === activeThread.projectId) ?? null;
+  }, [activeThread?.projectId, projects]);
 
   const navigateToNew = useCallback(() => {
     onChat();
@@ -419,22 +420,6 @@ export function ChatShell({
     setMobileSidebarOpen(false);
     navigate({ view: "chat", threadID });
     setRoute({ view: "chat", threadID });
-  }
-
-  async function handleCreateProject() {
-    const name = projectName.trim();
-    if (name === "" || isCreatingProject) return;
-    setIsCreatingProject(true);
-    try {
-      const project = await createProject({ name });
-      setProjects((current) => [project, ...current.filter((item) => item.id !== project.id)]);
-      setProjectName("");
-      setIsProjectFormOpen(false);
-    } catch (error) {
-      handleActionError(error, "Project failed to create.", setLoadError);
-    } finally {
-      setIsCreatingProject(false);
-    }
   }
 
   function openProjectDialog(project: Project | null) {
@@ -910,53 +895,9 @@ export function ChatShell({
             </div>
           )}
           <section className="mt-5">
-            <div className="ui-meta-text mb-2 flex items-center justify-between px-1.5 text-[#97958c]">
+            <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">
               <span>Projects</span>
-              <button
-                className="rounded px-1 text-[#aaa79e] transition-colors hover:text-white"
-                onClick={() => setIsProjectFormOpen(true)}
-                type="button"
-                aria-label="New project"
-              >
-                +
-              </button>
             </div>
-            {isProjectFormOpen && (
-              <form
-                className="mx-2 mb-2 space-y-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleCreateProject();
-                }}
-              >
-                <input
-                  autoFocus
-                  className="ui-sidebar-text w-full rounded-md border border-[#3b3b38] bg-[#20201f] px-2 py-1.5 text-ink outline-none placeholder:text-muted focus:border-[#69665f]"
-                  placeholder="Project name"
-                  value={projectName}
-                  onChange={(event) => setProjectName(event.target.value)}
-                />
-                <div className="flex gap-2">
-                  <button
-                    className="ui-sidebar-text rounded-md bg-[#393936] px-3 py-1.5 font-medium text-white disabled:opacity-50"
-                    disabled={projectName.trim() === "" || isCreatingProject}
-                    type="submit"
-                  >
-                    Create
-                  </button>
-                  <button
-                    className="ui-sidebar-text px-2 py-1.5 text-muted transition-colors hover:text-ink"
-                    onClick={() => {
-                      setProjectName("");
-                      setIsProjectFormOpen(false);
-                    }}
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
             <div className="space-y-1.5">
               {projects.map((project) => (
                 <button
@@ -1163,8 +1104,9 @@ export function ChatShell({
         ) : (
           <ChatPanel
             thread={activeThread}
+            threadProject={activeThreadProject}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
-        messages={messages}
+            messages={messages}
             draft={draft}
             streamingText={streamingText}
             streamingArtifacts={streamingArtifacts}
@@ -1180,6 +1122,7 @@ export function ChatShell({
             onStop={handleStopResponse}
             onRetry={handleRetry}
             onActivityTraceExpandedPreferenceChange={setActivityTraceExpandedPreference}
+            onOpenProject={navigateToProject}
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}
             onAddToProject={
@@ -1693,6 +1636,7 @@ function StartPanel({
 
 function ChatPanel({
   thread,
+  threadProject,
   messages,
   draft,
   streamingText,
@@ -1710,6 +1654,7 @@ function ChatPanel({
   onStop,
   onRetry,
   onActivityTraceExpandedPreferenceChange,
+  onOpenProject,
   onDeleteThread,
   onRenameThread,
   onAddToProject,
@@ -1718,6 +1663,7 @@ function ChatPanel({
   onCloseThreadMenu,
 }: {
   thread: Thread | null;
+  threadProject: Project | null;
   messages: MessageWithActivityTrace[];
   draft: string;
   streamingText: string;
@@ -1734,6 +1680,7 @@ function ChatPanel({
   onStop(): void;
   onRetry(content: string): void;
   onActivityTraceExpandedPreferenceChange(expanded: boolean): void;
+  onOpenProject(project: Project): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
   onAddToProject?(thread: Thread): void;
@@ -1883,31 +1830,45 @@ function ChatPanel({
         <div className="flex min-w-0 items-center gap-2">
           <SidebarOpenButton onClick={onOpenSidebar} />
           <div ref={headerMenuRef} className="relative flex min-w-0 items-center">
-          <h1 className="min-w-0 max-w-[28ch] truncate font-sans font-normal sm:max-w-[48ch]">
-            {thread?.title ?? "New chat"}
-          </h1>
-          {thread !== null && headerMenuKey !== null && (
-            <button
-              aria-expanded={headerMenuOpen}
-              aria-label="Open chat actions"
-              className="ml-1 grid h-5 w-5 shrink-0 place-items-center rounded-md text-[#88857d] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
-              onClick={() => onToggleThreadMenu(headerMenuKey)}
-              type="button"
-            >
-              <Icon name={headerMenuOpen ? "chevronDown" : "chevronRight"} size="16px" />
-            </button>
-          )}
-          {thread !== null && headerMenuKey !== null && headerMenuOpen && (
-            <ThreadActionsMenu
-              menuKey={headerMenuKey}
-              thread={thread}
-              className="right-0 top-full"
-              onDelete={onDeleteThread}
-              onRename={onRenameThread}
-              onAddToProject={onAddToProject}
-              onStarChange={onStarThread}
-            />
-          )}
+            <h1 className="flex min-w-0 max-w-[28ch] items-center gap-1 truncate font-sans font-normal sm:max-w-[48ch]">
+              {threadProject !== null && thread !== null && (
+                <>
+                  <button
+                    className="min-w-0 max-w-[12ch] truncate text-left text-[#d5d2c9] transition-colors hover:text-[#f3f0e8] sm:max-w-[22ch]"
+                    onClick={() => onOpenProject(threadProject)}
+                    type="button"
+                  >
+                    {threadProject.name}
+                  </button>
+                  <span aria-hidden="true" className="shrink-0 text-[#77736a]">
+                    &gt;
+                  </span>
+                </>
+              )}
+              <span className="min-w-0 truncate">{thread?.title ?? "New chat"}</span>
+            </h1>
+            {thread !== null && headerMenuKey !== null && (
+              <button
+                aria-expanded={headerMenuOpen}
+                aria-label="Open chat actions"
+                className="ml-1 grid h-5 w-5 shrink-0 place-items-center rounded-md text-[#88857d] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
+                onClick={() => onToggleThreadMenu(headerMenuKey)}
+                type="button"
+              >
+                <Icon name={headerMenuOpen ? "chevronDown" : "chevronRight"} size="16px" />
+              </button>
+            )}
+            {thread !== null && headerMenuKey !== null && headerMenuOpen && (
+              <ThreadActionsMenu
+                menuKey={headerMenuKey}
+                thread={thread}
+                className="right-0 top-full"
+                onDelete={onDeleteThread}
+                onRename={onRenameThread}
+                onAddToProject={onAddToProject}
+                onStarChange={onStarThread}
+              />
+            )}
           </div>
         </div>
         {mcpStatus !== null && mcpStatus.configured > 0 && (
