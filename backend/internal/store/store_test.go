@@ -1,9 +1,27 @@
 package store
 
 import (
+	"io/fs"
 	"path/filepath"
 	"testing"
 )
+
+// embeddedMigrationCount returns how many migration files are embedded, so the
+// migration-count assertions stay correct as migrations are added.
+func embeddedMigrationCount(t *testing.T) int {
+	t.Helper()
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatalf("read embedded migrations: %v", err)
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			count++
+		}
+	}
+	return count
+}
 
 func TestOpen_runsMigrations(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -29,8 +47,8 @@ func TestOpen_runsMigrations(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("schema_migrations query: %v", err)
 	}
-	if count != 6 {
-		t.Errorf("applied migrations = %d, want 6", count)
+	if want := embeddedMigrationCount(t); count != want {
+		t.Errorf("applied migrations = %d, want %d", count, want)
 	}
 }
 
@@ -53,8 +71,8 @@ func TestOpen_migrationsAreIdempotent(t *testing.T) {
 	if err := db2.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("schema_migrations query: %v", err)
 	}
-	if count != 6 {
-		t.Errorf("applied migrations after re-open = %d, want 6", count)
+	if want := embeddedMigrationCount(t); count != want {
+		t.Errorf("applied migrations after re-open = %d, want %d", count, want)
 	}
 }
 

@@ -26,6 +26,7 @@ import (
 	"github.com/trick77/slopr/internal/mcp"
 	"github.com/trick77/slopr/internal/rag"
 	"github.com/trick77/slopr/internal/store"
+	"github.com/trick77/slopr/internal/usage"
 	"github.com/trick77/slopr/web"
 )
 
@@ -100,6 +101,7 @@ func run() error {
 	authMW := auth.NewMiddleware(sessionStore, userStore)
 	chatStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
+	usageStore := usage.NewStore(db)
 
 	// Document RAG is enabled only when an embeddings endpoint is configured.
 	var documentService httpapi.DocumentService
@@ -201,6 +203,7 @@ func run() error {
 		Sessions:              sessionStore,
 		Users:                 userStore,
 		Chat:                  chatStore,
+		Usage:                 usageStore,
 		Artifacts:             artifactStore,
 		Documents:             documentService,
 		LLM:                   chatClient,

@@ -12,6 +12,7 @@ import (
 	"github.com/trick77/slopr/internal/chat"
 	"github.com/trick77/slopr/internal/llm"
 	"github.com/trick77/slopr/internal/sse"
+	"github.com/trick77/slopr/internal/usage"
 )
 
 const sloprSystemPrompt = "Write in flowing prose by default — full sentences grouped into paragraphs — no matter the topic or how long the answer is. Presenting information, explaining or describing something is prose, not a list. Do NOT use bullet points or numbered lists to break an answer into points. Use a list ONLY when the content is a true enumeration the user would naturally keep as a list: sequential steps to follow, distinct API parameters, or a literal checklist. When in doubt, use prose. For brainstorming, naming, or idea-generation requests without an explicit count, give at most 12 options and recommend one. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
@@ -170,6 +171,23 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
 		return
+	}
+
+	// Add this turn's token burn to the user's lifetime totals. usageTotal was
+	// summed across the answer, tool rounds, and the title/reasoning helpers, and
+	// is read here after titles.wait() above so helper-call tokens are included —
+	// matching the per-message stats persisted just above.
+	turnUsage := usageTotal.Total()
+	if turnUsage.Present() {
+		s.recordUsage("tokens", func() error {
+			return s.usage.AddTokens(persistCtx, user.ID, usage.TokenDelta{
+				PromptTokens:     turnUsage.PromptTokens,
+				CompletionTokens: turnUsage.CompletionTokens,
+				CachedTokens:     turnUsage.PromptTokensDetails.CachedTokens,
+				ReasoningTokens:  turnUsage.CompletionTokenDetails.ReasoningTokens,
+				TotalTokens:      turnUsage.TotalTokens,
+			})
+		})
 	}
 
 	// Best-effort, gated background refresh of the project's shared memory so

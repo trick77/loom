@@ -262,6 +262,27 @@ export async function getUserMemory(): Promise<UserMemory> {
   return expectJSON<UserMemory>(response, "failed to load user memory");
 }
 
+export type Usage = {
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+  webSearches: number;
+  webFetches: number;
+  obscuraFetches: number;
+  imageGens: number;
+  chatsCreated: number;
+  projectsCreated: number;
+  userMemoryLength: number;
+  userMemoryMax: number;
+};
+
+export async function getUsage(): Promise<Usage> {
+  const response = await fetch(`/api/me/usage`);
+  return expectJSON<Usage>(response, "failed to load usage");
+}
+
 // Page is the cursor-pagination envelope returned by list endpoints.
 // nextCursor is null when there are no further pages.
 export type Page<T> = {
