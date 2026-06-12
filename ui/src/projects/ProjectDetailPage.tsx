@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
+import { useDocumentAttachments } from "../chat/useDocumentAttachments";
 import { Icon } from "../chat/Icon";
 import { ChatRow } from "../chats/ChatRow";
 import { SidebarOpenButton } from "../SidebarOpenButton";
@@ -61,6 +62,8 @@ export function ProjectDetailPage({
 }) {
   const projectMenuKey = `Project:${project.id}`;
   const [hoveredThreadID, setHoveredThreadID] = useState<string | null>(null);
+  // Composer uploads are scoped to this project's knowledge.
+  const { attachNote, handleAttachFiles } = useDocumentAttachments({ projectId: project.id });
 
   useEffect(() => {
     if (openThreadMenuID !== projectMenuKey) return;
@@ -143,8 +146,12 @@ export function ProjectDetailPage({
                 onDraftChange={onDraftChange}
                 onSend={onSend}
                 onStop={onStop}
+                onAttachFiles={handleAttachFiles}
               />
             </div>
+            {attachNote !== "" && (
+              <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
+            )}
             {sendError !== "" && (
               <div className="ui-meta-text mt-3 rounded-md border border-accent px-3 py-2 text-accent">
                 {sendError}
