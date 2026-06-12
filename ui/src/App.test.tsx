@@ -2476,6 +2476,51 @@ test("shows received KB while a fenced HTML artifact is streaming", async () => 
   streamController.current?.close();
 });
 
+test("shows received KB while a fenced PDF artifact is streaming", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const encoder = new TextEncoder();
+  const pdfChunk = "%PDF-1.7\n" + "a".repeat(1536);
+  const content = `\`\`\`pdf\n${pdfChunk}\n\`\`\``;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(`event: assistant_delta\ndata: ${JSON.stringify({ content: `\`\`\`pdf\n${pdfChunk}` })}\n\n`),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  await sendMessageInExistingChat();
+
+  expect(await screen.findByText("PDF response")).toBeInTheDocument();
+  expect(screen.getByText("Receiving file... 1.5 KB received")).toBeInTheDocument();
+  expect(screen.queryByText(/%PDF-1\.7/)).not.toBeInTheDocument();
+
+  streamController.current?.enqueue(
+    encoder.encode(
+      `event: assistant_message\ndata: ${JSON.stringify({
+        id: "m2",
+        threadId: "t1",
+        role: "assistant",
+        content,
+        createdAt: "2026-05-30T00:00:01Z",
+      })}\n\n`,
+    ),
+  );
+  streamController.current?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
+
+  expect(await screen.findByRole("button", { name: "Download PDF response" })).toBeInTheDocument();
+  expect(screen.queryByText(/Receiving file/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/%PDF-1\.7/)).not.toBeInTheDocument();
+});
+
 test("shows a fenced HTML artifact as a download while keeping the surrounding prose", async () => {
   const content = "Here is the HTML:\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
   vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
@@ -2510,6 +2555,24 @@ test("renders inline triple backticks without treating them as a download fence"
   expect(await screen.findByText(/Keep this inline/)).toBeInTheDocument();
   expect(screen.queryByText("HTML response")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Download HTML response" })).not.toBeInTheDocument();
+});
+
+test("renders small fenced YAML inline instead of as a download", async () => {
+  const content = "```yaml\nname: slopr\nmode: local\n```";
+  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+
+  await sendMessageInExistingChat();
+
+  expect(
+    await screen.findByText(
+      (_, element) =>
+        element !== null &&
+        element.tagName.toLowerCase() === "code" &&
+        element.textContent?.includes("name: slopr") === true,
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("YAML response")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Download YAML response" })).not.toBeInTheDocument();
 });
 
 test("downloads fenced generated data without markdown fences", async () => {
