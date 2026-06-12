@@ -371,11 +371,6 @@ body {
   border-radius: 9999px;
 }
 
-.ui-activity-trace-icon-arrow {
-  border: 1px solid currentColor;
-  border-radius: 9999px;
-}
-
 .ui-activity-trace-icon-reasoning-complete {
   position: relative;
 }
@@ -495,8 +490,10 @@ body {
   white-space: nowrap;
 }
 
-.ui-activity-tool-favicon {
-  flex: 0 0 auto;
+.ui-activity-fetch-icon-favicon {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 0.2rem;
 }
 
 .ui-activity-tool-url {

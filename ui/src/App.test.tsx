@@ -8,6 +8,10 @@ import { GeneratedArtifactCard } from "./ChatShell";
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: memoryStorage(),
+  });
 });
 
 let restoreURLObjectMethods: (() => void) | null = null;
@@ -27,6 +31,30 @@ function stubURLObjectMethods(createObjectURL: (blob: Blob | MediaSource) => str
   restoreURLObjectMethods = () => {
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+  };
+}
+
+function memoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear() {
+      values.clear();
+    },
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    key(index: number) {
+      return Array.from(values.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      values.delete(key);
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
   };
 }
 
@@ -1328,6 +1356,82 @@ test("restores persisted activity trace when reopening a chat", async () => {
   expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
 });
 
+test("opens activity traces by default when the global preference is stored", async () => {
+  window.localStorage.setItem("slopr:activity-trace-expanded", "true");
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [
+      {
+        id: "m1",
+        role: "user",
+        content: "Search Slopr",
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        content: "I found Slopr.",
+        activityTrace: [
+          {
+            id: "reasoning-1",
+            type: "reasoning",
+            content: "I should search current sources.",
+            status: "done",
+          },
+        ],
+      },
+    ]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  expect(await screen.findByText("I found Slopr.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
+});
+
+test("stores the activity trace expansion preference from the toggle", async () => {
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [
+      {
+        id: "m1",
+        role: "user",
+        content: "Search Slopr",
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        content: "I found Slopr.",
+        activityTrace: [
+          {
+            id: "reasoning-1",
+            type: "reasoning",
+            content: "I should search current sources.",
+            status: "done",
+          },
+        ],
+      },
+    ]),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  const showToggle = await screen.findByRole("button", { name: /show activity/i });
+  fireEvent.click(showToggle);
+
+  expect(window.localStorage.getItem("slopr:activity-trace-expanded")).toBe("true");
+  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /hide activity/i }));
+
+  expect(window.localStorage.getItem("slopr:activity-trace-expanded")).toBe("false");
+  await waitFor(() => {
+    expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  });
+});
+
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
@@ -1401,6 +1505,47 @@ test("shows the reasoning abstract once its background title arrives", async () 
   expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
   expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
+});
+
+test("keeps the generated reasoning title during later active trace updates", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  expect(await screen.findByText("Thinking")).toBeInTheDocument();
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+  );
+  expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
+  expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
+
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"https://example.com/docs\\"}"}\n\n'),
+  );
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":" Next I should read the page."}\n\n'),
+  );
+
+  expect(screen.getByText("Searching current sources")).toBeInTheDocument();
+  expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
 });
 
 test("keeps Thinking when pre-tool preamble streams before a pending tool call", async () => {
@@ -1575,7 +1720,7 @@ test("keeps existing search activity icon glyph design", () => {
   const css = readFileSync("src/index.css", "utf8");
   const globeIcon = source.match(/function GlobeTraceIcon\(\) \{(?<body>[\s\S]*?)\n\}/)?.groups?.body ?? "";
   const globeIconRule = css.match(/\.ui-activity-globe-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const arrowIconRule = css.match(/\.ui-activity-trace-icon-arrow\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const fetchFaviconRule = css.match(/\.ui-activity-fetch-icon-favicon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const toolHeaderRule = css.match(/\.ui-activity-tool-header\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
   const resultListRule = css.match(/\.ui-activity-result-list\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
@@ -1584,12 +1729,12 @@ test("keeps existing search activity icon glyph design", () => {
   expect(globeIcon).toContain('name="globe"');
   expect(globeIconRule).toContain("width: 1.125rem !important");
   expect(globeIconRule).toContain("height: 1.125rem !important");
-  expect(source).toContain("ui-activity-trace-icon ui-activity-trace-icon-arrow");
+  expect(source).not.toContain("ui-activity-trace-icon ui-activity-trace-icon-arrow");
   expect(source).toContain("ui-activity-trace-row-reasoning");
   expect(source).toContain("ui-activity-trace-row-tool");
   expect(toolHeaderRule).toContain("transform: translateY(-1px)");
-  expect(arrowIconRule).toContain("border: 1px solid currentColor");
-  expect(arrowIconRule).toContain("border-radius: 9999px");
+  expect(fetchFaviconRule).toContain("width: 1.125rem");
+  expect(fetchFaviconRule).toContain("height: 1.125rem");
   expect(resultListRule).toContain("max-height: 12rem");
   expect(source).not.toContain("ui-activity-trace-chevron-icon");
 });
@@ -2474,7 +2619,7 @@ test("renders unknown tool calls with safe fallback details", async () => {
   expect(doneNodes.some((node) => node.classList.contains("ui-activity-done-label"))).toBe(true);
 });
 
-test("renders fetch tool rows with an inline favicon and a clickable URL", async () => {
+test("renders fetch tool rows with a timeline favicon and a clickable URL", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -2495,10 +2640,12 @@ test("renders fetch tool rows with an inline favicon and a clickable URL", async
   expect(await screen.findByText("Done.")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /show activity/i }));
 
-  // First line shows the domain title with the favicon right beside it.
+  // The fetch timeline node uses the site's favicon instead of the old arrow glyph.
   expect(await screen.findByText("getmaxim.ai")).toBeInTheDocument();
-  const favicon = document.querySelector(".ui-activity-tool-favicon");
+  const favicon = document.querySelector(".ui-activity-fetch-icon-favicon");
   expect(favicon).toHaveAttribute("src", "https://www.google.com/s2/favicons?domain=getmaxim.ai&sz=32");
+  expect(document.querySelector(".ui-activity-trace-icon-arrow")).toBeNull();
+  expect(document.querySelector(".ui-activity-tool-favicon")).toBeNull();
   // The full URL is a link that opens in a new tab — no redundant result frame.
   const link = screen.getByRole("link", { name: "https://www.getmaxim.ai/bifrost/resources/governance" });
   expect(link).toHaveAttribute("href", "https://www.getmaxim.ai/bifrost/resources/governance");
