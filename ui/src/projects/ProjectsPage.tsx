@@ -119,6 +119,7 @@ export function ProjectsPage({
             className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#807d74]"
           />
           <input
+            autoFocus
             className="ui-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
             placeholder="Search projects..."
             aria-label="Search projects"
