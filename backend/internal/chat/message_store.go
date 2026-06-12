@@ -22,6 +22,13 @@ func (s *Store) AddMessageWithArtifacts(ctx context.Context, userID, threadID st
 }
 
 func (s *Store) AddMessageWithActivityTrace(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (Message, error) {
+	return s.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil)
+}
+
+// AddMessageWithCitations is the full message insert, additionally persisting RAG
+// citations (the documents whose chunks informed the answer). citations may be
+// nil for turns without retrieval.
+func (s *Store) AddMessageWithCitations(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage) (Message, error) {
 	if role != RoleUser && role != RoleAssistant && role != RoleTool {
 		return Message{}, fmt.Errorf("invalid message role %q", role)
 	}
@@ -48,6 +55,12 @@ func (s *Store) AddMessageWithActivityTrace(ctx context.Context, userID, threadI
 	}
 	if !json.Valid(activityTrace) {
 		return Message{}, errors.New("message activity trace must be valid JSON")
+	}
+	if len(citations) == 0 {
+		citations = json.RawMessage("[]")
+	}
+	if !json.Valid(citations) {
+		return Message{}, errors.New("message citations must be valid JSON")
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -78,13 +91,14 @@ INSERT INTO messages (
     model,
     reasoning_effort
 )
-VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		messageID,
 		threadID,
 		userID,
 		role,
 		content,
 		usage.ReasoningContent,
+		string(citations),
 		string(artifacts),
 		string(activityTrace),
 		usage.PromptTokens,

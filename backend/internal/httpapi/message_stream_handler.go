@@ -88,7 +88,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	userContext := s.userContextForUser(r.Context(), user.ID)
 	projectContext := s.projectContextForThread(r.Context(), user.ID, thread)
-	history := buildLLMHistory(user, userContext, projectContext, priorMessages, userMessage)
+	knowledgeContext, knowledgeSources := s.knowledgeContextForThread(r.Context(), user.ID, thread, userMessage.Content)
+	if len(knowledgeSources) > 0 {
+		_ = sendSSEJSON(stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
+	}
+	history := buildLLMHistory(user, userContext, projectContext, knowledgeContext, priorMessages, userMessage)
 	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	// Background reasoning-title generation. The deferred wait is a safety net so
@@ -152,7 +156,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("marshal activity trace failed", "thread_id", threadID, "error", err)
 		activityTraceJSON = []byte("[]")
 	}
-	assistantMessage, err := s.chat.AddMessageWithActivityTrace(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON)
+	// Persist the RAG citations so the answer's sources survive a reload.
+	citationsJSON := json.RawMessage("[]")
+	if len(knowledgeSources) > 0 {
+		if encoded, marshalErr := json.Marshal(knowledgeSources); marshalErr == nil {
+			citationsJSON = encoded
+		}
+	}
+	assistantMessage, err := s.chat.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON, citationsJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return

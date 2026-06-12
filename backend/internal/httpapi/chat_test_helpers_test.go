@@ -89,6 +89,7 @@ type fakeChatStore struct {
 	listThreadsOptions  chat.ListThreadsOptions
 	assistantContent    string
 	assistantContextErr error
+	lastCitations       json.RawMessage
 	createThreadErr     error
 	updateThreadInput   chat.UpdateThreadInput
 	updateThreadErr     error
@@ -222,13 +223,21 @@ func (f *fakeChatStore) AddMessageWithArtifacts(ctx context.Context, _ string, t
 	return f.AddMessageWithActivityTrace(ctx, "", threadID, role, content, usage, artifacts, nil)
 }
 
-func (f *fakeChatStore) AddMessageWithActivityTrace(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (chat.Message, error) {
+func (f *fakeChatStore) AddMessageWithActivityTrace(ctx context.Context, userID string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (chat.Message, error) {
+	return f.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil)
+}
+
+func (f *fakeChatStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage) (chat.Message, error) {
 	if len(artifacts) == 0 {
 		artifacts = json.RawMessage("[]")
 	}
 	if len(activityTrace) == 0 {
 		activityTrace = json.RawMessage("[]")
 	}
+	if len(citations) == 0 {
+		citations = json.RawMessage("[]")
+	}
+	f.lastCitations = citations
 	message := chat.Message{
 		ID:               "msg_1",
 		ThreadID:         threadID,
@@ -237,6 +246,7 @@ func (f *fakeChatStore) AddMessageWithActivityTrace(ctx context.Context, _ strin
 		ReasoningContent: usage.ReasoningContent,
 		Artifacts:        artifacts,
 		ActivityTrace:    activityTrace,
+		Citations:        citations,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,
