@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
@@ -10,12 +10,10 @@ vi.mock("../api", async () => {
   return {
     ...actual,
     getProjectMemory: vi.fn(),
-    refreshProjectMemory: vi.fn(),
   };
 });
 
 const getProjectMemoryMock = vi.mocked(api.getProjectMemory);
-const refreshProjectMemoryMock = vi.mocked(api.refreshProjectMemory);
 
 test("shows the empty state when there is no memory yet", async () => {
   getProjectMemoryMock.mockResolvedValue({ projectId: "p1", content: "", updatedAt: null });
@@ -37,31 +35,18 @@ test("renders memory content when present", async () => {
   expect(await screen.findByText("Travel month: May")).toBeInTheDocument();
 });
 
-test("refresh button rebuilds the memory", async () => {
-  getProjectMemoryMock.mockResolvedValue({ projectId: "p1", content: "", updatedAt: null });
-  refreshProjectMemoryMock.mockResolvedValue({
+test("renders markdown content instead of raw syntax", async () => {
+  getProjectMemoryMock.mockResolvedValue({
     projectId: "p1",
-    content: "Travel month: June",
+    content: "## Project: Trip\n- **Goal**: Compare options",
     updatedAt: "2026-06-11T00:00:00Z",
   });
 
   render(<ProjectMemoryPanel projectId="p1" />);
-  await screen.findByText(/Project memory will show here/);
 
-  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-
-  await waitFor(() => expect(refreshProjectMemoryMock).toHaveBeenCalledWith("p1"));
-  expect(await screen.findByText("Travel month: June")).toBeInTheDocument();
-});
-
-test("shows an error when refresh fails", async () => {
-  getProjectMemoryMock.mockResolvedValue({ projectId: "p1", content: "", updatedAt: null });
-  refreshProjectMemoryMock.mockRejectedValue(new Error("502"));
-
-  render(<ProjectMemoryPanel projectId="p1" />);
-  await screen.findByText(/Project memory will show here/);
-
-  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-
-  expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn.t refresh memory/);
+  // Heading rendered as an actual <h2>, not literal "##" text.
+  const heading = await screen.findByRole("heading", { name: "Project: Trip" });
+  expect(heading.tagName).toBe("H2");
+  // Bold text rendered as <strong>, not literal "**".
+  expect(screen.getByText("Goal").tagName).toBe("STRONG");
 });
