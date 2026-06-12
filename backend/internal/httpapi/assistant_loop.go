@@ -86,7 +86,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 					artifacts = append(artifacts, *response)
 				}
 			} else {
-				output = s.executeToolCall(ctx, call, round)
+				output = s.executeToolCall(ctx, user, call, round)
 			}
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				return assistantLoopResult{}, err

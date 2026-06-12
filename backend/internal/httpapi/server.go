@@ -4,6 +4,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/trick77/slopr/internal/imagegen"
 	"github.com/trick77/slopr/internal/llm"
 	"github.com/trick77/slopr/internal/mcp"
+	"github.com/trick77/slopr/internal/usage"
 )
 
 // Deps are the dependencies needed to build the server. Grows in later phases
@@ -28,6 +30,7 @@ type Deps struct {
 	Sessions              SessionService
 	Users                 UserService
 	Chat                  ChatStore
+	Usage                 UsageStore
 	Artifacts             ArtifactStore
 	LLM                   ChatClient
 	MCP                   ToolService
@@ -46,6 +49,7 @@ type server struct {
 	sessions              SessionService
 	users                 UserService
 	chat                  ChatStore
+	usage                 UsageStore
 	artifacts             ArtifactStore
 	llm                   ChatClient
 	mcp                   ToolService
@@ -88,6 +92,31 @@ type ChatStore interface {
 	UpsertUserMemory(context.Context, string, string, int) (chat.UserMemory, error)
 	CountUserMessages(context.Context, string) (int, error)
 	ListUserMessages(context.Context, string, int) ([]chat.Message, error)
+}
+
+// UsageStore records per-user lifetime usage counters. All methods are
+// best-effort from the caller's side; see server.recordUsage.
+type UsageStore interface {
+	AddTokens(context.Context, string, usage.TokenDelta) error
+	IncWebSearch(context.Context, string) error
+	IncWebFetch(context.Context, string) error
+	IncObscuraFetch(context.Context, string) error
+	IncImageGen(context.Context, string) error
+	IncChatCreated(context.Context, string) error
+	IncProjectCreated(context.Context, string) error
+	Get(context.Context, string) (usage.Totals, error)
+}
+
+// recordUsage runs a best-effort usage-counter update. A nil store (e.g. in
+// tests) or any write error is logged and swallowed so counting never fails the
+// underlying request. counter is a short label used only for logging.
+func (s *server) recordUsage(counter string, fn func() error) {
+	if s.usage == nil {
+		return
+	}
+	if err := fn(); err != nil {
+		slog.Warn("usage counter update failed", "counter", counter, "error", err)
+	}
 }
 
 // ArtifactStore persists and looks up generated artifact metadata.
@@ -148,6 +177,7 @@ func New(d Deps) http.Handler {
 		sessions:              d.Sessions,
 		users:                 d.Users,
 		chat:                  d.Chat,
+		usage:                 d.Usage,
 		artifacts:             d.Artifacts,
 		llm:                   d.LLM,
 		mcp:                   d.MCP,
@@ -166,6 +196,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/auth/callback", s.handleAuthCallback)
 	mux.Handle("POST /api/auth/logout", s.requireAuth(http.HandlerFunc(s.handleAuthLogout)))
 	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
+	mux.Handle("GET /api/me/usage", s.requireAuth(http.HandlerFunc(s.handleGetUsage)))
 	mux.Handle("GET /api/me/memory", s.requireAuth(http.HandlerFunc(s.handleGetUserMemory)))
 	mux.Handle("POST /api/me/memory:refresh", s.requireAuth(http.HandlerFunc(s.handleRefreshUserMemory)))
 	mux.Handle("GET /api/admin/users", s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdminUsers))))

@@ -88,6 +88,7 @@ export function ArtifactsPage({
           />
           <input
             type="text"
+            autoFocus
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Search filenames..."

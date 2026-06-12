@@ -16,10 +16,11 @@ import (
 	"github.com/trick77/slopr/internal/docgen"
 	"github.com/trick77/slopr/internal/imagegen"
 	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/slopr/internal/mcp"
 	"github.com/trick77/slopr/internal/sse"
 )
 
-func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall, round int) string {
+func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int) string {
 	args := summarizeForLog(call.Function.Arguments)
 	arguments, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
@@ -33,13 +34,30 @@ func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall, round i
 	durationMS := time.Since(start).Milliseconds()
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
-		if fallback, ok := s.fetchObscuraFallback(callCtx, call.Function.Name, arguments, round); ok {
+		if fallback, ok := s.fetchObscuraFallback(callCtx, user, call.Function.Name, arguments, round); ok {
 			return fallback
 		}
 		return capToolOutput("tool failed: " + err.Error())
 	}
 	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
+	s.countToolCall(ctx, user, call.Function.Name)
 	return capToolOutput(output)
+}
+
+// countToolCall increments the per-user counter for a successfully completed
+// tool call. An obscura page load is counted per browser_navigate (one fetch =
+// one navigated page); this covers the model driving obscura directly. The
+// deterministic fetch->obscura fallback navigates obscura outside this path, so
+// it counts itself in fetchObscuraFallback — there is no double count.
+func (s *server) countToolCall(ctx context.Context, user auth.User, toolName string) {
+	switch toolName {
+	case tavilySearchExposedName:
+		s.recordUsage("web_search", func() error { return s.usage.IncWebSearch(ctx, user.ID) })
+	case fetchToolName:
+		s.recordUsage("web_fetch", func() error { return s.usage.IncWebFetch(ctx, user.ID) })
+	case obscuraNavigateToolName:
+		s.recordUsage("obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
+	}
 }
 
 // Tool names involved in the deterministic fetch->obscura fallback. fetch is the
@@ -49,13 +67,21 @@ const (
 	fetchToolName           = "fetch__fetch"
 	obscuraNavigateToolName = "obscura__browser_navigate"
 	obscuraSnapshotToolName = "obscura__browser_snapshot"
+	// tavilyServerName is the map key under which the built-in Tavily web-search
+	// server is registered (see cmd/slopr/main.go).
+	tavilyServerName = "tavily"
 )
+
+// tavilySearchExposedName is the namespaced web-search tool as dispatched. It is
+// derived from the mcp package's source-of-truth names so a rename there fails
+// the build / shifts here instead of silently zeroing the counter.
+var tavilySearchExposedName = mcp.ExposedToolName(tavilyServerName, mcp.TavilySearchToolName)
 
 // fetchObscuraFallback retries a failed fetch via obscura's headless browser.
 // It only fires for the fetch tool when obscura is configured and the call
 // carried a URL. On success it returns the obscura snapshot and true; otherwise
 // it returns ok=false so the caller surfaces the original fetch failure.
-func (s *server) fetchObscuraFallback(ctx context.Context, toolName string, arguments map[string]any, round int) (string, bool) {
+func (s *server) fetchObscuraFallback(ctx context.Context, user auth.User, toolName string, arguments map[string]any, round int) (string, bool) {
 	if toolName != fetchToolName {
 		return "", false
 	}
@@ -76,6 +102,7 @@ func (s *server) fetchObscuraFallback(ctx context.Context, toolName string, argu
 		return "", false
 	}
 	slog.Info("fetch failed, obscura fallback succeeded", "url", url, "round", round, "result_bytes", len(snapshot))
+	s.recordUsage("obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
 	return capToolOutput(snapshot), true
 }
 
@@ -295,6 +322,7 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 		Height:          meta.Height,
 		DurationMs:      meta.DurationMs,
 	}
+	s.recordUsage("image_gen", func() error { return s.usage.IncImageGen(ctx, user.ID) })
 	_ = sendSSEJSON(stream, "artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
 }

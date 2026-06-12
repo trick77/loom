@@ -12,10 +12,12 @@ const (
 	// defaultTavilyURL is the hosted Tavily MCP endpoint used by the built-in
 	// Tavily web-search adapter when BACKEND_TAVILY_URL is unset.
 	defaultTavilyURL = "https://mcp.tavily.com/mcp/"
-	// tavilySearchToolName is the server-side name of Tavily's web search tool.
+	// TavilySearchToolName is the server-side name of Tavily's web search tool.
 	// It is the only tool the built-in adapter exposes; Tavily's other tools
 	// (extract/map/crawl) are filtered out via the ServerConfig.Tools allowlist.
-	tavilySearchToolName = "tavily_search"
+	// Exported so call sites can derive the exposed tool name via ExposedToolName
+	// instead of duplicating the literal.
+	TavilySearchToolName = "tavily_search"
 )
 
 // Config is the runtime MCP server configuration built from first-class app settings.
@@ -60,7 +62,7 @@ func TavilyServerConfig(baseURL, apiKey string) ServerConfig {
 	}
 	cfg := ServerConfig{
 		Transport: TransportStreamableHTTP,
-		Tools:     []string{tavilySearchToolName},
+		Tools:     []string{TavilySearchToolName},
 	}
 	if u, err := url.Parse(baseURL); err == nil {
 		q := u.Query()

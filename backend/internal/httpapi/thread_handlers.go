@@ -68,6 +68,7 @@ func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	s.recordUsage("chat_created", func() error { return s.usage.IncChatCreated(r.Context(), user.ID) })
 	writeJSONStatus(w, http.StatusCreated, thread)
 }
 
