@@ -30,6 +30,7 @@ export function ProjectDetailPage({
   onEditProject,
   onArchiveProject,
   onDeleteProject,
+  onToggleStar,
   onOpenSidebar,
 }: {
   project: Project;
@@ -53,6 +54,7 @@ export function ProjectDetailPage({
   onEditProject(project: Project): void;
   onArchiveProject(project: Project): void;
   onDeleteProject(project: Project): void;
+  onToggleStar(project: Project, starred: boolean): void;
   onOpenSidebar(): void;
 }) {
   const projectMenuKey = `Project:${project.id}`;
@@ -97,24 +99,35 @@ export function ProjectDetailPage({
                   </p>
                 )}
               </div>
-              <div className="relative" data-project-detail-menu-root>
+              <div className="flex items-center gap-1">
+                <div className="relative" data-project-detail-menu-root>
+                  <button
+                    aria-expanded={openThreadMenuID === projectMenuKey}
+                    aria-label="Open project actions"
+                    className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
+                    type="button"
+                    onClick={() => onToggleThreadMenu(projectMenuKey)}
+                  >
+                    <Icon name="moreVertical" size="18px" />
+                  </button>
+                  {openThreadMenuID === projectMenuKey && (
+                    <ProjectActionsMenu
+                      project={project}
+                      onEdit={onEditProject}
+                      onArchive={onArchiveProject}
+                      onDelete={onDeleteProject}
+                    />
+                  )}
+                </div>
                 <button
-                  aria-expanded={openThreadMenuID === projectMenuKey}
-                  aria-label="Open project actions"
+                  aria-label={project.starred ? "Unstar project" : "Star project"}
+                  aria-pressed={project.starred}
                   className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
                   type="button"
-                  onClick={() => onToggleThreadMenu(projectMenuKey)}
+                  onClick={() => onToggleStar(project, !project.starred)}
                 >
-                  <Icon name="moreVertical" size="18px" />
+                  <Icon name={project.starred ? "starFilled" : "star"} size="18px" />
                 </button>
-                {openThreadMenuID === projectMenuKey && (
-                  <ProjectActionsMenu
-                    project={project}
-                    onEdit={onEditProject}
-                    onArchive={onArchiveProject}
-                    onDelete={onDeleteProject}
-                  />
-                )}
               </div>
             </header>
             <div className="mt-10">

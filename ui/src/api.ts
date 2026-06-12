@@ -15,6 +15,7 @@ export type Project = {
   id: string;
   name: string;
   description: string;
+  starred: boolean;
   archivedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -179,6 +180,14 @@ export async function updateProject(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+  return expectJSON<Project>(response, "failed to update project");
+}
+
+export async function setProjectStarred(projectId: string, starred: boolean): Promise<Project> {
+  const action = starred ? "star" : "unstar";
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/${action}`, {
+    method: "POST",
   });
   return expectJSON<Project>(response, "failed to update project");
 }

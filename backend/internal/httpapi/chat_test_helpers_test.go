@@ -124,6 +124,14 @@ func (f *fakeChatStore) UpdateProject(_ context.Context, _ string, projectID str
 	return f.project, true, nil
 }
 
+func (f *fakeChatStore) SetProjectStarred(_ context.Context, _ string, projectID string, starred bool) (chat.Project, bool, error) {
+	if f.project.ID == "" || f.project.ID != projectID {
+		return chat.Project{}, false, nil
+	}
+	f.project.Starred = starred
+	return f.project, true, nil
+}
+
 func (f *fakeChatStore) SetProjectArchived(_ context.Context, _ string, projectID string, _ bool) (bool, error) {
 	return f.project.ID != "" && f.project.ID == projectID, nil
 }

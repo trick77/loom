@@ -28,6 +28,7 @@ import {
   getThread,
   listProjects,
   listThreads,
+  setProjectStarred,
   setThreadStarred,
   stopMessage,
   streamMessage,
@@ -90,26 +91,8 @@ type ChatShellProps = {
   onSessionExpired(): void;
 };
 
-const ACTIVITY_TRACE_EXPANDED_STORAGE_KEY = "slopr:activity-trace-expanded";
-
 function roleLabel(role: User["role"]): string {
   return role === "admin" ? "Admin" : "User";
-}
-
-function readActivityTraceExpandedPreference(): boolean {
-  try {
-    return window.localStorage.getItem(ACTIVITY_TRACE_EXPANDED_STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function writeActivityTraceExpandedPreference(expanded: boolean): void {
-  try {
-    window.localStorage.setItem(ACTIVITY_TRACE_EXPANDED_STORAGE_KEY, String(expanded));
-  } catch {
-    // Storage is a preference only; keep the UI usable if the browser blocks it.
-  }
 }
 
 export function ChatShell({
@@ -150,15 +133,6 @@ export function ChatShell({
     update: updateActivityTrace,
     clear: clearActivityTrace,
   } = useActivityTrace();
-  const [activityTraceExpandedPreference, setActivityTraceExpandedPreferenceState] = useState(
-    readActivityTraceExpandedPreference,
-  );
-  const activityTraceExpandedPreferenceRef = useRef(activityTraceExpandedPreference);
-  const setActivityTraceExpandedPreference = useCallback((expanded: boolean) => {
-    activityTraceExpandedPreferenceRef.current = expanded;
-    setActivityTraceExpandedPreferenceState(expanded);
-    writeActivityTraceExpandedPreference(expanded);
-  }, []);
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -345,6 +319,12 @@ export function ChatShell({
 
   const displayName = user.displayName || user.username;
   const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
+  const recentThreads = useMemo(() => threads.filter((thread) => !thread.starred), [threads]);
+  const starredProjects = useMemo(() => projects.filter((project) => project.starred), [projects]);
+  const unstarredProjects = useMemo(
+    () => projects.filter((project) => !project.starred),
+    [projects],
+  );
   const activeProject = useMemo(() => {
     if (route.view !== "project") return null;
     return projects.find((project) => project.id === route.projectID) ?? null;
@@ -507,6 +487,25 @@ export function ChatShell({
       setSendError("");
     } catch (error) {
       handleActionError(error, "Thread failed to update.", setSendError);
+    } finally {
+      setIsUpdatingStar(false);
+    }
+  }
+
+  async function handleSetProjectStarred(project: Project, starred: boolean, menuKey?: string) {
+    if (isUpdatingStar) return;
+    setIsUpdatingStar(true);
+    try {
+      const updatedProject = await setProjectStarred(project.id, starred);
+      setProjects((current) =>
+        current.map((item) => (item.id === updatedProject.id ? updatedProject : item)),
+      );
+      if (menuKey !== undefined) {
+        setOpenThreadMenuID(null);
+      }
+      setSendError("");
+    } catch (error) {
+      handleActionError(error, "Project failed to update.", setSendError);
     } finally {
       setIsUpdatingStar(false);
     }
@@ -894,25 +893,6 @@ export function ChatShell({
               {loadError}
             </div>
           )}
-          <section className="mt-5">
-            <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">
-              <span>Projects</span>
-            </div>
-            <div className="space-y-1.5">
-              {projects.map((project) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  className={`block h-7 w-full truncate rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
-                    route.view === "project" && route.projectID === project.id ? "bg-[#111110] text-white" : ""
-                  }`}
-                  onClick={() => navigateToProject(project)}
-                >
-                  {project.name}
-                </button>
-              ))}
-            </div>
-          </section>
           <SidebarSection
             title="Starred"
             threads={starredThreads}
@@ -934,10 +914,47 @@ export function ChatShell({
               setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
             }
             onCloseMenu={() => setOpenThreadMenuID(null)}
+            leading={starredProjects.map((project) => (
+              <SidebarProjectItem
+                key={project.id}
+                menuKey={`StarredProject:${project.id}`}
+                project={project}
+                active={route.view === "project" && route.projectID === project.id}
+                menuOpen={openThreadMenuID === `StarredProject:${project.id}`}
+                onNavigate={navigateToProject}
+                onStarChange={handleSetProjectStarred}
+                onToggleMenu={(menuKey) =>
+                  setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+                }
+                onCloseMenu={() => setOpenThreadMenuID(null)}
+              />
+            ))}
           />
+          <section className="mt-5">
+            <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">
+              <span>Projects</span>
+            </div>
+            <div className="space-y-1.5">
+              {unstarredProjects.map((project) => (
+                <SidebarProjectItem
+                  key={project.id}
+                  menuKey={`SidebarProject:${project.id}`}
+                  project={project}
+                  active={route.view === "project" && route.projectID === project.id}
+                  menuOpen={openThreadMenuID === `SidebarProject:${project.id}`}
+                  onNavigate={navigateToProject}
+                  onStarChange={handleSetProjectStarred}
+                  onToggleMenu={(menuKey) =>
+                    setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+                  }
+                  onCloseMenu={() => setOpenThreadMenuID(null)}
+                />
+              ))}
+            </div>
+          </section>
           <SidebarSection
             title="Recents"
-            threads={threads}
+            threads={recentThreads}
             activeThreadID={route.view === "chat" ? route.threadID : null}
             openThreadMenuID={openThreadMenuID}
             onSelect={selectThread}
@@ -1086,6 +1103,7 @@ export function ChatShell({
                 setModalError("");
                 setOpenThreadMenuID(null);
               }}
+              onToggleStar={(project, starred) => void handleSetProjectStarred(project, starred)}
               onOpenSidebar={() => setMobileSidebarOpen(true)}
             />
           )
@@ -1112,7 +1130,6 @@ export function ChatShell({
             streamingArtifacts={streamingArtifacts}
             activityTrace={activityTrace}
             toolPending={toolPending}
-            activityTraceExpandedPreference={activityTraceExpandedPreference}
             sendError={sendError}
             isSending={isSending}
             mcpStatus={mcpStatus}
@@ -1121,7 +1138,6 @@ export function ChatShell({
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
-            onActivityTraceExpandedPreferenceChange={setActivityTraceExpandedPreference}
             onOpenProject={navigateToProject}
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}
@@ -1305,6 +1321,7 @@ function SidebarSection({
   onStarChange,
   onToggleMenu,
   onCloseMenu,
+  leading,
 }: {
   title: string;
   threads: Thread[];
@@ -1317,11 +1334,13 @@ function SidebarSection({
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
   onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
+  leading?: ReactNode;
 }) {
   return (
     <section className="mt-5">
       <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
       <div className="space-y-1.5">
+        {leading}
         {threads.map((thread) => (
           <SidebarThreadItem
             key={thread.id}
@@ -1434,6 +1453,116 @@ function SidebarThreadItem({
   );
 }
 
+function SidebarProjectItem({
+  menuKey,
+  project,
+  active,
+  menuOpen,
+  onNavigate,
+  onStarChange,
+  onToggleMenu,
+  onCloseMenu,
+}: {
+  menuKey: string;
+  project: Project;
+  active: boolean;
+  menuOpen: boolean;
+  onNavigate(project: Project): void;
+  onStarChange(project: Project, starred: boolean, menuKey: string): void;
+  onToggleMenu(menuKey: string): void;
+  onCloseMenu(): void;
+}) {
+  const itemRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node) || itemRef.current?.contains(target)) return;
+      onCloseMenu();
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [menuOpen, onCloseMenu]);
+
+  return (
+    <div ref={itemRef} className="relative">
+      <div
+        className={`flex h-7 w-full items-center rounded-md py-0 pl-1.5 pr-1 text-left transition-colors ${
+          active ? "bg-[#111110] text-white" : "hover:bg-[#2a2a28]"
+        }`}
+      >
+        <button
+          className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left"
+          onClick={() => onNavigate(project)}
+          type="button"
+        >
+          {project.starred && (
+            <span
+              className="grid h-4 w-4 shrink-0 place-items-center text-[#97958c]"
+              aria-hidden="true"
+            >
+              <Icon name="archive" size="15px" />
+            </span>
+          )}
+          <span className="min-w-0 flex-1 truncate whitespace-nowrap">{project.name}</span>
+        </button>
+        <button
+          aria-expanded={menuOpen}
+          aria-label="Open project actions"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleMenu(menuKey);
+          }}
+          type="button"
+        >
+          <Icon name="moreVertical" size="18px" />
+        </button>
+      </div>
+      {menuOpen && (
+        <ProjectSidebarMenu
+          project={project}
+          className="right-1 left-auto md:left-[174px] md:right-auto"
+          onStarChange={(target, starred) => onStarChange(target, starred, menuKey)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProjectSidebarMenu({
+  project,
+  className = "right-0 top-full",
+  onStarChange,
+}: {
+  project: Project;
+  className?: string;
+  onStarChange(project: Project, starred: boolean): void;
+}) {
+  return (
+    <div
+      aria-label="Project actions"
+      className={`ui-sidebar-text absolute z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
+      role="menu"
+    >
+      <button
+        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+        role="menuitem"
+        type="button"
+        onClick={() => onStarChange(project, !project.starred)}
+      >
+        <span
+          className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[19px] leading-none"
+          aria-hidden="true"
+        >
+          <Icon name={project.starred ? "starFilled" : "star"} size="19px" />
+        </span>
+        {project.starred ? "Unstar" : "Star"}
+      </button>
+    </div>
+  );
+}
 
 function RenameThreadModal({
   title,
@@ -1643,7 +1772,6 @@ function ChatPanel({
   streamingArtifacts,
   activityTrace,
   toolPending,
-  activityTraceExpandedPreference,
   sendError,
   isSending,
   mcpStatus,
@@ -1653,7 +1781,6 @@ function ChatPanel({
   onSend,
   onStop,
   onRetry,
-  onActivityTraceExpandedPreferenceChange,
   onOpenProject,
   onDeleteThread,
   onRenameThread,
@@ -1670,7 +1797,6 @@ function ChatPanel({
   streamingArtifacts: Artifact[];
   activityTrace: ActivityTraceEvent[];
   toolPending: boolean;
-  activityTraceExpandedPreference: boolean;
   sendError: string;
   isSending: boolean;
   mcpStatus: McpStatusEvent | null;
@@ -1679,7 +1805,6 @@ function ChatPanel({
   onSend(): void;
   onStop(): void;
   onRetry(content: string): void;
-  onActivityTraceExpandedPreferenceChange(expanded: boolean): void;
   onOpenProject(project: Project): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
@@ -1698,7 +1823,10 @@ function ChatPanel({
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   const hasActiveActivityTrace = activityTrace.length > 0;
   const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
-  const activityTraceExpanded = activityTraceExpandedPreference;
+  // The live thinking window manages its own open/closed state: it opens while
+  // inference is running and collapses once the answer is in. There is no
+  // persisted preference — past traces simply start collapsed (uncontrolled).
+  const [liveTraceExpanded, setLiveTraceExpanded] = useState(false);
   // Once the final answer streams (and no tool is running or pending), the
   // reasoning phase is over: show its abstract instead of "Thinking". Only
   // applies to traces that actually have reasoning, so reasoning-free turns keep
@@ -1716,6 +1844,15 @@ function ChatPanel({
   const latestReasoningTitled =
     latestReasoning?.type === "reasoning" && (latestReasoning.title?.trim() ?? "") !== "";
   const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning && !toolPending && latestReasoningTitled;
+  // Drive the live thinking window: open it whenever inference is actively
+  // thinking, collapse it the moment the answer settles or the turn ends.
+  // Keyed on isSending (not the trace's presence, which lingers after the turn
+  // completes) so a finished trace stays collapsed. Manual toggles in between
+  // still stick until the next phase change.
+  const liveTraceThinking = isSending && !reasoningSettled;
+  useEffect(() => {
+    setLiveTraceExpanded(liveTraceThinking);
+  }, [liveTraceThinking]);
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
@@ -1800,7 +1937,7 @@ function ChatPanel({
     streamingArtifacts.length,
     streamingText,
     activityTrace,
-    activityTraceExpanded,
+    liveTraceExpanded,
   ]);
 
   useEffect(() => {
@@ -1888,12 +2025,7 @@ function ChatPanel({
             {messages.map((message, index) => (
               <div key={message.id} className="space-y-6">
                 {message.role === "assistant" && message.activityTrace !== undefined && (
-                  <ActivityTracePanel
-                    events={message.activityTrace}
-                    active={false}
-                    expanded={activityTraceExpanded}
-                    onExpandedChange={onActivityTraceExpandedPreferenceChange}
-                  />
+                  <ActivityTracePanel events={message.activityTrace} active={false} />
                 )}
                 {message.role === "assistant" && message.activityTrace === undefined && message.reasoningContent && (
                   <ActivityTracePanel
@@ -1906,8 +2038,6 @@ function ChatPanel({
                       },
                     ]}
                     active={false}
-                    expanded={activityTraceExpanded}
-                    onExpandedChange={onActivityTraceExpandedPreferenceChange}
                   />
                 )}
                 <MessageBubble
@@ -1922,8 +2052,8 @@ function ChatPanel({
                 events={activityTrace}
                 active={!reasoningSettled}
                 streaming={isSending}
-                expanded={activityTraceExpanded}
-                onExpandedChange={onActivityTraceExpandedPreferenceChange}
+                expanded={liveTraceExpanded}
+                onExpandedChange={setLiveTraceExpanded}
               />
             )}
             {streamingArtifacts.map((artifact) => (

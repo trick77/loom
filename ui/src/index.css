@@ -356,6 +356,13 @@ body {
   stroke: none;
 }
 
+/* The checkCircle icon-font glyph sits ~1.5px low within its em box, so the
+   "Done" node reads lower than its label. Lift it to optically center on the
+   label. (Measured against the label ink box, not the line box.) */
+.ui-activity-trace-icon-done {
+  transform: translateY(-1.5px);
+}
+
 .ui-activity-trace-icon-reasoning::after {
   display: block;
   width: 0.25rem;
