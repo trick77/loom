@@ -125,7 +125,30 @@ func (s *Service) Index(ctx context.Context, userID, documentID string) error {
 }
 
 func (s *Service) List(ctx context.Context, userID string, projectID *string) ([]rag.Document, error) {
-	return s.store.ListDocuments(ctx, userID, projectID)
+	docs, err := s.store.ListDocuments(ctx, userID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	// Light reconciliation: a document whose file vanished from the volume is
+	// marked stale and excluded from retrieval. Only check states that imply the
+	// file should exist, to keep listing cheap.
+	for i := range docs {
+		d := &docs[i]
+		if d.Status == rag.StatusStale || d.Status == rag.StatusError {
+			continue
+		}
+		abs, err := artifact.ResolveExisting(s.usersDir, userID, d.VolumeRelpath)
+		if err != nil {
+			continue
+		}
+		if _, statErr := os.Stat(abs); os.IsNotExist(statErr) {
+			if updErr := s.store.UpdateStatus(ctx, userID, d.ID, rag.StatusStale, "file missing from volume"); updErr == nil {
+				d.Status = rag.StatusStale
+				d.Error = "file missing from volume"
+			}
+		}
+	}
+	return docs, nil
 }
 
 func (s *Service) Get(ctx context.Context, userID, documentID string) (rag.Document, bool, error) {

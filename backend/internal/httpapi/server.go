@@ -29,6 +29,7 @@ type Deps struct {
 	Users                 UserService
 	Chat                  ChatStore
 	Artifacts             ArtifactStore
+	Documents             DocumentService
 	LLM                   ChatClient
 	MCP                   ToolService
 	DocTools              []docgen.Generator
@@ -47,6 +48,7 @@ type server struct {
 	users                 UserService
 	chat                  ChatStore
 	artifacts             ArtifactStore
+	documents             DocumentService
 	llm                   ChatClient
 	mcp                   ToolService
 	docTools              []docgen.Generator
@@ -149,6 +151,7 @@ func New(d Deps) http.Handler {
 		users:                 d.Users,
 		chat:                  d.Chat,
 		artifacts:             d.Artifacts,
+		documents:             d.Documents,
 		llm:                   d.LLM,
 		mcp:                   d.MCP,
 		docTools:              d.DocTools,
@@ -195,6 +198,11 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))
+	mux.Handle("POST /api/documents/upload", s.requireAuth(http.HandlerFunc(s.handleUploadDocument)))
+	mux.Handle("GET /api/documents", s.requireAuth(http.HandlerFunc(s.handleListDocuments)))
+	mux.Handle("POST /api/documents/{documentID}/index", s.requireAuth(http.HandlerFunc(s.handleIndexDocument)))
+	mux.Handle("POST /api/documents/{documentID}/unindex", s.requireAuth(http.HandlerFunc(s.handleUnindexDocument)))
+	mux.Handle("DELETE /api/documents/{documentID}", s.requireAuth(http.HandlerFunc(s.handleDeleteDocument)))
 	if d.Static != nil {
 		mux.Handle("/", d.Static)
 	}

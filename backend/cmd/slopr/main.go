@@ -19,10 +19,12 @@ import (
 	"github.com/trick77/slopr/internal/chat"
 	"github.com/trick77/slopr/internal/config"
 	"github.com/trick77/slopr/internal/docgen"
+	"github.com/trick77/slopr/internal/documents"
 	"github.com/trick77/slopr/internal/httpapi"
 	"github.com/trick77/slopr/internal/imagegen"
 	"github.com/trick77/slopr/internal/llm"
 	"github.com/trick77/slopr/internal/mcp"
+	"github.com/trick77/slopr/internal/rag"
 	"github.com/trick77/slopr/internal/store"
 	"github.com/trick77/slopr/web"
 )
@@ -98,6 +100,23 @@ func run() error {
 	authMW := auth.NewMiddleware(sessionStore, userStore)
 	chatStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
+
+	// Document RAG is enabled only when an embeddings endpoint is configured.
+	var documentService httpapi.DocumentService
+	if strings.TrimSpace(cfg.EmbedBaseURL) != "" {
+		ragStore := rag.NewStore(db)
+		if err := ragStore.ResetStuckIngestions(context.Background()); err != nil {
+			return err
+		}
+		embedClient := rag.NewEmbedClient(rag.EmbedConfig{
+			BaseURL: cfg.EmbedBaseURL,
+			APIKey:  cfg.EmbedAPIKey,
+			Model:   cfg.EmbedModel,
+		}, http.DefaultClient)
+		tikaClient := documents.NewTikaClient(documents.TikaConfig{BaseURL: cfg.TikaURL})
+		ingester := rag.NewIngester(ragStore, documents.VolumeOpener{UsersDir: cfg.UsersDir}, tikaClient, embedClient)
+		documentService = documents.NewService(ragStore, artifactStore, ingester, embedClient, cfg.UsersDir)
+	}
 	docTools := []docgen.Generator{
 		docgen.TextGenerator{},
 		docgen.PDFGenerator{},
@@ -183,6 +202,7 @@ func run() error {
 		Users:                 userStore,
 		Chat:                  chatStore,
 		Artifacts:             artifactStore,
+		Documents:             documentService,
 		LLM:                   chatClient,
 		MCP:                   toolService,
 		DocTools:              docTools,
