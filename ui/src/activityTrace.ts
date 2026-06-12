@@ -180,8 +180,10 @@ export function summarizeToolResult(tool: ActivityTraceToolEvent, rawOutput: str
 }
 
 export function domainFromURL(value: string): string | undefined {
+  const href = externalHTTPURL(value);
+  if (href === undefined) return undefined;
   try {
-    return new URL(value).hostname.replace(/^www\./, "");
+    return new URL(href).hostname.replace(/^www\./, "");
   } catch {
     return undefined;
   }
@@ -192,12 +194,44 @@ export function faviconURL(value: string): string | undefined {
   return domain === undefined ? undefined : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
 }
 
+export function externalHTTPURL(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (
+    trimmed === "" ||
+    trimmed.startsWith("?") ||
+    trimmed.startsWith("#") ||
+    (trimmed.startsWith("/") && !trimmed.startsWith("//"))
+  ) {
+    return undefined;
+  }
+
+  let candidate = trimmed;
+  if (trimmed.startsWith("//")) {
+    candidate = `https:${trimmed}`;
+  } else if (looksLikeDomainURL(trimmed)) {
+    candidate = `https://${trimmed}`;
+  } else if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function isSearchTool(name: string): boolean {
   return /search|tavily|web/i.test(name);
 }
 
 function isFetchTool(name: string): boolean {
   return /fetch|crawl|read|browser/i.test(name);
+}
+
+function looksLikeDomainURL(value: string): boolean {
+  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#]|$)/i.test(value);
 }
 
 function readableToolName(name: string): string {
