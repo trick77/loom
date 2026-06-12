@@ -37,7 +37,7 @@ func (s *server) knowledgeContextForThread(ctx context.Context, userID string, t
 	if s.documents == nil || strings.TrimSpace(query) == "" {
 		return "", nil
 	}
-	chunks, err := s.documents.Retrieve(ctx, userID, thread.ProjectID, query, knowledgeTopK)
+	chunks, err := s.documents.Retrieve(ctx, userID, thread.ProjectID, &thread.ID, query, knowledgeTopK)
 	if err != nil || len(chunks) == 0 {
 		return "", nil
 	}

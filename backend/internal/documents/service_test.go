@@ -152,7 +152,7 @@ func TestService_Retrieve_skipsEmbeddingWhenNoChunks(t *testing.T) {
 	emb := &countingEmbedder{}
 	svc := NewService(rag.NewStore(db), artifact.NewStore(db), &fakeIndexer{}, emb, filepath.Join(dir, "users"))
 
-	res, err := svc.Retrieve(context.Background(), "u", nil, "anything", 5)
+	res, err := svc.Retrieve(context.Background(), "u", nil, nil, "anything", 5)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestService_Retrieve_embedsQueryAndReturnsChunks(t *testing.T) {
 	if err := svc.store.ReplaceChunks(ctx, "u", doc.ID, []rag.TextChunk{{Text: "hello"}}, [][]float32{v}); err != nil {
 		t.Fatalf("seed chunks: %v", err)
 	}
-	res, err := svc.Retrieve(ctx, "u", nil, "what is hello", 5)
+	res, err := svc.Retrieve(ctx, "u", nil, nil, "what is hello", 5)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}

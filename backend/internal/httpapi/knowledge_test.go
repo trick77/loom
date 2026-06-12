@@ -28,7 +28,7 @@ func (s *stubDocs) Get(context.Context, string, string) (rag.Document, bool, err
 func (s *stubDocs) Index(context.Context, string, string) error   { return nil }
 func (s *stubDocs) Unindex(context.Context, string, string) error { return nil }
 func (s *stubDocs) Delete(context.Context, string, string) error  { return nil }
-func (s *stubDocs) Retrieve(_ context.Context, _ string, projectID *string, _ string, _ int) ([]rag.RetrievedChunk, error) {
+func (s *stubDocs) Retrieve(_ context.Context, _ string, projectID *string, _ *string, _ string, _ int) ([]rag.RetrievedChunk, error) {
 	s.gotPID = projectID
 	return s.chunks, s.err
 }

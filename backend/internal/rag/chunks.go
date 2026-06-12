@@ -44,11 +44,11 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 		return fmt.Errorf("chunk/embedding count mismatch: %d vs %d", len(chunks), len(embeddings))
 	}
 
-	var projectID *string
-	if err := s.db.QueryRowContext(ctx, `SELECT project_id FROM documents WHERE user_id = ? AND id = ?`, userID, documentID).Scan(&projectID); err != nil {
+	var projectID, threadID *string
+	if err := s.db.QueryRowContext(ctx, `SELECT project_id, thread_id FROM documents WHERE user_id = ? AND id = ?`, userID, documentID).Scan(&projectID, &threadID); err != nil {
 		return fmt.Errorf("load document scope: %w", err)
 	}
-	scope := scopeValue(projectID)
+	scope := scopeKey(projectID, threadID)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

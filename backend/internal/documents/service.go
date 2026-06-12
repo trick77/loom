@@ -52,8 +52,12 @@ func (s *Service) SetUsageRecorder(usage UsageRecorder) {
 	s.usage = usage
 }
 
-// UploadInput describes a single document upload. ThreadID may be empty for a
-// global (Artifacts-browser) upload; ProjectID scopes the document for retrieval.
+// UploadInput describes a single document upload. ProjectID scopes the document
+// to a project; a project-less upload with a ThreadID is private to that chat.
+// A project-less upload with an empty ThreadID would be user-global, but no
+// caller does that today (the composer always passes its thread) — such globals
+// are treated as a legacy state and are cleaned up by
+// rag.ReconcileLegacyDocumentScopes.
 type UploadInput struct {
 	UserID    string
 	ThreadID  string
@@ -108,10 +112,20 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("record artifact: %w", err)
 	}
 
+	// A composer upload in a project-less chat is private to that one thread; a
+	// project upload keeps the project scope (ThreadID is then provenance-only).
+	// A project-less upload with no thread stays user-global — a legacy-only state
+	// no caller produces today (see UploadInput).
+	var threadID *string
+	if in.ProjectID == nil && in.ThreadID != "" {
+		threadID = &in.ThreadID
+	}
+
 	doc := rag.Document{
 		ID:            chat.NewIDForInternalUse(),
 		UserID:        in.UserID,
 		ProjectID:     in.ProjectID,
+		ThreadID:      threadID,
 		ArtifactID:    &art.ID,
 		VolumeRelpath: out.VolumeRelPath,
 		Filename:      out.DisplayFilename,
@@ -198,10 +212,10 @@ func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
 // Retrieve embeds the query and returns the most relevant chunks for the user's
 // knowledge scope. It is best-effort for callers: an embedding failure surfaces
 // as an error the caller may choose to ignore.
-func (s *Service) Retrieve(ctx context.Context, userID string, projectID *string, query string, k int) ([]rag.RetrievedChunk, error) {
+func (s *Service) Retrieve(ctx context.Context, userID string, projectID, threadID *string, query string, k int) ([]rag.RetrievedChunk, error) {
 	// Avoid an embedding round-trip on every chat turn when the user has nothing
 	// indexed in scope.
-	if has, err := s.store.HasIndexedChunks(ctx, userID, projectID); err != nil {
+	if has, err := s.store.HasIndexedChunks(ctx, userID, projectID, threadID); err != nil {
 		return nil, err
 	} else if !has {
 		return nil, nil
@@ -214,7 +228,7 @@ func (s *Service) Retrieve(ctx context.Context, userID string, projectID *string
 		return nil, nil
 	}
 	s.recordEmbeddingUsage(ctx, userID, result.Usage)
-	return s.store.Retrieve(ctx, userID, projectID, result.Vectors[0], k)
+	return s.store.Retrieve(ctx, userID, projectID, threadID, result.Vectors[0], k)
 }
 
 func (s *Service) recordEmbeddingUsage(ctx context.Context, userID string, u rag.EmbeddingUsage) {

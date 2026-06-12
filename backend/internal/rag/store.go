@@ -24,6 +24,23 @@ func scopeValue(projectID *string) string {
 	return *projectID
 }
 
+// threadScopePrefix namespaces a thread-private scope key in the shared
+// vec_chunks.project_id metadata slot. Document/thread IDs are base64url
+// (see chat.NewIDForInternalUse), never contain ':', so the namespaces can't
+// collide with a real project id or the '' global scope.
+const threadScopePrefix = "thread:"
+
+// scopeKey derives the vec_chunks.project_id metadata value for a document.
+// A thread-private document (no project, a thread) is keyed 'thread:<threadID>'
+// so it is retrievable only within that thread; everything else keeps the
+// project/global encoding from scopeValue.
+func scopeKey(projectID, threadID *string) string {
+	if projectID == nil && threadID != nil && *threadID != "" {
+		return threadScopePrefix + *threadID
+	}
+	return scopeValue(projectID)
+}
+
 // vecLiteral encodes a float32 vector as the JSON-array text sqlite-vec accepts.
 func vecLiteral(v []float32) string {
 	var b strings.Builder

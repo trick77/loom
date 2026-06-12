@@ -86,7 +86,7 @@ func TestIngester_Ingest_happyPath(t *testing.T) {
 	if got.Status != StatusEmbedded {
 		t.Errorf("status = %q, want embedded", got.Status)
 	}
-	res, _ := s.Retrieve(ctx, "u1", nil, unit(), 50)
+	res, _ := s.Retrieve(ctx, "u1", nil, nil, unit(), 50)
 	if len(res) == 0 {
 		t.Error("no chunks retrievable after ingest")
 	}

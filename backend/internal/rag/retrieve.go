@@ -7,16 +7,20 @@ import (
 )
 
 // Retrieve returns up to k chunks most similar to queryEmbedding, scoped to the
-// user and the thread's knowledge scope: a project thread (projectID != nil)
-// sees that project's chunks plus user-global ones; a project-less thread sees
-// only user-global chunks.
-func (s *Store) Retrieve(ctx context.Context, userID string, projectID *string, queryEmbedding []float32, k int) ([]RetrievedChunk, error) {
+// user and the thread's knowledge scope: every thread sees user-global chunks; a
+// project thread (projectID != nil) also sees that project's chunks; and a thread
+// additionally sees its own thread-private chunks (composer uploads in a
+// project-less chat).
+func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID *string, queryEmbedding []float32, k int) ([]RetrievedChunk, error) {
 	if k <= 0 {
 		k = 5
 	}
 	scopes := []string{""} // always include global
 	if projectID != nil {
 		scopes = append(scopes, *projectID)
+	}
+	if threadID != nil && *threadID != "" {
+		scopes = append(scopes, threadScopePrefix+*threadID)
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(scopes)), ",")
 

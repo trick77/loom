@@ -36,7 +36,7 @@ describe("MessageCitations", () => {
     render(<MessageCitations citations={sources} />);
     expect(screen.getByText("Sources")).toBeInTheDocument();
     expect(screen.getByText("guide.pdf")).toBeInTheDocument();
-    // Two chunks from one document => a ×2 reference badge.
-    expect(screen.getByText("×2")).toBeInTheDocument();
+    // Two chunks from one document => an excerpt-count badge.
+    expect(screen.getByText("2 excerpts")).toBeInTheDocument();
   });
 });

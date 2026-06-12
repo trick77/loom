@@ -4,13 +4,16 @@ import { indexDocument, listDocuments, uploadDocument } from "../api";
 
 // Shared "+" composer attachment flow: upload a picked file, add it to knowledge,
 // and surface ingestion progress via attachNote. Scope decides where the document
-// lands for retrieval: projectId scopes it to a project; omitting it makes the
-// document user-global. threadId is provenance only and does not affect retrieval.
+// lands for retrieval: a projectId scopes it to a project; a project-less upload
+// with a threadId is private to that one chat; without either it is user-global.
+// The scope can be overridden per call (used by the new-chat deferred upload,
+// which only knows the freshly created thread id at send time).
 export function useDocumentAttachments(scope: { threadId?: string; projectId?: string }) {
-  const { threadId, projectId } = scope;
   const [attachNote, setAttachNote] = useState("");
   const handleAttachFiles = useCallback(
-    (files: File[]) => {
+    (files: File[], override?: { threadId?: string; projectId?: string }) => {
+      const threadId = override?.threadId ?? scope.threadId;
+      const projectId = override?.projectId ?? scope.projectId;
       // Poll the document list until ingestion (which runs server-side in the
       // background) reaches a terminal state, so the note reflects real status
       // rather than just "request accepted".
@@ -53,7 +56,7 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
         }
       })();
     },
-    [threadId, projectId],
+    [scope.threadId, scope.projectId],
   );
 
   return { attachNote, handleAttachFiles };

@@ -36,7 +36,7 @@ func (f *fakeDocumentService) Get(context.Context, string, string) (rag.Document
 func (f *fakeDocumentService) Index(context.Context, string, string) error   { return nil }
 func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return nil }
 func (f *fakeDocumentService) Delete(context.Context, string, string) error  { return nil }
-func (f *fakeDocumentService) Retrieve(context.Context, string, *string, string, int) ([]rag.RetrievedChunk, error) {
+func (f *fakeDocumentService) Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error) {
 	return nil, nil
 }
 

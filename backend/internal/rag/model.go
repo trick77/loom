@@ -12,12 +12,14 @@ const (
 	StatusError      = "error"
 )
 
-// Document is an uploaded file tracked for RAG. ProjectID/ArtifactID are nil
-// when absent. A nil ProjectID means user-global scope.
+// Document is an uploaded file tracked for RAG. ProjectID/ThreadID/ArtifactID are
+// nil when absent. A nil ProjectID means user-global scope, unless ThreadID is set
+// (thread-private: retrievable only within that one thread).
 type Document struct {
 	ID            string
 	UserID        string
 	ProjectID     *string
+	ThreadID      *string
 	ArtifactID    *string
 	VolumeRelpath string
 	Filename      string

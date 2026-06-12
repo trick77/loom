@@ -110,6 +110,11 @@ func run() error {
 		if err := ragStore.ResetStuckIngestions(context.Background()); err != nil {
 			return err
 		}
+		// One-time data fix: rebind or remove pre-thread-scoping uploads that were
+		// stored user-global and leaked into unrelated chats.
+		if err := ragStore.ReconcileLegacyDocumentScopes(context.Background()); err != nil {
+			return err
+		}
 		embedClient := rag.NewEmbedClient(rag.EmbedConfig{
 			BaseURL: cfg.EmbedBaseURL,
 			APIKey:  cfg.EmbedAPIKey,
