@@ -450,6 +450,38 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedTimeout(t *testing.T) {
 	}
 }
 
+func TestClient_DocumentToolPreservesDisabledTimeout(t *testing.T) {
+	client := NewClient(Config{BaseURL: "http://example.test", Model: "mimo"}, nil)
+
+	got := client.timeoutForTools([]Tool{{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "create_pdf_file",
+			Description: "Create a PDF",
+			Parameters:  map[string]any{"type": "object"},
+		},
+	}})
+	if got != 0 {
+		t.Fatalf("timeoutForTools() = %s, want 0 for disabled timeout", got)
+	}
+}
+
+func TestClient_NonDocumentToolKeepsConfiguredTimeout(t *testing.T) {
+	client := NewClient(Config{BaseURL: "http://example.test", Model: "mimo", Timeout: 10 * time.Millisecond}, nil)
+
+	got := client.timeoutForTools([]Tool{{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "search__web",
+			Description: "Search",
+			Parameters:  map[string]any{"type": "object"},
+		},
+	}})
+	if got != 10*time.Millisecond {
+		t.Fatalf("timeoutForTools() = %s, want 10ms", got)
+	}
+}
+
 func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *testing.T) {
 	tests := []struct {
 		name                 string

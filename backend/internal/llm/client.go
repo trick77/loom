@@ -188,7 +188,7 @@ func (c *Client) maxCompletionTokensForTools(tools []Tool) int {
 }
 
 func (c *Client) timeoutForTools(tools []Tool) time.Duration {
-	if !hasDocumentGenerationTool(tools) || c.timeout >= documentToolTimeout {
+	if c.timeout == 0 || !hasDocumentGenerationTool(tools) || c.timeout >= documentToolTimeout {
 		return c.timeout
 	}
 	return documentToolTimeout
