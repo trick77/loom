@@ -145,6 +145,7 @@ export function ChatShell({
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [streamingThreadID, setStreamingThreadID] = useState<string | null>(null);
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -163,6 +164,7 @@ export function ChatShell({
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const streamingThreadIDRef = useRef<string | null>(null);
 
   const handleActionError = useCallback(
     (error: unknown, fallback: string, setError: (message: string) => void) => {
@@ -175,9 +177,14 @@ export function ChatShell({
     [onSessionExpired],
   );
 
+  const setActiveStreamingThreadID = useCallback((threadID: string | null) => {
+    streamingThreadIDRef.current = threadID;
+    setStreamingThreadID(threadID);
+  }, []);
+
   const handleStopResponse = useCallback(() => {
     if (!isSending) return;
-    const threadID = activeThreadIDRef.current;
+    const threadID = streamingThreadIDRef.current;
     if (threadID !== null) {
       void stopMessage(threadID).catch((error: unknown) => {
         handleActionError(error, "Message failed to stop.", setSendError);
@@ -215,6 +222,7 @@ export function ChatShell({
     if (!isSending) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
+      if (activeThreadIDRef.current !== streamingThreadIDRef.current) return;
       event.preventDefault();
       handleStopResponse();
     }
@@ -272,27 +280,27 @@ export function ChatShell({
       activeThreadIDRef.current = null;
       setActiveThread(null);
       setMessages([]);
-      setStreamingText("");
-      setStreamingArtifacts([]);
-      clearActivityTrace();
+      if (streamingThreadIDRef.current === null) {
+        setStreamingText("");
+        setStreamingArtifacts([]);
+        clearActivityTrace();
+      }
       setSendError("");
       return;
     }
     if (activeThreadIDRef.current === route.threadID) return;
     let active = true;
-    streamAbortRef.current?.abort();
-    // Drop any activity trace left over from the previous thread (e.g. a failed
-    // turn whose trace is now kept) before this thread's transcript loads.
-    clearActivityTrace();
     getThread(route.threadID)
       .then((response) => {
         if (!active) return;
         setActiveThread(response.thread);
         activeThreadIDRef.current = response.thread.id;
         setMessages(response.messages.map(withNormalizedActivityTrace));
-        setStreamingText("");
-        setStreamingArtifacts([]);
-        clearActivityTrace();
+        if (streamingThreadIDRef.current === null) {
+          setStreamingText("");
+          setStreamingArtifacts([]);
+          clearActivityTrace();
+        }
         setSendError("");
       })
       .catch((error: unknown) => {
@@ -345,13 +353,14 @@ export function ChatShell({
   const navigateToNew = useCallback(() => {
     onChat();
     setMobileSidebarOpen(false);
-    streamAbortRef.current?.abort();
     activeThreadIDRef.current = null;
     setActiveThread(null);
     setMessages([]);
-    setStreamingText("");
-    setStreamingArtifacts([]);
-    clearActivityTrace();
+    if (streamingThreadIDRef.current === null) {
+      setStreamingText("");
+      setStreamingArtifacts([]);
+      clearActivityTrace();
+    }
     setSendError("");
     navigate({ view: "new" });
     setRoute({ view: "new" });
@@ -698,6 +707,7 @@ export function ChatShell({
     let abortController: AbortController | null = null;
     let createdThreadForFallback: Thread | null = null;
     let receivedThreadEvent = false;
+    let keepFailedTurnVisible = false;
     const projectIDForNewThread = route.view === "project" ? route.projectID : null;
     try {
       let targetThread = activeThread;
@@ -717,56 +727,52 @@ export function ChatShell({
       abortController = new AbortController();
       streamAbortRef.current?.abort();
       streamAbortRef.current = abortController;
+      setActiveStreamingThreadID(targetThreadID);
       const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
       await streamMessage(targetThreadID, content, {
         onUserMessage: (message) => {
           if (isCurrentThread()) setMessages((current) => [...current, message]);
         },
         onDelta: (delta) => {
-          if (isCurrentThread()) setStreamingText((current) => current + delta);
+          setStreamingText((current) => current + delta);
         },
         onReasoningDelta: (delta) => {
-          if (!isCurrentThread()) return;
           updateActivityTrace((current) => appendReasoningDelta(current, delta));
         },
         onReasoningTitle: (event) => {
-          if (!isCurrentThread()) return;
           updateActivityTrace((current) => applyReasoningTitle(current, event.id, event.title));
         },
         onToolPending: () => {
-          if (!isCurrentThread()) return;
           setToolPending(true);
         },
         onToolCall: (event) => {
-          if (!isCurrentThread()) return;
           // The pending call is now a real (running) trace event; let the trace's
           // own running status drive the "thinking" affordance from here.
           setToolPending(false);
           updateActivityTrace((current) => upsertTraceToolCall(current, event));
         },
         onToolResult: (event) => {
-          if (!isCurrentThread()) return;
           updateActivityTrace((current) => upsertTraceToolResult(current, event));
         },
         onArtifact: (artifact) => {
-          if (!isCurrentThread()) return;
           setStreamingArtifacts((current) => [
             ...current.filter((item) => item.id !== artifact.id),
             artifact,
           ]);
         },
         onAssistantMessage: (message) => {
-          if (!isCurrentThread()) return;
           const completedTrace = completeTrace(activityTraceRef.current);
-          setMessages((current) => [
-            ...current,
-            completedTrace.length > 0
-              ? {
-                  ...message,
-                  activityTrace: completedTrace,
-                }
-              : message,
-          ]);
+          if (isCurrentThread()) {
+            setMessages((current) => [
+              ...current,
+              completedTrace.length > 0
+                ? {
+                    ...message,
+                    activityTrace: completedTrace,
+                  }
+                : message,
+            ]);
+          }
           setStreamingText("");
           setStreamingArtifacts([]);
           clearActivityTrace();
@@ -802,15 +808,26 @@ export function ChatShell({
       setStreamingArtifacts([]);
       // Keep any activity trace visible so a failed turn still shows what was
       // attempted (e.g. a tool that errored); the next send clears it.
+      keepFailedTurnVisible = true;
       if (options.restoreDraftOnError) setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
+      if (!keepFailedTurnVisible) setActiveStreamingThreadID(null);
       if (abortController !== null && streamAbortRef.current === abortController) {
         streamAbortRef.current = null;
       }
     }
   }
+
+  const activeThreadOwnsStreamState = activeThread !== null && streamingThreadID === activeThread.id;
+  const activeThreadIsStreaming = isSending && activeThreadOwnsStreamState;
+  const visibleStreamingText = activeThreadOwnsStreamState ? streamingText : "";
+  const visibleStreamingArtifacts = activeThreadOwnsStreamState ? streamingArtifacts : [];
+  const visibleActivityTrace = activeThreadOwnsStreamState ? activityTrace : [];
+  const visibleToolPending = activeThreadOwnsStreamState ? toolPending : false;
+  // Keep errors with the thread that owns the active or failed stream state.
+  const visibleSendError = streamingThreadID === null || activeThreadOwnsStreamState ? sendError : "";
 
   return (
     <div
@@ -1103,7 +1120,8 @@ export function ChatShell({
               threads={projectThreads}
               draft={draft}
               sendError={sendError}
-              isSending={isSending}
+              isSending={false}
+              sendDisabled={isSending}
               openThreadMenuID={openThreadMenuID}
               onBack={navigateToProjects}
               onDraftChange={setDraft}
@@ -1134,7 +1152,8 @@ export function ChatShell({
           <StartPanel
             displayName={displayName}
             draft={draft}
-            isSending={isSending}
+            isSending={false}
+            sendDisabled={isSending}
             mcpStatus={mcpStatus}
             sendError={sendError}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
@@ -1149,12 +1168,13 @@ export function ChatShell({
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             messages={messages}
             draft={draft}
-            streamingText={streamingText}
-            streamingArtifacts={streamingArtifacts}
-            activityTrace={activityTrace}
-            toolPending={toolPending}
-            sendError={sendError}
-            isSending={isSending}
+            streamingText={visibleStreamingText}
+            streamingArtifacts={visibleStreamingArtifacts}
+            activityTrace={visibleActivityTrace}
+            toolPending={visibleToolPending}
+            sendError={visibleSendError}
+            isSending={activeThreadIsStreaming}
+            sendDisabled={isSending && !activeThreadIsStreaming}
             mcpStatus={mcpStatus}
             openThreadMenuID={openThreadMenuID}
             onDraftChange={setDraft}
@@ -1727,6 +1747,7 @@ function StartPanel({
   displayName,
   draft,
   isSending,
+  sendDisabled,
   mcpStatus,
   sendError,
   onOpenSidebar,
@@ -1737,6 +1758,7 @@ function StartPanel({
   displayName: string;
   draft: string;
   isSending: boolean;
+  sendDisabled: boolean;
   mcpStatus: McpStatusEvent | null;
   sendError: string;
   onOpenSidebar(): void;
@@ -1769,6 +1791,7 @@ function StartPanel({
             autoFocus
             draft={draft}
             isSending={isSending}
+            sendDisabled={sendDisabled}
             placeholder="How can I help you today?"
             onDraftChange={onDraftChange}
             onSend={onSend}
@@ -1799,6 +1822,7 @@ function ChatPanel({
   toolPending,
   sendError,
   isSending,
+  sendDisabled,
   mcpStatus,
   openThreadMenuID,
   onOpenSidebar,
@@ -1824,6 +1848,7 @@ function ChatPanel({
   toolPending: boolean;
   sendError: string;
   isSending: boolean;
+  sendDisabled: boolean;
   mcpStatus: McpStatusEvent | null;
   openThreadMenuID: string | null;
   onDraftChange(value: string): void;
@@ -2147,6 +2172,7 @@ function ChatPanel({
                 variant="chat"
                 draft={draft}
                 isSending={isSending}
+                sendDisabled={sendDisabled}
                 placeholder="Write a message..."
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}

@@ -2614,6 +2614,251 @@ test("ignores stream events after switching threads", async () => {
   expect(screen.queryByText("Wrong thread answer")).not.toBeInTheDocument();
 });
 
+test("keeps a running thread stream alive while browsing another chat", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  let streamSignalAborted = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({ items: [
+          {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+        ], nextCursor: null });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t2") {
+        return Response.json({
+          thread: {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+        init.signal?.addEventListener("abort", () => {
+          streamSignalAborted = true;
+        });
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+  await screen.findByRole("button", { name: "Stop response" });
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Already started"}\n\n'),
+  );
+  expect(await screen.findByText("Already started")).toBeInTheDocument();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
+
+  expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
+  expect(streamSignalAborted).toBe(false);
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_delta\ndata: {"content":" while away"}\n\n'),
+  );
+  expect(screen.queryByText("Already started while away")).not.toBeInTheDocument();
+
+  fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_delta\ndata: {"content":" and back"}\n\n'),
+  );
+
+  expect(await screen.findByText("Already started while away and back")).toBeInTheDocument();
+});
+
+test("blocks starting a second chat stream while another thread is running", async () => {
+  const stream = new ReadableStream<Uint8Array>({ start() {} });
+  let secondStreamRequests = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({ items: [
+          {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+        ], nextCursor: null });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t2") {
+        return Response.json({
+          thread: {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+        return new Response(stream, { status: 200 });
+      }
+      if (url === "/api/threads/t2/messages:stream" && init?.method === "POST") {
+        secondStreamRequests += 1;
+        return new Response("", { status: 500 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+  await screen.findByRole("button", { name: "Stop response" });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Second" } });
+
+  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+  expect(secondStreamRequests).toBe(0);
+});
+
+test("does not stop a background stream with Escape while another chat is open", async () => {
+  const stream = new ReadableStream<Uint8Array>({ start() {} });
+  let stopRequests = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({ items: [
+          {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+        ], nextCursor: null });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t2") {
+        return Response.json({
+          thread: {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+        return new Response(stream, { status: 200 });
+      }
+      if (url === "/api/threads/t1/messages:stop" && init?.method === "POST") {
+        stopRequests += 1;
+        return new Response("", { status: 204 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+  await screen.findByRole("button", { name: "Stop response" });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
+  expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "Escape" });
+
+  expect(stopRequests).toBe(0);
+});
+
 test("surfaces the server error and keeps failed activity trace visible", async () => {
   const stream = new ReadableStream({
     start(controller) {

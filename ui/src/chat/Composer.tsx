@@ -7,6 +7,7 @@ export function Composer({
   variant,
   draft,
   isSending,
+  sendDisabled = false,
   placeholder,
   autoFocus = false,
   onDraftChange,
@@ -17,6 +18,7 @@ export function Composer({
   variant: "start" | "chat";
   draft: string;
   isSending: boolean;
+  sendDisabled?: boolean;
   placeholder: string;
   autoFocus?: boolean;
   onDraftChange(value: string): void;
@@ -32,7 +34,7 @@ export function Composer({
   const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
   const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   const padX = "px-6";
-  const canSend = !isSending && draft.trim() !== "";
+  const canSend = !isSending && !sendDisabled && draft.trim() !== "";
   const actionButtonClass = isSending
     ? "bg-[#3a3a37] hover:bg-[#4b4a46]"
     : "bg-accent hover:bg-accent-strong disabled:bg-accent";
@@ -77,6 +79,7 @@ export function Composer({
           onStop();
           return;
         }
+        if (sendDisabled) return;
         onSend();
       }}
     >
@@ -89,7 +92,7 @@ export function Composer({
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
-            if (!isSending) onSend();
+            if (!isSending && !sendDisabled) onSend();
           }
         }}
       />

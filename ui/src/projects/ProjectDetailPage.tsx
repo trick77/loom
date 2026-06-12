@@ -14,6 +14,7 @@ export function ProjectDetailPage({
   draft,
   sendError,
   isSending,
+  sendDisabled = false,
   openThreadMenuID,
   onBack,
   onDraftChange,
@@ -38,6 +39,7 @@ export function ProjectDetailPage({
   draft: string;
   sendError: string;
   isSending: boolean;
+  sendDisabled?: boolean;
   openThreadMenuID: string | null;
   onBack(): void;
   onDraftChange(value: string): void;
@@ -135,6 +137,7 @@ export function ProjectDetailPage({
                 variant="start"
                 draft={draft}
                 isSending={isSending}
+                sendDisabled={sendDisabled}
                 placeholder="How can I help you today?"
                 autoFocus
                 onDraftChange={onDraftChange}
