@@ -95,7 +95,7 @@ func TestStore_replaceChunksAndRetrieve(t *testing.T) {
 	}
 
 	// Retrieval returns the indexed chunks for the right user.
-	res, err := s.Retrieve(ctx, "u1", nil, unit(), 5)
+	res, err := s.Retrieve(ctx, "u1", nil, nil, unit(), 5)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}
@@ -131,13 +131,13 @@ func TestStore_retrieveIsolatesUsersAndScope(t *testing.T) {
 	_ = s.ReplaceChunks(ctx, "u2", "o", []TextChunk{{Text: "o"}}, [][]float32{unit()})
 
 	// Project-less thread (nil) sees only u1 global.
-	global, _ := s.Retrieve(ctx, "u1", nil, unit(), 10)
+	global, _ := s.Retrieve(ctx, "u1", nil, nil, unit(), 10)
 	if len(global) != 1 || global[0].Filename != "g.txt" {
 		t.Errorf("global retrieval = %+v, want only g.txt", global)
 	}
 
 	// Project thread sees project + global, never u2.
-	inProject, _ := s.Retrieve(ctx, "u1", &pid, unit(), 10)
+	inProject, _ := s.Retrieve(ctx, "u1", &pid, nil, unit(), 10)
 	names := map[string]bool{}
 	for _, r := range inProject {
 		names[r.Filename] = true
@@ -154,7 +154,7 @@ func TestStore_retrieveExcludesNonEmbeddedDocuments(t *testing.T) {
 	_ = s.ReplaceChunks(ctx, "u1", "d1", []TextChunk{{Text: "indexed"}}, [][]float32{unit()})
 
 	// Retrievable while embedded.
-	if res, _ := s.Retrieve(ctx, "u1", nil, unit(), 5); len(res) != 1 {
+	if res, _ := s.Retrieve(ctx, "u1", nil, nil, unit(), 5); len(res) != 1 {
 		t.Fatalf("embedded doc retrieval = %d, want 1", len(res))
 	}
 
@@ -163,7 +163,7 @@ func TestStore_retrieveExcludesNonEmbeddedDocuments(t *testing.T) {
 	if err := s.UpdateStatus(ctx, "u1", "d1", StatusStale, "file missing"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
-	if res, _ := s.Retrieve(ctx, "u1", nil, unit(), 5); len(res) != 0 {
+	if res, _ := s.Retrieve(ctx, "u1", nil, nil, unit(), 5); len(res) != 0 {
 		t.Errorf("stale doc retrieval = %d, want 0 (excluded)", len(res))
 	}
 }

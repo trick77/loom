@@ -55,7 +55,9 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             title={`${source.filename} (${source.references} match${source.references > 1 ? "es" : ""})`}
           >
             <span className="max-w-[180px] truncate">{source.filename}</span>
-            {source.references > 1 && <span className="text-[#858178]">×{source.references}</span>}
+            {source.references > 1 && (
+              <span className="text-[#858178]">{source.references} excerpts</span>
+            )}
           </button>
         ))}
       </div>

@@ -116,6 +116,10 @@ export function ChatShell({
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<MessageWithActivityTrace[]>([]);
   const [draft, setDraft] = useState("");
+  // Files attached on the new-chat start screen, held until the first send creates
+  // a thread to bind them to (deferred upload — avoids orphan empty threads and
+  // scopes the upload to the chat it was attached in).
+  const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
   // undefined = closed, null = create, Project = edit.
   const [editingProject, setEditingProject] = useState<Project | null | undefined>(undefined);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
@@ -140,6 +144,12 @@ export function ChatShell({
     clear: clearActivityTrace,
   } = useActivityTrace();
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
+  // Flush hook for the deferred new-chat upload: the scope is supplied per call at
+  // send time (the thread does not exist yet when the file is picked). Its
+  // attachNote carries ingestion status/errors after the start screen is gone, so
+  // it is surfaced in the chat panel the user lands on.
+  const { attachNote: deferredAttachNote, handleAttachFiles: flushPendingAttachments } =
+    useDocumentAttachments({});
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -309,6 +319,12 @@ export function ChatShell({
       active = false;
     };
   }, [clearActivityTrace, handleActionError, route]);
+
+  // Drop files staged on the start screen if the user leaves it without sending,
+  // so they can't bind to a different chat later.
+  useEffect(() => {
+    if (route.view !== "new") setPendingAttachments([]);
+  }, [route.view]);
 
   useEffect(() => {
     if (route.view !== "project") {
@@ -719,6 +735,16 @@ export function ChatShell({
         setMessages([]);
         navigate({ view: "chat", threadID: targetThread.id });
         setRoute({ view: "chat", threadID: targetThread.id });
+        // Now that a thread exists, flush any files attached on the start screen,
+        // bound to it (project-less => private to this chat). Fire-and-forget so it
+        // ingests in parallel with the first turn.
+        if (pendingAttachments.length > 0) {
+          flushPendingAttachments(pendingAttachments, {
+            threadId: targetThread.id,
+            projectId: projectIDForNewThread ?? undefined,
+          });
+          setPendingAttachments([]);
+        }
       }
       const targetThreadID = targetThread.id;
       activeThreadIDRef.current = targetThreadID;
@@ -1160,15 +1186,18 @@ export function ChatShell({
             sendDisabled={isSending}
             mcpStatus={mcpStatus}
             sendError={sendError}
+            pendingAttachmentNames={pendingAttachments.map((file) => file.name)}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onDraftChange={setDraft}
             onSend={handleSend}
             onStop={handleStopResponse}
+            onAttachFiles={(files) => setPendingAttachments((current) => [...current, ...files])}
           />
         ) : (
           <ChatPanel
             thread={activeThread}
             threadProject={activeThreadProject}
+            deferredAttachNote={deferredAttachNote}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             messages={messages}
             draft={draft}
@@ -1767,10 +1796,12 @@ function StartPanel({
   sendDisabled,
   mcpStatus,
   sendError,
+  pendingAttachmentNames,
   onOpenSidebar,
   onDraftChange,
   onSend,
   onStop,
+  onAttachFiles,
 }: {
   displayName: string;
   draft: string;
@@ -1778,13 +1809,15 @@ function StartPanel({
   sendDisabled: boolean;
   mcpStatus: McpStatusEvent | null;
   sendError: string;
+  pendingAttachmentNames: string[];
   onOpenSidebar(): void;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
+  onAttachFiles(files: File[]): void;
 }) {
-  // No thread or project yet: composer uploads land in user-global knowledge.
-  const { attachNote, handleAttachFiles } = useDocumentAttachments({});
+  // No thread exists yet, so uploads are deferred: files are held (see
+  // pendingAttachmentNames) and bound to the chat once the first send creates it.
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
@@ -1815,10 +1848,12 @@ function StartPanel({
             onDraftChange={onDraftChange}
             onSend={onSend}
             onStop={onStop}
-            onAttachFiles={handleAttachFiles}
+            onAttachFiles={onAttachFiles}
           />
-          {attachNote !== "" && (
-            <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
+          {pendingAttachmentNames.length > 0 && (
+            <div className="ui-meta-text mt-2 text-center text-[#858178]">
+              {pendingAttachmentNames.join(", ")} — added to this chat when you send
+            </div>
           )}
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           <div className="ui-meta-text mt-4 flex flex-wrap justify-center gap-2 text-[#e8e4da]">
@@ -1837,6 +1872,7 @@ function StartPanel({
 function ChatPanel({
   thread,
   threadProject,
+  deferredAttachNote,
   messages,
   draft,
   streamingText,
@@ -1863,6 +1899,7 @@ function ChatPanel({
 }: {
   thread: Thread | null;
   threadProject: Project | null;
+  deferredAttachNote: string;
   messages: MessageWithActivityTrace[];
   draft: string;
   streamingText: string;
@@ -2157,8 +2194,10 @@ function ChatPanel({
                 onStop={onStop}
                 onAttachFiles={thread === null ? undefined : handleAttachFiles}
               />
-              {attachNote !== "" && (
-                <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
+              {(attachNote || deferredAttachNote) !== "" && (
+                <div className="ui-meta-text mt-2 text-center text-[#858178]">
+                  {attachNote || deferredAttachNote}
+                </div>
               )}
               <div className="ui-meta-text mt-2 text-center text-[#858178]">
                 Slopr can make mistakes. Please double-check responses.

@@ -49,7 +49,7 @@ func TestStore_retrieveScopeComposesWithK(t *testing.T) {
 		t.Fatalf("ReplaceChunks p1: %v", err)
 	}
 
-	res, err := s.Retrieve(ctx, "u1", &p1, vecAt(1, 0), 5)
+	res, err := s.Retrieve(ctx, "u1", &p1, nil, vecAt(1, 0), 5)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}
@@ -64,5 +64,70 @@ func TestStore_retrieveScopeComposesWithK(t *testing.T) {
 	}
 	if got != 3 {
 		t.Errorf("in-scope chunks returned = %d, want 3 (scope filter must compose with k, not post-filter)", got)
+	}
+}
+
+// A thread-private document (composer upload in a project-less chat) must be
+// retrievable only within its own thread: visible in thread t1, invisible in a
+// different project-less thread t2 and in a project thread. User-global legacy
+// chunks stay visible everywhere.
+func TestStore_retrieveThreadPrivateScope(t *testing.T) {
+	s, _ := newTestStore(t) // seeds user u1 and project p1
+	ctx := context.Background()
+
+	t1, p1 := "t1", "p1"
+
+	// Thread-private doc bound to t1 (no project).
+	_ = s.CreateDocument(ctx, Document{ID: "dt", UserID: "u1", ThreadID: &t1, VolumeRelpath: "u/dt", Filename: "dt.txt", MIME: "text/plain", Status: StatusPending})
+	if err := s.ReplaceChunks(ctx, "u1", "dt", []TextChunk{{Ordinal: 0, Text: "thread-private"}}, [][]float32{vecAt(1, 0)}); err != nil {
+		t.Fatalf("ReplaceChunks dt: %v", err)
+	}
+	// User-global legacy doc (no project, no thread).
+	_ = s.CreateDocument(ctx, Document{ID: "dg", UserID: "u1", VolumeRelpath: "u/dg", Filename: "dg.txt", MIME: "text/plain", Status: StatusPending})
+	if err := s.ReplaceChunks(ctx, "u1", "dg", []TextChunk{{Ordinal: 0, Text: "global"}}, [][]float32{vecAt(1, 0)}); err != nil {
+		t.Fatalf("ReplaceChunks dg: %v", err)
+	}
+
+	has := func(res []RetrievedChunk, filename string) bool {
+		for _, r := range res {
+			if r.Filename == filename {
+				return true
+			}
+		}
+		return false
+	}
+
+	// In its own thread: thread-private doc + global doc are visible.
+	inT1, err := s.Retrieve(ctx, "u1", nil, &t1, vecAt(1, 0), 5)
+	if err != nil {
+		t.Fatalf("Retrieve t1: %v", err)
+	}
+	if !has(inT1, "dt.txt") {
+		t.Errorf("thread-private doc not retrievable in its own thread")
+	}
+	if !has(inT1, "dg.txt") {
+		t.Errorf("global doc not retrievable in thread")
+	}
+
+	// In a different project-less thread: only the global doc, never dt.
+	t2 := "t2"
+	inT2, err := s.Retrieve(ctx, "u1", nil, &t2, vecAt(1, 0), 5)
+	if err != nil {
+		t.Fatalf("Retrieve t2: %v", err)
+	}
+	if has(inT2, "dt.txt") {
+		t.Errorf("thread-private doc leaked into a different thread")
+	}
+	if !has(inT2, "dg.txt") {
+		t.Errorf("global doc not retrievable in other thread")
+	}
+
+	// In a project thread: still no thread-private doc.
+	inProj, err := s.Retrieve(ctx, "u1", &p1, &t2, vecAt(1, 0), 5)
+	if err != nil {
+		t.Fatalf("Retrieve project: %v", err)
+	}
+	if has(inProj, "dt.txt") {
+		t.Errorf("thread-private doc leaked into a project thread")
 	}
 }
