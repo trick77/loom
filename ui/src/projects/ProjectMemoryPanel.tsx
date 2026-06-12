@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-import { getProjectMemory, refreshProjectMemory } from "../api";
-import { Icon } from "../chat/Icon";
+import { getProjectMemory } from "../api";
 
 /**
  * ProjectMemoryPanel shows the project's auto-generated shared memory — the
  * compact digest injected into every chat in the project so sibling chats stay
- * aware of each other. It is read-only with a manual refresh (full rebuild).
+ * aware of each other. It is read-only; the memory refreshes automatically in
+ * the background after chats.
  */
 export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -32,15 +32,6 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
-  function handleRefresh() {
-    setRefreshing(true);
-    setError(false);
-    refreshProjectMemory(projectId)
-      .then((memory) => setContent(memory.content))
-      .catch(() => setError(true))
-      .finally(() => setRefreshing(false));
-  }
-
   const hasContent = content.trim() !== "";
 
   return (
@@ -48,31 +39,31 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
       aria-label="Project memory"
       className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
     >
-      <div className="flex items-start justify-between gap-3">
-        <Icon name="wave" size="22px" className="text-[#d5d2c9]" />
-        <button
-          type="button"
-          className="ui-meta-text text-[#8f8b82] hover:text-[#c7c5bd] disabled:opacity-50"
-          onClick={handleRefresh}
-          disabled={refreshing || loading}
-        >
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
-      <h2 className="mt-3 text-sm font-medium text-[#ecece6]">Project memory</h2>
-      {error && (
-        <p className="ui-meta-text mt-2 text-accent" role="alert">
-          Couldn’t refresh memory. Please try again.
-        </p>
-      )}
+      <h2 className="text-[15px] font-medium text-[#ecece6]">Project memory</h2>
       {loading ? (
-        <p className="mt-2 text-sm text-[#807d74]">Loading…</p>
+        <p className="mt-2 text-sm text-[#8f8b82]">Loading…</p>
       ) : hasContent ? (
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-[#c7c5bd]" data-project-memory-content>
-          {content}
-        </p>
+        <div
+          className="ui-memory-markdown mt-2 text-sm leading-5 text-[#c7c5bd]"
+          data-project-memory-content
+        >
+          <Markdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a({ children, ...props }) {
+                return (
+                  <a {...props} target="_blank" rel="noreferrer">
+                    {children}
+                  </a>
+                );
+              },
+            }}
+          >
+            {content}
+          </Markdown>
+        </div>
       ) : (
-        <p className="mt-2 text-sm leading-5 text-[#807d74]">
+        <p className="mt-2 text-sm leading-5 text-[#8f8b82]">
           Project memory will show here after a few chats.
         </p>
       )}
