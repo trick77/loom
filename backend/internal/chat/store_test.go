@@ -688,6 +688,57 @@ func TestStore_ArchiveAndUnarchiveThread(t *testing.T) {
 	}
 }
 
+func TestStore_SetProjectStarred(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	if project.Starred {
+		t.Fatal("new project Starred = true, want false")
+	}
+
+	starred, ok, err := store.SetProjectStarred(ctx, userID, project.ID, true)
+	if err != nil {
+		t.Fatalf("SetProjectStarred(true) error: %v", err)
+	}
+	if !ok {
+		t.Fatal("SetProjectStarred(true) ok = false, want true")
+	}
+	if !starred.Starred {
+		t.Fatal("SetProjectStarred(true) returned Starred = false, want true")
+	}
+
+	listed, err := store.ListProjects(ctx, userID, false)
+	if err != nil {
+		t.Fatalf("ListProjects() error: %v", err)
+	}
+	if len(listed) != 1 || !listed[0].Starred {
+		t.Fatalf("listed projects = %#v, want one starred project", listed)
+	}
+
+	unstarred, ok, err := store.SetProjectStarred(ctx, userID, project.ID, false)
+	if err != nil {
+		t.Fatalf("SetProjectStarred(false) error: %v", err)
+	}
+	if !ok {
+		t.Fatal("SetProjectStarred(false) ok = false, want true")
+	}
+	if unstarred.Starred {
+		t.Fatal("SetProjectStarred(false) returned Starred = true, want false")
+	}
+
+	if _, ok, err := store.SetProjectStarred(ctx, userID, "missing", true); err != nil {
+		t.Fatalf("SetProjectStarred(missing) error: %v", err)
+	} else if ok {
+		t.Fatal("SetProjectStarred(missing) ok = true, want false")
+	}
+}
+
 func TestStore_DeleteProjectCascadesThreadsAndMessages(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

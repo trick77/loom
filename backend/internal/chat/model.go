@@ -29,6 +29,7 @@ type Project struct {
 	UserID      string     `json:"-"`
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
+	Starred     bool       `json:"starred"`
 	ArchivedAt  *time.Time `json:"archivedAt"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
