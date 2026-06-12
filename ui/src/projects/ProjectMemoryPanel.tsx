@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { getProjectMemory } from "../api";
+import { Icon } from "../chat/Icon";
 
 /**
  * ProjectMemoryPanel shows the project's auto-generated shared memory — the
@@ -36,10 +37,13 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
 
   return (
     <section
-      aria-label="Memory"
+      aria-label="Memories"
       className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
     >
-      <h2 className="text-[15px] font-medium text-[#ecece6]">Memory</h2>
+      <h2 className="flex items-center gap-1.5 text-[15px] font-medium text-[#ecece6]">
+        <Icon name="memory" size="16px" className="text-[#d5d2c9]" />
+        <span>Memories</span>
+      </h2>
       {loading ? (
         <p className="mt-2 text-sm text-[#8f8b82]">Loading…</p>
       ) : hasContent ? (
@@ -64,7 +68,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <p className="mt-2 text-sm leading-5 text-[#8f8b82]">
-          Memory will show here after a few chats.
+          Memories will show here after a few chats.
         </p>
       )}
     </section>

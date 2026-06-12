@@ -881,7 +881,7 @@ export function ChatShell({
             onClick={navigateToProjects}
           />
           <SidebarPrimaryItem
-            label="Memory"
+            label="Memories"
             icon="memory"
             collapsed={railCollapsed}
             active={route.view === "memory" && !showAdmin}
@@ -1266,7 +1266,7 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
     return <Icon name="artifact" size="21px" className={className} />;
   }
   if (name === "memory") {
-    return <Icon name="wave" size="21px" className={className} />;
+    return <Icon name="memory" size="21px" className={className} />;
   }
   return null;
 }
@@ -1840,9 +1840,7 @@ function ChatPanel({
                   >
                     {threadProject.name}
                   </button>
-                  <span aria-hidden="true" className="shrink-0 text-[#77736a]">
-                    &gt;
-                  </span>
+                  <Icon name="chevronRight" size="16px" className="shrink-0 text-[#77736a]" />
                 </>
               )}
               <span className="min-w-0 truncate">{thread?.title ?? "New chat"}</span>

@@ -35,13 +35,13 @@ export function UserMemoryPanel() {
 
   return (
     <section
-      aria-label="Memory"
+      aria-label="Memories"
       className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
     >
       <div className="flex items-start justify-between gap-3">
-        <Icon name="wave" size="22px" className="text-[#d5d2c9]" />
+        <Icon name="memory" size="22px" className="text-[#d5d2c9]" />
       </div>
-      <h2 className="mt-3 text-sm font-medium text-[#ecece6]">Memory</h2>
+      <h2 className="mt-3 text-sm font-medium text-[#ecece6]">Memories</h2>
       <p className="ui-meta-text mt-1 text-[#807d74]">
         Durable facts about you, used across every chat.
       </p>
@@ -60,7 +60,7 @@ export function UserMemoryPanel() {
         </ul>
       ) : (
         <p className="mt-3 text-sm leading-5 text-[#807d74]">
-          Memory will show here after a few chats.
+          Memories will show here after a few chats.
         </p>
       )}
     </section>
