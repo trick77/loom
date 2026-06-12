@@ -1056,12 +1056,68 @@ func TestStopStreamMessageCancelsActiveAssistantTurn(t *testing.T) {
 		cancelStream()
 		t.Fatal("stop did not cancel llm context")
 	}
+	if !errors.Is(llmClient.cancelCause, errStreamStopRequested) {
+		t.Fatalf("cancel cause = %v, want %v", llmClient.cancelCause, errStreamStopRequested)
+	}
 	select {
 	case <-streamDone:
 	case <-time.After(time.Second):
 		cancelStream()
 		t.Fatal("stream handler did not return after stop")
 	}
+}
+
+func TestActiveStreamRegistryCancelsPreviousStreamWithSupersededCause(t *testing.T) {
+	var registry activeStreamRegistry
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+
+	unregisterFirst := registry.register("user_1", "thr_1", cancel)
+	defer unregisterFirst()
+	unregisterSecond := registry.register("user_1", "thr_1", func(error) {})
+	defer unregisterSecond()
+
+	if !errors.Is(context.Cause(ctx), errStreamSuperseded) {
+		t.Fatalf("cancel cause = %v, want %v", context.Cause(ctx), errStreamSuperseded)
+	}
+}
+
+func TestStreamCancelDetailsClassifiesCancellationSource(t *testing.T) {
+	t.Run("stop endpoint", func(t *testing.T) {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cancel(errStreamStopRequested)
+		source, reason := streamCancelDetails(ctx)
+		if source != "stop_endpoint" || reason != errStreamStopRequested.Error() {
+			t.Fatalf("details = %q %q, want stop endpoint", source, reason)
+		}
+	})
+
+	t.Run("superseded stream", func(t *testing.T) {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cancel(errStreamSuperseded)
+		source, reason := streamCancelDetails(ctx)
+		if source != "superseded_stream" || reason != errStreamSuperseded.Error() {
+			t.Fatalf("details = %q %q, want superseded stream", source, reason)
+		}
+	})
+
+	t.Run("request context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		source, reason := streamCancelDetails(ctx)
+		if source != "request_context" || reason != context.Canceled.Error() {
+			t.Fatalf("details = %q %q, want request context", source, reason)
+		}
+	})
+
+	t.Run("deadline", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+		source, reason := streamCancelDetails(ctx)
+		if source != "deadline" || reason != context.DeadlineExceeded.Error() {
+			t.Fatalf("details = %q %q, want deadline", source, reason)
+		}
+	})
 }
 
 func TestStopStreamMessagePersistsPartialAssistantContent(t *testing.T) {

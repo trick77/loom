@@ -46,6 +46,9 @@ func logInferenceCompleted(ctx context.Context, model string, duration time.Dura
 func logInferenceFailed(ctx context.Context, model string, duration time.Duration, err error) {
 	attrs := inferenceLogAttrs(ctx, model, duration, TokenUsage{})
 	attrs = append(attrs, slog.String("err", err.Error()))
+	if cause := context.Cause(ctx); cause != nil {
+		attrs = append(attrs, slog.String("cancel_cause", cause.Error()))
+	}
 	slog.LogAttrs(ctx, slog.LevelError, "llm inference failed", attrs...)
 }
 

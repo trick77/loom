@@ -400,6 +400,7 @@ type blockingChatClient struct {
 	started        chan struct{}
 	done           chan struct{}
 	partialContent string
+	cancelCause    error
 }
 
 func (f *blockingChatClient) StreamChat(ctx context.Context, _ []llm.Message, _ func(string) error) (string, error) {
@@ -410,6 +411,7 @@ func (f *blockingChatClient) StreamChat(ctx context.Context, _ []llm.Message, _ 
 func (f *blockingChatClient) StreamChatResult(ctx context.Context, _ []llm.Message, _ func(string) error) (llm.StreamResult, error) {
 	close(f.started)
 	<-ctx.Done()
+	f.cancelCause = context.Cause(ctx)
 	close(f.done)
 	return llm.StreamResult{Content: f.partialContent}, ctx.Err()
 }

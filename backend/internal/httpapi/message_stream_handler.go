@@ -19,6 +19,11 @@ const sloprSystemPrompt = "Write in flowing prose by default — full sentences 
 
 const imagePromptCompilerSystemPrompt = "The latest user request requires image generation or editing. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Transform the user's request into a concise, visually rich prompt that preserves subject, setting, style, composition, mood, medium, text requirements, and constraints. Add only helpful visual details consistent with the request. Use `filename` when obvious. After the tool result, provide a brief final response that refers to the created artifact. Never claim an image was created unless the tool result confirms an artifact."
 
+var (
+	errStreamStopRequested = errors.New("stream stop requested")
+	errStreamSuperseded    = errors.New("stream superseded by newer request")
+)
+
 func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok || !requireChat(w, s) {
@@ -58,8 +63,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeChatStoreError(w, err, http.StatusBadRequest, "message content is required", "message content is too long")
 		return
 	}
-	streamCtx, cancelStream := context.WithCancel(r.Context())
-	defer cancelStream()
+	streamCtx, cancelStream := context.WithCancelCause(r.Context())
+	defer cancelStream(nil)
 	// Sum token usage across every model call this turn makes — answer turns, tool
 	// rounds, and the background reasoning/thread-title helpers — so the persisted
 	// per-message stats reflect the whole turn, not just the final answer call.
@@ -104,6 +109,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, imageArtifactRequired)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
+			cancelSource, cancelReason := streamCancelDetails(streamCtx)
+			slog.Info("message stream canceled",
+				"thread_id", threadID,
+				"cancel_source", cancelSource,
+				"reason", cancelReason,
+				"content_bytes", len(assistantResult.Content),
+				"reasoning_bytes", len(assistantResult.ReasoningContent),
+				"tool_calls", len(assistantResult.ToolCalls))
 			return
 		}
 		message := "stream failed"
@@ -218,7 +231,7 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	s.activeStreams.stop(user.ID, threadID)
+	s.activeStreams.stop(user.ID, threadID, errStreamStopRequested)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -236,4 +249,23 @@ func sendSSEJSON(stream *sse.Writer, event string, data any) error {
 		return err
 	}
 	return stream.Send(event, string(payload))
+}
+
+func streamCancelDetails(ctx context.Context) (string, string) {
+	cause := context.Cause(ctx)
+	if cause == nil {
+		return "", ""
+	}
+	source := "unknown"
+	switch {
+	case errors.Is(cause, errStreamStopRequested):
+		source = "stop_endpoint"
+	case errors.Is(cause, errStreamSuperseded):
+		source = "superseded_stream"
+	case errors.Is(cause, context.Canceled):
+		source = "request_context"
+	case errors.Is(cause, context.DeadlineExceeded):
+		source = "deadline"
+	}
+	return source, cause.Error()
 }
