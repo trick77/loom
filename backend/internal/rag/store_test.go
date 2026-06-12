@@ -147,6 +147,27 @@ func TestStore_retrieveIsolatesUsersAndScope(t *testing.T) {
 	}
 }
 
+func TestStore_retrieveExcludesNonEmbeddedDocuments(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusPending})
+	_ = s.ReplaceChunks(ctx, "u1", "d1", []TextChunk{{Text: "indexed"}}, [][]float32{unit()})
+
+	// Retrievable while embedded.
+	if res, _ := s.Retrieve(ctx, "u1", nil, unit(), 5); len(res) != 1 {
+		t.Fatalf("embedded doc retrieval = %d, want 1", len(res))
+	}
+
+	// A stale document (file vanished) must not contribute chunks even though its
+	// chunks/vectors still exist in the index.
+	if err := s.UpdateStatus(ctx, "u1", "d1", StatusStale, "file missing"); err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	if res, _ := s.Retrieve(ctx, "u1", nil, unit(), 5); len(res) != 0 {
+		t.Errorf("stale doc retrieval = %d, want 0 (excluded)", len(res))
+	}
+}
+
 func TestStore_deleteDocumentRemovesChunksAndVectors(t *testing.T) {
 	s, db := newTestStore(t)
 	ctx := context.Background()

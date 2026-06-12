@@ -31,6 +31,7 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID *string, 
 		WHERE v.embedding MATCH ? AND k = ?
 		  AND v.user_id = ?
 		  AND v.project_id IN (` + placeholders + `)
+		  AND d.status = 'embedded'
 		ORDER BY v.distance`
 
 	args := []any{vecLiteral(queryEmbedding), k, userID}

@@ -139,6 +139,13 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
+	// Idempotency gate: if an ingestion is already in flight for this document,
+	// don't spawn a second one (avoids duplicate Tika/embedding cost on rapid
+	// re-clicks). The store serializes the actual writes regardless.
+	if doc.Status == rag.StatusExtracting || doc.Status == rag.StatusEmbedding {
+		writeJSON(w, toDocumentResponse(doc))
+		return
+	}
 	// Run ingestion off the request path; the client polls status via list/get.
 	detached := context.WithoutCancel(r.Context())
 	go func() {

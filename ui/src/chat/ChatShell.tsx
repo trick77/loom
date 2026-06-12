@@ -34,6 +34,7 @@ import {
   streamMessage,
   uploadDocument,
   indexDocument,
+  listDocuments,
   type Artifact,
   type McpStatusEvent,
   type Message,
@@ -1915,18 +1916,42 @@ function ChatPanel({
   const handleAttachFiles = useCallback(
     (files: File[]) => {
       if (thread === null) return;
+      const projectId = threadProject?.id;
+      // Poll the document list until ingestion (which runs server-side in the
+      // background) reaches a terminal state, so the note reflects real status
+      // rather than just "request accepted".
+      const waitForIngestion = async (documentId: string, filename: string) => {
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          let docs;
+          try {
+            docs = await listDocuments(projectId);
+          } catch {
+            continue;
+          }
+          const current = docs.find((d) => d.id === documentId);
+          if (current === undefined) continue;
+          if (current.status === "embedded") {
+            setAttachNote(`Added ${filename} to knowledge.`);
+            return;
+          }
+          if (current.status === "error" || current.status === "stale") {
+            setAttachNote(`Could not index ${filename}${current.error ? `: ${current.error}` : "."}`);
+            return;
+          }
+        }
+        setAttachNote(`${filename} is still processing…`);
+      };
+
       void (async () => {
         for (const file of files) {
           setAttachNote(`Uploading ${file.name}…`);
           try {
-            const doc = await uploadDocument(file, {
-              threadId: thread.id,
-              projectId: threadProject?.id,
-            });
+            const doc = await uploadDocument(file, { threadId: thread.id, projectId });
             // Composer uploads are added to knowledge automatically.
-            setAttachNote(`Indexing ${file.name}…`);
+            setAttachNote(`Processing ${file.name}…`);
             await indexDocument(doc.id);
-            setAttachNote(`Added ${file.name} to knowledge.`);
+            await waitForIngestion(doc.id, file.name);
           } catch (error) {
             setAttachNote(error instanceof Error ? error.message : `Failed to upload ${file.name}.`);
             return;
