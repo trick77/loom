@@ -22,6 +22,9 @@ type CreateInput struct {
 	VolumeRelPath   string
 	MIMEType        string
 	SizeBytes       int64
+	// Source records how the artifact came to exist ("assistant_generated" by
+	// default, "user_uploaded" for uploads). Empty falls back to the column default.
+	Source string
 }
 
 func NewStore(db *sql.DB) *Store {
@@ -30,10 +33,20 @@ func NewStore(db *sql.DB) *Store {
 
 func (s *Store) Create(ctx context.Context, in CreateInput) (Artifact, error) {
 	id := chat.NewIDForInternalUse()
+	source := in.Source
+	if source == "" {
+		source = "assistant_generated"
+	}
+	// A global (thread-less) upload stores NULL thread_id; the composite FK to
+	// threads allows NULL but rejects a non-existent thread id.
+	var threadID any
+	if in.ThreadID != "" {
+		threadID = in.ThreadID
+	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO artifacts (id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, in.UserID, in.ThreadID, in.ProjectID, in.DisplayFilename, in.VolumeRelPath, in.MIMEType, in.SizeBytes,
+INSERT INTO artifacts (id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, in.UserID, threadID, in.ProjectID, in.DisplayFilename, in.VolumeRelPath, in.MIMEType, in.SizeBytes, source,
 	)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("insert artifact: %w", err)
@@ -51,14 +64,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, bool, error) {
 	var out Artifact
 	var createdAt string
-	var projectID sql.NullString
+	var threadID, projectID sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
 FROM artifacts
 WHERE user_id = ? AND id = ?`, userID, artifactID).Scan(
 		&out.ID,
 		&out.UserID,
-		&out.ThreadID,
+		&threadID,
 		&projectID,
 		&out.DisplayFilename,
 		&out.VolumeRelPath,
@@ -73,6 +86,7 @@ WHERE user_id = ? AND id = ?`, userID, artifactID).Scan(
 	if err != nil {
 		return Artifact{}, false, fmt.Errorf("get artifact: %w", err)
 	}
+	out.ThreadID = threadID.String
 	if projectID.Valid {
 		out.ProjectID = &projectID.String
 	}
@@ -192,11 +206,11 @@ func scanArtifact(scanner interface {
 }) (Artifact, error) {
 	var out Artifact
 	var createdAt string
-	var projectID sql.NullString
+	var threadID, projectID sql.NullString
 	if err := scanner.Scan(
 		&out.ID,
 		&out.UserID,
-		&out.ThreadID,
+		&threadID,
 		&projectID,
 		&out.DisplayFilename,
 		&out.VolumeRelPath,
@@ -207,6 +221,7 @@ func scanArtifact(scanner interface {
 	); err != nil {
 		return Artifact{}, fmt.Errorf("scan artifact: %w", err)
 	}
+	out.ThreadID = threadID.String
 	if projectID.Valid {
 		out.ProjectID = &projectID.String
 	}
