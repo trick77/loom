@@ -21,14 +21,14 @@ func (f *fakeIndexer) Ingest(_ context.Context, _, documentID string) error {
 
 type fakeEmbedder struct{}
 
-func (fakeEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, error) {
+func (fakeEmbedder) Embed(_ context.Context, inputs []string) (rag.EmbedResult, error) {
 	out := make([][]float32, len(inputs))
 	for i := range inputs {
 		v := make([]float32, 1536)
 		v[0] = 1
 		out[i] = v
 	}
-	return out, nil
+	return rag.EmbedResult{Vectors: out, Usage: rag.EmbeddingUsage{PromptTokens: len(inputs), TotalTokens: len(inputs), Present: true}}, nil
 }
 
 func newTestService(t *testing.T) (*Service, *fakeIndexer, string) {
@@ -115,7 +115,7 @@ func TestService_Delete_removesFileArtifactAndDocument(t *testing.T) {
 
 type countingEmbedder struct{ calls int }
 
-func (c *countingEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, error) {
+func (c *countingEmbedder) Embed(_ context.Context, inputs []string) (rag.EmbedResult, error) {
 	c.calls++
 	out := make([][]float32, len(inputs))
 	for i := range inputs {
@@ -123,7 +123,20 @@ func (c *countingEmbedder) Embed(_ context.Context, inputs []string) ([][]float3
 		v[0] = 1
 		out[i] = v
 	}
-	return out, nil
+	return rag.EmbedResult{Vectors: out, Usage: rag.EmbeddingUsage{PromptTokens: 9, TotalTokens: 9, Present: true}}, nil
+}
+
+type recordingUsage struct {
+	userID   string
+	tokens   int
+	requests int
+}
+
+func (r *recordingUsage) AddEmbeddingUsage(_ context.Context, userID string, tokens, requests int) error {
+	r.userID = userID
+	r.tokens += tokens
+	r.requests += requests
+	return nil
 }
 
 func TestService_Retrieve_skipsEmbeddingWhenNoChunks(t *testing.T) {
@@ -153,6 +166,8 @@ func TestService_Retrieve_skipsEmbeddingWhenNoChunks(t *testing.T) {
 
 func TestService_Retrieve_embedsQueryAndReturnsChunks(t *testing.T) {
 	svc, _, _ := newTestService(t)
+	usage := &recordingUsage{}
+	svc.SetUsageRecorder(usage)
 	ctx := context.Background()
 	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
 	// Directly index chunks via the store to avoid Tika in this unit test.
@@ -167,5 +182,8 @@ func TestService_Retrieve_embedsQueryAndReturnsChunks(t *testing.T) {
 	}
 	if len(res) != 1 || res[0].Text != "hello" {
 		t.Errorf("Retrieve = %+v, want one chunk 'hello'", res)
+	}
+	if usage.userID != "u" || usage.tokens != 1 || usage.requests != 1 {
+		t.Errorf("embedding usage = user %q tokens %d requests %d, want u/1/1", usage.userID, usage.tokens, usage.requests)
 	}
 }

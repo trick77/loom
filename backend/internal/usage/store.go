@@ -28,17 +28,19 @@ type TokenDelta struct {
 
 // Totals is a user's lifetime usage. JSON tags match the frontend Usage type.
 type Totals struct {
-	PromptTokens     int `json:"promptTokens"`
-	CompletionTokens int `json:"completionTokens"`
-	CachedTokens     int `json:"cachedTokens"`
-	ReasoningTokens  int `json:"reasoningTokens"`
-	TotalTokens      int `json:"totalTokens"`
-	WebSearches      int `json:"webSearches"`
-	WebFetches       int `json:"webFetches"`
-	ObscuraFetches   int `json:"obscuraFetches"`
-	ImageGens        int `json:"imageGens"`
-	ChatsCreated     int `json:"chatsCreated"`
-	ProjectsCreated  int `json:"projectsCreated"`
+	PromptTokens      int `json:"promptTokens"`
+	CompletionTokens  int `json:"completionTokens"`
+	CachedTokens      int `json:"cachedTokens"`
+	ReasoningTokens   int `json:"reasoningTokens"`
+	TotalTokens       int `json:"totalTokens"`
+	EmbeddingTokens   int `json:"embeddingTokens"`
+	EmbeddingRequests int `json:"embeddingRequests"`
+	WebSearches       int `json:"webSearches"`
+	WebFetches        int `json:"webFetches"`
+	ObscuraFetches    int `json:"obscuraFetches"`
+	ImageGens         int `json:"imageGens"`
+	ChatsCreated      int `json:"chatsCreated"`
+	ProjectsCreated   int `json:"projectsCreated"`
 }
 
 type Store struct{ db DBTX }
@@ -60,6 +62,18 @@ func (s *Store) AddTokens(ctx context.Context, userID string, d TokenDelta) erro
 			updated_at        = datetime('now')`
 	_, err := s.db.ExecContext(ctx, q, userID,
 		d.PromptTokens, d.CompletionTokens, d.CachedTokens, d.ReasoningTokens, d.TotalTokens)
+	return err
+}
+
+func (s *Store) AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int) error {
+	const q = `INSERT INTO user_usage_totals
+		(user_id, embedding_tokens, embedding_requests)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			embedding_tokens   = embedding_tokens + excluded.embedding_tokens,
+			embedding_requests = embedding_requests + excluded.embedding_requests,
+			updated_at         = datetime('now')`
+	_, err := s.db.ExecContext(ctx, q, userID, tokens, requests)
 	return err
 }
 
@@ -95,11 +109,13 @@ func (s *Store) bump(ctx context.Context, userID, column string) error {
 // Get returns the user's lifetime totals, or a zero Totals if no row exists yet.
 func (s *Store) Get(ctx context.Context, userID string) (Totals, error) {
 	const q = `SELECT prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, total_tokens,
+		embedding_tokens, embedding_requests,
 		web_searches, web_fetches, obscura_fetches, image_gens, chats_created, projects_created
 		FROM user_usage_totals WHERE user_id = ?`
 	var t Totals
 	err := s.db.QueryRowContext(ctx, q, userID).Scan(
 		&t.PromptTokens, &t.CompletionTokens, &t.CachedTokens, &t.ReasoningTokens, &t.TotalTokens,
+		&t.EmbeddingTokens, &t.EmbeddingRequests,
 		&t.WebSearches, &t.WebFetches, &t.ObscuraFetches, &t.ImageGens, &t.ChatsCreated, &t.ProjectsCreated,
 	)
 	if errors.Is(err, sql.ErrNoRows) {

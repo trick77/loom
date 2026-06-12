@@ -11,6 +11,8 @@ const sample: api.Usage = {
   cachedTokens: 10,
   reasoningTokens: 5,
   totalTokens: 150,
+  embeddingTokens: 88,
+  embeddingRequests: 6,
   webSearches: 4,
   webFetches: 7,
   obscuraFetches: 2,
@@ -29,6 +31,8 @@ describe("UsagePanel", () => {
     render(<UsagePanel />);
 
     expect(await screen.findByText("150")).toBeInTheDocument(); // total tokens
+    expect(screen.getByText("88")).toBeInTheDocument(); // embedding tokens
+    expect(screen.getByText("6")).toBeInTheDocument(); // embedding requests
     expect(screen.getByText("4")).toBeInTheDocument(); // web searches
     expect(screen.getByText("1234 / 2000")).toBeInTheDocument(); // memory length
   });

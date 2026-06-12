@@ -23,16 +23,31 @@ type fakeEmbedder struct {
 	err       error
 }
 
-func (f *fakeEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, error) {
+func (f *fakeEmbedder) Embed(_ context.Context, inputs []string) (EmbedResult, error) {
 	if f.err != nil {
-		return nil, f.err
+		return EmbedResult{}, f.err
 	}
 	f.gotInputs = append(f.gotInputs, append([]string(nil), inputs...))
 	out := make([][]float32, len(inputs))
 	for i := range inputs {
 		out[i] = unit()
 	}
-	return out, nil
+	return EmbedResult{Vectors: out, Usage: EmbeddingUsage{PromptTokens: len(inputs), TotalTokens: len(inputs), Present: true}}, nil
+}
+
+type fakeUsageRecorder struct {
+	userID   string
+	tokens   int
+	requests int
+	calls    int
+}
+
+func (f *fakeUsageRecorder) AddEmbeddingUsage(_ context.Context, userID string, tokens, requests int) error {
+	f.userID = userID
+	f.tokens += tokens
+	f.requests += requests
+	f.calls++
+	return nil
 }
 
 type fakeOpener struct {
@@ -54,10 +69,12 @@ func newIngester(t *testing.T, ext Extractor, emb Embedder, op FileOpener) (*Ing
 
 func TestIngester_Ingest_happyPath(t *testing.T) {
 	emb := &fakeEmbedder{}
+	usage := &fakeUsageRecorder{}
 	ing, s := newIngester(t,
-		fakeExtractor{text: strings.Repeat("word ", 3000)},
+		fakeExtractor{text: strings.Repeat("word ", 100000)},
 		emb,
 		fakeOpener{})
+	ing.SetUsageRecorder(usage)
 	ctx := context.Background()
 	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusPending})
 
@@ -75,6 +92,9 @@ func TestIngester_Ingest_happyPath(t *testing.T) {
 	}
 	if len(emb.gotInputs) == 0 {
 		t.Error("embedder was never called")
+	}
+	if usage.userID != "u1" || usage.tokens == 0 || usage.requests != len(emb.gotInputs) || usage.calls != 1 {
+		t.Errorf("embedding usage = user %q tokens %d requests %d calls %d, want one aggregate write for all batches", usage.userID, usage.tokens, usage.requests, usage.calls)
 	}
 }
 
