@@ -300,22 +300,39 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 	}
 }
 
-func TestCIWorkflowBuildsProductionImages(t *testing.T) {
+func TestReleaseWorkflowBuildsProductionImages(t *testing.T) {
+	// Production images are built and pushed by the release workflow on master
+	// push. The PR test workflow no longer builds Docker images (it relied on
+	// release.yaml for that), so this invariant lives against release.yaml.
+	data, err := os.ReadFile("../../../.github/workflows/release.yaml")
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	workflow := string(data)
+
+	for _, want := range []string{
+		`name: Build and push Slopr image`,
+		`file: ./backend/Containerfile`,
+		`name: Build and push Slopr UI image`,
+		`file: ./ui/Containerfile`,
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Fatalf("release workflow missing production image build fragment %q", want)
+		}
+	}
+}
+
+func TestPRWorkflowTypechecksUI(t *testing.T) {
+	// vitest does not run tsc/vite build, so the PR test workflow must run the
+	// UI build itself to catch type/build breakage before merge.
 	data, err := os.ReadFile("../../../.github/workflows/test.yaml")
 	if err != nil {
 		t.Fatalf("read test workflow: %v", err)
 	}
 	workflow := string(data)
 
-	for _, want := range []string{
-		`name: Build backend image`,
-		`file: ./backend/Containerfile`,
-		`name: Build UI image`,
-		`file: ./ui/Containerfile`,
-	} {
-		if !strings.Contains(workflow, want) {
-			t.Fatalf("test workflow missing production image build fragment %q", want)
-		}
+	if !strings.Contains(workflow, `cd ui && npm run build`) {
+		t.Fatalf("test workflow missing UI build step")
 	}
 }
 
