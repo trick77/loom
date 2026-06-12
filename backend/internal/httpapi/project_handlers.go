@@ -42,6 +42,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeChatStoreError(w, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
 		return
 	}
+	s.recordUsage("project_created", func() error { return s.usage.IncProjectCreated(r.Context(), user.ID) })
 	writeJSONStatus(w, http.StatusCreated, project)
 }
 

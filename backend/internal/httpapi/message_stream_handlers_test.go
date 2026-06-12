@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/slopr/internal/auth"
 	"github.com/trick77/slopr/internal/chat"
 	"github.com/trick77/slopr/internal/docgen"
 	"github.com/trick77/slopr/internal/imagegen"
@@ -751,7 +752,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 			},
 		}}
 
-		got := srv.executeToolCall(context.Background(), fetchCall, 0)
+		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0)
 
 		if got != "rendered page text" {
 			t.Fatalf("output = %q, want obscura snapshot", got)
@@ -761,7 +762,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	t.Run("surfaces fetch failure when obscura is unavailable", func(t *testing.T) {
 		srv := &server{mcp: fakeMCPService{err: errFakeTool}}
 
-		got := srv.executeToolCall(context.Background(), fetchCall, 0)
+		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0)
 
 		if !strings.HasPrefix(got, "tool failed") {
 			t.Fatalf("output = %q, want tool failed prefix", got)
@@ -784,7 +785,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 		}}
 		otherCall := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"query":"x"}`}}
 
-		got := srv.executeToolCall(context.Background(), otherCall, 0)
+		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, otherCall, 0)
 
 		if obscuraCalled {
 			t.Fatal("obscura must not be called for non-fetch tools")

@@ -24,6 +24,7 @@ import (
 	"github.com/trick77/slopr/internal/llm"
 	"github.com/trick77/slopr/internal/mcp"
 	"github.com/trick77/slopr/internal/store"
+	"github.com/trick77/slopr/internal/usage"
 	"github.com/trick77/slopr/web"
 )
 
@@ -98,6 +99,7 @@ func run() error {
 	authMW := auth.NewMiddleware(sessionStore, userStore)
 	chatStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
+	usageStore := usage.NewStore(db)
 	docTools := []docgen.Generator{
 		docgen.TextGenerator{},
 		docgen.PDFGenerator{},
@@ -182,6 +184,7 @@ func run() error {
 		Sessions:              sessionStore,
 		Users:                 userStore,
 		Chat:                  chatStore,
+		Usage:                 usageStore,
 		Artifacts:             artifactStore,
 		LLM:                   chatClient,
 		MCP:                   toolService,

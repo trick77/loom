@@ -63,13 +63,21 @@ func (s *Store) AddTokens(ctx context.Context, userID string, d TokenDelta) erro
 	return err
 }
 
-func (s *Store) IncWebSearch(ctx context.Context, userID string) error { return s.bump(ctx, userID, "web_searches") }
-func (s *Store) IncWebFetch(ctx context.Context, userID string) error  { return s.bump(ctx, userID, "web_fetches") }
+func (s *Store) IncWebSearch(ctx context.Context, userID string) error {
+	return s.bump(ctx, userID, "web_searches")
+}
+func (s *Store) IncWebFetch(ctx context.Context, userID string) error {
+	return s.bump(ctx, userID, "web_fetches")
+}
 func (s *Store) IncObscuraFetch(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "obscura_fetches")
 }
-func (s *Store) IncImageGen(ctx context.Context, userID string) error    { return s.bump(ctx, userID, "image_gens") }
-func (s *Store) IncChatCreated(ctx context.Context, userID string) error { return s.bump(ctx, userID, "chats_created") }
+func (s *Store) IncImageGen(ctx context.Context, userID string) error {
+	return s.bump(ctx, userID, "image_gens")
+}
+func (s *Store) IncChatCreated(ctx context.Context, userID string) error {
+	return s.bump(ctx, userID, "chats_created")
+}
 func (s *Store) IncProjectCreated(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "projects_created")
 }

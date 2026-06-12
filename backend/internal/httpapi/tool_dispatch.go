@@ -19,7 +19,7 @@ import (
 	"github.com/trick77/slopr/internal/sse"
 )
 
-func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall, round int) string {
+func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int) string {
 	args := summarizeForLog(call.Function.Arguments)
 	arguments, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
@@ -33,13 +33,26 @@ func (s *server) executeToolCall(ctx context.Context, call llm.ToolCall, round i
 	durationMS := time.Since(start).Milliseconds()
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
-		if fallback, ok := s.fetchObscuraFallback(callCtx, call.Function.Name, arguments, round); ok {
+		if fallback, ok := s.fetchObscuraFallback(callCtx, user, call.Function.Name, arguments, round); ok {
 			return fallback
 		}
 		return capToolOutput("tool failed: " + err.Error())
 	}
 	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
+	s.countToolCall(ctx, user, call.Function.Name)
 	return capToolOutput(output)
+}
+
+// countToolCall increments the per-user counter for a successfully completed
+// tool call. Only web search and the lightweight fetch are counted here; the
+// fetch->obscura fallback counts obscura separately in fetchObscuraFallback.
+func (s *server) countToolCall(ctx context.Context, user auth.User, toolName string) {
+	switch toolName {
+	case tavilySearchExposedName:
+		s.recordUsage("web_search", func() error { return s.usage.IncWebSearch(ctx, user.ID) })
+	case fetchToolName:
+		s.recordUsage("web_fetch", func() error { return s.usage.IncWebFetch(ctx, user.ID) })
+	}
 }
 
 // Tool names involved in the deterministic fetch->obscura fallback. fetch is the
@@ -49,13 +62,16 @@ const (
 	fetchToolName           = "fetch__fetch"
 	obscuraNavigateToolName = "obscura__browser_navigate"
 	obscuraSnapshotToolName = "obscura__browser_snapshot"
+	// tavilySearchExposedName is the namespaced web-search tool as dispatched
+	// (server "tavily" + tool "tavily_search"); see internal/mcp ExposedToolName.
+	tavilySearchExposedName = "tavily__tavily_search"
 )
 
 // fetchObscuraFallback retries a failed fetch via obscura's headless browser.
 // It only fires for the fetch tool when obscura is configured and the call
 // carried a URL. On success it returns the obscura snapshot and true; otherwise
 // it returns ok=false so the caller surfaces the original fetch failure.
-func (s *server) fetchObscuraFallback(ctx context.Context, toolName string, arguments map[string]any, round int) (string, bool) {
+func (s *server) fetchObscuraFallback(ctx context.Context, user auth.User, toolName string, arguments map[string]any, round int) (string, bool) {
 	if toolName != fetchToolName {
 		return "", false
 	}
@@ -76,6 +92,7 @@ func (s *server) fetchObscuraFallback(ctx context.Context, toolName string, argu
 		return "", false
 	}
 	slog.Info("fetch failed, obscura fallback succeeded", "url", url, "round", round, "result_bytes", len(snapshot))
+	s.recordUsage("obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
 	return capToolOutput(snapshot), true
 }
 
@@ -295,6 +312,7 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 		Height:          meta.Height,
 		DurationMs:      meta.DurationMs,
 	}
+	s.recordUsage("image_gen", func() error { return s.usage.IncImageGen(ctx, user.ID) })
 	_ = sendSSEJSON(stream, "artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
 }
