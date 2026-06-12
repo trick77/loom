@@ -253,10 +253,10 @@ type activeStreamKey struct {
 }
 
 type activeStream struct {
-	cancel context.CancelFunc
+	cancel context.CancelCauseFunc
 }
 
-func (r *activeStreamRegistry) register(userID, threadID string, cancel context.CancelFunc) func() {
+func (r *activeStreamRegistry) register(userID, threadID string, cancel context.CancelCauseFunc) func() {
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	stream := &activeStream{cancel: cancel}
 	r.mu.Lock()
@@ -264,7 +264,7 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 		r.streams = make(map[activeStreamKey]*activeStream)
 	}
 	if previous := r.streams[key]; previous != nil {
-		previous.cancel()
+		previous.cancel(errStreamSuperseded)
 	}
 	r.streams[key] = stream
 	r.mu.Unlock()
@@ -277,7 +277,7 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 	}
 }
 
-func (r *activeStreamRegistry) stop(userID, threadID string) {
+func (r *activeStreamRegistry) stop(userID, threadID string, cause error) {
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	r.mu.Lock()
 	stream := r.streams[key]
@@ -288,7 +288,7 @@ func (r *activeStreamRegistry) stop(userID, threadID string) {
 	if stream == nil {
 		return
 	}
-	stream.cancel()
+	stream.cancel(cause)
 }
 
 func (s *server) requireAuth(next http.Handler) http.Handler {
