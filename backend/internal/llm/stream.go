@@ -28,8 +28,8 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	start := time.Now()
 	callCtx := ctx
 	var cancel context.CancelFunc
-	if c.timeout > 0 {
-		callCtx, cancel = context.WithTimeout(ctx, c.timeout)
+	if timeout := c.timeoutForTools(tools); timeout > 0 {
+		callCtx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 	resp, err := c.executeChatRequestWithTools(callCtx, messages, tools, true)

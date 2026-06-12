@@ -3,6 +3,11 @@ package docgen
 import (
 	"bytes"
 	"testing"
+
+	"github.com/johnfercher/go-tree/node"
+	"github.com/johnfercher/maroto/v2/pkg/core"
+	"github.com/johnfercher/maroto/v2/pkg/core/entity"
+	"github.com/johnfercher/maroto/v2/pkg/metrics"
 )
 
 func TestPDFGeneratorWritesPDF(t *testing.T) {
@@ -78,6 +83,59 @@ func TestPDFRendersTableColumnsCallout(t *testing.T) {
 		t.Fatalf("not a PDF")
 	}
 }
+
+func TestPDFTextBlocksUseAutoRows(t *testing.T) {
+	blocks := []pdfBlock{
+		{Type: "heading", Level: 1, Text: "A heading long enough that it may wrap in the PDF output"},
+		{Type: "paragraph", Text: "A paragraph long enough that it may wrap across multiple rendered lines in the PDF output."},
+		{Type: "bullets", Items: []string{"A bullet long enough that it may wrap across multiple rendered lines in the PDF output."}},
+		{Type: "table", Rows: [][]string{{"Column", "Description"}, {"A", "A table cell long enough that it may wrap across multiple rendered lines."}}},
+		{Type: "columns", Left: []string{"A left column value long enough to wrap."}, Right: []string{"A right column value long enough to wrap."}},
+		{Type: "callout", Text: "A callout long enough that it may wrap across multiple rendered lines in the PDF output."},
+	}
+
+	m := &recordingMaroto{}
+
+	for _, block := range blocks {
+		renderBlock(m, block)
+	}
+
+	if m.addRowCalls != 0 {
+		t.Fatalf("AddRow calls = %d, want 0 for text-bearing blocks", m.addRowCalls)
+	}
+	if m.addAutoRowCalls != 7 {
+		t.Fatalf("AddAutoRow calls = %d, want 7", m.addAutoRowCalls)
+	}
+}
+
+type recordingMaroto struct {
+	addRowCalls     int
+	addAutoRowCalls int
+}
+
+func (m *recordingMaroto) RegisterHeader(...core.Row) error { return nil }
+func (m *recordingMaroto) RegisterFooter(...core.Row) error { return nil }
+func (m *recordingMaroto) AddRows(...core.Row)              {}
+func (m *recordingMaroto) AddRow(float64, ...core.Col) core.Row {
+	m.addRowCalls++
+	return nil
+}
+func (m *recordingMaroto) AddAutoRow(...core.Col) core.Row {
+	m.addAutoRowCalls++
+	return nil
+}
+func (m *recordingMaroto) FitlnCurrentPage(float64) bool            { return true }
+func (m *recordingMaroto) GetCurrentConfig() *entity.Config         { return nil }
+func (m *recordingMaroto) AddPages(...core.Page)                    {}
+func (m *recordingMaroto) GetStructure() *node.Node[core.Structure] { return nil }
+func (m *recordingMaroto) Generate() (core.Document, error)         { return recordingDocument{}, nil }
+func (d recordingDocument) GetBytes() []byte                        { return nil }
+func (d recordingDocument) GetBase64() string                       { return "" }
+func (d recordingDocument) Save(string) error                       { return nil }
+func (d recordingDocument) GetReport() *metrics.Report              { return nil }
+func (d recordingDocument) Merge([]byte) error                      { return nil }
+
+type recordingDocument struct{}
 
 func TestPDFSchemaAdvertisesBlocks(t *testing.T) {
 	schema := PDFGenerator{}.Schema()
