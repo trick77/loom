@@ -86,3 +86,17 @@ func (s *Store) UpdateStatus(ctx context.Context, userID, id, status, errMsg str
 	}
 	return nil
 }
+
+// ResetStuckIngestions marks documents left mid-ingestion (extracting/embedding)
+// by a crash or restart as errored, so they aren't stranded in a transient
+// state. Called once at boot.
+func (s *Store) ResetStuckIngestions(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE documents SET status = ?, error = 'ingestion interrupted by restart'
+		 WHERE status IN (?, ?)`,
+		StatusError, StatusExtracting, StatusEmbedding)
+	if err != nil {
+		return fmt.Errorf("reset stuck ingestions: %w", err)
+	}
+	return nil
+}
