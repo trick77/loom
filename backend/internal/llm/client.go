@@ -18,6 +18,12 @@ import (
 const maxErrorBodyBytes = 4096
 const defaultMaxCompletionTokens = 2048
 
+// documentToolMaxCompletionTokens gives document-generation tool rounds enough
+// room to serialize structured file payloads. The budget is only a ceiling: if
+// a round actually calls a small tool such as web search, the model is not
+// forced to consume it.
+const documentToolMaxCompletionTokens = 8192
+
 // Config holds the OpenAI-compatible chat completion settings.
 type Config struct {
 	BaseURL             string
@@ -110,7 +116,7 @@ func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Mes
 		tools:               tools,
 		stream:              stream,
 		reasoningEffort:     c.reasoningEffort,
-		maxCompletionTokens: c.maxCompletionTokens,
+		maxCompletionTokens: c.maxCompletionTokensForTools(tools),
 	})
 }
 
@@ -168,6 +174,30 @@ func (c *Client) executeChatRequestImpl(ctx context.Context, messages []Message,
 		return nil, fmt.Errorf("chat completion failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return resp, nil
+}
+
+func (c *Client) maxCompletionTokensForTools(tools []Tool) int {
+	if !hasDocumentGenerationTool(tools) || c.maxCompletionTokens >= documentToolMaxCompletionTokens {
+		return c.maxCompletionTokens
+	}
+	return documentToolMaxCompletionTokens
+}
+
+func hasDocumentGenerationTool(tools []Tool) bool {
+	for _, tool := range tools {
+		// Keep this list in sync with backend/internal/docgen generator
+		// ToolName methods. The llm package intentionally stays a leaf package
+		// and does not import docgen.
+		switch tool.Function.Name {
+		case "create_text_file",
+			"create_pdf_file",
+			"create_xlsx_file",
+			"create_docx_file",
+			"create_pptx_presentation":
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) wrapResponseLogger(resp *http.Response) {

@@ -390,6 +390,93 @@ func TestClient_StreamChatWithToolsSendsToolSchemas(t *testing.T) {
 	}
 }
 
+func TestClient_StreamChatWithDocumentToolUsesExpandedCompletionBudget(t *testing.T) {
+	var gotBody struct {
+		MaxCompletionTokens int `json:"max_completion_tokens"`
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo"}, server.Client())
+
+	_, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Make a PDF"}}, []Tool{{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "create_pdf_file",
+			Description: "Create a PDF",
+			Parameters:  map[string]any{"type": "object"},
+		},
+	}}, nil)
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if gotBody.MaxCompletionTokens != 8192 {
+		t.Fatalf("max_completion_tokens = %d, want 8192", gotBody.MaxCompletionTokens)
+	}
+}
+
+func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *testing.T) {
+	tests := []struct {
+		name                 string
+		configuredTokens     int
+		toolName             string
+		wantCompletionTokens int
+	}{
+		{
+			name:                 "non-document tool uses default budget",
+			toolName:             "search__web",
+			wantCompletionTokens: defaultMaxCompletionTokens,
+		},
+		{
+			name:                 "document tool preserves higher configured budget",
+			configuredTokens:     16384,
+			toolName:             "create_pdf_file",
+			wantCompletionTokens: 16384,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody struct {
+				MaxCompletionTokens int `json:"max_completion_tokens"`
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+					t.Fatalf("Decode request body: %v", err)
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}]}\n\n"))
+				_, _ = w.Write([]byte("data: [DONE]\n\n"))
+			}))
+			t.Cleanup(server.Close)
+
+			client := NewClient(Config{BaseURL: server.URL, Model: "mimo", MaxCompletionTokens: tt.configuredTokens}, server.Client())
+
+			_, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Use a tool"}}, []Tool{{
+				Type: "function",
+				Function: ToolFunction{
+					Name:        tt.toolName,
+					Description: "Tool",
+					Parameters:  map[string]any{"type": "object"},
+				},
+			}}, nil)
+			if err != nil {
+				t.Fatalf("StreamChatWithTools() error: %v", err)
+			}
+			if gotBody.MaxCompletionTokens != tt.wantCompletionTokens {
+				t.Fatalf("max_completion_tokens = %d, want %d", gotBody.MaxCompletionTokens, tt.wantCompletionTokens)
+			}
+		})
+	}
+}
+
 func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
