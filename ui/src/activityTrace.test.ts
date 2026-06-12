@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import {
   appendReasoningDelta,
   completeTrace,
+  externalHTTPURL,
+  faviconURL,
   normalizeActivityTrace,
   summarizeToolCall,
   summarizeTrace,
@@ -191,6 +193,16 @@ describe("activity trace model", () => {
     expect(summarizeToolCall("custom__lookup", "not-json")).toMatchObject({
       title: "custom lookup",
     });
+  });
+
+  test("normalizes schemeless source URLs without accepting app-relative routes", () => {
+    expect(externalHTTPURL("www.example.com/docs")).toBe("https://www.example.com/docs");
+    expect(externalHTTPURL("example.com:8080/docs")).toBe("https://example.com:8080/docs");
+    expect(externalHTTPURL("//example.com/docs")).toBe("https://example.com/docs");
+    expect(externalHTTPURL("https://example.com/docs")).toBe("https://example.com/docs");
+    expect(externalHTTPURL("/threads/t1")).toBeUndefined();
+    expect(externalHTTPURL("mailto:hello@example.com")).toBeUndefined();
+    expect(faviconURL("www.example.com/docs")).toBe("https://www.google.com/s2/favicons?domain=example.com&sz=32");
   });
 
   test("preserves URL fallback text for search results without titles", () => {

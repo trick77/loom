@@ -2976,6 +2976,33 @@ test("renders fetch tool rows with a timeline favicon and a clickable URL", asyn
   expect(document.querySelector(".ui-activity-result-list")).toBeNull();
 });
 
+test("opens schemeless fetch tool URLs as remote links", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"www.getmaxim.ai/bifrost/resources/governance\\"}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"fetch__fetch","content":"Page content"}\n\n'));
+      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  expect(await screen.findByText("Done.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /show activity/i }));
+
+  const link = await screen.findByRole("link", { name: "www.getmaxim.ai/bifrost/resources/governance" });
+  expect(link).toHaveAttribute("href", "https://www.getmaxim.ai/bifrost/resources/governance");
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", "noreferrer");
+});
+
 test("does not repeat the collapsed headline as the reasoning row title", async () => {
   const stream = new ReadableStream({
     start(controller) {
@@ -3049,7 +3076,7 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
       controller.enqueue(encoder.encode('event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Search for updates","createdAt":"2026-05-30T00:00:00Z"}\n\n'));
       controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'));
       controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'));
-      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"{\\"results\\":[{\\"title\\":\\"Agentgateway\\",\\"url\\":\\"https://agentgateway.dev\\",\\"snippet\\":\\"**Next generation proxy**\\"},{\\"title\\":\\"# Our Story and Lumon Brand\\",\\"url\\":\\"https://lumon.com/story\\"},{\\"title\\":\\"Malformed source\\",\\"url\\":\\"not a url\\"}]}"}\n\n'));
+      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"{\\"results\\":[{\\"title\\":\\"Agentgateway\\",\\"url\\":\\"https://agentgateway.dev\\",\\"snippet\\":\\"**Next generation proxy**\\"},{\\"title\\":\\"# Our Story and Lumon Brand\\",\\"url\\":\\"lumon.com/story\\"},{\\"title\\":\\"Malformed source\\",\\"url\\":\\"not a url\\"}]}"}\n\n'));
       controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"I found the update.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();

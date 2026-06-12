@@ -4,6 +4,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import {
+  externalHTTPURL,
   faviconURL,
   summarizeTrace,
   type ActivityTraceEvent,
@@ -259,15 +260,6 @@ function SearchResultRow({
       {result.domain !== undefined && <div className="ui-activity-result-domain">{result.domain}</div>}
     </div>
   );
-}
-
-function externalHTTPURL(value: string): string | undefined {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function latestReasoningTitle(events: ActivityTraceEvent[]): string | undefined {
