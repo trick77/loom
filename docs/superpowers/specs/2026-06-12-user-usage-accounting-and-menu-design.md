@@ -21,6 +21,10 @@ Erfasst werden pro Benutzer:
 - **Chats erstellt** (lifetime, monoton)
 - **Projekte erstellt** (lifetime, monoton)
 
+Zusätzlich im Usage-Panel angezeigt (aber **kein** Zähler, sondern ein
+Live-Wert): die **aktuelle Länge der User-Memories** des Benutzers in Zeichen
+(`len([]rune(content))` aus `user_memory.content`, Limit `MaxUserMemoryLength`).
+
 Sichtbar gemacht über: ein neues **User-Menü** (Popup) → **Settings**-Modal →
 Nav-Eintrag **Usage**.
 
@@ -126,7 +130,11 @@ Chat-Antwort oder Tool-Ausführung scheitern lässt.
 
 `GET /api/me/usage` (auth-required, wie `/api/me/memory`) → JSON mit allen
 Zählern für den eingeloggten Benutzer. Handler in `internal/httpapi`, dünn:
-ruft `usage.Store.Get` und serialisiert.
+ruft `usage.Store.Get` und serialisiert. Zusätzlich liest der Handler die
+**aktuelle User-Memory-Länge** (Runen-Länge von `user_memory.content` via
+bestehendem User-Memory-Store) und gibt sie als `userMemoryLength` (plus
+`userMemoryMax` = `MaxUserMemoryLength`) mit aus — Live-Wert, nicht aus der
+Zählertabelle. So bleibt das Panel ein einziger Fetch.
 
 ---
 
@@ -168,8 +176,10 @@ oben rechts. **Keine** Suchleiste.
   - Web-Searches, Web-Fetches (normal), Web-Fetches (Obscura)
   - Image-Generierungen
   - Chats erstellt, Projekte erstellt
+  - **User-Memory-Länge** (Live-Wert, z. B. „1234 / 8000 Zeichen") — als eigene
+    Zeile/Gruppe „Memory", klar von den Lifetime-Zählern abgesetzt.
   - Darstellung schlicht als Label/Wert-Liste (Gruppen: „Tokens", „Tools",
-    „Aktivität"); Stil/Farben aus dem bestehenden Theme.
+    „Aktivität", „Memory"); Stil/Farben aus dem bestehenden Theme.
 
 ## Datenfluss
 
