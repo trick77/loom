@@ -17,6 +17,13 @@ function sectionsFor(u: Usage): { group: string; rows: Row[] }[] {
       ],
     },
     {
+      group: "Embeddings",
+      rows: [
+        { label: "Embedding tokens", value: String(u.embeddingTokens) },
+        { label: "Embedding requests", value: String(u.embeddingRequests) },
+      ],
+    },
+    {
       group: "Tools",
       rows: [
         { label: "Web searches", value: String(u.webSearches) },

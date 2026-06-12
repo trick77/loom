@@ -18,7 +18,11 @@ type Extractor interface {
 
 // Embedder turns texts into vectors (implemented by EmbedClient).
 type Embedder interface {
-	Embed(ctx context.Context, inputs []string) ([][]float32, error)
+	Embed(ctx context.Context, inputs []string) (EmbedResult, error)
+}
+
+type EmbeddingUsageRecorder interface {
+	AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int) error
 }
 
 // FileOpener opens a document's bytes from the per-user volume (sandboxed).
@@ -33,6 +37,7 @@ type Ingester struct {
 	extractor Extractor
 	embedder  Embedder
 	chunkOpts ChunkOptions
+	usage     EmbeddingUsageRecorder
 }
 
 func NewIngester(store *Store, opener FileOpener, extractor Extractor, embedder Embedder) *Ingester {
@@ -43,6 +48,10 @@ func NewIngester(store *Store, opener FileOpener, extractor Extractor, embedder 
 		embedder:  embedder,
 		chunkOpts: DefaultChunkOptions(),
 	}
+}
+
+func (ing *Ingester) SetUsageRecorder(usage EmbeddingUsageRecorder) {
+	ing.usage = usage
 }
 
 // Ingest indexes one document. On any failure it records the error on the
@@ -66,7 +75,7 @@ func (ing *Ingester) Ingest(ctx context.Context, userID, documentID string) erro
 
 	_ = ing.store.UpdateStatus(ctx, userID, documentID, StatusEmbedding, "")
 	chunks := Chunk(text, ing.chunkOpts)
-	embeddings, err := ing.embedAll(ctx, chunks)
+	embeddings, err := ing.embedAll(ctx, userID, chunks)
 	if err != nil {
 		return ing.fail(ctx, userID, documentID, err)
 	}
@@ -93,8 +102,13 @@ func (ing *Ingester) extract(ctx context.Context, doc Document) (string, error) 
 
 // embedAll embeds chunk texts in bounded batches and returns vectors aligned to
 // the chunk order.
-func (ing *Ingester) embedAll(ctx context.Context, chunks []TextChunk) ([][]float32, error) {
+func (ing *Ingester) embedAll(ctx context.Context, userID string, chunks []TextChunk) ([][]float32, error) {
 	embeddings := make([][]float32, 0, len(chunks))
+	var usageTokens int
+	var usageRequests int
+	defer func() {
+		ing.recordEmbeddingUsage(ctx, userID, usageTokens, usageRequests)
+	}()
 	for start := 0; start < len(chunks); start += embedBatchSize {
 		end := start + embedBatchSize
 		if end > len(chunks) {
@@ -104,13 +118,24 @@ func (ing *Ingester) embedAll(ctx context.Context, chunks []TextChunk) ([][]floa
 		for i := range inputs {
 			inputs[i] = chunks[start+i].Text
 		}
-		vecs, err := ing.embedder.Embed(ctx, inputs)
+		result, err := ing.embedder.Embed(ctx, inputs)
 		if err != nil {
 			return nil, fmt.Errorf("embed batch: %w", err)
 		}
-		embeddings = append(embeddings, vecs...)
+		embeddings = append(embeddings, result.Vectors...)
+		if result.Usage.Present {
+			usageTokens += result.Usage.TotalTokens
+			usageRequests++
+		}
 	}
 	return embeddings, nil
+}
+
+func (ing *Ingester) recordEmbeddingUsage(ctx context.Context, userID string, tokens, requests int) {
+	if ing.usage == nil || tokens == 0 || requests == 0 {
+		return
+	}
+	_ = ing.usage.AddEmbeddingUsage(ctx, userID, tokens, requests)
 }
 
 func (ing *Ingester) fail(ctx context.Context, userID, documentID string, cause error) error {

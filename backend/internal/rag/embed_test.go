@@ -29,6 +29,7 @@ func TestEmbedClient_Embed_postsInputsAndReturnsVectors(t *testing.T) {
 				{"index": 0, "embedding": []float64{0.1, 0.2, 0.3}},
 				{"index": 1, "embedding": []float64{0.4, 0.5, 0.6}},
 			},
+			"usage": map[string]any{"prompt_tokens": 8, "total_tokens": 8},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -36,10 +37,11 @@ func TestEmbedClient_Embed_postsInputsAndReturnsVectors(t *testing.T) {
 	defer srv.Close()
 
 	c := NewEmbedClient(EmbedConfig{BaseURL: srv.URL, APIKey: "sk-test", Model: "text-embedding-3-small"}, nil)
-	vecs, err := c.Embed(context.Background(), []string{"hello", "world"})
+	result, err := c.Embed(context.Background(), []string{"hello", "world"})
 	if err != nil {
 		t.Fatalf("Embed() error: %v", err)
 	}
+	vecs := result.Vectors
 
 	if gotModel != "text-embedding-3-small" {
 		t.Errorf("model = %q, want text-embedding-3-small", gotModel)
@@ -56,16 +58,48 @@ func TestEmbedClient_Embed_postsInputsAndReturnsVectors(t *testing.T) {
 	if len(vecs[0]) != 3 || vecs[1][0] != 0.4 {
 		t.Errorf("vectors = %v, want aligned 3-dim embeddings", vecs)
 	}
+	if result.Usage.TotalTokens != 8 || result.Usage.PromptTokens != 8 || !result.Usage.Present {
+		t.Errorf("usage = %+v, want prompt=8 total=8 present", result.Usage)
+	}
 }
 
 func TestEmbedClient_Embed_emptyInputReturnsNothing(t *testing.T) {
 	c := NewEmbedClient(EmbedConfig{BaseURL: "http://unused", Model: "m"}, nil)
-	vecs, err := c.Embed(context.Background(), nil)
+	result, err := c.Embed(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("Embed(nil) error: %v", err)
 	}
-	if len(vecs) != 0 {
-		t.Errorf("Embed(nil) = %d vectors, want 0", len(vecs))
+	if len(result.Vectors) != 0 {
+		t.Errorf("Embed(nil) = %d vectors, want 0", len(result.Vectors))
+	}
+	if result.Usage.Present {
+		t.Errorf("Embed(nil) usage present = true, want false")
+	}
+}
+
+func TestEmbedClient_Embed_ignoresMalformedUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"data": []map[string]any{
+				{"index": 0, "embedding": []float64{0.1, 0.2, 0.3}},
+			},
+			"usage": "unexpected",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	c := NewEmbedClient(EmbedConfig{BaseURL: srv.URL, Model: "text-embedding-3-small"}, nil)
+	result, err := c.Embed(context.Background(), []string{"hello"})
+	if err != nil {
+		t.Fatalf("Embed() error = %v, want nil when only usage is malformed", err)
+	}
+	if len(result.Vectors) != 1 {
+		t.Fatalf("vectors = %d, want 1", len(result.Vectors))
+	}
+	if result.Usage.Present {
+		t.Errorf("usage present = true, want false for malformed usage")
 	}
 }
 

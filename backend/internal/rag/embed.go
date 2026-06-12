@@ -56,22 +56,63 @@ type embedResponse struct {
 		Index     int       `json:"index"`
 		Embedding []float32 `json:"embedding"`
 	} `json:"data"`
+	Usage json.RawMessage `json:"usage"`
+}
+
+type EmbeddingUsage struct {
+	PromptTokens int  `json:"prompt_tokens"`
+	TotalTokens  int  `json:"total_tokens"`
+	Present      bool `json:"-"`
+}
+
+func (u *EmbeddingUsage) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		PromptTokens int `json:"prompt_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	u.PromptTokens = raw.PromptTokens
+	u.TotalTokens = raw.TotalTokens
+	u.Present = true
+	return nil
+}
+
+type EmbedResult struct {
+	Vectors [][]float32
+	Usage   EmbeddingUsage
+}
+
+func parseEmbeddingUsage(raw json.RawMessage) EmbeddingUsage {
+	if len(raw) == 0 || string(raw) == "null" {
+		return EmbeddingUsage{}
+	}
+	var usage EmbeddingUsage
+	if err := json.Unmarshal(raw, &usage); err != nil {
+		return EmbeddingUsage{}
+	}
+	if usage.PromptTokens == 0 && usage.TotalTokens == 0 {
+		return EmbeddingUsage{}
+	}
+	usage.Present = true
+	return usage
 }
 
 // Embed returns one embedding vector per input, aligned to the input order.
 // An empty input yields no vectors without making a request.
-func (c *EmbedClient) Embed(ctx context.Context, inputs []string) ([][]float32, error) {
+func (c *EmbedClient) Embed(ctx context.Context, inputs []string) (EmbedResult, error) {
 	if len(inputs) == 0 {
-		return nil, nil
+		return EmbedResult{}, nil
 	}
 
 	body, err := json.Marshal(embedRequest{Model: c.model, Input: inputs})
 	if err != nil {
-		return nil, fmt.Errorf("marshal embed request: %w", err)
+		return EmbedResult{}, fmt.Errorf("marshal embed request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/embeddings", bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("create embed request: %w", err)
+		return EmbedResult{}, fmt.Errorf("create embed request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {
@@ -80,20 +121,20 @@ func (c *EmbedClient) Embed(ctx context.Context, inputs []string) ([][]float32, 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("embed request: %w", err)
+		return EmbedResult{}, fmt.Errorf("embed request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, maxEmbedErrorBody))
-		return nil, fmt.Errorf("embedding failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+		return EmbedResult{}, fmt.Errorf("embedding failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 
 	var parsed embedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("decode embed response: %w", err)
+		return EmbedResult{}, fmt.Errorf("decode embed response: %w", err)
 	}
 	if len(parsed.Data) != len(inputs) {
-		return nil, fmt.Errorf("embedding count mismatch: got %d, want %d", len(parsed.Data), len(inputs))
+		return EmbedResult{}, fmt.Errorf("embedding count mismatch: got %d, want %d", len(parsed.Data), len(inputs))
 	}
 
 	// The spec allows out-of-order data; sort by index to realign to inputs.
@@ -102,5 +143,5 @@ func (c *EmbedClient) Embed(ctx context.Context, inputs []string) ([][]float32, 
 	for i, d := range parsed.Data {
 		out[i] = d.Embedding
 	}
-	return out, nil
+	return EmbedResult{Vectors: out, Usage: parseEmbeddingUsage(parsed.Usage)}, nil
 }

@@ -29,6 +29,10 @@ type Indexer interface {
 	Ingest(ctx context.Context, userID, documentID string) error
 }
 
+type UsageRecorder interface {
+	AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int) error
+}
+
 // Service ties uploads to the volume, the artifact store, the RAG store, and the
 // ingest pipeline. It is the application-level entry point for document handlers.
 type Service struct {
@@ -36,11 +40,16 @@ type Service struct {
 	artifacts ArtifactStore
 	indexer   Indexer
 	embedder  rag.Embedder
+	usage     UsageRecorder
 	usersDir  string
 }
 
 func NewService(store *rag.Store, artifacts ArtifactStore, indexer Indexer, embedder rag.Embedder, usersDir string) *Service {
 	return &Service{store: store, artifacts: artifacts, indexer: indexer, embedder: embedder, usersDir: usersDir}
+}
+
+func (s *Service) SetUsageRecorder(usage UsageRecorder) {
+	s.usage = usage
 }
 
 // UploadInput describes a single document upload. ThreadID may be empty for a
@@ -197,12 +206,20 @@ func (s *Service) Retrieve(ctx context.Context, userID string, projectID *string
 	} else if !has {
 		return nil, nil
 	}
-	vecs, err := s.embedder.Embed(ctx, []string{query})
+	result, err := s.embedder.Embed(ctx, []string{query})
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)
 	}
-	if len(vecs) == 0 {
+	if len(result.Vectors) == 0 {
 		return nil, nil
 	}
-	return s.store.Retrieve(ctx, userID, projectID, vecs[0], k)
+	s.recordEmbeddingUsage(ctx, userID, result.Usage)
+	return s.store.Retrieve(ctx, userID, projectID, result.Vectors[0], k)
+}
+
+func (s *Service) recordEmbeddingUsage(ctx context.Context, userID string, u rag.EmbeddingUsage) {
+	if s.usage == nil || !u.Present {
+		return
+	}
+	_ = s.usage.AddEmbeddingUsage(ctx, userID, u.TotalTokens, 1)
 }

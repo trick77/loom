@@ -268,6 +268,8 @@ export type Usage = {
   cachedTokens: number;
   reasoningTokens: number;
   totalTokens: number;
+  embeddingTokens: number;
+  embeddingRequests: number;
   webSearches: number;
   webFetches: number;
   obscuraFetches: number;

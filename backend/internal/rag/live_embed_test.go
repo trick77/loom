@@ -14,8 +14,9 @@ import (
 // TestLiveEmbedAndRetrieve exercises the real embeddings endpoint + real
 // sqlite-vec KNN: it confirms the configured model returns 1536-dim vectors and
 // that a semantically related query retrieves the right chunk. Run with:
-//   BACKEND_EMBED_BASE_URL=... BACKEND_EMBED_API_KEY=... BACKEND_EMBED_MODEL=... \
-//     go test -tags liveembed -run TestLiveEmbedAndRetrieve ./internal/rag/ -v
+//
+//	BACKEND_EMBED_BASE_URL=... BACKEND_EMBED_API_KEY=... BACKEND_EMBED_MODEL=... \
+//	  go test -tags liveembed -run TestLiveEmbedAndRetrieve ./internal/rag/ -v
 func TestLiveEmbedAndRetrieve(t *testing.T) {
 	emb := NewEmbedClient(EmbedConfig{
 		BaseURL: os.Getenv("BACKEND_EMBED_BASE_URL"),
@@ -29,10 +30,11 @@ func TestLiveEmbedAndRetrieve(t *testing.T) {
 		"Bananas are a good source of potassium and grow in tropical climates.",
 		"Apache Tika extracts plain text from PDF, DOCX, and other documents.",
 	}
-	vecs, err := emb.Embed(ctx, docs)
+	embeddedDocs, err := emb.Embed(ctx, docs)
 	if err != nil {
 		t.Fatalf("Embed: %v", err)
 	}
+	vecs := embeddedDocs.Vectors
 	if len(vecs) != 3 {
 		t.Fatalf("got %d vectors, want 3", len(vecs))
 	}
@@ -58,11 +60,11 @@ func TestLiveEmbedAndRetrieve(t *testing.T) {
 		t.Fatalf("ReplaceChunks: %v", err)
 	}
 
-	qvec, err := emb.Embed(ctx, []string{"What language is the slopr server written in?"})
+	embeddedQuery, err := emb.Embed(ctx, []string{"What language is the slopr server written in?"})
 	if err != nil {
 		t.Fatalf("Embed query: %v", err)
 	}
-	res, err := s.Retrieve(ctx, "u", nil, qvec[0], 1)
+	res, err := s.Retrieve(ctx, "u", nil, embeddedQuery.Vectors[0], 1)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}

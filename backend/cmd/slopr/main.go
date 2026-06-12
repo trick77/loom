@@ -117,7 +117,10 @@ func run() error {
 		}, http.DefaultClient)
 		tikaClient := documents.NewTikaClient(documents.TikaConfig{BaseURL: cfg.TikaURL})
 		ingester := rag.NewIngester(ragStore, documents.VolumeOpener{UsersDir: cfg.UsersDir}, tikaClient, embedClient)
-		documentService = documents.NewService(ragStore, artifactStore, ingester, embedClient, cfg.UsersDir)
+		ingester.SetUsageRecorder(usageStore)
+		docs := documents.NewService(ragStore, artifactStore, ingester, embedClient, cfg.UsersDir)
+		docs.SetUsageRecorder(usageStore)
+		documentService = docs
 	}
 	docTools := []docgen.Generator{
 		docgen.TextGenerator{},
