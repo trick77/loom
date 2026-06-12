@@ -82,6 +82,17 @@ html {
   color-scheme: dark;
 }
 
+/* Tailwind v4 dropped the v3 Preflight default that gave buttons/role=button a
+   pointer cursor, so clickable controls without an explicit cursor utility show
+   the default arrow. Restore it app-wide. Kept in @layer base so explicit
+   cursor-* utilities (e.g. disabled:cursor-not-allowed) still win. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
