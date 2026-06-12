@@ -53,7 +53,7 @@ func (s *Store) ListProjects(ctx context.Context, userID string, archived bool) 
 		archiveFilter = "archived_at IS NOT NULL"
 	}
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-SELECT id, user_id, name, description, archived_at, created_at, updated_at
+SELECT id, user_id, name, description, starred, archived_at, created_at, updated_at
 FROM projects
 WHERE user_id = ? AND %s
 ORDER BY updated_at DESC, id DESC`, archiveFilter),
@@ -114,6 +114,27 @@ WHERE user_id = ? AND id = ?`,
 	return s.getProject(ctx, userID, projectID)
 }
 
+func (s *Store) SetProjectStarred(ctx context.Context, userID, projectID string, starred bool) (Project, bool, error) {
+	starredInt := 0
+	if starred {
+		starredInt = 1
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE projects
+SET starred = ?, updated_at = datetime('now')
+WHERE user_id = ? AND id = ?`,
+		starredInt, userID, projectID,
+	)
+	if err != nil {
+		return Project{}, false, fmt.Errorf("star project: %w", err)
+	}
+	ok, err := changed(result)
+	if err != nil || !ok {
+		return Project{}, ok, err
+	}
+	return s.getProject(ctx, userID, projectID)
+}
+
 func (s *Store) SetProjectArchived(ctx context.Context, userID, projectID string, archived bool) (bool, error) {
 	setArchivedAt := "archived_at = NULL"
 	if archived {
@@ -145,7 +166,7 @@ WHERE user_id = ? AND id = ?`,
 
 func (s *Store) getProject(ctx context.Context, userID, projectID string) (Project, bool, error) {
 	project, err := scanProject(s.db.QueryRowContext(ctx, `
-SELECT id, user_id, name, description, archived_at, created_at, updated_at
+SELECT id, user_id, name, description, starred, archived_at, created_at, updated_at
 FROM projects
 WHERE user_id = ? AND id = ?`,
 		userID, projectID,

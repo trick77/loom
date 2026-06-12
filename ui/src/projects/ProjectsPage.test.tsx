@@ -14,6 +14,7 @@ const projects: Project[] = [
     id: "p1",
     name: "Research",
     description: "Paper notes",
+    starred: false,
     createdAt: "2026-06-10T00:00:00Z",
     updatedAt: "2026-06-10T12:00:00Z",
   },
@@ -136,6 +137,7 @@ test("ProjectDetailPage renders project chats and project chat menu", () => {
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
+      onToggleStar={vi.fn()}
       onOpenSidebar={vi.fn()}
     />,
   );
@@ -172,6 +174,7 @@ test("ProjectDetailPage renders project chats with the shared chats-list row", (
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
+      onToggleStar={vi.fn()}
       onOpenSidebar={vi.fn()}
     />,
   );
@@ -221,6 +224,7 @@ test("ProjectDetailPage uses the same composer surface as new chat", () => {
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
+      onToggleStar={vi.fn()}
       onOpenSidebar={vi.fn()}
     />,
   );
@@ -301,6 +305,7 @@ test("project action triggers use vertical overflow icons", () => {
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
+      onToggleStar={vi.fn()}
       onOpenSidebar={vi.fn()}
     />,
   );
@@ -352,6 +357,7 @@ test("ProjectDetailPage thread menu items remain clickable after pointerdown", (
         onEditProject={vi.fn()}
         onArchiveProject={vi.fn()}
         onDeleteProject={vi.fn()}
+        onToggleStar={vi.fn()}
         onOpenSidebar={vi.fn()}
       />
     );

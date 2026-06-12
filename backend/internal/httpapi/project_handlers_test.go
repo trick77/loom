@@ -72,6 +72,52 @@ func TestArchiveAndDeleteProjectReturn204(t *testing.T) {
 	}
 }
 
+func TestStarAndUnstarProjectReturnUpdatedProject(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		path     string
+		expected bool
+	}{
+		{name: "star", path: "/api/projects/proj_1/star", expected: true},
+		{name: "unstar", path: "/api/projects/proj_1/unstar", expected: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeChatStore{
+				project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"},
+			}
+			srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+			rec := httptest.NewRecorder()
+			req := authenticatedRequest(http.MethodPost, tc.path, "")
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+			}
+			var got chat.Project
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.Starred != tc.expected {
+				t.Fatalf("project Starred = %v, want %v", got.Starred, tc.expected)
+			}
+		})
+	}
+}
+
+func TestStarProjectNotFoundReturns404(t *testing.T) {
+	store := &fakeChatStore{}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/projects/missing/star", "")
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDeleteProjectRemovesGeneratedArtifactFiles(t *testing.T) {
 	usersDir := t.TempDir()
 	projectID := "proj_1"

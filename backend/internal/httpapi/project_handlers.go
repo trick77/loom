@@ -67,6 +67,31 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, project)
 }
 
+func (s *server) handleStarProject(w http.ResponseWriter, r *http.Request) {
+	s.handleSetProjectStarred(w, r, true)
+}
+
+func (s *server) handleUnstarProject(w http.ResponseWriter, r *http.Request) {
+	s.handleSetProjectStarred(w, r, false)
+}
+
+func (s *server) handleSetProjectStarred(w http.ResponseWriter, r *http.Request, starred bool) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireChat(w, s) {
+		return
+	}
+	project, found, err := s.chat.SetProjectStarred(r.Context(), user.ID, r.PathValue("projectID"), starred)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "update project failed")
+		return
+	}
+	if !found {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	writeJSON(w, project)
+}
+
 func (s *server) handleArchiveProject(w http.ResponseWriter, r *http.Request) {
 	s.handleSetProjectArchived(w, r, true)
 }

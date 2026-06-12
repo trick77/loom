@@ -136,7 +136,7 @@ test("places library before projects in the primary sidebar navigation", async (
   expect(artifactsButton.compareDocumentPosition(projectsItem as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
-test("places project rows above starred chats with matching chat row sizing", async () => {
+test("places project rows below starred chats with matching chat row sizing", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -156,9 +156,9 @@ test("places project rows above starred chats with matching chat row sizing", as
   const starredHeading = screen.getByText("Starred");
   const chatRow = screen.getAllByRole("button", { name: "Existing chat" })[0];
 
-  expect(projectRow.compareDocumentPosition(starredHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(projectRow).toHaveClass("h-7");
-  expect(projectRow).toHaveClass("px-1.5");
+  expect(starredHeading.compareDocumentPosition(projectRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const projectRowSurface = projectRow.parentElement as HTMLElement;
+  expect(projectRowSurface).toHaveClass("h-7");
   expect(projectRow).not.toHaveClass("text-xs");
   expect(chatRow).toHaveClass("h-7");
 });
@@ -1373,7 +1373,9 @@ test("restores persisted activity trace when reopening a chat", async () => {
   expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
 });
 
-test("opens activity traces by default when the global preference is stored", async () => {
+test("keeps past activity traces collapsed by default, ignoring any stale stored toggle", async () => {
+  // The toggle is no longer persisted; a leftover value from an older build must
+  // not force past traces open.
   window.localStorage.setItem("slopr:activity-trace-expanded", "true");
   vi.stubGlobal(
     "fetch",
@@ -1403,11 +1405,11 @@ test("opens activity traces by default when the global preference is stored", as
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
   expect(await screen.findByText("I found Slopr.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
 });
 
-test("stores the activity trace expansion preference from the toggle", async () => {
+test("toggles a past activity trace without persisting the choice to localStorage", async () => {
   vi.stubGlobal(
     "fetch",
     chatThreadFetch(null, [
@@ -1438,15 +1440,15 @@ test("stores the activity trace expansion preference from the toggle", async () 
   const showToggle = await screen.findByRole("button", { name: /show activity/i });
   fireEvent.click(showToggle);
 
-  expect(window.localStorage.getItem("slopr:activity-trace-expanded")).toBe("true");
   expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
+  expect(window.localStorage.getItem("slopr:activity-trace-expanded")).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: /hide activity/i }));
 
-  expect(window.localStorage.getItem("slopr:activity-trace-expanded")).toBe("false");
   await waitFor(() => {
     expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
   });
+  expect(window.localStorage.getItem("slopr:activity-trace-expanded")).toBeNull();
 });
 
 test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
@@ -1522,6 +1524,43 @@ test("shows the reasoning abstract once its background title arrives", async () 
   expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
   expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
+});
+
+test("auto-opens the live thinking window while reasoning streams and collapses once the answer settles", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  // Reasoning streams: the window opens itself, no click needed.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+
+  // The answer settles (text + background title): the window collapses on its own.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+  );
+  expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  });
 });
 
 test("keeps the generated reasoning title during later active trace updates", async () => {
@@ -1621,19 +1660,14 @@ test("keeps active activity trace visible while assistant text is streaming", as
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
   );
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
-  // Reasoning is collapsed by default — the body stays hidden until the user opens it.
-  expect(within(trace).getByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  await waitFor(() => expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument());
-
-  // Open it to reveal the reasoning row.
-  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
-  expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
+  // The window auto-opens while reasoning streams — the body is shown without a click.
+  expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  // Once opened it stays open while the answer streams; the trace remains visible.
+  // No reasoning title has arrived yet, so the window stays open while the answer streams.
   expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   // Reasoning rows use the clock node — no per-row completion checkmark mid-stream.
@@ -1648,9 +1682,12 @@ test("keeps active activity trace visible while assistant text is streaming", as
   streamController.current?.close();
 
   expect(await screen.findByText("Hello.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  // The result is in: the thinking window collapses itself once the turn completes.
+  const completedToggle = await screen.findByRole("button", { name: /show activity/i });
+  await waitFor(() => expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument());
+  // Expanding the completed trace still reveals the clock timeline node and the Done cap.
+  fireEvent.click(completedToggle);
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
-  // Reasoning row shows the clock timeline node; the turn is capped with a Done node.
   expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
   expect(screen.getByText("Done")).toBeInTheDocument();
 });
@@ -1797,8 +1834,7 @@ test("shows active activity trace with reasoning and tool activity before assist
 
   const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
-  // Collapsed by default — open it to inspect the live timeline.
-  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
+  // The window auto-opens while inference runs — no click needed.
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway kgateway")).toBeInTheDocument();
@@ -2598,7 +2634,8 @@ test("surfaces the server error and keeps failed activity trace visible", async 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
   const trace = screen.getByRole("status", { name: /slopr activity trace/i });
-  // Collapsed by default — open it to inspect the failed timeline.
+  // The turn has ended (the request failed), so the trace is collapsed — open it
+  // to inspect the failed timeline.
   fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
