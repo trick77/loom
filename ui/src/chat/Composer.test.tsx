@@ -66,3 +66,27 @@ test("ignores non-file drags for composer drop guidance", () => {
 
   expect(screen.queryByText("Drop files here to add to chat")).not.toBeInTheDocument();
 });
+
+test("shows generic drop guidance on the start composer", () => {
+  render(
+    <Composer
+      variant="start"
+      draft=""
+      isSending={false}
+      placeholder="How can I help you today?"
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAttachFiles={vi.fn()}
+    />,
+  );
+
+  const composer = screen.getByRole("textbox").closest("form");
+  expect(composer).not.toBeNull();
+
+  fireEvent.dragEnter(composer!, fileDrag);
+
+  // The start composer predates any chat, so the guidance must not say "chat".
+  expect(screen.getByText("Drop files here to attach")).toBeInTheDocument();
+  expect(screen.queryByText("Drop files here to add to chat")).not.toBeInTheDocument();
+});

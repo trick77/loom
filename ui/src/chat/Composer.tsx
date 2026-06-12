@@ -151,7 +151,7 @@ export function Composer({
     >
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[19px] bg-[#332f27]/92 text-sm font-medium text-[#f3f0e8]">
-          Drop files here to add to chat
+          {variant === "chat" ? "Drop files here to add to chat" : "Drop files here to attach"}
         </div>
       )}
       <textarea
