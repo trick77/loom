@@ -38,10 +38,10 @@ export function UserMemoryPanel() {
       aria-label="Memories"
       className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
     >
-      <div className="flex items-start justify-between gap-3">
-        <Icon name="memory" size="22px" className="text-[#d5d2c9]" />
-      </div>
-      <h2 className="mt-3 text-sm font-medium text-[#ecece6]">Memories</h2>
+      <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
+        <Icon name="memory" size="16px" className="text-[#d5d2c9]" />
+        <span>Memories</span>
+      </h2>
       <p className="ui-meta-text mt-1 text-[#807d74]">
         Durable facts about you, used across every chat.
       </p>
