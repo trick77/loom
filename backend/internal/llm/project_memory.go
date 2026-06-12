@@ -19,7 +19,8 @@ const ProjectMemorySystemPrompt = "You maintain a compact, durable memory for a 
 	"Given the project name, description, the existing memory, and recent conversation, output an UPDATED memory. " +
 	"Keep ONLY durable, project-wide facts, decisions, and open questions (dates, budgets, people, hard constraints, choices made). " +
 	"Drop chit-chat and one-off details. Replace outdated facts with their newest value instead of listing both. " +
-	"Use short markdown bullet lines, grouped under brief headings if helpful. Be terse. " +
+	"Use terse fragments in short markdown bullet lines, grouped under brief headings if helpful. " +
+	"Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. " +
 	"Stay well under 1000 characters. Output ONLY the memory content, no preamble."
 
 // UserMemorySystemPrompt drives user-memory generation: a flat list of atomic,
@@ -27,10 +28,11 @@ const ProjectMemorySystemPrompt = "You maintain a compact, durable memory for a 
 const UserMemorySystemPrompt = "You maintain a compact, durable memory of facts about the user so the assistant can stay personalized across all of their chats. " +
 	"Given the existing memory and recent conversation, output an UPDATED memory. " +
 	"Keep ONLY durable, personal facts the user revealed about THEMSELVES (employer/role, location, languages, lasting preferences, recurring goals). " +
-	"Each fact must be a single, self-contained sentence on its own line, prefixed with '- '. Do NOT group under headings. " +
+	"Use terse fragments: each fact must be a fragment on its own line, prefixed with '- '. Do NOT group under headings. " +
+	"Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. " +
 	"Drop chit-chat, one-off details, and anything about other people. Replace outdated facts with their newest value instead of listing both. " +
 	"NEVER store passwords, API keys, secrets, payment details, or other sensitive credentials. " +
-	"Be terse. Stay well under 800 characters. Output ONLY the memory content, no preamble."
+	"Stay well under 800 characters. Output ONLY the memory content, no preamble."
 
 // GenerateMemory re-summarizes a memory. It is given a scope-specific header
 // block (for example a project's name/description, or empty for user memory),

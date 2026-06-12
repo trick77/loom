@@ -20,7 +20,10 @@ test("shows the empty state when there is no memory yet", async () => {
 
   render(<UserMemoryPanel />);
 
-  expect(await screen.findByText(/Memory will show here after a few chats/)).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Memories" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Memories" })).toBeInTheDocument();
+  expect(await screen.findByText(/Memories will show here after a few chats/)).toBeInTheDocument();
+  expect(screen.queryByText("Memory")).not.toBeInTheDocument();
 });
 
 test("renders the discrete facts as a list, stripping bullet markers", async () => {
@@ -44,6 +47,6 @@ test("does not show a manual refresh action", async () => {
 
   render(<UserMemoryPanel />);
 
-  await screen.findByText(/Memory will show here/);
+  await screen.findByText(/Memories will show here/);
   expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeInTheDocument();
 });

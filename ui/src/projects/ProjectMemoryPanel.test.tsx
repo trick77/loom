@@ -4,6 +4,7 @@ import { expect, test, vi } from "vitest";
 
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
 import * as api from "../api";
+import { ICONS } from "../chat/Icon";
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
@@ -20,9 +21,12 @@ test("shows the empty state when there is no memory yet", async () => {
 
   render(<ProjectMemoryPanel projectId="p1" />);
 
-  expect(screen.getByRole("region", { name: "Memory" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Memory" })).toBeInTheDocument();
-  expect(await screen.findByText(/Memory will show here after a few chats/)).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Memories" })).toBeInTheDocument();
+  const heading = screen.getByRole("heading", { name: "Memories" });
+  expect(heading).toBeInTheDocument();
+  expect(heading).toHaveTextContent(ICONS.memory);
+  expect(await screen.findByText(/Memories will show here after a few chats/)).toBeInTheDocument();
+  expect(screen.queryByText("Memory")).not.toBeInTheDocument();
   expect(screen.queryByText(/Project memory/i)).not.toBeInTheDocument();
 });
 

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
 import { GeneratedArtifactCard } from "./ChatShell";
+import { ICONS } from "./chat/Icon";
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
@@ -398,6 +399,8 @@ test("does not expose project creation from the sidebar", async () => {
   render(<App />);
 
   await screen.findByRole("button", { name: "New chat" });
+  expect(screen.getByRole("button", { name: "Memories" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument();
   expect(screen.queryByPlaceholderText(/project name/i)).not.toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalledWith("/api/projects", expect.objectContaining({ method: "POST" }));
@@ -756,7 +759,10 @@ test("project chat header prefixes the title with a clickable project name", asy
   fireEvent.click(await screen.findByRole("button", { name: "Inference Spend Statistics Access" }));
 
   const header = await screen.findByRole("banner", { name: "Chat header" });
-  expect(within(header).getByRole("heading", { name: /AI Gateway Comparison.*Inference Spend Statistics Access/ })).toBeInTheDocument();
+  const headerTitle = within(header).getByRole("heading", { name: /AI Gateway Comparison.*Inference Spend Statistics Access/ });
+  expect(headerTitle).toBeInTheDocument();
+  expect(headerTitle).not.toHaveTextContent(">");
+  expect(headerTitle).toHaveTextContent(ICONS.chevronRight);
 
   fireEvent.click(within(header).getByRole("button", { name: "AI Gateway Comparison" }));
 
