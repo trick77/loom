@@ -32,6 +32,7 @@ type Deps struct {
 	Chat                  ChatStore
 	Usage                 UsageStore
 	Artifacts             ArtifactStore
+	Documents             DocumentService
 	LLM                   ChatClient
 	MCP                   ToolService
 	DocTools              []docgen.Generator
@@ -51,6 +52,7 @@ type server struct {
 	chat                  ChatStore
 	usage                 UsageStore
 	artifacts             ArtifactStore
+	documents             DocumentService
 	llm                   ChatClient
 	mcp                   ToolService
 	docTools              []docgen.Generator
@@ -83,6 +85,7 @@ type ChatStore interface {
 	AddMessageWithUsage(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage) (chat.Message, error)
 	AddMessageWithArtifacts(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage) (chat.Message, error)
 	AddMessageWithActivityTrace(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage) (chat.Message, error)
+	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 	GetProjectMemory(context.Context, string, string) (chat.ProjectMemory, bool, error)
 	UpsertProjectMemory(context.Context, string, string, string, int) (chat.ProjectMemory, error)
@@ -179,6 +182,7 @@ func New(d Deps) http.Handler {
 		chat:                  d.Chat,
 		usage:                 d.Usage,
 		artifacts:             d.Artifacts,
+		documents:             d.Documents,
 		llm:                   d.LLM,
 		mcp:                   d.MCP,
 		docTools:              d.DocTools,
@@ -226,6 +230,11 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))
+	mux.Handle("POST /api/documents/upload", s.requireAuth(http.HandlerFunc(s.handleUploadDocument)))
+	mux.Handle("GET /api/documents", s.requireAuth(http.HandlerFunc(s.handleListDocuments)))
+	mux.Handle("POST /api/documents/{documentID}/index", s.requireAuth(http.HandlerFunc(s.handleIndexDocument)))
+	mux.Handle("POST /api/documents/{documentID}/unindex", s.requireAuth(http.HandlerFunc(s.handleUnindexDocument)))
+	mux.Handle("DELETE /api/documents/{documentID}", s.requireAuth(http.HandlerFunc(s.handleDeleteDocument)))
 	if d.Static != nil {
 		mux.Handle("/", d.Static)
 	}

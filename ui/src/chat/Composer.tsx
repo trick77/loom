@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 
+import { DOCUMENT_ACCEPT } from "../api";
 import { Icon } from "./Icon";
 
 export function Composer({
@@ -11,6 +12,7 @@ export function Composer({
   onDraftChange,
   onSend,
   onStop,
+  onAttachFiles,
 }: {
   variant: "start" | "chat";
   draft: string;
@@ -20,7 +22,11 @@ export function Composer({
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
+  // Invoked with the files the user picked from the native chooser. When omitted,
+  // the attach button is disabled (e.g. before a thread exists).
+  onAttachFiles?(files: File[]): void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Base (empty) height per variant, preserved as the textarea's min-height so
   // the composer keeps its current look before any auto-grow kicks in.
   const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
@@ -88,9 +94,28 @@ export function Composer({
         }}
       />
       <div className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}>
-        <button className="leading-none" type="button" aria-label="Add attachment">
+        <button
+          className="leading-none disabled:opacity-40"
+          type="button"
+          aria-label="Add attachment"
+          disabled={onAttachFiles === undefined}
+          onClick={() => fileInputRef.current?.click()}
+        >
           <Icon name="plus" size="24px" />
         </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={DOCUMENT_ACCEPT}
+          className="hidden"
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            // Reset so picking the same file again re-fires change.
+            event.target.value = "";
+            if (files.length > 0) onAttachFiles?.(files);
+          }}
+        />
         <div className="ui-meta-text flex items-center text-[#d8d4ca]">
           <button
             className={`ui-composer-send grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}

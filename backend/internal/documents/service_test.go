@@ -1,0 +1,171 @@
+package documents
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/slopr/internal/rag"
+	"github.com/trick77/slopr/internal/store"
+)
+
+type fakeIndexer struct{ called []string }
+
+func (f *fakeIndexer) Ingest(_ context.Context, _, documentID string) error {
+	f.called = append(f.called, documentID)
+	return nil
+}
+
+type fakeEmbedder struct{}
+
+func (fakeEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, error) {
+	out := make([][]float32, len(inputs))
+	for i := range inputs {
+		v := make([]float32, 1536)
+		v[0] = 1
+		out[i] = v
+	}
+	return out, nil
+}
+
+func newTestService(t *testing.T) (*Service, *fakeIndexer, string) {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if _, err := db.Exec(`INSERT INTO users (id, oidc_subject, username, role) VALUES ('u','s','u','user')`); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	usersDir := filepath.Join(dir, "users")
+	idx := &fakeIndexer{}
+	svc := NewService(rag.NewStore(db), artifact.NewStore(db), idx, fakeEmbedder{}, usersDir)
+	return svc, idx, usersDir
+}
+
+func TestService_Upload_writesFileArtifactAndDocument(t *testing.T) {
+	svc, _, usersDir := newTestService(t)
+	ctx := context.Background()
+
+	doc, art, err := svc.Upload(ctx, UploadInput{
+		UserID:   "u",
+		Filename: "Report.pdf",
+		Reader:   strings.NewReader("PDF-BYTES"),
+	})
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+	if art.Source != "user_uploaded" {
+		t.Errorf("artifact source = %q, want user_uploaded", art.Source)
+	}
+	if doc.Status != rag.StatusPending {
+		t.Errorf("doc status = %q, want pending", doc.Status)
+	}
+	if doc.ArtifactID == nil || *doc.ArtifactID != art.ID {
+		t.Errorf("doc.ArtifactID = %v, want %q", doc.ArtifactID, art.ID)
+	}
+	abs := filepath.Join(usersDir, "u", "files", "Report.pdf")
+	if data, err := os.ReadFile(abs); err != nil || string(data) != "PDF-BYTES" {
+		t.Errorf("file at %s not written correctly: %q (err %v)", abs, data, err)
+	}
+}
+
+func TestService_Upload_rejectsDisallowedFormat(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	if _, _, err := svc.Upload(context.Background(), UploadInput{UserID: "u", Filename: "x.exe", Reader: strings.NewReader("x")}); err == nil {
+		t.Fatal("Upload(.exe) error = nil, want rejection")
+	}
+}
+
+func TestService_Index_delegatesToIndexer(t *testing.T) {
+	svc, idx, _ := newTestService(t)
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	if err := svc.Index(ctx, "u", doc.ID); err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+	if len(idx.called) != 1 || idx.called[0] != doc.ID {
+		t.Errorf("indexer called = %v, want [%s]", idx.called, doc.ID)
+	}
+}
+
+func TestService_Delete_removesFileArtifactAndDocument(t *testing.T) {
+	svc, _, usersDir := newTestService(t)
+	ctx := context.Background()
+	doc, art, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+
+	if err := svc.Delete(ctx, "u", doc.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, ok, _ := svc.Get(ctx, "u", doc.ID); ok {
+		t.Error("document still present after delete")
+	}
+	if _, ok, _ := svc.artifacts.Get(ctx, "u", art.ID); ok {
+		t.Error("artifact still present after delete")
+	}
+	if _, err := os.Stat(filepath.Join(usersDir, "u", "files", "a.txt")); !os.IsNotExist(err) {
+		t.Errorf("file still on disk after delete (err %v)", err)
+	}
+}
+
+type countingEmbedder struct{ calls int }
+
+func (c *countingEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, error) {
+	c.calls++
+	out := make([][]float32, len(inputs))
+	for i := range inputs {
+		v := make([]float32, 1536)
+		v[0] = 1
+		out[i] = v
+	}
+	return out, nil
+}
+
+func TestService_Retrieve_skipsEmbeddingWhenNoChunks(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if _, err := db.Exec(`INSERT INTO users (id, oidc_subject, username, role) VALUES ('u','s','u','user')`); err != nil {
+		t.Fatal(err)
+	}
+	emb := &countingEmbedder{}
+	svc := NewService(rag.NewStore(db), artifact.NewStore(db), &fakeIndexer{}, emb, filepath.Join(dir, "users"))
+
+	res, err := svc.Retrieve(context.Background(), "u", nil, "anything", 5)
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if len(res) != 0 {
+		t.Errorf("Retrieve = %d, want 0 with nothing indexed", len(res))
+	}
+	if emb.calls != 0 {
+		t.Errorf("embedder called %d times, want 0 (guarded)", emb.calls)
+	}
+}
+
+func TestService_Retrieve_embedsQueryAndReturnsChunks(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	// Directly index chunks via the store to avoid Tika in this unit test.
+	v := make([]float32, 1536)
+	v[0] = 1
+	if err := svc.store.ReplaceChunks(ctx, "u", doc.ID, []rag.TextChunk{{Text: "hello"}}, [][]float32{v}); err != nil {
+		t.Fatalf("seed chunks: %v", err)
+	}
+	res, err := svc.Retrieve(ctx, "u", nil, "what is hello", 5)
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if len(res) != 1 || res[0].Text != "hello" {
+		t.Errorf("Retrieve = %+v, want one chunk 'hello'", res)
+	}
+}

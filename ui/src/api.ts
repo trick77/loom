@@ -51,6 +51,7 @@ export type Message = {
   reasoningContent?: string;
   activityTrace?: ActivityTraceEvent[];
   artifacts?: Artifact[];
+  citations?: Citation[];
   createdAt: string;
   promptTokens?: number;
   completionTokens?: number;
@@ -77,6 +78,33 @@ export type Artifact = {
   height?: number;
   durationMs?: number;
 };
+
+// Citation mirrors a backend RAG source: one per retrieved chunk. The UI groups
+// these by filename for display (AnythingLLM-style "combine like sources").
+export type Citation = {
+  documentId: string;
+  filename: string;
+  snippet: string;
+  score: number;
+};
+
+// Document is an uploaded file tracked for retrieval-augmented generation.
+export type Document = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: "pending" | "extracting" | "embedding" | "embedded" | "stale" | "error";
+  error?: string;
+  projectId?: string;
+  artifactId?: string;
+  createdAt: string;
+};
+
+// Extensions accepted for document upload — keep in sync with the backend
+// allowlist (internal/documents/allowlist.go).
+export const DOCUMENT_ACCEPT =
+  ".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.html";
 
 export type ArtifactListType = "all" | "images" | "files";
 export type ArtifactSort = "name" | "modified" | "size";
@@ -117,6 +145,7 @@ type StreamHandlers = {
   onToolResult?(event: ToolResultEvent): void;
   onMcpStatus?(event: McpStatusEvent): void;
   onArtifact?(artifact: Artifact): void;
+  onKnowledgeSources?(sources: Citation[]): void;
 };
 
 export class AuthExpiredError extends Error {
@@ -428,6 +457,68 @@ export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
   return response.blob();
 }
 
+export async function uploadDocument(
+  file: File,
+  opts: { threadId?: string; projectId?: string } = {},
+): Promise<Document> {
+  const form = new FormData();
+  form.append("file", file);
+  if (opts.threadId) form.append("threadId", opts.threadId);
+  if (opts.projectId) form.append("projectId", opts.projectId);
+  const response = await fetch("/api/documents/upload", { method: "POST", body: form });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (response.status === 415) {
+    throw new Error("Unsupported document format");
+  }
+  return expectJSON<Document>(response, "failed to upload document");
+}
+
+export async function listDocuments(projectId?: string): Promise<Document[]> {
+  const suffix = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+  const response = await fetch(`/api/documents${suffix}`);
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  const body = await expectJSON<{ items: Document[] }>(response, "failed to load documents");
+  return body.items ?? [];
+}
+
+export async function indexDocument(documentId: string): Promise<Document> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}/index`, {
+    method: "POST",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  return expectJSON<Document>(response, "failed to index document");
+}
+
+export async function unindexDocument(documentId: string): Promise<void> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}/unindex`, {
+    method: "POST",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to unindex document");
+  }
+}
+
+export async function deleteDocument(documentId: string): Promise<void> {
+  const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to delete document");
+  }
+}
+
 export async function streamMessage(
   threadId: string,
   content: string,
@@ -549,6 +640,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "artifact":
       handlers.onArtifact?.(payload as Artifact);
+      break;
+    case "knowledge_sources":
+      handlers.onKnowledgeSources?.((payload as { sources: Citation[] }).sources);
       break;
     case "done":
       break;

@@ -205,6 +205,34 @@ func TestMessagesPersistActivityTrace(t *testing.T) {
 	}
 }
 
+func TestMessagesPersistCitations(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Citations"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawCitations := json.RawMessage(`[{"documentId":"d1","filename":"guide.pdf","snippet":"make build","score":0.8}]`)
+	message, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "Use make build.", MessageTokenUsage{}, nil, nil, rawCitations)
+	if err != nil {
+		t.Fatalf("AddMessageWithCitations() error = %v", err)
+	}
+	if string(message.Citations) != string(rawCitations) {
+		t.Fatalf("message.Citations = %s", message.Citations)
+	}
+
+	messages, found, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	if string(messages[0].Citations) != string(rawCitations) {
+		t.Fatalf("listed Citations = %s", messages[0].Citations)
+	}
+}
+
 func TestStore_AddMessageRollsBackWhenThreadTimestampUpdateFails(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
