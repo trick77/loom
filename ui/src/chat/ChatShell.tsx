@@ -32,9 +32,6 @@ import {
   setThreadStarred,
   stopMessage,
   streamMessage,
-  uploadDocument,
-  indexDocument,
-  listDocuments,
   type Artifact,
   type McpStatusEvent,
   type Message,
@@ -78,6 +75,7 @@ import { CheckIcon, CloseIcon, DownloadIcon, FileIcon } from "./icons";
 import { Icon } from "./Icon";
 import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
+import { useDocumentAttachments } from "./useDocumentAttachments";
 import { DeleteProjectModal } from "../projects/DeleteProjectModal";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage";
 import { ProjectDialog } from "../projects/ProjectDialog";
@@ -1766,6 +1764,8 @@ function StartPanel({
   onSend(): void;
   onStop(): void;
 }) {
+  // No thread or project yet: composer uploads land in user-global knowledge.
+  const { attachNote, handleAttachFiles } = useDocumentAttachments({});
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
@@ -1796,7 +1796,11 @@ function StartPanel({
             onDraftChange={onDraftChange}
             onSend={onSend}
             onStop={onStop}
+            onAttachFiles={handleAttachFiles}
           />
+          {attachNote !== "" && (
+            <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
+          )}
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           <div className="ui-meta-text mt-4 flex flex-wrap justify-center gap-2 text-[#e8e4da]">
             <PromptChip icon="◇" label="Write" />
@@ -1958,55 +1962,10 @@ function ChatPanel({
     onSend();
   }, [onSend, pinToLatest]);
 
-  const [attachNote, setAttachNote] = useState("");
-  const handleAttachFiles = useCallback(
-    (files: File[]) => {
-      if (thread === null) return;
-      const projectId = threadProject?.id;
-      // Poll the document list until ingestion (which runs server-side in the
-      // background) reaches a terminal state, so the note reflects real status
-      // rather than just "request accepted".
-      const waitForIngestion = async (documentId: string, filename: string) => {
-        for (let attempt = 0; attempt < 40; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-          let docs;
-          try {
-            docs = await listDocuments(projectId);
-          } catch {
-            continue;
-          }
-          const current = docs.find((d) => d.id === documentId);
-          if (current === undefined) continue;
-          if (current.status === "embedded") {
-            setAttachNote(`Added ${filename} to knowledge.`);
-            return;
-          }
-          if (current.status === "error" || current.status === "stale") {
-            setAttachNote(`Could not index ${filename}${current.error ? `: ${current.error}` : "."}`);
-            return;
-          }
-        }
-        setAttachNote(`${filename} is still processing…`);
-      };
-
-      void (async () => {
-        for (const file of files) {
-          setAttachNote(`Uploading ${file.name}…`);
-          try {
-            const doc = await uploadDocument(file, { threadId: thread.id, projectId });
-            // Composer uploads are added to knowledge automatically.
-            setAttachNote(`Processing ${file.name}…`);
-            await indexDocument(doc.id);
-            await waitForIngestion(doc.id, file.name);
-          } catch (error) {
-            setAttachNote(error instanceof Error ? error.message : `Failed to upload ${file.name}.`);
-            return;
-          }
-        }
-      })();
-    },
-    [thread, threadProject?.id],
-  );
+  const { attachNote, handleAttachFiles } = useDocumentAttachments({
+    threadId: thread?.id,
+    projectId: threadProject?.id,
+  });
 
   const handleRetryRequest = useCallback(
     (content: string) => {
