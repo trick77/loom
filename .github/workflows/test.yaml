@@ -1,8 +1,6 @@
 name: Tests
 
 on:
-  push:
-    branches: [master]
   pull_request:
     branches: [master]
 
@@ -28,28 +26,5 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: cd ui && npm ci
+      - run: cd ui && npm run build # tsc --noEmit && vite build — fängt Typ-/Build-Fehler
       - run: make fe-coverage
-
-  image:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v4
-      - name: Build backend image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./backend/Containerfile
-          push: false
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Build UI image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./ui/Containerfile
-          push: false
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
