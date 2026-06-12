@@ -1,7 +1,24 @@
-import { useCallback, useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import { DOCUMENT_ACCEPT } from "../api";
 import { Icon } from "./Icon";
+
+// Drop has no native `accept` filter (unlike the file input), so we filter the
+// dropped files by the same extension list the picker advertises.
+const ACCEPTED_EXTENSIONS = DOCUMENT_ACCEPT.split(",").map((ext) => ext.trim().toLowerCase());
+function filterAcceptedFiles(files: File[]): File[] {
+  return files.filter((file) => {
+    const name = file.name.toLowerCase();
+    return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
+  });
+}
+
+// True only for OS file drags. Dragging selected text or a link also fires the
+// drag events, but carries no "Files" type - we ignore those so the highlight
+// doesn't flash for drags we can't attach.
+function isFileDrag(event: { dataTransfer: DataTransfer }): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
+}
 
 export function Composer({
   variant,
@@ -29,6 +46,12 @@ export function Composer({
   onAttachFiles?(files: File[]): void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Whether a drag is currently hovering the composer (drives the highlight).
+  const [isDragging, setIsDragging] = useState(false);
+  // dragenter/dragleave fire for every child element, so a plain boolean would
+  // flicker. Count enters minus leaves; the highlight is on while depth > 0.
+  const dragDepth = useRef(0);
+  const dropEnabled = onAttachFiles !== undefined;
   // Base (empty) height per variant, preserved as the textarea's min-height so
   // the composer keeps its current look before any auto-grow kicks in.
   const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
@@ -72,7 +95,9 @@ export function Composer({
   }, [autoGrow]);
   return (
     <form
-      className="ui-composer relative flex flex-col rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]"
+      className={`ui-composer relative flex flex-col rounded-[20px] border bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)] transition-colors ${
+        isDragging ? "border-accent bg-[#332f27]" : "border-[#4b4a46]"
+      }`}
       onSubmit={(event) => {
         event.preventDefault();
         if (isSending) {
@@ -82,6 +107,47 @@ export function Composer({
         if (sendDisabled) return;
         onSend();
       }}
+      onDragEnter={
+        dropEnabled
+          ? (event) => {
+              if (!isFileDrag(event)) return;
+              event.preventDefault();
+              dragDepth.current += 1;
+              setIsDragging(true);
+            }
+          : undefined
+      }
+      onDragOver={
+        dropEnabled
+          ? (event) => {
+              if (!isFileDrag(event)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+            }
+          : undefined
+      }
+      onDragLeave={
+        dropEnabled
+          ? (event) => {
+              if (!isFileDrag(event)) return;
+              event.preventDefault();
+              dragDepth.current = Math.max(0, dragDepth.current - 1);
+              if (dragDepth.current === 0) setIsDragging(false);
+            }
+          : undefined
+      }
+      onDrop={
+        dropEnabled
+          ? (event) => {
+              if (!isFileDrag(event)) return;
+              event.preventDefault();
+              dragDepth.current = 0;
+              setIsDragging(false);
+              const files = filterAcceptedFiles(Array.from(event.dataTransfer.files ?? []));
+              if (files.length > 0) onAttachFiles?.(files);
+            }
+          : undefined
+      }
     >
       <textarea
         ref={textareaRef}
