@@ -20,6 +20,8 @@ export type PendingArtifact = {
   receivedBytes: number;
 };
 
+const INLINE_DOWNLOAD_THRESHOLD_BYTES = 64 * 1024;
+
 export function buildImageStats(artifact: Artifact): string | null {
   const segments: string[] = [];
   if (artifact.model) segments.push(artifact.model);
@@ -42,15 +44,18 @@ export function pendingFencedArtifact(content: string): PendingArtifact | null {
   const match = matches[0];
   const extension = extensionByLanguage.get(match[1].trim().toLowerCase());
   if (extension === undefined) return null;
+  const format = DOWNLOAD_FORMATS[extension];
 
   const start = match.index ?? 0;
   const artifactStart = start + match[0].length;
   if (content.slice(artifactStart).includes("\n```")) return null;
+  const receivedBytes = utf8ByteLength(content.slice(artifactStart));
+  if (format.inlineBelowBytes !== undefined && receivedBytes <= format.inlineBelowBytes) return null;
 
   return {
     label: extension.toUpperCase(),
     before: content.slice(0, start).trim(),
-    receivedBytes: utf8ByteLength(content.slice(artifactStart)),
+    receivedBytes,
   };
 }
 
@@ -100,26 +105,54 @@ function fencedArtifact(content: string): EmbeddedArtifact | null {
 
   const { match, extension } = downloadable[0];
   const start = match.index ?? 0;
+  const body = match[2];
+  const format = DOWNLOAD_FORMATS[extension];
+  if (format.inlineBelowBytes !== undefined && utf8ByteLength(body) <= format.inlineBelowBytes) return null;
   return {
     artifact: {
       extension,
       label: extension.toUpperCase(),
-      mimeType: DOWNLOAD_FORMATS[extension].mimeType,
-      content: match[2],
+      mimeType: format.mimeType,
+      content: body,
     },
     before: content.slice(0, start).trim(),
     after: content.slice(start + match[0].length).trim(),
   };
 }
 
-type DownloadFormat = { mimeType: string; languages: string[]; mimeTypes: string[] };
+type DownloadFormat = { mimeType: string; languages: string[]; mimeTypes: string[]; inlineBelowBytes?: number };
 
 const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
   csv: { mimeType: "text/csv;charset=utf-8", languages: ["csv"], mimeTypes: ["text/csv"] },
   html: { mimeType: "text/html;charset=utf-8", languages: ["html"], mimeTypes: ["text/html"] },
   json: { mimeType: "application/json;charset=utf-8", languages: ["json"], mimeTypes: ["application/json"] },
+  log: {
+    mimeType: "text/plain;charset=utf-8",
+    languages: ["log"],
+    mimeTypes: [],
+    inlineBelowBytes: INLINE_DOWNLOAD_THRESHOLD_BYTES,
+  },
+  md: {
+    mimeType: "text/markdown;charset=utf-8",
+    languages: ["md", "markdown"],
+    mimeTypes: ["text/markdown"],
+    inlineBelowBytes: INLINE_DOWNLOAD_THRESHOLD_BYTES,
+  },
+  pdf: { mimeType: "application/pdf", languages: ["pdf"], mimeTypes: ["application/pdf"] },
   svg: { mimeType: "application/xml;charset=utf-8", languages: ["svg"], mimeTypes: ["image/svg+xml"] },
+  txt: {
+    mimeType: "text/plain;charset=utf-8",
+    languages: ["txt", "text"],
+    mimeTypes: ["text/plain"],
+    inlineBelowBytes: INLINE_DOWNLOAD_THRESHOLD_BYTES,
+  },
   xml: { mimeType: "application/xml;charset=utf-8", languages: ["xml"], mimeTypes: ["application/xml", "text/xml"] },
+  yaml: {
+    mimeType: "application/yaml;charset=utf-8",
+    languages: ["yaml", "yml"],
+    mimeTypes: ["application/yaml", "text/yaml"],
+    inlineBelowBytes: INLINE_DOWNLOAD_THRESHOLD_BYTES,
+  },
   pptx: {
     mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     languages: [],
