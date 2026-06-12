@@ -1633,6 +1633,7 @@ function StartPanel({
         <div className="w-full max-w-[674px]">
           <Composer
             variant="start"
+            autoFocus
             draft={draft}
             isSending={isSending}
             placeholder="How can I help you today?"

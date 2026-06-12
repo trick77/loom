@@ -44,14 +44,18 @@ func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.T
 }
 
 // countToolCall increments the per-user counter for a successfully completed
-// tool call. Only web search and the lightweight fetch are counted here; the
-// fetch->obscura fallback counts obscura separately in fetchObscuraFallback.
+// tool call. An obscura page load is counted per browser_navigate (one fetch =
+// one navigated page); this covers the model driving obscura directly. The
+// deterministic fetch->obscura fallback navigates obscura outside this path, so
+// it counts itself in fetchObscuraFallback — there is no double count.
 func (s *server) countToolCall(ctx context.Context, user auth.User, toolName string) {
 	switch toolName {
 	case tavilySearchExposedName:
 		s.recordUsage("web_search", func() error { return s.usage.IncWebSearch(ctx, user.ID) })
 	case fetchToolName:
 		s.recordUsage("web_fetch", func() error { return s.usage.IncWebFetch(ctx, user.ID) })
+	case obscuraNavigateToolName:
+		s.recordUsage("obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
 	}
 }
 

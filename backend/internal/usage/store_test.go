@@ -39,6 +39,41 @@ func TestGet_unknownUser_returnsZeroTotals(t *testing.T) {
 	}
 }
 
+func TestCounters_surviveChatDeletion(t *testing.T) {
+	st, db := newTestStore(t)
+	ctx := context.Background()
+
+	// Seed a chat (thread) + message owned by the user, then count some usage.
+	if _, err := db.Exec(`INSERT INTO threads (id, user_id, title) VALUES (?, ?, ?)`, "t1", "u1", "Chat"); err != nil {
+		t.Fatalf("seed thread: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO messages (id, thread_id, user_id, role, content) VALUES (?, ?, ?, 'user', 'hi')`,
+		"m1", "t1", "u1",
+	); err != nil {
+		t.Fatalf("seed message: %v", err)
+	}
+	if err := st.AddTokens(ctx, "u1", usage.TokenDelta{TotalTokens: 100}); err != nil {
+		t.Fatalf("AddTokens: %v", err)
+	}
+	if err := st.IncWebSearch(ctx, "u1"); err != nil {
+		t.Fatalf("IncWebSearch: %v", err)
+	}
+
+	// Deleting the chat (cascades to its messages) must not touch the counters.
+	if _, err := db.Exec(`DELETE FROM threads WHERE id = ?`, "t1"); err != nil {
+		t.Fatalf("delete thread: %v", err)
+	}
+
+	got, err := st.Get(ctx, "u1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.TotalTokens != 100 || got.WebSearches != 1 {
+		t.Fatalf("counters changed after chat deletion: %+v", got)
+	}
+}
+
 func TestCounters_areAdditiveAndCreateRow(t *testing.T) {
 	st, _ := newTestStore(t)
 	ctx := context.Background()
