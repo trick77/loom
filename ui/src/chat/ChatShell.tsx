@@ -1533,7 +1533,7 @@ function SidebarProjectItem({
   return (
     <div ref={itemRef} className="relative">
       <div
-        className={`flex h-7 w-full items-center rounded-md py-0 pl-1.5 pr-1 text-left transition-colors ${
+        className={`group flex h-7 w-full items-center rounded-md py-0 pl-1.5 pr-1 text-left transition-colors ${
           active ? "bg-[#111110] text-white" : "hover:bg-[#2a2a28]"
         }`}
       >
@@ -1555,7 +1555,11 @@ function SidebarProjectItem({
         <button
           aria-expanded={menuOpen}
           aria-label="Open project actions"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white"
+          // Only reveal the kebab on hover, when the row is active, or while its
+          // menu is open - so unselected rows don't carry a permanent 3-dot menu.
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
+            active || menuOpen ? "" : "invisible group-hover:visible"
+          }`}
           onClick={(event) => {
             event.stopPropagation();
             onToggleMenu(menuKey);
