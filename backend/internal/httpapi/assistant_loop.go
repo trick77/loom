@@ -74,10 +74,9 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		slog.Info("assistant requested tools", "round", round, "tool_calls", len(result.ToolCalls), "content_bytes", len(result.Content))
 
 		history = append(history, llm.Message{
-			Role:             "assistant",
-			Content:          result.Content,
-			ReasoningContent: result.ReasoningContent,
-			ToolCalls:        result.ToolCalls,
+			Role:      "assistant",
+			Content:   result.Content,
+			ToolCalls: result.ToolCalls,
 		})
 		for _, call := range result.ToolCalls {
 			output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call)
@@ -135,9 +134,8 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 
 	call := result.ToolCalls[0]
 	history = append(compilerHistory, llm.Message{
-		Role:             "assistant",
-		ReasoningContent: result.ReasoningContent,
-		ToolCalls:        result.ToolCalls,
+		Role:      "assistant",
+		ToolCalls: result.ToolCalls,
 	})
 	output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call)
 	if !handled {
