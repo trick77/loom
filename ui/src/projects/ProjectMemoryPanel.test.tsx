@@ -25,7 +25,7 @@ test("shows the empty state when there is no memory yet", async () => {
   const heading = screen.getByRole("heading", { name: "Memories" });
   expect(heading).toBeInTheDocument();
   expect(heading).toHaveTextContent(ICONS.memory);
-  expect(await screen.findByText(/Memories will show here after a few chats/)).toBeInTheDocument();
+  expect(await screen.findByText(/Memories will show here after a few chats/)).toHaveClass("h-[490px]");
   expect(screen.queryByText("Memory")).not.toBeInTheDocument();
   expect(screen.queryByText(/Project memory/i)).not.toBeInTheDocument();
 });
@@ -40,6 +40,33 @@ test("renders memory content when present", async () => {
   render(<ProjectMemoryPanel projectId="p1" />);
 
   expect(await screen.findByText("Travel month: May")).toBeInTheDocument();
+});
+
+test("bounds memory content in a flush sidebar-styled scroll region", async () => {
+  getProjectMemoryMock.mockResolvedValue({
+    projectId: "p1",
+    content: Array.from({ length: 80 }, (_, index) => `- Important project fact ${index + 1}`).join(
+      "\n",
+    ),
+    updatedAt: "2026-06-11T00:00:00Z",
+  });
+
+  render(<ProjectMemoryPanel projectId="p1" />);
+
+  const memory = await screen.findByTestId("project-memory-content");
+  expect(memory).toHaveClass("h-[490px]");
+  const scroll = screen.getByTestId("project-memory-scroll");
+  expect(scroll).toHaveClass("ui-sidebar-scroll", "h-full", "overflow-y-auto");
+  expect(screen.getByTestId("project-memory-bottom-fade")).toHaveClass(
+    "pointer-events-none",
+    "absolute",
+    "bottom-0",
+    "h-8",
+    "bg-gradient-to-t",
+    "to-transparent",
+  );
+  expect(memory).not.toHaveClass("pr-2");
+  expect(scroll.firstElementChild).toHaveClass("px-5");
 });
 
 test("renders markdown content instead of raw syntax", async () => {

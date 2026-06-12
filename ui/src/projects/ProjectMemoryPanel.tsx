@@ -38,36 +38,49 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
   return (
     <section
       aria-label="Memories"
-      className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
+      className="overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
     >
-      <h2 className="flex items-center gap-1.5 text-[15px] font-medium text-[#ecece6]">
+      <h2 className="flex items-center gap-1.5 px-5 pt-5 text-[15px] font-medium text-[#ecece6]">
         <Icon name="memory" size="16px" className="text-[#d5d2c9]" />
         <span>Memories</span>
       </h2>
       {loading ? (
-        <p className="mt-2 text-sm text-[#8f8b82]">Loading…</p>
+        <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">Loading…</p>
       ) : hasContent ? (
         <div
-          className="ui-memory-markdown mt-2 text-sm leading-5 text-[#c7c5bd]"
+          className="relative mt-2 h-[490px] text-sm leading-5 text-[#c7c5bd]"
           data-project-memory-content
+          data-testid="project-memory-content"
         >
-          <Markdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a({ children, ...props }) {
-                return (
-                  <a {...props} target="_blank" rel="noreferrer">
-                    {children}
-                  </a>
-                );
-              },
-            }}
+          <div
+            className="ui-sidebar-scroll h-full overflow-y-auto"
+            data-testid="project-memory-scroll"
           >
-            {content}
-          </Markdown>
+            <div className="ui-memory-markdown px-5 pb-8">
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a({ children, ...props }) {
+                    return (
+                      <a {...props} target="_blank" rel="noreferrer">
+                        {children}
+                      </a>
+                    );
+                  },
+                }}
+              >
+                {content}
+              </Markdown>
+            </div>
+          </div>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#1f1f1d] to-transparent"
+            data-testid="project-memory-bottom-fade"
+          />
         </div>
       ) : (
-        <p className="mt-2 text-sm leading-5 text-[#8f8b82]">
+        <p className="mt-2 h-[490px] px-5 pb-5 text-sm leading-5 text-[#8f8b82]">
           Memories will show here after a few chats.
         </p>
       )}
