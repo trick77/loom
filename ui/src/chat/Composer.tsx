@@ -149,6 +149,11 @@ export function Composer({
           : undefined
       }
     >
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[19px] bg-[#332f27]/92 text-sm font-medium text-[#f3f0e8]">
+          Drop files here to add to chat
+        </div>
+      )}
       <textarea
         ref={textareaRef}
         className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} pb-3 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
