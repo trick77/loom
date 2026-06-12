@@ -8,6 +8,18 @@ function groupThousands(value: number): string {
   return Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, THIN_SPACE);
 }
 
+function hasPositiveValue(value: number | undefined): value is number {
+  return value !== undefined && value > 0;
+}
+
+function cachedSuffix(message: Message): string {
+  return hasPositiveValue(message.cachedTokens) ? ` (${groupThousands(message.cachedTokens)}/c)` : "";
+}
+
+function reasoningSuffix(message: Message): string {
+  return hasPositiveValue(message.reasoningTokens) ? ` (${groupThousands(message.reasoningTokens)}/r)` : "";
+}
+
 /** Format a duration in milliseconds: ms / s / m s / h m s. */
 export function formatDuration(ms: number): string {
   if (ms < 0) return "";
@@ -27,11 +39,15 @@ export function formatDuration(ms: number): string {
 
 /** True when there is enough data to show a meaningful metrics line. */
 export function hasRenderableMetrics(message: Message): boolean {
-  return Boolean(message.durationMs && message.durationMs > 0 && message.completionTokens);
+  return Boolean(
+    message.durationMs &&
+      message.durationMs > 0 &&
+      (hasPositiveValue(message.promptTokens) || hasPositiveValue(message.completionTokens) || hasPositiveValue(message.totalTokens)),
+  );
 }
 
 /**
- * Build the metrics line (model (effort) · duration · ↑in (cached/c) · ↓out (reasoning/r)),
+ * Build the metrics line (model (effort) · duration · ↑in (cached/c) · ↓out (reasoning/r) · ∑total),
  * or null when there is nothing renderable.
  */
 export function buildMetricsString(message: Message): string | null {
@@ -43,12 +59,17 @@ export function buildMetricsString(message: Message): string | null {
     segments.push(message.reasoningEffort ? `${message.model} (${message.reasoningEffort})` : message.model);
   }
   segments.push(formatDuration(durationMs));
-  if (message.promptTokens !== undefined && message.completionTokens !== undefined) {
-    const cached = message.cachedTokens && message.cachedTokens > 0 ? ` (${groupThousands(message.cachedTokens)}/c)` : "";
-    const reasoning = message.reasoningTokens && message.reasoningTokens > 0 ? ` (${groupThousands(message.reasoningTokens)}/r)` : "";
-    const up = `↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cached}`;
-    const down = `↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoning}`;
+  if (hasPositiveValue(message.promptTokens) && hasPositiveValue(message.completionTokens)) {
+    const up = `↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cachedSuffix(message)}`;
+    const down = `↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`;
     segments.push(`${up} · ${down}`);
+  } else if (hasPositiveValue(message.promptTokens)) {
+    segments.push(`↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cachedSuffix(message)}`);
+  } else if (hasPositiveValue(message.completionTokens)) {
+    segments.push(`↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`);
+  }
+  if (hasPositiveValue(message.totalTokens)) {
+    segments.push(`∑${THIN_SPACE}${groupThousands(message.totalTokens)}`);
   }
   return segments.join(" · ");
 }
