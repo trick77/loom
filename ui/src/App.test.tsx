@@ -2634,9 +2634,10 @@ test("surfaces the server error and keeps failed activity trace visible", async 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
   const trace = screen.getByRole("status", { name: /slopr activity trace/i });
-  // The turn has ended (the request failed), so the trace is collapsed — open it
-  // to inspect the failed timeline.
-  fireEvent.click(within(trace).getByRole("button", { name: /show activity/i }));
+  // The turn has ended (the request failed), so the trace collapses itself. Wait
+  // for that collapse — isSending flips and the collapse effect runs after the
+  // error text renders — then open it to inspect the failed timeline.
+  fireEvent.click(await within(trace).findByRole("button", { name: /show activity/i }));
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("agentgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Failed")).toBeInTheDocument();
