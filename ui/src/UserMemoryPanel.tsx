@@ -1,20 +1,17 @@
 import { useEffect, useState } from "react";
 
-import { getUserMemory, refreshUserMemory } from "./api";
+import { getUserMemory } from "./api";
 import { Icon } from "./chat/Icon";
 
 /**
  * UserMemoryPanel shows the auto-generated personal memory — the compact set of
  * durable facts about the user (employer, location, lasting preferences) that is
  * injected into every chat so the assistant stays personalized. Unlike the
- * project memory it renders as a flat list of discrete facts. It is read-only
- * with a manual refresh (full rebuild).
+ * project memory it renders as a flat list of discrete facts. It is read-only.
  */
 export function UserMemoryPanel() {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -34,15 +31,6 @@ export function UserMemoryPanel() {
     };
   }, []);
 
-  function handleRefresh() {
-    setRefreshing(true);
-    setError(false);
-    refreshUserMemory()
-      .then((memory) => setContent(memory.content))
-      .catch(() => setError(true))
-      .finally(() => setRefreshing(false));
-  }
-
   const facts = toFacts(content);
 
   return (
@@ -52,24 +40,11 @@ export function UserMemoryPanel() {
     >
       <div className="flex items-start justify-between gap-3">
         <Icon name="wave" size="22px" className="text-[#d5d2c9]" />
-        <button
-          type="button"
-          className="ui-meta-text text-[#8f8b82] hover:text-[#c7c5bd] disabled:opacity-50"
-          onClick={handleRefresh}
-          disabled={refreshing || loading}
-        >
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
       </div>
       <h2 className="mt-3 text-sm font-medium text-[#ecece6]">Memory</h2>
       <p className="ui-meta-text mt-1 text-[#807d74]">
         Durable facts about you, used across every chat.
       </p>
-      {error && (
-        <p className="ui-meta-text mt-2 text-accent" role="alert">
-          Couldn’t refresh memory. Please try again.
-        </p>
-      )}
       {loading ? (
         <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
       ) : facts.length > 0 ? (

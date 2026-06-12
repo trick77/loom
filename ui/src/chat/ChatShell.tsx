@@ -90,8 +90,26 @@ type ChatShellProps = {
   onSessionExpired(): void;
 };
 
+const ACTIVITY_TRACE_EXPANDED_STORAGE_KEY = "slopr:activity-trace-expanded";
+
 function roleLabel(role: User["role"]): string {
   return role === "admin" ? "Admin" : "User";
+}
+
+function readActivityTraceExpandedPreference(): boolean {
+  try {
+    return window.localStorage.getItem(ACTIVITY_TRACE_EXPANDED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeActivityTraceExpandedPreference(expanded: boolean): void {
+  try {
+    window.localStorage.setItem(ACTIVITY_TRACE_EXPANDED_STORAGE_KEY, String(expanded));
+  } catch {
+    // Storage is a preference only; keep the UI usable if the browser blocks it.
+  }
 }
 
 export function ChatShell({
@@ -132,13 +150,18 @@ export function ChatShell({
     traceRef: activityTraceRef,
     toolPending,
     setToolPending,
-    userExpanded: activeActivityTraceUserExpanded,
-    expandedRef: activeActivityTraceExpandedRef,
     update: updateActivityTrace,
     clear: clearActivityTrace,
-    setUserExpanded: setActiveActivityTraceExpanded,
-    resetExpansion: resetActiveActivityTraceExpansion,
   } = useActivityTrace();
+  const [activityTraceExpandedPreference, setActivityTraceExpandedPreferenceState] = useState(
+    readActivityTraceExpandedPreference,
+  );
+  const activityTraceExpandedPreferenceRef = useRef(activityTraceExpandedPreference);
+  const setActivityTraceExpandedPreference = useCallback((expanded: boolean) => {
+    activityTraceExpandedPreferenceRef.current = expanded;
+    setActivityTraceExpandedPreferenceState(expanded);
+    writeActivityTraceExpandedPreference(expanded);
+  }, []);
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   const [sendError, setSendError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -273,7 +296,6 @@ export function ChatShell({
       setStreamingText("");
       setStreamingArtifacts([]);
       clearActivityTrace();
-      resetActiveActivityTraceExpansion();
       setSendError("");
       return;
     }
@@ -283,7 +305,6 @@ export function ChatShell({
     // Drop any activity trace left over from the previous thread (e.g. a failed
     // turn whose trace is now kept) before this thread's transcript loads.
     clearActivityTrace();
-    resetActiveActivityTraceExpansion();
     getThread(route.threadID)
       .then((response) => {
         if (!active) return;
@@ -293,7 +314,6 @@ export function ChatShell({
         setStreamingText("");
         setStreamingArtifacts([]);
         clearActivityTrace();
-        resetActiveActivityTraceExpansion();
         setSendError("");
       })
       .catch((error: unknown) => {
@@ -303,7 +323,7 @@ export function ChatShell({
     return () => {
       active = false;
     };
-  }, [clearActivityTrace, handleActionError, resetActiveActivityTraceExpansion, route]);
+  }, [clearActivityTrace, handleActionError, route]);
 
   useEffect(() => {
     if (route.view !== "project") {
@@ -343,11 +363,10 @@ export function ChatShell({
     setStreamingText("");
     setStreamingArtifacts([]);
     clearActivityTrace();
-    resetActiveActivityTraceExpansion();
     setSendError("");
     navigate({ view: "new" });
     setRoute({ view: "new" });
-  }, [clearActivityTrace, onChat, resetActiveActivityTraceExpansion]);
+  }, [clearActivityTrace, onChat]);
 
   const navigateToChats = useCallback(() => {
     onChat();
@@ -563,7 +582,6 @@ export function ChatShell({
         setStreamingText("");
         setStreamingArtifacts([]);
         clearActivityTrace();
-        resetActiveActivityTraceExpansion();
         setSendError("");
         navigate({ view: "new" });
         setRoute({ view: "new" });
@@ -684,7 +702,6 @@ export function ChatShell({
     setStreamingText("");
     setStreamingArtifacts([]);
     clearActivityTrace();
-    resetActiveActivityTraceExpansion();
     setSendError("");
     let abortController: AbortController | null = null;
     let createdThreadForFallback: Thread | null = null;
@@ -749,18 +766,15 @@ export function ChatShell({
         onAssistantMessage: (message) => {
           if (!isCurrentThread()) return;
           const completedTrace = completeTrace(activityTraceRef.current);
-          const shouldInitiallyExpandTrace = activeActivityTraceExpandedRef.current;
           setMessages((current) => [
             ...current,
             completedTrace.length > 0
               ? {
                   ...message,
                   activityTrace: completedTrace,
-                  activityTraceInitiallyExpanded: shouldInitiallyExpandTrace,
                 }
               : message,
           ]);
-          resetActiveActivityTraceExpansion();
           setStreamingText("");
           setStreamingArtifacts([]);
           clearActivityTrace();
@@ -1156,7 +1170,7 @@ export function ChatShell({
             streamingArtifacts={streamingArtifacts}
             activityTrace={activityTrace}
             toolPending={toolPending}
-            activeActivityTraceUserExpanded={activeActivityTraceUserExpanded}
+            activityTraceExpandedPreference={activityTraceExpandedPreference}
             sendError={sendError}
             isSending={isSending}
             mcpStatus={mcpStatus}
@@ -1165,7 +1179,7 @@ export function ChatShell({
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
-            onActiveActivityTraceExpandedChange={setActiveActivityTraceExpanded}
+            onActivityTraceExpandedPreferenceChange={setActivityTraceExpandedPreference}
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}
             onAddToProject={
@@ -1685,7 +1699,7 @@ function ChatPanel({
   streamingArtifacts,
   activityTrace,
   toolPending,
-  activeActivityTraceUserExpanded,
+  activityTraceExpandedPreference,
   sendError,
   isSending,
   mcpStatus,
@@ -1695,7 +1709,7 @@ function ChatPanel({
   onSend,
   onStop,
   onRetry,
-  onActiveActivityTraceExpandedChange,
+  onActivityTraceExpandedPreferenceChange,
   onDeleteThread,
   onRenameThread,
   onAddToProject,
@@ -1710,7 +1724,7 @@ function ChatPanel({
   streamingArtifacts: Artifact[];
   activityTrace: ActivityTraceEvent[];
   toolPending: boolean;
-  activeActivityTraceUserExpanded: boolean;
+  activityTraceExpandedPreference: boolean;
   sendError: string;
   isSending: boolean;
   mcpStatus: McpStatusEvent | null;
@@ -1719,7 +1733,7 @@ function ChatPanel({
   onSend(): void;
   onStop(): void;
   onRetry(content: string): void;
-  onActiveActivityTraceExpandedChange(expanded: boolean): void;
+  onActivityTraceExpandedPreferenceChange(expanded: boolean): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
   onAddToProject?(thread: Thread): void;
@@ -1737,9 +1751,7 @@ function ChatPanel({
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   const hasActiveActivityTrace = activityTrace.length > 0;
   const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
-  // Reasoning stays collapsed by default the whole turn — only the sweeping
-  // label shows until the user opens it. No auto-expand while reasoning streams.
-  const activeActivityTraceExpanded = activeActivityTraceUserExpanded;
+  const activityTraceExpanded = activityTraceExpandedPreference;
   // Once the final answer streams (and no tool is running or pending), the
   // reasoning phase is over: show its abstract instead of "Thinking". Only
   // applies to traces that actually have reasoning, so reasoning-free turns keep
@@ -1841,7 +1853,7 @@ function ChatPanel({
     streamingArtifacts.length,
     streamingText,
     activityTrace,
-    activeActivityTraceExpanded,
+    activityTraceExpanded,
   ]);
 
   useEffect(() => {
@@ -1920,7 +1932,8 @@ function ChatPanel({
                   <ActivityTracePanel
                     events={message.activityTrace}
                     active={false}
-                    initiallyExpanded={message.activityTraceInitiallyExpanded === true}
+                    expanded={activityTraceExpanded}
+                    onExpandedChange={onActivityTraceExpandedPreferenceChange}
                   />
                 )}
                 {message.role === "assistant" && message.activityTrace === undefined && message.reasoningContent && (
@@ -1934,6 +1947,8 @@ function ChatPanel({
                       },
                     ]}
                     active={false}
+                    expanded={activityTraceExpanded}
+                    onExpandedChange={onActivityTraceExpandedPreferenceChange}
                   />
                 )}
                 <MessageBubble
@@ -1948,8 +1963,8 @@ function ChatPanel({
                 events={activityTrace}
                 active={!reasoningSettled}
                 streaming={isSending}
-                expanded={activeActivityTraceExpanded}
-                onExpandedChange={onActiveActivityTraceExpandedChange}
+                expanded={activityTraceExpanded}
+                onExpandedChange={onActivityTraceExpandedPreferenceChange}
               />
             )}
             {streamingArtifacts.map((artifact) => (

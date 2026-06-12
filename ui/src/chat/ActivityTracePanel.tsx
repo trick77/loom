@@ -38,9 +38,10 @@ export function ActivityTracePanel({
     return () => window.clearTimeout(timer);
   }, [expanded]);
   if (events.length === 0 && !active) return null;
-  const label = active ? "Thinking" : summarizeTrace(events);
-  // Sweep the label for the whole turn: "Thinking" while reasoning, then the
-  // abstract once it settles — both shimmer until the answer finishes streaming.
+  const generatedTitle = latestReasoningTitle(events);
+  const label = generatedTitle ?? (active ? "Thinking" : summarizeTrace(events));
+  // Sweep the label for the whole turn: "Thinking" until a generated abstract
+  // arrives, then keep that title shimmering until the answer finishes streaming.
   const sweeping = active || streaming;
   // The trace is always a timeline: reasoning rows get a clock node, the line
   // connects them, and a terminal "Done" node caps the turn once it has settled
@@ -170,25 +171,23 @@ function ActivityTraceRow({
   const fetchUrl = event.summary.kind === "fetch" ? event.summary.url : undefined;
   const fetchFavicon = fetchUrl === undefined ? undefined : faviconURL(fetchUrl);
   const fetchHref = fetchUrl === undefined ? undefined : externalHTTPURL(fetchUrl);
+  const toolIcon =
+    event.summary.kind === "search" ? (
+      <GlobeTraceIcon />
+    ) : fetchFavicon !== undefined ? (
+      <img className="ui-activity-fetch-icon-favicon" src={fetchFavicon} alt="" />
+    ) : (
+      <FetchTraceIcon />
+    );
   return (
     <div className="ui-activity-trace-row ui-activity-trace-row-tool">
-      <span
-        className={
-          event.summary.kind === "search"
-            ? "ui-activity-trace-icon"
-            : "ui-activity-trace-icon ui-activity-trace-icon-arrow"
-        }
-        aria-hidden="true"
-      >
-        {event.summary.kind === "search" ? <GlobeTraceIcon /> : <FetchTraceIcon />}
+      <span className="ui-activity-trace-icon" aria-hidden="true">
+        {toolIcon}
       </span>
       <div className="min-w-0 flex-1">
         <div className="ui-activity-tool-header flex items-center justify-between gap-3">
           <span className="flex min-w-0 items-center gap-2">
             <span className="ui-activity-tool-title">{event.summary.title}</span>
-            {fetchFavicon !== undefined && (
-              <img className="ui-activity-favicon ui-activity-tool-favicon" src={fetchFavicon} alt="" />
-            )}
           </span>
           <span className={`ui-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
@@ -269,6 +268,16 @@ function externalHTTPURL(value: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function latestReasoningTitle(events: ActivityTraceEvent[]): string | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type !== "reasoning") continue;
+    const title = event.title?.trim();
+    if (title !== undefined && title !== "") return title;
+  }
+  return undefined;
 }
 
 function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {

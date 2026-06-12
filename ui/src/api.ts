@@ -224,11 +224,6 @@ export async function getUserMemory(): Promise<UserMemory> {
   return expectJSON<UserMemory>(response, "failed to load user memory");
 }
 
-export async function refreshUserMemory(): Promise<UserMemory> {
-  const response = await fetch(`/api/me/memory:refresh`, { method: "POST" });
-  return expectJSON<UserMemory>(response, "failed to refresh user memory");
-}
-
 // Page is the cursor-pagination envelope returned by list endpoints.
 // nextCursor is null when there are no further pages.
 export type Page<T> = {

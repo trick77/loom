@@ -31,16 +31,4 @@ describe("useActivityTrace", () => {
     expect(result.current.traceRef.current).toEqual([]);
     expect(result.current.toolPending).toBe(false);
   });
-
-  test("setUserExpanded and resetExpansion keep the expanded ref and state aligned", () => {
-    const { result } = renderHook(() => useActivityTrace());
-
-    act(() => result.current.setUserExpanded(true));
-    expect(result.current.userExpanded).toBe(true);
-    expect(result.current.expandedRef.current).toBe(true);
-
-    act(() => result.current.resetExpansion());
-    expect(result.current.userExpanded).toBe(false);
-    expect(result.current.expandedRef.current).toBe(false);
-  });
 });

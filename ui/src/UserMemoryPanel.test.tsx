@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import { UserMemoryPanel } from "./UserMemoryPanel";
@@ -10,12 +10,10 @@ vi.mock("./api", async () => {
   return {
     ...actual,
     getUserMemory: vi.fn(),
-    refreshUserMemory: vi.fn(),
   };
 });
 
 const getUserMemoryMock = vi.mocked(api.getUserMemory);
-const refreshUserMemoryMock = vi.mocked(api.refreshUserMemory);
 
 test("shows the empty state when there is no memory yet", async () => {
   getUserMemoryMock.mockResolvedValue({ content: "", updatedAt: null });
@@ -41,30 +39,11 @@ test("renders the discrete facts as a list, stripping bullet markers", async () 
   expect(items[0]).not.toHaveTextContent("- Works");
 });
 
-test("refresh button rebuilds the memory", async () => {
+test("does not show a manual refresh action", async () => {
   getUserMemoryMock.mockResolvedValue({ content: "", updatedAt: null });
-  refreshUserMemoryMock.mockResolvedValue({
-    content: "- Lives in Bern",
-    updatedAt: "2026-06-11T00:00:00Z",
-  });
 
   render(<UserMemoryPanel />);
+
   await screen.findByText(/Memory will show here/);
-
-  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-
-  await waitFor(() => expect(refreshUserMemoryMock).toHaveBeenCalled());
-  expect(await screen.findByText("Lives in Bern")).toBeInTheDocument();
-});
-
-test("shows an error when refresh fails", async () => {
-  getUserMemoryMock.mockResolvedValue({ content: "", updatedAt: null });
-  refreshUserMemoryMock.mockRejectedValue(new Error("502"));
-
-  render(<UserMemoryPanel />);
-  await screen.findByText(/Memory will show here/);
-
-  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-
-  expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn.t refresh memory/);
+  expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeInTheDocument();
 });
