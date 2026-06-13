@@ -1548,7 +1548,7 @@ test("shows the reasoning abstract once its background title arrives", async () 
   expect(screen.queryByRole("status", { name: /slopr activity trace/i })).not.toBeInTheDocument();
 });
 
-test("auto-opens the live thinking window while reasoning streams and collapses once the answer settles", async () => {
+test("auto-opens the live thinking window once and keeps it open after the answer settles", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1567,22 +1567,91 @@ test("auto-opens the live thinking window while reasoning streams and collapses 
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  // Reasoning streams: the window opens itself, no click needed.
+  // Reasoning streams: the window opens itself once, no click needed.
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
   );
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
 
-  // The answer settles (text + background title): the window collapses on its own.
+  // The answer settles (text + background title). The window does NOT collapse on
+  // its own — it stays open through the answer for the rest of the turn; only the
+  // headline label flips to the generated abstract.
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
   );
   expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
-  await waitFor(() => {
-    expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+});
+
+test("does not auto-open the live thinking window at the bare start of a turn", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
   });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  // The turn has begun but nothing has streamed yet: the window must stay closed —
+  // no expanded chevron, no "Hide activity" affordance.
+  const trace = await screen.findByRole("status", { name: /slopr activity trace/i });
+  expect(within(trace).getByText("Thinking")).toBeInTheDocument();
+  expect(trace.querySelector(".ui-thinking-chevron-expanded")).toBeNull();
+  expect(within(trace).queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
+
+  // It opens the first moment there is something to show — here, the answer text.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hello"}\n\n'));
+  expect(await screen.findByText("Hello")).toBeInTheDocument();
+});
+
+test("keeps the live thinking window collapsed once the user closes it mid-turn", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  // Reasoning streams and the window auto-opens; the user then closes it.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: /hide activity/i }));
+  expect(await screen.findByRole("button", { name: /show activity/i })).toBeInTheDocument();
+
+  // A later phase change (answer text + background title) must NOT re-open it: the
+  // auto-open fires at most once per turn, so the manual collapse sticks.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+  );
+  expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
 });
 
 test("keeps the generated reasoning title during later active trace updates", async () => {
