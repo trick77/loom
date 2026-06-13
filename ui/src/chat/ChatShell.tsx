@@ -1,32 +1,7 @@
-import {
-  type ComponentPropsWithoutRef,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { ExtraProps } from "react-markdown";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AuthExpiredError,
-  archiveProject,
-  archiveThread,
-  createProject,
   createThread,
-  deleteProject,
-  deleteThread,
-  downloadArtifact,
-  updateThread,
-  updateProject,
-  getMcpStatus,
-  getThread,
-  listProjects,
   listThreads,
   setProjectStarred,
   setThreadStarred,
@@ -34,7 +9,6 @@ import {
   streamMessage,
   type Artifact,
   type McpStatusEvent,
-  type Message,
   type Project,
   type Thread,
   type User,
@@ -43,47 +17,35 @@ import {
   appendReasoningDelta,
   applyReasoningTitle,
   completeTrace,
-  normalizeActivityTrace,
   upsertTraceToolCall,
   upsertTraceToolResult,
-  type ActivityTraceEvent,
 } from "../activityTrace";
-import logoImage from "../assets/sloppy.png";
-import { MessageMetrics } from "../MessageMetrics";
-import { menuIconClass, menuItemClass, ThreadActionsMenu } from "../ThreadActionsMenu";
-import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ChatsPage } from "../ChatsPage";
 import { ArtifactsPage } from "../artifacts/ArtifactsPage";
 import { MemoryPage } from "../MemoryPage";
-import {
-  buildImageStats,
-  downloadableResponse,
-  formatFileSize,
-  formatReceivedKB,
-  markdownToPlainText,
-  pendingFencedArtifact,
-  type DownloadableResponse,
-} from "./artifacts";
 import { navigate, routeFromLocation, type RouteState } from "./routing";
-import type { MessageWithActivityTrace, SidebarIconName } from "./types";
-import { ActivityTracePanel } from "./ActivityTracePanel";
-import { Composer } from "./Composer";
-import { MessageCitations } from "./Citations";
-import { UserMenu } from "./UserMenu";
+import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
-import { CheckIcon, CloseIcon, DownloadIcon, FileIcon } from "./icons";
-import { Icon } from "./Icon";
 import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
 import { useDocumentAttachments } from "./useDocumentAttachments";
+import { useChatData } from "./useChatData";
+import { useProjectActions } from "./useProjectActions";
+import { useThreadActions } from "./useThreadActions";
+import { ChatPanel } from "./ChatPanel";
+import { StartPanel } from "./StartPanel";
+import { Sidebar } from "./Sidebar";
+import { DeleteThreadModal, RenameThreadModal } from "./threadModals";
 import { DeleteProjectModal } from "../projects/DeleteProjectModal";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage";
 import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
-import { removeThreadsById, replaceThreadById, upsertThreadById } from "../projects/projectMembership";
+import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
 
 export { buildImageStats } from "./artifacts";
+export { GeneratedArtifactCard } from "./GeneratedArtifactCard";
+export { ProseMarkdown } from "./messages";
 
 type ChatShellProps = {
   user: User;
@@ -95,10 +57,6 @@ type ChatShellProps = {
   onSessionExpired(): void;
 };
 
-function roleLabel(role: User["role"]): string {
-  return role === "admin" ? "Admin" : "User";
-}
-
 export function ChatShell({
   user,
   adminPanel,
@@ -108,31 +66,16 @@ export function ChatShell({
   onLogout,
   onSessionExpired,
 }: ChatShellProps) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [projectThreads, setProjectThreads] = useState<Thread[]>([]);
-  const [chatDataLoaded, setChatDataLoaded] = useState(false);
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
-  const [activeThread, setActiveThread] = useState<Thread | null>(null);
-  const [messages, setMessages] = useState<MessageWithActivityTrace[]>([]);
   const [draft, setDraft] = useState("");
   // Files attached on the new-chat start screen, held until the first send creates
   // a thread to bind them to (deferred upload — avoids orphan empty threads and
   // scopes the upload to the chat it was attached in).
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
-  // undefined = closed, null = create, Project = edit.
-  const [editingProject, setEditingProject] = useState<Project | null | undefined>(undefined);
-  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
-  const [movingThreads, setMovingThreads] = useState<Thread[]>([]);
-  const [isMutatingProject, setIsMutatingProject] = useState(false);
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [renamingThread, setRenamingThread] = useState<Thread | null>(null);
-  const [deletingThread, setDeletingThread] = useState<Thread | null>(null);
-  const [renameTitle, setRenameTitle] = useState("");
   const [modalError, setModalError] = useState("");
-  const [isMutatingThread, setIsMutatingThread] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [streamingArtifacts, setStreamingArtifacts] = useState<Artifact[]>([]);
   const {
@@ -143,7 +86,6 @@ export function ChatShell({
     update: updateActivityTrace,
     clear: clearActivityTrace,
   } = useActivityTrace();
-  const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
   // Flush hook for the deferred new-chat upload: the scope is supplied per call at
   // send time (the thread does not exist yet when the file is picked). Its
   // attachNote carries ingestion status/errors after the start screen is gone, so
@@ -151,7 +93,6 @@ export function ChatShell({
   const { attachNote: deferredAttachNote, handleAttachFiles: flushPendingAttachments } =
     useDocumentAttachments({});
   const [sendError, setSendError] = useState("");
-  const [loadError, setLoadError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [streamingThreadID, setStreamingThreadID] = useState<string | null>(null);
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
@@ -189,6 +130,40 @@ export function ChatShell({
     streamingThreadIDRef.current = threadID;
     setStreamingThreadID(threadID);
   }, []);
+
+  const {
+    activeProject: activeProjectForRoute,
+    activeThread,
+    activeThreadProject,
+    chatDataLoaded,
+    loadError,
+    loadProjectThreads,
+    loadRoute,
+    mcpStatus,
+    messages,
+    projectThreads,
+    projects,
+    recentThreads,
+    setActiveThread,
+    setMessages,
+    setMcpStatus,
+    setProjectThreads,
+    setProjects,
+    setThreads,
+    starredProjects,
+    starredThreads,
+    threads,
+    unstarredProjects,
+  } = useChatData({
+    activeThreadIDRef,
+    clearActivityTrace,
+    handleActionError,
+    onSessionExpired,
+    setStreamingArtifacts,
+    setStreamingText,
+    streamAbortRef,
+    streamingThreadIDRef,
+  });
 
   const handleStopResponse = useCallback(() => {
     if (!isSending) return;
@@ -241,84 +216,10 @@ export function ChatShell({
   }, [handleStopResponse, isSending]);
 
   useEffect(() => {
-    let active = true;
-    Promise.all([listProjects(), listThreads({ limit: 30 })])
-      .then(([nextProjects, nextThreads]) => {
-        if (!active) return;
-        setProjects(nextProjects);
-        setThreads(nextThreads.items);
-        setChatDataLoaded(true);
-        setLoadError("");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setChatDataLoaded(true);
-        if (error instanceof AuthExpiredError) {
-          onSessionExpired();
-          return;
-        }
-        setLoadError("Chat data failed to load.");
-      });
-    return () => {
-      active = false;
-      streamAbortRef.current?.abort();
-    };
-  }, [onSessionExpired]);
-
-  useEffect(() => {
-    let active = true;
-    getMcpStatus()
-      .then((status) => {
-        if (!active) return;
-        setMcpStatus(status);
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        if (error instanceof AuthExpiredError) {
-          onSessionExpired();
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [onSessionExpired]);
-
-  useEffect(() => {
-    if (route.view !== "chat") {
-      activeThreadIDRef.current = null;
-      setActiveThread(null);
-      setMessages([]);
-      if (streamingThreadIDRef.current === null) {
-        setStreamingText("");
-        setStreamingArtifacts([]);
-        clearActivityTrace();
-      }
-      setSendError("");
-      return;
-    }
-    if (activeThreadIDRef.current === route.threadID) return;
-    let active = true;
-    getThread(route.threadID)
-      .then((response) => {
-        if (!active) return;
-        setActiveThread(response.thread);
-        activeThreadIDRef.current = response.thread.id;
-        setMessages(response.messages.map(withNormalizedActivityTrace));
-        if (streamingThreadIDRef.current === null) {
-          setStreamingText("");
-          setStreamingArtifacts([]);
-          clearActivityTrace();
-        }
-        setSendError("");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        handleActionError(error, "Chat failed to load.", setLoadError);
-      });
-    return () => {
-      active = false;
-    };
-  }, [clearActivityTrace, handleActionError, route]);
+    const cleanup = loadRoute(route);
+    setSendError("");
+    return cleanup;
+  }, [loadRoute, route]);
 
   // Drop files staged on the start screen if the user leaves it without sending,
   // so they can't bind to a different chat later.
@@ -327,42 +228,11 @@ export function ChatShell({
   }, [route.view]);
 
   useEffect(() => {
-    if (route.view !== "project") {
-      setProjectThreads([]);
-      return;
-    }
-    let active = true;
-    listThreads({ projectId: route.projectID, limit: 1000 })
-      .then((nextThreads) => {
-        if (!active) return;
-        setProjectThreads(nextThreads.items);
-        setLoadError("");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        handleActionError(error, "Project chats failed to load.", setLoadError);
-      });
-    return () => {
-      active = false;
-    };
-  }, [handleActionError, route]);
+    return loadProjectThreads(route);
+  }, [loadProjectThreads, route]);
 
   const displayName = user.displayName || user.username;
-  const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
-  const recentThreads = useMemo(() => threads.filter((thread) => !thread.starred), [threads]);
-  const starredProjects = useMemo(() => projects.filter((project) => project.starred), [projects]);
-  const unstarredProjects = useMemo(
-    () => projects.filter((project) => !project.starred),
-    [projects],
-  );
-  const activeProject = useMemo(() => {
-    if (route.view !== "project") return null;
-    return projects.find((project) => project.id === route.projectID) ?? null;
-  }, [projects, route]);
-  const activeThreadProject = useMemo(() => {
-    if (activeThread?.projectId === undefined) return null;
-    return projects.find((project) => project.id === activeThread.projectId) ?? null;
-  }, [activeThread?.projectId, projects]);
+  const activeProject = activeProjectForRoute(route);
 
   const navigateToNew = useCallback(() => {
     onChat();
@@ -418,6 +288,72 @@ export function ChatShell({
     [onChat],
   );
 
+  const {
+    deletingProject,
+    editingProject,
+    isMutatingProject,
+    openProjectDialog,
+    setDeletingProject,
+    setEditingProject,
+    handleArchiveProject,
+    handleDeleteProjectConfirm,
+    handleProjectDialogSubmit,
+  } = useProjectActions({
+    route,
+    navigateToProject,
+    navigateToProjects,
+    setModalError,
+    setOpenThreadMenuID,
+    setProjects,
+    setProjectThreads,
+    setThreads,
+    handleActionError,
+  });
+
+  const {
+    deletingThread,
+    isMutatingThread,
+    movingThreads,
+    renameTitle,
+    renamingThread,
+    handleArchiveThread,
+    handleDeleteConfirm,
+    handleMoveThreadsToProject,
+    handleRemoveThreadFromProject,
+    handleRenameSubmit,
+    openDeleteModal,
+    openRenameModal,
+    setDeletingThread,
+    setMovingThreads,
+    setRenameTitle,
+    setRenamingThread,
+  } = useThreadActions({
+    activeThread,
+    activeThreadIDRef,
+    setActiveThread,
+    setModalError,
+    setOpenThreadMenuID,
+    setProjectThreads,
+    setThreadMutationVersion,
+    setThreads,
+    handleActionError,
+    onActiveThreadArchived: navigateToNew,
+    onActiveThreadRemoved: () => {
+      streamAbortRef.current?.abort();
+      activeThreadIDRef.current = null;
+      setActiveThread(null);
+      setMessages([]);
+      setStreamingText("");
+      setStreamingArtifacts([]);
+      clearActivityTrace();
+      setSendError("");
+      navigate({ view: "new" });
+      setRoute({ view: "new" });
+    },
+    onOpenThreadModal: () => setMobileSidebarOpen(false),
+    route,
+  });
+
   const reloadThreads = useCallback(() => {
     listThreads({ limit: 30 })
       .then((nextThreads) => setThreads(nextThreads.items))
@@ -431,72 +367,6 @@ export function ChatShell({
     setMobileSidebarOpen(false);
     navigate({ view: "chat", threadID });
     setRoute({ view: "chat", threadID });
-  }
-
-  function openProjectDialog(project: Project | null) {
-    setEditingProject(project);
-    setModalError("");
-    setOpenThreadMenuID(null);
-  }
-
-  async function handleProjectDialogSubmit(input: { name: string; description: string }) {
-    if (editingProject === undefined || isMutatingProject) return;
-    setIsMutatingProject(true);
-    try {
-      const project =
-        editingProject === null
-          ? await createProject(input)
-          : await updateProject(editingProject.id, input);
-      setProjects((current) => [project, ...current.filter((item) => item.id !== project.id)]);
-      setEditingProject(undefined);
-      setModalError("");
-      if (editingProject === null) {
-        navigateToProject(project);
-      }
-    } catch (error) {
-      handleActionError(error, "Project failed to save.", setModalError);
-    } finally {
-      setIsMutatingProject(false);
-    }
-  }
-
-  async function handleArchiveProject(project: Project) {
-    if (isMutatingProject) return;
-    setIsMutatingProject(true);
-    try {
-      await archiveProject(project.id);
-      setProjects((current) => current.filter((item) => item.id !== project.id));
-      if (route.view === "project" && route.projectID === project.id) {
-        navigateToProjects();
-      }
-      setOpenThreadMenuID(null);
-      setModalError("");
-    } catch (error) {
-      handleActionError(error, "Project failed to archive.", setModalError);
-    } finally {
-      setIsMutatingProject(false);
-    }
-  }
-
-  async function handleDeleteProjectConfirm() {
-    if (deletingProject === null || isMutatingProject) return;
-    const project = deletingProject;
-    setIsMutatingProject(true);
-    try {
-      await deleteProject(project.id);
-      setProjects((current) => current.filter((item) => item.id !== project.id));
-      setThreads((current) => current.filter((thread) => thread.projectId !== project.id));
-      setProjectThreads([]);
-      setDeletingProject(null);
-      if (route.view === "project" && route.projectID === project.id) {
-        navigateToProjects();
-      }
-      setModalError("");
-    } catch (error) {
-      handleActionError(error, "Project failed to delete.", setModalError);
-    } finally {
-      setIsMutatingProject(false);
-    }
   }
 
   async function handleSetThreadStarred(thread: Thread, starred: boolean, menuKey?: string) {
@@ -539,164 +409,6 @@ export function ChatShell({
       handleActionError(error, "Project failed to update.", setSendError);
     } finally {
       setIsUpdatingStar(false);
-    }
-  }
-
-  function openRenameModal(thread: Thread) {
-    setOpenThreadMenuID(null);
-    setMobileSidebarOpen(false);
-    setRenamingThread(thread);
-    setRenameTitle(thread.title);
-    setModalError("");
-  }
-
-  function openDeleteModal(thread: Thread) {
-    setOpenThreadMenuID(null);
-    setMobileSidebarOpen(false);
-    setDeletingThread(thread);
-    setModalError("");
-  }
-
-  async function handleRenameSubmit() {
-    if (renamingThread === null || isMutatingThread) return;
-    const title = renameTitle.trim();
-    if (title === "") return;
-    setIsMutatingThread(true);
-    try {
-      const updatedThread = await updateThread(renamingThread.id, { title });
-      if (activeThreadIDRef.current === updatedThread.id) {
-        setActiveThread(updatedThread);
-      }
-      setThreads((current) =>
-        current.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread)),
-      );
-      setProjectThreads((current) => replaceThreadById(current, updatedThread));
-      setThreadMutationVersion((value) => value + 1);
-      setRenamingThread(null);
-      setModalError("");
-    } catch (error) {
-      handleActionError(error, "Thread failed to rename.", setModalError);
-    } finally {
-      setIsMutatingThread(false);
-    }
-  }
-
-  async function handleDeleteConfirm() {
-    if (deletingThread === null || isMutatingThread) return;
-    setIsMutatingThread(true);
-    try {
-      await deleteThread(deletingThread.id);
-      setThreads((current) => current.filter((thread) => thread.id !== deletingThread.id));
-      setProjectThreads((current) => current.filter((thread) => thread.id !== deletingThread.id));
-      setThreadMutationVersion((value) => value + 1);
-      if (activeThreadIDRef.current === deletingThread.id) {
-        streamAbortRef.current?.abort();
-        activeThreadIDRef.current = null;
-        setActiveThread(null);
-        setMessages([]);
-        setStreamingText("");
-        setStreamingArtifacts([]);
-        clearActivityTrace();
-        setSendError("");
-        navigate({ view: "new" });
-        setRoute({ view: "new" });
-      }
-      setDeletingThread(null);
-      setModalError("");
-    } catch (error) {
-      handleActionError(error, "Thread failed to delete.", setModalError);
-    } finally {
-      setIsMutatingThread(false);
-    }
-  }
-
-  async function handleArchiveThread(thread: Thread) {
-    if (isMutatingThread) return;
-    setIsMutatingThread(true);
-    try {
-      await archiveThread(thread.id);
-      setThreads((current) => current.filter((item) => item.id !== thread.id));
-      setProjectThreads((current) => current.filter((item) => item.id !== thread.id));
-      setThreadMutationVersion((value) => value + 1);
-      if (activeThreadIDRef.current === thread.id) {
-        navigateToNew();
-      }
-      setOpenThreadMenuID(null);
-      setModalError("");
-    } catch (error) {
-      handleActionError(error, "Thread failed to archive.", setModalError);
-    } finally {
-      setIsMutatingThread(false);
-    }
-  }
-
-  async function handleMoveThreadsToProject(targetThreads: Thread[], project: Project) {
-    if (targetThreads.length === 0 || isMutatingThread) return;
-    setIsMutatingThread(true);
-    try {
-      const results = await Promise.allSettled(
-        targetThreads.map(async (thread) => ({
-          original: thread,
-          updated: await updateThread(thread.id, { projectId: project.id }),
-        })),
-      );
-      const updatedThreads = results
-        .filter((result): result is PromiseFulfilledResult<{ original: Thread; updated: Thread }> => result.status === "fulfilled")
-        .map((result) => result.value.updated);
-      if (updatedThreads.length === 0) {
-        throw new Error("No chats moved.");
-      }
-      const failedThreads = results
-        .map((result, index) => (result.status === "rejected" ? targetThreads[index] : null))
-        .filter((thread): thread is Thread => thread !== null);
-      const updatedIDs = new Set(updatedThreads.map((thread) => thread.id));
-      setThreads((current) =>
-        current.map((thread) => updatedThreads.find((updated) => updated.id === thread.id) ?? thread),
-      );
-      setProjectThreads((current) => {
-        let next = current;
-        if (route.view === "project" && route.projectID !== project.id) {
-          next = removeThreadsById(next, updatedIDs);
-        }
-        if (route.view === "project" && route.projectID === project.id) {
-          for (const thread of updatedThreads) {
-            next = upsertThreadById(next, thread);
-          }
-        }
-        return next;
-      });
-      if (activeThread !== null) {
-        const updatedActive = updatedThreads.find((thread) => thread.id === activeThread.id);
-        if (updatedActive !== undefined) setActiveThread(updatedActive);
-      }
-      setMovingThreads(failedThreads);
-      setThreadMutationVersion((value) => value + 1);
-      const failedCount = failedThreads.length;
-      setModalError(failedCount > 0 ? `${failedCount} chat${failedCount === 1 ? "" : "s"} failed to move.` : "");
-    } catch (error) {
-      handleActionError(error, "Chats failed to move.", setModalError);
-    } finally {
-      setIsMutatingThread(false);
-    }
-  }
-
-  async function handleRemoveThreadFromProject(thread: Thread) {
-    if (isMutatingThread) return;
-    setIsMutatingThread(true);
-    try {
-      const updatedThread = await updateThread(thread.id, { projectId: null });
-      setThreads((current) => replaceThreadById(current, updatedThread));
-      setProjectThreads((current) => current.filter((item) => item.id !== updatedThread.id));
-      if (activeThreadIDRef.current === updatedThread.id) {
-        setActiveThread(updatedThread);
-      }
-      setThreadMutationVersion((value) => value + 1);
-      setOpenThreadMenuID(null);
-      setModalError("");
-    } catch (error) {
-      handleActionError(error, "Chat failed to remove from project.", setModalError);
-    } finally {
-      setIsMutatingThread(false);
     }
   }
 
@@ -862,226 +574,51 @@ export function ChatShell({
         sidebarCollapsed ? "md:grid-cols-[56px_1fr]" : "md:grid-cols-[362px_1fr]"
       }`}
     >
-      <aside
-        className={`ui-sidebar-text fixed inset-y-0 left-0 z-50 flex w-[300px] max-w-[85vw] min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd] transition-transform duration-200 ease-out md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 ${
-          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className={`flex h-11 items-center px-3 ${railCollapsed ? "justify-center" : "justify-between"}`}>
-          {!railCollapsed && (
-            <div className="ui-wordmark font-serif font-medium text-[#f4f0e8]">Slopr</div>
-          )}
-          <div className="flex items-center gap-3 text-[#aaa79e]">
-            {!railCollapsed && (
-              <button
-                type="button"
-                aria-label="Search"
-                className="grid place-items-center rounded transition-colors hover:text-white"
-              >
-                <Icon name="search" size="18px" />
-              </button>
-            )}
-            <button
-              type="button"
-              aria-label={!isMobile && sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-              aria-expanded={isMobile ? mobileSidebarOpen : !sidebarCollapsed}
-              onClick={() =>
-                isMobile ? setMobileSidebarOpen(false) : setSidebarCollapsed((value) => !value)
-              }
-              className="ui-sidebar-btn grid place-items-center rounded transition-colors hover:text-white"
-            >
-              <Icon name="sidebar" size="18px" className="ui-sidebar-icon" />
-            </button>
-          </div>
-        </div>
-        <nav className="ui-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
-          <button
-            className={`flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
-              railCollapsed ? "justify-center" : "gap-2.5"
-            } ${route.view === "new" && !showAdmin ? "bg-[#111110]" : ""}`}
-            onClick={navigateToNew}
-            type="button"
-            aria-label="New chat"
-          >
-            <span className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full bg-[hsl(180deg_3%_19%)] text-[hsl(55deg_9%_74%)]">
-              <svg className="h-[13px] w-[13px]" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-                <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-              </svg>
-            </span>
-            {!railCollapsed && <span>New chat</span>}
-          </button>
-          <SidebarPrimaryItem
-            label="Chats"
-            icon="chats"
-            collapsed={railCollapsed}
-            active={route.view === "chats" && !showAdmin}
-            onClick={navigateToChats}
-          />
-          <SidebarPrimaryItem
-            label="Artifacts"
-            icon="artifacts"
-            collapsed={railCollapsed}
-            active={route.view === "artifacts" && !showAdmin}
-            onClick={navigateToArtifacts}
-          />
-          <SidebarPrimaryItem
-            label="Projects"
-            icon="projects"
-            collapsed={railCollapsed}
-            active={(route.view === "projects" || route.view === "project") && !showAdmin}
-            onClick={navigateToProjects}
-          />
-          <SidebarPrimaryItem
-            label="Memories"
-            icon="memory"
-            collapsed={railCollapsed}
-            active={route.view === "memory" && !showAdmin}
-            onClick={navigateToMemory}
-          />
-          {!railCollapsed && (
-            <>
-          {loadError !== "" && (
-            <div className="ui-meta-text mx-1.5 mt-3 rounded-md border border-accent px-2 py-2 text-accent">
-              {loadError}
-            </div>
-          )}
-          <SidebarSection
-            title="Starred"
-            threads={starredThreads}
-            activeThreadID={route.view === "chat" ? route.threadID : null}
-            openThreadMenuID={openThreadMenuID}
-            onSelect={selectThread}
-            onDelete={openDeleteModal}
-            onRename={openRenameModal}
-            onAddToProject={
-              projects.length === 0
-                ? undefined
-                : (thread) => {
-                    setMovingThreads([thread]);
-                    setModalError("");
-                  }
-            }
-            onStarChange={handleSetThreadStarred}
-            onToggleMenu={(menuKey) =>
-              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
-            }
-            onCloseMenu={() => setOpenThreadMenuID(null)}
-            leading={starredProjects.map((project) => (
-              <SidebarProjectItem
-                key={project.id}
-                menuKey={`StarredProject:${project.id}`}
-                project={project}
-                active={route.view === "project" && route.projectID === project.id}
-                menuOpen={openThreadMenuID === `StarredProject:${project.id}`}
-                onNavigate={navigateToProject}
-                onStarChange={handleSetProjectStarred}
-                onToggleMenu={(menuKey) =>
-                  setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
-                }
-                onCloseMenu={() => setOpenThreadMenuID(null)}
-              />
-            ))}
-          />
-          <section className="mt-5">
-            <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">
-              <span>Projects</span>
-            </div>
-            <div className="space-y-1.5">
-              {unstarredProjects.map((project) => (
-                <SidebarProjectItem
-                  key={project.id}
-                  menuKey={`SidebarProject:${project.id}`}
-                  project={project}
-                  active={route.view === "project" && route.projectID === project.id}
-                  menuOpen={openThreadMenuID === `SidebarProject:${project.id}`}
-                  onNavigate={navigateToProject}
-                  onStarChange={handleSetProjectStarred}
-                  onToggleMenu={(menuKey) =>
-                    setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
-                  }
-                  onCloseMenu={() => setOpenThreadMenuID(null)}
-                />
-              ))}
-            </div>
-          </section>
-          <SidebarSection
-            title="Recents"
-            threads={recentThreads}
-            activeThreadID={route.view === "chat" ? route.threadID : null}
-            openThreadMenuID={openThreadMenuID}
-            onSelect={selectThread}
-            onDelete={openDeleteModal}
-            onRename={openRenameModal}
-            onAddToProject={
-              projects.length === 0
-                ? undefined
-                : (thread) => {
-                    setMovingThreads([thread]);
-                    setModalError("");
-                  }
-            }
-            onStarChange={handleSetThreadStarred}
-            onToggleMenu={(menuKey) =>
-              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
-            }
-            onCloseMenu={() => setOpenThreadMenuID(null)}
-          />
-          {user.role === "admin" && (
-            <button
-              className="mt-3 flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28]"
-              onClick={onAdmin}
-              type="button"
-            >
-              Admin
-            </button>
-          )}
-            </>
-          )}
-        </nav>
-        <div className="relative border-t border-[#343432] px-3 py-3">
-          {/* The whole row (avatar circle + name) is the menu trigger, so clicking
-              the round user circle opens the account menu too — and it works while
-              the rail is collapsed, where only the avatar is shown. */}
-          <button
-            className={`flex w-full items-center rounded-md transition-colors hover:bg-[#2a2a28] ${
-              railCollapsed ? "justify-center p-1" : "gap-3 px-1.5 py-1"
-            }`}
-            type="button"
-            aria-label="Account menu"
-            aria-haspopup="menu"
-            aria-expanded={userMenuOpen}
-            onClick={() => setUserMenuOpen((open) => !open)}
-          >
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dedbd0] text-xs font-semibold text-[#1d1d1b]">
-              {initialsFor(displayName)}
-            </div>
-            {!railCollapsed && (
-              <div className="min-w-0 flex-1 text-left">
-                <div className="truncate text-[#f4f0e8]">{displayName}</div>
-                <div className="truncate font-normal text-[#8f8b82]">{roleLabel(user.role)}</div>
-              </div>
-            )}
-          </button>
-          {userMenuOpen && (
-            <>
-              <div className="fixed inset-0 z-20" aria-hidden="true" onClick={() => setUserMenuOpen(false)} />
-              <UserMenu
-                className="bottom-full left-3 mb-2"
-                onClose={() => setUserMenuOpen(false)}
-                onSettings={() => setSettingsOpen(true)}
-                onLogout={onLogout}
-              />
-            </>
-          )}
-        </div>
-      </aside>
-      {mobileSidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          onClick={() => setMobileSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
+      <Sidebar
+        user={user}
+        displayName={displayName}
+        route={route}
+        showAdmin={showAdmin}
+        isMobile={isMobile}
+        sidebarCollapsed={sidebarCollapsed}
+        railCollapsed={railCollapsed}
+        mobileSidebarOpen={mobileSidebarOpen}
+        userMenuOpen={userMenuOpen}
+        loadError={loadError}
+        projectsAvailable={projects.length > 0}
+        starredThreads={starredThreads}
+        recentThreads={recentThreads}
+        starredProjects={starredProjects}
+        unstarredProjects={unstarredProjects}
+        openThreadMenuID={openThreadMenuID}
+        onToggleDesktopCollapsed={() => setSidebarCollapsed((value) => !value)}
+        onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
+        onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+        onToggleUserMenu={() => setUserMenuOpen((open) => !open)}
+        onCloseUserMenu={() => setUserMenuOpen(false)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onLogout={onLogout}
+        onAdmin={onAdmin}
+        onNewChat={navigateToNew}
+        onChats={navigateToChats}
+        onArtifacts={navigateToArtifacts}
+        onProjects={navigateToProjects}
+        onMemory={navigateToMemory}
+        onSelectThread={selectThread}
+        onDeleteThread={openDeleteModal}
+        onRenameThread={openRenameModal}
+        onAddThreadToProject={(thread) => {
+          setMovingThreads([thread]);
+          setModalError("");
+        }}
+        onStarThread={handleSetThreadStarred}
+        onNavigateProject={navigateToProject}
+        onStarProject={handleSetProjectStarred}
+        onToggleThreadMenu={(menuKey) =>
+          setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+        }
+        onCloseThreadMenu={() => setOpenThreadMenuID(null)}
+      />
       <main className="min-w-0 bg-bg">
         {showAdmin ? (
           adminPanel
@@ -1293,1453 +830,4 @@ function upsertProject(current: Project[], project: Project): Project[] {
     return current.map((item) => (item.id === project.id ? project : item));
   }
   return [project, ...current];
-}
-
-function withNormalizedActivityTrace(message: Message): MessageWithActivityTrace {
-  return {
-    ...message,
-    activityTrace: normalizeActivityTrace(message.activityTrace),
-  };
-}
-
-function initialsFor(name: string): string {
-  const trimmed = name.trim();
-  if (trimmed === "") return "S";
-  return trimmed
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
-function greetingForNow(fullName: string) {
-  const name = fullName.trim().split(/\s+/)[0];
-  const hour = new Date().getHours();
-  if (hour < 10) return `Morning, ${name}`;
-  if (hour >= 22) return `Up late, ${name}?`;
-  if (hour >= 18) return `Evening, ${name}`;
-  if (hour >= 13) return `Afternoon, ${name}`;
-  return `${name} returns!`;
-}
-
-function SidebarPrimaryItem({
-  icon,
-  label,
-  collapsed = false,
-  active = false,
-  onClick,
-}: {
-  icon: SidebarIconName;
-  label: string;
-  collapsed?: boolean;
-  active?: boolean;
-  onClick?(): void;
-}) {
-  const className = `flex h-7 w-full items-center rounded-md px-1.5 text-left text-[#c7c5bd] ${
-    collapsed ? "justify-center" : "gap-2.5"
-  } ${active ? "bg-[#111110]" : ""} ${onClick !== undefined ? "transition-colors hover:bg-[#2a2a28]" : ""}`;
-  const content = (
-    <>
-      <SidebarIcon name={icon} />
-      {!collapsed && <span className="truncate">{label}</span>}
-    </>
-  );
-  if (onClick === undefined) {
-    return <div className={className}>{content}</div>;
-  }
-  return (
-    <button type="button" className={className} onClick={onClick} aria-label={label}>
-      {content}
-    </button>
-  );
-}
-
-function SidebarIcon({ name }: { name: SidebarIconName }) {
-  const className = "h-[21px] w-[21px] shrink-0 text-[#f0eee7]";
-  if (name === "chats") {
-    return <Icon name="messages" size="21px" className={className} />;
-  }
-  if (name === "projects") {
-    return <Icon name="archive" size="21px" className={className} />;
-  }
-  if (name === "artifacts") {
-    return <Icon name="artifact" size="21px" className={className} />;
-  }
-  if (name === "memory") {
-    return <Icon name="memory" size="21px" className={className} />;
-  }
-  return null;
-}
-
-function McpStatusIndicator({ compact = false, status }: { compact?: boolean; status: McpStatusEvent }) {
-  const allActive = status.active === status.configured;
-  const ringClass = allActive ? "border-success" : "border-danger";
-  const dotClass = allActive ? "bg-success" : "bg-danger";
-  const inactiveServers = status.servers?.filter((server) => !server.active).map((server) => server.name) ?? [];
-  const tooltip =
-    !allActive && inactiveServers.length > 0
-      ? `${status.active} of ${status.configured} MCP servers active. Failed: ${inactiveServers.join(", ")}`
-      : `${status.active} of ${status.configured} MCP servers active`;
-  return (
-    <div
-      className={`ui-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
-      title={tooltip}
-    >
-      <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
-        <span className={`h-1 w-1 rounded-full ${dotClass}`} />
-      </span>
-      <span>{status.active}</span>
-    </div>
-  );
-}
-
-function SidebarSection({
-  title,
-  threads,
-  activeThreadID,
-  openThreadMenuID,
-  onSelect,
-  onDelete,
-  onRename,
-  onAddToProject,
-  onStarChange,
-  onToggleMenu,
-  onCloseMenu,
-  leading,
-}: {
-  title: string;
-  threads: Thread[];
-  activeThreadID: string | null;
-  openThreadMenuID: string | null;
-  onSelect(threadID: string): void;
-  onDelete(thread: Thread): void;
-  onRename(thread: Thread): void;
-  onAddToProject?(thread: Thread): void;
-  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
-  onToggleMenu(menuKey: string): void;
-  onCloseMenu(): void;
-  leading?: ReactNode;
-}) {
-  return (
-    <section className="mt-5">
-      <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
-      <div className="space-y-1.5">
-        {leading}
-        {threads.map((thread) => (
-          <SidebarThreadItem
-            key={thread.id}
-            menuKey={`${title}:${thread.id}`}
-            thread={thread}
-            active={activeThreadID === thread.id}
-            menuOpen={openThreadMenuID === `${title}:${thread.id}`}
-            onSelect={onSelect}
-            onDelete={onDelete}
-            onRename={onRename}
-            onAddToProject={onAddToProject}
-            onStarChange={onStarChange}
-            onToggleMenu={onToggleMenu}
-            onCloseMenu={onCloseMenu}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SidebarThreadItem({
-  menuKey,
-  thread,
-  active,
-  menuOpen,
-  onSelect,
-  onDelete,
-  onRename,
-  onAddToProject,
-  onStarChange,
-  onToggleMenu,
-  onCloseMenu,
-}: {
-  menuKey: string;
-  thread: Thread;
-  active: boolean;
-  menuOpen: boolean;
-  onSelect(threadID: string): void;
-  onDelete(thread: Thread): void;
-  onRename(thread: Thread): void;
-  onAddToProject?(thread: Thread): void;
-  onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
-  onToggleMenu(menuKey: string): void;
-  onCloseMenu(): void;
-}) {
-  const itemRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || itemRef.current?.contains(target)) return;
-      onCloseMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen, onCloseMenu]);
-
-  if (!active) {
-    return (
-      <button
-        className="block h-7 w-full truncate rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28]"
-        onClick={() => onSelect(thread.id)}
-        type="button"
-      >
-        {thread.title}
-      </button>
-    );
-  }
-  return (
-    <div ref={itemRef} className="relative">
-      <div className="flex h-7 w-full items-center rounded-md bg-[#10100f] py-0 pl-1.5 pr-1 text-left text-white">
-        <button
-          className="relative min-w-0 flex-1 overflow-hidden text-left"
-          onClick={() => onSelect(thread.id)}
-          type="button"
-        >
-          <span className="block whitespace-nowrap pr-7">{thread.title}</span>
-          <span
-            className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]"
-            aria-hidden="true"
-          />
-        </button>
-        <button
-          aria-expanded={menuOpen}
-          aria-label="Open chat actions"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white"
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleMenu(menuKey);
-          }}
-          type="button"
-        >
-          <Icon name="moreVertical" size="18px" />
-        </button>
-      </div>
-      {menuOpen && (
-        <ThreadActionsMenu
-          menuKey={menuKey}
-          thread={thread}
-          className="right-1 left-auto md:left-[174px] md:right-auto"
-          onDelete={onDelete}
-          onRename={onRename}
-          onAddToProject={onAddToProject}
-          onStarChange={onStarChange}
-        />
-      )}
-    </div>
-  );
-}
-
-function SidebarProjectItem({
-  menuKey,
-  project,
-  active,
-  menuOpen,
-  onNavigate,
-  onStarChange,
-  onToggleMenu,
-  onCloseMenu,
-}: {
-  menuKey: string;
-  project: Project;
-  active: boolean;
-  menuOpen: boolean;
-  onNavigate(project: Project): void;
-  onStarChange(project: Project, starred: boolean, menuKey: string): void;
-  onToggleMenu(menuKey: string): void;
-  onCloseMenu(): void;
-}) {
-  const itemRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || itemRef.current?.contains(target)) return;
-      onCloseMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen, onCloseMenu]);
-
-  return (
-    <div ref={itemRef} className="relative">
-      <div
-        className={`group flex h-7 w-full items-center rounded-md py-0 pl-1.5 pr-1 text-left transition-colors ${
-          active ? "bg-[#111110] text-white" : "hover:bg-[#2a2a28]"
-        }`}
-      >
-        <button
-          className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left"
-          onClick={() => onNavigate(project)}
-          type="button"
-        >
-          {project.starred && (
-            <span
-              className="grid h-4 w-4 shrink-0 place-items-center text-[#97958c]"
-              aria-hidden="true"
-            >
-              <Icon name="archive" size="15px" />
-            </span>
-          )}
-          <span className="min-w-0 flex-1 truncate whitespace-nowrap">{project.name}</span>
-        </button>
-        <button
-          aria-expanded={menuOpen}
-          aria-label="Open project actions"
-          // Keep inactive rows visually quiet while preserving keyboard access
-          // to the project actions.
-          className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
-            active || menuOpen
-              ? ""
-              : "invisible group-hover:visible group-focus-within:visible"
-          }`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleMenu(menuKey);
-          }}
-          type="button"
-        >
-          <Icon name="moreVertical" size="18px" />
-        </button>
-      </div>
-      {menuOpen && (
-        <ProjectSidebarMenu
-          project={project}
-          className="right-1 left-auto md:left-[174px] md:right-auto"
-          onStarChange={(target, starred) => onStarChange(target, starred, menuKey)}
-        />
-      )}
-    </div>
-  );
-}
-
-function ProjectSidebarMenu({
-  project,
-  className = "right-0 top-full",
-  onStarChange,
-}: {
-  project: Project;
-  className?: string;
-  onStarChange(project: Project, starred: boolean): void;
-}) {
-  return (
-    <div
-      aria-label="Project actions"
-      className={`ui-sidebar-text absolute z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
-      role="menu"
-    >
-      <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
-        role="menuitem"
-        type="button"
-        onClick={() => onStarChange(project, !project.starred)}
-      >
-        <span
-          className={`${menuIconClass} text-[19px] leading-none`}
-          aria-hidden="true"
-        >
-          <Icon name={project.starred ? "starFilled" : "star"} size="19px" />
-        </span>
-        {project.starred ? "Unstar" : "Star"}
-      </button>
-    </div>
-  );
-}
-
-function RenameThreadModal({
-  title,
-  error,
-  disabled,
-  onTitleChange,
-  onCancel,
-  onSubmit,
-}: {
-  title: string;
-  error: string;
-  disabled: boolean;
-  onTitleChange(value: string): void;
-  onCancel(): void;
-  onSubmit(): void;
-}) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-  return (
-    <ModalShell title="Rename chat" onCancel={onCancel}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit();
-        }}
-      >
-        <input
-          ref={inputRef}
-          aria-label="Chat title"
-          className="ui-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
-          value={title}
-          onChange={(event) => onTitleChange(event.target.value)}
-        />
-        {error !== "" && <ErrorText>{error}</ErrorText>}
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]"
-            onClick={onCancel}
-            type="button"
-          >
-            Cancel
-          </button>
-          <button
-            className="h-8 rounded-md bg-[#50483d] px-3.5 font-medium text-[#fffaf2] disabled:opacity-50"
-            disabled={disabled || title.trim() === ""}
-            type="submit"
-          >
-            Save
-          </button>
-        </div>
-      </form>
-    </ModalShell>
-  );
-}
-
-function DeleteThreadModal({
-  error,
-  disabled,
-  onCancel,
-  onDelete,
-}: {
-  error: string;
-  disabled: boolean;
-  onCancel(): void;
-  onDelete(): void;
-}) {
-  return (
-    <ModalShell title="Delete chat" onCancel={onCancel}>
-      <div className="mt-3 text-[13px] leading-5 text-[#d8d4ca]">
-        Are you sure you want to delete this chat?
-      </div>
-      {error !== "" && <ErrorText>{error}</ErrorText>}
-      <div className="mt-4 flex justify-end gap-2">
-        <button
-          autoFocus
-          className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]"
-          onClick={onCancel}
-          type="button"
-        >
-          Cancel
-        </button>
-        <button
-          className="h-8 rounded-md bg-[#b85c52] px-3.5 font-medium text-[#fffaf2] disabled:opacity-50"
-          disabled={disabled}
-          onClick={onDelete}
-          type="button"
-        >
-          Delete
-        </button>
-      </div>
-    </ModalShell>
-  );
-}
-
-function ModalShell({
-  title,
-  children,
-  onCancel,
-}: {
-  title: string;
-  children: ReactNode;
-  onCancel(): void;
-}) {
-  const titleID = useId();
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCancel();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
-  return (
-    <div
-      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] px-4 md:pr-4 md:pl-[378px]"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onCancel();
-      }}
-    >
-      <div
-        aria-labelledby={titleID}
-        aria-modal="true"
-        className="w-full max-w-[390px] rounded-xl border border-[#4b4a46] bg-[#2a2a28] p-[18px] shadow-[0_28px_70px_rgba(0,0,0,0.55)]"
-        role="dialog"
-      >
-        <h2 id={titleID} className="font-sans text-[22px] font-semibold leading-7 text-[#f3f0e8]">
-          {title}
-        </h2>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function StartPanel({
-  displayName,
-  draft,
-  isSending,
-  sendDisabled,
-  mcpStatus,
-  sendError,
-  pendingAttachmentNames,
-  onOpenSidebar,
-  onDraftChange,
-  onSend,
-  onStop,
-  onAttachFiles,
-}: {
-  displayName: string;
-  draft: string;
-  isSending: boolean;
-  sendDisabled: boolean;
-  mcpStatus: McpStatusEvent | null;
-  sendError: string;
-  pendingAttachmentNames: string[];
-  onOpenSidebar(): void;
-  onDraftChange(value: string): void;
-  onSend(): void;
-  onStop(): void;
-  onAttachFiles(files: File[]): void;
-}) {
-  // No thread exists yet, so uploads are deferred: files are held (see
-  // pendingAttachmentNames) and bound to the chat once the first send creates it.
-  return (
-    <section className="flex h-svh min-h-0 flex-col">
-      <header
-        aria-label="Chat header"
-        className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
-        role="banner"
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <SidebarOpenButton onClick={onOpenSidebar} />
-        </div>
-        {mcpStatus !== null && mcpStatus.configured > 0 && (
-          <McpStatusIndicator compact status={mcpStatus} />
-        )}
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-[14vh] sm:px-8">
-        <h2 className="ui-greeting-text mb-8 flex items-center gap-4 font-serif">
-          <img className="h-16 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
-          {greetingForNow(displayName)}
-        </h2>
-        <div className="w-full max-w-[674px]">
-          <Composer
-            variant="start"
-            autoFocus
-            draft={draft}
-            isSending={isSending}
-            sendDisabled={sendDisabled}
-            placeholder="How can I help you today?"
-            onDraftChange={onDraftChange}
-            onSend={onSend}
-            onStop={onStop}
-            onAttachFiles={onAttachFiles}
-          />
-          {pendingAttachmentNames.length > 0 && (
-            <div className="ui-meta-text mt-2 text-center text-[#858178]">
-              {pendingAttachmentNames.join(", ")} — added to this chat when you send
-            </div>
-          )}
-          {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-          <div className="ui-meta-text mt-4 flex flex-wrap justify-center gap-2 text-[#e8e4da]">
-            <PromptChip icon="◇" label="Write" />
-            <PromptChip icon="▱" label="Learn" />
-            <PromptChip icon="‹/›" label="Code" />
-            <PromptChip icon="☕" label="Life stuff" />
-            <PromptChip icon="◌" label="Slopr's choice" />
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ChatPanel({
-  thread,
-  threadProject,
-  deferredAttachNote,
-  messages,
-  draft,
-  streamingText,
-  streamingArtifacts,
-  activityTrace,
-  toolPending,
-  sendError,
-  isSending,
-  sendDisabled,
-  mcpStatus,
-  openThreadMenuID,
-  onOpenSidebar,
-  onDraftChange,
-  onSend,
-  onStop,
-  onRetry,
-  onOpenProject,
-  onDeleteThread,
-  onRenameThread,
-  onAddToProject,
-  onStarThread,
-  onToggleThreadMenu,
-  onCloseThreadMenu,
-}: {
-  thread: Thread | null;
-  threadProject: Project | null;
-  deferredAttachNote: string;
-  messages: MessageWithActivityTrace[];
-  draft: string;
-  streamingText: string;
-  streamingArtifacts: Artifact[];
-  activityTrace: ActivityTraceEvent[];
-  toolPending: boolean;
-  sendError: string;
-  isSending: boolean;
-  sendDisabled: boolean;
-  mcpStatus: McpStatusEvent | null;
-  openThreadMenuID: string | null;
-  onDraftChange(value: string): void;
-  onSend(): void;
-  onStop(): void;
-  onRetry(content: string): void;
-  onOpenProject(project: Project): void;
-  onDeleteThread(thread: Thread): void;
-  onRenameThread(thread: Thread): void;
-  onAddToProject?(thread: Thread): void;
-  onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
-  onToggleThreadMenu(menuKey: string): void;
-  onCloseThreadMenu(): void;
-  onOpenSidebar(): void;
-}) {
-  const transcriptRef = useRef<HTMLDivElement | null>(null);
-  const headerMenuRef = useRef<HTMLDivElement | null>(null);
-  const shouldStickToBottomRef = useRef(true);
-  const scrollFrameRef = useRef<number | null>(null);
-  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const headerMenuKey = thread === null ? null : `Header:${thread.id}`;
-  const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
-  const hasActiveActivityTrace = activityTrace.length > 0;
-  const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
-  // The live thinking window manages its own open/closed state: it opens while
-  // inference is running and collapses once the answer is in. There is no
-  // persisted preference — past traces simply start collapsed (uncontrolled).
-  const [liveTraceExpanded, setLiveTraceExpanded] = useState(false);
-  // Once the final answer streams (and no tool is running or pending), the
-  // reasoning phase is over: show its abstract instead of "Thinking". Only
-  // applies to traces that actually have reasoning, so reasoning-free turns keep
-  // the "Thinking" affordance until they complete. `toolPending` bridges the gap
-  // until a tool call the model has already started surfaces as a running event,
-  // so streamed pre-tool preamble text never settles the label early. The label
-  // also stays on "Thinking" until the latest reasoning round's background title
-  // has arrived, so the raw-first-sentence fallback never flashes mid-stream.
-  const hasReasoning = activityTrace.some((event) => event.type === "reasoning");
-  const toolRunning = activityTrace.some((event) => event.type === "tool" && event.status === "running");
-  const latestReasoning = activityTrace.reduce<ActivityTraceEvent | undefined>(
-    (acc, event) => (event.type === "reasoning" ? event : acc),
-    undefined,
-  );
-  const latestReasoningTitled =
-    latestReasoning?.type === "reasoning" && (latestReasoning.title?.trim() ?? "") !== "";
-  const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning && !toolPending && latestReasoningTitled;
-  // Drive the live thinking window: open it whenever inference is actively
-  // thinking, collapse it the moment the answer settles or the turn ends.
-  // Keyed on isSending (not the trace's presence, which lingers after the turn
-  // completes) so a finished trace stays collapsed. Manual toggles in between
-  // still stick until the next phase change.
-  const liveTraceThinking = isSending && !reasoningSettled;
-  useEffect(() => {
-    setLiveTraceExpanded(liveTraceThinking);
-  }, [liveTraceThinking]);
-
-  const refreshScrollState = useCallback(() => {
-    const transcript = transcriptRef.current;
-    if (transcript === null) return;
-    // Only update the jump-to-bottom affordance here. Stick-to-bottom is never
-    // re-engaged automatically: once the user scrolls away mid-stream it stays
-    // disengaged until the next inference or an explicit jump-to-bottom.
-    setShowJumpToBottom(!isNearBottom(transcript));
-  }, []);
-
-  const disengageAutoScroll = useCallback(() => {
-    shouldStickToBottomRef.current = false;
-    const transcript = transcriptRef.current;
-    setShowJumpToBottom(transcript === null ? true : !isNearBottom(transcript));
-  }, []);
-
-  const handleWheel = useCallback(
-    (event: React.WheelEvent<HTMLDivElement>) => {
-      // A user wheel/trackpad gesture upward means they want to read back; stop
-      // auto-scroll immediately so streaming content no longer yanks them down.
-      if (event.deltaY < 0) disengageAutoScroll();
-    },
-    [disengageAutoScroll],
-  );
-
-  const scrollToLatest = useCallback(() => {
-    const transcript = transcriptRef.current;
-    if (transcript === null) return;
-    const scroll = () => {
-      transcript.scrollTop = transcript.scrollHeight;
-    };
-    scroll();
-    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
-    scrollFrameRef.current = window.requestAnimationFrame(() => {
-      scrollFrameRef.current = null;
-      // Honour a user scroll that happened between the synchronous scroll above and this
-      // frame: if they scrolled away, refreshScrollState cleared the flag, so don't yank
-      // them back to the bottom.
-      if (shouldStickToBottomRef.current) scroll();
-    });
-    shouldStickToBottomRef.current = true;
-    setShowJumpToBottom(false);
-  }, []);
-
-  const pinToLatest = useCallback(() => {
-    shouldStickToBottomRef.current = true;
-    setShowJumpToBottom(false);
-    scrollToLatest();
-  }, [scrollToLatest]);
-
-  const handleSendRequest = useCallback(() => {
-    pinToLatest();
-    onSend();
-  }, [onSend, pinToLatest]);
-
-  const { attachNote, handleAttachFiles } = useDocumentAttachments({
-    threadId: thread?.id,
-    projectId: threadProject?.id,
-  });
-
-  const handleRetryRequest = useCallback(
-    (content: string) => {
-      pinToLatest();
-      onRetry(content);
-    },
-    [onRetry, pinToLatest],
-  );
-
-  useLayoutEffect(() => {
-    shouldStickToBottomRef.current = true;
-    setShowJumpToBottom(false);
-    scrollToLatest();
-  }, [scrollToLatest, thread?.id]);
-
-  useLayoutEffect(() => {
-    if (shouldStickToBottomRef.current) {
-      scrollToLatest();
-      return;
-    }
-    refreshScrollState();
-  }, [
-    messages.length,
-    refreshScrollState,
-    scrollToLatest,
-    sendError,
-    showActiveActivityTrace,
-    streamingArtifacts.length,
-    streamingText,
-    activityTrace,
-    liveTraceExpanded,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!headerMenuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || headerMenuRef.current?.contains(target)) return;
-      onCloseThreadMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [headerMenuOpen, onCloseThreadMenu]);
-
-  return (
-    <section className="flex h-svh min-h-0 flex-col">
-      <header
-        aria-label="Chat header"
-        className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
-        role="banner"
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <SidebarOpenButton onClick={onOpenSidebar} />
-          <div ref={headerMenuRef} className="relative flex min-w-0 items-center">
-            <h1 className="flex min-w-0 max-w-[28ch] items-center gap-1 truncate font-sans font-normal sm:max-w-[48ch]">
-              {threadProject !== null && thread !== null && (
-                <>
-                  <button
-                    className="min-w-0 max-w-[12ch] truncate text-left text-[#d5d2c9] transition-colors hover:text-[#f3f0e8] sm:max-w-[22ch]"
-                    onClick={() => onOpenProject(threadProject)}
-                    type="button"
-                  >
-                    {threadProject.name}
-                  </button>
-                  <Icon name="chevronRight" size="16px" className="shrink-0 text-[#77736a]" />
-                </>
-              )}
-              <span className="min-w-0 truncate">{thread?.title ?? "New chat"}</span>
-            </h1>
-            {thread !== null && headerMenuKey !== null && (
-              <button
-                aria-expanded={headerMenuOpen}
-                aria-label="Open chat actions"
-                className="ml-1 grid h-5 w-5 shrink-0 place-items-center rounded-md text-[#88857d] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
-                onClick={() => onToggleThreadMenu(headerMenuKey)}
-                type="button"
-              >
-                <Icon name={headerMenuOpen ? "chevronDown" : "chevronRight"} size="16px" />
-              </button>
-            )}
-            {thread !== null && headerMenuKey !== null && headerMenuOpen && (
-              <ThreadActionsMenu
-                menuKey={headerMenuKey}
-                thread={thread}
-                className="right-0 top-full"
-                onDelete={onDeleteThread}
-                onRename={onRenameThread}
-                onAddToProject={onAddToProject}
-                onStarChange={onStarThread}
-              />
-            )}
-          </div>
-        </div>
-        {mcpStatus !== null && mcpStatus.configured > 0 && (
-          <McpStatusIndicator compact status={mcpStatus} />
-        )}
-      </header>
-      <div className="relative min-h-0 flex-1">
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-bg to-transparent" />
-        <div
-          ref={transcriptRef}
-          aria-label="Conversation transcript"
-          className="flex h-full flex-col overflow-y-auto px-6 pt-10 [scrollbar-gutter:stable_both-edges] md:px-8"
-          onScroll={refreshScrollState}
-          onTouchMove={disengageAutoScroll}
-          onWheel={handleWheel}
-          role="region"
-        >
-          <div className="ui-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
-            {messages.map((message, index) => (
-              <div key={message.id} className="space-y-6">
-                {message.role === "assistant" && message.activityTrace !== undefined && (
-                  <ActivityTracePanel events={message.activityTrace} active={false} />
-                )}
-                {message.role === "assistant" && message.activityTrace === undefined && message.reasoningContent && (
-                  <ActivityTracePanel
-                    events={[
-                      {
-                        id: `${message.id}-reasoning`,
-                        type: "reasoning",
-                        content: message.reasoningContent,
-                        status: "done",
-                      },
-                    ]}
-                    active={false}
-                  />
-                )}
-                <MessageBubble
-                  message={message}
-                  retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
-                  onRetry={handleRetryRequest}
-                />
-              </div>
-            ))}
-            {showActiveActivityTrace && (
-              <ActivityTracePanel
-                events={activityTrace}
-                active={liveTraceThinking}
-                streaming={isSending}
-                expanded={liveTraceExpanded}
-                onExpandedChange={setLiveTraceExpanded}
-              />
-            )}
-            {streamingArtifacts.map((artifact) => (
-              <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
-            ))}
-            {streamingText !== "" && <AssistantText streaming>{streamingText}</AssistantText>}
-            {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-          </div>
-          <div
-            aria-label="Message composer dock"
-            className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
-          >
-            <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
-            <div className="ui-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
-              <Composer
-                variant="chat"
-                draft={draft}
-                isSending={isSending}
-                sendDisabled={sendDisabled}
-                placeholder="Write a message..."
-                onDraftChange={onDraftChange}
-                onSend={handleSendRequest}
-                onStop={onStop}
-                onAttachFiles={thread === null ? undefined : handleAttachFiles}
-              />
-              {(attachNote || deferredAttachNote) !== "" && (
-                <div className="ui-meta-text mt-2 text-center text-[#858178]">
-                  {attachNote || deferredAttachNote}
-                </div>
-              )}
-              <div className="ui-meta-text mt-2 text-center text-[#858178]">
-                Slopr can make mistakes. Please double-check responses.
-              </div>
-            </div>
-          </div>
-        </div>
-        {showJumpToBottom && (
-          <button
-            aria-label="Jump to latest message"
-            className="absolute bottom-40 left-1/2 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border border-[#4b4a46] bg-[#2a2a28] text-[#f3f0e8] shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-colors hover:bg-[#343432]"
-            onClick={scrollToLatest}
-            title="Jump to latest"
-            type="button"
-          >
-            <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-              <path
-                d="M12 5v14M6.5 13.5 12 19l5.5-5.5"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2.2"
-              />
-            </svg>
-          </button>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function isNearBottom(element: HTMLElement): boolean {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
-}
-
-function previousUserContent(messages: Message[], beforeIndex: number): string | null {
-  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role === "user") return message.content;
-  }
-  return null;
-}
-
-function PromptChip({ icon, label }: { icon: string; label: string }) {
-  return (
-    <button className="ui-meta-text flex h-8 items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 text-[#eeeae2]" type="button">
-      <span className="text-[#aaa79e]">{icon}</span>
-      {label}
-    </button>
-  );
-}
-
-function MessageBubble({
-  message,
-  retryContent,
-  onRetry,
-}: {
-  message: Message;
-  retryContent: string | null;
-  onRetry(content: string): void;
-}) {
-  if (message.role === "user") {
-    return (
-      <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
-        <div className="ui-message-text ui-user-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
-          {message.content}
-        </div>
-        <MessageActions
-          copyLabel="Copy message"
-          copyText={message.content}
-          retryLabel="Retry message"
-          onRetry={() => onRetry(message.content)}
-          alignRight
-        />
-      </div>
-    );
-  }
-  return (
-    <div className="max-w-[46rem] space-y-3">
-      <AssistantText metricsMessage={message} onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>
-        {message.content}
-      </AssistantText>
-      {message.artifacts?.map((artifact) => (
-        <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
-      ))}
-      <MessageCitations citations={message.citations} />
-    </div>
-  );
-}
-
-function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
-  const preRef = useRef<HTMLPreElement | null>(null);
-  const [copied, setCopied] = useState(false);
-  const resetRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-    };
-  }, []);
-
-  const handleCopy = useCallback(() => {
-    const code = preRef.current?.textContent ?? "";
-    void copyResponse(code);
-    setCopied(true);
-    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-    resetRef.current = window.setTimeout(() => setCopied(false), 1500);
-  }, []);
-
-  return (
-    <div className="ui-codeblock">
-      <button
-        type="button"
-        className="ui-codeblock-copy"
-        onClick={handleCopy}
-        aria-label={copied ? "Kopiert" : "Code kopieren"}
-        title={copied ? "Kopiert" : "Code kopieren"}
-      >
-        {copied ? <CheckIcon className="h-4 w-4" /> : <Icon name="copy" size="1rem" />}
-      </button>
-      <pre ref={preRef} {...props}>
-        {children}
-      </pre>
-    </div>
-  );
-}
-
-export function ProseMarkdown({ children }: { children: string }) {
-  return (
-    <div className="ui-message-text ui-markdown text-[#f3f0e8]">
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
-        components={{
-          a({ children, ...props }) {
-            return (
-              <a {...props} target="_blank" rel="noreferrer">
-                {children}
-              </a>
-            );
-          },
-          pre: CodeBlock,
-        }}
-      >
-        {children}
-      </Markdown>
-    </div>
-  );
-}
-
-function AssistantText({
-  children,
-  onRetry,
-  metricsMessage,
-  streaming = false,
-}: {
-  children: string;
-  onRetry?: () => void;
-  metricsMessage?: Message;
-  streaming?: boolean;
-}) {
-  const downloadable = downloadableResponse(children);
-
-  if (downloadable !== null) {
-    const { artifact, before, after } = downloadable;
-    if (before === "" && after === "") {
-      return <DownloadResponseBubble artifact={artifact} />;
-    }
-    return (
-      <div className="ui-assistant-message group w-full space-y-3">
-        {before !== "" && <ProseMarkdown>{before}</ProseMarkdown>}
-        <DownloadResponseBubble artifact={artifact} />
-        {after !== "" && <ProseMarkdown>{after}</ProseMarkdown>}
-        <MessageActions
-          copyLabel="Copy response"
-          copyText={markdownToPlainText(children)}
-          retryLabel="Retry response"
-          onRetry={onRetry}
-          metricsMessage={metricsMessage}
-          streaming={streaming}
-          speakable
-        />
-      </div>
-    );
-  }
-
-  const pendingArtifact = pendingFencedArtifact(children);
-  if (pendingArtifact !== null) {
-    const { before, label, receivedBytes } = pendingArtifact;
-    if (before === "") {
-      return <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />;
-    }
-    return (
-      <div className="ui-assistant-message group w-full space-y-3">
-        <ProseMarkdown>{before}</ProseMarkdown>
-        <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="ui-assistant-message group w-full">
-      <ProseMarkdown>{children}</ProseMarkdown>
-      <MessageActions
-        copyLabel="Copy response"
-        copyText={markdownToPlainText(children)}
-        retryLabel="Retry response"
-        onRetry={onRetry}
-        metricsMessage={metricsMessage}
-        streaming={streaming}
-        speakable
-      />
-    </div>
-  );
-}
-
-function MessageActions({
-  copyLabel,
-  copyText,
-  retryLabel,
-  onRetry,
-  metricsMessage,
-  speakable = false,
-  alignRight = false,
-  streaming = false,
-}: {
-  copyLabel: string;
-  copyText: string;
-  retryLabel: string;
-  onRetry?: () => void;
-  metricsMessage?: Message;
-  speakable?: boolean;
-  alignRight?: boolean;
-  streaming?: boolean;
-}) {
-  const [copied, setCopied] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const speakingRef = useRef(false);
-  speakingRef.current = speaking;
-
-  // Stop any in-progress narration started here when the bubble unmounts.
-  useEffect(() => () => void (speakingRef.current && window.speechSynthesis?.cancel()), []);
-
-  async function handleCopy() {
-    await copyResponse(copyText);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  }
-
-  function endSpeech() {
-    window.speechSynthesis?.cancel();
-    setSpeaking(false);
-  }
-
-  // Replicates AnythingLLM's native TTS exactly (it works reliably in Safari):
-  // guard on the engine's own `speaking` flag, no cancel()/resume() before speak,
-  // attach an `end` listener, then speak and flag speaking.
-  function handleSpeak() {
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-    // Pausing this message while it speaks ends it; if another message is
-    // speaking, ignore the click until that one is paused.
-    if (synth.speaking && speakingRef.current) {
-      endSpeech();
-      return;
-    }
-    if (synth.speaking && !speakingRef.current) return;
-    const utterance = new SpeechSynthesisUtterance(copyText);
-    utterance.addEventListener("end", endSpeech);
-    synth.speak(utterance);
-    setSpeaking(true);
-  }
-
-  // While the answer is still streaming we render no action row at all — the
-  // speaker, copy and retry icons appear together with the metrics footer
-  // (model name, token cost) only once the message has settled.
-  if (streaming) return null;
-
-  return (
-    <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : "pl-1.5"}`}>
-      {speakable && (
-        <button
-          className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
-            speaking ? "text-[#f3f0e8]" : "text-[#858178]"
-          }`}
-          onClick={handleSpeak}
-          type="button"
-          title={speaking ? "Stop" : "Read aloud"}
-          aria-label={speaking ? "Stop reading" : "Read aloud"}
-        >
-          <Icon name="volume" size="1.15rem" />
-        </button>
-      )}
-      <button
-        className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
-        onClick={handleCopy}
-        type="button"
-        title="Copy"
-        aria-label={copyLabel}
-      >
-        {copied ? <CheckIcon className="h-[1.15rem] w-[1.15rem]" /> : <Icon name="copy" size="1.15rem" />}
-      </button>
-      {onRetry !== undefined && (
-        <button
-          className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
-          onClick={onRetry}
-          type="button"
-          title="Retry"
-          aria-label={retryLabel}
-        >
-          <Icon name="retry" size="1.15rem" />
-        </button>
-      )}
-      {metricsMessage && <MessageMetrics message={metricsMessage} />}
-    </div>
-  );
-}
-
-function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string; receivedBytes: number }) {
-  const progressText =
-    receivedBytes > 0 ? `Receiving file... ${formatReceivedKB(receivedBytes)} received` : "Receiving file...";
-  return (
-    <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
-      <div className="flex items-center gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-          <FileIcon />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">{label} response</div>
-          <div className="ui-meta-text text-[#aaa79e]">{progressText}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
-  return (
-    <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
-      <div className="flex items-center gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-          <FileIcon />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">{artifact.label} response</div>
-          <div className="ui-meta-text text-[#aaa79e]">Ready to download</div>
-        </div>
-        <button
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
-          onClick={() => downloadEmbeddedArtifact(artifact)}
-          type="button"
-          title={`Download ${artifact.label} response`}
-          aria-label={`Download ${artifact.label} response`}
-        >
-          <DownloadIcon />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
-  const [error, setError] = useState("");
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const isImage = artifact.mimeType.startsWith("image/");
-  const imageStats = isImage ? buildImageStats(artifact) : null;
-
-  useEffect(() => {
-    if (!isImage) {
-      setPreviewUrl("");
-      return;
-    }
-    let cancelled = false;
-    let objectUrl = "";
-    setError("");
-    setPreviewUrl("");
-    void downloadArtifact(artifact.downloadUrl)
-      .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setPreviewUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Preview failed");
-      });
-    return () => {
-      cancelled = true;
-      if (objectUrl !== "") URL.revokeObjectURL(objectUrl);
-    };
-  }, [artifact.downloadUrl, isImage]);
-
-  async function handleDownload() {
-    setError("");
-    try {
-      const blob = await downloadArtifact(artifact.downloadUrl);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = artifact.displayFilename;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      setError("Download failed");
-    }
-  }
-
-  function handleOpenPreview() {
-    if (previewUrl === "") return;
-    setError("");
-    setLightboxOpen(true);
-  }
-
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setLightboxOpen(false);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightboxOpen]);
-
-  return (
-    <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
-      {isImage &&
-        // Reserve the image's vertical space up-front so the card never collapses while the
-        // blob loads asynchronously (or when it remounts on stream → committed). A collapse
-        // would shrink scrollHeight and make the browser clamp scrollTop upward = unwanted
-        // upward jump. With known dimensions we reserve the exact box via aspect-ratio;
-        // otherwise we fall back to a min-height floor that bounds the collapse.
-        (artifact.width && artifact.height ? (
-          <button
-            className="relative block max-h-[28rem] w-full cursor-zoom-in overflow-hidden bg-[#1f1f1d]"
-            onClick={handleOpenPreview}
-            type="button"
-            title={`Preview ${artifact.displayFilename}`}
-            aria-label={`Preview ${artifact.displayFilename}`}
-            style={{ aspectRatio: `${artifact.width} / ${artifact.height}` }}
-          >
-            {previewUrl !== "" && (
-              <img
-                className="absolute inset-0 h-full w-full object-contain"
-                src={previewUrl}
-                alt={artifact.displayFilename}
-                loading="lazy"
-              />
-            )}
-          </button>
-        ) : (
-          <button
-            className="block min-h-[16rem] w-full cursor-zoom-in bg-[#1f1f1d]"
-            onClick={handleOpenPreview}
-            type="button"
-            title={`Preview ${artifact.displayFilename}`}
-            aria-label={`Preview ${artifact.displayFilename}`}
-          >
-            {previewUrl !== "" && (
-              <img
-                className="block max-h-[28rem] w-full object-contain"
-                src={previewUrl}
-                alt={artifact.displayFilename}
-                loading="lazy"
-              />
-            )}
-          </button>
-        ))}
-      <div className="flex items-center gap-3 px-4 py-3">
-        {!isImage && (
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-            <Icon name="artifact" size="20px" />
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">{artifact.displayFilename}</div>
-          <div className="ui-meta-text text-[#aaa79e]">
-            {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
-          </div>
-          {imageStats !== null && (
-            <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>
-          )}
-          {error !== "" && <div className="ui-meta-text text-[#d36f67]">{error}</div>}
-        </div>
-        <button
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
-          onClick={handleDownload}
-          type="button"
-          title={`Download ${artifact.displayFilename}`}
-          aria-label={`Download ${artifact.displayFilename}`}
-        >
-          <DownloadIcon />
-        </button>
-      </div>
-      {lightboxOpen && previewUrl !== "" && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
-          onClick={() => setLightboxOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Preview ${artifact.displayFilename}`}
-        >
-          <button
-            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-black/40 text-[#f3f0e8] transition-colors hover:bg-black/60"
-            onClick={() => setLightboxOpen(false)}
-            type="button"
-            title="Close preview"
-            aria-label="Close preview"
-          >
-            <CloseIcon />
-          </button>
-          <img
-            className="max-h-full max-w-full object-contain"
-            src={previewUrl}
-            alt={artifact.displayFilename}
-            onClick={(event) => event.stopPropagation()}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-async function copyResponse(content: string) {
-  await navigator.clipboard?.writeText(content);
-}
-
-function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
-  const url = URL.createObjectURL(new Blob([artifact.content], { type: artifact.mimeType }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `ui-response.${artifact.extension}`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
-function ErrorText({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="ui-meta-text mt-3 max-w-3xl rounded-lg border border-accent bg-[#282826] px-4 py-3 text-accent">
-      {children}
-    </div>
-  );
 }
