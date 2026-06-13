@@ -176,10 +176,16 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// when tools are actually on offer: the tool-free final-answer call must keep
 	// its content verbatim, otherwise a stray inline call would be stripped to an
 	// empty (and therefore discarded) response.
+	//
+	// MiMo also sometimes emits the same inline call in the reasoning_content channel
+	// instead of content; gate that channel too, with its own buffer, so the markup
+	// never leaks as visible reasoning. finishStream recovers the call from whichever
+	// channel carried it.
 	parseInlineTools := isMiMoModel(c.model) && len(tools) > 0
-	var gate *toolCallStreamGate
+	var gate, reasoningGate *toolCallStreamGate
 	if parseInlineTools {
 		gate = &toolCallStreamGate{}
+		reasoningGate = &toolCallStreamGate{}
 	}
 	// Emitted at most once per turn, the moment we first know a tool call is
 	// underway — well before the parsed call surfaces at the end of the stream.
@@ -194,11 +200,22 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// running tool immediately, rather than waiting for the full call at end-of-stream.
 	nativeNameEmitted := map[int]bool{}
 	flushGate := func() error {
-		if gate == nil || onEvent == nil {
+		if onEvent == nil {
 			return nil
 		}
-		if leftover := gate.flush(); leftover != "" {
-			return onEvent(StreamEvent{Delta: leftover})
+		if gate != nil {
+			if leftover := gate.flush(); leftover != "" {
+				if err := onEvent(StreamEvent{Delta: leftover}); err != nil {
+					return err
+				}
+			}
+		}
+		if reasoningGate != nil {
+			if leftover := reasoningGate.flush(); leftover != "" {
+				if err := onEvent(StreamEvent{ReasoningDelta: leftover}); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	}
@@ -225,7 +242,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			if err := flushGate(); err != nil {
 				return fail(err)
 			}
-			result, err := finishStream(content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
+			result, err := finishStream(streamCtx, c.model, content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 			if err != nil {
 				return fail(err)
 			}
@@ -256,8 +273,36 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			noteDelta()
 			reasoning.WriteString(delta.ReasoningContent)
 			if onEvent != nil {
-				if err := onEvent(StreamEvent{ReasoningDelta: delta.ReasoningContent}); err != nil {
-					return fail(err)
+				emit := delta.ReasoningContent
+				if reasoningGate != nil {
+					emit = reasoningGate.push(delta.ReasoningContent)
+				}
+				if emit != "" {
+					if err := onEvent(StreamEvent{ReasoningDelta: emit}); err != nil {
+						return fail(err)
+					}
+				}
+				// MiMo emitted the inline tool call in the reasoning channel: the
+				// gate has now suppressed it, so signal a pending tool call and
+				// surface its name early — same UX as the content-channel path.
+				if reasoningGate != nil && reasoningGate.suppressed && !toolPendingEmitted {
+					toolPendingEmitted = true
+					extendIdleForToolCall()
+					if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
+						return fail(err)
+					}
+				}
+				if reasoningGate != nil && reasoningGate.suppressed && !toolNameEmitted {
+					if name := firstInlineToolName(reasoning.String()); name != "" {
+						toolNameEmitted = true
+						if err := onEvent(StreamEvent{ToolCall: ToolCall{
+							ID:       inlineToolCallID(0),
+							Type:     "function",
+							Function: ToolCallFunction{Name: name},
+						}}); err != nil {
+							return fail(err)
+						}
+					}
 				}
 			}
 		}
@@ -361,7 +406,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	if err := flushGate(); err != nil {
 		return fail(err)
 	}
-	result, err := finishStream(content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
+	result, err := finishStream(streamCtx, c.model, content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 	if err != nil {
 		return fail(err)
 	}
@@ -394,7 +439,7 @@ func firstToolName(byIndex map[int]*ToolCall, order []int) string {
 	return ""
 }
 
-func finishStream(content string, reasoningContent string, finishReason string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error, parseInlineTools bool) (StreamResult, error) {
+func finishStream(ctx context.Context, model string, content string, reasoningContent string, finishReason string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error, parseInlineTools bool) (StreamResult, error) {
 	result := StreamResult{
 		Content:          content,
 		ReasoningContent: reasoningContent,
@@ -411,10 +456,43 @@ func finishStream(content string, reasoningContent string, finishReason string, 
 			}
 		}
 	}
-	// Models that lack native tool_calls (e.g. MiMo) emit the call as inline XML
-	// in the content. Recover those only when the API returned no native calls.
+	// Models that lack native tool_calls (e.g. MiMo) emit the call as inline XML,
+	// usually in the content but sometimes in the reasoning_content channel. Recover
+	// those only when the API returned no native calls, preferring content; strip the
+	// block from whichever channel carried it so the raw markup is never persisted.
 	if parseInlineTools && len(result.ToolCalls) == 0 {
+		channel := "content"
 		inlineCalls, cleaned := parseInlineToolCalls(result.Content)
+		if len(inlineCalls) > 0 {
+			result.Content = cleaned
+		} else {
+			channel = "reasoning"
+			var cleanedReasoning string
+			inlineCalls, cleanedReasoning = parseInlineToolCalls(result.ReasoningContent)
+			if len(inlineCalls) > 0 {
+				result.ReasoningContent = cleanedReasoning
+			}
+		}
+		// An inline call is invisible in the completion log's tool=/tool_arg_bytes
+		// fields (those read the native tool_calls map), so log it distinctly — naming
+		// the channel — to make the phenomenon diagnosable.
+		if len(inlineCalls) > 0 {
+			slog.InfoContext(ctx, "recovered inline tool calls",
+				slog.String("model", model),
+				slog.String("channel", channel),
+				slog.Int("count", len(inlineCalls)),
+				slog.String("tool", inlineCalls[0].Function.Name),
+			)
+		} else if strings.Contains(result.Content, inlineToolCallMarker) || strings.Contains(result.ReasoningContent, inlineToolCallMarker) {
+			// A <tool_call> marker was emitted but produced no parsable call (truncated
+			// or malformed block). The gate already withheld it from the client, so this
+			// would otherwise be a silent dead end with no tool run — surface it.
+			slog.WarnContext(ctx, "inline tool-call markup not parsed",
+				slog.String("model", model),
+				slog.Bool("in_content", strings.Contains(result.Content, inlineToolCallMarker)),
+				slog.Bool("in_reasoning", strings.Contains(result.ReasoningContent, inlineToolCallMarker)),
+			)
+		}
 		for _, call := range inlineCalls {
 			result.ToolCalls = append(result.ToolCalls, call)
 			if onEvent != nil {
@@ -422,9 +500,6 @@ func finishStream(content string, reasoningContent string, finishReason string, 
 					return result, err
 				}
 			}
-		}
-		if len(inlineCalls) > 0 {
-			result.Content = cleaned
 		}
 	}
 	return result, nil
