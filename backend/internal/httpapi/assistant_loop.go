@@ -146,8 +146,33 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	if persistInterruptedPartial(result, err) {
 		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
 	}
+	// MiMo regularly answers the forced final call with yet another inline tool call
+	// instead of prose; the inline markup is stripped (so it never leaks), leaving the
+	// content empty. Retry once with a firmer, tool-free directive, then fall back to a
+	// fixed message — anything but persisting an empty (and therefore discarded) turn.
+	if err == nil && strings.TrimSpace(result.Content) == "" {
+		slog.Info("retrying empty final answer", "reason", "inline_tool_call_stripped", "round", maxToolRounds+1)
+		retryHistory := append(history[:len(history):len(history)], llm.Message{
+			Role:    "system",
+			Content: "You have no tools available and must not emit any tool call. Answer the user's question now in plain prose, using only the information already gathered above.",
+		})
+		result, err = s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), retryHistory, inferenceWithPurpose(inference, "chat_final_retry", maxToolRounds+2), nil)
+		trace = s.appendTraceAndSpawnTitle(titles, trace, result)
+		if persistInterruptedPartial(result, err) {
+			return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
+		}
+		if err == nil && strings.TrimSpace(result.Content) == "" {
+			slog.Warn("final answer empty after retry; using fallback", "round", maxToolRounds+2)
+			result.Content = finalAnswerFallback
+		}
+	}
 	return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, err
 }
+
+// finalAnswerFallback is surfaced when the model never commits to a prose answer on
+// the forced final turn (it keeps emitting tool calls instead), so the turn shows a
+// clear message rather than an empty bubble.
+const finalAnswerFallback = "I couldn't put together a final answer from the information gathered. Please try rephrasing or narrowing your question."
 
 func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool) (assistantLoopResult, error) {
 	compilerHistory := append(history[:len(history):len(history)], llm.Message{
