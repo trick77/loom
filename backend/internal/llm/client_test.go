@@ -701,9 +701,11 @@ func TestClient_StreamChatWithToolsSignalsPendingBeforeInlineToolCall(t *testing
 	}
 }
 
-func TestClient_StreamChatWithoutToolsKeepsInlineXMLAsContent(t *testing.T) {
-	// The tool-free final-answer call must not parse/strip inline tool XML;
-	// otherwise a stray inline call would empty the content and discard the turn.
+func TestClient_StreamChatWithoutToolsStripsInlineXML(t *testing.T) {
+	// The forced tool-free final-answer call regularly gets an inline tool call back
+	// instead of an answer. The raw <tool_call> markup must be stripped from the
+	// content (never surfaced verbatim) even with no tools offered; the resulting
+	// empty answer is the caller's concern (retry + fallback).
 	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -718,11 +720,8 @@ func TestClient_StreamChatWithoutToolsKeepsInlineXMLAsContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamChatWithTools() error: %v", err)
 	}
-	if len(final.ToolCalls) != 0 {
-		t.Fatalf("tool calls = %#v, want none parsed when no tools offered", final.ToolCalls)
-	}
-	if final.Content != xml {
-		t.Fatalf("final content = %q, want inline XML kept verbatim", final.Content)
+	if strings.Contains(final.Content, "<tool_call>") {
+		t.Fatalf("final content = %q, want inline XML stripped (not surfaced verbatim)", final.Content)
 	}
 }
 

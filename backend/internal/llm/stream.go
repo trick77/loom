@@ -171,17 +171,19 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		logInferenceFailed(streamCtx, c.model, time.Since(start), err, progress()...)
 		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 	}
-	// MiMo emits tool calls as inline XML in the content; gate the streamed
-	// deltas so the raw <tool_call> markup never reaches the client. Only do this
-	// when tools are actually on offer: the tool-free final-answer call must keep
-	// its content verbatim, otherwise a stray inline call would be stripped to an
-	// empty (and therefore discarded) response.
+	// MiMo emits tool calls as inline XML in the content; gate the streamed deltas
+	// so the raw <tool_call> markup never reaches the client. This must happen even
+	// when no tools are on offer: the forced tool-free final-answer call regularly
+	// gets an inline tool call back instead of an answer, and leaving it ungated
+	// leaked the raw markup as the reply. Stripping it can empty the final answer —
+	// that case is handled by the caller (retry + fallback), which is far better
+	// than surfacing raw XML.
 	//
 	// MiMo also sometimes emits the same inline call in the reasoning_content channel
 	// instead of content; gate that channel too, with its own buffer, so the markup
 	// never leaks as visible reasoning. finishStream recovers the call from whichever
 	// channel carried it.
-	parseInlineTools := isMiMoModel(c.model) && len(tools) > 0
+	parseInlineTools := isMiMoModel(c.model)
 	var gate, reasoningGate *toolCallStreamGate
 	if parseInlineTools {
 		gate = &toolCallStreamGate{}
