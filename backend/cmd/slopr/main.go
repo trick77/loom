@@ -115,6 +115,11 @@ func run() error {
 		if err := ragStore.ReconcileLegacyDocumentScopes(context.Background()); err != nil {
 			return err
 		}
+		// One-time data fix: remove stale citation metadata from old assistant
+		// messages after legacy document scopes have been corrected.
+		if err := ragStore.ScrubOutOfScopeMessageCitations(context.Background()); err != nil {
+			return err
+		}
 		embedClient := rag.NewEmbedClient(rag.EmbedConfig{
 			BaseURL: cfg.EmbedBaseURL,
 			APIKey:  cfg.EmbedAPIKey,
