@@ -184,6 +184,10 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// Emitted at most once per turn, the moment we first know a tool call is
 	// underway — well before the parsed call surfaces at the end of the stream.
 	toolPendingEmitted := false
+	// Tracks the early surfacing of the inline tool name (see below): emitted once,
+	// as soon as <function=NAME> parses, so the client can name the running tool
+	// during MiMo's silent argument-serialization gap.
+	toolNameEmitted := false
 	flushGate := func() error {
 		if gate == nil || onEvent == nil {
 			return nil
@@ -272,6 +276,23 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 					extendIdleForToolCall()
 					if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
 						return fail(err)
+					}
+				}
+				// The <function=NAME> tag lands a few tokens after the marker but the
+				// full call (with the large argument) only surfaces at end-of-stream.
+				// Emit the name now, under the same id finishStream will assign, so the
+				// client can show which tool is running during the silent gap and the
+				// later full call updates that same entry instead of duplicating it.
+				if gate != nil && gate.suppressed && !toolNameEmitted {
+					if name := firstInlineToolName(content.String()); name != "" {
+						toolNameEmitted = true
+						if err := onEvent(StreamEvent{ToolCall: ToolCall{
+							ID:       inlineToolCallID(0),
+							Type:     "function",
+							Function: ToolCallFunction{Name: name},
+						}}); err != nil {
+							return fail(err)
+						}
 					}
 				}
 			}

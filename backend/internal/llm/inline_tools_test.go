@@ -17,6 +17,30 @@ func TestIsMiMoModel_MatchesDeployVariants(t *testing.T) {
 	}
 }
 
+func TestFirstInlineToolName(t *testing.T) {
+	// Name not yet streamed: nothing to surface.
+	if got := firstInlineToolName("Sure.<tool_call>\n"); got != "" {
+		t.Fatalf("firstInlineToolName before name = %q, want empty", got)
+	}
+	// Partial function tag (no closing '>'): still nothing.
+	if got := firstInlineToolName("<tool_call>\n<function=create_pdf_fi"); got != "" {
+		t.Fatalf("firstInlineToolName on partial tag = %q, want empty", got)
+	}
+	// Full tag arrived: the name surfaces even while the argument is still streaming.
+	if got := firstInlineToolName("<tool_call>\n<function=create_pdf_file>\n<parameter=content>partial"); got != "create_pdf_file" {
+		t.Fatalf("firstInlineToolName = %q, want create_pdf_file", got)
+	}
+}
+
+func TestInlineToolCallID(t *testing.T) {
+	if got := inlineToolCallID(0); got != "inline_call_1" {
+		t.Fatalf("inlineToolCallID(0) = %q, want inline_call_1", got)
+	}
+	if got := inlineToolCallID(2); got != "inline_call_3" {
+		t.Fatalf("inlineToolCallID(2) = %q, want inline_call_3", got)
+	}
+}
+
 func TestParseInlineToolCalls_SingleMiMoCall(t *testing.T) {
 	content := "<tool_call>\n<function=tavily__tavily_search>\n<parameter=q>colossus forbin project</parameter>\n</function>\n</tool_call>"
 
