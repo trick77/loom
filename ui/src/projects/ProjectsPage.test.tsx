@@ -259,6 +259,32 @@ test("project action menus expose edit archive delete", () => {
   expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
 });
 
+test("project action menu icons align with the first line of wrapping action text", () => {
+  render(
+    <ProjectsPage
+      projects={projects}
+      loadError=""
+      onOpenSidebar={vi.fn()}
+      onCreateProject={vi.fn()}
+      onOpenProject={vi.fn()}
+      onEditProject={vi.fn()}
+      onArchiveProject={vi.fn()}
+      onDeleteProject={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Open project actions for Research" }));
+  const item = within(screen.getByRole("menu", { name: "Project actions" })).getByRole("menuitem", {
+    name: "Edit details",
+  });
+  const icon = item.querySelector("[aria-hidden='true']");
+
+  expect(item).toHaveClass("min-h-[34px]");
+  expect(item).toHaveClass("items-start");
+  expect(item).not.toHaveClass("items-center");
+  expect(icon).toHaveClass("mt-0.5");
+});
+
 test("ProjectsPage closes project action menu when clicking outside", () => {
   render(
     <ProjectsPage

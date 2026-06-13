@@ -29,4 +29,16 @@ describe("UserMenu", () => {
     expect(onSettings).not.toHaveBeenCalled();
     expect(onLogout).not.toHaveBeenCalled();
   });
+
+  it("aligns icons with the first line of wrapping action text", () => {
+    render(<UserMenu onSettings={vi.fn()} onLogout={vi.fn()} onClose={() => {}} />);
+
+    const item = screen.getByRole("menuitem", { name: "Settings" });
+    const icon = item.querySelector("[aria-hidden='true']");
+
+    expect(item).toHaveClass("min-h-[34px]");
+    expect(item).toHaveClass("items-start");
+    expect(item).not.toHaveClass("items-center");
+    expect(icon).toHaveClass("mt-0.5");
+  });
 });

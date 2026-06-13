@@ -163,7 +163,7 @@ test("places project rows below starred chats with matching chat row sizing", as
   expect(chatRow).toHaveClass("h-7");
 });
 
-test("inactive sidebar project actions become visible for keyboard and non-hover users", async () => {
+test("inactive sidebar project actions stay hidden until hover or keyboard focus", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -182,7 +182,7 @@ test("inactive sidebar project actions become visible for keyboard and non-hover
   expect(actionButton).toHaveClass("invisible");
   expect(actionButton).toHaveClass("group-hover:visible");
   expect(actionButton).toHaveClass("group-focus-within:visible");
-  expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
+  expect(actionButton).not.toHaveClass("[@media(hover:none)]:visible");
 });
 
 test("greets signed-in users with up late after 22:00", async () => {

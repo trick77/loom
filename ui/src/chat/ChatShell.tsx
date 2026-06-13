@@ -50,7 +50,7 @@ import {
 } from "../activityTrace";
 import logoImage from "../assets/sloppy.png";
 import { MessageMetrics } from "../MessageMetrics";
-import { ThreadActionsMenu } from "../ThreadActionsMenu";
+import { menuIconClass, menuItemClass, ThreadActionsMenu } from "../ThreadActionsMenu";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ChatsPage } from "../ChatsPage";
 import { ArtifactsPage } from "../artifacts/ArtifactsPage";
@@ -1594,12 +1594,12 @@ function SidebarProjectItem({
         <button
           aria-expanded={menuOpen}
           aria-label="Open project actions"
-          // Keep inactive rows visually quiet for pointer users while preserving
-          // keyboard and touch access to the project actions.
+          // Keep inactive rows visually quiet while preserving keyboard access
+          // to the project actions.
           className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
             active || menuOpen
               ? ""
-              : "invisible group-hover:visible group-focus-within:visible [@media(hover:none)]:visible"
+              : "invisible group-hover:visible group-focus-within:visible"
           }`}
           onClick={(event) => {
             event.stopPropagation();
@@ -1637,13 +1637,13 @@ function ProjectSidebarMenu({
       role="menu"
     >
       <button
-        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+        className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
         type="button"
         onClick={() => onStarChange(project, !project.starred)}
       >
         <span
-          className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[19px] leading-none"
+          className={`${menuIconClass} text-[19px] leading-none`}
           aria-hidden="true"
         >
           <Icon name={project.starred ? "starFilled" : "star"} size="19px" />
