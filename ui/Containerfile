@@ -10,6 +10,12 @@ RUN npm run build
 
 # --- Stage 2: serve static assets and proxy API requests ---
 FROM nginx:1.29-alpine
+# Build version, passed through from CI; surfaced at container start by the
+# entrypoint script below so the running UI image is identifiable from the logs.
+ARG SLOPR_VERSION=dev
+ENV SLOPR_VERSION=${SLOPR_VERSION}
 COPY ui/nginx.conf /etc/nginx/nginx.conf
+COPY ui/docker-entrypoint.d/15-log-version.sh /docker-entrypoint.d/15-log-version.sh
+RUN chmod +x /docker-entrypoint.d/15-log-version.sh
 COPY --from=build /app/ui/dist /usr/share/nginx/html
 EXPOSE 80

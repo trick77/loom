@@ -81,6 +81,10 @@ func runHealthcheck(url string) error {
 }
 
 func run() error {
+	// Logged first thing so the running build is identifiable even if startup later
+	// fails (config error, DB open, etc.) — the "listening" line only lands on success.
+	slog.Info("starting slopr", "version", version)
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
