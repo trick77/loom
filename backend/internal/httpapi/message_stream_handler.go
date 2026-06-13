@@ -24,6 +24,12 @@ var (
 	errStreamSuperseded    = errors.New("stream superseded by newer request")
 )
 
+// streamHeartbeatInterval is how often the SSE stream emits a keep-alive comment
+// while silent. Kept well under the 60-120s idle timeouts common to proxies, load
+// balancers, and edges (e.g. Cloudflare ~100s) so a long silent tool-call
+// generation never trips them. See sse.Writer.Heartbeat.
+const streamHeartbeatInterval = 20 * time.Second
+
 func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok || !requireChat(w, s) {
@@ -80,6 +86,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Keep the connection alive through idle proxies during long silent gaps —
+	// notably while MiMo serializes a large tool-call argument server-side and
+	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
+	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 	if err := sendSSEJSON(stream, "user_message", userMessage); err != nil {
 		return
 	}

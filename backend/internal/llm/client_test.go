@@ -482,6 +482,42 @@ func TestClient_NonDocumentToolKeepsConfiguredTimeout(t *testing.T) {
 	}
 }
 
+func TestClient_DocumentToolWidensIdleTimeout(t *testing.T) {
+	client := NewClient(Config{BaseURL: "http://example.test", Model: "mimo", IdleTimeout: 60 * time.Second}, nil)
+
+	got := client.toolCallIdleTimeout([]Tool{{
+		Type:     "function",
+		Function: ToolFunction{Name: "create_pdf_file", Parameters: map[string]any{"type": "object"}},
+	}})
+	if got != documentToolTimeout {
+		t.Fatalf("toolCallIdleTimeout() = %s, want documentToolTimeout %s", got, documentToolTimeout)
+	}
+}
+
+func TestClient_NonDocumentToolKeepsConfiguredIdleTimeout(t *testing.T) {
+	client := NewClient(Config{BaseURL: "http://example.test", Model: "mimo", IdleTimeout: 60 * time.Second}, nil)
+
+	got := client.toolCallIdleTimeout([]Tool{{
+		Type:     "function",
+		Function: ToolFunction{Name: "search__web", Parameters: map[string]any{"type": "object"}},
+	}})
+	if got != 60*time.Second {
+		t.Fatalf("toolCallIdleTimeout() = %s, want 60s", got)
+	}
+}
+
+func TestClient_DisabledIdleWatchdogStaysDisabledForDocumentTool(t *testing.T) {
+	client := NewClient(Config{BaseURL: "http://example.test", Model: "mimo"}, nil)
+
+	got := client.toolCallIdleTimeout([]Tool{{
+		Type:     "function",
+		Function: ToolFunction{Name: "create_pdf_file", Parameters: map[string]any{"type": "object"}},
+	}})
+	if got != 0 {
+		t.Fatalf("toolCallIdleTimeout() = %s, want 0 when watchdog disabled", got)
+	}
+}
+
 func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *testing.T) {
 	tests := []struct {
 		name                 string
