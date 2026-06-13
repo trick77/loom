@@ -203,14 +203,30 @@ func (c *Client) maxCompletionTokensForTools(tools []Tool) int {
 // stays generous (documentToolTimeout) whenever a document tool is on offer,
 // because a turn that streams a full document payload as a tool-call argument
 // legitimately needs the room — and intent cannot be known up front (MiMo only
-// surfaces the tool name once the stream ends). This is now just a backstop: the
-// idle watchdog (see StreamChatWithTools / c.idleTimeout) is what actually catches
-// a stalled stream, in seconds rather than minutes.
+// surfaces the tool name once the stream ends). The idle watchdog catches a
+// stalled reasoning/content phase in seconds; but once a document tool call is
+// underway it widens (see toolCallIdleTimeout) because MiMo buffers the argument
+// server-side, so this coarse deadline is the real backstop for that phase.
 func (c *Client) timeoutForTools(tools []Tool) time.Duration {
 	if c.timeout == 0 || !hasDocumentGenerationTool(tools) || c.timeout >= documentToolTimeout {
 		return c.timeout
 	}
 	return documentToolTimeout
+}
+
+// toolCallIdleTimeout is the idle window to apply once a tool call is underway in
+// a turn that can generate a document. MiMo buffers tool-call arguments
+// server-side and flushes them in one delayed burst (no incremental deltas), so a
+// large document argument goes silent for far longer than the normal idle window —
+// which would falsely trip the watchdog mid-generation (measured ~82s silent for a
+// ~10KB spec). Widen to the document timeout and let the coarse total deadline
+// backstop a genuine hang. Non-document turns keep the normal window: their tool
+// arguments are small and stream promptly.
+func (c *Client) toolCallIdleTimeout(tools []Tool) time.Duration {
+	if c.idleTimeout > 0 && hasDocumentGenerationTool(tools) && documentToolTimeout > c.idleTimeout {
+		return documentToolTimeout
+	}
+	return c.idleTimeout
 }
 
 func hasDocumentGenerationTool(tools []Tool) bool {

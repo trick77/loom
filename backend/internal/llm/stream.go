@@ -73,13 +73,31 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// on every received line (data chunk or keep-alive comment).
 	streamCtx := callCtx
 	resetIdle := func() {}
+	extendIdleForToolCall := func() {}
 	if c.idleTimeout > 0 {
 		var idleCancel context.CancelCauseFunc
 		streamCtx, idleCancel = context.WithCancelCause(callCtx)
 		defer idleCancel(nil)
-		idleTimer := time.AfterFunc(c.idleTimeout, func() { idleCancel(ErrStreamStalled) })
+		idleWindow := c.idleTimeout
+		idleTimer := time.AfterFunc(idleWindow, func() { idleCancel(ErrStreamStalled) })
 		defer idleTimer.Stop()
-		resetIdle = func() { idleTimer.Reset(c.idleTimeout) }
+		resetIdle = func() { idleTimer.Reset(idleWindow) }
+		// MiMo does not stream tool-call arguments incrementally: it streams
+		// reasoning, then goes silent for tens of seconds while serializing the whole
+		// argument server-side, then flushes it in one burst. For a large document
+		// payload that silent gap (measured at ~82s for a ~10KB spec) exceeds the
+		// normal idle window, so the watchdog would falsely abort a model that is
+		// still working. Once a tool call is underway in a turn that can produce a
+		// document, widen the idle window to the document timeout so the buffered
+		// burst can land; the coarse total deadline (timeoutForTools) stays the real
+		// backstop. The narrow window still guards the reasoning/content phase and
+		// every turn that cannot emit a document.
+		extendIdleForToolCall = func() {
+			if w := c.toolCallIdleTimeout(tools); w > idleWindow {
+				idleWindow = w
+				idleTimer.Reset(idleWindow)
+			}
+		}
 	}
 
 	resp, err := c.executeChatRequestWithTools(streamCtx, messages, tools, true)
@@ -127,15 +145,32 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 		lastDeltaAt = now
 	}
+	toolCalls := map[int]*ToolCall{}
+	var toolCallOrder []int
+	// progress carries the RCA-decisive shape of the turn so a failure mode is
+	// readable straight off the log line: which channel was being emitted and how
+	// much. content_bytes vs reasoning_bytes vs tool_arg_bytes distinguishes a
+	// content stall, a reasoning/serialization spiral, and a tool-argument stall
+	// (large tool_arg_bytes that then goes silent). Only byte counts and the tool
+	// name — never payload contents — keep entries short.
 	progress := func() []slog.Attr {
-		return streamProgressAttrs(start, firstTokenAt, lastDeltaAt, streamBytes, maxIdleMs, maxInterChunkMs)
+		attrs := streamProgressAttrs(start, firstTokenAt, lastDeltaAt, streamBytes, maxIdleMs, maxInterChunkMs)
+		attrs = append(attrs,
+			slog.Int("content_bytes", content.Len()),
+			slog.Int("reasoning_bytes", reasoning.Len()),
+		)
+		if n := toolArgBytes(toolCalls); n > 0 {
+			attrs = append(attrs, slog.Int("tool_arg_bytes", n))
+		}
+		if name := firstToolName(toolCalls, toolCallOrder); name != "" {
+			attrs = append(attrs, slog.String("tool", name))
+		}
+		return attrs
 	}
 	fail := func(err error) (StreamResult, error) {
 		logInferenceFailed(streamCtx, c.model, time.Since(start), err, progress()...)
 		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 	}
-	toolCalls := map[int]*ToolCall{}
-	var toolCallOrder []int
 	// MiMo emits tool calls as inline XML in the content; gate the streamed
 	// deltas so the raw <tool_call> markup never reaches the client. Only do this
 	// when tools are actually on offer: the tool-free final-answer call must keep
@@ -234,6 +269,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 				// <tool_call> marker; tell the client a tool call is coming.
 				if gate != nil && gate.suppressed && !toolPendingEmitted {
 					toolPendingEmitted = true
+					extendIdleForToolCall()
 					if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
 						return fail(err)
 					}
@@ -242,6 +278,9 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 		if len(delta.ToolCalls) > 0 {
 			noteDelta()
+			// A tool call has started: switch to the wider idle window before MiMo
+			// goes silent to serialize a (possibly large) argument server-side.
+			extendIdleForToolCall()
 			if !toolPendingEmitted && onEvent != nil {
 				toolPendingEmitted = true
 				if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
@@ -291,6 +330,28 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	result.ReasoningEffort = c.reasoningEffort
 	observeInference(streamCtx, c.model, result.Duration, result.Usage, result.FinishReason, progress()...)
 	return result, nil
+}
+
+// toolArgBytes sums the streamed tool-call argument lengths accumulated so far —
+// the size of what the model is serializing into tool calls, which on a stalled
+// document turn is exactly the payload that never finished.
+func toolArgBytes(byIndex map[int]*ToolCall) int {
+	total := 0
+	for _, call := range byIndex {
+		total += len(call.Function.Arguments)
+	}
+	return total
+}
+
+// firstToolName returns the name of the first tool call seen, so a turn that is
+// (or was) emitting a tool argument is identifiable even when it never completed.
+func firstToolName(byIndex map[int]*ToolCall, order []int) string {
+	for _, index := range order {
+		if call, ok := byIndex[index]; ok && call.Function.Name != "" {
+			return call.Function.Name
+		}
+	}
+	return ""
 }
 
 func finishStream(content string, reasoningContent string, finishReason string, usage TokenUsage, byIndex map[int]*ToolCall, order []int, onEvent func(StreamEvent) error, parseInlineTools bool) (StreamResult, error) {

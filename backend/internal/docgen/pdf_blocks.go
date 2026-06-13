@@ -1,6 +1,7 @@
 package docgen
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
@@ -24,7 +25,17 @@ type pdfBlock struct {
 func parseBlocks(payload map[string]any) []pdfBlock {
 	raw, ok := payload["blocks"].([]any)
 	if !ok {
-		return nil
+		// MiMo frequently serializes the blocks array as a JSON-encoded string
+		// (blocks: "[{...}]") rather than a real array. Decode that form instead of
+		// silently dropping the entire document and failing "content or blocks are
+		// required".
+		s, isStr := payload["blocks"].(string)
+		if !isStr || strings.TrimSpace(s) == "" {
+			return nil
+		}
+		if err := json.Unmarshal([]byte(s), &raw); err != nil {
+			return nil
+		}
 	}
 	var out []pdfBlock
 	for _, r := range raw {
