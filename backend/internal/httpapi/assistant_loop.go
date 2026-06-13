@@ -76,6 +76,21 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		if len(result.ToolCalls) > maxToolCallsPerRound {
 			return assistantLoopResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
 		}
+		// Log every tool call's argument size so document payloads are measurable in
+		// retrospect instead of guessed at: a create_*_file call serializes the whole
+		// file into its argument JSON, so arg_bytes ≈ document size. Pair this with
+		// completion_tokens from the matching "llm inference completed" line (same
+		// thread_id + round) to read the size in tokens — the unit the completion-token
+		// cap is set in. finish_reason=length means the argument was truncated, so
+		// arg_bytes is then a lower bound on the intended size. Fires before the length
+		// guard below so a truncated payload is still measured.
+		for _, call := range result.ToolCalls {
+			slog.Info("tool call arguments",
+				"round", round,
+				"tool", call.Function.Name,
+				"arg_bytes", len(call.Function.Arguments),
+				"finish_reason", result.FinishReason)
+		}
 		if result.FinishReason == "length" {
 			// The model serializes a document as a single tool-call argument; once it
 			// runs past the completion-token cap the argument JSON is truncated
