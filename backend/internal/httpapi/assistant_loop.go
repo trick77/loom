@@ -76,6 +76,17 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		if len(result.ToolCalls) > maxToolCallsPerRound {
 			return assistantLoopResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
 		}
+		if result.FinishReason == "length" {
+			// The model serializes a document as a single tool-call argument; once it
+			// runs past the completion-token cap the argument JSON is truncated
+			// mid-string. Appending that broken call to history and continuing makes
+			// the upstream reject the next round's prefill (surfacing as a generic
+			// "stream failed"), and the document tool itself cannot parse the partial
+			// arguments. Stop here with a clear cause instead of replaying it.
+			slog.Warn("tool call truncated at token cap",
+				"round", round, "tool_calls", len(result.ToolCalls), "finish_reason", result.FinishReason)
+			return assistantLoopResult{}, streamUserError{message: "The response was cut off before it finished — the requested output is too large to generate in one turn. Ask for a shorter version or split it into parts."}
+		}
 		slog.Info("assistant requested tools", "round", round, "tool_calls", len(result.ToolCalls), "content_bytes", len(result.Content))
 
 		history = append(history, llm.Message{
