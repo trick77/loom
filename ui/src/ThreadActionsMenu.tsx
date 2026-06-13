@@ -1,6 +1,9 @@
 import type { Thread } from "./api";
 import { Icon } from "./chat/Icon";
 
+export const menuItemClass = "flex min-h-[34px] w-full items-start gap-2.5 px-3 py-[7px] text-left";
+export const menuIconClass = "mt-0.5 grid h-[21px] w-[21px] shrink-0 place-items-center";
+
 export function ThreadActionsMenu({
   menuKey,
   thread,
@@ -34,7 +37,7 @@ export function ThreadActionsMenu({
       {onSelect !== undefined && (
         <>
           <button
-            className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+            className={`${menuItemClass} text-[#f3f0e8]`}
             role="menuitem"
             type="button"
             onClick={() => onSelect(thread)}
@@ -46,30 +49,30 @@ export function ThreadActionsMenu({
         </>
       )}
       <button
-        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+        className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
         type="button"
         onClick={() => onStarChange(thread, !thread.starred, menuKey)}
       >
-        <span className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[19px] leading-none" aria-hidden="true">
+        <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
           <Icon name={thread.starred ? "starFilled" : "star"} size="19px" />
         </span>
         {thread.starred ? "Unstar" : "Star"}
       </button>
       <button
-        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+        className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
         type="button"
         onClick={() => onRename(thread)}
       >
-        <span className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[19px] leading-none" aria-hidden="true">
+        <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
           ✎
         </span>
         Rename
       </button>
       {hasProject ? (
         <button
-          className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8] disabled:cursor-default disabled:opacity-100"
+          className={`${menuItemClass} text-[#f3f0e8] disabled:cursor-default disabled:opacity-100`}
           disabled={onRemoveFromProject === undefined}
           role="menuitem"
           type="button"
@@ -80,7 +83,7 @@ export function ThreadActionsMenu({
         </button>
       ) : (
         <button
-          className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8] disabled:cursor-default disabled:opacity-100"
+          className={`${menuItemClass} text-[#f3f0e8] disabled:cursor-default disabled:opacity-100`}
           disabled={onAddToProject === undefined}
           role="menuitem"
           type="button"
@@ -93,7 +96,7 @@ export function ThreadActionsMenu({
       <MenuSeparator />
       {onArchive !== undefined && (
         <button
-          className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#f3f0e8]"
+          className={`${menuItemClass} text-[#f3f0e8]`}
           role="menuitem"
           type="button"
           onClick={() => onArchive(thread)}
@@ -103,7 +106,7 @@ export function ThreadActionsMenu({
         </button>
       )}
       <button
-        className="flex h-[34px] w-full items-center gap-2.5 px-3 text-left text-[#d98278]"
+        className={`${menuItemClass} text-[#d98278]`}
         role="menuitem"
         type="button"
         onClick={() => onDelete(thread)}
@@ -116,12 +119,12 @@ export function ThreadActionsMenu({
 }
 
 export function TrashMenuIcon() {
-  return <Icon name="trash" size="19px" className="grid h-[21px] w-[21px] shrink-0 place-items-center" />;
+  return <Icon name="trash" size="19px" className={menuIconClass} />;
 }
 
 function ArchiveMenuIcon() {
   return (
-    <svg className="h-[21px] w-[21px] shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+    <svg className={menuIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
       <path d="M5 8h14v11H5V8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
       <path d="M4 5h16v3H4V5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
       <path d="M9 12h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -135,7 +138,7 @@ function MenuSeparator() {
 
 function CheckMenuIcon() {
   return (
-    <svg className="h-[21px] w-[21px] shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+    <svg className={menuIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
       <path d="M5 12.5l4 4 10-10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -143,7 +146,7 @@ function CheckMenuIcon() {
 
 export function ProjectMenuIcon() {
   return (
-    <svg className="h-[21px] w-[21px] shrink-0" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+    <svg className={menuIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
       <path
         d="M4.5 8.5h5l1.6 2h8.4v7.2c0 1.2-.7 1.8-2 1.8h-11c-1.3 0-2-.6-2-1.8V8.5Z"
         stroke="currentColor"
@@ -159,4 +162,3 @@ export function ProjectMenuIcon() {
     </svg>
   );
 }
-
