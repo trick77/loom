@@ -3,12 +3,77 @@ package llm
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+// completedLogCapture records the attrs of the "llm inference completed" log line.
+type completedLogCapture struct {
+	mu    sync.Mutex
+	attrs map[string]slog.Value
+}
+
+func (h *completedLogCapture) Enabled(context.Context, slog.Level) bool { return true }
+func (h *completedLogCapture) Handle(_ context.Context, r slog.Record) error {
+	if r.Message != "llm inference completed" {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r.Attrs(func(a slog.Attr) bool { h.attrs[a.Key] = a.Value; return true })
+	return nil
+}
+func (h *completedLogCapture) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *completedLogCapture) WithGroup(string) slog.Handler      { return h }
+
+// max_inter_chunk_ms must exclude the first gap (connect + time-to-first-byte) that
+// max_idle_ms includes, so a stream with a slow first chunk and fast subsequent
+// chunks reports max_inter_chunk_ms well below max_idle_ms.
+func TestClient_StreamProgressSeparatesTTFBFromInterChunkGap(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		time.Sleep(80 * time.Millisecond) // simulate a slow first byte
+		for i := 0; i < 3; i++ {
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\n"))
+			if flusher != nil {
+				flusher.Flush()
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	capture := &completedLogCapture{attrs: map[string]slog.Value{}}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(capture))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	if _, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
+		t.Fatalf("StreamChatResult() error: %v", err)
+	}
+
+	capture.mu.Lock()
+	defer capture.mu.Unlock()
+	idle := capture.attrs["max_idle_ms"].Int64()
+	inter := capture.attrs["max_inter_chunk_ms"].Int64()
+	if idle < 60 {
+		t.Fatalf("max_idle_ms = %d, want >= 60 (should include the ~80ms first-byte gap)", idle)
+	}
+	if inter >= idle {
+		t.Fatalf("max_inter_chunk_ms (%d) must be below max_idle_ms (%d) — first gap should be excluded", inter, idle)
+	}
+}
 
 // The idle watchdog must abort a stream whose upstream goes silent mid-turn,
 // reporting ErrStreamStalled (distinct from context.Canceled) and preserving

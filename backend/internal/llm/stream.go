@@ -20,12 +20,19 @@ var ErrStreamStalled = errors.New("the model stopped responding")
 // streamProgressAttrs reports per-stream observability so a stall is diagnosable
 // after the fact and the idle window is calibratable from healthy turns: time to
 // the first token, total SSE bytes, time since the last delta when the stream
-// ended, and the worst silent gap between data chunks (max_idle_ms — compare this
-// against the configured idle timeout to judge how much margin healthy turns have).
-func streamProgressAttrs(start, firstToken, lastDelta time.Time, streamBytes int, maxIdleMs int64) []slog.Attr {
+// ended, and two views of the worst silent gap between data chunks:
+//   - max_idle_ms: gap seeded at request start, so the first gap includes connect +
+//     time-to-first-byte. This is exactly the window the idle watchdog races
+//     against (its timer also starts at request entry), so compare it to the
+//     configured idle timeout to judge false-positive margin.
+//   - max_inter_chunk_ms: worst gap measured only between two data chunks (the first
+//     chunk's gap is excluded), i.e. the model's pure streaming cadence without the
+//     connect/TTFB component.
+func streamProgressAttrs(start, firstToken, lastDelta time.Time, streamBytes int, maxIdleMs, maxInterChunkMs int64) []slog.Attr {
 	attrs := []slog.Attr{
 		slog.Int("stream_bytes", streamBytes),
 		slog.Int64("max_idle_ms", maxIdleMs),
+		slog.Int64("max_inter_chunk_ms", maxInterChunkMs),
 	}
 	if !firstToken.IsZero() {
 		attrs = append(attrs, slog.Int64("first_token_ms", firstToken.Sub(start).Milliseconds()))
@@ -95,14 +102,21 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	streamBytes := 0
 	// lastChunkAt/maxIdleMs track the worst silent gap between data chunks — the
 	// window the idle watchdog actually races against. Seeded at start so the gap
-	// before the first chunk (connect + time-to-first-byte) counts too.
+	// before the first chunk (connect + time-to-first-byte) counts too. maxInterChunkMs
+	// is the same but excludes that first gap, isolating the model's streaming cadence.
 	lastChunkAt := start
-	var maxIdleMs int64
+	var maxIdleMs, maxInterChunkMs int64
+	chunkCount := 0
 	noteChunk := func() {
 		now := time.Now()
-		if gap := now.Sub(lastChunkAt).Milliseconds(); gap > maxIdleMs {
+		gap := now.Sub(lastChunkAt).Milliseconds()
+		if gap > maxIdleMs {
 			maxIdleMs = gap
 		}
+		if chunkCount > 0 && gap > maxInterChunkMs {
+			maxInterChunkMs = gap
+		}
+		chunkCount++
 		lastChunkAt = now
 		resetIdle()
 	}
@@ -114,7 +128,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		lastDeltaAt = now
 	}
 	progress := func() []slog.Attr {
-		return streamProgressAttrs(start, firstTokenAt, lastDeltaAt, streamBytes, maxIdleMs)
+		return streamProgressAttrs(start, firstTokenAt, lastDeltaAt, streamBytes, maxIdleMs, maxInterChunkMs)
 	}
 	fail := func(err error) (StreamResult, error) {
 		logInferenceFailed(streamCtx, c.model, time.Since(start), err, progress()...)
