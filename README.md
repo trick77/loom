@@ -114,6 +114,7 @@ BACKEND_CHAT_MODEL=mimo-v2.5-pro
 BACKEND_CHAT_REASONING_EFFORT=high
 BACKEND_CHAT_MAX_COMPLETION_TOKENS=2048
 BACKEND_CHAT_TIMEOUT=2m
+BACKEND_CHAT_IDLE_TIMEOUT=60s
 ```
 
 Keep secrets in environment variables or an uncommitted `.env` file. Do not commit client secrets or
@@ -152,13 +153,16 @@ BACKEND_CHAT_MODEL=mimo-v2.5-pro
 BACKEND_CHAT_REASONING_EFFORT=high
 BACKEND_CHAT_MAX_COMPLETION_TOKENS=2048
 BACKEND_CHAT_TIMEOUT=2m
+BACKEND_CHAT_IDLE_TIMEOUT=60s
 ```
 
 The backend calls `POST <BACKEND_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
 `messages`, `model`, `stream`, `reasoning_effort`, and `max_completion_tokens` fields.
 `BACKEND_CHAT_REASONING_EFFORT` defaults to `high` when unset. `BACKEND_CHAT_MAX_COMPLETION_TOKENS`
 defaults to `2048`, and `BACKEND_CHAT_TIMEOUT` defaults to `2m`, so long-running reasoning streams are
-bounded even when the model is configured for high reasoning effort. If `BACKEND_CHAT_BASE_URL` is
+bounded even when the model is configured for high reasoning effort. `BACKEND_CHAT_IDLE_TIMEOUT`
+defaults to `60s` and aborts a stream that goes silent mid-turn (a stalled upstream) far sooner than
+the total timeout; set it to `0` to disable the idle watchdog. If `BACKEND_CHAT_BASE_URL` is
 empty, the authenticated shell still loads but sending a chat message returns a service-unavailable
 error.
 

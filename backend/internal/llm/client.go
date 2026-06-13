@@ -36,7 +36,10 @@ type Config struct {
 	ReasoningEffort     string
 	MaxCompletionTokens int
 	Timeout             time.Duration
-	ResponseLogDir      string
+	// IdleTimeout aborts a stream when no chunk arrives within the window. Zero
+	// disables the watchdog (the coarse total Timeout still applies).
+	IdleTimeout    time.Duration
+	ResponseLogDir string
 }
 
 // Message is one OpenAI-compatible chat message.
@@ -56,6 +59,7 @@ type Client struct {
 	reasoningEffort     string
 	maxCompletionTokens int
 	timeout             time.Duration
+	idleTimeout         time.Duration
 	httpClient          *http.Client
 	responseLogDir      string
 }
@@ -81,6 +85,7 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 		reasoningEffort:     reasoningEffort,
 		maxCompletionTokens: maxCompletionTokens,
 		timeout:             cfg.Timeout,
+		idleTimeout:         cfg.IdleTimeout,
 		httpClient:          httpClient,
 		responseLogDir:      cfg.ResponseLogDir,
 	}
@@ -187,6 +192,13 @@ func (c *Client) maxCompletionTokensForTools(tools []Tool) int {
 	return documentToolMaxCompletionTokens
 }
 
+// timeoutForTools is the coarse total wall-clock budget for a streamed turn. It
+// stays generous (documentToolTimeout) whenever a document tool is on offer,
+// because a turn that streams a full document payload as a tool-call argument
+// legitimately needs the room — and intent cannot be known up front (MiMo only
+// surfaces the tool name once the stream ends). This is now just a backstop: the
+// idle watchdog (see StreamChatWithTools / c.idleTimeout) is what actually catches
+// a stalled stream, in seconds rather than minutes.
 func (c *Client) timeoutForTools(tools []Tool) time.Duration {
 	if c.timeout == 0 || !hasDocumentGenerationTool(tools) || c.timeout >= documentToolTimeout {
 		return c.timeout

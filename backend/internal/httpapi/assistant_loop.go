@@ -15,7 +15,12 @@ import (
 )
 
 const (
-	maxToolRounds             = 8
+	// maxToolRounds caps how many times the model may call tools before slopr
+	// forces a tool-free final answer. Kept moderate: a model that over-researches
+	// (e.g. fetching source after source) otherwise burns rounds — and wall-clock —
+	// without converging. Enough for genuine multi-step research, low enough to stop
+	// a spiral.
+	maxToolRounds             = 6
 	maxToolCallsPerRound      = 8
 	maxToolCallDuration       = 30 * time.Second
 	maxToolResultContentBytes = 32 << 10
@@ -33,7 +38,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	tools := s.availableTools()
 	if len(tools) == 0 {
 		result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(nil), history, inferenceWithPurpose(inference, "chat", 1), nil)
-		if persistCanceledPartial(result, err) {
+		if persistInterruptedPartial(result, err) {
 			return assistantLoopResult{StreamResult: result, ActivityTrace: s.appendTraceAndSpawnTitle(titles, nil, result)}, nil
 		}
 		return assistantLoopResult{StreamResult: result, ActivityTrace: s.appendTraceAndSpawnTitle(titles, nil, result)}, err
@@ -51,7 +56,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
-			if persistCanceledPartial(result, err) {
+			if persistInterruptedPartial(result, err) {
 				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: s.appendTraceAndSpawnTitle(titles, trace, result)}, nil
 			}
 			return assistantLoopResult{}, err
@@ -112,7 +117,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	})
 	result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
 	trace = s.appendTraceAndSpawnTitle(titles, trace, result)
-	if persistCanceledPartial(result, err) {
+	if persistInterruptedPartial(result, err) {
 		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
 	}
 	return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, err
@@ -161,7 +166,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	})
 	final, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
 	trace = s.appendTraceAndSpawnTitle(titles, trace, final)
-	if persistCanceledPartial(final, err) {
+	if persistInterruptedPartial(final, err) {
 		return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: trace}, nil
 	}
 	if err == nil && strings.TrimSpace(final.Content) == "" {
@@ -177,8 +182,16 @@ func fallbackImageArtifactResponse(response artifactResponse) string {
 	return "Created " + response.DisplayFilename + "."
 }
 
-func persistCanceledPartial(result llm.StreamResult, err error) bool {
-	return errors.Is(err, context.Canceled) && strings.TrimSpace(result.Content) != ""
+// persistInterruptedPartial reports whether a turn that ended in an interruption —
+// a client disconnect (context.Canceled) or a stalled upstream
+// (llm.ErrStreamStalled) — still produced partial content worth keeping. Without
+// this, a stall after some content streamed would discard the whole turn.
+// Reasoning-only output is not persistable on its own.
+func persistInterruptedPartial(result llm.StreamResult, err error) bool {
+	if strings.TrimSpace(result.Content) == "" {
+		return false
+	}
+	return errors.Is(err, context.Canceled) || errors.Is(err, llm.ErrStreamStalled)
 }
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and

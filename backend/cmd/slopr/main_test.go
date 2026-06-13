@@ -31,6 +31,7 @@ func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
 		ChatReasoningEffort:     "low",
 		ChatMaxCompletionTokens: 4096,
 		ChatTimeout:             90 * time.Second,
+		ChatIdleTimeout:         60 * time.Second,
 		ChatLogDir:              "logs/llm-responses",
 		AuthMode:                config.AuthModeDev,
 	}
@@ -53,6 +54,9 @@ func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
 	}
 	if got.Timeout != cfg.ChatTimeout {
 		t.Fatalf("Timeout = %s, want %s", got.Timeout, cfg.ChatTimeout)
+	}
+	if got.IdleTimeout != cfg.ChatIdleTimeout {
+		t.Fatalf("IdleTimeout = %s, want %s", got.IdleTimeout, cfg.ChatIdleTimeout)
 	}
 	if got.ResponseLogDir != cfg.ChatLogDir {
 		t.Fatalf("ResponseLogDir = %q, want %q", got.ResponseLogDir, cfg.ChatLogDir)

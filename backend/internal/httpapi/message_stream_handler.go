@@ -15,7 +15,7 @@ import (
 	"github.com/trick77/slopr/internal/usage"
 )
 
-const sloprSystemPrompt = "Write in flowing prose by default — full sentences grouped into paragraphs — no matter the topic or how long the answer is. Presenting information, explaining or describing something is prose, not a list. Do NOT use bullet points or numbered lists to break an answer into points. Use a list ONLY when the content is a true enumeration the user would naturally keep as a list: sequential steps to follow, distinct API parameters, or a literal checklist. When in doubt, use prose. For brainstorming, naming, or idea-generation requests without an explicit count, give at most 12 options and recommend one. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
+const sloprSystemPrompt = "Write in flowing prose by default — full sentences grouped into paragraphs — no matter the topic or how long the answer is. Presenting information, explaining or describing something is prose, not a list. Do NOT use bullet points or numbered lists to break an answer into points. Use a list ONLY when the content is a true enumeration the user would naturally keep as a list: sequential steps to follow, distinct API parameters, or a literal checklist. When in doubt, use prose. For brainstorming, naming, or idea-generation requests without an explicit count, give at most 12 options and recommend one. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
 
 const imagePromptCompilerSystemPrompt = "The latest user request requires image generation or editing. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Transform the user's request into a concise, visually rich prompt that preserves subject, setting, style, composition, mood, medium, text requirements, and constraints. Add only helpful visual details consistent with the request. Use `filename` when obvious. After the tool result, provide a brief final response that refers to the created artifact. Never claim an image was created unless the tool result confirms an artifact."
 
@@ -121,8 +121,18 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		message := "stream failed"
 		var userErr streamUserError
-		if errors.As(err, &userErr) {
+		switch {
+		case errors.As(err, &userErr):
 			message = userErr.message
+		case errors.Is(err, llm.ErrStreamStalled):
+			// The idle watchdog aborted a stalled upstream. Surface a clear cause
+			// instead of the generic "stream failed", and log it distinctly so a
+			// recurring stall is visible in the request logs, not just the llm ones.
+			message = llm.ErrStreamStalled.Error()
+			slog.Warn("message stream stalled",
+				"thread_id", threadID,
+				"content_bytes", len(assistantResult.Content),
+				"reasoning_bytes", len(assistantResult.ReasoningContent))
 		}
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		return

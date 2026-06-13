@@ -4,10 +4,44 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
+
+// ErrStreamStalled marks a stream that was aborted by the idle watchdog because
+// the model stopped emitting chunks for longer than the configured idle window. It
+// is deliberately distinct from context.Canceled so callers can tell a stalled
+// upstream apart from a client disconnect, and surface a clear message.
+var ErrStreamStalled = errors.New("the model stopped responding")
+
+// streamProgressAttrs reports per-stream observability so a stall is diagnosable
+// after the fact and the idle window is calibratable from healthy turns: time to
+// the first token, total SSE bytes, time since the last delta when the stream
+// ended, and two views of the worst silent gap between data chunks:
+//   - max_idle_ms: gap seeded at request start, so the first gap includes connect +
+//     time-to-first-byte. This is exactly the window the idle watchdog races
+//     against (its timer also starts at request entry), so compare it to the
+//     configured idle timeout to judge false-positive margin.
+//   - max_inter_chunk_ms: worst gap measured only between two data chunks (the first
+//     chunk's gap is excluded), i.e. the model's pure streaming cadence without the
+//     connect/TTFB component.
+func streamProgressAttrs(start, firstToken, lastDelta time.Time, streamBytes int, maxIdleMs, maxInterChunkMs int64) []slog.Attr {
+	attrs := []slog.Attr{
+		slog.Int("stream_bytes", streamBytes),
+		slog.Int64("max_idle_ms", maxIdleMs),
+		slog.Int64("max_inter_chunk_ms", maxInterChunkMs),
+	}
+	if !firstToken.IsZero() {
+		attrs = append(attrs, slog.Int64("first_token_ms", firstToken.Sub(start).Milliseconds()))
+	}
+	if !lastDelta.IsZero() {
+		attrs = append(attrs, slog.Int64("since_last_delta_ms", time.Since(lastDelta).Milliseconds()))
+	}
+	return attrs
+}
 
 func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta func(string) error) (string, error) {
 	result, err := c.StreamChatResult(ctx, messages, onDelta)
@@ -32,9 +66,30 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		callCtx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	resp, err := c.executeChatRequestWithTools(callCtx, messages, tools, true)
+
+	// Idle watchdog: a model that stops emitting chunks mid-turn would otherwise
+	// block on the read until the coarse total deadline (or a client disconnect).
+	// Abort early when nothing arrives within the idle window; the timer is reset
+	// on every received line (data chunk or keep-alive comment).
+	streamCtx := callCtx
+	resetIdle := func() {}
+	if c.idleTimeout > 0 {
+		var idleCancel context.CancelCauseFunc
+		streamCtx, idleCancel = context.WithCancelCause(callCtx)
+		defer idleCancel(nil)
+		idleTimer := time.AfterFunc(c.idleTimeout, func() { idleCancel(ErrStreamStalled) })
+		defer idleTimer.Stop()
+		resetIdle = func() { idleTimer.Reset(c.idleTimeout) }
+	}
+
+	resp, err := c.executeChatRequestWithTools(streamCtx, messages, tools, true)
 	if err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		// The watchdog can fire before the first byte arrives (upstream never
+		// responds); report that as a stall rather than a raw context error.
+		if errors.Is(context.Cause(streamCtx), ErrStreamStalled) {
+			err = ErrStreamStalled
+		}
+		logInferenceFailed(streamCtx, c.model, time.Since(start), err)
 		return StreamResult{}, err
 	}
 	defer resp.Body.Close()
@@ -43,6 +98,42 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	var reasoning strings.Builder
 	var usage TokenUsage
 	var finishReason string
+	var firstTokenAt, lastDeltaAt time.Time
+	streamBytes := 0
+	// lastChunkAt/maxIdleMs track the worst silent gap between data chunks — the
+	// window the idle watchdog actually races against. Seeded at start so the gap
+	// before the first chunk (connect + time-to-first-byte) counts too. maxInterChunkMs
+	// is the same but excludes that first gap, isolating the model's streaming cadence.
+	lastChunkAt := start
+	var maxIdleMs, maxInterChunkMs int64
+	chunkCount := 0
+	noteChunk := func() {
+		now := time.Now()
+		gap := now.Sub(lastChunkAt).Milliseconds()
+		if gap > maxIdleMs {
+			maxIdleMs = gap
+		}
+		if chunkCount > 0 && gap > maxInterChunkMs {
+			maxInterChunkMs = gap
+		}
+		chunkCount++
+		lastChunkAt = now
+		resetIdle()
+	}
+	noteDelta := func() {
+		now := time.Now()
+		if firstTokenAt.IsZero() {
+			firstTokenAt = now
+		}
+		lastDeltaAt = now
+	}
+	progress := func() []slog.Attr {
+		return streamProgressAttrs(start, firstTokenAt, lastDeltaAt, streamBytes, maxIdleMs, maxInterChunkMs)
+	}
+	fail := func(err error) (StreamResult, error) {
+		logInferenceFailed(streamCtx, c.model, time.Since(start), err, progress()...)
+		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+	}
 	toolCalls := map[int]*ToolCall{}
 	var toolCallOrder []int
 	// MiMo emits tool calls as inline XML in the content; gate the streamed
@@ -70,37 +161,40 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
+		streamBytes += len(scanner.Bytes())
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, ":") {
+			// Blank lines and SSE comments (": keep-alive") prove the connection is
+			// alive but say nothing about the model making progress. Deliberately do
+			// NOT reset the idle watchdog here, or a heartbeat-emitting upstream could
+			// mask a stalled model; a dead connection is the total timeout's job.
 			continue
 		}
 		if !strings.HasPrefix(line, "data:") {
 			continue
 		}
+		// A data chunk is genuine stream progress from the model endpoint.
+		noteChunk()
 
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payload == "[DONE]" {
 			if err := flushGate(); err != nil {
-				logInferenceFailed(ctx, c.model, time.Since(start), err)
-				return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+				return fail(err)
 			}
 			result, err := finishStream(content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 			if err != nil {
-				logInferenceFailed(ctx, c.model, time.Since(start), err)
-				return result, err
+				return fail(err)
 			}
 			result.Duration = time.Since(start)
 			result.Model = c.model
 			result.ReasoningEffort = c.reasoningEffort
-			observeInference(ctx, c.model, result.Duration, result.Usage, result.FinishReason)
+			observeInference(streamCtx, c.model, result.Duration, result.Usage, result.FinishReason, progress()...)
 			return result, nil
 		}
 
 		var chunk chatCompletionChunk
 		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
-			err := fmt.Errorf("decode chat completion chunk: %w", err)
-			logInferenceFailed(ctx, c.model, time.Since(start), err)
-			return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+			return fail(fmt.Errorf("decode chat completion chunk: %w", err))
 		}
 		if chunk.Usage.Present() {
 			usage = chunk.Usage
@@ -115,15 +209,16 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		delta := choice.Delta
 
 		if delta.ReasoningContent != "" {
+			noteDelta()
 			reasoning.WriteString(delta.ReasoningContent)
 			if onEvent != nil {
 				if err := onEvent(StreamEvent{ReasoningDelta: delta.ReasoningContent}); err != nil {
-					logInferenceFailed(ctx, c.model, time.Since(start), err)
-					return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+					return fail(err)
 				}
 			}
 		}
 		if delta.Content != "" {
+			noteDelta()
 			content.WriteString(delta.Content)
 			if onEvent != nil {
 				emit := delta.Content
@@ -132,8 +227,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 				}
 				if emit != "" {
 					if err := onEvent(StreamEvent{Delta: emit}); err != nil {
-						logInferenceFailed(ctx, c.model, time.Since(start), err)
-						return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+						return fail(err)
 					}
 				}
 				// The gate flips to suppressed the instant it sees the inline
@@ -141,17 +235,18 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 				if gate != nil && gate.suppressed && !toolPendingEmitted {
 					toolPendingEmitted = true
 					if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
-						logInferenceFailed(ctx, c.model, time.Since(start), err)
-						return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+						return fail(err)
 					}
 				}
 			}
 		}
-		if len(delta.ToolCalls) > 0 && !toolPendingEmitted && onEvent != nil {
-			toolPendingEmitted = true
-			if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
-				logInferenceFailed(ctx, c.model, time.Since(start), err)
-				return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+		if len(delta.ToolCalls) > 0 {
+			noteDelta()
+			if !toolPendingEmitted && onEvent != nil {
+				toolPendingEmitted = true
+				if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
+					return fail(err)
+				}
 			}
 		}
 		for _, chunk := range delta.ToolCalls {
@@ -176,23 +271,25 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		err := fmt.Errorf("read chat completion stream: %w", err)
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
-		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+		// The idle watchdog cancels streamCtx with ErrStreamStalled; surface that
+		// sentinel (rather than the raw "context canceled" the read returns) so a
+		// stalled upstream is distinguishable from a client disconnect.
+		if errors.Is(context.Cause(streamCtx), ErrStreamStalled) {
+			return fail(fmt.Errorf("read chat completion stream: %w", ErrStreamStalled))
+		}
+		return fail(fmt.Errorf("read chat completion stream: %w", err))
 	}
 	if err := flushGate(); err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
-		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
+		return fail(err)
 	}
 	result, err := finishStream(content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 	if err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
-		return result, err
+		return fail(err)
 	}
 	result.Duration = time.Since(start)
 	result.Model = c.model
 	result.ReasoningEffort = c.reasoningEffort
-	observeInference(ctx, c.model, result.Duration, result.Usage, result.FinishReason)
+	observeInference(streamCtx, c.model, result.Duration, result.Usage, result.FinishReason, progress()...)
 	return result, nil
 }
 

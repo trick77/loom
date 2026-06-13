@@ -30,25 +30,27 @@ func inferenceMetadataFromContext(ctx context.Context) InferenceMetadata {
 // attached to ctx). Every successful model call funnels through here so the
 // per-message token stats cover helper calls (reasoning/thread titles) and every
 // tool round, not just the final answer turn.
-func observeInference(ctx context.Context, model string, duration time.Duration, usage TokenUsage, finishReason string) {
-	logInferenceCompleted(ctx, model, duration, usage, finishReason)
+func observeInference(ctx context.Context, model string, duration time.Duration, usage TokenUsage, finishReason string, extra ...slog.Attr) {
+	logInferenceCompleted(ctx, model, duration, usage, finishReason, extra...)
 	RecordUsage(ctx, usage)
 }
 
-func logInferenceCompleted(ctx context.Context, model string, duration time.Duration, usage TokenUsage, finishReason string) {
+func logInferenceCompleted(ctx context.Context, model string, duration time.Duration, usage TokenUsage, finishReason string, extra ...slog.Attr) {
 	attrs := inferenceLogAttrs(ctx, model, duration, usage)
 	if finishReason != "" {
 		attrs = append(attrs, slog.String("finish_reason", finishReason))
 	}
+	attrs = append(attrs, extra...)
 	slog.LogAttrs(ctx, slog.LevelInfo, "llm inference completed", attrs...)
 }
 
-func logInferenceFailed(ctx context.Context, model string, duration time.Duration, err error) {
+func logInferenceFailed(ctx context.Context, model string, duration time.Duration, err error, extra ...slog.Attr) {
 	attrs := inferenceLogAttrs(ctx, model, duration, TokenUsage{})
 	attrs = append(attrs, slog.String("err", err.Error()))
 	if cause := context.Cause(ctx); cause != nil {
 		attrs = append(attrs, slog.String("cancel_cause", cause.Error()))
 	}
+	attrs = append(attrs, extra...)
 	slog.LogAttrs(ctx, slog.LevelError, "llm inference failed", attrs...)
 }
 

@@ -15,6 +15,15 @@ const defaultBFLPollTimeout = 1 * time.Minute
 const defaultChatMaxCompletionTokens = 2048
 const defaultChatTimeout = 2 * time.Minute
 
+// defaultChatIdleTimeout aborts a chat stream that goes silent mid-turn. Sized
+// conservatively: MiMo can stay quiet for tens of seconds inside a long reasoning
+// block, so the window must clear that to avoid killing legitimate turns, while
+// still being far below the total ChatTimeout so a true stall ends in seconds, not
+// minutes. 60s gives ~8x headroom over the worst inter-chunk gap measured against
+// real MiMo (~7.6s on a multi-minute reasoning turn). Set
+// BACKEND_CHAT_IDLE_TIMEOUT=0 to disable the watchdog.
+const defaultChatIdleTimeout = 60 * time.Second
+
 // AuthMode selects how Slopr signs users in.
 type AuthMode string
 
@@ -37,6 +46,7 @@ type Config struct {
 	ChatReasoningEffort     string
 	ChatMaxCompletionTokens int
 	ChatTimeout             time.Duration
+	ChatIdleTimeout         time.Duration
 	ChatLogDir              string
 	EmbedBaseURL            string // OpenAI embeddings endpoint
 	EmbedAPIKey             string
@@ -147,6 +157,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("BACKEND_CHAT_TIMEOUT must be a duration greater than 0")
 	}
 	cfg.ChatTimeout = chatTimeout
+	chatIdleTimeout, err := time.ParseDuration(env("BACKEND_CHAT_IDLE_TIMEOUT", defaultChatIdleTimeout.String()))
+	if err != nil || chatIdleTimeout < 0 {
+		return Config{}, fmt.Errorf("BACKEND_CHAT_IDLE_TIMEOUT must be a non-negative duration (0 disables the idle watchdog)")
+	}
+	cfg.ChatIdleTimeout = chatIdleTimeout
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
 	}
