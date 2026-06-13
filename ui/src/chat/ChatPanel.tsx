@@ -79,9 +79,10 @@ export function ChatPanel({
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   const hasActiveActivityTrace = activityTrace.length > 0;
   const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
-  // The live thinking window manages its own open/closed state: it opens while
-  // inference is running and collapses once the answer is in. There is no
-  // persisted preference; past traces simply start collapsed (uncontrolled).
+  // The live thinking window manages its own open/closed state: it opens once per
+  // turn when there is something to show and stays open through the answer, then
+  // collapses when the turn ends. There is no persisted preference; past traces
+  // simply start collapsed (uncontrolled).
   const [liveTraceExpanded, setLiveTraceExpanded] = useState(false);
   // Once the final answer streams (and no tool is running or pending), the
   // reasoning phase is over: show its abstract instead of "Thinking". Only
@@ -100,15 +101,29 @@ export function ChatPanel({
   const latestReasoningTitled =
     latestReasoning?.type === "reasoning" && (latestReasoning.title?.trim() ?? "") !== "";
   const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning && !toolPending && latestReasoningTitled;
-  // Drive the live thinking window: open it whenever inference is actively
-  // thinking, collapse it the moment the answer settles or the turn ends.
-  // Keyed on isSending (not the trace's presence, which lingers after the turn
-  // completes) so a finished trace stays collapsed. Manual toggles in between
-  // still stick until the next phase change.
+  // `liveTraceThinking` drives the "Thinking" affordance (active spinner), not the
+  // open/closed state: the window stays open through the answer even after the
+  // reasoning phase settles.
   const liveTraceThinking = isSending && !reasoningSettled;
+  // Auto-open the live thinking window exactly once per turn. Stay collapsed at the
+  // bare start of a turn (nothing to show yet); open the first moment there is
+  // something to show — reasoning/tool content has arrived, or the answer has begun
+  // streaming (the reasoning-free case). Once opened it stays open for the rest of
+  // the turn, so a manual collapse in between sticks. The turn ending resets the
+  // latch and collapses the now-past trace.
+  const liveTraceHasSomethingToShow = isSending && (hasActiveActivityTrace || streamingText !== "");
+  const liveTraceAutoOpenedRef = useRef(false);
   useEffect(() => {
-    setLiveTraceExpanded(liveTraceThinking);
-  }, [liveTraceThinking]);
+    if (!isSending) {
+      liveTraceAutoOpenedRef.current = false;
+      setLiveTraceExpanded(false);
+      return;
+    }
+    if (liveTraceHasSomethingToShow && !liveTraceAutoOpenedRef.current) {
+      liveTraceAutoOpenedRef.current = true;
+      setLiveTraceExpanded(true);
+    }
+  }, [isSending, liveTraceHasSomethingToShow]);
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
