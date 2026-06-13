@@ -1,8 +1,10 @@
 package store
 
 import (
+	"database/sql"
 	"io/fs"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -73,6 +75,77 @@ func TestOpen_migrationsAreIdempotent(t *testing.T) {
 	}
 	if want := embeddedMigrationCount(t); count != want {
 		t.Errorf("applied migrations after re-open = %d, want %d", count, want)
+	}
+}
+
+func TestMigrate_truncatesExistingMemoryToThreeThousandRunes(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`
+CREATE TABLE schema_migrations (
+    version    TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE project_memory (
+    user_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    source_message_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, project_id)
+);
+CREATE TABLE user_memory (
+    user_id TEXT NOT NULL PRIMARY KEY,
+    content TEXT NOT NULL DEFAULT '',
+    source_message_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);`); err != nil {
+		t.Fatalf("create old memory schema: %v", err)
+	}
+
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatalf("read embedded migrations: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == "0009_memory_length_caps.sql" {
+			continue
+		}
+		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, entry.Name()); err != nil {
+			t.Fatalf("mark migration %s applied: %v", entry.Name(), err)
+		}
+	}
+
+	oversizedUser := strings.Repeat("é", 3200)
+	oversizedProject := strings.Repeat("ø", 3200)
+	if _, err := db.Exec(`INSERT INTO user_memory (user_id, content) VALUES ('alice', ?)`, oversizedUser); err != nil {
+		t.Fatalf("insert oversized user memory: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO project_memory (user_id, project_id, content) VALUES ('alice', 'project', ?)`, oversizedProject); err != nil {
+		t.Fatalf("insert oversized project memory: %v", err)
+	}
+
+	if err := migrate(db); err != nil {
+		t.Fatalf("migrate() error: %v", err)
+	}
+
+	var userRunes, projectRunes int
+	if err := db.QueryRow(`SELECT length(content) FROM user_memory WHERE user_id = 'alice'`).Scan(&userRunes); err != nil {
+		t.Fatalf("query user memory length: %v", err)
+	}
+	if err := db.QueryRow(`SELECT length(content) FROM project_memory WHERE user_id = 'alice' AND project_id = 'project'`).Scan(&projectRunes); err != nil {
+		t.Fatalf("query project memory length: %v", err)
+	}
+	if userRunes != 3000 {
+		t.Fatalf("user memory length = %d, want 3000", userRunes)
+	}
+	if projectRunes != 3000 {
+		t.Fatalf("project memory length = %d, want 3000", projectRunes)
 	}
 }
 

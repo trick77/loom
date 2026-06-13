@@ -50,7 +50,7 @@ type ProjectMemory struct {
 
 // MaxProjectMemoryLength hard-caps the stored memory so a misbehaving model can
 // never blow up the prompt; generation is asked to stay well under this.
-const MaxProjectMemoryLength = 4000
+const MaxProjectMemoryLength = 3000
 
 // UserMemory is a compact, auto-generated set of durable facts about the user
 // (employer, location, lasting preferences) that is injected into every chat the
@@ -64,9 +64,8 @@ type UserMemory struct {
 	UpdatedAt          *time.Time `json:"updatedAt"`
 }
 
-// MaxUserMemoryLength hard-caps the stored user memory. It is smaller than the
-// project cap because user memory is a short, flat list of personal facts.
-const MaxUserMemoryLength = 2000
+// MaxUserMemoryLength hard-caps the stored user memory.
+const MaxUserMemoryLength = 3000
 
 // Thread is a single chat conversation.
 type Thread struct {
