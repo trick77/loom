@@ -142,6 +142,8 @@ export function ChatRow({
         <span
           className={`ml-auto shrink-0 text-[13px] text-[#8a887f] group-hover:hidden ${
             activeSurface ? "hidden" : ""
+          } ${
+            !selectMode ? "[@media(hover:none)]:hidden" : ""
           }`}
           data-chat-row-time
         >
@@ -153,7 +155,7 @@ export function ChatRow({
           aria-expanded={menuOpen}
           aria-label="Open chat actions"
           className={`absolute right-3 grid h-7 w-7 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
-            showMenuButton ? "" : "invisible"
+            showMenuButton ? "" : "invisible [@media(hover:none)]:visible"
           }`}
           onClick={(event) => {
             event.stopPropagation();
