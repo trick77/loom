@@ -1472,8 +1472,8 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	if got := lastHistory[len(lastHistory)-1]; got.Role != "tool" || got.ToolCallID != "call_1" || got.Content != "search result" {
 		t.Fatalf("last history message = %#v, want tool result", got)
 	}
-	if got := lastHistory[len(lastHistory)-2]; got.Role != "assistant" || got.ReasoningContent != "I should search first." {
-		t.Fatalf("assistant tool-call history = %#v, want preserved reasoning content", got)
+	if got := lastHistory[len(lastHistory)-2]; got.Role != "assistant" || got.ReasoningContent != "" {
+		t.Fatalf("assistant tool-call history = %#v, want reasoning omitted from provider history", got)
 	}
 	if len(store.messages) < 2 {
 		t.Fatalf("persisted messages = %#v, want assistant message", store.messages)

@@ -108,9 +108,8 @@ func buildLLMHistory(user auth.User, userContext, projectContext, knowledgeConte
 		switch message.Role {
 		case chat.RoleUser, chat.RoleAssistant:
 			history = append(history, llm.Message{
-				Role:             string(message.Role),
-				Content:          message.Content,
-				ReasoningContent: message.ReasoningContent,
+				Role:    string(message.Role),
+				Content: message.Content,
 			})
 		}
 	}
