@@ -221,6 +221,54 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 		return nil
 	}
+	// streamChannel handles one streamed text channel — content or reasoning_content —
+	// identically: record the delta, gate the raw <tool_call> markup out of the client
+	// stream, and (once the gate suppresses) surface ToolPending and the tool name early
+	// so the UI can name the running tool during MiMo's silent argument gap. Both
+	// channels share this one path so their gating/early-surfacing can't drift apart.
+	// wrap adapts the safe-to-stream text into the channel's StreamEvent field.
+	streamChannel := func(text string, g *toolCallStreamGate, buf *strings.Builder, wrap func(string) StreamEvent) error {
+		noteDelta()
+		buf.WriteString(text)
+		if onEvent == nil {
+			return nil
+		}
+		emit := text
+		if g != nil {
+			emit = g.push(text)
+		}
+		if emit != "" {
+			if err := onEvent(wrap(emit)); err != nil {
+				return err
+			}
+		}
+		if g == nil || !g.suppressed {
+			return nil
+		}
+		if !toolPendingEmitted {
+			toolPendingEmitted = true
+			extendIdleForToolCall()
+			if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
+				return err
+			}
+		}
+		// The <function=NAME> tag lands a few tokens after the marker; emit the name now
+		// under the same id finishStream will assign, so the later full call updates that
+		// entry instead of duplicating it.
+		if !toolNameEmitted {
+			if name := firstInlineToolName(buf.String()); name != "" {
+				toolNameEmitted = true
+				if err := onEvent(StreamEvent{ToolCall: ToolCall{
+					ID:       inlineToolCallID(0),
+					Type:     "function",
+					Function: ToolCallFunction{Name: name},
+				}}); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -272,81 +320,17 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		delta := choice.Delta
 
 		if delta.ReasoningContent != "" {
-			noteDelta()
-			reasoning.WriteString(delta.ReasoningContent)
-			if onEvent != nil {
-				emit := delta.ReasoningContent
-				if reasoningGate != nil {
-					emit = reasoningGate.push(delta.ReasoningContent)
-				}
-				if emit != "" {
-					if err := onEvent(StreamEvent{ReasoningDelta: emit}); err != nil {
-						return fail(err)
-					}
-				}
-				// MiMo emitted the inline tool call in the reasoning channel: the
-				// gate has now suppressed it, so signal a pending tool call and
-				// surface its name early — same UX as the content-channel path.
-				if reasoningGate != nil && reasoningGate.suppressed && !toolPendingEmitted {
-					toolPendingEmitted = true
-					extendIdleForToolCall()
-					if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
-						return fail(err)
-					}
-				}
-				if reasoningGate != nil && reasoningGate.suppressed && !toolNameEmitted {
-					if name := firstInlineToolName(reasoning.String()); name != "" {
-						toolNameEmitted = true
-						if err := onEvent(StreamEvent{ToolCall: ToolCall{
-							ID:       inlineToolCallID(0),
-							Type:     "function",
-							Function: ToolCallFunction{Name: name},
-						}}); err != nil {
-							return fail(err)
-						}
-					}
-				}
+			if err := streamChannel(delta.ReasoningContent, reasoningGate, &reasoning, func(s string) StreamEvent {
+				return StreamEvent{ReasoningDelta: s}
+			}); err != nil {
+				return fail(err)
 			}
 		}
 		if delta.Content != "" {
-			noteDelta()
-			content.WriteString(delta.Content)
-			if onEvent != nil {
-				emit := delta.Content
-				if gate != nil {
-					emit = gate.push(delta.Content)
-				}
-				if emit != "" {
-					if err := onEvent(StreamEvent{Delta: emit}); err != nil {
-						return fail(err)
-					}
-				}
-				// The gate flips to suppressed the instant it sees the inline
-				// <tool_call> marker; tell the client a tool call is coming.
-				if gate != nil && gate.suppressed && !toolPendingEmitted {
-					toolPendingEmitted = true
-					extendIdleForToolCall()
-					if err := onEvent(StreamEvent{ToolPending: true}); err != nil {
-						return fail(err)
-					}
-				}
-				// The <function=NAME> tag lands a few tokens after the marker but the
-				// full call (with the large argument) only surfaces at end-of-stream.
-				// Emit the name now, under the same id finishStream will assign, so the
-				// client can show which tool is running during the silent gap and the
-				// later full call updates that same entry instead of duplicating it.
-				if gate != nil && gate.suppressed && !toolNameEmitted {
-					if name := firstInlineToolName(content.String()); name != "" {
-						toolNameEmitted = true
-						if err := onEvent(StreamEvent{ToolCall: ToolCall{
-							ID:       inlineToolCallID(0),
-							Type:     "function",
-							Function: ToolCallFunction{Name: name},
-						}}); err != nil {
-							return fail(err)
-						}
-					}
-				}
+			if err := streamChannel(delta.Content, gate, &content, func(s string) StreamEvent {
+				return StreamEvent{Delta: s}
+			}); err != nil {
+				return fail(err)
 			}
 		}
 		if len(delta.ToolCalls) > 0 {
