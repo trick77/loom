@@ -50,7 +50,7 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 		`image: ghcr.io/trick77/slopr:latest`,
 		`image: ghcr.io/trick77/slopr-ui:latest`,
 		`image: ghcr.io/trick77/slopr-fetch:latest`,
-		`image: ghcr.io/trick77/slopr-obscura:latest`,
+		`image: h4ckf0r0day/obscura:0.1.8`,
 	} {
 		if !strings.Contains(compose, want) {
 			t.Fatalf("compose.yaml missing production image reference %q", want)
@@ -64,6 +64,50 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if strings.Contains(string(envExample), "BACKEND_IMAGE") || strings.Contains(string(envExample), "BACKEND_UI_IMAGE") ||
 		strings.Contains(string(envExample), "BACKEND_FETCH_IMAGE") || strings.Contains(string(envExample), "BACKEND_OBSCURA_IMAGE") {
 		t.Fatal(".env.example must not expose production image overrides")
+	}
+}
+
+func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
+	for _, path := range []string{
+		"../../../compose.yaml",
+		"../../../compose.dev.yaml",
+	} {
+		t.Run(path, func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			compose := string(data)
+			service := composeService(t, compose, "obscura")
+
+			for _, want := range []string{
+				`image: h4ckf0r0day/obscura:0.1.8`,
+				`- mcp`,
+				`- --http`,
+				`- --host`,
+				`- 0.0.0.0`,
+				`- --port`,
+				`- "8090"`,
+				`- --stealth`,
+			} {
+				if !strings.Contains(service, want) {
+					t.Fatalf("%s obscura service missing native MCP fragment %q", path, want)
+				}
+			}
+			for _, unwanted := range []string{
+				"ghcr.io/trick77/slopr-obscura",
+				"context: ./obscura",
+				"supergateway",
+			} {
+				if strings.Contains(service, unwanted) {
+					t.Fatalf("%s obscura service must not contain wrapper fragment %q", path, unwanted)
+				}
+			}
+
+			if path == "../../../compose.yaml" && !strings.Contains(service, "- slopr") {
+				t.Fatal("production obscura service must join the slopr network")
+			}
+		})
 	}
 }
 
@@ -273,11 +317,13 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 		`ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}`,
 		`ghcr.io/${{ github.repository }}-ui:${{ steps.ver.outputs.version }}`,
 		`ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.version }}`,
-		`ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.version }}`,
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Fatalf("release workflow missing image tag %q", want)
 		}
+	}
+	if strings.Contains(workflow, "slopr-obscura") || strings.Contains(workflow, "Build and push Obscura MCP image") {
+		t.Fatal("release workflow must not build or publish an Obscura wrapper image")
 	}
 
 	tagStep := strings.Index(workflow, "- name: Create and push tag")
@@ -288,7 +334,6 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 		"- name: Build and push Slopr image",
 		"- name: Build and push Slopr UI image",
 		"- name: Build and push fetch MCP image",
-		"- name: Build and push Obscura MCP image",
 	} {
 		idx := strings.Index(workflow, imageStep)
 		if idx < 0 {
@@ -347,19 +392,25 @@ func TestReleaseWorkflowBuildsCompanionImagesOnlyWhenChanged(t *testing.T) {
 		`echo "previous=$LATEST" >> "$GITHUB_OUTPUT"`,
 		`- id: companion_changes`,
 		`git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- fetch`,
-		`git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- obscura`,
 		`echo "fetch_changed=true" >> "$GITHUB_OUTPUT"`,
-		`echo "obscura_changed=true" >> "$GITHUB_OUTPUT"`,
 		`if: ${{ steps.companion_changes.outputs.fetch_changed == 'true' }}`,
-		`if: ${{ steps.companion_changes.outputs.obscura_changed == 'true' }}`,
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Fatalf("release workflow missing companion-change gating fragment %q", want)
 		}
 	}
+	for _, unwanted := range []string{
+		`git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- obscura`,
+		`obscura_changed`,
+		`ghcr.io/${{ github.repository }}-obscura`,
+	} {
+		if strings.Contains(workflow, unwanted) {
+			t.Fatalf("release workflow must not contain Obscura companion gating fragment %q", unwanted)
+		}
+	}
 }
 
-func TestReleaseWorkflowBuildsCompanionImagesWhenLatestTagIsMissing(t *testing.T) {
+func TestReleaseWorkflowBuildsFetchCompanionImageWhenLatestTagIsMissing(t *testing.T) {
 	data, err := os.ReadFile("../../../.github/workflows/release.yaml")
 	if err != nil {
 		t.Fatalf("read release workflow: %v", err)
@@ -368,14 +419,35 @@ func TestReleaseWorkflowBuildsCompanionImagesWhenLatestTagIsMissing(t *testing.T
 
 	for _, want := range []string{
 		`docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-fetch:latest"`,
-		`docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-obscura:latest"`,
 		`fetch_missing=true`,
-		`obscura_missing=true`,
 		`if [ "$fetch_source_changed" = "true" ] || [ "$fetch_missing" = "true" ]; then`,
-		`if [ "$obscura_source_changed" = "true" ] || [ "$obscura_missing" = "true" ]; then`,
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Fatalf("release workflow missing missing-companion-image fragment %q", want)
 		}
+	}
+	for _, unwanted := range []string{
+		`docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-obscura:latest"`,
+		`obscura_missing`,
+		`obscura_source_changed`,
+	} {
+		if strings.Contains(workflow, unwanted) {
+			t.Fatalf("release workflow must not contain Obscura missing-image fragment %q", unwanted)
+		}
+	}
+}
+
+func TestCleanupWorkflowDoesNotManageObscuraWrapperImage(t *testing.T) {
+	data, err := os.ReadFile("../../../.github/workflows/cleanup-images.yaml")
+	if err != nil {
+		t.Fatalf("read cleanup workflow: %v", err)
+	}
+	workflow := string(data)
+
+	if strings.Contains(workflow, "slopr-obscura") {
+		t.Fatal("cleanup workflow must not manage the removed Obscura wrapper image")
+	}
+	if !strings.Contains(workflow, `image-names: "slopr, slopr-ui, slopr-fetch"`) {
+		t.Fatal("cleanup workflow must retain Slopr, UI, and fetch image cleanup")
 	}
 }

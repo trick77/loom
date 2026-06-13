@@ -151,14 +151,10 @@ func run() error {
 	var toolService httpapi.ToolService
 	mcpConfig := toolConfigForConfig(cfg)
 	if len(mcpConfig.Servers) > 0 {
-		// Give discovery room for cold stdio-bridged MCP servers: the fetch bridge
-		// boots a Python interpreter on its first tools/list, which on a cold start
-		// (and under emulation, e.g. obscura on arm64) can take well over the old
-		// 5s budget. When discovery aborted early, slopr closed the connection
-		// mid-request and the supergateway bridge crashed trying to deliver the
-		// late response ("No connection established for request ID"), taking the
-		// whole turn down. The per-request and overall budgets are aligned so a
-		// single slow server can actually use its window.
+		// Give discovery room for cold MCP sidecars: the fetch bridge boots a
+		// Python interpreter on its first tools/list, and browser sidecars can be
+		// slow on cold starts. The per-request and overall budgets are aligned so
+		// a single slow server can actually use its window.
 		discoveryCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		discovered, err := mcp.NewRequiredServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 30 * time.Second})
 		cancel()

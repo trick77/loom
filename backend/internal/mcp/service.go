@@ -12,8 +12,13 @@ import (
 	"github.com/trick77/slopr/internal/llm"
 )
 
-// statusProbeTimeout bounds each per-server reachability probe in ServerStatus.
-const statusProbeTimeout = 3 * time.Second
+const (
+	// statusProbeTimeout bounds each per-server reachability probe in ServerStatus.
+	statusProbeTimeout = 3 * time.Second
+	// requiredDiscoveryRetryInterval lets required startup discovery wait out
+	// short sidecar bind races without delaying callers that pass no deadline.
+	requiredDiscoveryRetryInterval = 200 * time.Millisecond
+)
 
 type Service struct {
 	tools      []llm.Tool
@@ -140,7 +145,7 @@ func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Clien
 	sort.Strings(names)
 	for _, serverName := range names {
 		client := clients[serverName]
-		tools, err := client.ListTools(ctx)
+		tools, err := listToolsRequired(ctx, client)
 		if err != nil {
 			_ = client.Close()
 			return nil, fmt.Errorf("list MCP tools for %s: %w", serverName, err)
@@ -161,6 +166,30 @@ func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Clien
 		}
 	}
 	return service, nil
+}
+
+func listToolsRequired(ctx context.Context, client Client) ([]Tool, error) {
+	_, hasDeadline := ctx.Deadline()
+	tools, err := client.ListTools(ctx)
+	if err == nil || !hasDeadline {
+		return tools, err
+	}
+	for {
+		timer := time.NewTimer(requiredDiscoveryRetryInterval)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return nil, err
+		case <-timer.C:
+		}
+		tools, nextErr := client.ListTools(ctx)
+		if nextErr == nil {
+			return tools, nil
+		}
+		err = nextErr
+	}
 }
 
 func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client, logger *slog.Logger) (*Service, error) {

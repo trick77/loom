@@ -180,8 +180,9 @@ The default Compose setup also includes two MCP sidecars configured with first-c
   normal URL reading, article/document extraction, summarization, and quoting. Configure its endpoint
   with `BACKEND_FETCH_MCP_URL`.
 - `obscura` exposes browser automation tools as `obscura__<tool>`. Use it only when a page needs
-  JavaScript rendering, visual inspection, navigation, screenshots, or interaction. Configure its
-  endpoint with `BACKEND_OBSCURA_MCP_URL`.
+  JavaScript rendering, visual inspection, navigation, screenshots, or interaction. Compose runs the
+  official Obscura image with native MCP HTTP bound to `0.0.0.0:8090`. Configure its endpoint with
+  `BACKEND_OBSCURA_MCP_URL`.
 
 Configured MCP tools are exposed to the chat model as OpenAI-compatible function tools
 named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Slopr pauses
