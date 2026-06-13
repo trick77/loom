@@ -508,6 +508,11 @@ body {
   white-space: nowrap;
 }
 
+.ui-activity-tool-title.ui-thinking-label-active {
+  color: #8f8a81;
+  font-weight: 500;
+}
+
 .ui-activity-fetch-icon-favicon {
   width: 1.125rem;
   height: 1.125rem;
