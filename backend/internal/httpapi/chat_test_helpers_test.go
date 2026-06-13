@@ -332,6 +332,9 @@ type fakeChatClient struct {
 	afterStream         func()
 	projectMemory       string
 	projectDescription  string
+	// streamErr, when set, makes StreamChatWithTools emit any reasoning then return
+	// the error (no content), modelling a turn that fails/stalls mid-stream.
+	streamErr error
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -389,6 +392,9 @@ func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.M
 		if err := onEvent(llm.StreamEvent{ReasoningDelta: f.reasoningText}); err != nil {
 			return llm.StreamResult{}, err
 		}
+	}
+	if f.streamErr != nil {
+		return llm.StreamResult{ReasoningContent: f.reasoningText}, f.streamErr
 	}
 	content := "Hello"
 	if f.streamText != nil {

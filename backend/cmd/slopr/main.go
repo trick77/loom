@@ -258,6 +258,7 @@ func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 		ReasoningEffort:     cfg.ChatReasoningEffort,
 		MaxCompletionTokens: cfg.ChatMaxCompletionTokens,
 		Timeout:             cfg.ChatTimeout,
+		IdleTimeout:         cfg.ChatIdleTimeout,
 		ResponseLogDir:      responseLogDirForConfig(cfg),
 	}
 }

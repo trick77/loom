@@ -34,6 +34,9 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatTimeout != 2*time.Minute {
 		t.Errorf("ChatTimeout default = %s, want 2m0s", cfg.ChatTimeout)
 	}
+	if cfg.ChatIdleTimeout != 60*time.Second {
+		t.Errorf("ChatIdleTimeout default = %s, want 60s", cfg.ChatIdleTimeout)
+	}
 	if cfg.TavilyURL != "https://mcp.tavily.com/mcp/" {
 		t.Errorf("TavilyURL default = %q, want https://mcp.tavily.com/mcp/", cfg.TavilyURL)
 	}
@@ -80,6 +83,7 @@ func TestLoad_chatGenerationBounds(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
 	t.Setenv("BACKEND_CHAT_MAX_COMPLETION_TOKENS", "4096")
 	t.Setenv("BACKEND_CHAT_TIMEOUT", "45s")
+	t.Setenv("BACKEND_CHAT_IDLE_TIMEOUT", "0")
 
 	cfg, err := Load()
 	if err != nil {
@@ -90,6 +94,9 @@ func TestLoad_chatGenerationBounds(t *testing.T) {
 	}
 	if cfg.ChatTimeout != 45*time.Second {
 		t.Fatalf("ChatTimeout = %s, want 45s", cfg.ChatTimeout)
+	}
+	if cfg.ChatIdleTimeout != 0 {
+		t.Fatalf("ChatIdleTimeout = %s, want 0 (watchdog disabled)", cfg.ChatIdleTimeout)
 	}
 }
 
@@ -123,6 +130,18 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 			key:     "BACKEND_CHAT_TIMEOUT",
 			value:   "0s",
 			wantErr: "BACKEND_CHAT_TIMEOUT must be a duration greater than 0",
+		},
+		{
+			name:    "invalid idle timeout",
+			key:     "BACKEND_CHAT_IDLE_TIMEOUT",
+			value:   "soon",
+			wantErr: "BACKEND_CHAT_IDLE_TIMEOUT must be a non-negative duration (0 disables the idle watchdog)",
+		},
+		{
+			name:    "negative idle timeout",
+			key:     "BACKEND_CHAT_IDLE_TIMEOUT",
+			value:   "-5s",
+			wantErr: "BACKEND_CHAT_IDLE_TIMEOUT must be a non-negative duration (0 disables the idle watchdog)",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
