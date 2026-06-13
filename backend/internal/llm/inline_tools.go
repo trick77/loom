@@ -25,6 +25,27 @@ var (
 	inlineParameter     = regexp.MustCompile(`(?s)<parameter=([^>]+)>(.*?)</parameter>`)
 )
 
+// inlineToolCallID is the synthetic id assigned to the index-th (0-based) inline
+// tool call. Streaming surfaces the first call's name early under this same id (see
+// firstInlineToolName), so the full call parsed at end-of-stream updates that entry
+// instead of creating a duplicate.
+func inlineToolCallID(index int) string {
+	return fmt.Sprintf("inline_call_%d", index+1)
+}
+
+// firstInlineToolName extracts the function name of the first inline tool call from
+// a (possibly still-streaming) content buffer, as soon as the <function=NAME> tag
+// has fully arrived. MiMo emits the name right after the <tool_call> marker but only
+// flushes the large argument tens of seconds later, so this lets the client show
+// which tool is running during that silent gap. Returns "" until the name is parseable.
+func firstInlineToolName(content string) string {
+	match := inlineFunctionName.FindStringSubmatch(content)
+	if match == nil {
+		return ""
+	}
+	return strings.TrimSpace(match[1])
+}
+
 func parseInlineToolCalls(content string) ([]ToolCall, string) {
 	blocks := inlineToolCallBlock.FindAllStringSubmatchIndex(content, -1)
 	if len(blocks) == 0 {
@@ -43,7 +64,7 @@ func parseInlineToolCalls(content string) ([]ToolCall, string) {
 			continue
 		}
 		calls = append(calls, ToolCall{
-			ID:   fmt.Sprintf("inline_call_%d", len(calls)+1),
+			ID:   inlineToolCallID(len(calls)),
 			Type: "function",
 			Function: ToolCallFunction{
 				Name:      name,

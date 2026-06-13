@@ -184,6 +184,15 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// Emitted at most once per turn, the moment we first know a tool call is
 	// underway — well before the parsed call surfaces at the end of the stream.
 	toolPendingEmitted := false
+	// Tracks the early surfacing of the inline tool name (see below): emitted once,
+	// as soon as <function=NAME> parses, so the client can name the running tool
+	// during MiMo's silent argument-serialization gap.
+	toolNameEmitted := false
+	// Same intent for native tool_calls: MiMo's first tool-call chunk carries the id
+	// and name, then the (large) argument streams or bursts over later chunks. Emit
+	// the name once per call index as soon as it is known so the client can show the
+	// running tool immediately, rather than waiting for the full call at end-of-stream.
+	nativeNameEmitted := map[int]bool{}
 	flushGate := func() error {
 		if gate == nil || onEvent == nil {
 			return nil
@@ -274,6 +283,23 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 						return fail(err)
 					}
 				}
+				// The <function=NAME> tag lands a few tokens after the marker but the
+				// full call (with the large argument) only surfaces at end-of-stream.
+				// Emit the name now, under the same id finishStream will assign, so the
+				// client can show which tool is running during the silent gap and the
+				// later full call updates that same entry instead of duplicating it.
+				if gate != nil && gate.suppressed && !toolNameEmitted {
+					if name := firstInlineToolName(content.String()); name != "" {
+						toolNameEmitted = true
+						if err := onEvent(StreamEvent{ToolCall: ToolCall{
+							ID:       inlineToolCallID(0),
+							Type:     "function",
+							Function: ToolCallFunction{Name: name},
+						}}); err != nil {
+							return fail(err)
+						}
+					}
+				}
 			}
 		}
 		if len(delta.ToolCalls) > 0 {
@@ -306,6 +332,20 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			}
 			if chunk.Function.Arguments != "" {
 				call.Function.Arguments += chunk.Function.Arguments
+			}
+			// Surface the name (under the call's real id) the moment it is known, so
+			// the client can show which tool is running before the argument lands. The
+			// full call re-emitted at end-of-stream carries the same id and updates the
+			// same entry instead of duplicating it.
+			if onEvent != nil && call.Function.Name != "" && !nativeNameEmitted[chunk.Index] {
+				nativeNameEmitted[chunk.Index] = true
+				if err := onEvent(StreamEvent{ToolCall: ToolCall{
+					ID:       call.ID,
+					Type:     call.Type,
+					Function: ToolCallFunction{Name: call.Function.Name},
+				}}); err != nil {
+					return fail(err)
+				}
 			}
 		}
 	}

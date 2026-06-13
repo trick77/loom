@@ -601,13 +601,20 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	if call.ID != "call_1" || call.Function.Name != "search__web" || call.Function.Arguments != `{"q":"slopr"}` {
 		t.Fatalf("tool call = %#v", call)
 	}
-	// A pending signal fires the moment the first tool-call chunk arrives, ahead
-	// of the fully-reconstructed call emitted at the end of the stream.
-	if len(events) != 2 || !events[0].ToolPending {
+	// Three events, in order: (1) a pending signal the moment the first tool-call
+	// chunk arrives; (2) the tool name surfaced early (under the real id, no argument
+	// yet) so the client can show the running tool during the argument gap; (3) the
+	// fully-reconstructed call at end-of-stream, same id, updating that same entry.
+	if len(events) != 3 || !events[0].ToolPending {
 		t.Fatalf("events = %#v, want a tool-pending event first", events)
 	}
-	if events[1].ToolPending || events[1].ToolCall.Function.Name != "search__web" {
-		t.Fatalf("events = %#v, want final tool call event", events)
+	if events[1].ToolPending || events[1].ToolCall.ID != "call_1" ||
+		events[1].ToolCall.Function.Name != "search__web" || events[1].ToolCall.Function.Arguments != "" {
+		t.Fatalf("events = %#v, want early name-only tool call", events)
+	}
+	if events[2].ToolPending || events[2].ToolCall.ID != "call_1" ||
+		events[2].ToolCall.Function.Name != "search__web" || events[2].ToolCall.Function.Arguments != `{"q":"slopr"}` {
+		t.Fatalf("events = %#v, want final full tool call event", events)
 	}
 }
 
