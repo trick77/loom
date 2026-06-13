@@ -240,7 +240,11 @@ body {
 }
 
 .ui-activity-trace {
-  --ui-activity-icon-offset: 0.225rem;
+  /* Vertical nudge that optically centers the (centered-in-its-box) trace icon on
+     the first line of its label. Calibrated against the 0.8125rem/1.45rem label:
+     the icon box is centered on the line, this lifts it onto the text's optical
+     (cap/x-height) center. Applies uniformly to every row type. */
+  --ui-activity-icon-offset: 0.09rem;
   /* Breathing room between the collapsed trace label and the answer text. */
   margin-bottom: 0.5rem;
   /* Match the answer prose's left inset (.ui-markdown has padding-left: 8px)
@@ -365,13 +369,6 @@ body {
 .ui-activity-clock-dot {
   fill: currentColor;
   stroke: none;
-}
-
-/* The checkCircle icon-font glyph sits ~1.5px low within its em box, so the
-   "Done" node reads lower than its label. Lift it to optically center on the
-   label. (Measured against the label ink box, not the line box.) */
-.ui-activity-trace-icon-done {
-  transform: translateY(-1.5px);
 }
 
 .ui-activity-trace-icon-reasoning::after {

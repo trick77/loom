@@ -1849,7 +1849,7 @@ test("spaces activity trace connector lines away from adjacent icons", () => {
   const connectorRule =
     css.match(/\.ui-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
 
-  expect(css).toContain("--ui-activity-icon-offset: 0.225rem");
+  expect(css).toContain("--ui-activity-icon-offset: 0.09rem");
   expect(iconRule).toContain("margin-top: var(--ui-activity-icon-offset)");
   expect(iconRule).not.toContain("border: 1px solid currentColor");
   expect(iconRule).not.toContain("border-radius: 9999px");
