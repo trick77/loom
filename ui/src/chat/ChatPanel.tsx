@@ -7,9 +7,10 @@ import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
+import { pendingArtifactLabels } from "./artifacts";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
-import { AssistantText, MessageBubble } from "./messages";
+import { AssistantText, MessageBubble, PendingArtifactCard } from "./messages";
 import { useDocumentAttachments } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
@@ -330,10 +331,13 @@ export function ChatPanel({
                 onExpandedChange={setLiveTraceExpanded}
               />
             )}
+            {streamingText !== "" && <AssistantText streaming>{streamingText}</AssistantText>}
             {streamingArtifacts.map((artifact) => (
               <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
             ))}
-            {streamingText !== "" && <AssistantText streaming>{streamingText}</AssistantText>}
+            {pendingArtifactLabels(activityTrace, streamingArtifacts.length).map((label, index) => (
+              <PendingArtifactCard key={`pending-artifact-${index}`} label={label} />
+            ))}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
           <div
