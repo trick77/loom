@@ -298,7 +298,7 @@ function ClockTraceIcon() {
 }
 
 function GeneratedTraceIcon() {
-  return <Icon name="feather" size="1rem" className="ui-activity-trace-icon-generated" />;
+  return <Icon name="generatedArtifact" size="1rem" className="ui-activity-trace-icon-generated" />;
 }
 
 function FetchTraceIcon() {

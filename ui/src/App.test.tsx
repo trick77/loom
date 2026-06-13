@@ -182,7 +182,7 @@ test("inactive sidebar project actions stay hidden until hover or keyboard focus
   expect(actionButton).toHaveClass("invisible");
   expect(actionButton).toHaveClass("group-hover:visible");
   expect(actionButton).toHaveClass("group-focus-within:visible");
-  expect(actionButton).not.toHaveClass("[@media(hover:none)]:visible");
+  expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
 });
 
 test("greets signed-in users with up late after 22:00", async () => {

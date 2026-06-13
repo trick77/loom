@@ -266,7 +266,7 @@ export function SidebarProjectItem({
           // Keep inactive rows visually quiet while preserving keyboard access
           // to the project actions.
           className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
-            active || menuOpen ? "" : "invisible group-hover:visible group-focus-within:visible"
+            active || menuOpen ? "" : "invisible group-hover:visible group-focus-within:visible [@media(hover:none)]:visible"
           }`}
           onClick={(event) => {
             event.stopPropagation();

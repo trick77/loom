@@ -97,9 +97,11 @@ test("chat rows use the sidebar hover surface", async () => {
   const timeLabel = rowSurface?.querySelector("[data-chat-row-time]");
   expect(timeLabel).toHaveClass("ml-auto");
   expect(timeLabel).toHaveClass("group-hover:hidden");
+  expect(timeLabel).toHaveClass("[@media(hover:none)]:hidden");
   const actionButton = within(rowSurface!).getByRole("button", { name: "Open chat actions" });
   expect(actionButton).toHaveClass("absolute");
   expect(actionButton).toHaveClass("right-3");
+  expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
 });
 
 test("chat rows fade adjacent dividers behind the rounded hover surface", async () => {

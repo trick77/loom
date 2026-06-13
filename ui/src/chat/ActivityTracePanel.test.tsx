@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 
 import { ActivityTracePanel } from "./ActivityTracePanel";
 
-test("renders generated tools with a creation label and feather glyph", () => {
+test("renders generated tools with a creation label and artifact glyph", () => {
   render(
     <ActivityTracePanel
       active
@@ -27,7 +27,7 @@ test("renders generated tools with a creation label and feather glyph", () => {
 
   const icon = trace.querySelector(".ui-activity-trace-icon-generated");
   expect(icon).not.toBeNull();
-  expect(icon).toHaveTextContent("\ue0ed");
+  expect(icon).toHaveTextContent("\ue0d5");
 });
 
 test("sweeps generated tool title text only while running", () => {
