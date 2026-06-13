@@ -418,8 +418,8 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedCompletionBudget(t *testin
 	if err != nil {
 		t.Fatalf("StreamChatWithTools() error: %v", err)
 	}
-	if gotBody.MaxCompletionTokens != 8192 {
-		t.Fatalf("max_completion_tokens = %d, want 8192", gotBody.MaxCompletionTokens)
+	if gotBody.MaxCompletionTokens != documentToolMaxCompletionTokens {
+		t.Fatalf("max_completion_tokens = %d, want %d", gotBody.MaxCompletionTokens, documentToolMaxCompletionTokens)
 	}
 }
 
@@ -496,9 +496,9 @@ func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *
 		},
 		{
 			name:                 "document tool preserves higher configured budget",
-			configuredTokens:     16384,
+			configuredTokens:     documentToolMaxCompletionTokens * 2,
 			toolName:             "create_pdf_file",
-			wantCompletionTokens: 16384,
+			wantCompletionTokens: documentToolMaxCompletionTokens * 2,
 		},
 	}
 	for _, tt := range tests {

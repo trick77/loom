@@ -22,7 +22,14 @@ const defaultMaxCompletionTokens = 2048
 // room to serialize structured file payloads. The budget is only a ceiling: if
 // a round actually calls a small tool such as web search, the model is not
 // forced to consume it.
-const documentToolMaxCompletionTokens = 8192
+//
+// Sized at 32k after a real document turn hit the old 8192 cap mid-serialization:
+// the model emits the whole file as a single tool-call argument, so once it runs
+// past the cap finish_reason=length truncates the argument JSON, which both fails
+// the document tool and (when the broken call is replayed) makes the upstream
+// reject the next round. 32k clears any realistic document while leaving ample
+// context-window headroom for the prompt; MiMo's hard ceiling is 131072.
+const documentToolMaxCompletionTokens = 32768
 
 // documentToolTimeout gives model turns that are serializing complete document
 // payloads enough wall-clock time to reach the tool call.

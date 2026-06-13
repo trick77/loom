@@ -76,6 +76,32 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		if len(result.ToolCalls) > maxToolCallsPerRound {
 			return assistantLoopResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
 		}
+		// Log every tool call's argument size so document payloads are measurable in
+		// retrospect instead of guessed at: a create_*_file call serializes the whole
+		// file into its argument JSON, so arg_bytes ≈ document size. Pair this with
+		// completion_tokens from the matching "llm inference completed" line (same
+		// thread_id + round) to read the size in tokens — the unit the completion-token
+		// cap is set in. finish_reason=length means the argument was truncated, so
+		// arg_bytes is then a lower bound on the intended size. Fires before the length
+		// guard below so a truncated payload is still measured.
+		for _, call := range result.ToolCalls {
+			slog.Info("tool call arguments",
+				"round", round,
+				"tool", call.Function.Name,
+				"arg_bytes", len(call.Function.Arguments),
+				"finish_reason", result.FinishReason)
+		}
+		if result.FinishReason == "length" {
+			// The model serializes a document as a single tool-call argument; once it
+			// runs past the completion-token cap the argument JSON is truncated
+			// mid-string. Appending that broken call to history and continuing makes
+			// the upstream reject the next round's prefill (surfacing as a generic
+			// "stream failed"), and the document tool itself cannot parse the partial
+			// arguments. Stop here with a clear cause instead of replaying it.
+			slog.Warn("tool call truncated at token cap",
+				"round", round, "tool_calls", len(result.ToolCalls), "finish_reason", result.FinishReason)
+			return assistantLoopResult{}, streamUserError{message: "The response was cut off before it finished — the requested output is too large to generate in one turn. Ask for a shorter version or split it into parts."}
+		}
 		slog.Info("assistant requested tools", "round", round, "tool_calls", len(result.ToolCalls), "content_bytes", len(result.Content))
 
 		history = append(history, llm.Message{
