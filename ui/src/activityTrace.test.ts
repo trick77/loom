@@ -199,6 +199,33 @@ describe("activity trace model", () => {
     });
   });
 
+  test("shows generic family strings before query/url arguments arrive", () => {
+    expect(summarizeToolCall("tavily__tavily_search", "{}")).toMatchObject({
+      kind: "search",
+      title: "Searching the web",
+    });
+    expect(summarizeToolCall("context7__resolve-library-id", "{}")).toMatchObject({
+      kind: "search",
+      title: "Searching the documentation",
+    });
+    expect(summarizeToolCall("context7__query-docs", "{}")).toMatchObject({
+      kind: "search",
+      title: "Searching the documentation",
+    });
+    expect(summarizeToolCall("fetch__fetch", "{}")).toMatchObject({
+      kind: "fetch",
+      title: "Fetching a web page",
+    });
+    expect(summarizeToolCall("obscura__browser_navigate", "{}")).toMatchObject({
+      kind: "fetch",
+      title: "Browsing the web",
+    });
+    expect(summarizeToolCall("obscura__browser_snapshot", "{}")).toMatchObject({
+      kind: "fetch",
+      title: "Browsing the web",
+    });
+  });
+
   test("normalizes schemeless source URLs without accepting app-relative routes", () => {
     expect(externalHTTPURL("www.example.com/docs")).toBe("https://www.example.com/docs");
     expect(externalHTTPURL("example.com:8080/docs")).toBe("https://example.com:8080/docs");

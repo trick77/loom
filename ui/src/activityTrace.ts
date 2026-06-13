@@ -149,15 +149,20 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   const args = parseJSONRecord(rawArguments);
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
   if (isSearchTool(name) || query !== undefined) {
-    return { kind: "search", title: query ?? readableToolName(name) };
+    return { kind: "search", title: query ?? "Searching the web" };
+  }
+  if (isDocsTool(name)) {
+    return { kind: "search", title: "Searching the documentation" };
   }
   const url = stringValue(args, ["url", "uri", "href"]);
-  if (isFetchTool(name) || url !== undefined) {
-    return {
-      kind: "fetch",
-      title: url !== undefined ? domainFromURL(url) ?? url : readableToolName(name),
-      url,
-    };
+  if (url !== undefined) {
+    return { kind: "fetch", title: domainFromURL(url) ?? url, url };
+  }
+  if (isBrowserTool(name)) {
+    return { kind: "fetch", title: "Browsing the web" };
+  }
+  if (isFetchTool(name)) {
+    return { kind: "fetch", title: "Fetching a web page" };
   }
   const file = stringValue(args, ["filename", "file", "path", "displayFilename"]);
   const generated = generatedToolLabel(name, file);
@@ -231,8 +236,16 @@ function isSearchTool(name: string): boolean {
   return /search|tavily|web/i.test(name);
 }
 
+function isDocsTool(name: string): boolean {
+  return /context7|library|docs/i.test(name);
+}
+
+function isBrowserTool(name: string): boolean {
+  return /browser|obscura/i.test(name);
+}
+
 function isFetchTool(name: string): boolean {
-  return /fetch|crawl|read|browser/i.test(name);
+  return /fetch|crawl|read/i.test(name);
 }
 
 function generatedToolLabel(name: string, file?: string): { title: string; label: string } | undefined {
