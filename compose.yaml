@@ -74,7 +74,7 @@ services:
       tika:
         condition: service_healthy
       obscura:
-        # one-shot MCP discovery at startup → wait for the bridge to be ready
+        # one-shot MCP discovery at startup → wait for Obscura's native MCP server
         condition: service_healthy
       fetch:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
@@ -114,19 +114,33 @@ services:
       traefik.enable: "false"
 
   obscura:
-    # Headless-browser MCP (Obscura) bridged to streamable-HTTP by supergateway.
+    # Headless-browser MCP. Obscura v0.1.8+ can bind native MCP HTTP to
+    # 0.0.0.0, so no local wrapper or stdio bridge is needed.
     # Slopr reaches it via BACKEND_OBSCURA_MCP_URL; tools are
     # surfaced to the LLM as obscura__<tool>.
-    # Obscura is amd64-only (emulated on arm64 hosts).
-    platform: linux/amd64
-    image: ghcr.io/trick77/slopr-obscura:latest
+    image: h4ckf0r0day/obscura:0.1.8
+    command:
+      - mcp
+      - --http
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8090"
+      - --stealth
+      # Do not add --allow-private-network: Obscura's default private/loopback
+      # denylist is part of Slopr's SSRF protection for browser tools.
     healthcheck:
-      test: ["CMD", "node", "-e", "const s=require('net').connect(8090,'127.0.0.1');s.setTimeout(3000);s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
+      # The upstream image is distroless, so there is no shell/curl/node for a
+      # real TCP probe. Startup MCP discovery retries within its 30s deadline to
+      # cover any short gap between process start and the HTTP listener binding.
+      test: ["CMD", "/obscura", "mcp", "--help"]
       interval: 60s
       timeout: 5s
-      start_period: 90s
+      start_period: 30s
       start_interval: 5s
       retries: 6
+    networks:
+      - slopr
     labels:
       traefik.enable: "false"
 

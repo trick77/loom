@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/slopr/internal/llm"
 )
@@ -77,6 +78,38 @@ func TestServiceFromConfigClosesUnavailableClient(t *testing.T) {
 	}
 	if !client.closed {
 		t.Fatal("unavailable client was not closed")
+	}
+}
+
+func TestRequiredServiceRetriesDiscoveryUntilStartupContextDeadline(t *testing.T) {
+	client := &fakeClient{
+		tools: []Tool{{
+			Name:         "obscura__browser_navigate",
+			OriginalName: "browser_navigate",
+			Description:  "Navigate",
+			InputSchema:  map[string]any{"type": "object"},
+			ServerName:   "obscura",
+		}},
+		err:                   errors.New("connection refused"),
+		failuresBeforeSuccess: 2,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	service, err := NewRequiredServiceFromClients(ctx, map[string]Client{
+		"obscura": client,
+	})
+	if err != nil {
+		t.Fatalf("NewRequiredServiceFromClients() error: %v", err)
+	}
+	if client.listToolsCalls != 3 {
+		t.Fatalf("ListTools calls = %d, want 3", client.listToolsCalls)
+	}
+	if client.closed {
+		t.Fatal("client was closed after transient discovery failures")
+	}
+	if !service.HasTool("obscura__browser_navigate") {
+		t.Fatal("service missing discovered Obscura tool after retry")
 	}
 }
 
@@ -235,14 +268,21 @@ func TestServiceServerStatusNilAndEmpty(t *testing.T) {
 }
 
 type fakeClient struct {
-	tools  []Tool
-	result string
-	err    error
-	closed bool
+	tools                 []Tool
+	result                string
+	err                   error
+	failuresBeforeSuccess int
+	listToolsCalls        int
+	closed                bool
 }
 
 func (f *fakeClient) ListTools(context.Context) ([]Tool, error) {
-	if f.err != nil {
+	f.listToolsCalls++
+	if f.err != nil && f.failuresBeforeSuccess != 0 {
+		f.failuresBeforeSuccess--
+		return nil, f.err
+	}
+	if f.err != nil && f.failuresBeforeSuccess == 0 && len(f.tools) == 0 {
 		return nil, f.err
 	}
 	return f.tools, nil

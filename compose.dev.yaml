@@ -49,7 +49,7 @@ services:
       slopr-init:
         condition: service_completed_successfully
       obscura:
-        # one-shot MCP discovery at startup → wait for the bridge to be ready
+        # one-shot MCP discovery at startup → wait for Obscura's native MCP server
         condition: service_healthy
       fetch:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
@@ -66,16 +66,32 @@ services:
       - "127.0.0.1:8091:8090"
 
   obscura:
-    # Headless-browser MCP. Slopr is host-networked here, so the bridge is
+    # Headless-browser MCP. Slopr is host-networked here, so native MCP HTTP is
     # published on a localhost port and reached via BACKEND_OBSCURA_MCP_URL at
     # http://localhost:8090/mcp.
-    # Obscura is amd64-only (emulated on arm64 hosts).
-    platform: linux/amd64
-    build:
-      context: ./obscura
-      dockerfile: Containerfile
+    image: h4ckf0r0day/obscura:0.1.8
+    command:
+      - mcp
+      - --http
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8090"
+      - --stealth
+      # Do not add --allow-private-network: Obscura's default private/loopback
+      # denylist is part of Slopr's SSRF protection for browser tools.
     ports:
       - "127.0.0.1:8090:8090"
+    healthcheck:
+      # The upstream image is distroless, so there is no shell/curl/node for a
+      # real TCP probe. Startup MCP discovery retries within its 30s deadline to
+      # cover any short gap between process start and the HTTP listener binding.
+      test: ["CMD", "/obscura", "mcp", "--help"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 6
 
 volumes:
   slopr-dev-data:

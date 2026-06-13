@@ -75,22 +75,6 @@ jobs:
             echo "fetch_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- obscura; then
-            obscura_source_changed=false
-          else
-            obscura_source_changed=true
-          fi
-          if docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-obscura:latest" >/dev/null 2>&1; then
-            obscura_missing=false
-          else
-            obscura_missing=true
-          fi
-          if [ "$obscura_source_changed" = "true" ] || [ "$obscura_missing" = "true" ]; then
-            echo "obscura_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "obscura_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build and push Slopr image
         uses: docker/build-push-action@v7
         with:
@@ -142,26 +126,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push Obscura MCP image
-        if: ${{ steps.companion_changes.outputs.obscura_changed == 'true' }}
-        uses: docker/build-push-action@v7
-        with:
-          context: ./obscura
-          file: ./obscura/Containerfile
-          push: true
-          platforms: linux/amd64
-          tags: |
-            ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.version }}
-            ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}
-            ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.major }}
-            ghcr.io/${{ github.repository }}-obscura:${{ steps.ver.outputs.short }}
-            ghcr.io/${{ github.repository }}-obscura:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       # Tag only AFTER required image pushes succeed, so a failed release never
-      # leaves an orphan git tag behind. Companion images are required only when
-      # their source directories changed since the previous release.
+      # leaves an orphan git tag behind. The fetch companion image is required
+      # only when its source directory changed since the previous release.
       - name: Create and push tag
         run: |
           git config user.name  "github-actions[bot]"
