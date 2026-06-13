@@ -188,6 +188,11 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// as soon as <function=NAME> parses, so the client can name the running tool
 	// during MiMo's silent argument-serialization gap.
 	toolNameEmitted := false
+	// Same intent for native tool_calls: MiMo's first tool-call chunk carries the id
+	// and name, then the (large) argument streams or bursts over later chunks. Emit
+	// the name once per call index as soon as it is known so the client can show the
+	// running tool immediately, rather than waiting for the full call at end-of-stream.
+	nativeNameEmitted := map[int]bool{}
 	flushGate := func() error {
 		if gate == nil || onEvent == nil {
 			return nil
@@ -327,6 +332,20 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			}
 			if chunk.Function.Arguments != "" {
 				call.Function.Arguments += chunk.Function.Arguments
+			}
+			// Surface the name (under the call's real id) the moment it is known, so
+			// the client can show which tool is running before the argument lands. The
+			// full call re-emitted at end-of-stream carries the same id and updates the
+			// same entry instead of duplicating it.
+			if onEvent != nil && call.Function.Name != "" && !nativeNameEmitted[chunk.Index] {
+				nativeNameEmitted[chunk.Index] = true
+				if err := onEvent(StreamEvent{ToolCall: ToolCall{
+					ID:       call.ID,
+					Type:     call.Type,
+					Function: ToolCallFunction{Name: call.Function.Name},
+				}}); err != nil {
+					return fail(err)
+				}
 			}
 		}
 	}
