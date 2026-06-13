@@ -185,10 +185,14 @@ describe("activity trace model", () => {
       title: "example.com",
     });
     expect(summarizeToolCall("generate_image", "{\"prompt\":\"a cabin\"}")).toMatchObject({
-      title: "generate image",
+      kind: "generated",
+      label: "image",
+      title: "Creating image",
     });
     expect(summarizeToolCall("create_pptx_presentation", "{\"filename\":\"deck.pptx\"}")).toMatchObject({
-      title: "deck.pptx",
+      kind: "generated",
+      label: "presentation",
+      title: "Creating presentation",
     });
     expect(summarizeToolCall("custom__lookup", "not-json")).toMatchObject({
       title: "custom lookup",

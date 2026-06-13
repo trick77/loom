@@ -172,9 +172,16 @@ function ActivityTraceRow({
   const fetchUrl = event.summary.kind === "fetch" ? event.summary.url : undefined;
   const fetchFavicon = fetchUrl === undefined ? undefined : faviconURL(fetchUrl);
   const fetchHref = fetchUrl === undefined ? undefined : externalHTTPURL(fetchUrl);
+  const titleClassName =
+    event.summary.kind === "generated" && event.status === "running"
+      ? "ui-activity-tool-title ui-thinking-label-active"
+      : "ui-activity-tool-title";
+  const titleDataText = event.summary.kind === "generated" && event.status === "running" ? event.summary.title : undefined;
   const toolIcon =
     event.summary.kind === "search" ? (
       <GlobeTraceIcon />
+    ) : event.summary.kind === "generated" ? (
+      <GeneratedTraceIcon />
     ) : fetchFavicon !== undefined ? (
       <img className="ui-activity-fetch-icon-favicon" src={fetchFavicon} alt="" />
     ) : (
@@ -188,7 +195,9 @@ function ActivityTraceRow({
       <div className="min-w-0 flex-1">
         <div className="ui-activity-tool-header flex items-center justify-between gap-3">
           <span className="flex min-w-0 items-center gap-2">
-            <span className="ui-activity-tool-title">{event.summary.title}</span>
+            <span className={titleClassName} data-text={titleDataText}>
+              {event.summary.title}
+            </span>
           </span>
           <span className={`ui-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
         </div>
@@ -286,6 +295,10 @@ function ClockTraceIcon() {
   // Reasoning timeline node — the Anthropicons clock-with-arc glyph (the same
   // reference design the previous hand-tuned SVG approximated).
   return <Icon name="clock" size="1.125rem" className="ui-activity-clock-icon" />;
+}
+
+function GeneratedTraceIcon() {
+  return <Icon name="feather" size="1rem" className="ui-activity-trace-icon-generated" />;
 }
 
 function FetchTraceIcon() {

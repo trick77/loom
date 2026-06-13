@@ -27,6 +27,7 @@ export type ToolSummary =
   | { kind: "search"; title: string }
   | { kind: "fetch"; title: string; url?: string }
   | { kind: "file"; title: string }
+  | { kind: "generated"; title: string; label: string }
   | { kind: "generic"; title: string };
 
 export type ToolResultPreview =
@@ -159,6 +160,10 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
     };
   }
   const file = stringValue(args, ["filename", "file", "path", "displayFilename"]);
+  const generated = generatedToolLabel(name, file);
+  if (generated !== undefined) {
+    return { kind: "generated", title: `Creating ${generated.label}`, label: generated.label };
+  }
   if (file !== undefined) {
     return { kind: "file", title: file };
   }
@@ -228,6 +233,20 @@ function isSearchTool(name: string): boolean {
 
 function isFetchTool(name: string): boolean {
   return /fetch|crawl|read|browser/i.test(name);
+}
+
+function generatedToolLabel(name: string, file?: string): { title: string; label: string } | undefined {
+  const normalized = name.toLowerCase();
+  const extension = file?.match(/\.([a-z0-9]+)\s*$/i)?.[1]?.toLowerCase();
+  if (normalized === "generate_image" || normalized.includes("image")) return { title: "image", label: "image" };
+  if (normalized.includes("pdf") || extension === "pdf") return { title: "PDF file", label: "PDF file" };
+  if (normalized.includes("docx") || extension === "docx") return { title: "document", label: "document" };
+  if (normalized.includes("xlsx") || extension === "xlsx") return { title: "spreadsheet", label: "spreadsheet" };
+  if (normalized.includes("pptx") || normalized.includes("presentation") || extension === "pptx") {
+    return { title: "presentation", label: "presentation" };
+  }
+  if (/^(create|generate|render|export)_/i.test(name)) return { title: readableToolName(name), label: "file" };
+  return undefined;
 }
 
 function looksLikeDomainURL(value: string): boolean {
