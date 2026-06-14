@@ -11,7 +11,7 @@ import { pendingArtifactLabels } from "./artifacts";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import { AssistantText, MessageBubble, PendingArtifactCard } from "./messages";
-import { useDocumentAttachments } from "./useDocumentAttachments";
+import { toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { McpStatusIndicator } from "./SidebarItems";
@@ -59,7 +59,7 @@ export function ChatPanel({
   mcpStatus: McpStatusEvent | null;
   openThreadMenuID: string | null;
   onDraftChange(value: string): void;
-  onSend(): void;
+  onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onRetry(content: string): void;
   onOpenProject(project: Project): void;
@@ -175,15 +175,17 @@ export function ChatPanel({
     scrollToLatest();
   }, [scrollToLatest]);
 
-  const handleSendRequest = useCallback(() => {
-    pinToLatest();
-    onSend();
-  }, [onSend, pinToLatest]);
-
-  const { attachNote, handleAttachFiles } = useDocumentAttachments({
+  const { attachNote, attachments, clearAttachments, handleAttachFiles, removeAttachment } = useDocumentAttachments({
     threadId: thread?.id,
     projectId: threadProject?.id,
   });
+
+  const handleSendRequest = useCallback(() => {
+    const sentAttachments = attachments.map(toSentAttachment);
+    if (sentAttachments.length > 0) clearAttachments({ revokePreviewUrls: false });
+    pinToLatest();
+    onSend(sentAttachments);
+  }, [attachments, clearAttachments, onSend, pinToLatest]);
 
   const handleRetryRequest = useCallback(
     (content: string) => {
@@ -356,6 +358,8 @@ export function ChatPanel({
                 onSend={handleSendRequest}
                 onStop={onStop}
                 onAttachFiles={thread === null ? undefined : handleAttachFiles}
+                attachments={attachments}
+                onRemoveAttachment={removeAttachment}
               />
               {(attachNote || deferredAttachNote) !== "" && (
                 <div className="ui-meta-text mt-2 text-center text-[#858178]">

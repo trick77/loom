@@ -2,6 +2,7 @@ package documents
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,6 +43,9 @@ func newTestService(t *testing.T) (*Service, *fakeIndexer, string) {
 	if _, err := db.Exec(`INSERT INTO users (id, oidc_subject, username, role) VALUES ('u','s','u','user')`); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
+	if _, err := db.Exec(`INSERT INTO threads (id, user_id, title) VALUES ('thread_1', 'u', 'Thread')`); err != nil {
+		t.Fatalf("seed thread: %v", err)
+	}
 	usersDir := filepath.Join(dir, "users")
 	idx := &fakeIndexer{}
 	svc := NewService(rag.NewStore(db), artifact.NewStore(db), idx, fakeEmbedder{}, usersDir)
@@ -79,6 +83,31 @@ func TestService_Upload_rejectsDisallowedFormat(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	if _, _, err := svc.Upload(context.Background(), UploadInput{UserID: "u", Filename: "x.exe", Reader: strings.NewReader("x")}); err == nil {
 		t.Fatal("Upload(.exe) error = nil, want rejection")
+	}
+}
+
+func TestService_Upload_rejectsWhenThreadDocumentLimitReached(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+
+	for i := 0; i < MaxChatDocuments; i++ {
+		if _, _, err := svc.Upload(ctx, UploadInput{
+			UserID:   "u",
+			ThreadID: "thread_1",
+			Filename: "doc" + string(rune('a'+i)) + ".txt",
+			Reader:   strings.NewReader("hi"),
+		}); err != nil {
+			t.Fatalf("Upload #%d: %v", i+1, err)
+		}
+	}
+
+	if _, _, err := svc.Upload(ctx, UploadInput{
+		UserID:   "u",
+		ThreadID: "thread_1",
+		Filename: "overflow.txt",
+		Reader:   strings.NewReader("hi"),
+	}); !errors.Is(err, ErrChatDocumentLimit) {
+		t.Fatalf("Upload overflow error = %v, want ErrChatDocumentLimit", err)
 	}
 }
 

@@ -5,6 +5,7 @@ import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
 import { greetingForNow } from "./chatUtils";
 import { McpStatusIndicator } from "./SidebarItems";
+import type { ComposerAttachment } from "./useDocumentAttachments";
 
 export function StartPanel({
   displayName,
@@ -13,12 +14,14 @@ export function StartPanel({
   sendDisabled,
   mcpStatus,
   sendError,
-  pendingAttachmentNames,
+  attachments,
+  attachNote,
   onOpenSidebar,
   onDraftChange,
   onSend,
   onStop,
   onAttachFiles,
+  onRemoveAttachment,
 }: {
   displayName: string;
   draft: string;
@@ -26,12 +29,14 @@ export function StartPanel({
   sendDisabled: boolean;
   mcpStatus: McpStatusEvent | null;
   sendError: string;
-  pendingAttachmentNames: string[];
+  attachments: ComposerAttachment[];
+  attachNote: string;
   onOpenSidebar(): void;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
   onAttachFiles(files: File[]): void;
+  onRemoveAttachment(id: string): void;
 }) {
   // No thread exists yet, so uploads are deferred: files are held (see
   // pendingAttachmentNames) and bound to the chat once the first send creates it.
@@ -64,11 +69,11 @@ export function StartPanel({
             onSend={onSend}
             onStop={onStop}
             onAttachFiles={onAttachFiles}
+            attachments={attachments}
+            onRemoveAttachment={onRemoveAttachment}
           />
-          {pendingAttachmentNames.length > 0 && (
-            <div className="ui-meta-text mt-2 text-center text-[#858178]">
-              {pendingAttachmentNames.join(", ")} — added to this chat when you send
-            </div>
+          {attachNote !== "" && (
+            <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
           )}
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           <div className="ui-meta-text mt-4 flex flex-wrap justify-center gap-2 text-[#e8e4da]">

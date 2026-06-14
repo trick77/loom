@@ -2,6 +2,8 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import { DOCUMENT_ACCEPT } from "../api";
 import { Icon } from "./Icon";
+import { CloseIcon, FileIcon } from "./icons";
+import type { ComposerAttachment } from "./useDocumentAttachments";
 
 // Drop has no native `accept` filter (unlike the file input), so we filter the
 // dropped files by the same extension list the picker advertises.
@@ -31,6 +33,8 @@ export function Composer({
   onSend,
   onStop,
   onAttachFiles,
+  attachments = [],
+  onRemoveAttachment,
 }: {
   variant: "start" | "chat";
   draft: string;
@@ -44,6 +48,8 @@ export function Composer({
   // Invoked with the files the user picked from the native chooser. When omitted,
   // the attach button is disabled (e.g. before a thread exists).
   onAttachFiles?(files: File[]): void;
+  attachments?: ComposerAttachment[];
+  onRemoveAttachment?(id: string): void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Whether a drag is currently hovering the composer (drives the highlight).
@@ -167,6 +173,19 @@ export function Composer({
           }
         }}
       />
+      {attachments.length > 0 && (
+        <div className={`${padX} pb-3`}>
+          <div className="flex flex-wrap gap-2">
+            {attachments.map((attachment) => (
+              <AttachmentPreview
+                key={attachment.id}
+                attachment={attachment}
+                onRemove={onRemoveAttachment}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       <div className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}>
         <button
           className="leading-none disabled:opacity-40"
@@ -217,4 +236,71 @@ export function Composer({
       </div>
     </form>
   );
+}
+
+function AttachmentPreview({
+  attachment,
+  onRemove,
+}: {
+  attachment: ComposerAttachment;
+  onRemove?: (id: string) => void;
+}) {
+  const status = attachmentStatusLabel(attachment);
+  const uploading =
+    attachment.status === "uploading" || attachment.status === "processing";
+  return (
+    <div className="group/attachment relative flex h-[76px] w-[180px] max-w-full overflow-hidden rounded-lg border border-[#4b4a46] bg-[#343432] text-[#f3f0e8] shadow-[0_8px_18px_rgba(0,0,0,0.18)]">
+      <div className="grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]">
+        {attachment.previewUrl !== undefined ? (
+          <img
+            className="h-full w-full object-cover"
+            src={attachment.previewUrl}
+            alt=""
+            aria-hidden="true"
+          />
+        ) : (
+          <div className="grid h-10 w-10 place-items-center rounded-md border border-[#55534d] bg-[#292927] text-[#c9c5bb]">
+            <FileIcon />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1 px-3 py-2">
+        <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
+        <div className="ui-meta-text mt-1 truncate text-[#aaa79e]">
+          {status}
+        </div>
+        {uploading && (
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-[#232321]">
+            <div className="h-full w-1/2 animate-[attachment-progress_1.1s_ease-in-out_infinite] rounded-full bg-accent" />
+          </div>
+        )}
+      </div>
+      {onRemove !== undefined && (
+        <button
+          className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#64615a] bg-[#343432] text-[#d8d4ca] opacity-95 transition-colors hover:bg-[#44423d] hover:text-[#f3f0e8]"
+          type="button"
+          aria-label={`Remove ${attachment.filename}`}
+          onClick={() => onRemove(attachment.id)}
+        >
+          <CloseIcon />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function attachmentStatusLabel(attachment: ComposerAttachment): string {
+  if (attachment.status === "queued") return "Attached";
+  if (attachment.status === "uploading") return "Uploading...";
+  if (attachment.status === "processing") return "Processing...";
+  if (attachment.status === "ready") return formatBytes(attachment.sizeBytes);
+  return attachment.error ?? "Upload failed";
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb >= 10 ? 0 : 1)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
 }

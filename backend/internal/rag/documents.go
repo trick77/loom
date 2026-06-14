@@ -77,6 +77,18 @@ func (s *Store) ListDocuments(ctx context.Context, userID string, projectID *str
 	return docs, rows.Err()
 }
 
+func (s *Store) CountThreadDocuments(ctx context.Context, userID, threadID string) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM documents WHERE user_id = ? AND project_id IS NULL AND thread_id = ?`,
+		userID, threadID,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count thread documents: %w", err)
+	}
+	return count, nil
+}
+
 func (s *Store) UpdateStatus(ctx context.Context, userID, id, status, errMsg string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE documents SET status = ?, error = ? WHERE user_id = ? AND id = ?`,

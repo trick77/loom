@@ -987,3 +987,15 @@ a.ui-activity-tool-url:hover {
   color: #faf9f5;
   font-weight: 500;
 }
+
+@keyframes attachment-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  50% {
+    transform: translateX(45%);
+  }
+  100% {
+    transform: translateX(210%);
+  }
+}

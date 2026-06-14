@@ -89,6 +89,18 @@ func TestHandleUploadDocument_unsupportedFormat(t *testing.T) {
 	}
 }
 
+func TestHandleUploadDocument_chatDocumentLimit(t *testing.T) {
+	svc := &fakeDocumentService{uploadErr: documents.ErrChatDocumentLimit}
+	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, multipartUpload(t, "a.txt", "bytes", map[string]string{"threadId": "t1"}))
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleUploadDocument_disabledWhenServiceNil(t *testing.T) {
 	server := newAuthenticatedChatServer(t, Deps{})
 	rec := httptest.NewRecorder()

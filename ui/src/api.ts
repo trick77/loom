@@ -105,6 +105,9 @@ export type Document = {
 // allowlist (internal/documents/allowlist.go).
 export const DOCUMENT_ACCEPT =
   ".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.html";
+export const DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE = 5;
+export const DOCUMENT_MAX_CHAT_ATTACHMENTS = 10;
+export const DOCUMENT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export type ArtifactListType = "all" | "images" | "files";
 export type ArtifactSort = "name" | "modified" | "size";
@@ -474,6 +477,12 @@ export async function uploadDocument(
   }
   if (response.status === 415) {
     throw new Error("Unsupported document format");
+  }
+  if (response.status === 409) {
+    throw new Error(`A chat can have up to ${DOCUMENT_MAX_CHAT_ATTACHMENTS} attached files.`);
+  }
+  if (response.status === 413) {
+    throw new Error("Files must be 25 MB or smaller.");
   }
   return expectJSON<Document>(response, "failed to upload document");
 }

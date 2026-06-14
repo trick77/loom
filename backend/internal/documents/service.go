@@ -14,8 +14,14 @@ import (
 	"github.com/trick77/slopr/internal/rag"
 )
 
+const MaxChatDocuments = 10
+
 // ErrUnsupportedFormat is returned when an upload's extension is not allowlisted.
 var ErrUnsupportedFormat = errors.New("unsupported document format")
+
+// ErrChatDocumentLimit is returned when a project-less chat already has the
+// maximum number of private documents attached.
+var ErrChatDocumentLimit = errors.New("chat document limit reached")
 
 // ArtifactStore is the subset of the artifact store the document service needs.
 type ArtifactStore interface {
@@ -73,6 +79,15 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 	mime, ok := AllowedFormat(in.Filename)
 	if !ok {
 		return rag.Document{}, artifact.Artifact{}, ErrUnsupportedFormat
+	}
+	if in.ProjectID == nil && strings.TrimSpace(in.ThreadID) != "" {
+		count, err := s.store.CountThreadDocuments(ctx, in.UserID, strings.TrimSpace(in.ThreadID))
+		if err != nil {
+			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count chat documents: %w", err)
+		}
+		if count >= MaxChatDocuments {
+			return rag.Document{}, artifact.Artifact{}, ErrChatDocumentLimit
+		}
 	}
 	ext := strings.TrimPrefix(filepath.Ext(in.Filename), ".")
 

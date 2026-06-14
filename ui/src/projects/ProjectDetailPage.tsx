@@ -63,7 +63,7 @@ export function ProjectDetailPage({
   const projectMenuKey = `Project:${project.id}`;
   const [hoveredThreadID, setHoveredThreadID] = useState<string | null>(null);
   // Composer uploads are scoped to this project's knowledge.
-  const { attachNote, handleAttachFiles } = useDocumentAttachments({ projectId: project.id });
+  const { attachNote, attachments, handleAttachFiles, removeAttachment } = useDocumentAttachments({ projectId: project.id });
 
   useEffect(() => {
     if (openThreadMenuID !== projectMenuKey) return;
@@ -147,6 +147,8 @@ export function ProjectDetailPage({
                 onSend={onSend}
                 onStop={onStop}
                 onAttachFiles={handleAttachFiles}
+                attachments={attachments}
+                onRemoveAttachment={removeAttachment}
               />
             </div>
             {attachNote !== "" && (
