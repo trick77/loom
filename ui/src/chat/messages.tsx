@@ -88,15 +88,14 @@ function SentFileAttachment({ attachment }: { attachment: ComposerAttachment }) 
 
   return (
     <div className="flex h-[92px] w-[210px] max-w-full overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-left text-[#f3f0e8]">
-      <div className="relative grid h-full w-[82px] shrink-0 place-items-center bg-[#242421]">
+      <div className="grid h-full w-[82px] shrink-0 place-items-center bg-[#242421]">
         <div className="grid h-11 w-11 place-items-center rounded-md border border-[#55534d] bg-[#30302d] text-[#c9c5bb]">
-          <FileIcon />
+          {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
         </div>
-        {extensionLabel !== null && <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill>}
       </div>
       <div className="min-w-0 flex-1 px-3 py-2.5">
         <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
-        <div className="ui-meta-text mt-1 truncate text-[#aaa79e]">{sentAttachmentStatus(attachment)}</div>
+        <div className="ui-meta-text mt-2 truncate text-[#aaa79e]">{sentAttachmentStatus(attachment)}</div>
       </div>
     </div>
   );
