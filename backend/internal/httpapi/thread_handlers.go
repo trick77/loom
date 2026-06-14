@@ -186,6 +186,12 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "list thread artifacts failed")
 		return
 	}
+	if s.documents != nil {
+		if err := s.documents.DeleteThreadData(r.Context(), user.ID, threadID); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "delete thread knowledge failed")
+			return
+		}
+	}
 	found, err := s.chat.DeleteThread(r.Context(), user.ID, threadID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "delete thread failed")
@@ -225,6 +231,11 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 		artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
 		if err != nil {
 			continue
+		}
+		if s.documents != nil {
+			if err := s.documents.DeleteThreadData(r.Context(), user.ID, threadID); err != nil {
+				continue
+			}
 		}
 		found, err := s.chat.DeleteThread(r.Context(), user.ID, threadID)
 		if err != nil || !found {

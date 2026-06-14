@@ -156,6 +156,23 @@ func TestDeleteProjectRemovesGeneratedArtifactFiles(t *testing.T) {
 	}
 }
 
+func TestDeleteProjectPurgesProjectRAGData(t *testing.T) {
+	store := &fakeChatStore{project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"}}
+	docs := &fakeDocumentService{}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store, Documents: docs})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodDelete, "/api/projects/proj_1", "")
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body.String())
+	}
+	if len(docs.deletedProjectData) != 1 || docs.deletedProjectData[0] != "proj_1" {
+		t.Fatalf("DeleteProjectData calls = %v, want [proj_1]", docs.deletedProjectData)
+	}
+}
+
 func TestArchiveProjectNotFoundReturns404(t *testing.T) {
 	store := &fakeChatStore{}
 	srv := newAuthenticatedChatServer(t, Deps{Chat: store})

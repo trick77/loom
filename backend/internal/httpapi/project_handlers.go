@@ -129,6 +129,15 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "list project artifacts failed")
 		return
 	}
+	// Must run before DeleteProject: the projects FK cascade would otherwise drop
+	// the chunk rows and orphan their vec0 embeddings (a vtab unreachable by
+	// cascade).
+	if s.documents != nil {
+		if err := s.documents.DeleteProjectData(r.Context(), user.ID, projectID); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "delete project knowledge failed")
+			return
+		}
+	}
 	found, err := s.chat.DeleteProject(r.Context(), user.ID, projectID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "delete project failed")

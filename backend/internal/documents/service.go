@@ -244,6 +244,20 @@ func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
 	return nil
 }
 
+// DeleteThreadData removes all RAG data (documents, chunks, embeddings) scoped
+// to a deleted chat. Files on disk are cleaned up separately by the caller via
+// the artifact cleanup routine. Call before the thread row is deleted.
+func (s *Service) DeleteThreadData(ctx context.Context, userID, threadID string) error {
+	return s.store.DeleteThreadScopeDocuments(ctx, userID, threadID)
+}
+
+// DeleteProjectData removes all RAG data scoped to a deleted project. It MUST be
+// called before chat.DeleteProject, whose FK cascade would otherwise drop the
+// chunk rows and orphan the vec0 embeddings.
+func (s *Service) DeleteProjectData(ctx context.Context, userID, projectID string) error {
+	return s.store.DeleteProjectScopeDocuments(ctx, userID, projectID)
+}
+
 // Retrieve embeds the query and returns the most relevant chunks for the user's
 // knowledge scope. It is best-effort for callers: an embedding failure surfaces
 // as an error the caller may choose to ignore.
