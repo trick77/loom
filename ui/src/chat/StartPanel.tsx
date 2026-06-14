@@ -1,5 +1,5 @@
 import type { McpStatusEvent } from "../api";
-import logoImage from "../assets/sloppy.png";
+import logoImage from "../assets/mynd-logo.png";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
