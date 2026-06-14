@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChatShell } from "./ChatShell";
-import sloprImage from "./assets/sloppy-slopr.png";
+import sloprImage from "./assets/mynd-logo.png";
 import { getMe, listUsers, logout, type User } from "./api";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
