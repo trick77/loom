@@ -1,4 +1,4 @@
-import { ATTACHMENT_ACCEPT } from "../api";
+import { ATTACHMENT_ACCEPT, DOCUMENT_MAX_UPLOAD_BYTES } from "../api";
 
 const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",").map((ext) => ext.trim().toLowerCase());
 const SUPPORTED_FILE_TYPES = "PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF";
@@ -10,6 +10,10 @@ export function filterAcceptedFiles(files: File[]): File[] {
     const name = file.name.toLowerCase();
     return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
   });
+}
+
+export function isWithinUploadSizeLimit(file: File): boolean {
+  return typeof file.size !== "number" || file.size <= DOCUMENT_MAX_UPLOAD_BYTES;
 }
 
 export function attachAcceptedFiles({

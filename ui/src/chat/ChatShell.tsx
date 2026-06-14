@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AuthExpiredError,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-  DOCUMENT_MAX_UPLOAD_BYTES,
   createThread,
   listThreads,
   setProjectStarred,
@@ -51,6 +50,7 @@ import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
 import { updateMessageAttachment } from "./chatUtils";
+import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export { buildImageStats } from "./artifacts";
 export { GeneratedArtifactCard } from "./GeneratedArtifactCard";
@@ -431,7 +431,7 @@ export function ChatShell({
   }
 
   function handleAttachPendingFiles(files: File[]) {
-    const sizeFiltered = files.filter((file) => file.size <= DOCUMENT_MAX_UPLOAD_BYTES);
+    const sizeFiltered = files.filter(isWithinUploadSizeLimit);
     if (sizeFiltered.length < files.length) {
       setPendingAttachNote("Files must be 25 MB or smaller.");
     }
@@ -499,8 +499,8 @@ export function ChatShell({
       if (targetThread === null) {
         targetThread =
           projectIDForNewThread === null
-            ? await createThread()
-            : await createThread({ projectId: projectIDForNewThread });
+            ? await createThread({ title: content })
+            : await createThread({ projectId: projectIDForNewThread, title: content });
         createdThreadForFallback = targetThread;
         setActiveThread(targetThread);
         setMessages([]);

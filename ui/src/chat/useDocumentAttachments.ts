@@ -2,12 +2,12 @@ import { useCallback, useState } from "react";
 
 import {
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-  DOCUMENT_MAX_UPLOAD_BYTES,
   indexDocument,
   listDocuments,
   uploadDocument,
   uploadImageAttachment,
 } from "../api";
+import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export type ComposerAttachmentStatus = "queued" | "uploading" | "processing" | "ready" | "error";
 
@@ -94,7 +94,7 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
     (files: File[], override?: { threadId?: string; projectId?: string }) => {
       const threadId = override?.threadId ?? scope.threadId;
       const projectId = override?.projectId ?? scope.projectId;
-      const sizeFiltered = files.filter((file) => file.size <= DOCUMENT_MAX_UPLOAD_BYTES);
+      const sizeFiltered = files.filter(isWithinUploadSizeLimit);
       if (sizeFiltered.length < files.length) {
         setAttachNote("Files must be 25 MB or smaller.");
       }
@@ -166,7 +166,7 @@ async function uploadAttachments(
       if (current === undefined) continue;
       if (current.status === "embedded") {
         onStatus(attachmentId, { status: "ready" });
-        setAttachNote(`Added ${filename} to knowledge.`);
+        setAttachNote("");
         return;
       }
       if (current.status === "error" || current.status === "stale") {

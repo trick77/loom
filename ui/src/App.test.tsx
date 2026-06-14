@@ -472,10 +472,11 @@ test("loads a project detail page and creates new chats inside the project", asy
       return Response.json({ items: [{ ...threadFixture(), id: "t-project", title: "Project chat", projectId: "p1" }], nextCursor: null });
     }
     if (url === "/api/threads" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as { title?: string };
       return Response.json({
         id: "t-project-new",
         projectId: "p1",
-        title: "New chat",
+        title: body.title ?? "New chat",
         starred: false,
         createdAt: "2026-05-30T00:00:00Z",
         updatedAt: "2026-05-30T00:00:00Z",
@@ -506,7 +507,7 @@ test("loads a project detail page and creates new chats inside the project", asy
       "/api/threads",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ projectId: "p1" }),
+        body: JSON.stringify({ projectId: "p1", title: "Draft a brief" }),
       }),
     ),
   );
@@ -713,6 +714,97 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
     "/api/threads",
     expect.objectContaining({ method: "POST" }),
   );
+});
+
+test("sends a deferred new-chat image with the first prompt and shows the prompt as the initial chat title", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"What is this image?","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode('event: assistant_delta\ndata: {"content":"It is a small PNG."}\n\n'),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"It is a small PNG.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
+      controller.close();
+    },
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+    if (url === "/api/threads" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as { title?: string };
+      return Response.json(
+        {
+          id: "t1",
+          title: body.title ?? "New chat",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        },
+        { status: 201 },
+      );
+    }
+    if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
+      return Response.json({
+        id: "art_image",
+        threadId: "t1",
+        displayFilename: "tiny.png",
+        mimeType: "image/png",
+        sizeBytes: 68,
+        createdAt: "2026-05-30T00:00:00Z",
+        downloadUrl: "/api/artifacts/art_image/download",
+      });
+    }
+    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") return new Response(stream, { status: 200 });
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  stubURLObjectMethods(() => "blob:tiny", () => undefined);
+
+  render(<App />);
+  const textbox = await screen.findByPlaceholderText("How can I help you today?");
+  const composer = textbox.closest("form");
+  const fileInput = composer?.querySelector('input[type="file"]');
+  if (fileInput === null || fileInput === undefined) throw new Error("file input missing");
+  fireEvent.change(fileInput, {
+    target: {
+      files: [new File(["png"], "tiny.png", { type: "image/png" })],
+    },
+  });
+  fireEvent.change(textbox, { target: { value: "What is this image?" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/threads",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ title: "What is this image?" }),
+    }),
+  );
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stream",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "What is this image?", imageAttachmentIds: ["art_image"] }),
+      }),
+    ),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/artifacts/images/upload",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(await screen.findByRole("button", { name: "What is this image?" })).toBeInTheDocument();
 });
 
 test("active sidebar chat shows actions menu with locked entries", async () => {

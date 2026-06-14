@@ -45,6 +45,9 @@ func TestKnowledgeContext_buildsBlockAndSources(t *testing.T) {
 	if !strings.Contains(block, "guide.pdf") || !strings.Contains(block, "Install with make build.") {
 		t.Errorf("knowledge block missing content: %q", block)
 	}
+	if !strings.Contains(block, "If the user asks about the document, file, upload, attachment, or source, answer from these excerpts") {
+		t.Errorf("knowledge block missing document-answer directive: %q", block)
+	}
 	// AnythingLLM-style: one citation per retrieved chunk (frontend groups them).
 	if len(citations) != 3 {
 		t.Fatalf("citations = %d, want 3 (one per chunk)", len(citations))
