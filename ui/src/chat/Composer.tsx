@@ -223,7 +223,7 @@ function AttachmentPreview({
           aria-label={`Remove ${attachment.filename}`}
           onClick={() => onRemove(attachment.id)}
         >
-          <Icon name="close" size="12px" />
+          <Icon name="close" size="14px" />
         </button>
       )}
     </div>
