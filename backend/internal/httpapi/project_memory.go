@@ -143,7 +143,7 @@ func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) 
 	projectID := r.PathValue("projectID")
 	project, err := s.findProject(r.Context(), user.ID, projectID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "get project memory failed")
+		serverError(w, r, err, "get project memory failed")
 		return
 	}
 	if project == nil {
@@ -152,7 +152,7 @@ func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) 
 	}
 	memory, _, err := s.chat.GetProjectMemory(r.Context(), user.ID, projectID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "get project memory failed")
+		serverError(w, r, err, "get project memory failed")
 		return
 	}
 	writeJSON(w, memory)
@@ -172,7 +172,7 @@ func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Reque
 	projectID := r.PathValue("projectID")
 	project, err := s.findProject(r.Context(), user.ID, projectID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "refresh project memory failed")
+		serverError(w, r, err, "refresh project memory failed")
 		return
 	}
 	if project == nil {
@@ -181,12 +181,12 @@ func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Reque
 	}
 	count, err := s.chat.CountProjectMessages(r.Context(), user.ID, projectID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "refresh project memory failed")
+		serverError(w, r, err, "refresh project memory failed")
 		return
 	}
 	messages, err := s.chat.ListProjectMessages(r.Context(), user.ID, projectID, memoryRebuildLimit)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "refresh project memory failed")
+		serverError(w, r, err, "refresh project memory failed")
 		return
 	}
 	// Full rebuild: ignore prior memory and re-summarize from scratch.
@@ -196,7 +196,7 @@ func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Reque
 	}
 	memory, _, err := s.chat.GetProjectMemory(r.Context(), user.ID, projectID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "get project memory failed")
+		serverError(w, r, err, "get project memory failed")
 		return
 	}
 	writeJSON(w, memory)

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/trick77/slopr/internal/chat"
@@ -18,7 +19,7 @@ func (s *server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 	}
 	threads, err := s.chat.ListThreads(r.Context(), user.ID, opts)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list threads failed")
+		serverError(w, r, err, "list threads failed")
 		return
 	}
 	var nextCursor *string
@@ -41,7 +42,7 @@ func (s *server) handleListThreadIDs(w http.ResponseWriter, r *http.Request) {
 	}
 	ids, err := s.chat.ListThreadIDs(r.Context(), user.ID, opts)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list thread ids failed")
+		serverError(w, r, err, "list thread ids failed")
 		return
 	}
 	writeJSON(w, ids)
@@ -62,7 +63,7 @@ func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		Title:     body.Title,
 	})
 	if err != nil {
-		writeMappedChatStoreError(w, err, map[string]int{
+		writeMappedChatStoreError(w, r, err, map[string]int{
 			"project not found":        http.StatusNotFound,
 			"thread title is too long": http.StatusBadRequest,
 		})
@@ -80,7 +81,7 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 	threadID := r.PathValue("threadID")
 	thread, found, err := s.chat.GetThread(r.Context(), user.ID, threadID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "get thread failed")
+		serverError(w, r, err, "get thread failed")
 		return
 	}
 	if !found {
@@ -89,7 +90,7 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 	}
 	messages, found, err := s.chat.ListMessages(r.Context(), user.ID, threadID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list messages failed")
+		serverError(w, r, err, "list messages failed")
 		return
 	}
 	if !found {
@@ -111,7 +112,7 @@ func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {
 	}
 	thread, found, err := s.chat.UpdateThread(r.Context(), user.ID, r.PathValue("threadID"), body.chatInput())
 	if err != nil {
-		writeMappedChatStoreError(w, err, map[string]int{
+		writeMappedChatStoreError(w, r, err, map[string]int{
 			"thread title is required": http.StatusBadRequest,
 			"thread title is too long": http.StatusBadRequest,
 			"project not found":        http.StatusNotFound,
@@ -140,7 +141,7 @@ func (s *server) handleSetThreadStarred(w http.ResponseWriter, r *http.Request, 
 	}
 	thread, found, err := s.chat.SetThreadStarred(r.Context(), user.ID, r.PathValue("threadID"), starred)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "update thread failed")
+		serverError(w, r, err, "update thread failed")
 		return
 	}
 	if !found {
@@ -165,7 +166,7 @@ func (s *server) handleSetThreadArchived(w http.ResponseWriter, r *http.Request,
 	}
 	found, err := s.chat.SetThreadArchived(r.Context(), user.ID, r.PathValue("threadID"), archived)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "update thread failed")
+		serverError(w, r, err, "update thread failed")
 		return
 	}
 	if !found {
@@ -183,18 +184,18 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 	threadID := r.PathValue("threadID")
 	artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list thread artifacts failed")
+		serverError(w, r, err, "list thread artifacts failed")
 		return
 	}
 	if s.documents != nil {
 		if err := s.documents.DeleteThreadData(r.Context(), user.ID, threadID); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "delete thread knowledge failed")
+			serverError(w, r, err, "delete thread knowledge failed")
 			return
 		}
 	}
 	found, err := s.chat.DeleteThread(r.Context(), user.ID, threadID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "delete thread failed")
+		serverError(w, r, err, "delete thread failed")
 		return
 	}
 	if !found {
@@ -228,8 +229,10 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 
 		// Best-effort: skip a thread we cannot clean up or delete rather than
 		// aborting the whole batch, which would leave it partially applied.
+		// Skips are logged so a silently-dropped thread is still traceable.
 		artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
 		if err != nil {
+			slog.Warn("bulk delete: skip thread, artifact cleanup failed", "thread_id", threadID, "err", err)
 			continue
 		}
 		if s.documents != nil {
@@ -238,7 +241,11 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 			}
 		}
 		found, err := s.chat.DeleteThread(r.Context(), user.ID, threadID)
-		if err != nil || !found {
+		if err != nil {
+			slog.Warn("bulk delete: skip thread, delete failed", "thread_id", threadID, "err", err)
+			continue
+		}
+		if !found {
 			continue
 		}
 		s.cleanupArtifactFiles(user.ID, artifacts)

@@ -25,6 +25,7 @@ services:
     environment:
       BACKEND_AUTH_MODE: dev
       BACKEND_ADDR: "127.0.0.1:8080"
+      BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-debug}"
       BACKEND_PUBLIC_URL: "http://localhost:8080"
       BACKEND_SESSION_SECRET: dev-secret-please-change
       BACKEND_DB_PATH: /data/slopr.db

@@ -32,7 +32,7 @@ func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := s.artifacts.List(r.Context(), user.ID, opts)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list artifacts failed")
+		serverError(w, r, err, "list artifacts failed")
 		return
 	}
 	response := make([]artifactListItemResponse, 0, len(items))
@@ -67,7 +67,7 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 	}
 	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "load artifact failed")
+		serverError(w, r, err, "load artifact failed")
 		return
 	}
 	if !exists {
@@ -85,7 +85,7 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "read artifact failed")
+		serverError(w, r, err, "read artifact failed")
 		return
 	}
 	defer file.Close()
@@ -137,7 +137,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	if projectID == "" && threadID != "" {
 		count, err := s.countThreadUploads(r.Context(), user.ID, threadID)
 		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "count image uploads failed")
+			serverError(w, r, err, "count image uploads failed")
 			return
 		}
 		if count >= documents.MaxChatDocuments {
@@ -164,7 +164,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	closeErr := out.Close()
 	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(output.AbsPath)
-		writeJSONError(w, http.StatusInternalServerError, "write upload failed")
+		serverError(w, r, fmt.Errorf("copy err: %v, close err: %v", copyErr, closeErr), "write upload failed")
 		return
 	}
 	if size > artifact.MaxArtifactSizeBytes {
@@ -184,7 +184,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	})
 	if err != nil {
 		_ = os.Remove(output.AbsPath)
-		writeJSONError(w, http.StatusInternalServerError, "save upload failed")
+		serverError(w, r, err, "save upload failed")
 		return
 	}
 	writeJSON(w, artifactResponseFromArtifact(created))

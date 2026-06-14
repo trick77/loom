@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,7 +15,20 @@ import (
 
 const maxJSONBodyBytes = 64 * 1024
 
-func writeChatStoreError(w http.ResponseWriter, err error, validationStatus int, validationMessages ...string) {
+// serverError logs the underlying cause of a 5xx with request context and
+// returns a generic JSON error to the client (no internal details leak out).
+// Every 500 path must go through here so failures are never silent.
+func serverError(w http.ResponseWriter, r *http.Request, err error, clientMessage string) {
+	slog.Error("request failed",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"client_message", clientMessage,
+		"err", err,
+	)
+	writeJSONError(w, http.StatusInternalServerError, clientMessage)
+}
+
+func writeChatStoreError(w http.ResponseWriter, r *http.Request, err error, validationStatus int, validationMessages ...string) {
 	message := err.Error()
 	for _, validationMessage := range validationMessages {
 		if message == validationMessage {
@@ -22,16 +36,16 @@ func writeChatStoreError(w http.ResponseWriter, err error, validationStatus int,
 			return
 		}
 	}
-	writeJSONError(w, http.StatusInternalServerError, "chat store failed")
+	serverError(w, r, err, "chat store failed")
 }
 
-func writeMappedChatStoreError(w http.ResponseWriter, err error, statuses map[string]int) {
+func writeMappedChatStoreError(w http.ResponseWriter, r *http.Request, err error, statuses map[string]int) {
 	message := err.Error()
 	if status, ok := statuses[message]; ok {
 		writeJSONError(w, status, message)
 		return
 	}
-	writeJSONError(w, http.StatusInternalServerError, "chat store failed")
+	serverError(w, r, err, "chat store failed")
 }
 
 func currentUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {

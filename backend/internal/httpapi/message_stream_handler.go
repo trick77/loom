@@ -48,7 +48,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	threadID := r.PathValue("threadID")
 	thread, found, err := s.chat.GetThread(r.Context(), user.ID, threadID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "get thread failed")
+		serverError(w, r, err, "get thread failed")
 		return
 	}
 	if !found {
@@ -57,7 +57,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	priorMessages, found, err := s.chat.ListMessages(r.Context(), user.ID, threadID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list messages failed")
+		serverError(w, r, err, "list messages failed")
 		return
 	}
 	if !found {
@@ -66,7 +66,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	userMessage, err := s.chat.AddMessage(r.Context(), user.ID, threadID, chat.RoleUser, body.Content)
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "message content is required", "message content is too long")
+		writeChatStoreError(w, r, err, http.StatusBadRequest, "message content is required", "message content is too long")
 		return
 	}
 	streamCtx, cancelStream := context.WithCancelCause(r.Context())
@@ -83,6 +83,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	stream, err := sse.NewWriter(w)
 	if err != nil {
+		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -258,7 +259,7 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 	threadID := r.PathValue("threadID")
 	_, found, err := s.chat.GetThread(r.Context(), user.ID, threadID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "get thread failed")
+		serverError(w, r, err, "get thread failed")
 		return
 	}
 	if !found {

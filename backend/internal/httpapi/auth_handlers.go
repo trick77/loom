@@ -42,12 +42,12 @@ func (s *server) createSessionFromClaims(w http.ResponseWriter, r *http.Request,
 	}
 	user, err := s.users.UpsertFromClaims(r.Context(), claims, adminGroup)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "user upsert failed")
+		serverError(w, r, err, "user upsert failed")
 		return
 	}
 	session, err := s.sessions.Create(r.Context(), user.ID, sessionTTL)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "session create failed")
+		serverError(w, r, err, "session create failed")
 		return
 	}
 	http.SetCookie(w, s.sessions.CookieFor(session.Token, session.ExpiresAt))
@@ -86,7 +86,7 @@ func (s *server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	users, err := s.users.ListUsers(r.Context())
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list users failed")
+		serverError(w, r, err, "list users failed")
 		return
 	}
 	writeJSON(w, users)
