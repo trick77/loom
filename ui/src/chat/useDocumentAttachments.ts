@@ -5,7 +5,6 @@ import {
   indexDocument,
   listDocuments,
   uploadDocument,
-  uploadImageAttachment,
 } from "../api";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
@@ -18,7 +17,6 @@ export type ComposerAttachment = {
   sizeBytes: number;
   status: ComposerAttachmentStatus;
   error?: string;
-  previewUrl?: string;
   documentId?: string;
   artifactId?: string;
   file?: File;
@@ -28,17 +26,12 @@ let nextAttachmentID = 0;
 
 export function createComposerAttachment(file: File, status: ComposerAttachmentStatus = "uploading"): ComposerAttachment {
   nextAttachmentID += 1;
-  const previewUrl =
-    file.type.startsWith("image/") && typeof URL.createObjectURL === "function"
-      ? URL.createObjectURL(file)
-      : undefined;
   return {
     id: `attachment-${Date.now()}-${nextAttachmentID}`,
     filename: file.name,
     mimeType: file.type,
     sizeBytes: file.size,
     status,
-    previewUrl,
     file,
   };
 }
@@ -46,10 +39,6 @@ export function createComposerAttachment(file: File, status: ComposerAttachmentS
 export function toSentAttachment(attachment: ComposerAttachment): ComposerAttachment {
   const { file: _file, ...sent } = attachment;
   return sent;
-}
-
-export function isImageAttachment(attachment: Pick<ComposerAttachment, "mimeType" | "filename">): boolean {
-  return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(attachment.filename);
 }
 
 type AttachmentStatusHandler = (id: string, patch: Partial<ComposerAttachment>) => void;
@@ -71,23 +60,11 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
   }, []);
 
   const removeAttachment = useCallback((id: string) => {
-    setAttachments((current) => {
-      const removed = current.find((attachment) => attachment.id === id);
-      if (removed?.previewUrl !== undefined) URL.revokeObjectURL(removed.previewUrl);
-      return current.filter((attachment) => attachment.id !== id);
-    });
+    setAttachments((current) => current.filter((attachment) => attachment.id !== id));
   }, []);
 
-  const clearAttachments = useCallback((options: { revokePreviewUrls?: boolean } = {}) => {
-    const revokePreviewUrls = options.revokePreviewUrls ?? true;
-    setAttachments((current) => {
-      if (revokePreviewUrls) {
-        current.forEach((attachment) => {
-          if (attachment.previewUrl !== undefined) URL.revokeObjectURL(attachment.previewUrl);
-        });
-      }
-      return [];
-    });
+  const clearAttachments = useCallback(() => {
+    setAttachments([]);
   }, []);
 
   const handleAttachFiles = useCallback(
@@ -206,20 +183,6 @@ async function uploadAttachments(
     if (attachment.file === undefined || attachment.artifactId !== undefined) continue;
     if (threadId === undefined && projectId === undefined) {
       setAttachNote(`${attachment.filename} will upload when you send.`);
-      continue;
-    }
-    if (isImageAttachment(attachment)) {
-      setAttachNote(`Uploading ${attachment.filename}…`);
-      onStatus(attachment.id, { status: "uploading" });
-      try {
-        const image = await uploadImageAttachment(attachment.file, { threadId, projectId });
-        onStatus(attachment.id, { status: "ready", artifactId: image.id });
-        setAttachNote("");
-      } catch (error) {
-        const message = error instanceof Error ? error.message : `Failed to upload ${attachment.filename}.`;
-        onStatus(attachment.id, { status: "error", error: message });
-        setAttachNote(message);
-      }
       continue;
     }
     void uploadDocumentAttachment(attachment);

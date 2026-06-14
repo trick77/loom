@@ -7,7 +7,7 @@ const ACCEPTED_EXTENSION_LABELS = new Map(
     return [clean, clean === "jpeg" ? "JPG" : clean.toUpperCase()];
   }),
 );
-const SUPPORTED_FILE_TYPES = "PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF";
+const SUPPORTED_FILE_TYPES = "PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, or HTML";
 
 export const UNSUPPORTED_FILE_MESSAGE = `Unsupported file type. Use ${SUPPORTED_FILE_TYPES}.`;
 

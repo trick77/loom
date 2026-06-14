@@ -194,18 +194,9 @@ function AttachmentPreview({
   return (
     <div className="group/attachment relative flex h-[76px] w-[180px] max-w-full overflow-hidden rounded-lg border border-[#4b4a46] bg-[#343432] text-[#f3f0e8] shadow-[0_8px_18px_rgba(0,0,0,0.18)]">
       <div className="relative grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]">
-        {attachment.previewUrl !== undefined ? (
-          <img
-            className="h-full w-full object-cover"
-            src={attachment.previewUrl}
-            alt=""
-            aria-hidden="true"
-          />
-        ) : (
-          <div className="grid h-10 w-10 place-items-center rounded-md border border-[#55534d] bg-[#292927] text-[#c9c5bb]">
-            <FileIcon />
-          </div>
-        )}
+        <div className="grid h-10 w-10 place-items-center rounded-md border border-[#55534d] bg-[#292927] text-[#c9c5bb]">
+          <FileIcon />
+        </div>
         {extensionLabel !== null && <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill>}
       </div>
       <div className="min-w-0 flex-1 px-3 py-2">

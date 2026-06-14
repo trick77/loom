@@ -90,46 +90,6 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	}
 }
 
-func TestClient_StreamChatSendsMultimodalContentParts(t *testing.T) {
-	var gotBody struct {
-		Messages []struct {
-			Role    string          `json:"role"`
-			Content json.RawMessage `json:"content"`
-		} `json:"messages"`
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
-			t.Fatalf("Decode request body: %v", err)
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}]}\n\n"))
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
-	}))
-	t.Cleanup(server.Close)
-
-	client := NewClient(Config{BaseURL: server.URL, Model: "mimo-v2.5"}, server.Client())
-	_, err := client.StreamChatResult(context.Background(), []Message{{
-		Role: "user",
-		ContentParts: []MessageContentPart{
-			{Type: "image_url", ImageURL: &MessageImageURL{URL: "data:image/png;base64,abc"}},
-			{Type: "text", Text: "What is in this image?"},
-		},
-	}}, nil)
-	if err != nil {
-		t.Fatalf("StreamChatResult() error: %v", err)
-	}
-	if len(gotBody.Messages) != 1 || gotBody.Messages[0].Role != "user" {
-		t.Fatalf("messages = %#v, want one user message", gotBody.Messages)
-	}
-	var parts []MessageContentPart
-	if err := json.Unmarshal(gotBody.Messages[0].Content, &parts); err != nil {
-		t.Fatalf("unmarshal content parts: %v; raw=%s", err, gotBody.Messages[0].Content)
-	}
-	if len(parts) != 2 || parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,abc" || parts[1].Text != "What is in this image?" {
-		t.Fatalf("content parts = %#v, want image_url then text", parts)
-	}
-}
-
 func TestClient_StreamChatUsesConfiguredMaxCompletionTokens(t *testing.T) {
 	var gotBody struct {
 		MaxCompletionTokens int `json:"max_completion_tokens"`
