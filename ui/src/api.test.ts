@@ -8,7 +8,6 @@ import {
   listProjects,
   listThreads,
   streamMessage,
-  uploadImageAttachment,
   updateThread,
 } from "./api";
 import type { McpStatusEvent } from "./api";
@@ -34,14 +33,6 @@ test("listArtifacts builds query parameters", async () => {
 
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/artifacts?type=images&sort=size&order=asc&search=robot&limit=50",
-  );
-});
-
-test("uploadImageAttachment maps chat attachment limit errors", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 409 })));
-
-  await expect(uploadImageAttachment(new File(["png"], "screenshot.png", { type: "image/png" }))).rejects.toThrow(
-    "A chat can have up to 10 attached files.",
   );
 });
 
@@ -134,36 +125,6 @@ test("streamMessage dispatches project updates", async () => {
   );
 
   expect(onProject).toHaveBeenCalledWith(project);
-});
-
-test("streamMessage sends image attachment ids", async () => {
-  const body = new ReadableStream({
-    start(controller) {
-      controller.close();
-    },
-  });
-  const fetchMock = vi.fn().mockResolvedValue(new Response(body));
-  vi.stubGlobal("fetch", fetchMock);
-
-  await streamMessage(
-    "t1",
-    "describe this",
-    {
-      onUserMessage: vi.fn(),
-      onDelta: vi.fn(),
-      onAssistantMessage: vi.fn(),
-      onThread: vi.fn(),
-    },
-    undefined,
-    { imageAttachmentIds: ["art_image"] },
-  );
-
-  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/messages:stream", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: "describe this", imageAttachmentIds: ["art_image"] }),
-    signal: undefined,
-  });
 });
 
 test("deleteThread deletes a thread", async () => {

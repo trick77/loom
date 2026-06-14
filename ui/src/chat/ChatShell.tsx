@@ -31,7 +31,6 @@ import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
 import {
   createComposerAttachment,
-  isImageAttachment,
   toSentAttachment,
   useDocumentAttachments,
   type ComposerAttachment,
@@ -235,12 +234,7 @@ export function ChatShell({
   // so they can't bind to a different chat later.
   useEffect(() => {
     if (route.view !== "new") {
-      setPendingAttachments((current) => {
-        current.forEach((attachment) => {
-          if (attachment.previewUrl !== undefined) URL.revokeObjectURL(attachment.previewUrl);
-        });
-        return [];
-      });
+      setPendingAttachments([]);
       setPendingAttachNote("");
     }
   }, [route.view]);
@@ -457,11 +451,7 @@ export function ChatShell({
 
   function handleRemovePendingAttachment(id: string) {
     setSendError("");
-    setPendingAttachments((current) => {
-      const removed = current.find((attachment) => attachment.id === id);
-      if (removed?.previewUrl !== undefined) URL.revokeObjectURL(removed.previewUrl);
-      return current.filter((attachment) => attachment.id !== id);
-    });
+    setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id));
     setPendingAttachNote("");
   }
 
@@ -517,15 +507,6 @@ export function ChatShell({
             },
             updateSentAttachmentStatus,
           );
-          const failedImageAttachment = options.attachments.find(
-            (attachment) =>
-              isImageAttachment(attachment) &&
-              (attachment.status === "error" || attachment.artifactId === undefined),
-          );
-          if (failedImageAttachment !== undefined) {
-            throw new Error(failedImageAttachment.error ?? `Failed to upload ${failedImageAttachment.filename}.`);
-          }
-          // Keep the object URL alive for the optimistic sent bubble.
           setPendingAttachments([]);
         }
         setActiveThread(targetThread);
@@ -541,9 +522,6 @@ export function ChatShell({
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
       const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
-      const imageAttachmentIds = options.attachments
-        .filter((attachment) => isImageAttachment(attachment) && attachment.artifactId !== undefined)
-        .map((attachment) => attachment.artifactId!);
       await streamMessage(targetThreadID, content, {
         onUserMessage: (message) => {
           if (isCurrentThread()) {
@@ -615,7 +593,7 @@ export function ChatShell({
           setProjects((current) => upsertProject(current, updatedProject));
         },
         onMcpStatus: (event) => setMcpStatus(event),
-      }, abortController.signal, { imageAttachmentIds });
+      }, abortController.signal);
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));

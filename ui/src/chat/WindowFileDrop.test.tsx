@@ -47,8 +47,8 @@ test("routes supported dropped files from the window and reports unsupported fil
 
   fireEvent.drop(window, windowFileDrag([note, image, unsupported]));
 
-  expect(onAttachFiles).toHaveBeenCalledWith([note, image]);
+  expect(onAttachFiles).toHaveBeenCalledWith([note]);
   expect(onAttachError).toHaveBeenCalledWith(
-    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF.",
+    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, or HTML.",
   );
 });

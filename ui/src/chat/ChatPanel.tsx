@@ -11,7 +11,7 @@ import { pendingArtifactLabels } from "./artifacts";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import { AssistantText, MessageBubble, PendingArtifactCard } from "./messages";
-import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
+import { toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { McpStatusIndicator } from "./SidebarItems";
@@ -190,13 +190,10 @@ export function ChatPanel({
 
   const handleSendRequest = useCallback(() => {
     const sentAttachments = attachments.map(toSentAttachment);
-    if (sentAttachments.length > 0) clearAttachments({ revokePreviewUrls: false });
+    if (sentAttachments.length > 0) clearAttachments();
     pinToLatest();
     onSend(sentAttachments);
   }, [attachments, clearAttachments, onSend, pinToLatest]);
-  const imageUploadPending = attachments.some(
-    (attachment) => isImageAttachment(attachment) && attachment.artifactId === undefined && attachment.status !== "error",
-  );
 
   const handleRetryRequest = useCallback(
     (content: string) => {
@@ -368,7 +365,7 @@ export function ChatPanel({
                 variant="chat"
                 draft={draft}
                 isSending={isSending}
-                sendDisabled={sendDisabled || imageUploadPending}
+                sendDisabled={sendDisabled}
                 placeholder="Write a message..."
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}

@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
 import {
-  isImageAttachment,
   toSentAttachment,
   useDocumentAttachments,
   type ComposerAttachment,
@@ -73,12 +72,9 @@ export function ProjectDetailPage({
     useDocumentAttachments({
       projectId: project.id,
     });
-  const imageUploadPending = attachments.some(
-    (attachment) => isImageAttachment(attachment) && attachment.artifactId === undefined && attachment.status !== "error",
-  );
   const handleSendRequest = () => {
     const sentAttachments = attachments.map(toSentAttachment);
-    if (sentAttachments.length > 0) clearAttachments({ revokePreviewUrls: false });
+    if (sentAttachments.length > 0) clearAttachments();
     onSend(sentAttachments);
   };
 
@@ -158,7 +154,7 @@ export function ProjectDetailPage({
                 variant="start"
                 draft={draft}
                 isSending={isSending}
-                sendDisabled={sendDisabled || imageUploadPending}
+                sendDisabled={sendDisabled}
                 placeholder="How can I help you today?"
                 autoFocus
                 onDraftChange={onDraftChange}
