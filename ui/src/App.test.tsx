@@ -907,6 +907,69 @@ test("retries a failed deferred new-chat image upload before streaming", async (
   expect(window.location.pathname).toBe("/chat/t2");
 });
 
+test("clears a stale upload size send error when a new valid file is attached on the start screen", async () => {
+  let imageUploadCalls = 0;
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+    if (url === "/api/threads" && init?.method === "POST") {
+      return Response.json(
+        {
+          id: `t${imageUploadCalls + 1}`,
+          title: "What is this image?",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        },
+        { status: 201 },
+      );
+    }
+    if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
+      imageUploadCalls += 1;
+      if (imageUploadCalls === 1) return new Response("too large", { status: 413 });
+      return Response.json({
+        id: "art_valid",
+        threadId: "t2",
+        displayFilename: "valid.png",
+        mimeType: "image/png",
+        sizeBytes: 1_400_000,
+        createdAt: "2026-05-30T00:00:00Z",
+        downloadUrl: "/api/artifacts/art_valid/download",
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  stubURLObjectMethods(() => "blob:preview", () => undefined);
+
+  render(<App />);
+  const textbox = await screen.findByPlaceholderText("How can I help you today?");
+  const composer = textbox.closest("form");
+  const fileInput = composer?.querySelector('input[type="file"]');
+  if (fileInput === null || fileInput === undefined) throw new Error("file input missing");
+
+  fireEvent.change(fileInput, {
+    target: {
+      files: [new File(["png"], "first.png", { type: "image/png" })],
+    },
+  });
+  fireEvent.change(textbox, { target: { value: "What is this image?" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  expect(await screen.findByText("Files must be 25 MB or smaller.")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Remove first.png" }));
+  fireEvent.change(fileInput, {
+    target: {
+      files: [new File(["x".repeat(1_400_000)], "valid.png", { type: "image/png" })],
+    },
+  });
+
+  expect(screen.queryByText("Files must be 25 MB or smaller.")).not.toBeInTheDocument();
+  expect(screen.getByText("valid.png")).toBeInTheDocument();
+});
+
 test("active sidebar chat shows actions menu with locked entries", async () => {
   vi.stubGlobal(
     "fetch",

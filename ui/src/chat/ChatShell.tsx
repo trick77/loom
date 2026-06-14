@@ -431,6 +431,7 @@ export function ChatShell({
   }
 
   function handleAttachPendingFiles(files: File[]) {
+    setSendError("");
     const sizeFiltered = files.filter(isWithinUploadSizeLimit);
     if (sizeFiltered.length < files.length) {
       setPendingAttachNote("Files must be 25 MB or smaller.");
@@ -455,6 +456,7 @@ export function ChatShell({
   }
 
   function handleRemovePendingAttachment(id: string) {
+    setSendError("");
     setPendingAttachments((current) => {
       const removed = current.find((attachment) => attachment.id === id);
       if (removed?.previewUrl !== undefined) URL.revokeObjectURL(removed.previewUrl);
