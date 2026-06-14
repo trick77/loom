@@ -92,7 +92,7 @@ export function Sidebar({
         }`}
       >
         <div className={`flex h-11 items-center px-3 ${railCollapsed ? "justify-center" : "justify-between"}`}>
-          {!railCollapsed && <div className="ui-wordmark font-serif font-medium text-[#f4f0e8]">Slopr</div>}
+          {!railCollapsed && <div className="ui-wordmark font-serif font-medium text-[#f4f0e8]">Loom</div>}
           <div className="flex items-center gap-3 text-[#aaa79e]">
             {!railCollapsed && (
               <button
