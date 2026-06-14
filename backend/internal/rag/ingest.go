@@ -86,6 +86,30 @@ func (ing *Ingester) Ingest(ctx context.Context, userID, documentID string) erro
 	return nil
 }
 
+// ExtractText returns a document's full plain text by re-running extraction from
+// the volume, without touching the document's status or its chunks/embeddings.
+// It backs the inline-attachment path (full text in the prompt) and works
+// regardless of whether the document has been indexed for RAG.
+func (ing *Ingester) ExtractText(ctx context.Context, userID, documentID string) (string, error) {
+	doc, ok, err := ing.store.GetDocument(ctx, userID, documentID)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("document %s not found for user", documentID)
+	}
+	rc, err := ing.opener.OpenDocument(doc)
+	if err != nil {
+		return "", fmt.Errorf("open document: %w", err)
+	}
+	defer rc.Close()
+	text, err := ing.extractor.Extract(ctx, doc.Filename, doc.MIME, rc)
+	if err != nil {
+		return "", fmt.Errorf("extract text: %w", err)
+	}
+	return text, nil
+}
+
 func (ing *Ingester) extract(ctx context.Context, doc Document) (string, error) {
 	_ = ing.store.UpdateStatus(ctx, doc.UserID, doc.ID, StatusExtracting, "")
 	rc, err := ing.opener.OpenDocument(doc)

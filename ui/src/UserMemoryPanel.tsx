@@ -39,12 +39,9 @@ export function UserMemoryPanel() {
       className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
     >
       <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
-        <Icon name="memory" size="16px" className="text-[#d5d2c9]" />
+        <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
         <span>Memories</span>
       </h2>
-      <p className="ui-meta-text mt-1 text-[#807d74]">
-        Durable facts about you, used across every chat.
-      </p>
       {loading ? (
         <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
       ) : facts.length > 0 ? (

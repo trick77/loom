@@ -19,6 +19,8 @@ type fakeDocumentService struct {
 	uploaded           documents.UploadInput
 	uploadErr          error
 	doc                rag.Document
+	fullText           string
+	fullTextErr        error
 	deletedThreadData  []string
 	deletedProjectData []string
 	deleteDataErr      error
@@ -36,6 +38,9 @@ func (f *fakeDocumentService) List(context.Context, string, *string) ([]rag.Docu
 }
 func (f *fakeDocumentService) Get(context.Context, string, string) (rag.Document, bool, error) {
 	return f.doc, true, nil
+}
+func (f *fakeDocumentService) FullText(context.Context, string, string) (string, error) {
+	return f.fullText, f.fullTextErr
 }
 func (f *fakeDocumentService) Index(context.Context, string, string) error   { return nil }
 func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return nil }

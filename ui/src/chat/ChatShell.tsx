@@ -522,6 +522,9 @@ export function ChatShell({
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
       const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
+      const documentAttachmentIds = options.attachments
+        .filter((attachment) => attachment.documentId !== undefined)
+        .map((attachment) => attachment.documentId!);
       await streamMessage(targetThreadID, content, {
         onUserMessage: (message) => {
           if (isCurrentThread()) {
@@ -593,7 +596,7 @@ export function ChatShell({
           setProjects((current) => upsertProject(current, updatedProject));
         },
         onMcpStatus: (event) => setMcpStatus(event),
-      }, abortController.signal);
+      }, abortController.signal, { documentAttachmentIds });
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));

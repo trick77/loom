@@ -18,6 +18,7 @@ type DocumentService interface {
 	Upload(context.Context, documents.UploadInput) (rag.Document, artifact.Artifact, error)
 	List(context.Context, string, *string) ([]rag.Document, error)
 	Get(context.Context, string, string) (rag.Document, bool, error)
+	FullText(context.Context, string, string) (string, error)
 	Index(context.Context, string, string) error
 	Unindex(context.Context, string, string) error
 	Delete(context.Context, string, string) error

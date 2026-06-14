@@ -41,7 +41,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
       className="overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
     >
       <h2 className="flex items-center gap-1.5 px-5 pt-5 text-[15px] font-medium text-[#ecece6]">
-        <Icon name="memory" size="16px" className="text-[#d5d2c9]" />
+        <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
         <span>Memories</span>
       </h2>
       {loading ? (

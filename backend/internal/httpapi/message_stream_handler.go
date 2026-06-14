@@ -105,11 +105,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	userContext := s.userContextForUser(r.Context(), user.ID)
 	projectContext := s.projectContextForThread(r.Context(), user.ID, thread)
-	knowledgeContext, knowledgeSources := s.knowledgeContextForThread(r.Context(), user.ID, thread, userMessage.Content)
+	// Inline the full text of any documents attached to this message, and exclude
+	// those documents from RAG retrieval below so the model never sees them twice.
+	documentContext, inlinedDocIDs := s.documentInlineContext(r.Context(), user.ID, thread, body.DocumentAttachmentIDs)
+	knowledgeContext, knowledgeSources := s.knowledgeContextForThread(r.Context(), user.ID, thread, userMessage.Content, inlinedDocIDs)
 	if len(knowledgeSources) > 0 {
 		_ = sendSSEJSON(stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
-	history := buildLLMHistory(user, userContext, projectContext, knowledgeContext, priorMessages, userMessage)
+	history := buildLLMHistory(user, userContext, projectContext, knowledgeContext, documentContext, priorMessages, userMessage)
 	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	// Background reasoning-title generation. The deferred wait is a safety net so

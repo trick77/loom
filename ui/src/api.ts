@@ -537,11 +537,19 @@ export async function streamMessage(
   content: string,
   handlers: StreamHandlers,
   signal?: AbortSignal,
+  opts: { documentAttachmentIds?: string[] } = {},
 ): Promise<void> {
+  const requestBody: {
+    content: string;
+    documentAttachmentIds?: string[];
+  } = { content };
+  if (opts.documentAttachmentIds && opts.documentAttachmentIds.length > 0) {
+    requestBody.documentAttachmentIds = opts.documentAttachmentIds;
+  }
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(requestBody),
     signal,
   });
   if (response.status === 401) {

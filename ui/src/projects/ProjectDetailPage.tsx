@@ -13,6 +13,7 @@ import { ChatRow } from "../chats/ChatRow";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
+import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel";
 
 export function ProjectDetailPage({
   project,
@@ -92,7 +93,7 @@ export function ProjectDetailPage({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-[1200px] px-4 pb-16 pt-10 md:px-6">
+      <div className="mx-auto w-full max-w-[1080px] px-4 pb-16 pt-10 md:px-6">
         <button
           aria-label="All projects"
           className="ui-control-text flex items-center gap-2 text-[#c7c5bd] hover:text-white"
@@ -102,7 +103,7 @@ export function ProjectDetailPage({
           &larr; All projects
         </button>
         <div className="mt-2 flex flex-col gap-8 lg:flex-row lg:items-start">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 w-full lg:max-w-[674px]">
             <header className="mt-5 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -209,7 +210,8 @@ export function ProjectDetailPage({
               )}
             </ul>
           </div>
-          <aside className="w-full lg:w-[320px] lg:shrink-0">
+          <aside className="flex w-full flex-col gap-4 lg:w-[320px] lg:shrink-0">
+            <ProjectKnowledgePanel projectId={project.id} />
             <ProjectMemoryPanel projectId={project.id} />
           </aside>
         </div>

@@ -3,7 +3,6 @@ import { useCallback, useState } from "react";
 import {
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   indexDocument,
-  listDocuments,
   uploadDocument,
 } from "../api";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
@@ -130,48 +129,25 @@ async function uploadAttachments(
 ) {
   const { threadId, projectId } = scope;
 
-  const waitForIngestion = async (attachmentId: string, documentId: string, filename: string) => {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      let docs;
-      try {
-        docs = await listDocuments(projectId);
-      } catch {
-        continue;
-      }
-      const current = docs.find((d) => d.id === documentId);
-      if (current === undefined) continue;
-      if (current.status === "embedded") {
-        onStatus(attachmentId, { status: "ready" });
-        setAttachNote("");
-        return;
-      }
-      if (current.status === "error" || current.status === "stale") {
-        onStatus(attachmentId, {
-          status: "error",
-          error: current.error || `Could not index ${filename}.`,
-        });
-        setAttachNote(`Could not index ${filename}${current.error ? `: ${current.error}` : "."}`);
-        return;
-      }
-    }
-    setAttachNote(`${filename} is still processing…`);
-  };
-
   const uploadDocumentAttachment = async (attachment: ComposerAttachment) => {
     if (attachment.file === undefined) return;
     setAttachNote(`Uploading ${attachment.filename}…`);
     onStatus(attachment.id, { status: "uploading" });
     try {
       const doc = await uploadDocument(attachment.file, { threadId, projectId });
+      // The document is usable inline as soon as it is uploaded — its full text is
+      // injected into the prompt on send — so don't block sending on embedding.
+      // Mark ready immediately, then index in the background so the large-document
+      // RAG fallback and project knowledge retrieval stay available.
       onStatus(attachment.id, {
-        status: "processing",
+        status: "ready",
         documentId: doc.id,
         artifactId: doc.artifactId,
       });
-      setAttachNote(`Processing ${attachment.filename}…`);
-      await indexDocument(doc.id);
-      await waitForIngestion(attachment.id, doc.id, attachment.filename);
+      setAttachNote("");
+      void indexDocument(doc.id).catch(() => {
+        // Best-effort: inline full-text still works even if background indexing fails.
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : `Failed to upload ${attachment.filename}.`;
       onStatus(attachment.id, { status: "error", error: message });

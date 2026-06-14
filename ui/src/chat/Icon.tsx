@@ -72,6 +72,7 @@ const CODEPOINTS = {
   moreHorizontal: 0xe061,
   artifact: 0xe017,
   plus: 0xe001,
+  upload: 0xe06d,
   externalLink: 0xe00e,
   volume: 0xe0e4,
   sortUp: 0xe013,
