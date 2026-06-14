@@ -241,7 +241,7 @@ export function Sidebar({
               the round user circle opens the account menu too - and it works while
               the rail is collapsed, where only the avatar is shown. */}
           <button
-            className={`flex w-full items-center rounded-md transition-colors hover:bg-[#2a2a28] ${
+            className={`flex w-full items-center rounded-md ${
               railCollapsed ? "justify-center p-1" : "gap-3 px-1.5 py-1"
             }`}
             type="button"
