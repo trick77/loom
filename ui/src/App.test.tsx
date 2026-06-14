@@ -804,7 +804,107 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
     "/api/artifacts/images/upload",
     expect.objectContaining({ method: "POST" }),
   );
+  expect(document.querySelector('img[src="blob:tiny"]')).toBeInTheDocument();
+  expect(screen.queryByText("tiny.png")).not.toBeInTheDocument();
+  expect(screen.queryByText("Files must be 25 MB or smaller.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Attached tiny.png.")).not.toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "What is this image?" })).toBeInTheDocument();
+});
+
+test("retries a failed deferred new-chat image upload before streaming", async () => {
+  let createThreadCalls = 0;
+  let imageUploadCalls = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t2","role":"user","content":"What is this image?","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.close();
+    },
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+    if (url === "/api/threads" && init?.method === "POST") {
+      createThreadCalls += 1;
+      return Response.json(
+        {
+          id: `t${createThreadCalls}`,
+          title: "What is this image?",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        },
+        { status: 201 },
+      );
+    }
+    if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
+      imageUploadCalls += 1;
+      if (imageUploadCalls === 1) return new Response("boom", { status: 500 });
+      return Response.json({
+        id: "art_image_retry",
+        threadId: "t2",
+        displayFilename: "tiny.png",
+        mimeType: "image/png",
+        sizeBytes: 68,
+        createdAt: "2026-05-30T00:00:00Z",
+        downloadUrl: "/api/artifacts/art_image_retry/download",
+      });
+    }
+    if (url === "/api/threads/t2/messages:stream" && init?.method === "POST") {
+      return new Response(stream, { status: 200 });
+    }
+    if (url.endsWith("/messages:stream") && init?.method === "POST") {
+      throw new Error(`unexpected stream ${url}`);
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  stubURLObjectMethods(() => "blob:tiny", () => undefined);
+
+  render(<App />);
+  const textbox = await screen.findByPlaceholderText("How can I help you today?");
+  const composer = textbox.closest("form");
+  const fileInput = composer?.querySelector('input[type="file"]');
+  if (fileInput === null || fileInput === undefined) throw new Error("file input missing");
+  fireEvent.change(fileInput, {
+    target: {
+      files: [new File(["png"], "tiny.png", { type: "image/png" })],
+    },
+  });
+  fireEvent.change(textbox, { target: { value: "What is this image?" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/artifacts/images/upload",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  await waitFor(() => expect(screen.getByText("failed to upload image")).toBeInTheDocument());
+  expect(
+    fetchMock.mock.calls.some(([url, init]) => String(url) === "/api/threads/t1/messages:stream" && init?.method === "POST"),
+  ).toBe(false);
+  expect(screen.queryByText("Files must be 25 MB or smaller.")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t2/messages:stream",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "What is this image?", imageAttachmentIds: ["art_image_retry"] }),
+      }),
+    ),
+  );
+  expect(imageUploadCalls).toBe(2);
+  expect(window.location.pathname).toBe("/chat/t2");
 });
 
 test("active sidebar chat shows actions menu with locked entries", async () => {

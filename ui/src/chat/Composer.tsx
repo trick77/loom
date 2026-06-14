@@ -1,7 +1,8 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 
 import { ATTACHMENT_ACCEPT } from "../api";
-import { attachAcceptedFiles } from "./attachmentFiles";
+import { AttachmentExtensionPill } from "./AttachmentExtensionPill";
+import { attachAcceptedFiles, attachmentExtensionLabel } from "./attachmentFiles";
 import { Icon } from "./Icon";
 import { FileIcon } from "./icons";
 import type { ComposerAttachment } from "./useDocumentAttachments";
@@ -187,11 +188,12 @@ function AttachmentPreview({
   onRemove?: (id: string) => void;
 }) {
   const status = attachmentStatusLabel(attachment);
+  const extensionLabel = attachmentExtensionLabel(attachment.filename);
   const uploading =
     attachment.status === "uploading" || attachment.status === "processing";
   return (
     <div className="group/attachment relative flex h-[76px] w-[180px] max-w-full overflow-hidden rounded-lg border border-[#4b4a46] bg-[#343432] text-[#f3f0e8] shadow-[0_8px_18px_rgba(0,0,0,0.18)]">
-      <div className="grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]">
+      <div className="relative grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]">
         {attachment.previewUrl !== undefined ? (
           <img
             className="h-full w-full object-cover"
@@ -204,6 +206,7 @@ function AttachmentPreview({
             <FileIcon />
           </div>
         )}
+        {extensionLabel !== null && <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill>}
       </div>
       <div className="min-w-0 flex-1 px-3 py-2">
         <div className="ui-message-text truncate">{attachment.filename}</div>

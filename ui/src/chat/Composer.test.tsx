@@ -31,11 +31,8 @@ test("reports unsupported picker files instead of silently ignoring them", () =>
   const input = composer!.querySelector('input[type="file"]');
   expect(input).not.toBeNull();
 
-  fireEvent.change(input!, {
-    target: {
-      files: [new File(["binary"], "installer.exe", { type: "application/octet-stream" })],
-    },
-  });
+  const zip = new File(["binary"], "archive.zip", { type: "application/zip" });
+  fireEvent.change(input!, { target: { files: [zip] } });
 
   expect(onAttachFiles).not.toHaveBeenCalled();
   expect(onAttachError).toHaveBeenCalledWith(
@@ -106,6 +103,7 @@ test("renders uploading attachment previews inside the composer", () => {
   );
 
   expect(screen.getByText("quarterly-report.pdf")).toBeInTheDocument();
+  expect(screen.getByText("PDF")).toBeInTheDocument();
   expect(screen.getByText("Uploading...")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Remove quarterly-report.pdf" })).toBeInTheDocument();
 });
@@ -139,6 +137,7 @@ test("shows a thumbnail for previewable image attachments", () => {
   );
 
   expect(document.querySelector('img[src="blob:image-preview"]')).toBeInTheDocument();
+  expect(screen.getByText("PNG")).toBeInTheDocument();
 });
 
 test("keeps attachment previews above the draft text area", () => {
