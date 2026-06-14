@@ -169,10 +169,12 @@ test("keeps attachment previews above the draft text area", () => {
 
   const attachment = screen.getByText("diagram.pdf");
   const textbox = screen.getByRole("textbox");
+  const attachmentStrip = screen.getByLabelText("Message attachments");
 
   expect(
     attachment.compareDocumentPosition(textbox) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).not.toBe(0);
+  expect(attachmentStrip).toHaveClass("flex-none", "overflow-y-auto");
 });
 
 test("removes an attachment preview before send", () => {

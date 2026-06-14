@@ -99,7 +99,10 @@ export function Composer({
       }}
     >
       {attachments.length > 0 && (
-        <div className={`${padX} pt-5 pb-2`}>
+        <div
+          aria-label="Message attachments"
+          className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[104px]`}
+        >
           <div className="flex flex-wrap gap-2">
             {attachments.map((attachment) => (
               <AttachmentPreview
