@@ -34,7 +34,8 @@ describe("UsagePanel", () => {
     expect(screen.getByText("88")).toBeInTheDocument(); // embedding tokens
     expect(screen.getByText("6")).toBeInTheDocument(); // embedding requests
     expect(screen.getByText("4")).toBeInTheDocument(); // web searches
-    expect(screen.getByText("1234 / 2000")).toBeInTheDocument(); // memory length
+    // getByText normalizes the thin space (U+202F) to a regular space.
+    expect(screen.getByText("1 234 / 2 000")).toBeInTheDocument(); // memory length (thin-space grouped)
   });
 
   it("shows an error message when loading fails", async () => {
