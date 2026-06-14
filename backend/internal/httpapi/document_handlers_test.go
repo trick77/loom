@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/trick77/slopr/internal/artifact"
@@ -102,15 +103,32 @@ func TestHandleUploadDocument_chatDocumentLimit(t *testing.T) {
 }
 
 func TestHandleUploadDocument_payloadTooLarge(t *testing.T) {
+	// Content over the limit is enforced in documents.Upload (which returns
+	// ErrTooLarge); the handler must map that to 413 so the client reports a size
+	// error. The request body itself stays within the handler's MaxBytesReader.
+	svc := &fakeDocumentService{uploadErr: documents.ErrTooLarge}
+	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, multipartUpload(t, "large.pdf", "bytes", map[string]string{"threadId": "t1"}))
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleUploadDocument_oversizedBodyRejectedByMaxBytes(t *testing.T) {
+	// A body that exceeds even the multipart-overhead allowance is stopped at the
+	// handler's MaxBytesReader during parsing, before reaching the service.
 	svc := &fakeDocumentService{}
 	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	fw, err := mw.CreateFormFile("file", "large.pdf")
+	fw, err := mw.CreateFormFile("file", "huge.pdf")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fw.Write(bytes.Repeat([]byte("x"), artifact.MaxArtifactSizeBytes+1)); err != nil {
+	if _, err := fw.Write(bytes.Repeat([]byte("x"), artifact.MaxArtifactSizeBytes+(2<<20))); err != nil {
 		t.Fatal(err)
 	}
 	if err := mw.Close(); err != nil {
@@ -125,6 +143,24 @@ func TestHandleUploadDocument_payloadTooLarge(t *testing.T) {
 
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want 413; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleUploadDocument_malformedBodyIsBadRequestNotTooLarge(t *testing.T) {
+	svc := &fakeDocumentService{}
+	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	// A multipart content type with a body that is not actually valid multipart:
+	// the parse fails for a reason other than size, so it must not be reported as
+	// a 413 (which the client renders as a "25 MB or smaller" size error).
+	req := httptest.NewRequest(http.MethodPost, "/api/documents/upload", strings.NewReader("not a multipart body"))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=does-not-match")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for malformed upload; body=%s", rec.Code, rec.Body.String())
 	}
 }
 
