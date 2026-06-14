@@ -14,6 +14,8 @@ import (
 	"github.com/trick77/slopr/internal/documents"
 )
 
+const multipartUploadOverheadBytes = 1 << 20
+
 func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok {
@@ -101,7 +103,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes+multipartUploadOverheadBytes)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		if isRequestBodyTooLarge(err) {
 			writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
@@ -158,11 +160,16 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		writeJSONError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
-	size, copyErr := io.Copy(out, file)
+	size, copyErr := io.Copy(out, io.LimitReader(file, artifact.MaxArtifactSizeBytes+1))
 	closeErr := out.Close()
 	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(output.AbsPath)
 		writeJSONError(w, http.StatusInternalServerError, "write upload failed")
+		return
+	}
+	if size > artifact.MaxArtifactSizeBytes {
+		_ = os.Remove(output.AbsPath)
+		writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
 		return
 	}
 	created, err := s.artifacts.Create(r.Context(), artifact.CreateInput{

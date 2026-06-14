@@ -94,6 +94,7 @@ func TestUploadImageAttachmentEnforcesThreadImageLimit(t *testing.T) {
 func TestUploadImageAttachmentReturnsPayloadTooLarge(t *testing.T) {
 	server := newAuthenticatedChatServer(t, Deps{
 		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
 	})
 
 	body, contentType := multipartUploadBody(t, "file", "large.png", "image/png", bytes.Repeat([]byte("x"), artifact.MaxArtifactSizeBytes+1))
@@ -106,6 +107,25 @@ func TestUploadImageAttachmentReturnsPayloadTooLarge(t *testing.T) {
 
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadImageAttachmentAllowsMaxSizeFileWithMultipartOverhead(t *testing.T) {
+	server := newAuthenticatedChatServer(t, Deps{
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+	})
+
+	body, contentType := multipartUploadBody(t, "file", "limit.png", "image/png", bytes.Repeat([]byte("x"), artifact.MaxArtifactSizeBytes))
+	req := httptest.NewRequest(http.MethodPost, "/api/artifacts/images/upload", body)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 for max-size file upload with multipart overhead; body=%s", rec.Code, rec.Body.String())
 	}
 }
 
