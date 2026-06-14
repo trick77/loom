@@ -71,6 +71,10 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	// Cap the whole request body to the artifact size limit before parsing.
 	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		if isRequestBodyTooLarge(err) {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
+			return
+		}
 		writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large or malformed")
 		return
 	}
@@ -90,6 +94,10 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	})
 	if errors.Is(err, documents.ErrUnsupportedFormat) {
 		writeJSONError(w, http.StatusUnsupportedMediaType, "unsupported document format")
+		return
+	}
+	if errors.Is(err, documents.ErrChatDocumentLimit) {
+		writeJSONError(w, http.StatusConflict, "too many documents in this chat")
 		return
 	}
 	if err != nil {

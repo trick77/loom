@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AuthExpiredError,
+  DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+  DOCUMENT_MAX_UPLOAD_BYTES,
   createThread,
   listThreads,
   setProjectStarred,
@@ -28,7 +30,13 @@ import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
 import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
-import { useDocumentAttachments } from "./useDocumentAttachments";
+import {
+  createComposerAttachment,
+  isImageAttachment,
+  toSentAttachment,
+  useDocumentAttachments,
+  type ComposerAttachment,
+} from "./useDocumentAttachments";
 import { useChatData } from "./useChatData";
 import { useProjectActions } from "./useProjectActions";
 import { useThreadActions } from "./useThreadActions";
@@ -42,6 +50,7 @@ import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
+import { updateMessageAttachment } from "./chatUtils";
 
 export { buildImageStats } from "./artifacts";
 export { GeneratedArtifactCard } from "./GeneratedArtifactCard";
@@ -71,7 +80,8 @@ export function ChatShell({
   // Files attached on the new-chat start screen, held until the first send creates
   // a thread to bind them to (deferred upload — avoids orphan empty threads and
   // scopes the upload to the chat it was attached in).
-  const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>([]);
+  const [pendingAttachNote, setPendingAttachNote] = useState("");
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -90,7 +100,7 @@ export function ChatShell({
   // send time (the thread does not exist yet when the file is picked). Its
   // attachNote carries ingestion status/errors after the start screen is gone, so
   // it is surfaced in the chat panel the user lands on.
-  const { attachNote: deferredAttachNote, handleAttachFiles: flushPendingAttachments } =
+  const { attachNote: deferredAttachNote, uploadExistingAttachments: flushPendingAttachments } =
     useDocumentAttachments({});
   const [sendError, setSendError] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -224,7 +234,15 @@ export function ChatShell({
   // Drop files staged on the start screen if the user leaves it without sending,
   // so they can't bind to a different chat later.
   useEffect(() => {
-    if (route.view !== "new") setPendingAttachments([]);
+    if (route.view !== "new") {
+      setPendingAttachments((current) => {
+        current.forEach((attachment) => {
+          if (attachment.previewUrl !== undefined) URL.revokeObjectURL(attachment.previewUrl);
+        });
+        return [];
+      });
+      setPendingAttachNote("");
+    }
   }, [route.view]);
 
   useEffect(() => {
@@ -412,18 +430,54 @@ export function ChatShell({
     }
   }
 
-  async function handleSend() {
+  function handleAttachPendingFiles(files: File[]) {
+    const sizeFiltered = files.filter((file) => file.size <= DOCUMENT_MAX_UPLOAD_BYTES);
+    if (sizeFiltered.length < files.length) {
+      setPendingAttachNote("Files must be 25 MB or smaller.");
+    }
+    setPendingAttachments((current) => {
+      const remaining = DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - current.length;
+      if (remaining <= 0) {
+        setPendingAttachNote(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+        return current;
+      }
+      const accepted = sizeFiltered.slice(0, remaining);
+      if (accepted.length < sizeFiltered.length) {
+        setPendingAttachNote(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+      } else if (accepted.length > 0 && sizeFiltered.length === files.length) {
+        setPendingAttachNote("");
+      }
+      return [
+        ...current,
+        ...accepted.map((file) => createComposerAttachment(file, "queued")),
+      ];
+    });
+  }
+
+  function handleRemovePendingAttachment(id: string) {
+    setPendingAttachments((current) => {
+      const removed = current.find((attachment) => attachment.id === id);
+      if (removed?.previewUrl !== undefined) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((attachment) => attachment.id !== id);
+    });
+    setPendingAttachNote("");
+  }
+
+  async function handleSend(attachments: ComposerAttachment[] = pendingAttachments.map(toSentAttachment)) {
     const content = draft.trim();
     if (content === "" || isSending) return;
-    await sendContent(content, { restoreDraftOnError: true });
+    await sendContent(content, { restoreDraftOnError: true, attachments });
   }
 
   async function handleRetry(content: string) {
     if (content.trim() === "" || isSending || activeThread === null) return;
-    await sendContent(content, { restoreDraftOnError: false });
+    await sendContent(content, { restoreDraftOnError: false, attachments: [] });
   }
 
-  async function sendContent(content: string, options: { restoreDraftOnError: boolean }) {
+  async function sendContent(
+    content: string,
+    options: { restoreDraftOnError: boolean; attachments: ComposerAttachment[] },
+  ) {
     setDraft("");
     setIsSending(true);
     setStreamingText("");
@@ -435,6 +489,11 @@ export function ChatShell({
     let receivedThreadEvent = false;
     let keepFailedTurnVisible = false;
     const projectIDForNewThread = route.view === "project" ? route.projectID : null;
+    const updateSentAttachmentStatus = (id: string, patch: Partial<ComposerAttachment>) => {
+      const attachment = options.attachments.find((item) => item.id === id);
+      if (attachment !== undefined) Object.assign(attachment, patch);
+      setMessages((current) => updateMessageAttachment(current, id, patch));
+    };
     try {
       let targetThread = activeThread;
       if (targetThread === null) {
@@ -447,14 +506,19 @@ export function ChatShell({
         setMessages([]);
         navigate({ view: "chat", threadID: targetThread.id });
         setRoute({ view: "chat", threadID: targetThread.id });
-        // Now that a thread exists, flush any files attached on the start screen,
-        // bound to it (project-less => private to this chat). Fire-and-forget so it
-        // ingests in parallel with the first turn.
+        // Now that a thread exists, flush files attached on the start screen,
+        // bound to it (project-less => private to this chat). Image uploads must
+        // finish before the first model request so their artifact ids can be sent
+        // as multimodal inputs; document indexing still continues in the background.
         if (pendingAttachments.length > 0) {
-          flushPendingAttachments(pendingAttachments, {
-            threadId: targetThread.id,
-            projectId: projectIDForNewThread ?? undefined,
-          });
+          await flushPendingAttachments(
+            pendingAttachments,
+            {
+              threadId: targetThread.id,
+              projectId: projectIDForNewThread ?? undefined,
+            },
+            updateSentAttachmentStatus,
+          );
           setPendingAttachments([]);
         }
       }
@@ -465,9 +529,19 @@ export function ChatShell({
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
       const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
+      const imageAttachmentIds = options.attachments
+        .filter((attachment) => isImageAttachment(attachment) && attachment.artifactId !== undefined)
+        .map((attachment) => attachment.artifactId!);
       await streamMessage(targetThreadID, content, {
         onUserMessage: (message) => {
-          if (isCurrentThread()) setMessages((current) => [...current, message]);
+          if (isCurrentThread()) {
+            setMessages((current) => [
+              ...current,
+              options.attachments.length > 0
+                ? { ...message, attachments: options.attachments.map(toSentAttachment) }
+                : message,
+            ]);
+          }
         },
         onDelta: (delta) => {
           setStreamingText((current) => current + delta);
@@ -529,7 +603,7 @@ export function ChatShell({
           setProjects((current) => upsertProject(current, updatedProject));
         },
         onMcpStatus: (event) => setMcpStatus(event),
-      }, abortController.signal);
+      }, abortController.signal, { imageAttachmentIds });
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
@@ -723,12 +797,15 @@ export function ChatShell({
             sendDisabled={isSending}
             mcpStatus={mcpStatus}
             sendError={sendError}
-            pendingAttachmentNames={pendingAttachments.map((file) => file.name)}
+            attachments={pendingAttachments}
+            attachNote={pendingAttachNote}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onDraftChange={setDraft}
             onSend={handleSend}
             onStop={handleStopResponse}
-            onAttachFiles={(files) => setPendingAttachments((current) => [...current, ...files])}
+            onAttachFiles={handleAttachPendingFiles}
+            onAttachError={setPendingAttachNote}
+            onRemoveAttachment={handleRemovePendingAttachment}
           />
         ) : (
           <ChatPanel

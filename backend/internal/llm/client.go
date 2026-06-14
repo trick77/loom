@@ -51,11 +51,42 @@ type Config struct {
 
 // Message is one OpenAI-compatible chat message.
 type Message struct {
-	Role             string     `json:"role"`
-	Content          string     `json:"content,omitempty"`
-	ReasoningContent string     `json:"reasoning_content,omitempty"`
-	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	Role             string               `json:"role"`
+	Content          string               `json:"content,omitempty"`
+	ContentParts     []MessageContentPart `json:"-"`
+	ReasoningContent string               `json:"reasoning_content,omitempty"`
+	ToolCalls        []ToolCall           `json:"tool_calls,omitempty"`
+	ToolCallID       string               `json:"tool_call_id,omitempty"`
+}
+
+type MessageContentPart struct {
+	Type     string           `json:"type"`
+	Text     string           `json:"text,omitempty"`
+	ImageURL *MessageImageURL `json:"image_url,omitempty"`
+}
+
+type MessageImageURL struct {
+	URL string `json:"url"`
+}
+
+func (m Message) MarshalJSON() ([]byte, error) {
+	type messageAlias Message
+	if len(m.ContentParts) == 0 {
+		return json.Marshal(messageAlias(m))
+	}
+	return json.Marshal(struct {
+		Role             string               `json:"role"`
+		Content          []MessageContentPart `json:"content"`
+		ReasoningContent string               `json:"reasoning_content,omitempty"`
+		ToolCalls        []ToolCall           `json:"tool_calls,omitempty"`
+		ToolCallID       string               `json:"tool_call_id,omitempty"`
+	}{
+		Role:             m.Role,
+		Content:          m.ContentParts,
+		ReasoningContent: m.ReasoningContent,
+		ToolCalls:        m.ToolCalls,
+		ToolCallID:       m.ToolCallID,
+	})
 }
 
 // Client calls an OpenAI-compatible chat completion API.

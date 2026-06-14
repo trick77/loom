@@ -109,6 +109,15 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sendSSEJSON(stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
 	history := buildLLMHistory(user, userContext, projectContext, knowledgeContext, priorMessages, userMessage)
+	imageParts, err := s.imageContentParts(r.Context(), user.ID, threadID, userMessage.Content, body.ImageAttachmentIDs)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(imageParts) > 0 {
+		history[len(history)-1].Content = ""
+		history[len(history)-1].ContentParts = imageParts
+	}
 	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	// Background reasoning-title generation. The deferred wait is a safety net so

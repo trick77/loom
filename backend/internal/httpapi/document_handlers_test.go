@@ -89,6 +89,45 @@ func TestHandleUploadDocument_unsupportedFormat(t *testing.T) {
 	}
 }
 
+func TestHandleUploadDocument_chatDocumentLimit(t *testing.T) {
+	svc := &fakeDocumentService{uploadErr: documents.ErrChatDocumentLimit}
+	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, multipartUpload(t, "a.txt", "bytes", map[string]string{"threadId": "t1"}))
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleUploadDocument_payloadTooLarge(t *testing.T) {
+	svc := &fakeDocumentService{}
+	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("file", "large.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(bytes.Repeat([]byte("x"), artifact.MaxArtifactSizeBytes+1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/documents/upload", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleUploadDocument_disabledWhenServiceNil(t *testing.T) {
 	server := newAuthenticatedChatServer(t, Deps{})
 	rec := httptest.NewRecorder()

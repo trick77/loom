@@ -1,4 +1,6 @@
 import type { Message } from "../api";
+import type { ComposerAttachment } from "./useDocumentAttachments";
+import type { MessageWithActivityTrace } from "./types";
 
 export function greetingForNow(fullName: string) {
   const name = fullName.trim().split(/\s+/)[0];
@@ -20,4 +22,18 @@ export function previousUserContent(messages: Message[], beforeIndex: number): s
     if (message.role === "user") return message.content;
   }
   return null;
+}
+
+export function updateMessageAttachment(
+  messages: MessageWithActivityTrace[],
+  attachmentId: string,
+  patch: Partial<ComposerAttachment>,
+): MessageWithActivityTrace[] {
+  return messages.map((message) => {
+    if (message.attachments === undefined) return message;
+    const attachments = message.attachments.map((attachment) =>
+      attachment.id === attachmentId ? { ...attachment, ...patch } : attachment,
+    );
+    return { ...message, attachments };
+  });
 }

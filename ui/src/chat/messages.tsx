@@ -23,22 +23,28 @@ import { MessageCitations } from "./Citations";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { CheckIcon, DownloadIcon, FileIcon } from "./icons";
 import { Icon } from "./Icon";
+import type { ComposerAttachment } from "./useDocumentAttachments";
 
 export function MessageBubble({
   message,
   retryContent,
   onRetry,
 }: {
-  message: Message;
+  message: Message & { attachments?: ComposerAttachment[] };
   retryContent: string | null;
   onRetry(content: string): void;
 }) {
   if (message.role === "user") {
     return (
       <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
-        <div className="ui-message-text ui-user-message-text rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
-          {message.content}
-        </div>
+        {message.attachments !== undefined && message.attachments.length > 0 && (
+          <SentAttachments attachments={message.attachments} />
+        )}
+        {message.content !== "" && (
+          <div className="ui-message-text ui-user-message-text mt-2 rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
+            {message.content}
+          </div>
+        )}
         <MessageActions
           copyLabel="Copy message"
           copyText={message.content}
@@ -60,6 +66,59 @@ export function MessageBubble({
       <MessageCitations citations={message.citations} />
     </div>
   );
+}
+
+function SentAttachments({ attachments }: { attachments: ComposerAttachment[] }) {
+  return (
+    <div className="mb-2 flex flex-wrap justify-end gap-2">
+      {attachments.map((attachment) => (
+        <SentAttachment key={attachment.id} attachment={attachment} />
+      ))}
+    </div>
+  );
+}
+
+function SentAttachment({ attachment }: { attachment: ComposerAttachment }) {
+  useEffect(() => {
+    const previewUrl = attachment.previewUrl;
+    return () => {
+      if (previewUrl !== undefined) URL.revokeObjectURL(previewUrl);
+    };
+  }, [attachment.previewUrl]);
+
+  return (
+    <div className="flex h-[92px] w-[210px] max-w-full overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-left text-[#f3f0e8]">
+      <div className="grid h-full w-[82px] shrink-0 place-items-center bg-[#242421]">
+        {attachment.previewUrl !== undefined ? (
+          <img className="h-full w-full object-cover" src={attachment.previewUrl} alt="" aria-hidden="true" />
+        ) : (
+          <div className="grid h-11 w-11 place-items-center rounded-md border border-[#55534d] bg-[#30302d] text-[#c9c5bb]">
+            <FileIcon />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1 px-3 py-2.5">
+        <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
+        <div className="ui-meta-text mt-1 truncate text-[#aaa79e]">{sentAttachmentStatus(attachment)}</div>
+      </div>
+    </div>
+  );
+}
+
+function sentAttachmentStatus(attachment: ComposerAttachment): string {
+  if (attachment.status === "queued") return "Attached";
+  if (attachment.status === "uploading") return "Uploading...";
+  if (attachment.status === "processing") return "Processing...";
+  if (attachment.status === "error") return attachment.error ?? "Upload failed";
+  return formatAttachmentBytes(attachment.sizeBytes);
+}
+
+function formatAttachmentBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb >= 10 ? 0 : 1)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
 }
 
 function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {

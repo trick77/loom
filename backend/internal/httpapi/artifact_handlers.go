@@ -1,13 +1,17 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/slopr/internal/documents"
 )
 
 func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +90,137 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", found.MIMEType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+headerSafeFilename(found.DisplayFilename)+`"`)
 	http.ServeContent(w, r, found.DisplayFilename, found.CreatedAt, file)
+}
+
+func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	if s.artifacts == nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes)
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		if isRequestBodyTooLarge(err) {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
+			return
+		}
+		writeJSONError(w, http.StatusBadRequest, "invalid upload")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer file.Close()
+
+	mimeType := header.Header.Get("Content-Type")
+	if !strings.HasPrefix(mimeType, "image/") {
+		writeJSONError(w, http.StatusUnsupportedMediaType, "unsupported image format")
+		return
+	}
+	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(header.Filename)), ".")
+	if extension == "" {
+		extension = imageExtensionFromMIME(mimeType)
+	}
+	if extension == "" {
+		writeJSONError(w, http.StatusUnsupportedMediaType, "unsupported image format")
+		return
+	}
+	threadID := strings.TrimSpace(r.FormValue("threadId"))
+	projectID := strings.TrimSpace(r.FormValue("projectId"))
+	if projectID == "" && threadID != "" {
+		count, err := s.countThreadUploads(r.Context(), user.ID, threadID)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "count image uploads failed")
+			return
+		}
+		if count >= documents.MaxChatDocuments {
+			writeJSONError(w, http.StatusConflict, "too many attachments in this chat")
+			return
+		}
+	}
+	var projectIDPtr *string
+	if projectID != "" {
+		projectIDPtr = &projectID
+	}
+	output, out, err := artifact.CreateUploadFile(artifact.UploadRequest{
+		UsersDir:        s.usersDir,
+		UserID:          user.ID,
+		ProjectID:       projectIDPtr,
+		DisplayFilename: header.Filename,
+		Extension:       extension,
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid upload")
+		return
+	}
+	size, copyErr := io.Copy(out, file)
+	closeErr := out.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(output.AbsPath)
+		writeJSONError(w, http.StatusInternalServerError, "write upload failed")
+		return
+	}
+	created, err := s.artifacts.Create(r.Context(), artifact.CreateInput{
+		UserID:          user.ID,
+		ThreadID:        threadID,
+		ProjectID:       projectIDPtr,
+		DisplayFilename: output.DisplayFilename,
+		VolumeRelPath:   output.VolumeRelPath,
+		MIMEType:        mimeType,
+		SizeBytes:       size,
+		Source:          "user_uploaded",
+	})
+	if err != nil {
+		_ = os.Remove(output.AbsPath)
+		writeJSONError(w, http.StatusInternalServerError, "save upload failed")
+		return
+	}
+	writeJSON(w, artifactResponseFromArtifact(created))
+}
+
+func (s *server) countThreadUploads(ctx context.Context, userID, threadID string) (int, error) {
+	items, err := s.artifacts.ListForThread(ctx, userID, threadID)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, item := range items {
+		if item.UserID == userID && item.ProjectID == nil && item.Source == "user_uploaded" {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func imageExtensionFromMIME(mimeType string) string {
+	switch mimeType {
+	case "image/jpeg":
+		return "jpg"
+	case "image/png":
+		return "png"
+	case "image/webp":
+		return "webp"
+	case "image/gif":
+		return "gif"
+	default:
+		return ""
+	}
+}
+
+func artifactResponseFromArtifact(item artifact.Artifact) artifactResponse {
+	return artifactResponse{
+		ID:              item.ID,
+		DisplayFilename: item.DisplayFilename,
+		MIMEType:        item.MIMEType,
+		SizeBytes:       item.SizeBytes,
+		ProjectID:       item.ProjectID,
+		DownloadURL:     item.DownloadURL,
+	}
 }
 
 func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, error) {

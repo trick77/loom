@@ -11,10 +11,11 @@ import { pendingArtifactLabels } from "./artifacts";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import { AssistantText, MessageBubble, PendingArtifactCard } from "./messages";
-import { useDocumentAttachments } from "./useDocumentAttachments";
+import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { McpStatusIndicator } from "./SidebarItems";
+import { WindowFileDrop } from "./WindowFileDrop";
 
 export function ChatPanel({
   thread,
@@ -59,7 +60,7 @@ export function ChatPanel({
   mcpStatus: McpStatusEvent | null;
   openThreadMenuID: string | null;
   onDraftChange(value: string): void;
-  onSend(): void;
+  onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onRetry(content: string): void;
   onOpenProject(project: Project): void;
@@ -175,15 +176,27 @@ export function ChatPanel({
     scrollToLatest();
   }, [scrollToLatest]);
 
-  const handleSendRequest = useCallback(() => {
-    pinToLatest();
-    onSend();
-  }, [onSend, pinToLatest]);
-
-  const { attachNote, handleAttachFiles } = useDocumentAttachments({
+  const {
+    attachNote,
+    attachments,
+    clearAttachments,
+    handleAttachError,
+    handleAttachFiles,
+    removeAttachment,
+  } = useDocumentAttachments({
     threadId: thread?.id,
     projectId: threadProject?.id,
   });
+
+  const handleSendRequest = useCallback(() => {
+    const sentAttachments = attachments.map(toSentAttachment);
+    if (sentAttachments.length > 0) clearAttachments({ revokePreviewUrls: false });
+    pinToLatest();
+    onSend(sentAttachments);
+  }, [attachments, clearAttachments, onSend, pinToLatest]);
+  const imageUploadPending = attachments.some(
+    (attachment) => isImageAttachment(attachment) && attachment.artifactId === undefined && attachment.status !== "error",
+  );
 
   const handleRetryRequest = useCallback(
     (content: string) => {
@@ -346,16 +359,24 @@ export function ChatPanel({
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
             <div className="ui-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
+              <WindowFileDrop
+                enabled={thread !== null}
+                onAttachFiles={handleAttachFiles}
+                onAttachError={handleAttachError}
+              />
               <Composer
                 variant="chat"
                 draft={draft}
                 isSending={isSending}
-                sendDisabled={sendDisabled}
+                sendDisabled={sendDisabled || imageUploadPending}
                 placeholder="Write a message..."
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}
                 onStop={onStop}
                 onAttachFiles={thread === null ? undefined : handleAttachFiles}
+                onAttachError={handleAttachError}
+                attachments={attachments}
+                onRemoveAttachment={removeAttachment}
               />
               {(attachNote || deferredAttachNote) !== "" && (
                 <div className="ui-meta-text mt-2 text-center text-[#858178]">
