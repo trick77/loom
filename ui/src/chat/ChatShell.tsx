@@ -502,10 +502,6 @@ export function ChatShell({
             ? await createThread({ title: content })
             : await createThread({ projectId: projectIDForNewThread, title: content });
         createdThreadForFallback = targetThread;
-        setActiveThread(targetThread);
-        setMessages([]);
-        navigate({ view: "chat", threadID: targetThread.id });
-        setRoute({ view: "chat", threadID: targetThread.id });
         // Now that a thread exists, flush files attached on the start screen,
         // bound to it (project-less => private to this chat). Image uploads must
         // finish before the first model request so their artifact ids can be sent
@@ -519,8 +515,22 @@ export function ChatShell({
             },
             updateSentAttachmentStatus,
           );
+          const failedImageAttachment = options.attachments.find(
+            (attachment) =>
+              isImageAttachment(attachment) &&
+              (attachment.status === "error" || attachment.artifactId === undefined),
+          );
+          if (failedImageAttachment !== undefined) {
+            throw new Error(failedImageAttachment.error ?? `Failed to upload ${failedImageAttachment.filename}.`);
+          }
+          // Keep the object URL alive for the optimistic sent bubble.
           setPendingAttachments([]);
         }
+        setActiveThread(targetThread);
+        activeThreadIDRef.current = targetThread.id;
+        setMessages([]);
+        navigate({ view: "chat", threadID: targetThread.id });
+        setRoute({ view: "chat", threadID: targetThread.id });
       }
       const targetThreadID = targetThread.id;
       activeThreadIDRef.current = targetThreadID;

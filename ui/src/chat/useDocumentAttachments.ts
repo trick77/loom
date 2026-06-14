@@ -214,7 +214,7 @@ async function uploadAttachments(
       try {
         const image = await uploadImageAttachment(attachment.file, { threadId, projectId });
         onStatus(attachment.id, { status: "ready", artifactId: image.id });
-        setAttachNote(`Attached ${attachment.filename}.`);
+        setAttachNote("");
       } catch (error) {
         const message = error instanceof Error ? error.message : `Failed to upload ${attachment.filename}.`;
         onStatus(attachment.id, { status: "error", error: message });

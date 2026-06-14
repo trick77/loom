@@ -19,11 +19,13 @@ import {
   pendingFencedArtifact,
   type DownloadableResponse,
 } from "./artifacts";
+import { AttachmentExtensionPill } from "./AttachmentExtensionPill";
+import { attachmentExtensionLabel } from "./attachmentFiles";
 import { MessageCitations } from "./Citations";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { CheckIcon, DownloadIcon, FileIcon } from "./icons";
 import { Icon } from "./Icon";
-import type { ComposerAttachment } from "./useDocumentAttachments";
+import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
 export function MessageBubble({
   message,
@@ -69,26 +71,64 @@ export function MessageBubble({
 }
 
 function SentAttachments({ attachments }: { attachments: ComposerAttachment[] }) {
+  const imageAttachments = attachments.filter(isImageAttachment);
+  const fileAttachments = attachments.filter((attachment) => !isImageAttachment(attachment));
   return (
-    <div className="mb-2 flex flex-wrap justify-end gap-2">
-      {attachments.map((attachment) => (
-        <SentAttachment key={attachment.id} attachment={attachment} />
-      ))}
+    <div className="mb-2 space-y-2">
+      {imageAttachments.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {imageAttachments.map((attachment) => (
+            <SentImageAttachment key={attachment.id} attachment={attachment} />
+          ))}
+        </div>
+      )}
+      {fileAttachments.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {fileAttachments.map((attachment) => (
+            <SentFileAttachment key={attachment.id} attachment={attachment} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function SentAttachment({ attachment }: { attachment: ComposerAttachment }) {
+function useRevokeSentPreview(previewUrl: string | undefined) {
   useEffect(() => {
-    const previewUrl = attachment.previewUrl;
+    const currentPreviewUrl = previewUrl;
     return () => {
-      if (previewUrl !== undefined) URL.revokeObjectURL(previewUrl);
+      if (currentPreviewUrl !== undefined) URL.revokeObjectURL(currentPreviewUrl);
     };
-  }, [attachment.previewUrl]);
+  }, [previewUrl]);
+}
+
+function SentImageAttachment({ attachment }: { attachment: ComposerAttachment }) {
+  useRevokeSentPreview(attachment.previewUrl);
+
+  return (
+    <div
+      data-testid="sent-image-attachment"
+      className="h-[120px] w-[120px] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#242421]"
+    >
+      {attachment.previewUrl !== undefined ? (
+        <img className="h-full w-full object-cover" src={attachment.previewUrl} alt="" aria-hidden="true" />
+      ) : (
+        <div className="relative grid h-full w-full place-items-center text-[#c9c5bb]">
+          <FileIcon />
+          <AttachmentExtensionPill>{attachmentExtensionLabel(attachment.filename) ?? "IMG"}</AttachmentExtensionPill>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SentFileAttachment({ attachment }: { attachment: ComposerAttachment }) {
+  const extensionLabel = attachmentExtensionLabel(attachment.filename);
+  useRevokeSentPreview(attachment.previewUrl);
 
   return (
     <div className="flex h-[92px] w-[210px] max-w-full overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-left text-[#f3f0e8]">
-      <div className="grid h-full w-[82px] shrink-0 place-items-center bg-[#242421]">
+      <div className="relative grid h-full w-[82px] shrink-0 place-items-center bg-[#242421]">
         {attachment.previewUrl !== undefined ? (
           <img className="h-full w-full object-cover" src={attachment.previewUrl} alt="" aria-hidden="true" />
         ) : (
@@ -96,6 +136,7 @@ function SentAttachment({ attachment }: { attachment: ComposerAttachment }) {
             <FileIcon />
           </div>
         )}
+        {extensionLabel !== null && <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill>}
       </div>
       <div className="min-w-0 flex-1 px-3 py-2.5">
         <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
