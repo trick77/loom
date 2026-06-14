@@ -111,7 +111,7 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "upload failed")
+		serverError(w, r, err, "upload failed")
 		return
 	}
 	writeJSON(w, toDocumentResponse(doc))
@@ -128,7 +128,7 @@ func (s *server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
 	}
 	docs, err := s.documents.List(r.Context(), user.ID, optionalQueryValue(r, "projectId"))
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list documents failed")
+		serverError(w, r, err, "list documents failed")
 		return
 	}
 	out := make([]documentResponse, 0, len(docs))
@@ -150,7 +150,7 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 	docID := r.PathValue("documentID")
 	doc, found, err := s.documents.Get(r.Context(), user.ID, docID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "load document failed")
+		serverError(w, r, err, "load document failed")
 		return
 	}
 	if !found {
@@ -183,7 +183,7 @@ func (s *server) handleUnindexDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.documents.Unindex(r.Context(), user.ID, r.PathValue("documentID")); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "unindex failed")
+		serverError(w, r, err, "unindex failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -199,7 +199,7 @@ func (s *server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.documents.Delete(r.Context(), user.ID, r.PathValue("documentID")); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "delete failed")
+		serverError(w, r, err, "delete failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

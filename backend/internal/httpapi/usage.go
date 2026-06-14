@@ -26,7 +26,7 @@ func (s *server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 	if s.usage != nil {
 		t, err := s.usage.Get(r.Context(), user.ID)
 		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "load usage failed")
+			serverError(w, r, err, "load usage failed")
 			return
 		}
 		totals = t

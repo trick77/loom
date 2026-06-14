@@ -35,7 +35,9 @@ var version = "dev" // overridden via -ldflags at build time
 func main() {
 	// Configure structured logging with an explicit handler so every line
 	// carries an RFC3339 timestamp (the package default does not guarantee one).
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	// The level is tunable via BACKEND_LOG_LEVEL (debug/info/warn/error).
+	logLevel := parseLogLevel(envDefault("BACKEND_LOG_LEVEL", "info"))
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		if err := runHealthcheck(healthcheckURL(envDefault("BACKEND_ADDR", ":8080"))); err != nil {
 			slog.Error("healthcheck failed", "err", err)
@@ -54,6 +56,21 @@ func envDefault(key, def string) string {
 		return value
 	}
 	return def
+}
+
+// parseLogLevel maps a BACKEND_LOG_LEVEL string to a slog.Level, defaulting to
+// Info for empty or unrecognized values.
+func parseLogLevel(raw string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func healthcheckURL(addr string) string {

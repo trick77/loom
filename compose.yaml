@@ -29,6 +29,7 @@ services:
     user: "1000:1000"
     environment:
       BACKEND_ADDR: ":8080"
+      BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-info}"
       BACKEND_DB_PATH: "/data/slopr.db"
       BACKEND_USERS_DIR: "/data/users"
       BACKEND_PUBLIC_URL: "${BACKEND_PUBLIC_URL}"

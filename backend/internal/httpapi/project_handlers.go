@@ -18,7 +18,7 @@ func (s *server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := s.chat.ListProjects(r.Context(), user.ID, archived)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list projects failed")
+		serverError(w, r, err, "list projects failed")
 		return
 	}
 	writeJSON(w, projects)
@@ -39,7 +39,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		Description: body.Description,
 	})
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
+		writeChatStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
 		return
 	}
 	s.recordUsage("project_created", func() error { return s.usage.IncProjectCreated(r.Context(), user.ID) })
@@ -58,7 +58,7 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	project, found, err := s.chat.UpdateProject(r.Context(), user.ID, r.PathValue("projectID"), body.chatInput())
 	if err != nil {
-		writeChatStoreError(w, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
+		writeChatStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
 		return
 	}
 	if !found {
@@ -83,7 +83,7 @@ func (s *server) handleSetProjectStarred(w http.ResponseWriter, r *http.Request,
 	}
 	project, found, err := s.chat.SetProjectStarred(r.Context(), user.ID, r.PathValue("projectID"), starred)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "update project failed")
+		serverError(w, r, err, "update project failed")
 		return
 	}
 	if !found {
@@ -108,7 +108,7 @@ func (s *server) handleSetProjectArchived(w http.ResponseWriter, r *http.Request
 	}
 	found, err := s.chat.SetProjectArchived(r.Context(), user.ID, r.PathValue("projectID"), archived)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "update project failed")
+		serverError(w, r, err, "update project failed")
 		return
 	}
 	if !found {
@@ -126,7 +126,7 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	projectID := r.PathValue("projectID")
 	artifacts, err := s.artifactsForProjectCleanup(r.Context(), user.ID, projectID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "list project artifacts failed")
+		serverError(w, r, err, "list project artifacts failed")
 		return
 	}
 	// Must run before DeleteProject: the projects FK cascade would otherwise drop
@@ -134,13 +134,13 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	// cascade).
 	if s.documents != nil {
 		if err := s.documents.DeleteProjectData(r.Context(), user.ID, projectID); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "delete project knowledge failed")
+			serverError(w, r, err, "delete project knowledge failed")
 			return
 		}
 	}
 	found, err := s.chat.DeleteProject(r.Context(), user.ID, projectID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "delete project failed")
+		serverError(w, r, err, "delete project failed")
 		return
 	}
 	if !found {

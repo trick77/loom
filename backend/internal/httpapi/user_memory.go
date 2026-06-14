@@ -83,7 +83,7 @@ func (s *server) handleGetUserMemory(w http.ResponseWriter, r *http.Request) {
 	}
 	memory, _, err := s.chat.GetUserMemory(r.Context(), user.ID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "get user memory failed")
+		serverError(w, r, err, "get user memory failed")
 		return
 	}
 	writeJSON(w, memory)
@@ -102,12 +102,12 @@ func (s *server) handleRefreshUserMemory(w http.ResponseWriter, r *http.Request)
 	}
 	count, err := s.chat.CountUserMessages(r.Context(), user.ID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "refresh user memory failed")
+		serverError(w, r, err, "refresh user memory failed")
 		return
 	}
 	messages, err := s.chat.ListUserMessages(r.Context(), user.ID, memoryRebuildLimit)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "refresh user memory failed")
+		serverError(w, r, err, "refresh user memory failed")
 		return
 	}
 	// Full rebuild: ignore prior memory and re-summarize from scratch.
@@ -117,7 +117,7 @@ func (s *server) handleRefreshUserMemory(w http.ResponseWriter, r *http.Request)
 	}
 	memory, _, err := s.chat.GetUserMemory(r.Context(), user.ID)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "get user memory failed")
+		serverError(w, r, err, "get user memory failed")
 		return
 	}
 	writeJSON(w, memory)

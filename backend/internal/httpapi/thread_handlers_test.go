@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -385,6 +387,39 @@ func TestCreateThreadHidesInternalStoreErrors(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "database unavailable") {
 		t.Fatalf("body leaks internal error: %s", rec.Body.String())
+	}
+}
+
+func TestDeleteThreadLogsUnderlyingCauseOn500(t *testing.T) {
+	// The whole point of the rework: a 500 must surface its cause in the logs
+	// while the client still gets a generic message.
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	store := &fakeChatStore{
+		thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
+		deleteThreadErr: errors.New("delete thread: database is locked"),
+	}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodDelete, "/api/threads/thr_1", "")
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "database is locked") {
+		t.Fatalf("body leaks internal error: %s", rec.Body.String())
+	}
+	logged := logs.String()
+	if !strings.Contains(logged, "request failed") {
+		t.Fatalf("log missing failure marker: %s", logged)
+	}
+	if !strings.Contains(logged, "database is locked") {
+		t.Fatalf("log does not surface the underlying cause: %s", logged)
 	}
 }
 

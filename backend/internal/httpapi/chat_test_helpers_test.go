@@ -96,6 +96,7 @@ type fakeChatStore struct {
 	assistantContextErr       error
 	lastCitations             json.RawMessage
 	createThreadErr           error
+	deleteThreadErr           error
 	updateThreadInput         chat.UpdateThreadInput
 	updateThreadErr           error
 	projectMemory             chat.ProjectMemory
@@ -226,6 +227,9 @@ func (f *fakeChatStore) SetThreadArchived(context.Context, string, string, bool)
 }
 
 func (f *fakeChatStore) DeleteThread(context.Context, string, string) (bool, error) {
+	if f.deleteThreadErr != nil {
+		return false, f.deleteThreadErr
+	}
 	return true, nil
 }
 

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"time"
 )
 
@@ -11,7 +12,7 @@ func recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				slog.Error("panic recovered", "err", rec, "path", r.URL.Path)
+				slog.Error("panic recovered", "err", rec, "path", r.URL.Path, "stack", string(debug.Stack()))
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 			}
 		}()
@@ -62,6 +63,20 @@ func logging(next http.Handler) http.Handler {
 		if rec.status == 0 {
 			rec.status = http.StatusOK
 		}
-		slog.Info("request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "dur", time.Since(start).String())
+		// Level reflects the outcome so failures stand out instead of drowning in
+		// the INFO request stream: 5xx -> ERROR, 4xx -> WARN, otherwise INFO.
+		level := slog.LevelInfo
+		switch {
+		case rec.status >= 500:
+			level = slog.LevelError
+		case rec.status >= 400:
+			level = slog.LevelWarn
+		}
+		slog.LogAttrs(r.Context(), level, "request",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.Int("status", rec.status),
+			slog.String("dur", time.Since(start).String()),
+		)
 	})
 }
