@@ -562,12 +562,19 @@ export async function streamMessage(
   content: string,
   handlers: StreamHandlers,
   signal?: AbortSignal,
-  opts: { imageAttachmentIds?: string[] } = {},
+  opts: { imageAttachmentIds?: string[]; documentAttachmentIds?: string[] } = {},
 ): Promise<void> {
-  const requestBody =
-    opts.imageAttachmentIds !== undefined && opts.imageAttachmentIds.length > 0
-      ? { content, imageAttachmentIds: opts.imageAttachmentIds }
-      : { content };
+  const requestBody: {
+    content: string;
+    imageAttachmentIds?: string[];
+    documentAttachmentIds?: string[];
+  } = { content };
+  if (opts.imageAttachmentIds && opts.imageAttachmentIds.length > 0) {
+    requestBody.imageAttachmentIds = opts.imageAttachmentIds;
+  }
+  if (opts.documentAttachmentIds && opts.documentAttachmentIds.length > 0) {
+    requestBody.documentAttachmentIds = opts.documentAttachmentIds;
+  }
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

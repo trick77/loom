@@ -14,6 +14,7 @@ import { ChatRow } from "../chats/ChatRow";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
+import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel";
 
 export function ProjectDetailPage({
   project,
@@ -152,7 +153,7 @@ export function ProjectDetailPage({
                 </button>
               </div>
             </header>
-            <div className="mt-10">
+            <div className="mt-10 max-w-[674px]">
               <WindowFileDrop enabled onAttachFiles={handleAttachFiles} onAttachError={handleAttachError} />
               <Composer
                 variant="start"
@@ -213,7 +214,8 @@ export function ProjectDetailPage({
               )}
             </ul>
           </div>
-          <aside className="w-full lg:w-[320px] lg:shrink-0">
+          <aside className="flex w-full flex-col gap-4 lg:w-[320px] lg:shrink-0">
+            <ProjectKnowledgePanel projectId={project.id} />
             <ProjectMemoryPanel projectId={project.id} />
           </aside>
         </div>

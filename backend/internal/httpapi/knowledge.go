@@ -33,7 +33,7 @@ type citation struct {
 // similarity search, not parsed from the model's output). It is best-effort: any
 // failure (feature disabled, embedding down, nothing indexed) yields empty
 // results and never blocks the chat turn.
-func (s *server) knowledgeContextForThread(ctx context.Context, userID string, thread chat.Thread, query string) (string, []citation) {
+func (s *server) knowledgeContextForThread(ctx context.Context, userID string, thread chat.Thread, query string, excludeDocIDs map[string]bool) (string, []citation) {
 	if s.documents == nil || strings.TrimSpace(query) == "" {
 		return "", nil
 	}
@@ -49,6 +49,12 @@ func (s *server) knowledgeContextForThread(ctx context.Context, userID string, t
 	b.WriteString("<knowledge>\n")
 	var citations []citation
 	for _, c := range chunks {
+		// Skip chunks belonging to a document already inlined in full this turn, so
+		// the model never sees the same source twice (mirrors AnythingLLM excluding
+		// pinned documents from RAG results).
+		if excludeDocIDs[c.DocumentID] {
+			continue
+		}
 		text := strings.TrimSpace(c.Text)
 		entry := "\n[" + c.Filename + "]\n" + text + "\n"
 		if b.Len()+len(entry) > knowledgeCharBudget {

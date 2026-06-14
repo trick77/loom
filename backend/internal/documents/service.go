@@ -39,6 +39,7 @@ type ArtifactStore interface {
 // Indexer runs the ingest pipeline for one document (implemented by *rag.Ingester).
 type Indexer interface {
 	Ingest(ctx context.Context, userID, documentID string) error
+	ExtractText(ctx context.Context, userID, documentID string) (string, error)
 }
 
 type UsageRecorder interface {
@@ -192,6 +193,13 @@ func (s *Service) countThreadUploads(ctx context.Context, userID, threadID strin
 // off the request path should invoke it in a detached goroutine.
 func (s *Service) Index(ctx context.Context, userID, documentID string) error {
 	return s.indexer.Ingest(ctx, userID, documentID)
+}
+
+// FullText returns a document's full plain text (re-extracted from the volume),
+// for inlining an attached document into the chat prompt. It does not require the
+// document to be indexed and leaves its RAG state untouched.
+func (s *Service) FullText(ctx context.Context, userID, documentID string) (string, error) {
+	return s.indexer.ExtractText(ctx, userID, documentID)
 }
 
 func (s *Service) List(ctx context.Context, userID string, projectID *string) ([]rag.Document, error) {

@@ -20,6 +20,10 @@ func (f *fakeIndexer) Ingest(_ context.Context, _, documentID string) error {
 	return nil
 }
 
+func (f *fakeIndexer) ExtractText(_ context.Context, _, _ string) (string, error) {
+	return "", nil
+}
+
 type fakeEmbedder struct{}
 
 func (fakeEmbedder) Embed(_ context.Context, inputs []string) (rag.EmbedResult, error) {

@@ -544,6 +544,9 @@ export function ChatShell({
       const imageAttachmentIds = options.attachments
         .filter((attachment) => isImageAttachment(attachment) && attachment.artifactId !== undefined)
         .map((attachment) => attachment.artifactId!);
+      const documentAttachmentIds = options.attachments
+        .filter((attachment) => !isImageAttachment(attachment) && attachment.documentId !== undefined)
+        .map((attachment) => attachment.documentId!);
       await streamMessage(targetThreadID, content, {
         onUserMessage: (message) => {
           if (isCurrentThread()) {
@@ -615,7 +618,7 @@ export function ChatShell({
           setProjects((current) => upsertProject(current, updatedProject));
         },
         onMcpStatus: (event) => setMcpStatus(event),
-      }, abortController.signal, { imageAttachmentIds });
+      }, abortController.signal, { imageAttachmentIds, documentAttachmentIds });
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
