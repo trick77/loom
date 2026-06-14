@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
 import { useDocumentAttachments } from "../chat/useDocumentAttachments";
+import { WindowFileDrop } from "../chat/WindowFileDrop";
 import { Icon } from "../chat/Icon";
 import { ChatRow } from "../chats/ChatRow";
 import { SidebarOpenButton } from "../SidebarOpenButton";
@@ -63,7 +64,9 @@ export function ProjectDetailPage({
   const projectMenuKey = `Project:${project.id}`;
   const [hoveredThreadID, setHoveredThreadID] = useState<string | null>(null);
   // Composer uploads are scoped to this project's knowledge.
-  const { attachNote, attachments, handleAttachFiles, removeAttachment } = useDocumentAttachments({ projectId: project.id });
+  const { attachNote, attachments, handleAttachError, handleAttachFiles, removeAttachment } = useDocumentAttachments({
+    projectId: project.id,
+  });
 
   useEffect(() => {
     if (openThreadMenuID !== projectMenuKey) return;
@@ -136,6 +139,7 @@ export function ProjectDetailPage({
               </div>
             </header>
             <div className="mt-10">
+              <WindowFileDrop enabled onAttachFiles={handleAttachFiles} onAttachError={handleAttachError} />
               <Composer
                 variant="start"
                 draft={draft}
@@ -147,6 +151,7 @@ export function ProjectDetailPage({
                 onSend={onSend}
                 onStop={onStop}
                 onAttachFiles={handleAttachFiles}
+                onAttachError={handleAttachError}
                 attachments={attachments}
                 onRemoveAttachment={removeAttachment}
               />

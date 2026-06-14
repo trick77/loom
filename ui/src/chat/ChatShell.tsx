@@ -797,6 +797,7 @@ export function ChatShell({
             onSend={handleSend}
             onStop={handleStopResponse}
             onAttachFiles={handleAttachPendingFiles}
+            onAttachError={setPendingAttachNote}
             onRemoveAttachment={handleRemovePendingAttachment}
           />
         ) : (

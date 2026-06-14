@@ -15,6 +15,7 @@ import { toSentAttachment, useDocumentAttachments, type ComposerAttachment } fro
 import { isNearBottom, previousUserContent } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { McpStatusIndicator } from "./SidebarItems";
+import { WindowFileDrop } from "./WindowFileDrop";
 
 export function ChatPanel({
   thread,
@@ -175,7 +176,14 @@ export function ChatPanel({
     scrollToLatest();
   }, [scrollToLatest]);
 
-  const { attachNote, attachments, clearAttachments, handleAttachFiles, removeAttachment } = useDocumentAttachments({
+  const {
+    attachNote,
+    attachments,
+    clearAttachments,
+    handleAttachError,
+    handleAttachFiles,
+    removeAttachment,
+  } = useDocumentAttachments({
     threadId: thread?.id,
     projectId: threadProject?.id,
   });
@@ -348,6 +356,11 @@ export function ChatPanel({
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
             <div className="ui-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
+              <WindowFileDrop
+                enabled={thread !== null}
+                onAttachFiles={handleAttachFiles}
+                onAttachError={handleAttachError}
+              />
               <Composer
                 variant="chat"
                 draft={draft}
@@ -358,6 +371,7 @@ export function ChatPanel({
                 onSend={handleSendRequest}
                 onStop={onStop}
                 onAttachFiles={thread === null ? undefined : handleAttachFiles}
+                onAttachError={handleAttachError}
                 attachments={attachments}
                 onRemoveAttachment={removeAttachment}
               />

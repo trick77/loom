@@ -125,7 +125,19 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
     [],
   );
 
-  return { attachNote, attachments, clearAttachments, handleAttachFiles, removeAttachment, uploadExistingAttachments };
+  const handleAttachError = useCallback((message: string) => {
+    setAttachNote(message);
+  }, []);
+
+  return {
+    attachNote,
+    attachments,
+    clearAttachments,
+    handleAttachError,
+    handleAttachFiles,
+    removeAttachment,
+    uploadExistingAttachments,
+  };
 }
 
 function uploadAttachments(

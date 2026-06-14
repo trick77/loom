@@ -1,26 +1,10 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 
 import { DOCUMENT_ACCEPT } from "../api";
+import { attachAcceptedFiles } from "./attachmentFiles";
 import { Icon } from "./Icon";
 import { CloseIcon, FileIcon } from "./icons";
 import type { ComposerAttachment } from "./useDocumentAttachments";
-
-// Drop has no native `accept` filter (unlike the file input), so we filter the
-// dropped files by the same extension list the picker advertises.
-const ACCEPTED_EXTENSIONS = DOCUMENT_ACCEPT.split(",").map((ext) => ext.trim().toLowerCase());
-function filterAcceptedFiles(files: File[]): File[] {
-  return files.filter((file) => {
-    const name = file.name.toLowerCase();
-    return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
-  });
-}
-
-// True only for OS file drags. Dragging selected text or a link also fires the
-// drag events, but carries no "Files" type - we ignore those so the highlight
-// doesn't flash for drags we can't attach.
-function isFileDrag(event: { dataTransfer: DataTransfer }): boolean {
-  return Array.from(event.dataTransfer.types).includes("Files");
-}
 
 export function Composer({
   variant,
@@ -33,6 +17,7 @@ export function Composer({
   onSend,
   onStop,
   onAttachFiles,
+  onAttachError,
   attachments = [],
   onRemoveAttachment,
 }: {
@@ -48,16 +33,11 @@ export function Composer({
   // Invoked with the files the user picked from the native chooser. When omitted,
   // the attach button is disabled (e.g. before a thread exists).
   onAttachFiles?(files: File[]): void;
+  onAttachError?(message: string): void;
   attachments?: ComposerAttachment[];
   onRemoveAttachment?(id: string): void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Whether a drag is currently hovering the composer (drives the highlight).
-  const [isDragging, setIsDragging] = useState(false);
-  // dragenter/dragleave fire for every child element, so a plain boolean would
-  // flicker. Count enters minus leaves; the highlight is on while depth > 0.
-  const dragDepth = useRef(0);
-  const dropEnabled = onAttachFiles !== undefined;
   // Base (empty) height per variant, preserved as the textarea's min-height so
   // the composer keeps its current look before any auto-grow kicks in.
   const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
@@ -99,11 +79,15 @@ export function Composer({
     observer.observe(el);
     return () => observer.disconnect();
   }, [autoGrow]);
+  const attachFiles = useCallback(
+    (files: File[]) => {
+      attachAcceptedFiles({ files, onAttachFiles, onAttachError });
+    },
+    [onAttachError, onAttachFiles],
+  );
   return (
     <form
-      className={`ui-composer relative flex flex-col rounded-[20px] border bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)] transition-colors ${
-        isDragging ? "border-accent bg-[#332f27]" : "border-[#4b4a46]"
-      }`}
+      className="ui-composer relative flex flex-col rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]"
       onSubmit={(event) => {
         event.preventDefault();
         if (isSending) {
@@ -113,68 +97,9 @@ export function Composer({
         if (sendDisabled) return;
         onSend();
       }}
-      onDragEnter={
-        dropEnabled
-          ? (event) => {
-              if (!isFileDrag(event)) return;
-              event.preventDefault();
-              dragDepth.current += 1;
-              setIsDragging(true);
-            }
-          : undefined
-      }
-      onDragOver={
-        dropEnabled
-          ? (event) => {
-              if (!isFileDrag(event)) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "copy";
-            }
-          : undefined
-      }
-      onDragLeave={
-        dropEnabled
-          ? (event) => {
-              if (!isFileDrag(event)) return;
-              event.preventDefault();
-              dragDepth.current = Math.max(0, dragDepth.current - 1);
-              if (dragDepth.current === 0) setIsDragging(false);
-            }
-          : undefined
-      }
-      onDrop={
-        dropEnabled
-          ? (event) => {
-              if (!isFileDrag(event)) return;
-              event.preventDefault();
-              dragDepth.current = 0;
-              setIsDragging(false);
-              const files = filterAcceptedFiles(Array.from(event.dataTransfer.files ?? []));
-              if (files.length > 0) onAttachFiles?.(files);
-            }
-          : undefined
-      }
     >
-      {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[19px] bg-[#332f27]/92 text-sm font-medium text-[#f3f0e8]">
-          {variant === "chat" ? "Drop files here to add to chat" : "Drop files here to attach"}
-        </div>
-      )}
-      <textarea
-        ref={textareaRef}
-        className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} pb-3 pt-5 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
-        placeholder={placeholder}
-        value={draft}
-        onChange={(event) => onDraftChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            if (!isSending && !sendDisabled) onSend();
-          }
-        }}
-      />
       {attachments.length > 0 && (
-        <div className={`${padX} pb-3`}>
+        <div className={`${padX} pt-5 pb-2`}>
           <div className="flex flex-wrap gap-2">
             {attachments.map((attachment) => (
               <AttachmentPreview
@@ -186,6 +111,19 @@ export function Composer({
           </div>
         </div>
       )}
+      <textarea
+        ref={textareaRef}
+        className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} ${attachments.length > 0 ? "pt-2" : "pt-5"} pb-3 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
+        placeholder={placeholder}
+        value={draft}
+        onChange={(event) => onDraftChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            if (!isSending && !sendDisabled) onSend();
+          }
+        }}
+      />
       <div className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}>
         <button
           className="leading-none disabled:opacity-40"
@@ -206,7 +144,7 @@ export function Composer({
             const files = Array.from(event.target.files ?? []);
             // Reset so picking the same file again re-fires change.
             event.target.value = "";
-            if (files.length > 0) onAttachFiles?.(files);
+            if (files.length > 0) attachFiles(files);
           }}
         />
         <div className="ui-meta-text flex items-center text-[#d8d4ca]">

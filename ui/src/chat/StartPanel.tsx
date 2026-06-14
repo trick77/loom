@@ -6,6 +6,7 @@ import { ErrorText } from "./ErrorText";
 import { greetingForNow } from "./chatUtils";
 import { McpStatusIndicator } from "./SidebarItems";
 import type { ComposerAttachment } from "./useDocumentAttachments";
+import { WindowFileDrop } from "./WindowFileDrop";
 
 export function StartPanel({
   displayName,
@@ -21,6 +22,7 @@ export function StartPanel({
   onSend,
   onStop,
   onAttachFiles,
+  onAttachError,
   onRemoveAttachment,
 }: {
   displayName: string;
@@ -36,6 +38,7 @@ export function StartPanel({
   onSend(): void;
   onStop(): void;
   onAttachFiles(files: File[]): void;
+  onAttachError(message: string): void;
   onRemoveAttachment(id: string): void;
 }) {
   // No thread exists yet, so uploads are deferred: files are held (see
@@ -58,6 +61,7 @@ export function StartPanel({
           {greetingForNow(displayName)}
         </h2>
         <div className="w-full max-w-[674px]">
+          <WindowFileDrop enabled onAttachFiles={onAttachFiles} onAttachError={onAttachError} />
           <Composer
             variant="start"
             autoFocus
@@ -69,6 +73,7 @@ export function StartPanel({
             onSend={onSend}
             onStop={onStop}
             onAttachFiles={onAttachFiles}
+            onAttachError={onAttachError}
             attachments={attachments}
             onRemoveAttachment={onRemoveAttachment}
           />
