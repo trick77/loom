@@ -85,6 +85,8 @@ services:
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
     image: apache/tika:2.9.2.1-full
+    networks:
+      - slopr
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9998"]
       interval: 60s
