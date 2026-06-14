@@ -38,11 +38,9 @@ func (s *inlineStub) Retrieve(context.Context, string, *string, *string, string,
 	return nil, nil
 }
 
-func threadIDPtr(v string) *string { return &v }
-
 func TestDocumentInlineContext_inlinesChatScopedDoc(t *testing.T) {
 	stub := &inlineStub{
-		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "notes.md", ThreadID: threadIDPtr("t1")}},
+		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "notes.md", ThreadID: strPtr("t1")}},
 		texts: map[string]string{"d1": "Summarize me please."},
 	}
 	s := &server{documents: stub}
@@ -62,7 +60,7 @@ func TestDocumentInlineContext_inlinesChatScopedDoc(t *testing.T) {
 
 func TestDocumentInlineContext_skipsOutOfScopeDoc(t *testing.T) {
 	stub := &inlineStub{
-		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "x.md", ThreadID: threadIDPtr("other")}},
+		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "x.md", ThreadID: strPtr("other")}},
 		texts: map[string]string{"d1": "secret"},
 	}
 	s := &server{documents: stub}
@@ -73,17 +71,38 @@ func TestDocumentInlineContext_skipsOutOfScopeDoc(t *testing.T) {
 	}
 }
 
-func TestDocumentInlineContext_oversizedFallsBackToRAG(t *testing.T) {
-	big := strings.Repeat("a", inlineDocCharBudget+1)
+func TestDocumentInlineContext_truncatesOversizedDoc(t *testing.T) {
+	big := strings.Repeat("a", inlineDocByteBudget+1000)
 	stub := &inlineStub{
-		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "big.txt", ThreadID: threadIDPtr("t1")}},
+		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "big.txt", ThreadID: strPtr("t1")}},
 		texts: map[string]string{"d1": big},
 	}
 	s := &server{documents: stub}
 
 	block, inlined := s.documentInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, []string{"d1"})
-	if block != "" || inlined["d1"] {
-		t.Fatalf("oversized doc must not be inlined (RAG fallback), got block len=%d inlined=%v", len(block), inlined)
+	// The model must still see the document's head this turn (never "nothing").
+	if !strings.Contains(block, "big.txt") || !strings.Contains(block, "[… document truncated") {
+		t.Fatalf("oversized doc should be inlined truncated, got %q", block)
+	}
+	// Truncated docs stay RAG-eligible, so they are NOT in the exclusion set.
+	if inlined["d1"] {
+		t.Errorf("truncated doc must remain RAG-eligible (not in inlined set), got %v", inlined)
+	}
+	if len(block) > inlineDocByteBudget {
+		t.Errorf("block %d bytes exceeds budget %d", len(block), inlineDocByteBudget)
+	}
+}
+
+func TestDocumentInlineContext_dedupesRepeatedID(t *testing.T) {
+	stub := &inlineStub{
+		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "notes.md", ThreadID: strPtr("t1")}},
+		texts: map[string]string{"d1": "UNIQUEMARKER content."},
+	}
+	s := &server{documents: stub}
+
+	block, _ := s.documentInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, []string{"d1", "d1"})
+	if got := strings.Count(block, "UNIQUEMARKER"); got != 1 {
+		t.Errorf("repeated id must be inlined once, got %d occurrences", got)
 	}
 }
 
