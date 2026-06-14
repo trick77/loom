@@ -21,6 +21,8 @@ type DocumentService interface {
 	Index(context.Context, string, string) error
 	Unindex(context.Context, string, string) error
 	Delete(context.Context, string, string) error
+	DeleteThreadData(context.Context, string, string) error
+	DeleteProjectData(context.Context, string, string) error
 	Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error)
 }
 

@@ -254,6 +254,40 @@ func TestDeleteThreadRemovesGeneratedArtifactFiles(t *testing.T) {
 	}
 }
 
+func TestDeleteThreadPurgesThreadRAGData(t *testing.T) {
+	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	docs := &fakeDocumentService{}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store, Documents: docs})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodDelete, "/api/threads/thr_1", "")
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body.String())
+	}
+	if len(docs.deletedThreadData) != 1 || docs.deletedThreadData[0] != "thr_1" {
+		t.Fatalf("DeleteThreadData calls = %v, want [thr_1]", docs.deletedThreadData)
+	}
+}
+
+func TestBulkDeleteThreadsPurgesThreadRAGData(t *testing.T) {
+	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	docs := &fakeDocumentService{}
+	srv := newAuthenticatedChatServer(t, Deps{Chat: store, Documents: docs})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads:delete", `{"threadIds":["thr_1","thr_2"]}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if len(docs.deletedThreadData) != 2 {
+		t.Fatalf("DeleteThreadData calls = %v, want 2", docs.deletedThreadData)
+	}
+}
+
 func TestBulkDeleteThreadsRemovesArtifactsAndCountsDeleted(t *testing.T) {
 	usersDir := t.TempDir()
 	writeArtifact := func(rel string) string {

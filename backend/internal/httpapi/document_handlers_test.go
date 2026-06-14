@@ -15,9 +15,12 @@ import (
 )
 
 type fakeDocumentService struct {
-	uploaded  documents.UploadInput
-	uploadErr error
-	doc       rag.Document
+	uploaded           documents.UploadInput
+	uploadErr          error
+	doc                rag.Document
+	deletedThreadData  []string
+	deletedProjectData []string
+	deleteDataErr      error
 }
 
 func (f *fakeDocumentService) Upload(_ context.Context, in documents.UploadInput) (rag.Document, artifact.Artifact, error) {
@@ -36,6 +39,14 @@ func (f *fakeDocumentService) Get(context.Context, string, string) (rag.Document
 func (f *fakeDocumentService) Index(context.Context, string, string) error   { return nil }
 func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return nil }
 func (f *fakeDocumentService) Delete(context.Context, string, string) error  { return nil }
+func (f *fakeDocumentService) DeleteThreadData(_ context.Context, _ string, threadID string) error {
+	f.deletedThreadData = append(f.deletedThreadData, threadID)
+	return f.deleteDataErr
+}
+func (f *fakeDocumentService) DeleteProjectData(_ context.Context, _ string, projectID string) error {
+	f.deletedProjectData = append(f.deletedProjectData, projectID)
+	return f.deleteDataErr
+}
 func (f *fakeDocumentService) Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error) {
 	return nil, nil
 }
