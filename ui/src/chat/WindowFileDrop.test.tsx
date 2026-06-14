@@ -36,6 +36,7 @@ test("routes supported dropped files from the window and reports unsupported fil
   const onAttachError = vi.fn();
   const note = new File(["hello"], "notes.txt", { type: "text/plain" });
   const image = new File(["png"], "screenshot.png", { type: "image/png" });
+  const unsupported = new File(["binary"], "installer.exe", { type: "application/octet-stream" });
   render(
     <WindowFileDrop
       enabled
@@ -44,10 +45,10 @@ test("routes supported dropped files from the window and reports unsupported fil
     />,
   );
 
-  fireEvent.drop(window, windowFileDrag([note, image]));
+  fireEvent.drop(window, windowFileDrag([note, image, unsupported]));
 
-  expect(onAttachFiles).toHaveBeenCalledWith([note]);
+  expect(onAttachFiles).toHaveBeenCalledWith([note, image]);
   expect(onAttachError).toHaveBeenCalledWith(
-    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, or HTML.",
+    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF.",
   );
 });

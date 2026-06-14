@@ -6,6 +6,7 @@ import {
   indexDocument,
   listDocuments,
   uploadDocument,
+  uploadImageAttachment,
 } from "../api";
 
 export type ComposerAttachmentStatus = "queued" | "uploading" | "processing" | "ready" | "error";
@@ -45,6 +46,10 @@ export function createComposerAttachment(file: File, status: ComposerAttachmentS
 export function toSentAttachment(attachment: ComposerAttachment): ComposerAttachment {
   const { file: _file, ...sent } = attachment;
   return sent;
+}
+
+export function isImageAttachment(attachment: Pick<ComposerAttachment, "mimeType" | "filename">): boolean {
+  return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(attachment.filename);
 }
 
 type AttachmentStatusHandler = (id: string, patch: Partial<ComposerAttachment>) => void;
@@ -108,7 +113,7 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
       );
       setAttachments((current) => [...current, ...pending]);
       if (threadId !== undefined || projectId !== undefined) {
-        uploadAttachments(pending, { threadId, projectId }, updateAttachment, setAttachNote);
+        void uploadAttachments(pending, { threadId, projectId }, updateAttachment, setAttachNote);
       }
     },
     [attachments.length, scope.threadId, scope.projectId, updateAttachment],
@@ -120,7 +125,7 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
       override: { threadId?: string; projectId?: string },
       onStatus: AttachmentStatusHandler,
     ) => {
-      uploadAttachments(existingAttachments, override, onStatus, setAttachNote);
+      return uploadAttachments(existingAttachments, override, onStatus, setAttachNote);
     },
     [],
   );
@@ -140,7 +145,7 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
   };
 }
 
-function uploadAttachments(
+async function uploadAttachments(
   attachments: ComposerAttachment[],
   scope: { threadId?: string; projectId?: string },
   onStatus: AttachmentStatusHandler,
@@ -176,31 +181,47 @@ function uploadAttachments(
     setAttachNote(`${filename} is still processing…`);
   };
 
-  void (async () => {
-    for (const attachment of attachments) {
-      if (attachment.file === undefined) continue;
-      if (threadId === undefined && projectId === undefined) {
-        setAttachNote(`${attachment.filename} will upload when you send.`);
-        continue;
-      }
+  const uploadDocumentAttachment = async (attachment: ComposerAttachment) => {
+    if (attachment.file === undefined) return;
+    setAttachNote(`Uploading ${attachment.filename}…`);
+    onStatus(attachment.id, { status: "uploading" });
+    try {
+      const doc = await uploadDocument(attachment.file, { threadId, projectId });
+      onStatus(attachment.id, {
+        status: "processing",
+        documentId: doc.id,
+        artifactId: doc.artifactId,
+      });
+      setAttachNote(`Processing ${attachment.filename}…`);
+      await indexDocument(doc.id);
+      await waitForIngestion(attachment.id, doc.id, attachment.filename);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Failed to upload ${attachment.filename}.`;
+      onStatus(attachment.id, { status: "error", error: message });
+      setAttachNote(message);
+    }
+  };
+
+  for (const attachment of attachments) {
+    if (attachment.file === undefined || attachment.artifactId !== undefined) continue;
+    if (threadId === undefined && projectId === undefined) {
+      setAttachNote(`${attachment.filename} will upload when you send.`);
+      continue;
+    }
+    if (isImageAttachment(attachment)) {
       setAttachNote(`Uploading ${attachment.filename}…`);
       onStatus(attachment.id, { status: "uploading" });
       try {
-        const doc = await uploadDocument(attachment.file, { threadId, projectId });
-        onStatus(attachment.id, {
-          status: "processing",
-          documentId: doc.id,
-          artifactId: doc.artifactId,
-        });
-        setAttachNote(`Processing ${attachment.filename}…`);
-        await indexDocument(doc.id);
-        await waitForIngestion(attachment.id, doc.id, attachment.filename);
+        const image = await uploadImageAttachment(attachment.file, { threadId, projectId });
+        onStatus(attachment.id, { status: "ready", artifactId: image.id });
+        setAttachNote(`Attached ${attachment.filename}.`);
       } catch (error) {
         const message = error instanceof Error ? error.message : `Failed to upload ${attachment.filename}.`;
         onStatus(attachment.id, { status: "error", error: message });
         setAttachNote(message);
-        return;
       }
+      continue;
     }
-  })();
+    void uploadDocumentAttachment(attachment);
+  }
 }

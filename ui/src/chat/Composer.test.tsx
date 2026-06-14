@@ -33,13 +33,13 @@ test("reports unsupported picker files instead of silently ignoring them", () =>
 
   fireEvent.change(input!, {
     target: {
-      files: [new File(["png"], "screenshot.png", { type: "image/png" })],
+      files: [new File(["binary"], "installer.exe", { type: "application/octet-stream" })],
     },
   });
 
   expect(onAttachFiles).not.toHaveBeenCalled();
   expect(onAttachError).toHaveBeenCalledWith(
-    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, or HTML.",
+    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF.",
   );
 });
 
@@ -47,7 +47,7 @@ test("attaches supported picker files and reports unsupported companions", () =>
   const onAttachFiles = vi.fn();
   const onAttachError = vi.fn();
   const note = new File(["hello"], "notes.txt", { type: "text/plain" });
-  const image = new File(["png"], "screenshot.png", { type: "image/png" });
+  const unsupported = new File(["binary"], "installer.exe", { type: "application/octet-stream" });
   render(
     <Composer
       variant="chat"
@@ -69,13 +69,13 @@ test("attaches supported picker files and reports unsupported companions", () =>
 
   fireEvent.change(input!, {
     target: {
-      files: [note, image],
+      files: [note, unsupported],
     },
   });
 
   expect(onAttachFiles).toHaveBeenCalledWith([note]);
   expect(onAttachError).toHaveBeenCalledWith(
-    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, or HTML.",
+    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF.",
   );
 });
 

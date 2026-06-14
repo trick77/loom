@@ -32,6 +32,7 @@ import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
 import {
   createComposerAttachment,
+  isImageAttachment,
   toSentAttachment,
   useDocumentAttachments,
   type ComposerAttachment,
@@ -505,11 +506,12 @@ export function ChatShell({
         setMessages([]);
         navigate({ view: "chat", threadID: targetThread.id });
         setRoute({ view: "chat", threadID: targetThread.id });
-        // Now that a thread exists, flush any files attached on the start screen,
-        // bound to it (project-less => private to this chat). Fire-and-forget so it
-        // ingests in parallel with the first turn.
+        // Now that a thread exists, flush files attached on the start screen,
+        // bound to it (project-less => private to this chat). Image uploads must
+        // finish before the first model request so their artifact ids can be sent
+        // as multimodal inputs; document indexing still continues in the background.
         if (pendingAttachments.length > 0) {
-          flushPendingAttachments(
+          await flushPendingAttachments(
             pendingAttachments,
             {
               threadId: targetThread.id,
@@ -527,12 +529,17 @@ export function ChatShell({
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
       const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
+      const imageAttachmentIds = options.attachments
+        .filter((attachment) => isImageAttachment(attachment) && attachment.artifactId !== undefined)
+        .map((attachment) => attachment.artifactId!);
       await streamMessage(targetThreadID, content, {
         onUserMessage: (message) => {
           if (isCurrentThread()) {
             setMessages((current) => [
               ...current,
-              options.attachments.length > 0 ? { ...message, attachments: options.attachments } : message,
+              options.attachments.length > 0
+                ? { ...message, attachments: options.attachments.map(toSentAttachment) }
+                : message,
             ]);
           }
         },
@@ -596,7 +603,7 @@ export function ChatShell({
           setProjects((current) => upsertProject(current, updatedProject));
         },
         onMcpStatus: (event) => setMcpStatus(event),
-      }, abortController.signal);
+      }, abortController.signal, { imageAttachmentIds });
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));

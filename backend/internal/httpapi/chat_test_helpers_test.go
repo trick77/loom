@@ -31,7 +31,12 @@ func (f fakeArtifactStore) Create(context.Context, artifact.CreateInput) (artifa
 	return artifact.Artifact{}, nil
 }
 
-func (f fakeArtifactStore) Get(context.Context, string, string) (artifact.Artifact, bool, error) {
+func (f fakeArtifactStore) Get(_ context.Context, userID, artifactID string) (artifact.Artifact, bool, error) {
+	for _, item := range f.artifacts {
+		if item.UserID == userID && item.ID == artifactID {
+			return item, true, nil
+		}
+	}
 	return artifact.Artifact{}, false, nil
 }
 

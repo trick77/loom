@@ -1,9 +1,9 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 
-import { DOCUMENT_ACCEPT } from "../api";
+import { ATTACHMENT_ACCEPT } from "../api";
 import { attachAcceptedFiles } from "./attachmentFiles";
 import { Icon } from "./Icon";
-import { CloseIcon, FileIcon } from "./icons";
+import { FileIcon } from "./icons";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 
 export function Composer({
@@ -141,7 +141,7 @@ export function Composer({
           ref={fileInputRef}
           type="file"
           multiple
-          accept={DOCUMENT_ACCEPT}
+          accept={ATTACHMENT_ACCEPT}
           className="hidden"
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
@@ -223,7 +223,7 @@ function AttachmentPreview({
           aria-label={`Remove ${attachment.filename}`}
           onClick={() => onRemove(attachment.id)}
         >
-          <CloseIcon />
+          <Icon name="close" size="12px" />
         </button>
       )}
     </div>

@@ -1,7 +1,7 @@
-import { DOCUMENT_ACCEPT } from "../api";
+import { ATTACHMENT_ACCEPT } from "../api";
 
-const ACCEPTED_EXTENSIONS = DOCUMENT_ACCEPT.split(",").map((ext) => ext.trim().toLowerCase());
-const SUPPORTED_FILE_TYPES = "PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, or HTML";
+const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",").map((ext) => ext.trim().toLowerCase());
+const SUPPORTED_FILE_TYPES = "PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF";
 
 export const UNSUPPORTED_FILE_MESSAGE = `Unsupported file type. Use ${SUPPORTED_FILE_TYPES}.`;
 

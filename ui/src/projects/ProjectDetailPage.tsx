@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
-import { useDocumentAttachments } from "../chat/useDocumentAttachments";
+import {
+  isImageAttachment,
+  toSentAttachment,
+  useDocumentAttachments,
+  type ComposerAttachment,
+} from "../chat/useDocumentAttachments";
 import { WindowFileDrop } from "../chat/WindowFileDrop";
 import { Icon } from "../chat/Icon";
 import { ChatRow } from "../chats/ChatRow";
@@ -45,7 +50,7 @@ export function ProjectDetailPage({
   openThreadMenuID: string | null;
   onBack(): void;
   onDraftChange(value: string): void;
-  onSend(): void;
+  onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onOpenThread(threadID: string): void;
   onRenameThread(thread: Thread): void;
@@ -64,9 +69,18 @@ export function ProjectDetailPage({
   const projectMenuKey = `Project:${project.id}`;
   const [hoveredThreadID, setHoveredThreadID] = useState<string | null>(null);
   // Composer uploads are scoped to this project's knowledge.
-  const { attachNote, attachments, handleAttachError, handleAttachFiles, removeAttachment } = useDocumentAttachments({
-    projectId: project.id,
-  });
+  const { attachNote, attachments, clearAttachments, handleAttachError, handleAttachFiles, removeAttachment } =
+    useDocumentAttachments({
+      projectId: project.id,
+    });
+  const imageUploadPending = attachments.some(
+    (attachment) => isImageAttachment(attachment) && attachment.artifactId === undefined && attachment.status !== "error",
+  );
+  const handleSendRequest = () => {
+    const sentAttachments = attachments.map(toSentAttachment);
+    if (sentAttachments.length > 0) clearAttachments({ revokePreviewUrls: false });
+    onSend(sentAttachments);
+  };
 
   useEffect(() => {
     if (openThreadMenuID !== projectMenuKey) return;
@@ -144,11 +158,11 @@ export function ProjectDetailPage({
                 variant="start"
                 draft={draft}
                 isSending={isSending}
-                sendDisabled={sendDisabled}
+                sendDisabled={sendDisabled || imageUploadPending}
                 placeholder="How can I help you today?"
                 autoFocus
                 onDraftChange={onDraftChange}
-                onSend={onSend}
+                onSend={handleSendRequest}
                 onStop={onStop}
                 onAttachFiles={handleAttachFiles}
                 onAttachError={handleAttachError}

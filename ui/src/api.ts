@@ -105,6 +105,8 @@ export type Document = {
 // allowlist (internal/documents/allowlist.go).
 export const DOCUMENT_ACCEPT =
   ".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.html";
+export const IMAGE_ATTACHMENT_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
+export const ATTACHMENT_ACCEPT = `${DOCUMENT_ACCEPT},${IMAGE_ATTACHMENT_ACCEPT}`;
 export const DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE = 5;
 export const DOCUMENT_MAX_CHAT_ATTACHMENTS = 10;
 export const DOCUMENT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -487,6 +489,27 @@ export async function uploadDocument(
   return expectJSON<Document>(response, "failed to upload document");
 }
 
+export async function uploadImageAttachment(
+  file: File,
+  opts: { threadId?: string; projectId?: string } = {},
+): Promise<Artifact> {
+  const form = new FormData();
+  form.append("file", file);
+  if (opts.threadId) form.append("threadId", opts.threadId);
+  if (opts.projectId) form.append("projectId", opts.projectId);
+  const response = await fetch("/api/artifacts/images/upload", { method: "POST", body: form });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (response.status === 415) {
+    throw new Error("Unsupported image format");
+  }
+  if (response.status === 413) {
+    throw new Error("Files must be 25 MB or smaller.");
+  }
+  return expectJSON<Artifact>(response, "failed to upload image");
+}
+
 export async function listDocuments(projectId?: string): Promise<Document[]> {
   const suffix = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
   const response = await fetch(`/api/documents${suffix}`);
@@ -536,11 +559,16 @@ export async function streamMessage(
   content: string,
   handlers: StreamHandlers,
   signal?: AbortSignal,
+  opts: { imageAttachmentIds?: string[] } = {},
 ): Promise<void> {
+  const requestBody =
+    opts.imageAttachmentIds !== undefined && opts.imageAttachmentIds.length > 0
+      ? { content, imageAttachmentIds: opts.imageAttachmentIds }
+      : { content };
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(requestBody),
     signal,
   });
   if (response.status === 401) {
