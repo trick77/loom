@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/trick77/slopr/internal/auth"
 )
@@ -71,6 +72,11 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) error {
 		return err
 	}
 	return nil
+}
+
+func isRequestBodyTooLarge(err error) bool {
+	var maxBytesErr *http.MaxBytesError
+	return errors.As(err, &maxBytesErr) || strings.Contains(err.Error(), "request body too large")
 }
 
 func parseOptionalBool(r *http.Request, key string) (bool, error) {

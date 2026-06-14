@@ -8,6 +8,7 @@ import {
   listProjects,
   listThreads,
   streamMessage,
+  uploadImageAttachment,
   updateThread,
 } from "./api";
 import type { McpStatusEvent } from "./api";
@@ -33,6 +34,14 @@ test("listArtifacts builds query parameters", async () => {
 
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/artifacts?type=images&sort=size&order=asc&search=robot&limit=50",
+  );
+});
+
+test("uploadImageAttachment maps chat attachment limit errors", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 409 })));
+
+  await expect(uploadImageAttachment(new File(["png"], "screenshot.png", { type: "image/png" }))).rejects.toThrow(
+    "A chat can have up to 10 attached files.",
   );
 });
 

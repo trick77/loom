@@ -20,13 +20,14 @@ const MaxChatDocuments = 10
 var ErrUnsupportedFormat = errors.New("unsupported document format")
 
 // ErrChatDocumentLimit is returned when a project-less chat already has the
-// maximum number of private documents attached.
+// maximum number of private uploaded attachments.
 var ErrChatDocumentLimit = errors.New("chat document limit reached")
 
 // ArtifactStore is the subset of the artifact store the document service needs.
 type ArtifactStore interface {
 	Create(context.Context, artifact.CreateInput) (artifact.Artifact, error)
 	Get(context.Context, string, string) (artifact.Artifact, bool, error)
+	ListForThread(context.Context, string, string) ([]artifact.Artifact, error)
 	Delete(context.Context, string, string) error
 }
 
@@ -81,11 +82,16 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		return rag.Document{}, artifact.Artifact{}, ErrUnsupportedFormat
 	}
 	if in.ProjectID == nil && strings.TrimSpace(in.ThreadID) != "" {
-		count, err := s.store.CountThreadDocuments(ctx, in.UserID, strings.TrimSpace(in.ThreadID))
+		threadID := strings.TrimSpace(in.ThreadID)
+		documentCount, err := s.store.CountThreadDocuments(ctx, in.UserID, threadID)
 		if err != nil {
 			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count chat documents: %w", err)
 		}
-		if count >= MaxChatDocuments {
+		uploadCount, err := s.countThreadUploads(ctx, in.UserID, threadID)
+		if err != nil {
+			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count chat uploads: %w", err)
+		}
+		if documentCount >= MaxChatDocuments || uploadCount >= MaxChatDocuments {
 			return rag.Document{}, artifact.Artifact{}, ErrChatDocumentLimit
 		}
 	}
@@ -154,6 +160,20 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("create document: %w", err)
 	}
 	return doc, art, nil
+}
+
+func (s *Service) countThreadUploads(ctx context.Context, userID, threadID string) (int, error) {
+	items, err := s.artifacts.ListForThread(ctx, userID, threadID)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, item := range items {
+		if item.UserID == userID && item.ProjectID == nil && item.Source == "user_uploaded" {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // Index runs ingestion for a document ("Add to knowledge"). Callers that want it

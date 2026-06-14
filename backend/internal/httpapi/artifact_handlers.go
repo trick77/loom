@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/slopr/internal/documents"
 )
 
 func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +103,10 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		if isRequestBodyTooLarge(err) {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
+			return
+		}
 		writeJSONError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
@@ -126,6 +132,17 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	}
 	threadID := strings.TrimSpace(r.FormValue("threadId"))
 	projectID := strings.TrimSpace(r.FormValue("projectId"))
+	if projectID == "" && threadID != "" {
+		count, err := s.countThreadUploads(r.Context(), user.ID, threadID)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "count image uploads failed")
+			return
+		}
+		if count >= documents.MaxChatDocuments {
+			writeJSONError(w, http.StatusConflict, "too many attachments in this chat")
+			return
+		}
+	}
 	var projectIDPtr *string
 	if projectID != "" {
 		projectIDPtr = &projectID
@@ -164,6 +181,20 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, artifactResponseFromArtifact(created))
+}
+
+func (s *server) countThreadUploads(ctx context.Context, userID, threadID string) (int, error) {
+	items, err := s.artifacts.ListForThread(ctx, userID, threadID)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, item := range items {
+		if item.UserID == userID && item.ProjectID == nil && item.Source == "user_uploaded" {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func imageExtensionFromMIME(mimeType string) string {

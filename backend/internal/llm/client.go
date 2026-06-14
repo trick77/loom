@@ -72,12 +72,7 @@ type MessageImageURL struct {
 func (m Message) MarshalJSON() ([]byte, error) {
 	type messageAlias Message
 	if len(m.ContentParts) == 0 {
-		return json.Marshal(struct {
-			messageAlias
-			ContentParts any `json:"-"`
-		}{
-			messageAlias: messageAlias(m),
-		})
+		return json.Marshal(messageAlias(m))
 	}
 	return json.Marshal(struct {
 		Role             string               `json:"role"`

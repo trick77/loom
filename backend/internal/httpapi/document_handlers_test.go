@@ -101,6 +101,33 @@ func TestHandleUploadDocument_chatDocumentLimit(t *testing.T) {
 	}
 }
 
+func TestHandleUploadDocument_payloadTooLarge(t *testing.T) {
+	svc := &fakeDocumentService{}
+	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("file", "large.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(bytes.Repeat([]byte("x"), artifact.MaxArtifactSizeBytes+1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/documents/upload", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleUploadDocument_disabledWhenServiceNil(t *testing.T) {
 	server := newAuthenticatedChatServer(t, Deps{})
 	rec := httptest.NewRecorder()

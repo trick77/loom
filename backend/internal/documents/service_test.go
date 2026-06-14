@@ -111,6 +111,34 @@ func TestService_Upload_rejectsWhenThreadDocumentLimitReached(t *testing.T) {
 	}
 }
 
+func TestService_Upload_rejectsWhenThreadUploadLimitReachedByImages(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+
+	for i := 0; i < MaxChatDocuments; i++ {
+		if _, err := svc.artifacts.Create(ctx, artifact.CreateInput{
+			UserID:          "u",
+			ThreadID:        "thread_1",
+			DisplayFilename: "image.png",
+			VolumeRelPath:   "files/image.png",
+			MIMEType:        "image/png",
+			SizeBytes:       1,
+			Source:          "user_uploaded",
+		}); err != nil {
+			t.Fatalf("seed image artifact #%d: %v", i+1, err)
+		}
+	}
+
+	if _, _, err := svc.Upload(ctx, UploadInput{
+		UserID:   "u",
+		ThreadID: "thread_1",
+		Filename: "overflow.txt",
+		Reader:   strings.NewReader("hi"),
+	}); !errors.Is(err, ErrChatDocumentLimit) {
+		t.Fatalf("Upload overflow error = %v, want ErrChatDocumentLimit", err)
+	}
+}
+
 func TestService_Index_delegatesToIndexer(t *testing.T) {
 	svc, idx, _ := newTestService(t)
 	ctx := context.Background()

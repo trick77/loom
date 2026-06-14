@@ -504,6 +504,9 @@ export async function uploadImageAttachment(
   if (response.status === 415) {
     throw new Error("Unsupported image format");
   }
+  if (response.status === 409) {
+    throw new Error(`A chat can have up to ${DOCUMENT_MAX_CHAT_ATTACHMENTS} attached files.`);
+  }
   if (response.status === 413) {
     throw new Error("Files must be 25 MB or smaller.");
   }

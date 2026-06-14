@@ -72,27 +72,35 @@ function SentAttachments({ attachments }: { attachments: ComposerAttachment[] })
   return (
     <div className="mb-2 flex flex-wrap justify-end gap-2">
       {attachments.map((attachment) => (
-        <div
-          key={attachment.id}
-          className="flex h-[92px] w-[210px] max-w-full overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-left text-[#f3f0e8]"
-        >
-          <div className="grid h-full w-[82px] shrink-0 place-items-center bg-[#242421]">
-            {attachment.previewUrl !== undefined ? (
-              <img className="h-full w-full object-cover" src={attachment.previewUrl} alt="" aria-hidden="true" />
-            ) : (
-              <div className="grid h-11 w-11 place-items-center rounded-md border border-[#55534d] bg-[#30302d] text-[#c9c5bb]">
-                <FileIcon />
-              </div>
-            )}
-          </div>
-          <div className="min-w-0 flex-1 px-3 py-2.5">
-            <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
-            <div className="ui-meta-text mt-1 truncate text-[#aaa79e]">
-              {sentAttachmentStatus(attachment)}
-            </div>
-          </div>
-        </div>
+        <SentAttachment key={attachment.id} attachment={attachment} />
       ))}
+    </div>
+  );
+}
+
+function SentAttachment({ attachment }: { attachment: ComposerAttachment }) {
+  useEffect(() => {
+    const previewUrl = attachment.previewUrl;
+    return () => {
+      if (previewUrl !== undefined) URL.revokeObjectURL(previewUrl);
+    };
+  }, [attachment.previewUrl]);
+
+  return (
+    <div className="flex h-[92px] w-[210px] max-w-full overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-left text-[#f3f0e8]">
+      <div className="grid h-full w-[82px] shrink-0 place-items-center bg-[#242421]">
+        {attachment.previewUrl !== undefined ? (
+          <img className="h-full w-full object-cover" src={attachment.previewUrl} alt="" aria-hidden="true" />
+        ) : (
+          <div className="grid h-11 w-11 place-items-center rounded-md border border-[#55534d] bg-[#30302d] text-[#c9c5bb]">
+            <FileIcon />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1 px-3 py-2.5">
+        <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
+        <div className="ui-meta-text mt-1 truncate text-[#aaa79e]">{sentAttachmentStatus(attachment)}</div>
+      </div>
     </div>
   );
 }
