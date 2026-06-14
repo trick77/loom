@@ -86,6 +86,31 @@ func TestService_Upload_rejectsDisallowedFormat(t *testing.T) {
 	}
 }
 
+func TestService_Upload_rejectsContentOverSizeLimit(t *testing.T) {
+	svc, _, usersDir := newTestService(t)
+	oversized := strings.NewReader(strings.Repeat("x", artifact.MaxArtifactSizeBytes+1))
+
+	if _, _, err := svc.Upload(context.Background(), UploadInput{
+		UserID:   "u",
+		Filename: "big.txt",
+		Reader:   oversized,
+	}); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("Upload(oversized) error = %v, want ErrTooLarge", err)
+	}
+
+	// The partially written file must be cleaned up, leaving no orphan on disk.
+	leftover := 0
+	_ = filepath.WalkDir(usersDir, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			leftover++
+		}
+		return nil
+	})
+	if leftover != 0 {
+		t.Fatalf("found %d leftover files after rejected oversized upload, want 0", leftover)
+	}
+}
+
 func TestService_Upload_rejectsWhenThreadDocumentLimitReached(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()

@@ -23,6 +23,11 @@ var ErrUnsupportedFormat = errors.New("unsupported document format")
 // maximum number of private uploaded attachments.
 var ErrChatDocumentLimit = errors.New("chat document limit reached")
 
+// ErrTooLarge is returned when an upload's content exceeds
+// artifact.MaxArtifactSizeBytes. The content size (not the multipart envelope)
+// is the enforced limit, mirroring the image attachment handler.
+var ErrTooLarge = errors.New("upload too large")
+
 // ArtifactStore is the subset of the artifact store the document service needs.
 type ArtifactStore interface {
 	Create(context.Context, artifact.CreateInput) (artifact.Artifact, error)
@@ -107,7 +112,10 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 	if err != nil {
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("create upload file: %w", err)
 	}
-	size, copyErr := io.Copy(file, in.Reader)
+	// Enforce the size limit on file content, tolerating multipart envelope
+	// overhead the handler's MaxBytesReader lets through (mirrors the image
+	// attachment handler so both paths share one effective content limit).
+	size, copyErr := io.Copy(file, io.LimitReader(in.Reader, artifact.MaxArtifactSizeBytes+1))
 	closeErr := file.Close()
 	if copyErr != nil {
 		os.Remove(out.AbsPath)
@@ -116,6 +124,10 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 	if closeErr != nil {
 		os.Remove(out.AbsPath)
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("close upload: %w", closeErr)
+	}
+	if size > artifact.MaxArtifactSizeBytes {
+		os.Remove(out.AbsPath)
+		return rag.Document{}, artifact.Artifact{}, ErrTooLarge
 	}
 
 	art, err := s.artifacts.Create(ctx, artifact.CreateInput{

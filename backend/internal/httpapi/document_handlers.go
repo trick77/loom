@@ -70,14 +70,18 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cap the whole request body to the artifact size limit before parsing.
-	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes)
+	// Cap the whole request body before parsing. Allow multipart envelope overhead
+	// on top of the artifact size limit so a file at exactly the limit isn't
+	// rejected by its boundary bytes; the content size is enforced in Upload.
+	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes+multipartUploadOverheadBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		if isRequestBodyTooLarge(err) {
 			writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
 			return
 		}
-		writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large or malformed")
+		// A non-size parse failure is a malformed request, not an oversized one.
+		// Returning 413 here would make the client report it as a size error.
+		writeJSONError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
 	file, header, err := r.FormFile("file")
@@ -100,6 +104,10 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, documents.ErrChatDocumentLimit) {
 		writeJSONError(w, http.StatusConflict, "too many documents in this chat")
+		return
+	}
+	if errors.Is(err, documents.ErrTooLarge) {
+		writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
 		return
 	}
 	if err != nil {
