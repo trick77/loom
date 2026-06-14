@@ -98,7 +98,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// assistant generation instead of delaying the final events.
 	mcpStatusCh := s.startMCPStatus(streamCtx)
 
-	if thread.Title == chat.DefaultThreadTitle {
+	if shouldGenerateThreadTitle(thread.Title, userMessage.Content) {
 		_ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
 	}
 

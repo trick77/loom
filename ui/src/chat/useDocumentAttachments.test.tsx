@@ -1,8 +1,24 @@
 import { act, renderHook } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
-import { DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE, DOCUMENT_MAX_UPLOAD_BYTES } from "../api";
+import {
+  DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+  DOCUMENT_MAX_UPLOAD_BYTES,
+  indexDocument,
+  listDocuments,
+  uploadDocument,
+} from "../api";
 import { useDocumentAttachments } from "./useDocumentAttachments";
+
+vi.mock("../api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api")>();
+  return {
+    ...actual,
+    indexDocument: vi.fn(),
+    listDocuments: vi.fn(),
+    uploadDocument: vi.fn(),
+  };
+});
 
 function file(name: string): File {
   return new File(["hello"], name, { type: "text/plain" });
@@ -36,4 +52,58 @@ test("rejects oversized pending composer attachments", () => {
 
   expect(result.current.attachments).toHaveLength(0);
   expect(result.current.attachNote).toBe("Files must be 25 MB or smaller.");
+});
+
+test("does not treat non-numeric drag file size as oversized", () => {
+  const { result } = renderHook(() => useDocumentAttachments({}));
+  const tiny = new File(["png"], "tiny.png", { type: "image/png" });
+  Object.defineProperty(tiny, "size", { value: undefined });
+
+  act(() => {
+    result.current.handleAttachFiles([tiny]);
+  });
+
+  expect(result.current.attachments).toHaveLength(1);
+  expect(result.current.attachNote).toBe("");
+});
+
+test("clears the composer note after a document is added to knowledge", async () => {
+  vi.useFakeTimers();
+  vi.mocked(uploadDocument).mockResolvedValue({
+    id: "doc_1",
+    filename: "notes.md",
+    mimeType: "text/markdown",
+    sizeBytes: 5,
+    status: "pending",
+    createdAt: "2026-06-14T00:00:00Z",
+  });
+  vi.mocked(indexDocument).mockResolvedValue({
+    id: "doc_1",
+    filename: "notes.md",
+    mimeType: "text/markdown",
+    sizeBytes: 5,
+    status: "embedded",
+    createdAt: "2026-06-14T00:00:00Z",
+  });
+  vi.mocked(listDocuments).mockResolvedValue([
+    {
+      id: "doc_1",
+      filename: "notes.md",
+      mimeType: "text/markdown",
+      sizeBytes: 5,
+      status: "embedded",
+      createdAt: "2026-06-14T00:00:00Z",
+    },
+  ]);
+  const { result } = renderHook(() => useDocumentAttachments({ threadId: "t1" }));
+
+  await act(async () => {
+    result.current.handleAttachFiles([file("notes.md")]);
+  });
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1500);
+  });
+  expect(result.current.attachments[0]?.status).toBe("ready");
+  expect(result.current.attachNote).toBe("");
 });

@@ -117,6 +117,13 @@ func buildLLMHistory(user auth.User, userContext, projectContext, knowledgeConte
 	return history
 }
 
+func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
+	if currentTitle == chat.DefaultThreadTitle {
+		return true
+	}
+	return currentTitle == chat.NormalizeThreadTitle(firstPrompt)
+}
+
 func systemPromptForUser(user auth.User) string {
 	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
 		return sloprSystemPrompt + "\nAlways answer in English."

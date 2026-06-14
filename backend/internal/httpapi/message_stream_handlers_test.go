@@ -73,6 +73,28 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 	}
 }
 
+func TestStreamMessageGeneratesTitleWhenThreadTitleIsFirstPrompt(t *testing.T) {
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Explain this document"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		LLM:  fakeChatClient{title: "Document summary"},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Explain this document"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: thread") || !strings.Contains(body, `"title":"Document summary"`) {
+		t.Fatalf("SSE body missing generated replacement title:\n%s", body)
+	}
+}
+
 func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
 	store := &fakeChatStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
