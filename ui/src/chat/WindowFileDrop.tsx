@@ -71,7 +71,7 @@ export function WindowFileDrop({
         >
           {"\ue06d"}
         </div>
-        <div className="ui-meta-text text-[#aaa79e]">
+        <div className="ui-composer-text text-[#aaa79e]">
           Drop files here to add it to the conversation
         </div>
       </div>
