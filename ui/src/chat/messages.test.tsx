@@ -67,7 +67,7 @@ test("renders sent images as compact thumbnails without file text", () => {
   const text = screen.getByText("Explain these images");
 
   expect(images).toHaveLength(2);
-  expect(images[0].closest("[data-testid='sent-image-attachment']")).toHaveClass("h-[120px]", "w-[120px]");
+  expect(images[0].closest("[data-testid='sent-image-attachment']")).toHaveClass("h-[76px]", "w-[76px]");
   expect(screen.queryByText("logo.png")).not.toBeInTheDocument();
   expect(screen.queryByText("badge.webp")).not.toBeInTheDocument();
   expect(images[0].compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -804,7 +804,9 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
     "/api/artifacts/images/upload",
     expect.objectContaining({ method: "POST" }),
   );
-  expect(document.querySelector('img[src="blob:tiny"]')).toBeInTheDocument();
+  // Once sent, the image renders from its stable artifact download URL (not the
+  // ephemeral composer blob, which is revoked when the start screen is left).
+  expect(document.querySelector('img[src="/api/artifacts/art_image/download"]')).toBeInTheDocument();
   expect(screen.queryByText("tiny.png")).not.toBeInTheDocument();
   expect(screen.queryByText("Files must be 25 MB or smaller.")).not.toBeInTheDocument();
   expect(screen.queryByText("Attached tiny.png.")).not.toBeInTheDocument();
@@ -967,7 +969,9 @@ test("clears a stale upload size send error when a new valid file is attached on
   });
 
   expect(screen.queryByText("Files must be 25 MB or smaller.")).not.toBeInTheDocument();
-  expect(screen.getByText("valid.png")).toBeInTheDocument();
+  // Image attachments render as a compact thumbnail (filename in the remove
+  // control's label, not as visible text), so assert via the remove button.
+  expect(screen.getByRole("button", { name: "Remove valid.png" })).toBeInTheDocument();
 });
 
 test("active sidebar chat shows actions menu with locked entries", async () => {

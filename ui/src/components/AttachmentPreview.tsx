@@ -37,6 +37,7 @@ export function AttachmentPreview({
   alt,
   className,
   fallbackBoxClassName,
+  overlayLabel,
   testId,
 }: {
   mimeType: string;
@@ -51,22 +52,34 @@ export function AttachmentPreview({
   // file card) wrap the extension pill in a small bordered chip; compact rows
   // leave it unset so the glyph sits bare in the cell.
   fallbackBoxClassName?: string;
+  // When true, an image thumbnail carries its extension as a small pill badge
+  // overlaid inside the image (used wherever an uploaded image is shown without
+  // an adjacent filename — composer image chip and sent-message thumbnail — so the
+  // two read identically end to end).
+  overlayLabel?: boolean;
   testId?: string;
 }) {
   const [broken, setBroken] = useState(false);
   const extensionLabel = attachmentExtensionLabel(filename);
   const showImage = previewUrl !== undefined && isImageLike(mimeType, filename) && !broken;
   return (
-    <div className={className} data-testid={testId}>
+    <div className={`relative ${className ?? ""}`} data-testid={testId}>
       {showImage ? (
-        <img
-          className="h-full w-full object-cover"
-          src={previewUrl}
-          alt={alt ?? ""}
-          aria-hidden={alt === undefined ? "true" : undefined}
-          loading="lazy"
-          onError={() => setBroken(true)}
-        />
+        <>
+          <img
+            className="h-full w-full object-cover"
+            src={previewUrl}
+            alt={alt ?? ""}
+            aria-hidden={alt === undefined ? "true" : undefined}
+            loading="lazy"
+            onError={() => setBroken(true)}
+          />
+          {overlayLabel && extensionLabel !== null && (
+            <span className="absolute bottom-1 left-1 inline-flex items-center rounded bg-black/55 px-1.5 py-1 leading-none backdrop-blur-sm">
+              <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill>
+            </span>
+          )}
+        </>
       ) : (
         <span className="grid h-full w-full place-items-center text-[#c9c5bb]">
           <span className={fallbackBoxClassName}>

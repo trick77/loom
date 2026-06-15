@@ -108,13 +108,25 @@ function useRevokeSentPreview(previewUrl: string | undefined) {
 function SentImageAttachment({ attachment }: { attachment: ComposerAttachment }) {
   useRevokeSentPreview(attachment.previewUrl);
 
+  // Once sent, the image lives on the server as an artifact. Render it from that
+  // stable download URL rather than the composer's ephemeral object URL, which is
+  // revoked the moment the start screen is left (and gone after a reload) — that
+  // revocation is exactly what turned the thumbnail into a placeholder. Fall back
+  // to the blob only if the id is somehow missing. (Full reload-survival, i.e.
+  // persisting the attachment record, is the later persistence stage.)
+  const src =
+    attachment.artifactId !== undefined
+      ? `/api/artifacts/${encodeURIComponent(attachment.artifactId)}/download`
+      : attachment.previewUrl;
+
   return (
     <AttachmentPreview
       mimeType={attachment.mimeType}
       filename={attachment.filename}
-      previewUrl={attachment.previewUrl}
+      previewUrl={src}
+      overlayLabel
       testId="sent-image-attachment"
-      className="h-[120px] w-[120px] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#242421]"
+      className="h-[76px] w-[76px] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#242421]"
     />
   );
 }
