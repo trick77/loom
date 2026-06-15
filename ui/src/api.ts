@@ -133,7 +133,6 @@ export type Document = {
 // the vision model at ingest.
 export const DOCUMENT_ACCEPT =
   ".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.html,.png,.jpg,.jpeg,.webp,.gif";
-export const IMAGE_ATTACHMENT_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
 // DOCUMENT_ACCEPT already includes images, so it covers every composer attachment.
 export const ATTACHMENT_ACCEPT = DOCUMENT_ACCEPT;
 export const DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE = 5;
