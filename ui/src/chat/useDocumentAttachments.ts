@@ -244,6 +244,11 @@ async function uploadAttachments(
       }
       continue;
     }
-    void uploadDocumentAttachment(attachment);
+    // Await the upload (not the background indexing) so the document's id is set
+    // before the caller collects documentAttachmentIds on send — otherwise a
+    // document attached on a new chat is uploaded fire-and-forget and its id
+    // misses the send, so the model never sees it and it isn't persisted. Mirrors
+    // the awaited image path above; indexDocument still runs in the background.
+    await uploadDocumentAttachment(attachment);
   }
 }

@@ -11,7 +11,9 @@ import {
 import {
   composerAttachmentFromArtifact,
   composerAttachmentFromMessageAttachment,
+  createComposerAttachment,
   isImageAttachment,
+  type ComposerAttachment,
   useDocumentAttachments,
 } from "./useDocumentAttachments";
 
@@ -150,6 +152,42 @@ test("composerAttachmentFromMessageAttachment rehydrates a persisted image attac
   expect(attachment.previewUrl).toBe("/api/artifacts/art-9/download");
   expect(attachment.file).toBeUndefined();
   expect(isImageAttachment(attachment)).toBe(true);
+});
+
+test("uploadExistingAttachments awaits the document upload so its id is set before resolving", async () => {
+  // Regression: a document attached on a new chat was uploaded fire-and-forget,
+  // so the caller collected documentAttachmentIds before its id existed — the
+  // model never saw the doc and it wasn't persisted. The flush must await the
+  // upload so documentId is patched in before it resolves.
+  vi.mocked(uploadDocument).mockResolvedValue({
+    id: "doc_x",
+    filename: "brief.txt",
+    mimeType: "text/plain",
+    sizeBytes: 5,
+    status: "pending",
+    createdAt: "2026-06-14T00:00:00Z",
+  });
+  vi.mocked(indexDocument).mockResolvedValue({
+    id: "doc_x",
+    filename: "brief.txt",
+    mimeType: "text/plain",
+    sizeBytes: 5,
+    status: "embedded",
+    createdAt: "2026-06-14T00:00:00Z",
+  });
+  const { result } = renderHook(() => useDocumentAttachments({}));
+  const attachment = createComposerAttachment(file("brief.txt"), "queued");
+  const patches: Record<string, Partial<ComposerAttachment>> = {};
+  const onStatus = (id: string, patch: Partial<ComposerAttachment>) => {
+    patches[id] = { ...patches[id], ...patch };
+  };
+
+  await act(async () => {
+    await result.current.uploadExistingAttachments([attachment], { threadId: "t1" }, onStatus);
+  });
+
+  expect(patches[attachment.id]?.documentId).toBe("doc_x");
+  expect(patches[attachment.id]?.status).toBe("ready");
 });
 
 test("composerAttachmentFromMessageAttachment rehydrates a persisted document attachment", () => {
