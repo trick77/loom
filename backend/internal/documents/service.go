@@ -197,7 +197,11 @@ func (s *Service) Index(ctx context.Context, userID, documentID string) error {
 
 // FullText returns a document's full plain text (re-extracted from the volume),
 // for inlining an attached document into the chat prompt. It does not require the
-// document to be indexed and leaves its RAG state untouched.
+// document to be indexed and leaves its RAG state untouched. For an image
+// document the text is the vision description: served from the cache populated at
+// ingest when the image was indexed, otherwise a live (timeout-bounded)
+// DescribeImage call — the same live-extraction shape used for unindexed
+// non-image attachments, just with a model call instead of Tika.
 func (s *Service) FullText(ctx context.Context, userID, documentID string) (string, error) {
 	return s.indexer.ExtractText(ctx, userID, documentID)
 }
