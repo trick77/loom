@@ -53,5 +53,9 @@ func cleanProjectDescription(description string) string {
 	description = strings.Trim(description, `"'`)
 	description = strings.TrimSpace(description)
 	description = strings.TrimRight(description, ".")
-	return strings.TrimSpace(description)
+	description = strings.TrimSpace(description)
+	if description != "" && !strings.HasSuffix(description, "!") && !strings.HasSuffix(description, "?") {
+		description += "."
+	}
+	return description
 }
