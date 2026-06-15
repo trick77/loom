@@ -62,6 +62,17 @@ func TestQualifyingCodeBlocks_NamesFromPrecedingHeading(t *testing.T) {
 	}
 }
 
+func TestQualifyingCodeBlocks_InterveningProseDetachesHeading(t *testing.T) {
+	content := "## Intro\n\nHere is a long explanation paragraph before the code.\n\n" + fence("python", bigCode(60))
+	got := qualifyingCodeBlocks(content)
+	if len(got) != 1 {
+		t.Fatalf("got %d blocks, want 1", len(got))
+	}
+	if got[0].filename != "code-1.py" {
+		t.Fatalf("filename = %q, want fallback code-1.py (heading detached by prose)", got[0].filename)
+	}
+}
+
 func TestQualifyingCodeBlocks_FallbackNameWhenNoHeading(t *testing.T) {
 	got := qualifyingCodeBlocks(fence("go", bigCode(60)))
 	if len(got) != 1 || got[0].filename != "code-1.go" {

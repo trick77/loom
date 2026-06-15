@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"regexp"
 	"strconv"
@@ -85,6 +86,7 @@ func (s *server) extractCodeArtifacts(ctx context.Context, stream *sse.Writer, u
 	for _, q := range qualifyingCodeBlocks(content) {
 		response, err := s.createCodeArtifact(ctx, user, thread, q.block, q.extension, q.filename)
 		if err != nil {
+			slog.Warn("auto code artifact failed", "thread_id", thread.ID, "filename", q.filename, "error", err)
 			continue
 		}
 		_ = sendSSEJSON(stream, "artifact", response)
@@ -112,6 +114,10 @@ func qualifyingCodeBlocks(content string) []qualifiedBlock {
 	for _, block := range blocks {
 		ext, ok := codeBlockLanguageExtensions[block.language]
 		if !ok {
+			// Blocks without a recognized language tag (including untagged fences)
+			// are intentionally skipped: there is no reliable extension to give
+			// them, and defaulting to .txt would turn plain output, tables, and
+			// logs into the unwanted downloads this feature exists to avoid.
 			continue
 		}
 		if !isDownloadWorthyCode(block.body) {
@@ -219,6 +225,10 @@ func parseCodeBlocks(content string) []fencedCodeBlock {
 		if open == nil {
 			if h := headingText(line); h != "" {
 				lastHeading = h
+			} else if strings.TrimSpace(line) != "" {
+				// Intervening prose detaches a pending heading so only a heading
+				// directly above the fence (blank lines aside) names the file.
+				lastHeading = ""
 			}
 			continue
 		}
