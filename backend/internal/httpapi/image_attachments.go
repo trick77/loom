@@ -43,7 +43,11 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 			return nil, fmt.Errorf("image attachment path rejected: %w", err)
 		}
 		// MiMo's OpenAI-compatible image input accepts data URLs, so the current
-		// request path base64-encodes each bounded upload in memory.
+		// request path base64-encodes each bounded upload in memory. Note this data
+		// URL rides on the message that is re-sent on every tool round of the turn,
+		// so a multi-round vision turn re-transmits the image(s) each round. Bounded
+		// by maxImageAttachmentsPerMessage × MaxArtifactSizeBytes; switch to a
+		// model-fetchable URL instead of an inline data URL if that bound bites.
 		bytes, err := os.ReadFile(abs)
 		if err != nil {
 			return nil, fmt.Errorf("read image attachment: %w", err)
