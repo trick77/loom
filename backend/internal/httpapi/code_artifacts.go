@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/sse"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/sse"
 )
 
 // Code/XML blocks below these bounds are treated as illustrative snippets and

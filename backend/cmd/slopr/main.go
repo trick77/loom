@@ -14,20 +14,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/config"
-	"github.com/trick77/slopr/internal/docgen"
-	"github.com/trick77/slopr/internal/documents"
-	"github.com/trick77/slopr/internal/httpapi"
-	"github.com/trick77/slopr/internal/imagegen"
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/mcp"
-	"github.com/trick77/slopr/internal/rag"
-	"github.com/trick77/slopr/internal/store"
-	"github.com/trick77/slopr/internal/usage"
-	"github.com/trick77/slopr/web"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/config"
+	"github.com/trick77/lume/internal/docgen"
+	"github.com/trick77/lume/internal/documents"
+	"github.com/trick77/lume/internal/httpapi"
+	"github.com/trick77/lume/internal/imagegen"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/mcp"
+	"github.com/trick77/lume/internal/rag"
+	"github.com/trick77/lume/internal/store"
+	"github.com/trick77/lume/internal/usage"
+	"github.com/trick77/lume/web"
 )
 
 var version = "dev" // overridden via -ldflags at build time
@@ -100,7 +100,7 @@ func runHealthcheck(url string) error {
 func run() error {
 	// Logged first thing so the running build is identifiable even if startup later
 	// fails (config error, DB open, etc.) — the "listening" line only lands on success.
-	slog.Info("starting slopr", "version", version)
+	slog.Info("starting lume", "version", version)
 
 	cfg, err := config.Load()
 	if err != nil {

@@ -86,7 +86,7 @@ The sidebar `Projects` primary item navigates to `/projects`. The sidebar projec
 
 ## Project List Page
 
-The project list page matches the provided reference at the product level while using Slopr's existing warm editorial tokens and popup styling.
+The project list page matches the provided reference at the product level while using Lume's existing warm editorial tokens and popup styling.
 
 Layout:
 
@@ -243,4 +243,4 @@ Visual verification:
 
 Keep frontend files focused. Add a `ui/src/projects/` area for project list/detail components and project-specific hooks/helpers instead of growing `ui/src/chat/ChatShell.tsx` further. Do not create god components or god classes: `ChatShell` may coordinate routes and shared state, but project page rendering, project modals, picker UI, and reusable project mutation helpers must live in focused files. Reuse existing shared menu styling from `ui/src/ThreadActionsMenu.tsx` where practical so project menus align with chat menus.
 
-Use the existing Slopr design tokens and avoid introducing a new visual system. Buttons, menus, modal shapes, search fields, and row/card hover treatments should match the current Chats and sidebar surfaces.
+Use the existing Lume design tokens and avoid introducing a new visual system. Buttons, menus, modal shapes, search fields, and row/card hover treatments should match the current Chats and sidebar surfaces.

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/lume/internal/llm"
 )
 
 func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
@@ -35,7 +35,7 @@ func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
 	if len(tools) != 1 || tools[0].Function.Name != "search__web" {
 		t.Fatalf("tools = %#v", tools)
 	}
-	got, err := service.CallTool(context.Background(), "search__web", map[string]any{"q": "slopr"})
+	got, err := service.CallTool(context.Background(), "search__web", map[string]any{"q": "lume"})
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}

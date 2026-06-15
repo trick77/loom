@@ -49,8 +49,8 @@ func TestRenderSlideUnknownLayoutFallsBackToBullets(t *testing.T) {
 }
 
 func TestTitleLayoutCentersTitleAndSubtitle(t *testing.T) {
-	xml := titleLayout(pptxSlide{Layout: "title", Title: "Slopr", Subtitle: "Q3 Review"})
-	if !strings.Contains(xml, "Slopr") || !strings.Contains(xml, "Q3 Review") || !strings.Contains(xml, `algn="ctr"`) {
+	xml := titleLayout(pptxSlide{Layout: "title", Title: "Lume", Subtitle: "Q3 Review"})
+	if !strings.Contains(xml, "Lume") || !strings.Contains(xml, "Q3 Review") || !strings.Contains(xml, `algn="ctr"`) {
 		t.Fatalf("titleLayout = %s", xml)
 	}
 }

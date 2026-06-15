@@ -1,11 +1,11 @@
-# slopr — Design Spec (v1)
+# lume — Design Spec (v1)
 
 > **Status:** Approved design, basis for the (per-phase) implementation plans.
 > **Date:** 2026-05-30 · **Chosen UI direction:** A — Warm Editorial (Claude-inspired).
 
 ## Context
 
-`slopr` is a self-hosted, multi-user LLM chat app. **Goal:** give a small group of users a
+`lume` is a self-hosted, multi-user LLM chat app. **Goal:** give a small group of users a
 **deliberately simple** interface to work with **work- and school-related documents, topics,
 questions and information** — secure LLM access (deliberately not advertised, no age controls).
 It takes cues from the lean UI of **AnythingLLM** and the interaction patterns of the
@@ -70,7 +70,7 @@ Docker volume** per user.
 - **tika** — Apache Tika server (document extraction). OCR only with the **`-full` image variant**
   (bundles Tesseract) — pin and verify the image tag, otherwise drop the OCR claim.
 - **MCP servers** — as **separate HTTP/SSE containers** for external tools (Fetch, others). SearXNG is
-  a built-in Slopr adapter that talks directly to `SLOPR_SEARXNG_URL` and exposes
+  a built-in Lume adapter that talks directly to `SLOPR_SEARXNG_URL` and exposes
   `searxng__web_search`.
 
 ### Tech decisions (settled)

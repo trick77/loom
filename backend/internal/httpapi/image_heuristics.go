@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/trick77/slopr/internal/chat"
+	"github.com/trick77/lume/internal/chat"
 )
 
 func (s *server) imageArtifactRequired(content string, priorMessages []chat.Message) bool {

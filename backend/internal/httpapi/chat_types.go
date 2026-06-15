@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/trick77/slopr/internal/chat"
+	"github.com/trick77/lume/internal/chat"
 )
 
 type createProjectRequest struct {

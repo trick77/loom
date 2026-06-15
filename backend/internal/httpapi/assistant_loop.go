@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/sse"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/sse"
 )
 
 const (
-	// maxToolRounds caps how many times the model may call tools before slopr
+	// maxToolRounds caps how many times the model may call tools before lume
 	// forces a tool-free final answer. Kept moderate: a model that over-researches
 	// (e.g. fetching source after source) otherwise burns rounds — and wall-clock —
 	// without converging. Enough for genuine multi-step research, low enough to stop

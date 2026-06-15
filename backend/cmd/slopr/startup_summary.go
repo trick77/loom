@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/trick77/slopr/internal/config"
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/mcp"
+	"github.com/trick77/lume/internal/config"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/mcp"
 )
 
 type startupRuntime struct {

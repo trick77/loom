@@ -1,10 +1,10 @@
-# Slopr Phase 4 MCP Tools Implementation Plan
+# Lume Phase 4 MCP Tools Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add MCP-backed tool discovery and tool execution to the existing streamed chat path.
 
-**Architecture:** Slopr loads `mcp.json` at startup, connects to configured MCP servers, discovers tools, and exposes them to the OpenAI-compatible chat client as function tools. The LLM stream parser detects streamed tool calls, the HTTP handler emits tool status events, Slopr executes the requested MCP tools, appends tool-result messages, and resumes streaming until the model returns a final assistant answer.
+**Architecture:** Lume loads `mcp.json` at startup, connects to configured MCP servers, discovers tools, and exposes them to the OpenAI-compatible chat client as function tools. The LLM stream parser detects streamed tool calls, the HTTP handler emits tool status events, Lume executes the requested MCP tools, appends tool-result messages, and resumes streaming until the model returns a final assistant answer.
 
 **Tech Stack:** Go stdlib `net/http`, JSON-RPC 2.0, stdio processes for local MCP servers, OpenAI-compatible chat completions with function tools, existing `net/http` SSE API.
 

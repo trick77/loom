@@ -1,9 +1,9 @@
-# Slopr Phase 2 Authentik OIDC Design
+# Lume Phase 2 Authentik OIDC Design
 
 ## Goal
 
 Phase 2 adds real authentication and a usable authenticated frontend by delegating identity to
-authentik via OpenID Connect. Slopr owns only app-local sessions, role mapping, and app profile data;
+authentik via OpenID Connect. Lume owns only app-local sessions, role mapping, and app profile data;
 authentik remains the source of truth for credentials, MFA, account lifecycle, and group membership.
 
 ## Scope
@@ -11,8 +11,8 @@ authentik remains the source of truth for credentials, MFA, account lifecycle, a
 Included:
 
 - OIDC authorization-code login against authentik.
-- Server-side Slopr session cookie after successful OIDC callback.
-- Logout that clears the Slopr session and redirects to a configured post-logout URL.
+- Server-side Lume session cookie after successful OIDC callback.
+- Logout that clears the Lume session and redirects to a configured post-logout URL.
 - Local `users` table keyed by the OIDC subject claim.
 - Local `sessions` table keyed by opaque random session tokens.
 - Admin role mapping from a configured authentik group claim.
@@ -20,19 +20,19 @@ Included:
 - Auth middleware for API routes that must be protected.
 - Frontend signed-out screen, authenticated shell, user menu, logout, and basic admin user list.
 - `slopr.png` moved into the frontend asset tree and used as the main brand image.
-- README setup instructions for configuring authentik and Slopr.
+- README setup instructions for configuring authentik and Lume.
 
 Excluded:
 
 - Local usernames and passwords.
 - Local password reset or MFA.
 - Public registration.
-- Creating or deleting authentik users from Slopr.
+- Creating or deleting authentik users from Lume.
 - Full admin settings UI beyond reading app-local users and their mapped roles.
 
 ## OIDC Model
 
-Slopr is an OIDC relying party. It discovers authentik metadata from `SLOPR_OIDC_ISSUER`, redirects
+Lume is an OIDC relying party. It discovers authentik metadata from `SLOPR_OIDC_ISSUER`, redirects
 users through authentik, exchanges the callback code for tokens, verifies the ID token, validates the
 callback state and nonce, and extracts claims.
 
@@ -48,7 +48,7 @@ Optional claims:
 - `groups`: used for admin role mapping.
 
 The admin group name is configured with `SLOPR_OIDC_ADMIN_GROUP`. If a user's groups include that
-value, Slopr stores the user as `admin`; otherwise Slopr stores the user as `user`. Role mapping is
+value, Lume stores the user as `admin`; otherwise Lume stores the user as `user`. Role mapping is
 refreshed on every login so authentik remains authoritative.
 
 ## Backend Components
@@ -59,7 +59,7 @@ refreshed on every login so authentik remains authoritative.
   and logout URLs.
 - `StateStore`: creates and validates short-lived login state and nonce values using signed,
   httponly cookies.
-- `SessionStore`: creates, looks up, refreshes, and revokes Slopr sessions in SQLite.
+- `SessionStore`: creates, looks up, refreshes, and revokes Lume sessions in SQLite.
 - `UserStore`: upserts users by OIDC subject and lists users for admins.
 - `Middleware`: attaches the authenticated user to request context and rejects unauthenticated or
   unauthorized requests.
@@ -67,7 +67,7 @@ refreshed on every login so authentik remains authoritative.
 `backend/internal/httpapi` exposes auth routes:
 
 - `GET /api/auth/login`: starts OIDC login.
-- `GET /api/auth/callback`: validates callback, upserts user, creates Slopr session, redirects to `/`.
+- `GET /api/auth/callback`: validates callback, upserts user, creates Lume session, redirects to `/`.
 - `POST /api/auth/logout`: revokes the current session and returns the configured post-logout
   redirect URL.
 - `GET /api/me`: returns the current user or `401`.
@@ -109,10 +109,10 @@ served over HTTPS, and `SameSite=Lax`.
 The frontend starts by calling `/api/me`.
 
 - `200`: render the authenticated app shell with current user state.
-- `401`: render a signed-out Slopr screen with a Sign in button linking to `/api/auth/login`.
+- `401`: render a signed-out Lume screen with a Sign in button linking to `/api/auth/login`.
 - Other errors: render a compact service error state.
 
-The authenticated shell keeps the current Phase 1 layout, adds Slopr branding from
+The authenticated shell keeps the current Phase 1 layout, adds Lume branding from
 `frontend/src/assets/slopr.png`, and adds a bottom user menu with Logout. Admin users see an Admin
 view entry and a user list sourced from `/api/admin/users`.
 
@@ -137,7 +137,7 @@ is removed from the required boot path because authentik owns credentials.
 
 - Validate OIDC `state` and ID-token `nonce`.
 - Verify ID token issuer, audience, expiry, and signature through `go-oidc`.
-- Store only opaque Slopr session cookies in the browser.
+- Store only opaque Lume session cookies in the browser.
 - Store only session token hashes in SQLite.
 - Keep static SPA public but protect all non-health API routes that expose user data.
 - Do not trust frontend-provided role or identity fields.
@@ -155,16 +155,16 @@ Backend tests cover:
 
 Frontend tests cover:
 
-- Signed-out state renders Slopr branding and sign-in action after `/api/me` returns `401`.
+- Signed-out state renders Lume branding and sign-in action after `/api/me` returns `401`.
 - Authenticated state renders the shell and current user.
 - Admin users see the Admin view; regular users do not.
 - Logout calls the backend and navigates to the returned redirect URL.
 
 Manual smoke test:
 
-1. Configure an authentik OAuth2/OpenID Connect provider for Slopr.
-2. Start Slopr with OIDC env vars.
-3. Visit Slopr and sign in through authentik.
+1. Configure an authentik OAuth2/OpenID Connect provider for Lume.
+2. Start Lume with OIDC env vars.
+3. Visit Lume and sign in through authentik.
 4. Confirm `/api/me` returns the mapped user.
 5. Confirm an authentik group member appears as admin.
 6. Confirm a non-group member appears as user and cannot call admin APIs.

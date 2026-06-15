@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/rag"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/rag"
 )
 
 const MaxChatDocuments = 10

@@ -1,4 +1,4 @@
-// Package httpapi builds slopr's HTTP handler: JSON/SSE API plus the embedded SPA.
+// Package httpapi builds lume's HTTP handler: JSON/SSE API plus the embedded SPA.
 package httpapi
 
 import (
@@ -9,14 +9,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/docgen"
-	"github.com/trick77/slopr/internal/imagegen"
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/mcp"
-	"github.com/trick77/slopr/internal/usage"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/docgen"
+	"github.com/trick77/lume/internal/imagegen"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/mcp"
+	"github.com/trick77/lume/internal/usage"
 )
 
 // Deps are the dependencies needed to build the server. Grows in later phases

@@ -1,4 +1,4 @@
-module github.com/trick77/slopr
+module github.com/trick77/lume
 
 go 1.25.0
 

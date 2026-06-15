@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/trick77/slopr/internal/auth"
+	"github.com/trick77/lume/internal/auth"
 )
 
 const sessionTTL = 30 * 24 * time.Hour

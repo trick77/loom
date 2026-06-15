@@ -14,14 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/docgen"
-	"github.com/trick77/slopr/internal/imagegen"
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/mcp"
-	"github.com/trick77/slopr/internal/store"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/docgen"
+	"github.com/trick77/lume/internal/imagegen"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/mcp"
+	"github.com/trick77/lume/internal/store"
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
@@ -183,7 +183,7 @@ func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 				ToolCalls: []llm.ToolCall{{
 					ID:       "call_1",
 					Type:     "function",
-					Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"q":"slopr"}`},
+					Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"q":"lume"}`},
 				}},
 			},
 			{ReasoningContent: "beta reasoning", Content: "Final answer."},
@@ -1080,12 +1080,12 @@ func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 				ToolCalls: []llm.ToolCall{{
 					ID:       "call_1",
 					Type:     "function",
-					Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"q":"slopr"}`},
+					Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"q":"lume"}`},
 				}},
 				Usage: llm.TokenUsage{PromptTokens: 11, CompletionTokens: 5, TotalTokens: 16},
 			},
 			{
-				Content: "I found Slopr.",
+				Content: "I found Lume.",
 				Usage:   llm.TokenUsage{PromptTokens: 30, CompletionTokens: 7, TotalTokens: 37},
 			},
 		},
@@ -1106,7 +1106,7 @@ func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1552,11 +1552,11 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 					Type: "function",
 					Function: llm.ToolCallFunction{
 						Name:      "search__web",
-						Arguments: `{"q":"slopr"}`,
+						Arguments: `{"q":"lume"}`,
 					},
 				}},
 			},
-			{Content: "I found Slopr."},
+			{Content: "I found Lume."},
 		},
 	}
 	srv := newAuthenticatedChatServer(t, Deps{
@@ -1575,7 +1575,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1590,7 +1590,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 		"event: tool_result",
 		`"content":"search result"`,
 		"event: assistant_delta",
-		`data: {"content":"I found Slopr."}`,
+		`data: {"content":"I found Lume."}`,
 		"event: assistant_message",
 		"event: done",
 	} {
@@ -1601,7 +1601,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	if pending, call := strings.Index(body, "event: tool_pending"), strings.Index(body, "event: tool_call"); pending == -1 || pending > call {
 		t.Fatalf("tool_pending should precede tool_call: pending=%d call=%d\n%s", pending, call, body)
 	}
-	if store.assistantContent != "I found Slopr." {
+	if store.assistantContent != "I found Lume." {
 		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
 	}
 	if len(llmClient.histories) != 2 {
@@ -1627,7 +1627,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 		`"type":"tool"`,
 		`"id":"call_1"`,
 		`"name":"search__web"`,
-		`"rawArguments":"{\"q\":\"slopr\"}"`,
+		`"rawArguments":"{\"q\":\"lume\"}"`,
 		`"rawOutput":"search result"`,
 	} {
 		if !strings.Contains(trace, want) {
@@ -1684,7 +1684,7 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 				ID: "call_1",
 				Function: llm.ToolCallFunction{
 					Name:      "search__web",
-					Arguments: `{"q":"slopr"}`,
+					Arguments: `{"q":"lume"}`,
 				},
 			}}},
 			{Content: "The search tool failed, but I can continue."},
@@ -1699,7 +1699,7 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1735,7 +1735,7 @@ func TestStreamMessageStopsAfterToolCallLimit(t *testing.T) {
 		MCP:  fakeMCPService{tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1772,7 +1772,7 @@ func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
 
 	srv.ServeHTTP(rec, req)
 
@@ -1807,7 +1807,7 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Slopr"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
 
 	srv.ServeHTTP(rec, req)
 

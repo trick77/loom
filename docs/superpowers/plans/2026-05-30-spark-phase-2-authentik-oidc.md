@@ -1,10 +1,10 @@
-# Slopr Phase 2 Authentik OIDC Implementation Plan
+# Lume Phase 2 Authentik OIDC Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add authentik-backed OIDC sign-in, Slopr server-side sessions, role-aware API protection, and a frontend sign-in/authenticated shell.
+**Goal:** Add authentik-backed OIDC sign-in, Lume server-side sessions, role-aware API protection, and a frontend sign-in/authenticated shell.
 
-**Architecture:** Slopr acts as an OIDC relying party using `go-oidc` and `oauth2`, then issues its own opaque session cookie backed by SQLite. Authentik remains the identity source; Slopr stores app-local users keyed by OIDC subject and maps admin role from the configured authentik group.
+**Architecture:** Lume acts as an OIDC relying party using `go-oidc` and `oauth2`, then issues its own opaque session cookie backed by SQLite. Authentik remains the identity source; Lume stores app-local users keyed by OIDC subject and maps admin role from the configured authentik group.
 
 **Tech Stack:** Go 1.25, stdlib `net/http`, `github.com/coreos/go-oidc/v3/oidc`, `golang.org/x/oauth2`, pure-Go SQLite via `ncruces/go-sqlite3`, React 19, TypeScript, Tailwind v4, Vitest.
 
@@ -560,7 +560,7 @@ git commit -m "feat: expose oidc auth api"
 - Modify: `frontend/src/App.tsx`
 - Modify: `frontend/src/App.test.tsx`
 
-- [ ] **Step 1: Move Slopr image**
+- [ ] **Step 1: Move Lume image**
 
 Run:
 
@@ -583,7 +583,7 @@ test("renders signed-out screen when /api/me returns 401", async () => {
     "href",
     "/api/auth/login",
   );
-  expect(screen.getByAltText("Slopr")).toBeInTheDocument();
+  expect(screen.getByAltText("Lume")).toBeInTheDocument();
 });
 
 test("renders admin entry for admin users", async () => {

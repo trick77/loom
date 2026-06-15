@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add first-class text-to-image generation to Slopr using the BFL FLUX.2 [klein] API, saving generated images as normal per-user/project artifacts and rendering them inline in chat.
+**Goal:** Add first-class text-to-image generation to Lume using the BFL FLUX.2 [klein] API, saving generated images as normal per-user/project artifacts and rendering them inline in chat.
 
 **Architecture:** Implement a small `imagegen` backend package with a provider interface and a BFL client. Expose the provider as a built-in LLM tool named `generate_image`, then reuse the existing tool loop, SSE `artifact` event, artifact storage, sandboxed output paths, and assistant message artifact persistence. The frontend only needs to render image artifacts as previews; explicit image compose mode and image editing are deferred.
 
-**Tech Stack:** Go stdlib `net/http`, BFL API `POST https://api.bfl.ai/v1/flux-2-klein-4b` with `x-key`, existing Slopr SSE/tool/artifact pipeline, React + TypeScript.
+**Tech Stack:** Go stdlib `net/http`, BFL API `POST https://api.bfl.ai/v1/flux-2-klein-4b` with `x-key`, existing Lume SSE/tool/artifact pipeline, React + TypeScript.
 
 **Current BFL docs checked:** Context7 `/websites/bfl_ai`, query “FLUX.2 [klein] text-to-image API”. Relevant docs: `flux_2/flux2_text_to_image`, `api-reference/models/generate-or-edit-an-image-with-flux2-[klein-9b]-fast-editing`, `api_integration/integration_guidelines`.
 
@@ -1088,7 +1088,7 @@ Expected: FAIL because the server has no image tool dependency.
 
 - [ ] **Step 3: Add image tool dependency to server**
 
-In `backend/internal/httpapi/server.go`, import `github.com/trick77/slopr/internal/imagegen`.
+In `backend/internal/httpapi/server.go`, import `github.com/trick77/lume/internal/imagegen`.
 
 Add to `Deps`:
 
@@ -1110,7 +1110,7 @@ Set it in `New`:
 
 - [ ] **Step 4: Include image tools in available tool schemas**
 
-In `backend/internal/httpapi/message_stream_handlers.go`, import `github.com/trick77/slopr/internal/imagegen` if needed by helper signatures.
+In `backend/internal/httpapi/message_stream_handlers.go`, import `github.com/trick77/lume/internal/imagegen` if needed by helper signatures.
 
 In `availableTools`, after document tools, add:
 
@@ -1291,7 +1291,7 @@ git commit -m "feat: expose image generation as a chat tool"
 In `backend/cmd/slopr/main.go`, add:
 
 ```go
-	"github.com/trick77/slopr/internal/imagegen"
+	"github.com/trick77/lume/internal/imagegen"
 ```
 
 - [ ] **Step 2: Instantiate configured image tools**
@@ -1465,7 +1465,7 @@ Run: `git checkout -- backend/web/dist/.gitkeep backend/web/dist/index.html`
 
 Expected: no generated dist assets remain staged.
 
-- [ ] **Step 4: Run Slopr with image generation enabled**
+- [ ] **Step 4: Run Lume with image generation enabled**
 
 Use a local DB and your real BFL key through the environment. Do not put the key in any file:
 

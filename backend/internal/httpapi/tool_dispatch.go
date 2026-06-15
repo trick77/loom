@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/docgen"
-	"github.com/trick77/slopr/internal/imagegen"
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/mcp"
-	"github.com/trick77/slopr/internal/sse"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/docgen"
+	"github.com/trick77/lume/internal/imagegen"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/mcp"
+	"github.com/trick77/lume/internal/sse"
 )
 
 func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int) string {

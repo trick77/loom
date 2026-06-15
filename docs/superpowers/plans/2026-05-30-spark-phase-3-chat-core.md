@@ -1,4 +1,4 @@
-# Slopr Phase 3 Chat Core Implementation Plan
+# Lume Phase 3 Chat Core Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -669,7 +669,7 @@ Handler requirements:
 - Build LLM history from persisted messages plus the new user message, using roles `system`, `user`, and `assistant`. The system prompt is:
 
 ```text
-You are Slopr, a concise assistant for work and school. Answer in the user's language unless their profile requests a specific response language.
+You are Lume, a concise assistant for work and school. Answer in the user's language unless their profile requests a specific response language.
 ```
 
 - If `auth.User.ResponseLanguage` is not empty and not `auto`, append:

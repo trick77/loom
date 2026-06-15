@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/slopr/internal/store"
+	"github.com/trick77/lume/internal/store"
 )
 
 func openTestDB(t *testing.T) *sql.DB {
@@ -221,8 +221,8 @@ func TestMessagesPersistActivityTrace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rawTrace := json.RawMessage(`[{"id":"reasoning-1","type":"reasoning","content":"I searched first.","status":"done"},{"id":"call_1","type":"tool","name":"search__web","status":"done","rawArguments":"{\"q\":\"slopr\"}","rawOutput":"search result"}]`)
-	message, err := store.AddMessageWithActivityTrace(ctx, userID, thread.ID, RoleAssistant, "I found Slopr.", MessageTokenUsage{}, nil, rawTrace)
+	rawTrace := json.RawMessage(`[{"id":"reasoning-1","type":"reasoning","content":"I searched first.","status":"done"},{"id":"call_1","type":"tool","name":"search__web","status":"done","rawArguments":"{\"q\":\"lume\"}","rawOutput":"search result"}]`)
+	message, err := store.AddMessageWithActivityTrace(ctx, userID, thread.ID, RoleAssistant, "I found Lume.", MessageTokenUsage{}, nil, rawTrace)
 	if err != nil {
 		t.Fatalf("AddMessageWithActivityTrace() error = %v", err)
 	}

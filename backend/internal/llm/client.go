@@ -35,7 +35,7 @@ const documentToolMaxCompletionTokens = 32768
 // payloads enough wall-clock time to reach the tool call.
 const documentToolTimeout = 5 * time.Minute
 
-// Hardcoded MiMo model selection. Slopr targets MiMo specifically and is no
+// Hardcoded MiMo model selection. Lume targets MiMo specifically and is no
 // longer model-configurable: textModel handles normal (text-only) turns, and
 // visionModel (the omnimodal non-Pro variant) is used only for turns that carry
 // image input — mimo-v2.5-pro is text-only and 404s on any image_url part.

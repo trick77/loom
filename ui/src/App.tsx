@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChatShell } from "./ChatShell";
-import sloprImage from "./assets/mynd-logo.png";
+import lumeImage from "./assets/mynd-logo.png";
 import { getMe, listUsers, logout, type User } from "./api";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
@@ -71,7 +71,7 @@ export default function App() {
     return (
       <main className="flex h-svh items-center justify-center bg-bg px-6 font-sans text-ink">
         <section className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <img src={sloprImage} alt="Slopr" className="w-full max-w-sm rounded-ui" />
+          <img src={lumeImage} alt="Lume" className="w-full max-w-sm rounded-ui" />
           <p className="-mt-2 whitespace-nowrap font-sans text-xl text-muted">What&apos;s on your Mynd today?</p>
           <a
             href="/api/auth/login"

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Slopr's generated PPTX and PDF documents look professional and varied by applying a shared Slopr theme and adding layout variety plus tables.
+**Goal:** Make Lume's generated PPTX and PDF documents look professional and varied by applying a shared Lume theme and adding layout variety plus tables.
 
 **Architecture:** A new shared theme module supplies one palette to both generators. PPTX keeps its hand-written OOXML but gains styled per-layout renderers (background fills, accent titles, real bullets, tables). PDF is rebuilt on the `maroto/v2` grid library (accent header band, typed content blocks, automatic page breaks).
 
@@ -81,7 +81,7 @@ package docgen
 // numeric channels) while the OOXML generators use the *Hex strings.
 type RGB struct{ R, G, B int }
 
-// palette holds the Slopr brand colors once, so PPTX and PDF stay in sync.
+// palette holds the Lume brand colors once, so PPTX and PDF stay in sync.
 type palette struct {
 	Ink   RGB
 	Cream RGB
@@ -130,7 +130,7 @@ func fmtSscanHex(hex string, r, g, b *int) (int, error) {
 	return 3, nil
 }
 
-// Theme is the single shared Slopr palette.
+// Theme is the single shared Lume palette.
 var Theme = func() palette {
 	p := palette{
 		InkHex: "1D1D1B", CreamHex: "F3F0E8", AccentHex: "9A6B4F",
@@ -166,7 +166,7 @@ Expected: PASS (all three).
 
 ```bash
 git add backend/internal/docgen/theme.go backend/internal/docgen/theme_test.go
-git commit -m "feat(docgen): add shared Slopr theme palette"
+git commit -m "feat(docgen): add shared Lume theme palette"
 ```
 
 ---
@@ -514,8 +514,8 @@ git commit -m "feat(docgen): styled PPTX bullets layout + layout dispatch"
 
 ```go
 func TestTitleLayoutCentersTitleAndSubtitle(t *testing.T) {
-	xml := titleLayout(pptxSlide{Layout: "title", Title: "Slopr", Subtitle: "Q3 Review"})
-	if !strings.Contains(xml, "Slopr") || !strings.Contains(xml, "Q3 Review") || !strings.Contains(xml, `algn="ctr"`) {
+	xml := titleLayout(pptxSlide{Layout: "title", Title: "Lume", Subtitle: "Q3 Review"})
+	if !strings.Contains(xml, "Lume") || !strings.Contains(xml, "Q3 Review") || !strings.Contains(xml, `algn="ctr"`) {
 		t.Fatalf("titleLayout = %s", xml)
 	}
 }
@@ -1001,7 +1001,7 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/fontrepository"
 	"github.com/johnfercher/maroto/v2/pkg/props"
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gobolditalic"
 	"golang.org/x/image/font/gofont/goitalic"
@@ -1016,7 +1016,7 @@ func (g PDFGenerator) ToolName() string { return "create_pdf_file" }
 
 func rgbColor(c RGB) *props.Color { return &props.Color{Red: c.R, Green: c.G, Blue: c.B} }
 
-// newMaroto builds a maroto instance with the Slopr fonts and an accent header band.
+// newMaroto builds a maroto instance with the Lume fonts and an accent header band.
 func newMaroto(title, subtitle string) (core.Maroto, error) {
 	fonts, err := fontrepository.New().
 		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Normal, goregular.TTF).

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add AnythingLLM-style assistant-generated files to Slopr: chat tools can create text, PDF, DOCX, XLSX, and PPTX artifacts, store them in the user's Artifacts volume, and render downloadable chat cards.
+**Goal:** Add AnythingLLM-style assistant-generated files to Lume: chat tools can create text, PDF, DOCX, XLSX, and PPTX artifacts, store them in the user's Artifacts volume, and render downloadable chat cards.
 
-**Architecture:** Keep generation as built-in Slopr tools rather than MCP servers, because these tools need the authenticated user, current thread/project scope, and direct access to the per-user volume sandbox. Add artifact metadata to SQLite, route downloads through artifact ids, emit a new SSE `artifact` event during chat streaming, and persist artifact metadata with assistant messages so old chats re-render cards. Start with text artifacts and the plumbing, then add XLSX/PDF/DOCX/PPTX generators behind the same interface.
+**Architecture:** Keep generation as built-in Lume tools rather than MCP servers, because these tools need the authenticated user, current thread/project scope, and direct access to the per-user volume sandbox. Add artifact metadata to SQLite, route downloads through artifact ids, emit a new SSE `artifact` event during chat streaming, and persist artifact metadata with assistant messages so old chats re-render cards. Start with text artifacts and the plumbing, then add XLSX/PDF/DOCX/PPTX generators behind the same interface.
 
 **Tech Stack:** Go 1.25, stdlib `net/http`, SQLite migrations, existing SSE, React 19 + TypeScript, Vitest, Go `archive/zip` OOXML writers, `github.com/xuri/excelize/v2` for XLSX, `github.com/signintech/gopdf` for PDF.
 
@@ -424,7 +424,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/trick77/slopr/internal/store"
+	"github.com/trick77/lume/internal/store"
 )
 
 func TestStoreCreatesAndFindsArtifactByUser(t *testing.T) {
@@ -555,7 +555,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/trick77/slopr/internal/chat"
+	"github.com/trick77/lume/internal/chat"
 )
 
 type Store struct {
@@ -814,7 +814,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 )
 
 type TextGenerator struct {
@@ -899,9 +899,9 @@ Add these imports to `backend/internal/httpapi/message_stream_handlers_test.go` 
 ```go
 	"path/filepath"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/docgen"
-	"github.com/trick77/slopr/internal/store"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/docgen"
+	"github.com/trick77/lume/internal/store"
 ```
 
 Append this test to `backend/internal/httpapi/message_stream_handlers_test.go`:
@@ -977,8 +977,8 @@ Expected: fail because `Deps.Artifacts`, `Deps.DocTools`, `Deps.UsersDir`, and b
 In `backend/internal/httpapi/server.go`, add imports:
 
 ```go
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/docgen"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/docgen"
 ```
 
 Add to `Deps`:
@@ -1257,7 +1257,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 )
 
 func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {
@@ -1594,7 +1594,7 @@ func TestPDFGeneratorCreatesPDF(t *testing.T) {
 	meta, err := PDFGenerator{}.Generate(GenerateRequest{
 		Filename: "report.pdf",
 		Payload: map[string]any{
-			"content": "# Report\n\nHello from Slopr.",
+			"content": "# Report\n\nHello from Lume.",
 		},
 	}, &out)
 	if err != nil {
@@ -1629,7 +1629,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -1701,7 +1701,7 @@ import (
 	"strings"
 
 	"github.com/signintech/gopdf"
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 )
 
 type PDFGenerator struct{}
@@ -1804,7 +1804,7 @@ func TestDOCXGeneratorCreatesWordPackage(t *testing.T) {
 		Filename: "report.docx",
 		Payload: map[string]any{
 			"title":   "Report",
-			"content": "# Report\n\nHello Slopr.",
+			"content": "# Report\n\nHello Lume.",
 		},
 	}, &out)
 	if err != nil {
@@ -1839,7 +1839,7 @@ func TestPPTXGeneratorCreatesPresentationPackage(t *testing.T) {
 	meta, err := PPTXGenerator{}.Generate(GenerateRequest{
 		Filename: "deck.pptx",
 		Payload: map[string]any{
-			"title": "Slopr Update",
+			"title": "Lume Update",
 			"slides": []any{
 				map[string]any{"title": "Status", "bullets": []any{"Generated artifacts", "Download cards"}},
 			},
@@ -1932,7 +1932,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 )
 
 type DOCXGenerator struct{}
@@ -1991,7 +1991,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 )
 
 type PPTXGenerator struct{}

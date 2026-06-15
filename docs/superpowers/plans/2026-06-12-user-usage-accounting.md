@@ -321,7 +321,7 @@ type UsageStore interface {
 }
 ```
 
-Add the import `"github.com/trick77/slopr/internal/usage"` to the import block.
+Add the import `"github.com/trick77/lume/internal/usage"` to the import block.
 
 - [ ] **Step 2: Add `Usage` to `Deps` and `usage` to `server`**
 
@@ -385,7 +385,7 @@ git commit -m "feat(usage): wire UsageStore into httpapi server"
 	usageStore := usage.NewStore(db)
 ```
 
-Add import `"github.com/trick77/slopr/internal/usage"`.
+Add import `"github.com/trick77/lume/internal/usage"`.
 
 - [ ] **Step 2: Pass it to Deps** (in the `httpapi.New(httpapi.Deps{...})` literal, after `Artifacts: artifactStore,`)
 
@@ -505,7 +505,7 @@ Each currently reads `srv.executeToolCall(context.Background(), <call>, 0)`. Cha
 ```go
 		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0)
 ```
-Apply the same `auth.User{ID: "u1", Username: "u1"}` arg to all three (`fetchCall`, `fetchCall`, `otherCall`). Ensure `"github.com/trick77/slopr/internal/auth"` is imported in the test file (it almost certainly already is; add if missing).
+Apply the same `auth.User{ID: "u1", Username: "u1"}` arg to all three (`fetchCall`, `fetchCall`, `otherCall`). Ensure `"github.com/trick77/lume/internal/auth"` is imported in the test file (it almost certainly already is; add if missing).
 
 - [ ] **Step 6: Build & run package tests**
 
@@ -550,7 +550,7 @@ git commit -m "feat(usage): count web search, fetch, and obscura fallback per us
 		})
 	})
 ```
-This reads the accumulator after `titles.wait()` (already called above persist), so answer + tool-round + title + reasoning-abstract tokens are all included, matching the per-message stats. Add import `"github.com/trick77/slopr/internal/usage"` to this file.
+This reads the accumulator after `titles.wait()` (already called above persist), so answer + tool-round + title + reasoning-abstract tokens are all included, matching the per-message stats. Add import `"github.com/trick77/lume/internal/usage"` to this file.
 
 - [ ] **Step 3: Count chats created** — in `thread_handlers.go`, after the `CreateThread` success check (after the error from `s.chat.CreateThread(...)` is confirmed nil):
 
@@ -599,8 +599,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/usage"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/usage"
 )
 
 type stubUsage struct{ totals usage.Totals }
@@ -653,9 +653,9 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/usage"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/usage"
 )
 
 // usageResponse is the GET /api/me/usage payload: the user's lifetime counters

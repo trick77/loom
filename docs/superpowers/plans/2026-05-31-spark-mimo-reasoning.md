@@ -1,4 +1,4 @@
-# Slopr MiMo Reasoning Display Implementation Plan
+# Lume MiMo Reasoning Display Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -20,7 +20,7 @@
 - Modify `backend/internal/httpapi/server.go`, `message_stream_handlers.go`, `chat_test_helpers_test.go`, and `message_stream_handlers_test.go`: send `assistant_reasoning_delta`, persist reasoning, and include reasoning in LLM history.
 - Modify `frontend/src/api.ts` and `frontend/src/api.test.ts`: add `onReasoningDelta`.
 - Modify `frontend/src/ChatShell.tsx` and `frontend/src/App.test.tsx`: maintain streaming reasoning state and render collapsible Thinking UI.
-- Modify `frontend/src/index.css`: add minimal Thinking panel styles using existing Slopr tokens/colors.
+- Modify `frontend/src/index.css`: add minimal Thinking panel styles using existing Lume tokens/colors.
 
 ---
 
@@ -924,4 +924,4 @@ If no fixes were needed, do not create an empty commit.
 
 - Spec coverage: MiMo streaming `delta.reasoning_content`, persisted assistant `reasoning_content`, multi-turn/tool-call preservation, SSE event parsing, collapsible frontend display, and verification are covered.
 - Placeholder scan: no TBD/TODO/implement-later placeholders remain.
-- Type consistency: backend names use `ReasoningContent` / `ReasoningDelta`; API JSON uses `reasoning_content` for MiMo and `reasoningContent` for Slopr message JSON; SSE event is `assistant_reasoning_delta`.
+- Type consistency: backend names use `ReasoningContent` / `ReasoningDelta`; API JSON uses `reasoning_content` for MiMo and `reasoningContent` for Lume message JSON; SSE event is `assistant_reasoning_delta`.

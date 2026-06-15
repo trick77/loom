@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Slopr's separate thinking and tool panels with one collapsible chronological Activity Trace that appears before the assistant answer.
+**Goal:** Replace Lume's separate thinking and tool panels with one collapsible chronological Activity Trace that appears before the assistant answer.
 
 **Architecture:** Keep the existing SSE event stream initially and normalize reasoning/tool events into a frontend `ActivityTraceEvent[]` model. Render one `ActivityTracePanel` for active turns and completed assistant messages, with specialized summaries for search/fetch-like tools and a safe generic fallback. Add backend display metadata only if the frontend cannot reliably summarize current tool payloads.
 
-**Tech Stack:** React 19, TypeScript, Vite, Vitest, Testing Library, Tailwind v4 themed CSS variables, existing Slopr SSE API.
+**Tech Stack:** React 19, TypeScript, Vite, Vitest, Testing Library, Tailwind v4 themed CSS variables, existing Lume SSE API.
 
 **Command Context:** Run `npm ...` commands from `frontend/`. Run `git ...` commands from the repository root unless the command explicitly says otherwise.
 
@@ -660,7 +660,7 @@ function ActivityTracePanel({
   const summary = active ? "Thinking" : summarizeTrace(events);
   return (
     <div
-      aria-label={active ? "Slopr activity trace" : undefined}
+      aria-label={active ? "Lume activity trace" : undefined}
       aria-live={active ? "polite" : undefined}
       className="slopr-activity-trace"
       role={active ? "status" : undefined}
@@ -1012,7 +1012,7 @@ git commit -m "feat: handle activity trace failures"
 
 - [ ] **Step 1: Update CSS classes**
 
-In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but replace panel/body class names with the classes below. Keep Activity Trace colors in CSS classes rather than adding new inline hex utility classes in TSX; the literal values intentionally mirror existing Slopr thinking/sidebar colors.
+In `frontend/src/index.css`, keep the sweep keyframes and status dot styles, but replace panel/body class names with the classes below. Keep Activity Trace colors in CSS classes rather than adding new inline hex utility classes in TSX; the literal values intentionally mirror existing Lume thinking/sidebar colors.
 
 ```css
 .slopr-activity-trace {
@@ -1223,7 +1223,7 @@ Rename and update tests:
 - `keeps streamed reasoning visible while assistant text is streaming` becomes `keeps active activity trace visible while assistant text is streaming`.
 - `hides the thinking panel when the stream fails` becomes `hides empty activity trace when the stream fails`.
 
-Use role/name assertions for `Show activity`, `Hide activity`, and `Slopr activity trace`.
+Use role/name assertions for `Show activity`, `Hide activity`, and `Lume activity trace`.
 
 - [ ] **Step 3: Run full frontend tests**
 

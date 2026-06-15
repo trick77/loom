@@ -54,7 +54,7 @@ export function ActivityTracePanel({
   const hasBody = events.length > 0;
   return (
     <div
-      aria-label={active ? "Slopr activity trace" : undefined}
+      aria-label={active ? "Lume activity trace" : undefined}
       aria-live={active ? "polite" : undefined}
       className="ui-activity-trace"
       role={active ? "status" : undefined}

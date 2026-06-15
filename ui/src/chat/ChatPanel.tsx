@@ -387,7 +387,7 @@ export function ChatPanel({
                 </div>
               )}
               <div className="ui-meta-text mt-2 text-center text-[#858178]">
-                Slopr can make mistakes. Please double-check responses.
+                Lume can make mistakes. Please double-check responses.
               </div>
             </div>
           </div>

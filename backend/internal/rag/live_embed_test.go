@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/trick77/slopr/internal/store"
+	"github.com/trick77/lume/internal/store"
 )
 
 // TestLiveEmbedAndRetrieve exercises the real embeddings endpoint + real
@@ -26,7 +26,7 @@ func TestLiveEmbedAndRetrieve(t *testing.T) {
 	ctx := context.Background()
 
 	docs := []string{
-		"The slopr backend is built in Go and serves an embedded React SPA.",
+		"The lume backend is built in Go and serves an embedded React SPA.",
 		"Bananas are a good source of potassium and grow in tropical climates.",
 		"Apache Tika extracts plain text from PDF, DOCX, and other documents.",
 	}
@@ -60,7 +60,7 @@ func TestLiveEmbedAndRetrieve(t *testing.T) {
 		t.Fatalf("ReplaceChunks: %v", err)
 	}
 
-	embeddedQuery, err := emb.Embed(ctx, []string{"What language is the slopr server written in?"})
+	embeddedQuery, err := emb.Embed(ctx, []string{"What language is the lume server written in?"})
 	if err != nil {
 		t.Fatalf("Embed query: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestLiveEmbedAndRetrieve(t *testing.T) {
 		t.Fatalf("got %d results, want 1", len(res))
 	}
 	if res[0].Ordinal != 0 {
-		t.Errorf("nearest chunk ordinal = %d (%q), want 0 (the Go/slopr sentence)", res[0].Ordinal, res[0].Text)
+		t.Errorf("nearest chunk ordinal = %d (%q), want 0 (the Go/lume sentence)", res[0].Ordinal, res[0].Text)
 	}
 	t.Logf("real KNN top hit: %q", res[0].Text)
 }

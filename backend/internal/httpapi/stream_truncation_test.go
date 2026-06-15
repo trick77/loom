@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/llm"
 )
 
 // A tool call truncated at the completion-token cap (finish_reason=length) must

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/sse"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/sse"
 )
 
 // reasoningTitleTimeout bounds a single background title call. wait() blocks the
