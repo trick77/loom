@@ -331,8 +331,8 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 		t.Fatal("release workflow missing final git tag step")
 	}
 	for _, imageStep := range []string{
-		"- name: Build and push Slopr image",
-		"- name: Build and push Slopr UI image",
+		"- name: Build and push backend image",
+		"- name: Build and push UI image",
 		"- name: Build and push fetch MCP image",
 	} {
 		idx := strings.Index(workflow, imageStep)
@@ -356,9 +356,9 @@ func TestReleaseWorkflowBuildsProductionImages(t *testing.T) {
 	workflow := string(data)
 
 	for _, want := range []string{
-		`name: Build and push Slopr image`,
+		`name: Build and push backend image`,
 		`file: ./backend/Containerfile`,
-		`name: Build and push Slopr UI image`,
+		`name: Build and push UI image`,
 		`file: ./ui/Containerfile`,
 	} {
 		if !strings.Contains(workflow, want) {

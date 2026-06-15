@@ -2,4 +2,4 @@
 # The nginx image runs every /docker-entrypoint.d/*.sh at container start. Log the
 # baked-in build version so the running UI image is identifiable from the logs,
 # mirroring the backend's "starting slopr version=..." line.
-echo "starting slopr-ui version=${SLOPR_VERSION:-dev}"
+echo "starting slopr-ui version=${UI_VERSION:-dev}"

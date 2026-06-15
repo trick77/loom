@@ -75,7 +75,7 @@ jobs:
             echo "fetch_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push Slopr image
+      - name: Build and push backend image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -93,7 +93,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push Slopr UI image
+      - name: Build and push UI image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -101,7 +101,7 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: |
-            SLOPR_VERSION=${{ steps.ver.outputs.version }}
+            UI_VERSION=${{ steps.ver.outputs.version }}
           tags: |
             ghcr.io/${{ github.repository }}-ui:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository }}-ui:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}
