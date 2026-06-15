@@ -29,11 +29,13 @@ export function previousUserContent(messages: Message[], beforeIndex: number): s
 // concatenated into one string; across a round boundary (model finishes a
 // round's prose, runs tools, then resumes) the last sentence of one round and
 // the first of the next would otherwise fuse ("…done.Based on…"). When a round
-// boundary is pending we open a fresh paragraph instead — but only if there is
-// preceding text that does not already end in whitespace, so a boundary before
-// any prose (or one the model already separated) adds nothing.
+// boundary is pending we open a fresh paragraph instead — but only when the two
+// sides would actually fuse: there is preceding prose and neither the existing
+// text ends in whitespace nor the incoming delta begins with it. A boundary
+// before any prose, or one either side already separates, concatenates verbatim
+// (no spurious break, no leading space after the break).
 export function appendStreamingDelta(current: string, delta: string, turnBreakPending: boolean): string {
-  if (turnBreakPending && current !== "" && !/\s$/.test(current)) {
+  if (turnBreakPending && current !== "" && !/\s$/.test(current) && !/^\s/.test(delta)) {
     return `${current}\n\n${delta}`;
   }
   return current + delta;

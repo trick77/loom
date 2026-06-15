@@ -23,6 +23,12 @@ test("appendStreamingDelta does not double-separate when prose already ends in w
   expect(appendStreamingDelta("Trailing space ", "next", true)).toBe("Trailing space next");
 });
 
+test("appendStreamingDelta does not break when the incoming delta already leads with whitespace", () => {
+  expect(appendStreamingDelta("All done.", " Based on the results", true)).toBe(
+    "All done. Based on the results",
+  );
+});
+
 test("updates an attachment inside an already rendered user message", () => {
   const messages: MessageWithActivityTrace[] = [
     {
