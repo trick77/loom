@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -9,12 +10,15 @@ import (
 
 type stubDescriber struct {
 	gotMIME string
+	gotData []byte
 	text    string
+	err     error
 }
 
-func (s *stubDescriber) DescribeImage(_ context.Context, _ []byte, mime string) (string, error) {
+func (s *stubDescriber) DescribeImage(_ context.Context, data []byte, mime string) (string, error) {
 	s.gotMIME = mime
-	return s.text, nil
+	s.gotData = data
+	return s.text, s.err
 }
 
 func TestExtractContent_routesImagesToDescriber(t *testing.T) {
@@ -30,6 +34,17 @@ func TestExtractContent_routesImagesToDescriber(t *testing.T) {
 	}
 	if desc.gotMIME != "image/png" {
 		t.Errorf("describer mime = %q, want image/png", desc.gotMIME)
+	}
+	if string(desc.gotData) != "PNGDATA" {
+		t.Errorf("describer data = %q, want PNGDATA", desc.gotData)
+	}
+}
+
+func TestExtractContent_describerErrorPropagates(t *testing.T) {
+	desc := &stubDescriber{err: errors.New("vision boom")}
+	ing := &Ingester{describer: desc}
+	if _, err := ing.extractContent(context.Background(), "x.png", "image/png", strings.NewReader("x")); err == nil {
+		t.Fatal("extractContent with describer error = nil, want error")
 	}
 }
 
