@@ -2,7 +2,9 @@
 .superpowers/
 
 # Node / frontend
-node_modules/
+# No trailing slash: also ignore a stray `node_modules` symlink/file, not just the
+# directory (a tracked self-referential symlink here once broke fresh `npm` installs).
+node_modules
 ui/dist/
 *.tsbuildinfo
 
