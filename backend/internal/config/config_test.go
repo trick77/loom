@@ -25,9 +25,6 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatLogDir != "logs/llm-responses" {
 		t.Errorf("ChatLogDir default = %q, want logs/llm-responses", cfg.ChatLogDir)
 	}
-	if cfg.ChatReasoningEffort != "high" {
-		t.Errorf("ChatReasoningEffort default = %q, want high", cfg.ChatReasoningEffort)
-	}
 	if cfg.ChatMaxCompletionTokens != 2048 {
 		t.Errorf("ChatMaxCompletionTokens default = %d, want 2048", cfg.ChatMaxCompletionTokens)
 	}
@@ -63,19 +60,6 @@ func TestLoad_overrides_and_required(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when BACKEND_SESSION_SECRET is empty")
-	}
-}
-
-func TestLoad_chatReasoningEffort(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
-	t.Setenv("BACKEND_CHAT_REASONING_EFFORT", "low")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.ChatReasoningEffort != "low" {
-		t.Fatalf("ChatReasoningEffort = %q, want low", cfg.ChatReasoningEffort)
 	}
 }
 

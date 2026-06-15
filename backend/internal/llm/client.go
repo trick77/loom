@@ -35,12 +35,20 @@ const documentToolMaxCompletionTokens = 32768
 // payloads enough wall-clock time to reach the tool call.
 const documentToolTimeout = 5 * time.Minute
 
+// Hardcoded MiMo model selection. Slopr targets MiMo specifically and is no
+// longer model-configurable: textModel handles normal (text-only) turns, and
+// visionModel (the omnimodal non-Pro variant) is used only for turns that carry
+// image input — mimo-v2.5-pro is text-only and 404s on any image_url part.
+const (
+	textModel              = "mimo-v2.5-pro"
+	visionModel            = "mimo-v2.5"
+	defaultReasoningEffort = "high"
+)
+
 // Config holds the OpenAI-compatible chat completion settings.
 type Config struct {
 	BaseURL             string
 	APIKey              string
-	Model               string
-	ReasoningEffort     string
 	MaxCompletionTokens int
 	Timeout             time.Duration
 	// IdleTimeout aborts a stream when no chunk arrives within the window. Zero
@@ -51,11 +59,42 @@ type Config struct {
 
 // Message is one OpenAI-compatible chat message.
 type Message struct {
-	Role             string     `json:"role"`
-	Content          string     `json:"content,omitempty"`
-	ReasoningContent string     `json:"reasoning_content,omitempty"`
-	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	Role             string               `json:"role"`
+	Content          string               `json:"content,omitempty"`
+	ContentParts     []MessageContentPart `json:"-"`
+	ReasoningContent string               `json:"reasoning_content,omitempty"`
+	ToolCalls        []ToolCall           `json:"tool_calls,omitempty"`
+	ToolCallID       string               `json:"tool_call_id,omitempty"`
+}
+
+type MessageContentPart struct {
+	Type     string           `json:"type"`
+	Text     string           `json:"text,omitempty"`
+	ImageURL *MessageImageURL `json:"image_url,omitempty"`
+}
+
+type MessageImageURL struct {
+	URL string `json:"url"`
+}
+
+func (m Message) MarshalJSON() ([]byte, error) {
+	type messageAlias Message
+	if len(m.ContentParts) == 0 {
+		return json.Marshal(messageAlias(m))
+	}
+	return json.Marshal(struct {
+		Role             string               `json:"role"`
+		Content          []MessageContentPart `json:"content"`
+		ReasoningContent string               `json:"reasoning_content,omitempty"`
+		ToolCalls        []ToolCall           `json:"tool_calls,omitempty"`
+		ToolCallID       string               `json:"tool_call_id,omitempty"`
+	}{
+		Role:             m.Role,
+		Content:          m.ContentParts,
+		ReasoningContent: m.ReasoningContent,
+		ToolCalls:        m.ToolCalls,
+		ToolCallID:       m.ToolCallID,
+	})
 }
 
 // Client calls an OpenAI-compatible chat completion API.
@@ -63,6 +102,7 @@ type Client struct {
 	baseURL             string
 	apiKey              string
 	model               string
+	visionModel         string
 	reasoningEffort     string
 	maxCompletionTokens int
 	timeout             time.Duration
@@ -77,10 +117,6 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	reasoningEffort := cfg.ReasoningEffort
-	if reasoningEffort == "" && isMiMoModel(cfg.Model) {
-		reasoningEffort = "high"
-	}
 	maxCompletionTokens := cfg.MaxCompletionTokens
 	if maxCompletionTokens <= 0 {
 		maxCompletionTokens = defaultMaxCompletionTokens
@@ -88,8 +124,9 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 	return &Client{
 		baseURL:             strings.TrimRight(cfg.BaseURL, "/"),
 		apiKey:              cfg.APIKey,
-		model:               cfg.Model,
-		reasoningEffort:     reasoningEffort,
+		model:               textModel,
+		visionModel:         visionModel,
+		reasoningEffort:     defaultReasoningEffort,
 		maxCompletionTokens: maxCompletionTokens,
 		timeout:             cfg.Timeout,
 		idleTimeout:         cfg.IdleTimeout,
@@ -98,11 +135,32 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 	}
 }
 
-// isMiMoModel reports whether the configured model is a MiMo variant. It uses a
-// substring match so deploy names like "MiMo-7B" or "mimo-vl" are recognized,
-// not just the bare "mimo".
+// ModelSummary describes the hardcoded chat models for the startup capability line.
+func ModelSummary() string {
+	return textModel + " (text) / " + visionModel + " (vision)"
+}
+
+// isMiMoModel reports whether the model is a MiMo variant. Both hardcoded models
+// (text and vision) are MiMo, so this is effectively always true; it is kept to
+// gate MiMo-specific stream handling (inline tool-call parsing) at the call site.
 func isMiMoModel(model string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "mimo")
+}
+
+// modelForMessages selects the chat model for a request: the omnimodal vision
+// model when any message carries an image_url content part, otherwise the
+// text-only model. This is the single routing decision; callers thread the
+// returned name through the request body and into StreamResult.Model so the
+// persisted/observed model reflects what actually ran.
+func (c *Client) modelForMessages(messages []Message) string {
+	for _, m := range messages {
+		for _, part := range m.ContentParts {
+			if part.Type == "image_url" {
+				return c.visionModel
+			}
+		}
+	}
+	return c.model
 }
 
 // utilityMaxCompletionTokens hard-caps secondary helper calls (titles). A clean
@@ -112,6 +170,7 @@ func isMiMoModel(model string) bool {
 const utilityMaxCompletionTokens = 32
 
 type chatRequestOptions struct {
+	model               string
 	tools               []Tool
 	stream              bool
 	reasoningEffort     string
@@ -121,14 +180,16 @@ type chatRequestOptions struct {
 
 func (c *Client) executeChatRequest(ctx context.Context, messages []Message, stream bool) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
+		model:               c.modelForMessages(messages),
 		stream:              stream,
 		reasoningEffort:     c.reasoningEffort,
 		maxCompletionTokens: c.maxCompletionTokens,
 	})
 }
 
-func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool) (*http.Response, error) {
+func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool, model string) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
+		model:               model,
 		tools:               tools,
 		stream:              stream,
 		reasoningEffort:     c.reasoningEffort,
@@ -150,8 +211,12 @@ func (c *Client) executeUtilityChatRequest(ctx context.Context, messages []Messa
 }
 
 func (c *Client) executeChatRequestImpl(ctx context.Context, messages []Message, opts chatRequestOptions) (*http.Response, error) {
+	model := opts.model
+	if model == "" {
+		model = c.model
+	}
 	requestBody := chatCompletionRequest{
-		Model:               c.model,
+		Model:               model,
 		Messages:            messages,
 		Stream:              opts.stream,
 		Tools:               opts.tools,

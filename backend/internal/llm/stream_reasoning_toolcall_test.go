@@ -36,7 +36,7 @@ func TestClient_InlineToolCallInReasoningChannelIsParsedAndGated(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 
 	var reasoningSeen strings.Builder
 	result, err := client.StreamChatWithTools(
@@ -98,7 +98,7 @@ func TestClient_RecoveredInlineToolCallIsLoggedWithChannel(t *testing.T) {
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 	if _, err := client.StreamChatWithTools(
 		context.Background(),
 		[]Message{{Role: "user", Content: "fetch example.com"}},

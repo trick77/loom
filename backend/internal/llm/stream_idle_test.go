@@ -58,7 +58,7 @@ func TestClient_StreamProgressSeparatesTTFBFromInterChunkGap(t *testing.T) {
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 	if _, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
 		t.Fatalf("StreamChatResult() error: %v", err)
 	}
@@ -92,7 +92,6 @@ func TestClient_StreamIdleTimeoutAbortsStalledStream(t *testing.T) {
 
 	client := NewClient(Config{
 		BaseURL:     server.URL,
-		Model:       "mimo",
 		Timeout:     5 * time.Second, // total budget far above the idle window
 		IdleTimeout: 30 * time.Millisecond,
 	}, server.Client())
@@ -133,7 +132,6 @@ func TestClient_StreamIdleTimeoutResetsOnEachChunk(t *testing.T) {
 
 	client := NewClient(Config{
 		BaseURL:     server.URL,
-		Model:       "mimo",
 		Timeout:     5 * time.Second,
 		IdleTimeout: 80 * time.Millisecond,
 	}, server.Client())
@@ -177,7 +175,6 @@ func TestClient_StreamIdleTimeoutIgnoresKeepAliveComments(t *testing.T) {
 
 	client := NewClient(Config{
 		BaseURL:     server.URL,
-		Model:       "mimo",
 		Timeout:     5 * time.Second,
 		IdleTimeout: 60 * time.Millisecond,
 	}, server.Client())
@@ -203,7 +200,6 @@ func TestClient_StreamIdleTimeoutDisabled(t *testing.T) {
 
 	client := NewClient(Config{
 		BaseURL:     server.URL,
-		Model:       "mimo",
 		Timeout:     30 * time.Millisecond,
 		IdleTimeout: 0,
 	}, server.Client())

@@ -11,7 +11,7 @@ import { pendingArtifactLabels } from "./artifacts";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import { AssistantText, MessageBubble, PendingArtifactCard } from "./messages";
-import { toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
+import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { McpStatusIndicator } from "./SidebarItems";
@@ -37,6 +37,7 @@ export function ChatPanel({
   onSend,
   onStop,
   onRetry,
+  onAttachArtifact,
   onOpenProject,
   onDeleteThread,
   onRenameThread,
@@ -63,6 +64,7 @@ export function ChatPanel({
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onRetry(content: string): void;
+  onAttachArtifact?(artifact: Artifact): void;
   onOpenProject(project: Project): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
@@ -190,10 +192,13 @@ export function ChatPanel({
 
   const handleSendRequest = useCallback(() => {
     const sentAttachments = attachments.map(toSentAttachment);
-    if (sentAttachments.length > 0) clearAttachments();
+    if (sentAttachments.length > 0) clearAttachments({ revokePreviewUrls: false });
     pinToLatest();
     onSend(sentAttachments);
   }, [attachments, clearAttachments, onSend, pinToLatest]);
+  const imageUploadPending = attachments.some(
+    (attachment) => isImageAttachment(attachment) && attachment.artifactId === undefined && attachment.status !== "error",
+  );
 
   const handleRetryRequest = useCallback(
     (content: string) => {
@@ -329,6 +334,7 @@ export function ChatPanel({
                   message={message}
                   retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
                   onRetry={handleRetryRequest}
+                  onAttachArtifact={onAttachArtifact}
                 />
               </div>
             ))}
@@ -365,7 +371,7 @@ export function ChatPanel({
                 variant="chat"
                 draft={draft}
                 isSending={isSending}
-                sendDisabled={sendDisabled}
+                sendDisabled={sendDisabled || imageUploadPending}
                 placeholder="Write a message..."
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}

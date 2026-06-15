@@ -30,7 +30,9 @@ import { SettingsModal } from "../settings/SettingsModal";
 import { useMediaQuery } from "./useMediaQuery";
 import { useActivityTrace } from "./useActivityTrace";
 import {
+  composerAttachmentFromArtifact,
   createComposerAttachment,
+  isImageAttachment,
   toSentAttachment,
   useDocumentAttachments,
   type ComposerAttachment,
@@ -234,7 +236,12 @@ export function ChatShell({
   // so they can't bind to a different chat later.
   useEffect(() => {
     if (route.view !== "new") {
-      setPendingAttachments([]);
+      setPendingAttachments((current) => {
+        current.forEach((attachment) => {
+          if (attachment.previewUrl !== undefined) URL.revokeObjectURL(attachment.previewUrl);
+        });
+        return [];
+      });
       setPendingAttachNote("");
     }
   }, [route.view]);
@@ -451,8 +458,28 @@ export function ChatShell({
 
   function handleRemovePendingAttachment(id: string) {
     setSendError("");
-    setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id));
+    setPendingAttachments((current) => {
+      const removed = current.find((attachment) => attachment.id === id);
+      if (removed?.previewUrl !== undefined) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((attachment) => attachment.id !== id);
+    });
     setPendingAttachNote("");
+  }
+
+  // Attach an existing image artifact (e.g. an assistant-generated image) to the
+  // next message so it is re-sent as a model image input — this is how "describe
+  // the image you just made" becomes a vision turn. The artifact is already
+  // persisted server-side, so only its id is wired through (no re-upload).
+  function handleAttachArtifact(artifact: Artifact) {
+    if (!isImageAttachment({ mimeType: artifact.mimeType, filename: artifact.displayFilename })) return;
+    setSendError("");
+    if (pendingAttachments.some((attachment) => attachment.artifactId === artifact.id)) return;
+    if (pendingAttachments.length >= DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE) {
+      setPendingAttachNote(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+      return;
+    }
+    setPendingAttachNote("");
+    setPendingAttachments((current) => [...current, composerAttachmentFromArtifact(artifact)]);
   }
 
   async function handleSend(attachments: ComposerAttachment[] = pendingAttachments.map(toSentAttachment)) {
@@ -507,6 +534,15 @@ export function ChatShell({
             },
             updateSentAttachmentStatus,
           );
+          const failedImageAttachment = options.attachments.find(
+            (attachment) =>
+              isImageAttachment(attachment) &&
+              (attachment.status === "error" || attachment.artifactId === undefined),
+          );
+          if (failedImageAttachment !== undefined) {
+            throw new Error(failedImageAttachment.error ?? `Failed to upload ${failedImageAttachment.filename}.`);
+          }
+          // Keep the object URL alive for the optimistic sent bubble.
           setPendingAttachments([]);
         }
         setActiveThread(targetThread);
@@ -532,6 +568,9 @@ export function ChatShell({
       const documentAttachmentIds = options.attachments
         .filter((attachment) => attachment.documentId !== undefined)
         .map((attachment) => attachment.documentId!);
+      const imageAttachmentIds = options.attachments
+        .filter((attachment) => isImageAttachment(attachment) && attachment.artifactId !== undefined)
+        .map((attachment) => attachment.artifactId!);
       await streamMessage(targetThreadID, content, {
         onUserMessage: (message) => {
           if (isCurrentThread()) {
@@ -609,7 +648,7 @@ export function ChatShell({
           setProjects((current) => upsertProject(current, updatedProject));
         },
         onMcpStatus: (event) => setMcpStatus(event),
-      }, abortController.signal, { documentAttachmentIds });
+      }, abortController.signal, { documentAttachmentIds, imageAttachmentIds });
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
@@ -834,6 +873,7 @@ export function ChatShell({
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
+            onAttachArtifact={handleAttachArtifact}
             onOpenProject={navigateToProject}
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}

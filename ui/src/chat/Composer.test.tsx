@@ -36,7 +36,7 @@ test("reports unsupported picker files instead of silently ignoring them", () =>
 
   expect(onAttachFiles).not.toHaveBeenCalled();
   expect(onAttachError).toHaveBeenCalledWith(
-    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, or HTML.",
+    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF.",
   );
 });
 
@@ -72,7 +72,7 @@ test("attaches supported picker files and reports unsupported companions", () =>
 
   expect(onAttachFiles).toHaveBeenCalledWith([note]);
   expect(onAttachError).toHaveBeenCalledWith(
-    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, or HTML.",
+    "Unsupported file type. Use PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF.",
   );
 });
 
@@ -106,6 +106,38 @@ test("renders uploading attachment previews inside the composer", () => {
   expect(screen.getByText("PDF")).toBeInTheDocument();
   expect(screen.getByText("Uploading...")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Remove quarterly-report.pdf" })).toBeInTheDocument();
+});
+
+test("shows a thumbnail for previewable image attachments", () => {
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:image-preview");
+  const attachments: ComposerAttachment[] = [
+    {
+      id: "att-1",
+      filename: "screenshot.png",
+      mimeType: "image/png",
+      sizeBytes: 1024,
+      status: "queued",
+      previewUrl: URL.createObjectURL(new File(["png"], "screenshot.png", { type: "image/png" })),
+    },
+  ];
+
+  render(
+    <Composer
+      variant="chat"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      attachments={attachments}
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAttachFiles={vi.fn()}
+      onRemoveAttachment={() => undefined}
+    />,
+  );
+
+  expect(document.querySelector('img[src="blob:image-preview"]')).toBeInTheDocument();
+  expect(screen.getByText("PNG")).toBeInTheDocument();
 });
 
 test("keeps attachment previews above the draft text area", () => {

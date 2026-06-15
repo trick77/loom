@@ -3,10 +3,12 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -724,6 +726,53 @@ func TestStreamMessagePersistsEmptyArtifactListForTextOnlyAssistant(t *testing.T
 	}
 	if string(store.messages[1].Artifacts) != "[]" {
 		t.Fatalf("assistant artifacts = %s, want []", store.messages[1].Artifacts)
+	}
+}
+
+func TestStreamMessageAddsImageAttachmentsToLLMHistory(t *testing.T) {
+	usersDir := t.TempDir()
+	imageRel := filepath.ToSlash(filepath.Join("files", "screenshot.png"))
+	imageAbs := filepath.Join(usersDir, testUser.ID, filepath.FromSlash(imageRel))
+	if err := os.MkdirAll(filepath.Dir(imageAbs), 0o700); err != nil {
+		t.Fatalf("mkdir image dir: %v", err)
+	}
+	imageBytes := []byte("fake-png")
+	if err := os.WriteFile(imageAbs, imageBytes, 0o600); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+	var history []llm.Message
+	store := &fakeChatStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+	}
+	srv := newAuthenticatedChatServer(t, Deps{
+		Chat: store,
+		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+			ID:              "art_image",
+			UserID:          testUser.ID,
+			ThreadID:        "thr_1",
+			DisplayFilename: "screenshot.png",
+			VolumeRelPath:   imageRel,
+			MIMEType:        "image/png",
+			SizeBytes:       int64(len(imageBytes)),
+		}}},
+		UsersDir: usersDir,
+		LLM:      fakeChatClient{history: &history},
+	})
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"What is this?","imageAttachmentIds":["art_image"]}`)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body:\n%s", rec.Code, rec.Body.String())
+	}
+	if len(history) == 0 {
+		t.Fatal("LLM history was not captured")
+	}
+	last := history[len(history)-1]
+	wantURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(imageBytes)
+	if last.Role != "user" || last.Content != "" || len(last.ContentParts) != 2 || last.ContentParts[0].ImageURL == nil || last.ContentParts[0].ImageURL.URL != wantURL || last.ContentParts[1].Text != "What is this?" {
+		t.Fatalf("last history message = %#v, want image data URL and text content parts", last)
 	}
 }
 

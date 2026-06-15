@@ -31,7 +31,7 @@ func TestClient_InlineToolCallLeaksOnToolFreeMiMoCall(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 
 	var contentSeen strings.Builder
 	// nil tools: the forced final-answer call.

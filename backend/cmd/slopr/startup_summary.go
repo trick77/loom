@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/trick77/slopr/internal/config"
+	"github.com/trick77/slopr/internal/llm"
 	"github.com/trick77/slopr/internal/mcp"
 )
 
@@ -58,7 +59,7 @@ func chatCapability(cfg config.Config) startupCapability {
 	if strings.TrimSpace(cfg.ChatBaseURL) == "" {
 		return startupCapability{Name: "chat", Status: "disabled", Detail: "set BACKEND_CHAT_BASE_URL"}
 	}
-	return startupCapability{Name: "chat", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", cfg.ChatModel, cfg.ChatBaseURL)}
+	return startupCapability{Name: "chat", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", llm.ModelSummary(), cfg.ChatBaseURL)}
 }
 
 func embeddingsCapability(cfg config.Config) startupCapability {

@@ -37,8 +37,6 @@ services:
       # Optional: point at a real OpenAI-compatible endpoint to actually chat.
       BACKEND_CHAT_BASE_URL: "${BACKEND_CHAT_BASE_URL:-}"
       BACKEND_CHAT_API_KEY: "${BACKEND_CHAT_API_KEY:-}"
-      BACKEND_CHAT_MODEL: "${BACKEND_CHAT_MODEL:-MiMo}"
-      BACKEND_CHAT_REASONING_EFFORT: "${BACKEND_CHAT_REASONING_EFFORT:-high}"
       BACKEND_CONTEXT7_API_KEY: "${BACKEND_CONTEXT7_API_KEY:-}"
       BACKEND_CONTEXT7_MCP_URL: "${BACKEND_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
       BACKEND_BFL_BASE_URL: "${BACKEND_BFL_BASE_URL:-https://api.bfl.ai/v1}"

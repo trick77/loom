@@ -33,7 +33,7 @@ func TestClient_StreamSurfacesInlineToolNameBeforeArguments(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "create_pdf_file"}}}
 
 	var toolCallEvents []ToolCall
@@ -106,7 +106,7 @@ func TestClient_StreamSurfacesNativeToolNameBeforeArguments(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Model: "mimo", Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "create_pdf_file"}}}
 
 	var toolCallEvents []ToolCall
