@@ -73,6 +73,11 @@ func (ing *Ingester) Ingest(ctx context.Context, userID, documentID string) erro
 		return ing.fail(ctx, userID, documentID, fmt.Errorf("no extractable text"))
 	}
 
+	// Cache the extracted text so the inline/full-document path reads it back
+	// instead of re-running Tika on every turn. Best-effort: a cache-write failure
+	// only means that path falls back to live extraction, so it must not fail ingest.
+	_ = ing.store.SetDocumentFullText(ctx, userID, documentID, text)
+
 	_ = ing.store.UpdateStatus(ctx, userID, documentID, StatusEmbedding, "")
 	chunks := Chunk(text, ing.chunkOpts)
 	embeddings, err := ing.embedAll(ctx, userID, chunks)
@@ -91,6 +96,13 @@ func (ing *Ingester) Ingest(ctx context.Context, userID, documentID string) erro
 // It backs the inline-attachment path (full text in the prompt) and works
 // regardless of whether the document has been indexed for RAG.
 func (ing *Ingester) ExtractText(ctx context.Context, userID, documentID string) (string, error) {
+	// Prefer the text cached at ingestion; fall back to live extraction for
+	// documents not yet indexed (e.g. attachments) or indexed before caching.
+	if cached, err := ing.store.GetDocumentFullText(ctx, userID, documentID); err != nil {
+		return "", err
+	} else if strings.TrimSpace(cached) != "" {
+		return cached, nil
+	}
 	doc, ok, err := ing.store.GetDocument(ctx, userID, documentID)
 	if err != nil {
 		return "", err
