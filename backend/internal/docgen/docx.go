@@ -15,7 +15,7 @@ func (g DOCXGenerator) ToolName() string { return "create_docx_file" }
 func (g DOCXGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name:        g.ToolName(),
-		Description: "Create a DOCX document from Markdown or plain text content.",
+		Description: "Create a DOCX document from Markdown or plain text content." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

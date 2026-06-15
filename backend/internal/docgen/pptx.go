@@ -34,7 +34,7 @@ func (g PPTXGenerator) Schema() ToolSchema {
 			"dividers between parts, choose 'table' for tabular data, 'two-column' to compare, " +
 			"'big-number' to highlight a stat, and 'quote' for a pull quote. Vary layouts; do not " +
 			"put everything in plain bullets. Every slide needs a title (used as the heading), except " +
-			"the 'quote' layout, which displays only the quote and attribution.",
+			"the 'quote' layout, which displays only the quote and attribution." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
