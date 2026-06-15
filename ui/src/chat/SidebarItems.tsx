@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef } from "react";
 
 import type { McpStatusEvent, Project, Thread } from "../api";
-import { menuIconClass, menuItemClass, ThreadActionsMenu } from "../ThreadActionsMenu";
+import { menuIconClass, menuItemClass, ThreadActionsMenu, TrashMenuIcon } from "../ThreadActionsMenu";
 import { Icon } from "./Icon";
 import type { SidebarIconName } from "./types";
 
@@ -220,6 +220,8 @@ export function SidebarProjectItem({
   menuOpen,
   onNavigate,
   onStarChange,
+  onEdit,
+  onDelete,
   onToggleMenu,
   onCloseMenu,
 }: {
@@ -229,6 +231,8 @@ export function SidebarProjectItem({
   menuOpen: boolean;
   onNavigate(project: Project): void;
   onStarChange(project: Project, starred: boolean, menuKey: string): void;
+  onEdit(project: Project): void;
+  onDelete(project: Project): void;
   onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
 }) {
@@ -254,8 +258,8 @@ export function SidebarProjectItem({
       >
         <button className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left" onClick={() => onNavigate(project)} type="button">
           {project.starred && (
-            <span className="grid h-4 w-4 shrink-0 place-items-center text-[#97958c]" aria-hidden="true">
-              <Icon name="archive" size="15px" />
+            <span className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[#97958c]" aria-hidden="true">
+              <Icon name="archive" size="21px" />
             </span>
           )}
           <span className="min-w-0 flex-1 truncate whitespace-nowrap">{project.name}</span>
@@ -282,6 +286,8 @@ export function SidebarProjectItem({
           project={project}
           className="right-1 left-auto md:left-[174px] md:right-auto"
           onStarChange={(target, starred) => onStarChange(target, starred, menuKey)}
+          onEdit={onEdit}
+          onDelete={onDelete}
         />
       )}
     </div>
@@ -292,10 +298,14 @@ function ProjectSidebarMenu({
   project,
   className = "right-0 top-full",
   onStarChange,
+  onEdit,
+  onDelete,
 }: {
   project: Project;
   className?: string;
   onStarChange(project: Project, starred: boolean): void;
+  onEdit(project: Project): void;
+  onDelete(project: Project): void;
 }) {
   return (
     <div
@@ -310,9 +320,30 @@ function ProjectSidebarMenu({
         onClick={() => onStarChange(project, !project.starred)}
       >
         <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
-          <Icon name={project.starred ? "starFilled" : "star"} size="19px" />
+          <Icon name={project.starred ? "starOff" : "star"} size="19px" />
         </span>
         {project.starred ? "Unstar" : "Star"}
+      </button>
+      <button
+        className={`${menuItemClass} text-[#f3f0e8]`}
+        role="menuitem"
+        type="button"
+        onClick={() => onEdit(project)}
+      >
+        <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+          <Icon name="edit" size="19px" />
+        </span>
+        Edit details
+      </button>
+      <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
+      <button
+        className={`${menuItemClass} text-[#d98278]`}
+        role="menuitem"
+        type="button"
+        onClick={() => onDelete(project)}
+      >
+        <TrashMenuIcon />
+        Delete
       </button>
     </div>
   );

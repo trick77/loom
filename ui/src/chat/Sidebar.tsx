@@ -41,6 +41,8 @@ export function Sidebar({
   onStarThread,
   onNavigateProject,
   onStarProject,
+  onEditProject,
+  onDeleteProject,
   onToggleThreadMenu,
   onCloseThreadMenu,
 }: {
@@ -80,6 +82,8 @@ export function Sidebar({
   onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
   onNavigateProject(project: Project): void;
   onStarProject(project: Project, starred: boolean, menuKey: string): void;
+  onEditProject(project: Project): void;
+  onDeleteProject(project: Project): void;
   onToggleThreadMenu(menuKey: string): void;
   onCloseThreadMenu(): void;
 }) {
@@ -186,6 +190,8 @@ export function Sidebar({
                     menuOpen={openThreadMenuID === `StarredProject:${project.id}`}
                     onNavigate={onNavigateProject}
                     onStarChange={onStarProject}
+                    onEdit={onEditProject}
+                    onDelete={onDeleteProject}
                     onToggleMenu={onToggleThreadMenu}
                     onCloseMenu={onCloseThreadMenu}
                   />
@@ -205,6 +211,8 @@ export function Sidebar({
                       menuOpen={openThreadMenuID === `SidebarProject:${project.id}`}
                       onNavigate={onNavigateProject}
                       onStarChange={onStarProject}
+                      onEdit={onEditProject}
+                      onDelete={onDeleteProject}
                       onToggleMenu={onToggleThreadMenu}
                       onCloseMenu={onCloseThreadMenu}
                     />

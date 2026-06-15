@@ -36,9 +36,9 @@ describe("UserMenu", () => {
     const item = screen.getByRole("menuitem", { name: "Settings" });
     const icon = item.querySelector("[aria-hidden='true']");
 
-    expect(item).toHaveClass("min-h-[34px]");
+    expect(item).toHaveClass("min-h-[30px]");
     expect(item).toHaveClass("items-start");
     expect(item).not.toHaveClass("items-center");
-    expect(icon).toHaveClass("mt-0.5");
+    expect(icon).toHaveClass("h-[21px]");
   });
 });
