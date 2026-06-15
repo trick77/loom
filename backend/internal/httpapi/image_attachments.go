@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/trick77/slopr/internal/artifact"
 	"github.com/trick77/slopr/internal/imagescale"
@@ -36,8 +35,12 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 		if item.ThreadID != "" && item.ThreadID != threadID {
 			return nil, fmt.Errorf("image attachment is out of scope")
 		}
-		if !strings.HasPrefix(item.MIMEType, "image/") {
-			return nil, fmt.Errorf("attachment is not an image")
+		// Enforce the same image allowlist as the upload path here too: a re-attached
+		// artifact (e.g. a generated image, or any artifact referenced by id) must be
+		// an accepted image type, not merely image/*, so an out-of-allowlist format
+		// (e.g. image/bmp) can't slip into the model request via the attach path.
+		if !allowedImageMIME(item.MIMEType) {
+			return nil, fmt.Errorf("attachment is not a supported image type")
 		}
 		abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)
 		if err != nil {
