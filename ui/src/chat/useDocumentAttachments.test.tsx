@@ -8,7 +8,12 @@ import {
   listDocuments,
   uploadDocument,
 } from "../api";
-import { composerAttachmentFromArtifact, isImageAttachment, useDocumentAttachments } from "./useDocumentAttachments";
+import {
+  composerAttachmentFromArtifact,
+  composerAttachmentFromMessageAttachment,
+  isImageAttachment,
+  useDocumentAttachments,
+} from "./useDocumentAttachments";
 
 vi.mock("../api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api")>();
@@ -125,4 +130,42 @@ test("composerAttachmentFromArtifact yields a ready, re-sendable image attachmen
   expect(attachment.previewUrl).toBe("/api/artifacts/art-123/download");
   expect(attachment.file).toBeUndefined();
   expect(isImageAttachment(attachment)).toBe(true);
+});
+
+test("composerAttachmentFromMessageAttachment rehydrates a persisted image attachment", () => {
+  const attachment = composerAttachmentFromMessageAttachment({
+    kind: "image",
+    artifactId: "art-9",
+    filename: "photo.png",
+    mimeType: "image/png",
+    sizeBytes: 1234,
+    downloadUrl: "/api/artifacts/art-9/download",
+  });
+
+  // Ready, no File, stable id from the artifact id, and the server download URL
+  // doubles as the thumbnail source so a reloaded image looks like a sent one.
+  expect(attachment.id).toBe("sent-art-9");
+  expect(attachment.status).toBe("ready");
+  expect(attachment.artifactId).toBe("art-9");
+  expect(attachment.previewUrl).toBe("/api/artifacts/art-9/download");
+  expect(attachment.file).toBeUndefined();
+  expect(isImageAttachment(attachment)).toBe(true);
+});
+
+test("composerAttachmentFromMessageAttachment rehydrates a persisted document attachment", () => {
+  const attachment = composerAttachmentFromMessageAttachment({
+    kind: "document",
+    documentId: "doc-3",
+    filename: "report.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 9001,
+  });
+
+  // Documents have no download endpoint yet, so no preview URL; carries the
+  // document id and renders as a file pill (not an image).
+  expect(attachment.id).toBe("sent-doc-3");
+  expect(attachment.documentId).toBe("doc-3");
+  expect(attachment.artifactId).toBeUndefined();
+  expect(attachment.previewUrl).toBeUndefined();
+  expect(isImageAttachment(attachment)).toBe(false);
 });

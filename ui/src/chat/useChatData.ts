@@ -6,12 +6,14 @@ import {
   getThread,
   listProjects,
   listThreads,
+  type LoadedMessage,
   type McpStatusEvent,
   type Project,
   type Thread,
 } from "../api";
 import { normalizeActivityTrace } from "../activityTrace";
 import type { RouteState } from "./routing";
+import { composerAttachmentFromMessageAttachment } from "./useDocumentAttachments";
 import type { MessageWithActivityTrace } from "./types";
 
 export function useChatData({
@@ -104,7 +106,7 @@ export function useChatData({
         if (!active) return;
         setActiveThread(response.thread);
         activeThreadIDRef.current = response.thread.id;
-        setMessages(response.messages.map(withNormalizedActivityTrace));
+        setMessages(response.messages.map(rehydrateLoadedMessage));
         if (streamingThreadIDRef.current === null) {
           setStreamingText("");
           setStreamingArtifacts([]);
@@ -192,9 +194,18 @@ export function useChatData({
   };
 }
 
-function withNormalizedActivityTrace(message: MessageWithActivityTrace): MessageWithActivityTrace {
+// rehydrateLoadedMessage turns a message as it arrives from the backend into the
+// rendered/stateful shape: it normalizes the activity trace and converts the
+// persisted attachments (MessageAttachment[]) into the ComposerAttachment[] the
+// sent-message renderer expects, so a reloaded message's previews look identical
+// to one that was just sent.
+function rehydrateLoadedMessage(message: LoadedMessage): MessageWithActivityTrace {
   return {
     ...message,
     activityTrace: normalizeActivityTrace(message.activityTrace),
+    attachments:
+      message.attachments !== undefined && message.attachments.length > 0
+        ? message.attachments.map(composerAttachmentFromMessageAttachment)
+        : undefined,
   };
 }

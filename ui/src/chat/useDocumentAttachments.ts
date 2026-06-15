@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import {
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   indexDocument,
+  type MessageAttachment,
   uploadDocument,
   uploadImageAttachment,
 } from "../api";
@@ -69,6 +70,26 @@ export function composerAttachmentFromArtifact(artifact: {
     status: "ready",
     previewUrl: artifact.downloadUrl,
     artifactId: artifact.id,
+  };
+}
+
+// composerAttachmentFromMessageAttachment rehydrates a persisted sent attachment
+// (from a message loaded on reload) into the ready composer-attachment shape the
+// sent-message renderer expects, so a reloaded message's previews look identical
+// to a freshly sent one. It carries no File and is already "ready"; the artifact
+// download URL doubles as the image thumbnail source (documents have none yet).
+// The id is the stable artifact/document id so it is a stable React key.
+export function composerAttachmentFromMessageAttachment(attachment: MessageAttachment): ComposerAttachment {
+  const id = attachment.artifactId ?? attachment.documentId ?? attachment.filename;
+  return {
+    id: `sent-${id}`,
+    filename: attachment.filename,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+    status: "ready",
+    previewUrl: attachment.downloadUrl,
+    documentId: attachment.documentId,
+    artifactId: attachment.artifactId,
   };
 }
 

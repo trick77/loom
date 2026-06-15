@@ -90,6 +90,10 @@ type Message struct {
 	ToolCalls        json.RawMessage `json:"toolCalls"`
 	Citations        json.RawMessage `json:"citations"`
 	Artifacts        json.RawMessage `json:"artifacts"`
+	// Attachments are the images and documents the user sent with this message,
+	// persisted so a sent message's previews survive a reload. A JSON array of
+	// MessageAttachment; "[]" for messages sent without attachments.
+	Attachments      json.RawMessage `json:"attachments"`
 	ActivityTrace    json.RawMessage `json:"activityTrace"`
 	PromptTokens     *int            `json:"promptTokens,omitempty"`
 	CompletionTokens *int            `json:"completionTokens,omitempty"`
@@ -101,6 +105,26 @@ type Message struct {
 	ReasoningEffort  *string         `json:"reasoningEffort,omitempty"`
 	CreatedAt        time.Time       `json:"createdAt"`
 }
+
+// MessageAttachment is one image or document a user sent with a message. It is
+// the persisted, serialized shape stored in Message.Attachments. DownloadURL is
+// computed at send time (deterministic from the artifact id) for images; it is
+// empty for documents, which have no download endpoint yet.
+type MessageAttachment struct {
+	// Kind is "image" or "document".
+	Kind        string `json:"kind"`
+	ArtifactID  string `json:"artifactId,omitempty"`
+	DocumentID  string `json:"documentId,omitempty"`
+	Filename    string `json:"filename"`
+	MIMEType    string `json:"mimeType"`
+	SizeBytes   int64  `json:"sizeBytes"`
+	DownloadURL string `json:"downloadUrl,omitempty"`
+}
+
+const (
+	AttachmentKindImage    = "image"
+	AttachmentKindDocument = "document"
+)
 
 type MessageTokenUsage struct {
 	PromptTokens     *int

@@ -29,6 +29,50 @@ func (s *Store) AddMessageWithActivityTrace(ctx context.Context, userID, threadI
 // citations (the documents whose chunks informed the answer). citations may be
 // nil for turns without retrieval.
 func (s *Store) AddMessageWithCitations(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage) (Message, error) {
+	return s.insertMessage(ctx, messageInsert{
+		userID:        userID,
+		threadID:      threadID,
+		role:          role,
+		content:       content,
+		usage:         usage,
+		artifacts:     artifacts,
+		activityTrace: activityTrace,
+		citations:     citations,
+	})
+}
+
+// AddMessageWithAttachments persists a message together with the attachments the
+// user sent with it (uploaded images and attached documents), so the sent
+// previews survive a reload. attachments may be nil for a message without any.
+func (s *Store) AddMessageWithAttachments(ctx context.Context, userID, threadID string, role Role, content string, attachments json.RawMessage) (Message, error) {
+	return s.insertMessage(ctx, messageInsert{
+		userID:      userID,
+		threadID:    threadID,
+		role:        role,
+		content:     content,
+		attachments: attachments,
+	})
+}
+
+// messageInsert carries the optional fields of a message insert; every field
+// beyond the required identity/content has a sensible empty default so the
+// thin public AddMessage* wrappers can set only what they need.
+type messageInsert struct {
+	userID        string
+	threadID      string
+	role          Role
+	content       string
+	usage         MessageTokenUsage
+	artifacts     json.RawMessage
+	activityTrace json.RawMessage
+	citations     json.RawMessage
+	attachments   json.RawMessage
+}
+
+func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, error) {
+	userID, threadID, role, content := in.userID, in.threadID, in.role, in.content
+	usage := in.usage
+	artifacts, activityTrace, citations, attachments := in.artifacts, in.activityTrace, in.citations, in.attachments
 	if role != RoleUser && role != RoleAssistant && role != RoleTool {
 		return Message{}, fmt.Errorf("invalid message role %q", role)
 	}
@@ -62,6 +106,12 @@ func (s *Store) AddMessageWithCitations(ctx context.Context, userID, threadID st
 	if !json.Valid(citations) {
 		return Message{}, errors.New("message citations must be valid JSON")
 	}
+	if len(attachments) == 0 {
+		attachments = json.RawMessage("[]")
+	}
+	if !json.Valid(attachments) {
+		return Message{}, errors.New("message attachments must be valid JSON")
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -81,6 +131,7 @@ INSERT INTO messages (
     tool_calls,
     citations,
     artifacts,
+    attachments,
     activity_trace,
     prompt_tokens,
     completion_tokens,
@@ -91,7 +142,7 @@ INSERT INTO messages (
     model,
     reasoning_effort
 )
-VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		messageID,
 		threadID,
 		userID,
@@ -100,6 +151,7 @@ VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		usage.ReasoningContent,
 		string(citations),
 		string(artifacts),
+		string(attachments),
 		string(activityTrace),
 		usage.PromptTokens,
 		usage.CompletionTokens,
@@ -146,7 +198,7 @@ func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Me
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, activity_trace, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, reasoning_effort, created_at
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, activity_trace, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, reasoning_effort, created_at
 FROM messages
 WHERE user_id = ? AND thread_id = ?
 ORDER BY created_at ASC, id ASC`,
@@ -173,7 +225,7 @@ ORDER BY created_at ASC, id ASC`,
 
 func (s *Store) getMessage(ctx context.Context, userID, messageID string) (Message, bool, error) {
 	message, err := scanMessage(s.db.QueryRowContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, activity_trace, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, reasoning_effort, created_at
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, activity_trace, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, duration_ms, model, reasoning_effort, created_at
 FROM messages
 WHERE user_id = ? AND id = ?`,
 		userID, messageID,
