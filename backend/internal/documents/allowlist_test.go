@@ -27,9 +27,29 @@ func TestAllowedFormat_acceptsCoreFormats(t *testing.T) {
 }
 
 func TestAllowedFormat_rejectsDisallowed(t *testing.T) {
-	for _, name := range []string{"malware.exe", "archive.zip", "photo.png", "movie.mp4", "noext", "script.sh"} {
+	for _, name := range []string{"malware.exe", "archive.zip", "movie.mp4", "noext", "script.sh"} {
 		if _, ok := AllowedFormat(name); ok {
 			t.Errorf("AllowedFormat(%q) ok = true, want false", name)
+		}
+	}
+}
+
+func TestAllowedFormat_acceptsImageFormats(t *testing.T) {
+	cases := map[string]string{
+		"diagram.png": "image/png",
+		"photo.JPG":   "image/jpeg",
+		"scan.jpeg":   "image/jpeg",
+		"art.webp":    "image/webp",
+		"anim.gif":    "image/gif",
+	}
+	for name, wantMIME := range cases {
+		mime, ok := AllowedFormat(name)
+		if !ok {
+			t.Errorf("AllowedFormat(%q) ok = false, want true", name)
+			continue
+		}
+		if mime != wantMIME {
+			t.Errorf("AllowedFormat(%q) mime = %q, want %q", name, mime, wantMIME)
 		}
 	}
 }

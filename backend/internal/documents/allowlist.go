@@ -10,6 +10,8 @@ import (
 // allowedFormats maps a lower-cased file extension to its canonical MIME type.
 // This is the v1 RAG upload allowlist: common document formats Tika extracts
 // reliably without OCR. Keep in sync with the frontend file-chooser `accept`.
+// Image formats are described by the vision model at ingest (see rag.Ingester.extractContent);
+// their MIME strings are kept identical to httpapi/image_allowlist.go.
 var allowedFormats = map[string]string{
 	".pdf":  "application/pdf",
 	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -20,6 +22,11 @@ var allowedFormats = map[string]string{
 	".csv":  "text/csv; charset=utf-8",
 	".json": "application/json",
 	".html": "text/html; charset=utf-8",
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".gif":  "image/gif",
 }
 
 // AllowedFormat reports whether filename's extension is an accepted upload
