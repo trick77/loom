@@ -19,7 +19,7 @@ func (g DOCXGenerator) Schema() ToolSchema {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"filename": map[string]any{"type": "string"},
+				"filename": map[string]any{"type": "string", "description": "Short, descriptive output filename based on the document's content, without a path or file extension (e.g. `meeting-notes`)."},
 				"content":  map[string]any{"type": "string"},
 			},
 			"required":             []string{"filename", "content"},
