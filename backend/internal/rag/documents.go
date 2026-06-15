@@ -130,6 +130,43 @@ func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID, 
 	return true, nil
 }
 
+// IndexedDocsInScope returns every embedded document in the thread's knowledge
+// scope (mirroring Retrieve/HasIndexedChunks: global, plus the project and/or the
+// thread when present), each with the sum of its chunks' token counts. Ordered
+// smallest-first so a budgeted caller can fit as many whole documents as possible.
+func (s *Store) IndexedDocsInScope(ctx context.Context, userID string, projectID, threadID *string) ([]IndexedDoc, error) {
+	query := `SELECT d.id, d.filename, COALESCE(SUM(c.token_count), 0) AS tokens
+		FROM documents d
+		LEFT JOIN chunks c ON c.document_id = d.id AND c.user_id = d.user_id
+		WHERE d.user_id = ? AND d.status = 'embedded'
+		  AND ((d.project_id IS NULL AND d.thread_id IS NULL)`
+	args := []any{userID}
+	if projectID != nil {
+		query += ` OR d.project_id = ?`
+		args = append(args, *projectID)
+	}
+	if threadID != nil && *threadID != "" {
+		query += ` OR d.thread_id = ?`
+		args = append(args, *threadID)
+	}
+	query += `) GROUP BY d.id, d.filename ORDER BY tokens ASC, d.created_at DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list indexed docs in scope: %w", err)
+	}
+	defer rows.Close()
+	var docs []IndexedDoc
+	for rows.Next() {
+		var d IndexedDoc
+		if err := rows.Scan(&d.ID, &d.Filename, &d.TokenCount); err != nil {
+			return nil, fmt.Errorf("scan indexed doc: %w", err)
+		}
+		docs = append(docs, d)
+	}
+	return docs, rows.Err()
+}
+
 // reconcileLegacyMarker records, in schema_migrations, that the one-time legacy
 // scope reconciliation has run, so it never executes again.
 const reconcileLegacyMarker = "reconcile_legacy_document_scopes_v1"

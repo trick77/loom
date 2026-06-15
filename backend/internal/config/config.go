@@ -15,6 +15,14 @@ const defaultBFLPollTimeout = 1 * time.Minute
 const defaultChatMaxCompletionTokens = 2048
 const defaultChatTimeout = 2 * time.Minute
 
+// defaultKnowledgeInlineTokenBudget caps the total tokens of indexed knowledge
+// documents auto-injected in full per chat turn. When the in-scope knowledge fits
+// under this budget the whole of it goes inline (verbatim) and RAG retrieval is
+// skipped; larger knowledge bases fall back to RAG excerpts. Sized to fit a
+// typical briefing deck. Set BACKEND_KNOWLEDGE_INLINE_TOKEN_BUDGET=0 to disable
+// full-document injection and always use RAG.
+const defaultKnowledgeInlineTokenBudget = 24000
+
 // defaultChatIdleTimeout aborts a chat stream that goes silent mid-turn. Sized
 // conservatively: MiMo can stay quiet for tens of seconds inside a long reasoning
 // block, so the window must clear that to avoid killing legitimate turns, while
@@ -51,10 +59,13 @@ type Config struct {
 	EmbedBaseURL            string // OpenAI embeddings endpoint
 	EmbedAPIKey             string
 	EmbedModel              string
-	BFLBaseURL              string
-	BFLAPIKey               string
-	BFLModel                string
-	BFLPollTimeout          time.Duration
+	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
+	// turn (0 disables it, falling back to pure RAG retrieval).
+	KnowledgeInlineTokenBudget int
+	BFLBaseURL                 string
+	BFLAPIKey                  string
+	BFLModel                   string
+	BFLPollTimeout             time.Duration
 
 	TikaURL        string
 	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
@@ -162,6 +173,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("BACKEND_CHAT_IDLE_TIMEOUT must be a non-negative duration (0 disables the idle watchdog)")
 	}
 	cfg.ChatIdleTimeout = chatIdleTimeout
+	knowledgeInlineTokenBudget, err := strconv.Atoi(env("BACKEND_KNOWLEDGE_INLINE_TOKEN_BUDGET", strconv.Itoa(defaultKnowledgeInlineTokenBudget)))
+	if err != nil || knowledgeInlineTokenBudget < 0 {
+		return Config{}, fmt.Errorf("BACKEND_KNOWLEDGE_INLINE_TOKEN_BUDGET must be a non-negative integer (0 disables full-document knowledge injection)")
+	}
+	cfg.KnowledgeInlineTokenBudget = knowledgeInlineTokenBudget
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
 	}

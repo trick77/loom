@@ -25,6 +25,9 @@ type citation struct {
 	Filename   string  `json:"filename"`
 	Snippet    string  `json:"snippet"`
 	Score      float64 `json:"score"`
+	// Full marks a source whose entire document was injected (not a retrieved
+	// excerpt), so the UI can label it "full document" instead of "N excerpts".
+	Full bool `json:"full,omitempty"`
 }
 
 // knowledgeContextForThread retrieves the most relevant indexed chunks for the

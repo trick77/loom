@@ -41,27 +41,31 @@ type Deps struct {
 	OIDCAdminGroup        string
 	DevAuthClaims         auth.Claims
 	PostLogoutRedirectURL string
+	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
+	// turn (0 disables it, falling back to pure RAG retrieval).
+	KnowledgeInlineTokenBudget int
 }
 
 type server struct {
-	version               string
-	oidc                  OIDCService
-	auth                  *auth.Middleware
-	sessions              SessionService
-	users                 UserService
-	chat                  ChatStore
-	usage                 UsageStore
-	artifacts             ArtifactStore
-	documents             DocumentService
-	llm                   ChatClient
-	mcp                   ToolService
-	docTools              []docgen.Generator
-	imageTools            []imagegen.Tool
-	usersDir              string
-	oidcAdminGroup        string
-	devAuthClaims         auth.Claims
-	postLogoutRedirectURL string
-	activeStreams         activeStreamRegistry
+	version                    string
+	oidc                       OIDCService
+	auth                       *auth.Middleware
+	sessions                   SessionService
+	users                      UserService
+	chat                       ChatStore
+	usage                      UsageStore
+	artifacts                  ArtifactStore
+	documents                  DocumentService
+	llm                        ChatClient
+	mcp                        ToolService
+	docTools                   []docgen.Generator
+	imageTools                 []imagegen.Tool
+	usersDir                   string
+	oidcAdminGroup             string
+	devAuthClaims              auth.Claims
+	postLogoutRedirectURL      string
+	knowledgeInlineTokenBudget int
+	activeStreams              activeStreamRegistry
 }
 
 // ChatStore is the chat persistence dependency used by chat handlers.
@@ -177,23 +181,24 @@ type UserService interface {
 // New returns the fully wired HTTP handler.
 func New(d Deps) http.Handler {
 	s := &server{
-		version:               d.Version,
-		oidc:                  d.OIDC,
-		auth:                  d.Auth,
-		sessions:              d.Sessions,
-		users:                 d.Users,
-		chat:                  d.Chat,
-		usage:                 d.Usage,
-		artifacts:             d.Artifacts,
-		documents:             d.Documents,
-		llm:                   d.LLM,
-		mcp:                   d.MCP,
-		docTools:              d.DocTools,
-		imageTools:            d.ImageTools,
-		usersDir:              d.UsersDir,
-		oidcAdminGroup:        d.OIDCAdminGroup,
-		devAuthClaims:         d.DevAuthClaims,
-		postLogoutRedirectURL: d.PostLogoutRedirectURL,
+		version:                    d.Version,
+		oidc:                       d.OIDC,
+		auth:                       d.Auth,
+		sessions:                   d.Sessions,
+		users:                      d.Users,
+		chat:                       d.Chat,
+		usage:                      d.Usage,
+		artifacts:                  d.Artifacts,
+		documents:                  d.Documents,
+		llm:                        d.LLM,
+		mcp:                        d.MCP,
+		docTools:                   d.DocTools,
+		imageTools:                 d.ImageTools,
+		usersDir:                   d.UsersDir,
+		oidcAdminGroup:             d.OIDCAdminGroup,
+		devAuthClaims:              d.DevAuthClaims,
+		postLogoutRedirectURL:      d.PostLogoutRedirectURL,
+		knowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
 	}
 
 	mux := http.NewServeMux()

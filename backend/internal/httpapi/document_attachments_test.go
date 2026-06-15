@@ -14,8 +14,9 @@ import (
 // inlineStub is a DocumentService that serves documents and full text by ID, for
 // exercising the inline-attachment path.
 type inlineStub struct {
-	docs  map[string]rag.Document
-	texts map[string]string
+	docs    map[string]rag.Document
+	texts   map[string]string
+	indexed []rag.IndexedDoc
 }
 
 func (s *inlineStub) Upload(context.Context, documents.UploadInput) (rag.Document, artifact.Artifact, error) {
@@ -36,6 +37,9 @@ func (s *inlineStub) DeleteThreadData(context.Context, string, string) error  { 
 func (s *inlineStub) DeleteProjectData(context.Context, string, string) error { return nil }
 func (s *inlineStub) Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error) {
 	return nil, nil
+}
+func (s *inlineStub) IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error) {
+	return s.indexed, nil
 }
 
 func TestDocumentInlineContext_inlinesChatScopedDoc(t *testing.T) {

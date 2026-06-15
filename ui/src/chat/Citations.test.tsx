@@ -39,4 +39,14 @@ describe("MessageCitations", () => {
     // Two chunks from one document => an excerpt-count badge.
     expect(screen.getByText("2 excerpts")).toBeInTheDocument();
   });
+
+  it("labels a fully injected document 'full document' instead of an excerpt count", () => {
+    const sources: Citation[] = [
+      { documentId: "d1", filename: "briefing.pdf", snippet: "whole deck", score: 1, full: true },
+    ];
+    render(<MessageCitations citations={sources} />);
+    expect(screen.getByText("briefing.pdf")).toBeInTheDocument();
+    expect(screen.getByText("full document")).toBeInTheDocument();
+    expect(screen.queryByText(/excerpt/)).not.toBeInTheDocument();
+  });
 });

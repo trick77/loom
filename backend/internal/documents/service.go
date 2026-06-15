@@ -233,6 +233,12 @@ func (s *Service) Get(ctx context.Context, userID, documentID string) (rag.Docum
 	return s.store.GetDocument(ctx, userID, documentID)
 }
 
+// IndexedDocsInScope returns the embedded documents in the thread's knowledge
+// scope with their token counts, for deciding which to inject in full.
+func (s *Service) IndexedDocsInScope(ctx context.Context, userID string, projectID, threadID *string) ([]rag.IndexedDoc, error) {
+	return s.store.IndexedDocsInScope(ctx, userID, projectID, threadID)
+}
+
 // Unindex removes a document's chunks/embeddings but keeps the file and document
 // row (status back to pending), so it can be re-indexed later.
 func (s *Service) Unindex(ctx context.Context, userID, documentID string) error {

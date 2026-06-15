@@ -25,6 +25,7 @@ type DocumentService interface {
 	DeleteThreadData(context.Context, string, string) error
 	DeleteProjectData(context.Context, string, string) error
 	Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error)
+	IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error)
 }
 
 type documentResponse struct {

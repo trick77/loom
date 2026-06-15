@@ -86,6 +86,9 @@ export type Citation = {
   filename: string;
   snippet: string;
   score: number;
+  // full marks a source whose entire document was injected (not a retrieved
+  // excerpt), so the UI labels it "full document" instead of "N excerpts".
+  full?: boolean;
 };
 
 // Document is an uploaded file tracked for retrieval-augmented generation.
