@@ -39,11 +39,11 @@ export function RenameThreadModal({
         />
         {error !== "" && <ErrorText>{error}</ErrorText>}
         <div className="mt-4 flex justify-end gap-2">
-          <button className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]" onClick={onCancel} type="button">
+          <button className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]" onClick={onCancel} type="button">
             Cancel
           </button>
           <button
-            className="h-8 rounded-md bg-[#50483d] px-3.5 font-medium text-[#fffaf2] disabled:opacity-50"
+            className="h-8 rounded-md bg-[#50483d] px-3.5 text-sm font-medium text-[#fffaf2] disabled:opacity-50"
             disabled={disabled || title.trim() === ""}
             type="submit"
           >
@@ -68,19 +68,19 @@ export function DeleteThreadModal({
 }) {
   return (
     <ModalShell title="Delete chat" onCancel={onCancel}>
-      <div className="mt-3 text-[13px] leading-5 text-[#d8d4ca]">Are you sure you want to delete this chat?</div>
+      <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">Are you sure you want to delete this chat?</div>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
         <button
           autoFocus
-          className="h-8 rounded-md px-3 text-[#c7c5bd] hover:bg-[#363632]"
+          className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]"
           onClick={onCancel}
           type="button"
         >
           Cancel
         </button>
         <button
-          className="h-8 rounded-md bg-[#b85c52] px-3.5 font-medium text-[#fffaf2] disabled:opacity-50"
+          className="h-8 rounded-md bg-[#b85c52] px-3.5 text-sm font-medium text-[#fffaf2] disabled:opacity-50"
           disabled={disabled}
           onClick={onDelete}
           type="button"

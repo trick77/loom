@@ -1,4 +1,5 @@
 import type { Project } from "../api";
+import { Icon } from "../chat/Icon";
 import { menuIconClass, menuItemClass, TrashMenuIcon } from "../ThreadActionsMenu";
 
 export function ProjectActionsMenu({
@@ -53,12 +54,7 @@ export function ProjectActionsMenu({
 }
 
 function EditIcon() {
-  return (
-    <svg className={menuIconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M5 19h4l10-10-4-4L5 15v4Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="m13.5 6.5 4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
+  return <Icon name="edit" size="19px" className={menuIconClass} />;
 }
 
 function ArchiveIcon() {

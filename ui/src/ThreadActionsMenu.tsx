@@ -1,8 +1,8 @@
 import type { Thread } from "./api";
 import { Icon } from "./chat/Icon";
 
-export const menuItemClass = "flex min-h-[34px] w-full items-start gap-2.5 px-3 py-[7px] text-left";
-export const menuIconClass = "mt-0.5 grid h-[21px] w-[21px] shrink-0 place-items-center";
+export const menuItemClass = "flex min-h-[30px] w-full items-start gap-2.5 px-3 py-1 text-left";
+export const menuIconClass = "grid h-5 w-[21px] shrink-0 place-items-center";
 
 export function ThreadActionsMenu({
   menuKey,
@@ -55,7 +55,7 @@ export function ThreadActionsMenu({
         onClick={() => onStarChange(thread, !thread.starred, menuKey)}
       >
         <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
-          <Icon name={thread.starred ? "starFilled" : "star"} size="19px" />
+          <Icon name={thread.starred ? "starOff" : "star"} size="19px" />
         </span>
         {thread.starred ? "Unstar" : "Star"}
       </button>
@@ -66,7 +66,7 @@ export function ThreadActionsMenu({
         onClick={() => onRename(thread)}
       >
         <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
-          ✎
+          <Icon name="edit" size="19px" />
         </span>
         Rename
       </button>
@@ -145,20 +145,5 @@ function CheckMenuIcon() {
 }
 
 export function ProjectMenuIcon() {
-  return (
-    <svg className={menuIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <path
-        d="M4.5 8.5h5l1.6 2h8.4v7.2c0 1.2-.7 1.8-2 1.8h-11c-1.3 0-2-.6-2-1.8V8.5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M4.5 8.5V6.8c0-1.1.7-1.7 1.9-1.7h3.1l1.6 2h6.5c1.2 0 1.9.6 1.9 1.7v1.7"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <Icon name="project" size="19px" className={menuIconClass} />;
 }

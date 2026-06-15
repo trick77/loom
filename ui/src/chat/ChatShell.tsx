@@ -733,6 +733,12 @@ export function ChatShell({
         onStarThread={handleSetThreadStarred}
         onNavigateProject={navigateToProject}
         onStarProject={handleSetProjectStarred}
+        onEditProject={openProjectDialog}
+        onDeleteProject={(project) => {
+          setDeletingProject(project);
+          setModalError("");
+          setOpenThreadMenuID(null);
+        }}
         onToggleThreadMenu={(menuKey) =>
           setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
         }
