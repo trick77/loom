@@ -1,7 +1,27 @@
 import { expect, test } from "vitest";
 
-import { updateMessageAttachment } from "./chatUtils";
+import { appendStreamingDelta, updateMessageAttachment } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
+
+test("appendStreamingDelta concatenates deltas within a round verbatim", () => {
+  expect(appendStreamingDelta("Hel", "lo", false)).toBe("Hello");
+  expect(appendStreamingDelta("Hello.", " World", false)).toBe("Hello. World");
+});
+
+test("appendStreamingDelta opens a fresh paragraph at a round boundary", () => {
+  expect(appendStreamingDelta("All done.", "Based on the results", true)).toBe(
+    "All done.\n\nBased on the results",
+  );
+});
+
+test("appendStreamingDelta does not break before any prose has streamed", () => {
+  expect(appendStreamingDelta("", "First word", true)).toBe("First word");
+});
+
+test("appendStreamingDelta does not double-separate when prose already ends in whitespace", () => {
+  expect(appendStreamingDelta("Para one.\n\n", "Para two", true)).toBe("Para one.\n\nPara two");
+  expect(appendStreamingDelta("Trailing space ", "next", true)).toBe("Trailing space next");
+});
 
 test("updates an attachment inside an already rendered user message", () => {
   const messages: MessageWithActivityTrace[] = [

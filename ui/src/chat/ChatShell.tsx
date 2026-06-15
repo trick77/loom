@@ -48,7 +48,7 @@ import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
-import { updateMessageAttachment } from "./chatUtils";
+import { appendStreamingDelta, updateMessageAttachment } from "./chatUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export { buildImageStats } from "./artifacts";
@@ -522,6 +522,13 @@ export function ChatShell({
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
       const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
+      // The assistant loop streams each tool round's prose as its own run of
+      // content deltas, all concatenated into one `streamingText`. Across a round
+      // boundary (model finishes a round's prose, runs tools, then resumes) the
+      // last sentence of one round and the first of the next would otherwise fuse
+      // ("…done.Based on…"). A tool event marks that boundary; we flag it so the
+      // next content delta opens a fresh paragraph instead.
+      let pendingTurnBreak = false;
       const documentAttachmentIds = options.attachments
         .filter((attachment) => attachment.documentId !== undefined)
         .map((attachment) => attachment.documentId!);
@@ -537,7 +544,9 @@ export function ChatShell({
           }
         },
         onDelta: (delta) => {
-          setStreamingText((current) => current + delta);
+          const turnBreakPending = pendingTurnBreak;
+          pendingTurnBreak = false;
+          setStreamingText((current) => appendStreamingDelta(current, delta, turnBreakPending));
         },
         onReasoningDelta: (delta) => {
           updateActivityTrace((current) => appendReasoningDelta(current, delta));
@@ -552,9 +561,13 @@ export function ChatShell({
           // The pending call is now a real (running) trace event; let the trace's
           // own running status drive the "thinking" affordance from here.
           setToolPending(false);
+          // A tool call ends this round's prose; the next content delta belongs to
+          // a new round and must start a fresh paragraph.
+          pendingTurnBreak = true;
           updateActivityTrace((current) => upsertTraceToolCall(current, event));
         },
         onToolResult: (event) => {
+          pendingTurnBreak = true;
           updateActivityTrace((current) => upsertTraceToolResult(current, event));
         },
         onArtifact: (artifact) => {

@@ -24,6 +24,21 @@ export function previousUserContent(messages: Message[], beforeIndex: number): s
   return null;
 }
 
+// Append a streaming content delta to the accumulated assistant text. The
+// assistant loop streams each tool round's prose as its own run of deltas, all
+// concatenated into one string; across a round boundary (model finishes a
+// round's prose, runs tools, then resumes) the last sentence of one round and
+// the first of the next would otherwise fuse ("…done.Based on…"). When a round
+// boundary is pending we open a fresh paragraph instead — but only if there is
+// preceding text that does not already end in whitespace, so a boundary before
+// any prose (or one the model already separated) adds nothing.
+export function appendStreamingDelta(current: string, delta: string, turnBreakPending: boolean): string {
+  if (turnBreakPending && current !== "" && !/\s$/.test(current)) {
+    return `${current}\n\n${delta}`;
+  }
+  return current + delta;
+}
+
 export function updateMessageAttachment(
   messages: MessageWithActivityTrace[],
   attachmentId: string,
