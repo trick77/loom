@@ -120,12 +120,30 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
   };
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
+    // Stop the drop from bubbling to WindowFileDrop's window-level listener, which
+    // would otherwise treat the same file as a second, conversation-scoped upload
+    // (one drop here must produce exactly one knowledge document, not two).
+    event.stopPropagation();
     setDragging(false);
     void handleFiles(event.dataTransfer.files);
   };
+  const handleDragEnter = (event: React.DragEvent) => {
+    event.preventDefault();
+    // Keep the drag confined to this dropzone so WindowFileDrop's full-screen
+    // "add to conversation" overlay never appears while hovering the panel.
+    event.stopPropagation();
+    if (!dragging) setDragging(true);
+  };
   const handleDragOver = (event: React.DragEvent) => {
     event.preventDefault();
+    event.stopPropagation();
     if (!dragging) setDragging(true);
+  };
+  const handleDragLeave = (event: React.DragEvent) => {
+    // Symmetry with the other drag handlers: keep the event off the window-level
+    // listener so its drag-depth bookkeeping stays consistent.
+    event.stopPropagation();
+    setDragging(false);
   };
 
   return (
@@ -134,8 +152,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       className={`overflow-hidden rounded-2xl border bg-[#1f1f1d] transition-colors ${
         dragging ? "border-accent" : "border-[#343432]"
       }`}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
-      onDragLeave={() => setDragging(false)}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       <div className="flex items-center gap-1.5 px-5 pt-5">

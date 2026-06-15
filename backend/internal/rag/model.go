@@ -40,3 +40,12 @@ type RetrievedChunk struct {
 	Text       string
 	Distance   float64
 }
+
+// IndexedDoc identifies an embedded document and the sum of its chunks' token
+// counts, used to decide cheaply — before any text extraction — which knowledge
+// documents are small enough to inject in full.
+type IndexedDoc struct {
+	ID         string
+	Filename   string
+	TokenCount int
+}

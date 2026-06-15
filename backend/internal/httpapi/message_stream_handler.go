@@ -108,7 +108,17 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Inline the full text of any documents attached to this message, and exclude
 	// those documents from RAG retrieval below so the model never sees them twice.
 	documentContext, inlinedDocIDs := s.documentInlineContext(r.Context(), user.ID, thread, body.DocumentAttachmentIDs)
-	knowledgeContext, knowledgeSources := s.knowledgeContextForThread(r.Context(), user.ID, thread, userMessage.Content, inlinedDocIDs)
+	// Adaptively inject the project's indexed knowledge in full when it fits the
+	// token budget (skipping RAG entirely in that case); otherwise fall back to RAG
+	// excerpts for whatever did not fit. Auto-inlined documents are excluded from RAG.
+	knowledgeInlineContext, knowledgeInlinedIDs, knowledgeSources, inlinedAll := s.knowledgeInlineContext(r.Context(), user.ID, thread, inlinedDocIDs)
+	knowledgeContext := knowledgeInlineContext
+	if !inlinedAll {
+		ragExclude := mergeDocIDSets(inlinedDocIDs, knowledgeInlinedIDs)
+		ragContext, ragSources := s.knowledgeContextForThread(r.Context(), user.ID, thread, userMessage.Content, ragExclude)
+		knowledgeContext = joinNonEmptyBlocks(knowledgeInlineContext, ragContext)
+		knowledgeSources = append(knowledgeSources, ragSources...)
+	}
 	if len(knowledgeSources) > 0 {
 		_ = sendSSEJSON(stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}

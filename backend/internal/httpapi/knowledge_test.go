@@ -31,6 +31,9 @@ func (s *stubDocs) Unindex(context.Context, string, string) error            { r
 func (s *stubDocs) Delete(context.Context, string, string) error             { return nil }
 func (s *stubDocs) DeleteThreadData(context.Context, string, string) error   { return nil }
 func (s *stubDocs) DeleteProjectData(context.Context, string, string) error  { return nil }
+func (s *stubDocs) IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error) {
+	return nil, nil
+}
 func (s *stubDocs) Retrieve(_ context.Context, _ string, projectID *string, _ *string, _ string, _ int) ([]rag.RetrievedChunk, error) {
 	s.gotPID = projectID
 	return s.chunks, s.err

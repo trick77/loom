@@ -56,6 +56,9 @@ func (f *fakeDocumentService) DeleteProjectData(_ context.Context, _ string, pro
 func (f *fakeDocumentService) Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error) {
 	return nil, nil
 }
+func (f *fakeDocumentService) IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error) {
+	return nil, nil
+}
 
 func multipartUpload(t *testing.T, filename, content string, fields map[string]string) *http.Request {
 	t.Helper()
