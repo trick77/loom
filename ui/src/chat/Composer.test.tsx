@@ -137,7 +137,10 @@ test("shows a thumbnail for previewable image attachments", () => {
   );
 
   expect(document.querySelector('img[src="blob:image-preview"]')).toBeInTheDocument();
-  expect(screen.getByText("PNG")).toBeInTheDocument();
+  // An image thumbnail no longer overlays a redundant extension pill: the preview
+  // itself identifies the file. Non-image attachments still show the typed pill.
+  // This matches every other attachment surface (sent message, artifacts row).
+  expect(screen.queryByText("PNG")).not.toBeInTheDocument();
 });
 
 test("keeps attachment previews above the draft text area", () => {

@@ -1,10 +1,9 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 
 import { ATTACHMENT_ACCEPT } from "../api";
-import { AttachmentExtensionPill } from "./AttachmentExtensionPill";
-import { attachAcceptedFiles, attachmentExtensionLabel } from "./attachmentFiles";
+import { AttachmentPreview } from "../components/AttachmentPreview";
+import { attachAcceptedFiles, formatAttachmentSize } from "./attachmentFiles";
 import { Icon } from "./Icon";
-import { FileIcon } from "./icons";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 
 export function Composer({
@@ -106,7 +105,7 @@ export function Composer({
         >
           <div className="flex flex-wrap gap-2">
             {attachments.map((attachment) => (
-              <AttachmentPreview
+              <AttachmentPill
                 key={attachment.id}
                 attachment={attachment}
                 onRemove={onRemoveAttachment}
@@ -180,7 +179,7 @@ export function Composer({
   );
 }
 
-function AttachmentPreview({
+function AttachmentPill({
   attachment,
   onRemove,
 }: {
@@ -188,28 +187,16 @@ function AttachmentPreview({
   onRemove?: (id: string) => void;
 }) {
   const status = attachmentStatusLabel(attachment);
-  const extensionLabel = attachmentExtensionLabel(attachment.filename);
   const uploading =
     attachment.status === "uploading" || attachment.status === "processing";
   return (
     <div className="group/attachment relative flex h-[76px] w-[180px] max-w-full overflow-hidden rounded-lg border border-[#4b4a46] bg-[#343432] text-[#f3f0e8] shadow-[0_8px_18px_rgba(0,0,0,0.18)]">
-      <div className="relative grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]">
-        {attachment.previewUrl !== undefined ? (
-          <>
-            <img
-              className="h-full w-full object-cover"
-              src={attachment.previewUrl}
-              alt=""
-              aria-hidden="true"
-            />
-            {extensionLabel !== null && <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill>}
-          </>
-        ) : (
-          <div className="grid h-10 w-10 place-items-center rounded-md border border-[#55534d] bg-[#292927] text-[#c9c5bb]">
-            {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
-          </div>
-        )}
-      </div>
+      <AttachmentPreview
+        mimeType={attachment.mimeType}
+        filename={attachment.filename}
+        previewUrl={attachment.previewUrl}
+        className="relative grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]"
+      />
       <div className="min-w-0 flex-1 px-3 py-2">
         <div className="ui-message-text truncate">{attachment.filename}</div>
         <div className="ui-meta-text mt-2 truncate text-[#aaa79e]">
@@ -239,14 +226,6 @@ function attachmentStatusLabel(attachment: ComposerAttachment): string {
   if (attachment.status === "queued") return "Attached";
   if (attachment.status === "uploading") return "Uploading...";
   if (attachment.status === "processing") return "Processing...";
-  if (attachment.status === "ready") return formatBytes(attachment.sizeBytes);
+  if (attachment.status === "ready") return formatAttachmentSize(attachment.sizeBytes);
   return attachment.error ?? "Upload failed";
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb >= 10 ? 0 : 1)} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
 }

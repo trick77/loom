@@ -1,0 +1,72 @@
+import { useState } from "react";
+
+import { AttachmentExtensionPill } from "../chat/AttachmentExtensionPill";
+import { attachmentExtensionLabel } from "../chat/attachmentFiles";
+import { FileIcon } from "../chat/icons";
+
+function isImageLike(mimeType: string, filename: string): boolean {
+  return mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(filename);
+}
+
+// isRevocablePreview reports whether a preview URL is a local object URL that must
+// be revoked to avoid a leak. Server download URLs (/api/artifacts/…) are stable
+// and must NOT be revoked; only blob: URLs created via URL.createObjectURL are.
+// Centralising the rule here keeps every owner of an attachment's lifecycle
+// (composer hook, sent-message cleanup) from accidentally revoking a server URL.
+export function isRevocablePreview(previewUrl: string | undefined): previewUrl is string {
+  return previewUrl !== undefined && previewUrl.startsWith("blob:");
+}
+
+/**
+ * AttachmentPreview is the single thumbnail / typed-icon box used everywhere an
+ * attachment, knowledge document, or uploaded artifact is shown in a list, pill,
+ * or card. For images with a preview URL it renders a cover-fit thumbnail (falling
+ * back to the typed icon if the image fails to load); for everything else it
+ * renders a consistent file-type marker — an extension pill when the extension is
+ * recognised, otherwise a generic file glyph. The caller owns the box size and
+ * chrome via `className`.
+ *
+ * It deliberately does NOT create or revoke object URLs: whoever owns the
+ * attachment's lifecycle (the composer hook, or the sent-message cleanup) does
+ * that, using `isRevocablePreview` to tell a revocable blob from a server URL.
+ */
+export function AttachmentPreview({
+  mimeType,
+  filename,
+  previewUrl,
+  alt,
+  className,
+  testId,
+}: {
+  mimeType: string;
+  filename: string;
+  previewUrl?: string;
+  // When set, the thumbnail is given this accessible name; when omitted the image
+  // is treated as decorative (the filename is shown as adjacent text), so it is
+  // hidden from assistive tech to avoid a redundant announcement.
+  alt?: string;
+  className?: string;
+  testId?: string;
+}) {
+  const [broken, setBroken] = useState(false);
+  const extensionLabel = attachmentExtensionLabel(filename);
+  const showImage = previewUrl !== undefined && isImageLike(mimeType, filename) && !broken;
+  return (
+    <div className={className} data-testid={testId}>
+      {showImage ? (
+        <img
+          className="h-full w-full object-cover"
+          src={previewUrl}
+          alt={alt ?? ""}
+          aria-hidden={alt === undefined ? "true" : undefined}
+          loading="lazy"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <span className="grid h-full w-full place-items-center text-[#c9c5bb]">
+          {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
+        </span>
+      )}
+    </div>
+  );
+}

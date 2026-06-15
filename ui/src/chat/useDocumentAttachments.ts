@@ -6,6 +6,7 @@ import {
   uploadDocument,
   uploadImageAttachment,
 } from "../api";
+import { isRevocablePreview } from "../components/AttachmentPreview";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export type ComposerAttachmentStatus = "queued" | "uploading" | "processing" | "ready" | "error";
@@ -96,7 +97,7 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
   const removeAttachment = useCallback((id: string) => {
     setAttachments((current) => {
       const removed = current.find((attachment) => attachment.id === id);
-      if (removed?.previewUrl !== undefined) URL.revokeObjectURL(removed.previewUrl);
+      if (isRevocablePreview(removed?.previewUrl)) URL.revokeObjectURL(removed.previewUrl);
       return current.filter((attachment) => attachment.id !== id);
     });
   }, []);
@@ -106,7 +107,7 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
     setAttachments((current) => {
       if (revokePreviewUrls) {
         current.forEach((attachment) => {
-          if (attachment.previewUrl !== undefined) URL.revokeObjectURL(attachment.previewUrl);
+          if (isRevocablePreview(attachment.previewUrl)) URL.revokeObjectURL(attachment.previewUrl);
         });
       }
       return [];
