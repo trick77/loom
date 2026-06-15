@@ -99,6 +99,36 @@ func (s *Store) UpdateStatus(ctx context.Context, userID, id, status, errMsg str
 	return nil
 }
 
+// SetDocumentFullText caches a document's extracted plain text on its row, so the
+// inline/full-document paths can read it back without re-running extraction.
+func (s *Store) SetDocumentFullText(ctx context.Context, userID, id, text string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE documents SET full_text = ? WHERE user_id = ? AND id = ?`,
+		text, userID, id)
+	if err != nil {
+		return fmt.Errorf("set document full text: %w", err)
+	}
+	return nil
+}
+
+// GetDocumentFullText returns the cached extracted text for a document, or "" when
+// the document does not exist or was indexed before text caching (callers then
+// fall back to live extraction). full_text is intentionally excluded from
+// documentColumns so List/Get stay cheap; this is a targeted single-row read.
+func (s *Store) GetDocumentFullText(ctx context.Context, userID, id string) (string, error) {
+	var text string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT full_text FROM documents WHERE user_id = ? AND id = ?`,
+		userID, id).Scan(&text)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get document full text: %w", err)
+	}
+	return text, nil
+}
+
 // HasIndexedChunks reports whether the user has any embedded document in the
 // thread's knowledge scope: legacy user-global documents always, plus this
 // project's documents (project thread) and this thread's private documents.

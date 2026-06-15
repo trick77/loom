@@ -149,3 +149,62 @@ func TestStore_ResetStuckIngestions(t *testing.T) {
 		}
 	}
 }
+
+func TestIngester_Ingest_cachesFullText(t *testing.T) {
+	ing, s := newIngester(t,
+		fakeExtractor{text: "the full extracted text of the document"},
+		&fakeEmbedder{},
+		fakeOpener{})
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusPending})
+
+	if err := ing.Ingest(ctx, "u1", "d1"); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	cached, err := s.GetDocumentFullText(ctx, "u1", "d1")
+	if err != nil {
+		t.Fatalf("GetDocumentFullText: %v", err)
+	}
+	if cached != "the full extracted text of the document" {
+		t.Errorf("cached full text = %q, want the extracted text", cached)
+	}
+}
+
+func TestIngester_ExtractText_prefersCacheOverLiveExtraction(t *testing.T) {
+	// An opener that always fails proves ExtractText returns the cached text without
+	// touching the volume/extractor.
+	ing, s := newIngester(t,
+		fakeExtractor{text: "freshly extracted"},
+		&fakeEmbedder{},
+		fakeOpener{err: errors.New("volume unavailable")})
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusEmbedded})
+	if err := s.SetDocumentFullText(ctx, "u1", "d1", "cached text"); err != nil {
+		t.Fatalf("SetDocumentFullText: %v", err)
+	}
+
+	got, err := ing.ExtractText(ctx, "u1", "d1")
+	if err != nil {
+		t.Fatalf("ExtractText: %v", err)
+	}
+	if got != "cached text" {
+		t.Errorf("ExtractText = %q, want cached text (no live extraction)", got)
+	}
+}
+
+func TestIngester_ExtractText_fallsBackWhenNoCache(t *testing.T) {
+	ing, s := newIngester(t,
+		fakeExtractor{text: "freshly extracted"},
+		&fakeEmbedder{},
+		fakeOpener{})
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusPending})
+
+	got, err := ing.ExtractText(ctx, "u1", "d1")
+	if err != nil {
+		t.Fatalf("ExtractText: %v", err)
+	}
+	if got != "freshly extracted" {
+		t.Errorf("ExtractText = %q, want live extraction when nothing cached", got)
+	}
+}
