@@ -2,16 +2,20 @@ import { act, renderHook } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import {
+  deleteArtifact,
+  deleteDocument,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   DOCUMENT_MAX_UPLOAD_BYTES,
   indexDocument,
   listDocuments,
   uploadDocument,
+  uploadImageAttachment,
 } from "../api";
 import {
   composerAttachmentFromArtifact,
   composerAttachmentFromMessageAttachment,
   createComposerAttachment,
+  deleteUploadedAttachment,
   isImageAttachment,
   type ComposerAttachment,
   useDocumentAttachments,
@@ -21,9 +25,12 @@ vi.mock("../api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api")>();
   return {
     ...actual,
+    deleteArtifact: vi.fn(),
+    deleteDocument: vi.fn(),
     indexDocument: vi.fn(),
     listDocuments: vi.fn(),
     uploadDocument: vi.fn(),
+    uploadImageAttachment: vi.fn(),
   };
 });
 
@@ -206,4 +213,102 @@ test("composerAttachmentFromMessageAttachment rehydrates a persisted document at
   expect(attachment.artifactId).toBeUndefined();
   expect(attachment.previewUrl).toBeUndefined();
   expect(isImageAttachment(attachment)).toBe(false);
+});
+
+test("createComposerAttachment marks the attachment as composer-uploaded", () => {
+  expect(createComposerAttachment(file("n.txt")).uploadedByComposer).toBe(true);
+});
+
+test("re-attached/rehydrated attachments are NOT marked composer-uploaded (data-loss guard)", () => {
+  const reAttached = composerAttachmentFromArtifact({
+    id: "art-1",
+    displayFilename: "gen.png",
+    mimeType: "image/png",
+    sizeBytes: 1,
+    downloadUrl: "/api/artifacts/art-1/download",
+  });
+  const rehydrated = composerAttachmentFromMessageAttachment({
+    kind: "image",
+    artifactId: "art-2",
+    filename: "p.png",
+    mimeType: "image/png",
+    sizeBytes: 1,
+    downloadUrl: "/api/artifacts/art-2/download",
+  });
+  expect(reAttached.uploadedByComposer).toBeUndefined();
+  expect(rehydrated.uploadedByComposer).toBeUndefined();
+});
+
+test("deleteUploadedAttachment deletes a composer-uploaded image artifact", () => {
+  vi.mocked(deleteArtifact).mockClear().mockResolvedValue(undefined);
+  vi.mocked(deleteDocument).mockClear();
+  deleteUploadedAttachment({
+    id: "a",
+    filename: "p.png",
+    mimeType: "image/png",
+    sizeBytes: 1,
+    status: "ready",
+    artifactId: "art-9",
+    uploadedByComposer: true,
+  });
+  expect(deleteArtifact).toHaveBeenCalledWith("art-9");
+  expect(deleteDocument).not.toHaveBeenCalled();
+});
+
+test("deleteUploadedAttachment deletes a composer-uploaded document", () => {
+  vi.mocked(deleteDocument).mockClear().mockResolvedValue(undefined);
+  vi.mocked(deleteArtifact).mockClear();
+  deleteUploadedAttachment({
+    id: "a",
+    filename: "d.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 1,
+    status: "ready",
+    documentId: "doc-3",
+    uploadedByComposer: true,
+  });
+  expect(deleteDocument).toHaveBeenCalledWith("doc-3");
+  expect(deleteArtifact).not.toHaveBeenCalled();
+});
+
+test("deleteUploadedAttachment leaves a re-attached artifact untouched (data-loss guard)", () => {
+  vi.mocked(deleteArtifact).mockClear();
+  vi.mocked(deleteDocument).mockClear();
+  // A re-attached generated image: carries an artifactId but no uploadedByComposer.
+  deleteUploadedAttachment({
+    id: "a",
+    filename: "gen.png",
+    mimeType: "image/png",
+    sizeBytes: 1,
+    status: "ready",
+    artifactId: "art-keep",
+  });
+  expect(deleteArtifact).not.toHaveBeenCalled();
+  expect(deleteDocument).not.toHaveBeenCalled();
+});
+
+test("removeAttachment deletes a composer-uploaded image server-side", async () => {
+  vi.mocked(deleteArtifact).mockClear().mockResolvedValue(undefined);
+  vi.mocked(uploadImageAttachment).mockResolvedValue({
+    id: "art_up",
+    displayFilename: "p.png",
+    mimeType: "image/png",
+    sizeBytes: 3,
+    downloadUrl: "/api/artifacts/art_up/download",
+  });
+  const { result } = renderHook(() => useDocumentAttachments({ threadId: "t1" }));
+
+  await act(async () => {
+    result.current.handleAttachFiles([new File(["png"], "p.png", { type: "image/png" })]);
+  });
+  const uploaded = result.current.attachments[0];
+  expect(uploaded?.artifactId).toBe("art_up");
+  expect(uploaded?.uploadedByComposer).toBe(true);
+
+  act(() => {
+    result.current.removeAttachment(uploaded.id);
+  });
+
+  expect(result.current.attachments).toHaveLength(0);
+  expect(deleteArtifact).toHaveBeenCalledWith("art_up");
 });

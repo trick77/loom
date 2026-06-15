@@ -93,6 +93,40 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 	http.ServeContent(w, r, found.DisplayFilename, found.CreatedAt, file)
 }
 
+// handleDeleteArtifact removes an artifact the caller owns: its row and its file
+// on disk. It mirrors documents.Service.Delete — the row goes first, then the
+// file is removed best-effort (a missing or unresolvable file never fails the
+// request). Ownership is enforced via the user-scoped Get, so a foreign or
+// unknown id is a 404. Used by the composer's remove-attachment path so an
+// uploaded image doesn't outlive its removal as an orphan.
+func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	if s.artifacts == nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
+	if err != nil {
+		serverError(w, r, err, "load artifact failed")
+		return
+	}
+	if !exists {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err := s.artifacts.Delete(r.Context(), user.ID, found.ID); err != nil {
+		serverError(w, r, err, "delete artifact failed")
+		return
+	}
+	if abs, err := artifact.ResolveExisting(s.usersDir, user.ID, found.VolumeRelPath); err == nil {
+		_ = os.Remove(abs)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok {

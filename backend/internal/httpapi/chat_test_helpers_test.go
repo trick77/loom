@@ -25,6 +25,16 @@ func newAuthenticatedChatServer(t *testing.T, deps Deps) http.Handler {
 
 type fakeArtifactStore struct {
 	artifacts []artifact.Artifact
+	// deleted, when set, records the ids passed to Delete (value receiver can't
+	// mutate the slice, so deletions are tracked through this pointer instead).
+	deleted *[]string
+}
+
+func (f fakeArtifactStore) Delete(_ context.Context, _ string, artifactID string) error {
+	if f.deleted != nil {
+		*f.deleted = append(*f.deleted, artifactID)
+	}
+	return nil
 }
 
 func (f fakeArtifactStore) Create(context.Context, artifact.CreateInput) (artifact.Artifact, error) {
