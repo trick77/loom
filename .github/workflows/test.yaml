@@ -16,7 +16,7 @@ jobs:
       - run: cd backend && go vet ./...
       - run: make backend-coverage
 
-  frontend:
+  ui:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
