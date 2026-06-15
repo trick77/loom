@@ -52,7 +52,9 @@ func (s *server) knowledgeInlineContext(ctx context.Context, userID string, thre
 			continue
 		}
 		if used+d.TokenCount > s.knowledgeInlineTokenBudget {
-			continue
+			// docs are ordered smallest-first, so once one overflows the budget no
+			// later (equal-or-larger) document can fit either.
+			break
 		}
 		used += d.TokenCount
 		chosen = append(chosen, d)
@@ -87,13 +89,10 @@ func (s *server) knowledgeInlineContext(ctx context.Context, userID string, thre
 			Full:       true,
 		})
 	}
-	if len(inlinedIDs) == 0 {
-		return "", nil, nil, false
-	}
-	b.WriteString("\n</knowledge_documents>")
-
 	// Every in-scope indexed document is "covered" when it was inlined here or as an
-	// attachment; if so, RAG has nothing new to add and the caller can skip it.
+	// attachment; if so, RAG has nothing new to add and the caller can skip it. Computed
+	// even when nothing was inlined, so a scope already fully covered by attachments
+	// still skips the (empty) RAG round-trip.
 	inlinedAll := true
 	for _, d := range docs {
 		if inlinedIDs[d.ID] || excludeDocIDs[d.ID] {
@@ -102,6 +101,10 @@ func (s *server) knowledgeInlineContext(ctx context.Context, userID string, thre
 		inlinedAll = false
 		break
 	}
+	if len(inlinedIDs) == 0 {
+		return "", nil, nil, inlinedAll
+	}
+	b.WriteString("\n</knowledge_documents>")
 	return b.String(), inlinedIDs, citations, inlinedAll
 }
 

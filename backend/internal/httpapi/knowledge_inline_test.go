@@ -94,8 +94,33 @@ func TestKnowledgeInlineContext_skipsAlreadyAttachedDoc(t *testing.T) {
 		knowledgeInlineTokenBudget: 1000,
 	}
 	// d1 was already inlined this turn as an explicit attachment.
-	block, _, _, _ := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, map[string]bool{"d1": true})
+	block, inlinedIDs, _, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, map[string]bool{"d1": true})
 	if strings.Contains(block, "already attached in full") {
 		t.Errorf("a doc inlined as an attachment must not be re-injected here: %q", block)
+	}
+	if len(inlinedIDs) != 0 {
+		t.Errorf("nothing should be inlined here, got %v", inlinedIDs)
+	}
+	// The only in-scope doc is already covered by the attachment, so RAG can be skipped.
+	if !inlinedAll {
+		t.Error("inlinedAll should be true when every in-scope doc is covered by an attachment")
+	}
+}
+
+func TestKnowledgeInlineContext_skipsDocWithNoExtractableText(t *testing.T) {
+	s := &server{
+		documents: &inlineStub{
+			indexed: []rag.IndexedDoc{{ID: "d1", Filename: "empty.pdf", TokenCount: 100}},
+			texts:   map[string]string{"d1": "   "}, // extracts to whitespace only
+		},
+		knowledgeInlineTokenBudget: 1000,
+	}
+	block, inlinedIDs, citations, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil)
+	if block != "" || len(inlinedIDs) != 0 || citations != nil {
+		t.Errorf("a doc with no extractable text must not be inlined, got block=%q ids=%v", block, inlinedIDs)
+	}
+	// It was neither inlined nor attached, so it stays RAG-eligible.
+	if inlinedAll {
+		t.Error("inlinedAll must be false when an in-scope doc could not be inlined")
 	}
 }

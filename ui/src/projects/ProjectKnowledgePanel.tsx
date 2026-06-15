@@ -139,6 +139,12 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
     event.stopPropagation();
     if (!dragging) setDragging(true);
   };
+  const handleDragLeave = (event: React.DragEvent) => {
+    // Symmetry with the other drag handlers: keep the event off the window-level
+    // listener so its drag-depth bookkeeping stays consistent.
+    event.stopPropagation();
+    setDragging(false);
+  };
 
   return (
     <section
@@ -148,7 +154,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       }`}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
-      onDragLeave={() => setDragging(false)}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       <div className="flex items-center gap-1.5 px-5 pt-5">
