@@ -21,7 +21,7 @@ func (g XLSXGenerator) ToolName() string { return "create_xlsx_file" }
 func (g XLSXGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name:        g.ToolName(),
-		Description: "Create an XLSX spreadsheet from rows or CSV data.",
+		Description: "Create an XLSX spreadsheet from rows or CSV data." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

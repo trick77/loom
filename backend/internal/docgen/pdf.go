@@ -102,7 +102,7 @@ func (g PDFGenerator) Schema() ToolSchema {
 		Description: "Create a styled PDF report. Prefer the structured 'blocks' array (heading, " +
 			"paragraph, bullets, table, columns, callout) over a flat text string: use headings to " +
 			"structure sections, tables for tabular data, and callouts to emphasize key points. " +
-			"'content' is accepted as a simple Markdown fallback.",
+			"'content' is accepted as a simple Markdown fallback." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
