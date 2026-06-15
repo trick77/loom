@@ -213,20 +213,20 @@ test("greets signed-in users with up late after 22:00", async () => {
   expect(await screen.findByText("Up late, Jan?")).toBeInTheDocument();
 });
 
-test("uses Slopr as the HTML title", () => {
+test("uses Loom as the HTML title", () => {
   for (const path of ["../index.html", "../../backend/web/dist/index.html"]) {
-    expect(readFileSync(new URL(path, import.meta.url), "utf8")).toContain("<title>Slopr</title>");
+    expect(readFileSync(new URL(path, import.meta.url), "utf8")).toContain("<title>Loom</title>");
   }
 });
 
-test("uses Slopr as the web app manifest title", () => {
+test("uses Loom as the web app manifest title", () => {
   const manifest = JSON.parse(readFileSync("public/site.webmanifest", "utf8")) as {
     name?: string;
     short_name?: string;
   };
 
-  expect(manifest.name).toBe("Slopr");
-  expect(manifest.short_name).toBe("Slopr");
+  expect(manifest.name).toBe("Loom");
+  expect(manifest.short_name).toBe("Loom");
 });
 
 test("bounds the active chat title in the top header", async () => {

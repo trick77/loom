@@ -54,3 +54,33 @@ func TestGenerateRequestNormalizeRejectsUnsupportedFormat(t *testing.T) {
 		t.Fatal("Normalized() succeeded, want error")
 	}
 }
+
+func TestGenerateRequestNormalizeDerivesFilenameFromPromptWhenMissing(t *testing.T) {
+	got, err := (GenerateRequest{Prompt: "A red fox in deep snow at dawn"}).Normalized()
+	if err != nil {
+		t.Fatalf("Normalized() error = %v", err)
+	}
+	if got.Filename != "red-fox-deep-snow.png" {
+		t.Fatalf("Filename = %q, want red-fox-deep-snow.png", got.Filename)
+	}
+}
+
+func TestGenerateRequestNormalizeFallsBackToFillerWordsWhenNoMeaningfulWords(t *testing.T) {
+	got, err := (GenerateRequest{Prompt: "the and of in"}).Normalized()
+	if err != nil {
+		t.Fatalf("Normalized() error = %v", err)
+	}
+	if got.Filename != "the-and-of-in.png" {
+		t.Fatalf("Filename = %q, want the-and-of-in.png", got.Filename)
+	}
+}
+
+func TestGenerateRequestNormalizeFallsBackToGeneratedImageWhenPromptHasNoWordChars(t *testing.T) {
+	got, err := (GenerateRequest{Prompt: "!!! ??? ..."}).Normalized()
+	if err != nil {
+		t.Fatalf("Normalized() error = %v", err)
+	}
+	if got.Filename != "generated-image.png" {
+		t.Fatalf("Filename = %q, want generated-image.png", got.Filename)
+	}
+}

@@ -25,7 +25,7 @@ func (g XLSXGenerator) Schema() ToolSchema {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"filename": map[string]any{"type": "string"},
+				"filename": map[string]any{"type": "string", "description": "Short, descriptive output filename based on the spreadsheet's content, without a path or file extension (e.g. `sales-data`)."},
 				"rows": map[string]any{
 					"type":        "array",
 					"description": "Spreadsheet rows, where each row is an array of cell values.",

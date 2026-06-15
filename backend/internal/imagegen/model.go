@@ -84,7 +84,7 @@ func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 	if *out.SafetyTolerance < 0 || *out.SafetyTolerance > 5 {
 		return GenerateRequest{}, errors.New("safety_tolerance must be between 0 and 5")
 	}
-	out.Filename = normalizeFilename(out.Filename, out.OutputFormat)
+	out.Filename = normalizeFilename(out.Filename, out.Prompt, out.OutputFormat)
 	return out, nil
 }
 
@@ -99,24 +99,68 @@ func align16(v int) int {
 	return v + (16 - v%16)
 }
 
-func normalizeFilename(input, format string) string {
+func normalizeFilename(input, prompt, format string) string {
 	ext := format
 	if ext == "jpeg" {
 		ext = "jpg"
 	}
 	name := strings.TrimSpace(input)
+	if name != "" {
+		name = filepath.Base(name)
+		if current := filepath.Ext(name); current != "" {
+			name = strings.TrimSuffix(name, current)
+		}
+		name = strings.TrimSpace(name)
+	}
 	if name == "" {
-		name = "generated-image"
+		// No usable filename from the caller: derive a descriptive stem from the
+		// prompt so distinct images get distinct names instead of all collapsing
+		// to "generated-image" (and piling up as generated-image-2, -3, ...).
+		name = slugFromPrompt(prompt)
 	}
-	name = filepath.Base(name)
-	if current := filepath.Ext(name); current != "" {
-		name = strings.TrimSuffix(name, current)
-	}
-	name = strings.TrimSpace(name)
 	if name == "" {
 		name = "generated-image"
 	}
 	return name + "." + ext
+}
+
+// slugStopwords are common filler words skipped when building a filename slug so
+// the result leans on the descriptive words, e.g. "A red fox in deep snow" -> "red-fox-deep-snow".
+var slugStopwords = map[string]bool{
+	"a": true, "an": true, "the": true, "of": true, "in": true, "on": true,
+	"at": true, "to": true, "and": true, "or": true, "with": true, "for": true,
+	"by": true, "from": true, "as": true, "is": true, "are": true, "be": true,
+}
+
+// slugFromPrompt builds a short, filesystem-friendly stem from the first few
+// meaningful words of an image prompt, e.g. "A red fox in deep snow" -> "red-fox-deep-snow".
+func slugFromPrompt(prompt string) string {
+	var all, meaningful []string
+	for _, field := range strings.Fields(strings.ToLower(prompt)) {
+		var b strings.Builder
+		for _, r := range field {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+				b.WriteRune(r)
+			}
+		}
+		w := b.String()
+		if w == "" {
+			continue
+		}
+		all = append(all, w)
+		if !slugStopwords[w] {
+			meaningful = append(meaningful, w)
+		}
+	}
+	// Prefer meaningful words; fall back to all words if the prompt is only fillers.
+	words := meaningful
+	if len(words) == 0 {
+		words = all
+	}
+	if len(words) > 4 {
+		words = words[:4]
+	}
+	return strings.Join(words, "-")
 }
 
 func MIMEType(format string) string {
