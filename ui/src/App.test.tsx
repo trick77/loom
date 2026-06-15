@@ -2872,7 +2872,18 @@ test("keeps a running thread stream alive while browsing another chat", async ()
     new TextEncoder().encode('event: assistant_delta\ndata: {"content":" and back"}\n\n'),
   );
 
-  expect(await screen.findByText("Already started while away and back")).toBeInTheDocument();
+  // Streaming-Text wird beim Rendern in Segment-<span>s aufgeteilt (Fade-in),
+  // daher matcht ein Single-Node-findByText nicht mehr. Wir suchen das tiefste
+  // Element, dessen gesamter Textinhalt dem erwarteten String entspricht.
+  const fullStreamText = "Already started while away and back";
+  expect(
+    await screen.findByText((_content, element) => {
+      if (element?.textContent !== fullStreamText) return false;
+      return Array.from(element.children).every(
+        (child) => child.textContent !== fullStreamText,
+      );
+    }),
+  ).toBeInTheDocument();
 });
 
 test("blocks starting a second chat stream while another thread is running", async () => {

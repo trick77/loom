@@ -312,6 +312,28 @@ body {
   }
 }
 
+/* Streaming-Fade: neu eintreffende Text-Segmente blenden einmalig von einer
+   gedimmten Farbe auf die normale Textfarbe auf. */
+@keyframes ui-stream-fade {
+  from {
+    color: color-mix(in srgb, #f3f0e8 20%, transparent);
+  }
+  to {
+    color: #f3f0e8;
+  }
+}
+
+.ui-stream-seg {
+  animation: ui-stream-fade 420ms ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-stream-seg {
+    animation: none;
+    color: #f3f0e8;
+  }
+}
+
 .ui-activity-trace-body {
   border-top: 0;
   padding: 0.125rem 0 0;
