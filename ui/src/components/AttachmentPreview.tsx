@@ -36,6 +36,7 @@ export function AttachmentPreview({
   previewUrl,
   alt,
   className,
+  fallbackBoxClassName,
   testId,
 }: {
   mimeType: string;
@@ -46,6 +47,10 @@ export function AttachmentPreview({
   // hidden from assistive tech to avoid a redundant announcement.
   alt?: string;
   className?: string;
+  // Optional chrome for the non-image marker: larger cells (composer pill, sent
+  // file card) wrap the extension pill in a small bordered chip; compact rows
+  // leave it unset so the glyph sits bare in the cell.
+  fallbackBoxClassName?: string;
   testId?: string;
 }) {
   const [broken, setBroken] = useState(false);
@@ -64,7 +69,9 @@ export function AttachmentPreview({
         />
       ) : (
         <span className="grid h-full w-full place-items-center text-[#c9c5bb]">
-          {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
+          <span className={fallbackBoxClassName}>
+            {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
+          </span>
         </span>
       )}
     </div>

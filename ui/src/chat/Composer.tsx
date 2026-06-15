@@ -196,6 +196,7 @@ function AttachmentPill({
         filename={attachment.filename}
         previewUrl={attachment.previewUrl}
         className="relative grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]"
+        fallbackBoxClassName="grid h-10 w-10 place-items-center rounded-md border border-[#55534d] bg-[#292927]"
       />
       <div className="min-w-0 flex-1 px-3 py-2">
         <div className="ui-message-text truncate">{attachment.filename}</div>

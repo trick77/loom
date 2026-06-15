@@ -129,6 +129,7 @@ function SentFileAttachment({ attachment }: { attachment: ComposerAttachment }) 
         filename={attachment.filename}
         previewUrl={attachment.previewUrl}
         className="grid h-full w-[82px] shrink-0 place-items-center bg-[#242421] text-[#c9c5bb]"
+        fallbackBoxClassName="grid h-11 w-11 place-items-center rounded-md border border-[#55534d] bg-[#30302d]"
       />
       <div className="min-w-0 flex-1 px-3 py-2.5">
         <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
