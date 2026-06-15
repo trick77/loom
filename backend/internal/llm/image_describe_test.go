@@ -48,6 +48,23 @@ func TestDescribeImage_usesVisionModelAndReturnsText(t *testing.T) {
 	}
 }
 
+func TestDescribeImage_emptyContentReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"length"}]}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	_, err := c.DescribeImage(context.Background(), onePixelPNG(), "image/png")
+	if err == nil {
+		t.Fatal("DescribeImage with empty content error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Errorf("error = %q, want it to mention empty content", err.Error())
+	}
+}
+
 func onePixelPNG() []byte {
 	const b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 	data, err := base64.StdEncoding.DecodeString(b64)
