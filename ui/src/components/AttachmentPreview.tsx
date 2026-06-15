@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AttachmentExtensionPill } from "../chat/AttachmentExtensionPill";
 import { attachmentExtensionLabel } from "../chat/attachmentFiles";
@@ -60,6 +60,13 @@ export function AttachmentPreview({
   testId?: string;
 }) {
   const [broken, setBroken] = useState(false);
+  // Reset the broken flag when the source changes so a once-failed image can
+  // recover if the same component instance is handed a fresh URL (e.g. an upload
+  // swaps a revoked blob: URL for the stable server download URL under the same
+  // attachment id, where a stable list key keeps the instance mounted).
+  useEffect(() => {
+    setBroken(false);
+  }, [previewUrl]);
   const extensionLabel = attachmentExtensionLabel(filename);
   const showImage = previewUrl !== undefined && isImageLike(mimeType, filename) && !broken;
   return (
