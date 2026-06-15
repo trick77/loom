@@ -124,6 +124,13 @@ func run() error {
 	artifactStore := artifact.NewStore(db)
 	usageStore := usage.NewStore(db)
 
+	// Built before the RAG block so the ingester can use it to describe image
+	// documents; reused below as the chat client.
+	var llmClient *llm.Client
+	if cfg.ChatBaseURL != "" {
+		llmClient = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
+	}
+
 	// Document RAG is enabled only when an embeddings endpoint is configured.
 	var documentService httpapi.DocumentService
 	if strings.TrimSpace(cfg.EmbedBaseURL) != "" {
@@ -149,6 +156,9 @@ func run() error {
 		tikaClient := documents.NewTikaClient(documents.TikaConfig{BaseURL: cfg.TikaURL})
 		ingester := rag.NewIngester(ragStore, documents.VolumeOpener{UsersDir: cfg.UsersDir}, tikaClient, embedClient)
 		ingester.SetUsageRecorder(usageStore)
+		if llmClient != nil {
+			ingester.SetImageDescriber(llmClient)
+		}
 		docs := documents.NewService(ragStore, artifactStore, ingester, embedClient, cfg.UsersDir)
 		docs.SetUsageRecorder(usageStore)
 		documentService = docs
@@ -171,8 +181,8 @@ func run() error {
 		imageTools = append(imageTools, imagegen.NewTool(imageProvider))
 	}
 	var chatClient httpapi.ChatClient
-	if cfg.ChatBaseURL != "" {
-		chatClient = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
+	if llmClient != nil {
+		chatClient = llmClient
 	}
 	var toolService httpapi.ToolService
 	mcpConfig := toolConfigForConfig(cfg)
