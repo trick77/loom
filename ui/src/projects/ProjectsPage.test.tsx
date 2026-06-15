@@ -281,10 +281,10 @@ test("project action menu icons align with the first line of wrapping action tex
   });
   const icon = item.querySelector("[aria-hidden='true']");
 
-  expect(item).toHaveClass("min-h-[34px]");
+  expect(item).toHaveClass("min-h-[30px]");
   expect(item).toHaveClass("items-start");
   expect(item).not.toHaveClass("items-center");
-  expect(icon).toHaveClass("mt-0.5");
+  expect(icon).toHaveClass("h-[21px]");
 });
 
 test("ProjectsPage closes project action menu when clicking outside", () => {

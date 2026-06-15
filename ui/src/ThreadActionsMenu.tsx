@@ -2,7 +2,7 @@ import type { Thread } from "./api";
 import { Icon } from "./chat/Icon";
 
 export const menuItemClass = "flex min-h-[30px] w-full items-start gap-2.5 px-3 py-1 text-left";
-export const menuIconClass = "grid h-5 w-[21px] shrink-0 place-items-center";
+export const menuIconClass = "grid h-[21px] w-[21px] shrink-0 place-items-center";
 
 export function ThreadActionsMenu({
   menuKey,
