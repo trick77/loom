@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/slopr/internal/imagescale"
 	"github.com/trick77/slopr/internal/llm"
 )
 
@@ -42,20 +43,21 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 		if err != nil {
 			return nil, fmt.Errorf("image attachment path rejected: %w", err)
 		}
-		// MiMo's OpenAI-compatible image input accepts data URLs, so the current
-		// request path base64-encodes each bounded upload in memory. Note this data
-		// URL rides on the message that is re-sent on every tool round of the turn,
-		// so a multi-round vision turn re-transmits the image(s) each round. Bounded
-		// by maxImageAttachmentsPerMessage × MaxArtifactSizeBytes; switch to a
-		// model-fetchable URL instead of an inline data URL if that bound bites.
-		bytes, err := os.ReadFile(abs)
+		// MiMo's OpenAI-compatible image input accepts data URLs, so the request path
+		// base64-encodes each upload in memory. This data URL rides on the message
+		// that is re-sent on every tool round of the turn, so the bytes matter:
+		// DownscaleForModel caps the longest side / recompresses to JPEG first, which
+		// turns a multi-MB original into a few hundred KB without losing signal the
+		// tiling vision model would use.
+		raw, err := os.ReadFile(abs)
 		if err != nil {
 			return nil, fmt.Errorf("read image attachment: %w", err)
 		}
+		encoded, encodedMIME := imagescale.DownscaleForModel(raw, item.MIMEType)
 		parts = append(parts, llm.MessageContentPart{
 			Type: "image_url",
 			ImageURL: &llm.MessageImageURL{
-				URL: "data:" + item.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(bytes),
+				URL: "data:" + encodedMIME + ";base64," + base64.StdEncoding.EncodeToString(encoded),
 			},
 		})
 	}
