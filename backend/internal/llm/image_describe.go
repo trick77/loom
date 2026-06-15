@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/slopr/internal/imagescale"
+	"github.com/trick77/lume/internal/imagescale"
 )
 
 // imageDescribeMaxCompletionTokens caps the vision description. With thinking

@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/sse"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/sse"
 	"golang.org/x/text/language"
 	"golang.org/x/text/language/display"
 )
@@ -129,9 +129,9 @@ func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 
 func systemPromptForUser(user auth.User) string {
 	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
-		return sloprSystemPrompt + "\nAlways answer in English."
+		return lumeSystemPrompt + "\nAlways answer in English."
 	}
-	return sloprSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "."
+	return lumeSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "."
 }
 
 // languageName resolves a profile language value to its English name (for

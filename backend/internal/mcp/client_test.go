@@ -65,7 +65,7 @@ func TestRemoteClientListsAndCallsTools(t *testing.T) {
 	if len(tools) != 1 || tools[0].Name != "search__search" || tools[0].OriginalName != "search" {
 		t.Fatalf("tools = %#v", tools)
 	}
-	got, err := client.CallTool(context.Background(), "search", map[string]any{"q": "slopr"})
+	got, err := client.CallTool(context.Background(), "search", map[string]any{"q": "lume"})
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestRemoteClientHandlesStreamableHTTPSessionAndSSE(t *testing.T) {
 	if len(tools) != 1 || tools[0].Name != "search__web_search" {
 		t.Fatalf("tools = %#v", tools)
 	}
-	got, err := client.CallTool(context.Background(), "web_search", map[string]any{"query": "slopr"})
+	got, err := client.CallTool(context.Background(), "web_search", map[string]any{"query": "lume"})
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
@@ -410,7 +410,7 @@ func runMCPTestHelper(t *testing.T) {
 }
 
 func TestStdioClientCommandFailure(t *testing.T) {
-	client := NewStdioClient("bad", ServerConfig{Transport: TransportStdio, Command: "definitely-missing-slopr-mcp-helper"})
+	client := NewStdioClient("bad", ServerConfig{Transport: TransportStdio, Command: "definitely-missing-lume-mcp-helper"})
 	defer client.Close()
 
 	if _, err := client.ListTools(context.Background()); err == nil {

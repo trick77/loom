@@ -4,8 +4,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/rag"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/rag"
 )
 
 // VolumeOpener opens a document's bytes from the per-user volume, enforcing the

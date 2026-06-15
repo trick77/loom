@@ -1,8 +1,8 @@
-# slopr Phase 1 — Foundation Implementation Plan
+# lume Phase 1 — Foundation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stand up a runnable slopr foundation — a single Go binary that serves a JSON/SSE API and an embedded React/Vite/Tailwind frontend, backed by a SQLite store (with sqlite-vec verified), config from ENV, and a runtime-agnostic container/compose skeleton.
+**Goal:** Stand up a runnable lume foundation — a single Go binary that serves a JSON/SSE API and an embedded React/Vite/Tailwind frontend, backed by a SQLite store (with sqlite-vec verified), config from ENV, and a runtime-agnostic container/compose skeleton.
 
 **Architecture:** One Go module (`backend/`) serves `/api/*` (JSON + SSE) and the embedded React build (`web/dist` via `embed.FS`) with SPA fallback. Persistence is one SQLite file accessed through the **pure-Go** `ncruces/go-sqlite3` driver (no cgo) with **sqlite-vec** linked via `sqlite-vec-go-bindings/ncruces`. A hand-rolled migration runner applies embedded `.sql` files. The frontend is a Vite + React + TypeScript + Tailwind app using the chosen **UI direction A (Warm Editorial)** palette. Containerfile is multi-stage (Node build → Go static build → distroless), `compose.yaml` wires `slopr` + `searxng` + `tika`.
 
@@ -16,7 +16,7 @@
 - **sqlite-vec:** `github.com/asg017/sqlite-vec-go-bindings/ncruces` (blank import in the `store` package provides the WASM build with sqlite-vec compiled in — replaces `ncruces/go-sqlite3/embed`).
 - **Routing:** stdlib `http.ServeMux` with Go 1.22+ method/pattern routes; hand-rolled middleware. No chi/gin.
 - **Migrations:** hand-rolled runner over `embed.FS` `.sql` files, tracked in `schema_migrations`.
-- **Module path:** `github.com/trick77/slopr` (adjust if the remote differs).
+- **Module path:** `github.com/trick77/lume` (adjust if the remote differs).
 - **Fonts:** wire a CSS-variable font system; ship open stand-ins via `@fontsource` (`@fontsource-variable/inter` for sans, `@fontsource/fraunces` for the editorial serif) with a single documented swap point for the real Anthropic font package when its npm name is confirmed.
 - **Branch:** continue on a feature branch off `design/slopr-v1` (e.g. `feat/phase-1-foundation`); never commit to `master`.
 
@@ -25,7 +25,7 @@
 ```
 slopr/
   backend/
-    go.mod                                  # module github.com/trick77/slopr, go 1.25
+    go.mod                                  # module github.com/trick77/lume, go 1.25
     cmd/slopr/main.go                         # entrypoint: load config, open store, build server, serve + graceful shutdown
     internal/
       config/config.go                      # Config struct + Load() from ENV
@@ -70,7 +70,7 @@ slopr/
 
 Run:
 ```bash
-mkdir -p backend/cmd/slopr && cd backend && go mod init github.com/trick77/slopr && go mod edit -go=1.25
+mkdir -p backend/cmd/slopr && cd backend && go mod init github.com/trick77/lume && go mod edit -go=1.25
 ```
 
 - [ ] **Step 2: Add a temporary main stub so the module compiles**
@@ -843,7 +843,7 @@ func (s *server) handleHealthStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 ```
-Add the imports `"fmt"` and `"github.com/trick77/slopr/internal/sse"` to `health.go`.
+Add the imports `"fmt"` and `"github.com/trick77/lume/internal/sse"` to `health.go`.
 
 - [ ] **Step 6: Run tests to verify everything passes**
 
@@ -995,10 +995,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/trick77/slopr/internal/config"
-	"github.com/trick77/slopr/internal/httpapi"
-	"github.com/trick77/slopr/internal/store"
-	"github.com/trick77/slopr/web"
+	"github.com/trick77/lume/internal/config"
+	"github.com/trick77/lume/internal/httpapi"
+	"github.com/trick77/lume/internal/store"
+	"github.com/trick77/lume/web"
 )
 
 var version = "dev" // overridden via -ldflags at build time

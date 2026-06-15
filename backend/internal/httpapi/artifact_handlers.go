@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/documents"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/documents"
 )
 
 const multipartUploadOverheadBytes = 1 << 20

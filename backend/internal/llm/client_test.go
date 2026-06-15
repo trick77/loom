@@ -710,7 +710,7 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search__web","arguments":"{\"q\""}}]}}]}` + "\n\n"))
-		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\"slopr\"}"}}]}}]}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\"lume\"}"}}]}}]}` + "\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	t.Cleanup(server.Close)
@@ -732,7 +732,7 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 		t.Fatalf("tool calls = %#v, want 1", final.ToolCalls)
 	}
 	call := final.ToolCalls[0]
-	if call.ID != "call_1" || call.Function.Name != "search__web" || call.Function.Arguments != `{"q":"slopr"}` {
+	if call.ID != "call_1" || call.Function.Name != "search__web" || call.Function.Arguments != `{"q":"lume"}` {
 		t.Fatalf("tool call = %#v", call)
 	}
 	// Three events, in order: (1) a pending signal the moment the first tool-call
@@ -747,7 +747,7 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 		t.Fatalf("events = %#v, want early name-only tool call", events)
 	}
 	if events[2].ToolPending || events[2].ToolCall.ID != "call_1" ||
-		events[2].ToolCall.Function.Name != "search__web" || events[2].ToolCall.Function.Arguments != `{"q":"slopr"}` {
+		events[2].ToolCall.Function.Name != "search__web" || events[2].ToolCall.Function.Arguments != `{"q":"lume"}` {
 		t.Fatalf("events = %#v, want final full tool call event", events)
 	}
 }

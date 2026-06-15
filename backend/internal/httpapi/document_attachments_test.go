@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/slopr/internal/artifact"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/documents"
-	"github.com/trick77/slopr/internal/rag"
+	"github.com/trick77/lume/internal/artifact"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/documents"
+	"github.com/trick77/lume/internal/rag"
 )
 
 // inlineStub is a DocumentService that serves documents and full text by ID, for

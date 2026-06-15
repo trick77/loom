@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Slopr's split waiting indicators with one persistent animated `Thinking` block during active assistant turns.
+**Goal:** Replace Lume's split waiting indicators with one persistent animated `Thinking` block during active assistant turns.
 
 **Architecture:** Keep the change in the existing `ChatShell.tsx` streaming UI. Replace `ThinkingIndicator` with an active `ThinkingPanel` state that can render before reasoning exists, while tool events are running, and while reasoning deltas stream.
 

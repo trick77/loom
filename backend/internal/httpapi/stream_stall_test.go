@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/llm"
 )
 
 // A stalled upstream (idle watchdog abort) must surface a clear cause to the

@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/trick77/slopr/internal/auth"
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/llm"
-	"github.com/trick77/slopr/internal/sse"
+	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/lume/internal/sse"
 )
 
 const projectDescriptionCompletedTurnThreshold = 2

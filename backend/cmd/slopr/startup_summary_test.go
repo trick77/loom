@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/slopr/internal/config"
-	"github.com/trick77/slopr/internal/mcp"
+	"github.com/trick77/lume/internal/config"
+	"github.com/trick77/lume/internal/mcp"
 )
 
 func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {

@@ -21,7 +21,7 @@ test("renders generated tools with a creation label and artifact glyph", () => {
     />,
   );
 
-  const trace = screen.getByRole("status", { name: /slopr activity trace/i });
+  const trace = screen.getByRole("status", { name: /lume activity trace/i });
   expect(within(trace).getByText("Creating PDF file")).toBeInTheDocument();
   expect(within(trace).getByText("Running")).toBeInTheDocument();
 

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 )
 
 func (s *server) artifactsForThreadCleanup(ctx context.Context, userID, threadID string) ([]artifact.Artifact, error) {

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/trick77/slopr/internal/artifact"
+	"github.com/trick77/lume/internal/artifact"
 )
 
 // allowedTextExtensions are the UTF-8 text formats create_text_file may emit.

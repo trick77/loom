@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/trick77/slopr/internal/llm"
+	"github.com/trick77/lume/internal/llm"
 )
 
 type activityTraceEvent struct {

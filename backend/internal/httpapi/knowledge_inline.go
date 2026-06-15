@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/trick77/slopr/internal/chat"
-	"github.com/trick77/slopr/internal/rag"
+	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/lume/internal/rag"
 )
 
 // knowledgeInlineContext injects, in full, the indexed knowledge documents in the

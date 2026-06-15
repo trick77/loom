@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/trick77/slopr/internal/store"
+	"github.com/trick77/lume/internal/store"
 )
 
 func newTestStore(t *testing.T) (*Store, *sql.DB) {
