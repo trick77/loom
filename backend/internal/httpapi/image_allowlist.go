@@ -8,8 +8,8 @@ import (
 // allowedImageFormats maps a lower-cased file extension to its canonical MIME
 // type for chat image attachments. Scoped to the formats the omnimodal MiMo
 // (mimo-v2.5) accepts AND that we choose to support: PNG, JPG/JPEG, WebP, GIF.
-// BMP is intentionally excluded. Keep in sync with the frontend file-chooser
-// accept (IMAGE_ATTACHMENT_ACCEPT in ui/src/api.ts).
+// BMP is intentionally excluded. Keep in sync with the image extensions inside
+// DOCUMENT_ACCEPT / ATTACHMENT_ACCEPT in ui/src/api.ts.
 var allowedImageFormats = map[string]string{
 	".png":  "image/png",
 	".jpg":  "image/jpeg",
