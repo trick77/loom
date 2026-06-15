@@ -23,12 +23,10 @@ func TestResponseLogDirForConfigOnlyEnablesDevMode(t *testing.T) {
 	}
 }
 
-func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
+func TestChatClientConfigFromConfig(t *testing.T) {
 	cfg := config.Config{
 		ChatBaseURL:             "https://chat.example/v1",
 		ChatAPIKey:              "secret",
-		ChatModel:               "mimo",
-		ChatReasoningEffort:     "low",
 		ChatMaxCompletionTokens: 4096,
 		ChatTimeout:             90 * time.Second,
 		ChatIdleTimeout:         60 * time.Second,
@@ -42,12 +40,6 @@ func TestChatClientConfigFromConfigIncludesReasoningEffort(t *testing.T) {
 	}
 	if got.APIKey != cfg.ChatAPIKey {
 		t.Fatalf("APIKey = %q, want %q", got.APIKey, cfg.ChatAPIKey)
-	}
-	if got.Model != cfg.ChatModel {
-		t.Fatalf("Model = %q, want %q", got.Model, cfg.ChatModel)
-	}
-	if got.ReasoningEffort != cfg.ChatReasoningEffort {
-		t.Fatalf("ReasoningEffort = %q, want %q", got.ReasoningEffort, cfg.ChatReasoningEffort)
 	}
 	if got.MaxCompletionTokens != cfg.ChatMaxCompletionTokens {
 		t.Fatalf("MaxCompletionTokens = %d, want %d", got.MaxCompletionTokens, cfg.ChatMaxCompletionTokens)

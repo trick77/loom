@@ -60,6 +60,10 @@ func (c *Client) StreamChatResult(ctx context.Context, messages []Message, onDel
 
 func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, tools []Tool, onEvent func(StreamEvent) error) (StreamResult, error) {
 	start := time.Now()
+	// Single routing decision for the whole turn: vision model iff the payload
+	// carries an image part, else the text model. The same `messages` slice is
+	// re-sent on every tool round within this turn, so the choice stays stable.
+	model := c.modelForMessages(messages)
 	callCtx := ctx
 	var cancel context.CancelFunc
 	if timeout := c.timeoutForTools(tools); timeout > 0 {
@@ -100,14 +104,14 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 	}
 
-	resp, err := c.executeChatRequestWithTools(streamCtx, messages, tools, true)
+	resp, err := c.executeChatRequestWithTools(streamCtx, messages, tools, true, model)
 	if err != nil {
 		// The watchdog can fire before the first byte arrives (upstream never
 		// responds); report that as a stall rather than a raw context error.
 		if errors.Is(context.Cause(streamCtx), ErrStreamStalled) {
 			err = ErrStreamStalled
 		}
-		logInferenceFailed(streamCtx, c.model, time.Since(start), err)
+		logInferenceFailed(streamCtx, model, time.Since(start), err)
 		return StreamResult{}, err
 	}
 	defer resp.Body.Close()
@@ -168,7 +172,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		return attrs
 	}
 	fail := func(err error) (StreamResult, error) {
-		logInferenceFailed(streamCtx, c.model, time.Since(start), err, progress()...)
+		logInferenceFailed(streamCtx, model, time.Since(start), err, progress()...)
 		return StreamResult{Content: content.String(), ReasoningContent: reasoning.String(), Usage: usage}, err
 	}
 	// MiMo emits tool calls as inline XML in the content; gate the streamed deltas
@@ -183,7 +187,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// instead of content; gate that channel too, with its own buffer, so the markup
 	// never leaks as visible reasoning. finishStream recovers the call from whichever
 	// channel carried it.
-	parseInlineTools := isMiMoModel(c.model)
+	parseInlineTools := isMiMoModel(model)
 	var gate, reasoningGate *toolCallStreamGate
 	if parseInlineTools {
 		gate = &toolCallStreamGate{}
@@ -292,14 +296,14 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			if err := flushGate(); err != nil {
 				return fail(err)
 			}
-			result, err := finishStream(streamCtx, c.model, content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
+			result, err := finishStream(streamCtx, model, content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 			if err != nil {
 				return fail(err)
 			}
 			result.Duration = time.Since(start)
-			result.Model = c.model
+			result.Model = model
 			result.ReasoningEffort = c.reasoningEffort
-			observeInference(streamCtx, c.model, result.Duration, result.Usage, result.FinishReason, progress()...)
+			observeInference(streamCtx, model, result.Duration, result.Usage, result.FinishReason, progress()...)
 			return result, nil
 		}
 
@@ -392,14 +396,14 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	if err := flushGate(); err != nil {
 		return fail(err)
 	}
-	result, err := finishStream(streamCtx, c.model, content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
+	result, err := finishStream(streamCtx, model, content.String(), reasoning.String(), finishReason, usage, toolCalls, toolCallOrder, onEvent, parseInlineTools)
 	if err != nil {
 		return fail(err)
 	}
 	result.Duration = time.Since(start)
 	result.Model = c.model
 	result.ReasoningEffort = c.reasoningEffort
-	observeInference(streamCtx, c.model, result.Duration, result.Usage, result.FinishReason, progress()...)
+	observeInference(streamCtx, model, result.Duration, result.Usage, result.FinishReason, progress()...)
 	return result, nil
 }
 

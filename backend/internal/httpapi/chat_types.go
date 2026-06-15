@@ -95,6 +95,7 @@ type getThreadResponse struct {
 type streamMessageRequest struct {
 	Content               string   `json:"content"`
 	DocumentAttachmentIDs []string `json:"documentAttachmentIds"`
+	ImageAttachmentIDs    []string `json:"imageAttachmentIds"`
 }
 
 type streamDeltaResponse struct {

@@ -8,7 +8,7 @@ import {
   listDocuments,
   uploadDocument,
 } from "../api";
-import { useDocumentAttachments } from "./useDocumentAttachments";
+import { composerAttachmentFromArtifact, isImageAttachment, useDocumentAttachments } from "./useDocumentAttachments";
 
 vi.mock("../api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api")>();
@@ -106,4 +106,23 @@ test("clears the composer note after a document is added to knowledge", async ()
   });
   expect(result.current.attachments[0]?.status).toBe("ready");
   expect(result.current.attachNote).toBe("");
+});
+
+test("composerAttachmentFromArtifact yields a ready, re-sendable image attachment", () => {
+  const attachment = composerAttachmentFromArtifact({
+    id: "art-123",
+    displayFilename: "cat.png",
+    mimeType: "image/png",
+    sizeBytes: 4096,
+    downloadUrl: "/api/artifacts/art-123/download",
+  });
+
+  // Ready immediately (already persisted server-side), carries the artifact id so
+  // ChatShell wires it through as an imageAttachmentId, and uses the download URL
+  // as its preview thumbnail. No File: it must skip the upload step.
+  expect(attachment.status).toBe("ready");
+  expect(attachment.artifactId).toBe("art-123");
+  expect(attachment.previewUrl).toBe("/api/artifacts/art-123/download");
+  expect(attachment.file).toBeUndefined();
+  expect(isImageAttachment(attachment)).toBe(true);
 });

@@ -42,8 +42,6 @@ type Config struct {
 
 	ChatBaseURL             string // OpenAI-compatible chat endpoint (MiMo)
 	ChatAPIKey              string
-	ChatModel               string
-	ChatReasoningEffort     string
 	ChatMaxCompletionTokens int
 	ChatTimeout             time.Duration
 	ChatIdleTimeout         time.Duration
@@ -106,8 +104,6 @@ func Load() (Config, error) {
 		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
 		ChatBaseURL:             env("BACKEND_CHAT_BASE_URL", ""),
 		ChatAPIKey:              env("BACKEND_CHAT_API_KEY", ""),
-		ChatModel:               env("BACKEND_CHAT_MODEL", "MiMo"),
-		ChatReasoningEffort:     env("BACKEND_CHAT_REASONING_EFFORT", "high"),
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
 		EmbedBaseURL:            env("BACKEND_EMBED_BASE_URL", ""),

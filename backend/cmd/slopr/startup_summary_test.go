@@ -12,7 +12,6 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	items := startupCapabilities(config.Config{
 		UsersDir:   "/data/users",
 		TikaURL:    "http://tika:9998",
-		ChatModel:  "MiMo",
 		EmbedModel: "text-embedding-3-small",
 	}, mcp.Config{}, startupRuntime{DocToolCount: 5})
 
@@ -30,7 +29,6 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	items := startupCapabilities(config.Config{
 		AuthMode:       config.AuthModeDev,
 		ChatBaseURL:    "https://chat.example/v1",
-		ChatModel:      "MiMo",
 		EmbedBaseURL:   "https://api.openai.com/v1",
 		EmbedAPIKey:    "embed-key",
 		EmbedModel:     "text-embedding-3-small",
@@ -47,7 +45,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	}}, startupRuntime{DocToolCount: 5, ImageToolCount: 1, DiscoveredToolCount: 3})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
-	assertCapability(t, items, "chat", "enabled", "model=MiMo")
+	assertCapability(t, items, "chat", "enabled", "model=mimo-v2.5-pro (text) / mimo-v2.5 (vision)")
 	assertCapability(t, items, "embeddings", "enabled", "text-embedding-3-small")
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")

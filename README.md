@@ -110,8 +110,6 @@ BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL=https://slopr.example.com/
 BACKEND_OIDC_ADMIN_GROUP=slopr-admins
 BACKEND_CHAT_BASE_URL=http://your-mimo-host/v1
 BACKEND_CHAT_API_KEY=replace-with-chat-api-key
-BACKEND_CHAT_MODEL=mimo-v2.5-pro
-BACKEND_CHAT_REASONING_EFFORT=high
 BACKEND_CHAT_MAX_COMPLETION_TOKENS=2048
 BACKEND_CHAT_TIMEOUT=2m
 BACKEND_CHAT_IDLE_TIMEOUT=60s
@@ -149,18 +147,22 @@ Slopr uses an OpenAI-compatible chat endpoint:
 ```bash
 BACKEND_CHAT_BASE_URL=http://your-mimo-host/v1
 BACKEND_CHAT_API_KEY=replace-with-chat-api-key
-BACKEND_CHAT_MODEL=mimo-v2.5-pro
-BACKEND_CHAT_REASONING_EFFORT=high
 BACKEND_CHAT_MAX_COMPLETION_TOKENS=2048
 BACKEND_CHAT_TIMEOUT=2m
 BACKEND_CHAT_IDLE_TIMEOUT=60s
 ```
 
+Slopr targets MiMo specifically: the model and reasoning effort are hardcoded and no longer
+configurable. Text-only turns use `mimo-v2.5-pro`; turns that include an image attachment are
+routed to the omnimodal `mimo-v2.5` (the text-only Pro model rejects image input). Both are served
+from the same `BACKEND_CHAT_BASE_URL`, selected per request via the `model` field, and
+`reasoning_effort` is fixed at `high`.
+
 The backend calls `POST <BACKEND_CHAT_BASE_URL>/chat/completions` with OpenAI-compatible
 `messages`, `model`, `stream`, `reasoning_effort`, and `max_completion_tokens` fields.
-`BACKEND_CHAT_REASONING_EFFORT` defaults to `high` when unset. `BACKEND_CHAT_MAX_COMPLETION_TOKENS`
+`BACKEND_CHAT_MAX_COMPLETION_TOKENS`
 defaults to `2048`, and `BACKEND_CHAT_TIMEOUT` defaults to `2m`, so long-running reasoning streams are
-bounded even when the model is configured for high reasoning effort. `BACKEND_CHAT_IDLE_TIMEOUT`
+bounded even at high reasoning effort. `BACKEND_CHAT_IDLE_TIMEOUT`
 defaults to `60s` and aborts a stream that goes silent mid-turn (a stalled upstream) far sooner than
 the total timeout; set it to `0` to disable the idle watchdog. If `BACKEND_CHAT_BASE_URL` is
 empty, the authenticated shell still loads but sending a chat message returns a service-unavailable

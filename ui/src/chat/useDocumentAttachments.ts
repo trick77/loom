@@ -4,6 +4,7 @@ import {
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   indexDocument,
   uploadDocument,
+  uploadImageAttachment,
 } from "../api";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
@@ -16,6 +17,7 @@ export type ComposerAttachment = {
   sizeBytes: number;
   status: ComposerAttachmentStatus;
   error?: string;
+  previewUrl?: string;
   documentId?: string;
   artifactId?: string;
   file?: File;
@@ -25,12 +27,17 @@ let nextAttachmentID = 0;
 
 export function createComposerAttachment(file: File, status: ComposerAttachmentStatus = "uploading"): ComposerAttachment {
   nextAttachmentID += 1;
+  const previewUrl =
+    file.type.startsWith("image/") && typeof URL.createObjectURL === "function"
+      ? URL.createObjectURL(file)
+      : undefined;
   return {
     id: `attachment-${Date.now()}-${nextAttachmentID}`,
     filename: file.name,
     mimeType: file.type,
     sizeBytes: file.size,
     status,
+    previewUrl,
     file,
   };
 }
@@ -38,6 +45,34 @@ export function createComposerAttachment(file: File, status: ComposerAttachmentS
 export function toSentAttachment(attachment: ComposerAttachment): ComposerAttachment {
   const { file: _file, ...sent } = attachment;
   return sent;
+}
+
+// composerAttachmentFromArtifact turns an existing (already-persisted) artifact —
+// e.g. an assistant-generated image — into a ready composer attachment so it can be
+// re-sent as a model image input. It carries no File: the artifact already lives on
+// the server, so the upload step is skipped and only its id is wired through as an
+// imageAttachmentId. The download URL doubles as the preview thumbnail source.
+export function composerAttachmentFromArtifact(artifact: {
+  id: string;
+  displayFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  downloadUrl: string;
+}): ComposerAttachment {
+  nextAttachmentID += 1;
+  return {
+    id: `attachment-${Date.now()}-${nextAttachmentID}`,
+    filename: artifact.displayFilename,
+    mimeType: artifact.mimeType,
+    sizeBytes: artifact.sizeBytes,
+    status: "ready",
+    previewUrl: artifact.downloadUrl,
+    artifactId: artifact.id,
+  };
+}
+
+export function isImageAttachment(attachment: Pick<ComposerAttachment, "mimeType" | "filename">): boolean {
+  return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(attachment.filename);
 }
 
 type AttachmentStatusHandler = (id: string, patch: Partial<ComposerAttachment>) => void;
@@ -59,11 +94,23 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
   }, []);
 
   const removeAttachment = useCallback((id: string) => {
-    setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+    setAttachments((current) => {
+      const removed = current.find((attachment) => attachment.id === id);
+      if (removed?.previewUrl !== undefined) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((attachment) => attachment.id !== id);
+    });
   }, []);
 
-  const clearAttachments = useCallback(() => {
-    setAttachments([]);
+  const clearAttachments = useCallback((options: { revokePreviewUrls?: boolean } = {}) => {
+    const revokePreviewUrls = options.revokePreviewUrls ?? true;
+    setAttachments((current) => {
+      if (revokePreviewUrls) {
+        current.forEach((attachment) => {
+          if (attachment.previewUrl !== undefined) URL.revokeObjectURL(attachment.previewUrl);
+        });
+      }
+      return [];
+    });
   }, []);
 
   const handleAttachFiles = useCallback(
@@ -159,6 +206,20 @@ async function uploadAttachments(
     if (attachment.file === undefined || attachment.artifactId !== undefined) continue;
     if (threadId === undefined && projectId === undefined) {
       setAttachNote(`${attachment.filename} will upload when you send.`);
+      continue;
+    }
+    if (isImageAttachment(attachment)) {
+      setAttachNote(`Uploading ${attachment.filename}…`);
+      onStatus(attachment.id, { status: "uploading" });
+      try {
+        const image = await uploadImageAttachment(attachment.file, { threadId, projectId });
+        onStatus(attachment.id, { status: "ready", artifactId: image.id });
+        setAttachNote("");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `Failed to upload ${attachment.filename}.`;
+        onStatus(attachment.id, { status: "error", error: message });
+        setAttachNote(message);
+      }
       continue;
     }
     void uploadDocumentAttachment(attachment);
