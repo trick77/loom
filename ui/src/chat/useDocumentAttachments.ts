@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 
 import {
+  deleteArtifact,
+  deleteDocument,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   indexDocument,
   type MessageAttachment,
@@ -23,6 +25,11 @@ export type ComposerAttachment = {
   documentId?: string;
   artifactId?: string;
   file?: File;
+  // True only for attachments the composer itself uploaded from a picked file.
+  // Gates the delete-on-remove path: removing such an attachment also deletes it
+  // server-side, but a re-attached existing artifact (e.g. a generated image via
+  // composerAttachmentFromArtifact) must never be deleted — it isn't ours to drop.
+  uploadedByComposer?: boolean;
 };
 
 let nextAttachmentID = 0;
@@ -41,12 +48,27 @@ export function createComposerAttachment(file: File, status: ComposerAttachmentS
     status,
     previewUrl,
     file,
+    uploadedByComposer: true,
   };
 }
 
 export function toSentAttachment(attachment: ComposerAttachment): ComposerAttachment {
   const { file: _file, ...sent } = attachment;
   return sent;
+}
+
+// deleteUploadedAttachment removes a composer-uploaded attachment server-side when
+// it is taken off the composer, so it doesn't linger as an orphan ("as if it had
+// never existed"). It is a no-op for re-attached existing artifacts — only what
+// the composer itself uploaded (uploadedByComposer) is ours to delete. Best
+// effort: a failed delete must not block the UI removal.
+export function deleteUploadedAttachment(attachment: ComposerAttachment): void {
+  if (attachment.uploadedByComposer !== true) return;
+  if (attachment.documentId !== undefined) {
+    void deleteDocument(attachment.documentId).catch(() => {});
+  } else if (attachment.artifactId !== undefined) {
+    void deleteArtifact(attachment.artifactId).catch(() => {});
+  }
 }
 
 // composerAttachmentFromArtifact turns an existing (already-persisted) artifact —
@@ -115,13 +137,18 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
     );
   }, []);
 
-  const removeAttachment = useCallback((id: string) => {
-    setAttachments((current) => {
-      const removed = current.find((attachment) => attachment.id === id);
+  const removeAttachment = useCallback(
+    (id: string) => {
+      const removed = attachments.find((attachment) => attachment.id === id);
       if (isRevocablePreview(removed?.previewUrl)) URL.revokeObjectURL(removed.previewUrl);
-      return current.filter((attachment) => attachment.id !== id);
-    });
-  }, []);
+      // Delete it server-side too (only if the composer uploaded it), so removing
+      // it leaves no orphan; done outside the state updater to avoid a double
+      // request under React StrictMode's double-invoked updaters.
+      if (removed !== undefined) deleteUploadedAttachment(removed);
+      setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+    },
+    [attachments],
+  );
 
   const clearAttachments = useCallback((options: { revokePreviewUrls?: boolean } = {}) => {
     const revokePreviewUrls = options.revokePreviewUrls ?? true;

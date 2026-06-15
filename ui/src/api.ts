@@ -583,6 +583,22 @@ export async function deleteDocument(documentId: string): Promise<void> {
   }
 }
 
+// deleteArtifact removes an uploaded artifact (row + file) server-side. Used by
+// the composer's remove path so a composer-uploaded image isn't orphaned. Only
+// call it for artifacts the composer itself uploaded — never for re-attached
+// existing artifacts (e.g. a generated image), which must outlive the removal.
+export async function deleteArtifact(artifactId: string): Promise<void> {
+  const response = await fetch(`/api/artifacts/${encodeURIComponent(artifactId)}`, {
+    method: "DELETE",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to delete artifact");
+  }
+}
+
 export async function streamMessage(
   threadId: string,
   content: string,

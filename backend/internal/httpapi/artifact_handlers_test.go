@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -126,6 +128,69 @@ func TestUploadImageAttachmentAllowsMaxSizeFileWithMultipartOverhead(t *testing.
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 for max-size file upload with multipart overhead; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeleteArtifactRemovesOwnArtifactRowAndFile(t *testing.T) {
+	// Canonicalize the temp dir: on macOS t.TempDir() sits under /var (a symlink to
+	// /private/var), and ResolveExisting EvalSymlinks the parent, so an
+	// unresolved usersDir would fail its inside-root check and skip file removal.
+	usersDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mirror the real layout: artifacts live under files/outputs, not directly in
+	// the user root (ResolveExisting rejects a file whose parent is the root).
+	relPath := "files/outputs/art_1.png"
+	absFile := filepath.Join(usersDir, "user_1", filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(absFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(absFile, []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	deleted := []string{}
+	store := fakeArtifactStore{
+		deleted: &deleted,
+		artifacts: []artifact.Artifact{
+			{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png"},
+		},
+	}
+	server := newAuthenticatedChatServer(t, Deps{Artifacts: store, UsersDir: usersDir})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/artifacts/art_1", ""))
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(absFile); !os.IsNotExist(err) {
+		t.Fatalf("artifact file still exists, err = %v", err)
+	}
+	if len(deleted) != 1 || deleted[0] != "art_1" {
+		t.Fatalf("deleted rows = %v, want [art_1]", deleted)
+	}
+}
+
+func TestDeleteArtifactRejectsAnotherUsersArtifact(t *testing.T) {
+	deleted := []string{}
+	store := fakeArtifactStore{
+		deleted: &deleted,
+		artifacts: []artifact.Artifact{
+			{ID: "art_2", UserID: "user_2", VolumeRelPath: "art_2.png", DisplayFilename: "b.png"},
+		},
+	}
+	server := newAuthenticatedChatServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/artifacts/art_2", ""))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d body = %s, want 404 for another user's artifact", rec.Code, rec.Body.String())
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("deleted = %v, want none for a foreign artifact", deleted)
 	}
 }
 

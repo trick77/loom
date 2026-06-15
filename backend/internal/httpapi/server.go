@@ -133,6 +133,7 @@ func (s *server) recordUsage(counter string, fn func() error) {
 type ArtifactStore interface {
 	Create(context.Context, artifact.CreateInput) (artifact.Artifact, error)
 	Get(context.Context, string, string) (artifact.Artifact, bool, error)
+	Delete(context.Context, string, string) error
 	List(context.Context, string, artifact.ListOptions) ([]artifact.Artifact, error)
 	ListForThread(context.Context, string, string) ([]artifact.Artifact, error)
 	ListForProject(context.Context, string, string) ([]artifact.Artifact, error)
@@ -240,6 +241,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
 	mux.Handle("POST /api/artifacts/images/upload", s.requireAuth(http.HandlerFunc(s.handleUploadImageAttachment)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))
+	mux.Handle("DELETE /api/artifacts/{artifactID}", s.requireAuth(http.HandlerFunc(s.handleDeleteArtifact)))
 	mux.Handle("POST /api/documents/upload", s.requireAuth(http.HandlerFunc(s.handleUploadDocument)))
 	mux.Handle("GET /api/documents", s.requireAuth(http.HandlerFunc(s.handleListDocuments)))
 	mux.Handle("POST /api/documents/{documentID}/index", s.requireAuth(http.HandlerFunc(s.handleIndexDocument)))
