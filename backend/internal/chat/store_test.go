@@ -239,6 +239,53 @@ func TestMessagesPersistActivityTrace(t *testing.T) {
 	}
 }
 
+func TestMessagesPersistAttachments(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Attachments"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawAttachments := json.RawMessage(`[{"kind":"image","artifactId":"art_1","filename":"photo.png","mimeType":"image/png","sizeBytes":1234,"downloadUrl":"/api/artifacts/art_1/download"}]`)
+	message, err := store.AddMessageWithAttachments(ctx, userID, thread.ID, RoleUser, "Look at this", rawAttachments)
+	if err != nil {
+		t.Fatalf("AddMessageWithAttachments() error = %v", err)
+	}
+	if string(message.Attachments) != string(rawAttachments) {
+		t.Fatalf("message.Attachments = %s", message.Attachments)
+	}
+
+	messages, found, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	if string(messages[0].Attachments) != string(rawAttachments) {
+		t.Fatalf("listed Attachments = %s", messages[0].Attachments)
+	}
+}
+
+func TestMessagesDefaultAttachmentsToEmptyArray(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Plain"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	message, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, "no attachments")
+	if err != nil {
+		t.Fatalf("AddMessage() error = %v", err)
+	}
+	if string(message.Attachments) != "[]" {
+		t.Fatalf("message.Attachments = %s, want []", message.Attachments)
+	}
+}
+
 func TestMessagesPersistCitations(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

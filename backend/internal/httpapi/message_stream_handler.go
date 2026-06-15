@@ -64,7 +64,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	userMessage, err := s.chat.AddMessage(r.Context(), user.ID, threadID, chat.RoleUser, body.Content)
+	// Persist the images and documents the user sent with this message so the sent
+	// previews survive a reload (resolved user-scoped; out-of-scope ids skipped).
+	sentAttachments := s.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs)
+	userMessage, err := s.chat.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments)
 	if err != nil {
 		writeChatStoreError(w, r, err, http.StatusBadRequest, "message content is required", "message content is too long")
 		return

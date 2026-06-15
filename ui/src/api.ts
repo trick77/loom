@@ -79,6 +79,29 @@ export type Artifact = {
   durationMs?: number;
 };
 
+// MessageAttachment is the persisted shape of one image or document a user sent
+// with a message (mirrors the backend MessageAttachment). downloadUrl is set for
+// images (derived from the artifact id) and absent for documents. It travels on a
+// loaded message (see LoadedMessage) and is rehydrated into the richer
+// ComposerAttachment the sent-message renderer uses.
+export type MessageAttachment = {
+  kind: "image" | "document";
+  artifactId?: string;
+  documentId?: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  downloadUrl?: string;
+};
+
+// LoadedMessage is a message as returned by the thread-load endpoint: a Message
+// plus the persisted attachments the user sent with it. The base Message stays
+// attachment-free so the rendered/stateful MessageWithActivityTrace (which
+// carries ComposerAttachment[]) remains assignable to Message everywhere.
+export type LoadedMessage = Message & {
+  attachments?: MessageAttachment[];
+};
+
 // Citation mirrors a backend RAG source: one per retrieved chunk. The UI groups
 // these by filename for display (AnythingLLM-style "combine like sources").
 export type Citation = {
@@ -138,7 +161,7 @@ export type McpStatusEvent = {
 
 type ThreadResponse = {
   thread: Thread;
-  messages: Message[];
+  messages: LoadedMessage[];
 };
 
 type StreamHandlers = {

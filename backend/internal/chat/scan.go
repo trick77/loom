@@ -73,7 +73,7 @@ func scanThread(row rowScanner) (Thread, error) {
 func scanMessage(row rowScanner) (Message, error) {
 	var message Message
 	var role string
-	var toolCalls, citations, artifacts, activityTrace string
+	var toolCalls, citations, artifacts, attachments, activityTrace string
 	var promptTokens, completionTokens, totalTokens, cachedTokens, reasoningTokens, durationMs sql.NullInt64
 	var model, reasoningEffort sql.NullString
 	var createdAt string
@@ -86,6 +86,7 @@ func scanMessage(row rowScanner) (Message, error) {
 		&toolCalls,
 		&citations,
 		&artifacts,
+		&attachments,
 		&activityTrace,
 		&promptTokens,
 		&completionTokens,
@@ -103,6 +104,7 @@ func scanMessage(row rowScanner) (Message, error) {
 	message.ToolCalls = defaultJSON(toolCalls)
 	message.Citations = defaultJSON(citations)
 	message.Artifacts = defaultJSON(artifacts)
+	message.Attachments = defaultJSON(attachments)
 	message.ActivityTrace = defaultJSON(activityTrace)
 	message.PromptTokens = nullableInt(promptTokens)
 	message.CompletionTokens = nullableInt(completionTokens)

@@ -95,6 +95,7 @@ type fakeChatStore struct {
 	assistantContent          string
 	assistantContextErr       error
 	lastCitations             json.RawMessage
+	lastAttachments           json.RawMessage
 	createThreadErr           error
 	deleteThreadErr           error
 	updateThreadInput         chat.UpdateThreadInput
@@ -235,6 +236,25 @@ func (f *fakeChatStore) DeleteThread(context.Context, string, string) (bool, err
 
 func (f *fakeChatStore) AddMessage(ctx context.Context, _ string, threadID string, role chat.Role, content string) (chat.Message, error) {
 	return f.AddMessageWithUsage(ctx, "", threadID, role, content, chat.MessageTokenUsage{})
+}
+
+func (f *fakeChatStore) AddMessageWithAttachments(ctx context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage) (chat.Message, error) {
+	if len(attachments) == 0 {
+		attachments = json.RawMessage("[]")
+	}
+	f.lastAttachments = attachments
+	message := chat.Message{
+		ID:            "msg_1",
+		ThreadID:      threadID,
+		Role:          role,
+		Content:       content,
+		Artifacts:     json.RawMessage("[]"),
+		ActivityTrace: json.RawMessage("[]"),
+		Citations:     json.RawMessage("[]"),
+		Attachments:   attachments,
+	}
+	f.messages = append(f.messages, message)
+	return message, nil
 }
 
 func (f *fakeChatStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
