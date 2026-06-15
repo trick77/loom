@@ -124,10 +124,18 @@ func normalizeFilename(input, prompt, format string) string {
 	return name + "." + ext
 }
 
+// slugStopwords are common filler words skipped when building a filename slug so
+// the result leans on the descriptive words, e.g. "A red fox in deep snow" -> "red-fox-deep-snow".
+var slugStopwords = map[string]bool{
+	"a": true, "an": true, "the": true, "of": true, "in": true, "on": true,
+	"at": true, "to": true, "and": true, "or": true, "with": true, "for": true,
+	"by": true, "from": true, "as": true, "is": true, "are": true, "be": true,
+}
+
 // slugFromPrompt builds a short, filesystem-friendly stem from the first few
-// meaningful words of an image prompt, e.g. "A red fox in deep snow" -> "a-red-fox-in".
+// meaningful words of an image prompt, e.g. "A red fox in deep snow" -> "red-fox-deep-snow".
 func slugFromPrompt(prompt string) string {
-	words := make([]string, 0, 4)
+	var all, meaningful []string
 	for _, field := range strings.Fields(strings.ToLower(prompt)) {
 		var b strings.Builder
 		for _, r := range field {
@@ -135,12 +143,22 @@ func slugFromPrompt(prompt string) string {
 				b.WriteRune(r)
 			}
 		}
-		if w := b.String(); w != "" {
-			words = append(words, w)
-			if len(words) >= 4 {
-				break
-			}
+		w := b.String()
+		if w == "" {
+			continue
 		}
+		all = append(all, w)
+		if !slugStopwords[w] {
+			meaningful = append(meaningful, w)
+		}
+	}
+	// Prefer meaningful words; fall back to all words if the prompt is only fillers.
+	words := meaningful
+	if len(words) == 0 {
+		words = all
+	}
+	if len(words) > 4 {
+		words = words[:4]
 	}
 	return strings.Join(words, "-")
 }

@@ -60,8 +60,18 @@ func TestGenerateRequestNormalizeDerivesFilenameFromPromptWhenMissing(t *testing
 	if err != nil {
 		t.Fatalf("Normalized() error = %v", err)
 	}
-	if got.Filename != "a-red-fox-in.png" {
-		t.Fatalf("Filename = %q, want a-red-fox-in.png", got.Filename)
+	if got.Filename != "red-fox-deep-snow.png" {
+		t.Fatalf("Filename = %q, want red-fox-deep-snow.png", got.Filename)
+	}
+}
+
+func TestGenerateRequestNormalizeFallsBackToFillerWordsWhenNoMeaningfulWords(t *testing.T) {
+	got, err := (GenerateRequest{Prompt: "the and of in"}).Normalized()
+	if err != nil {
+		t.Fatalf("Normalized() error = %v", err)
+	}
+	if got.Filename != "the-and-of-in.png" {
+		t.Fatalf("Filename = %q, want the-and-of-in.png", got.Filename)
 	}
 }
 
