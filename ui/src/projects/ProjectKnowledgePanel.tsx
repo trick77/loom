@@ -216,6 +216,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                 <AttachmentPreview
                   mimeType={doc.mimeType}
                   filename={doc.filename}
+                  previewUrl={doc.downloadUrl}
                   className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#3a3a37] text-[#c7c5bd]"
                 />
                 <div className="min-w-0 flex-1">

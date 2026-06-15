@@ -1,5 +1,6 @@
-// Package documents extracts text from uploaded files (via Apache Tika) and
-// guards which formats may be uploaded for RAG indexing.
+// Package documents turns uploaded files into text for RAG indexing (documents
+// via Apache Tika, images via the vision model) and guards which formats may be
+// uploaded.
 package documents
 
 import (
@@ -8,8 +9,10 @@ import (
 )
 
 // allowedFormats maps a lower-cased file extension to its canonical MIME type.
-// This is the v1 RAG upload allowlist: common document formats Tika extracts
-// reliably without OCR. Keep in sync with the frontend file-chooser `accept`.
+// This is the RAG upload allowlist. Document formats are extracted to text by
+// Tika (no OCR); image formats bypass Tika and are described by the vision model
+// at ingest (see rag.Ingester.extractContent), their MIME strings kept identical
+// to httpapi/image_allowlist.go. Keep in sync with the frontend file-chooser `accept`.
 var allowedFormats = map[string]string{
 	".pdf":  "application/pdf",
 	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -20,6 +23,11 @@ var allowedFormats = map[string]string{
 	".csv":  "text/csv; charset=utf-8",
 	".json": "application/json",
 	".html": "text/html; charset=utf-8",
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".gif":  "image/gif",
 }
 
 // AllowedFormat reports whether filename's extension is an accepted upload

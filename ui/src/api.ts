@@ -124,15 +124,17 @@ export type Document = {
   error?: string;
   projectId?: string;
   artifactId?: string;
+  downloadUrl?: string;
   createdAt: string;
 };
 
-// Extensions accepted for document upload — keep in sync with the backend
-// allowlist (internal/documents/allowlist.go).
+// Extensions accepted for document/knowledge upload — keep in sync with the
+// backend allowlist (internal/documents/allowlist.go). Images are described via
+// the vision model at ingest.
 export const DOCUMENT_ACCEPT =
-  ".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.html";
-export const IMAGE_ATTACHMENT_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
-export const ATTACHMENT_ACCEPT = `${DOCUMENT_ACCEPT},${IMAGE_ATTACHMENT_ACCEPT}`;
+  ".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.html,.png,.jpg,.jpeg,.webp,.gif";
+// DOCUMENT_ACCEPT already includes images, so it covers every composer attachment.
+export const ATTACHMENT_ACCEPT = DOCUMENT_ACCEPT;
 export const DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE = 5;
 export const DOCUMENT_MAX_CHAT_ATTACHMENTS = 10;
 export const DOCUMENT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;

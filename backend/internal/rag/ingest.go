@@ -16,6 +16,12 @@ type Extractor interface {
 	Extract(ctx context.Context, filename, mime string, r io.Reader) (string, error)
 }
 
+// ImageDescriber turns an image's raw bytes into descriptive text (implemented
+// by the llm vision utility). Defined here so package rag does not import llm.
+type ImageDescriber interface {
+	DescribeImage(ctx context.Context, data []byte, mime string) (string, error)
+}
+
 // Embedder turns texts into vectors (implemented by EmbedClient).
 type Embedder interface {
 	Embed(ctx context.Context, inputs []string) (EmbedResult, error)
@@ -35,6 +41,7 @@ type Ingester struct {
 	store     *Store
 	opener    FileOpener
 	extractor Extractor
+	describer ImageDescriber
 	embedder  Embedder
 	chunkOpts ChunkOptions
 	usage     EmbeddingUsageRecorder
@@ -52,6 +59,26 @@ func NewIngester(store *Store, opener FileOpener, extractor Extractor, embedder 
 
 func (ing *Ingester) SetUsageRecorder(usage EmbeddingUsageRecorder) {
 	ing.usage = usage
+}
+
+func (ing *Ingester) SetImageDescriber(d ImageDescriber) {
+	ing.describer = d
+}
+
+// extractContent turns a document's bytes into text. image/* MIME types are
+// routed to the vision describer; everything else goes to the Tika extractor.
+func (ing *Ingester) extractContent(ctx context.Context, filename, mime string, r io.Reader) (string, error) {
+	if strings.HasPrefix(mime, "image/") {
+		if ing.describer == nil {
+			return "", fmt.Errorf("image description is not configured")
+		}
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return "", fmt.Errorf("read image: %w", err)
+		}
+		return ing.describer.DescribeImage(ctx, data, mime)
+	}
+	return ing.extractor.Extract(ctx, filename, mime, r)
 }
 
 // Ingest indexes one document. On any failure it records the error on the
@@ -115,7 +142,7 @@ func (ing *Ingester) ExtractText(ctx context.Context, userID, documentID string)
 		return "", fmt.Errorf("open document: %w", err)
 	}
 	defer rc.Close()
-	text, err := ing.extractor.Extract(ctx, doc.Filename, doc.MIME, rc)
+	text, err := ing.extractContent(ctx, doc.Filename, doc.MIME, rc)
 	if err != nil {
 		return "", fmt.Errorf("extract text: %w", err)
 	}
@@ -129,7 +156,7 @@ func (ing *Ingester) extract(ctx context.Context, doc Document) (string, error) 
 		return "", fmt.Errorf("open document: %w", err)
 	}
 	defer rc.Close()
-	text, err := ing.extractor.Extract(ctx, doc.Filename, doc.MIME, rc)
+	text, err := ing.extractContent(ctx, doc.Filename, doc.MIME, rc)
 	if err != nil {
 		return "", fmt.Errorf("extract text: %w", err)
 	}

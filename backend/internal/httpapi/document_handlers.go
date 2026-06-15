@@ -29,19 +29,20 @@ type DocumentService interface {
 }
 
 type documentResponse struct {
-	ID         string    `json:"id"`
-	Filename   string    `json:"filename"`
-	MIMEType   string    `json:"mimeType"`
-	SizeBytes  int64     `json:"sizeBytes"`
-	Status     string    `json:"status"`
-	Error      string    `json:"error,omitempty"`
-	ProjectID  *string   `json:"projectId,omitempty"`
-	ArtifactID *string   `json:"artifactId,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
+	ID          string    `json:"id"`
+	Filename    string    `json:"filename"`
+	MIMEType    string    `json:"mimeType"`
+	SizeBytes   int64     `json:"sizeBytes"`
+	Status      string    `json:"status"`
+	Error       string    `json:"error,omitempty"`
+	ProjectID   *string   `json:"projectId,omitempty"`
+	ArtifactID  *string   `json:"artifactId,omitempty"`
+	DownloadURL string    `json:"downloadUrl,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 func toDocumentResponse(d rag.Document) documentResponse {
-	return documentResponse{
+	resp := documentResponse{
 		ID:         d.ID,
 		Filename:   d.Filename,
 		MIMEType:   d.MIME,
@@ -52,6 +53,12 @@ func toDocumentResponse(d rag.Document) documentResponse {
 		ArtifactID: d.ArtifactID,
 		CreatedAt:  d.CreatedAt,
 	}
+	// Mirror the artifact download URL pattern so the UI can render a thumbnail
+	// for image documents (and a download link for any document).
+	if d.ArtifactID != nil {
+		resp.DownloadURL = "/api/artifacts/" + *d.ArtifactID + "/download"
+	}
+	return resp
 }
 
 func optionalFormValue(r *http.Request, key string) *string {
