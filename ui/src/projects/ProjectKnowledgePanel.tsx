@@ -11,6 +11,7 @@ import {
 import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
 import type { IconName } from "../chat/Icon";
+import { AttachmentPreview } from "../components/AttachmentPreview";
 
 // A document is still settling (badge should show "Indexing…" and the panel keeps
 // polling) while it is anything other than a terminal state.
@@ -212,6 +213,11 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                 onPointerEnter={() => setHoveredID(doc.id)}
                 onPointerLeave={() => setHoveredID((current) => (current === doc.id ? null : current))}
               >
+                <AttachmentPreview
+                  mimeType={doc.mimeType}
+                  filename={doc.filename}
+                  className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#3a3a37] text-[#c7c5bd]"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[15px] leading-5 text-[#ecece6]" title={doc.filename}>
                     {doc.filename}

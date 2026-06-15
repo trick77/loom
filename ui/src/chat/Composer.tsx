@@ -1,11 +1,10 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 
 import { ATTACHMENT_ACCEPT } from "../api";
-import { AttachmentExtensionPill } from "./AttachmentExtensionPill";
-import { attachAcceptedFiles, attachmentExtensionLabel } from "./attachmentFiles";
+import { AttachmentPreview } from "../components/AttachmentPreview";
+import { attachAcceptedFiles, formatAttachmentSize } from "./attachmentFiles";
 import { Icon } from "./Icon";
-import { FileIcon } from "./icons";
-import type { ComposerAttachment } from "./useDocumentAttachments";
+import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
 export function Composer({
   variant,
@@ -106,7 +105,7 @@ export function Composer({
         >
           <div className="flex flex-wrap gap-2">
             {attachments.map((attachment) => (
-              <AttachmentPreview
+              <AttachmentPill
                 key={attachment.id}
                 attachment={attachment}
                 onRemove={onRemoveAttachment}
@@ -180,36 +179,70 @@ export function Composer({
   );
 }
 
-function AttachmentPreview({
+function AttachmentRemoveButton({ attachment, onRemove }: { attachment: ComposerAttachment; onRemove: (id: string) => void }) {
+  return (
+    <button
+      className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#64615a] bg-[#343432] text-[#d8d4ca] opacity-95 transition-colors hover:bg-[#44423d] hover:text-[#f3f0e8]"
+      type="button"
+      aria-label={`Remove ${attachment.filename}`}
+      onClick={() => onRemove(attachment.id)}
+    >
+      <Icon name="close" size="14px" />
+    </button>
+  );
+}
+
+function AttachmentPill({
   attachment,
   onRemove,
 }: {
   attachment: ComposerAttachment;
   onRemove?: (id: string) => void;
 }) {
-  const status = attachmentStatusLabel(attachment);
-  const extensionLabel = attachmentExtensionLabel(attachment.filename);
   const uploading =
     attachment.status === "uploading" || attachment.status === "processing";
+
+  // An uploaded image shows as a compact thumbnail with its type as a pill badge
+  // inside the image — identical to how it renders once sent (messages.tsx). Files,
+  // which have no thumbnail, keep the wider card so the filename stays readable.
+  if (isImageAttachment(attachment)) {
+    return (
+      <div
+        className="group/attachment relative h-[76px] w-[76px] overflow-hidden rounded-lg border border-[#4b4a46] bg-[#2f2f2c] shadow-[0_8px_18px_rgba(0,0,0,0.18)]"
+        title={attachment.filename}
+      >
+        <AttachmentPreview
+          mimeType={attachment.mimeType}
+          filename={attachment.filename}
+          previewUrl={attachment.previewUrl}
+          overlayLabel
+          className="h-full w-full"
+        />
+        {uploading && (
+          <span className="absolute inset-0 grid place-items-center bg-black/40">
+            <Icon name="spinner" size="20px" className="text-[#f3f0e8]" />
+          </span>
+        )}
+        {attachment.status === "error" && (
+          <span className="absolute inset-x-0 bottom-0 truncate bg-[#5a2a27]/90 px-1.5 py-0.5 text-center text-[11px] text-[#f3d6d2]">
+            {attachment.error ?? "Upload failed"}
+          </span>
+        )}
+        {onRemove !== undefined && <AttachmentRemoveButton attachment={attachment} onRemove={onRemove} />}
+      </div>
+    );
+  }
+
+  const status = attachmentStatusLabel(attachment);
   return (
     <div className="group/attachment relative flex h-[76px] w-[180px] max-w-full overflow-hidden rounded-lg border border-[#4b4a46] bg-[#343432] text-[#f3f0e8] shadow-[0_8px_18px_rgba(0,0,0,0.18)]">
-      <div className="relative grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]">
-        {attachment.previewUrl !== undefined ? (
-          <>
-            <img
-              className="h-full w-full object-cover"
-              src={attachment.previewUrl}
-              alt=""
-              aria-hidden="true"
-            />
-            {extensionLabel !== null && <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill>}
-          </>
-        ) : (
-          <div className="grid h-10 w-10 place-items-center rounded-md border border-[#55534d] bg-[#292927] text-[#c9c5bb]">
-            {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
-          </div>
-        )}
-      </div>
+      <AttachmentPreview
+        mimeType={attachment.mimeType}
+        filename={attachment.filename}
+        previewUrl={attachment.previewUrl}
+        className="grid h-full w-[68px] shrink-0 place-items-center bg-[#2f2f2c]"
+        fallbackBoxClassName="grid h-10 w-10 place-items-center rounded-md border border-[#55534d] bg-[#292927]"
+      />
       <div className="min-w-0 flex-1 px-3 py-2">
         <div className="ui-message-text truncate">{attachment.filename}</div>
         <div className="ui-meta-text mt-2 truncate text-[#aaa79e]">
@@ -221,16 +254,7 @@ function AttachmentPreview({
           </div>
         )}
       </div>
-      {onRemove !== undefined && (
-        <button
-          className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#64615a] bg-[#343432] text-[#d8d4ca] opacity-95 transition-colors hover:bg-[#44423d] hover:text-[#f3f0e8]"
-          type="button"
-          aria-label={`Remove ${attachment.filename}`}
-          onClick={() => onRemove(attachment.id)}
-        >
-          <Icon name="close" size="14px" />
-        </button>
-      )}
+      {onRemove !== undefined && <AttachmentRemoveButton attachment={attachment} onRemove={onRemove} />}
     </div>
   );
 }
@@ -239,14 +263,6 @@ function attachmentStatusLabel(attachment: ComposerAttachment): string {
   if (attachment.status === "queued") return "Attached";
   if (attachment.status === "uploading") return "Uploading...";
   if (attachment.status === "processing") return "Processing...";
-  if (attachment.status === "ready") return formatBytes(attachment.sizeBytes);
+  if (attachment.status === "ready") return formatAttachmentSize(attachment.sizeBytes);
   return attachment.error ?? "Upload failed";
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb >= 10 ? 0 : 1)} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
 }

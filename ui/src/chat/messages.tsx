@@ -19,8 +19,8 @@ import {
   pendingFencedArtifact,
   type DownloadableResponse,
 } from "./artifacts";
-import { AttachmentExtensionPill } from "./AttachmentExtensionPill";
-import { attachmentExtensionLabel } from "./attachmentFiles";
+import { AttachmentPreview, isRevocablePreview } from "../components/AttachmentPreview";
+import { formatAttachmentSize } from "./attachmentFiles";
 import { MessageCitations } from "./Citations";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { CheckIcon, DownloadIcon, FileIcon } from "./icons";
@@ -100,7 +100,7 @@ function useRevokeSentPreview(previewUrl: string | undefined) {
   useEffect(() => {
     const currentPreviewUrl = previewUrl;
     return () => {
-      if (currentPreviewUrl !== undefined) URL.revokeObjectURL(currentPreviewUrl);
+      if (isRevocablePreview(currentPreviewUrl)) URL.revokeObjectURL(currentPreviewUrl);
     };
   }, [previewUrl]);
 }
@@ -108,34 +108,41 @@ function useRevokeSentPreview(previewUrl: string | undefined) {
 function SentImageAttachment({ attachment }: { attachment: ComposerAttachment }) {
   useRevokeSentPreview(attachment.previewUrl);
 
+  // Once sent, the image lives on the server as an artifact. Render it from that
+  // stable download URL rather than the composer's ephemeral object URL, which is
+  // revoked the moment the start screen is left (and gone after a reload) — that
+  // revocation is exactly what turned the thumbnail into a placeholder. Fall back
+  // to the blob only if the id is somehow missing. (Full reload-survival, i.e.
+  // persisting the attachment record, is the later persistence stage.)
+  const src =
+    attachment.artifactId !== undefined
+      ? `/api/artifacts/${encodeURIComponent(attachment.artifactId)}/download`
+      : attachment.previewUrl;
+
   return (
-    <div
-      data-testid="sent-image-attachment"
-      className="h-[120px] w-[120px] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#242421]"
-    >
-      {attachment.previewUrl !== undefined ? (
-        <img className="h-full w-full object-cover" src={attachment.previewUrl} alt="" aria-hidden="true" />
-      ) : (
-        <div className="relative grid h-full w-full place-items-center text-[#c9c5bb]">
-          <FileIcon />
-          <AttachmentExtensionPill>{attachmentExtensionLabel(attachment.filename) ?? "IMG"}</AttachmentExtensionPill>
-        </div>
-      )}
-    </div>
+    <AttachmentPreview
+      mimeType={attachment.mimeType}
+      filename={attachment.filename}
+      previewUrl={src}
+      overlayLabel
+      testId="sent-image-attachment"
+      className="h-[76px] w-[76px] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#242421]"
+    />
   );
 }
 
 function SentFileAttachment({ attachment }: { attachment: ComposerAttachment }) {
-  const extensionLabel = attachmentExtensionLabel(attachment.filename);
   useRevokeSentPreview(attachment.previewUrl);
 
   return (
     <div className="flex h-[92px] w-[210px] max-w-full overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-left text-[#f3f0e8]">
-      <div className="grid h-full w-[82px] shrink-0 place-items-center bg-[#242421]">
-        <div className="grid h-11 w-11 place-items-center rounded-md border border-[#55534d] bg-[#30302d] text-[#c9c5bb]">
-          {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
-        </div>
-      </div>
+      <AttachmentPreview
+        mimeType={attachment.mimeType}
+        filename={attachment.filename}
+        previewUrl={attachment.previewUrl}
+        className="grid h-full w-[82px] shrink-0 place-items-center bg-[#242421] text-[#c9c5bb]"
+        fallbackBoxClassName="grid h-11 w-11 place-items-center rounded-md border border-[#55534d] bg-[#30302d]"
+      />
       <div className="min-w-0 flex-1 px-3 py-2.5">
         <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
         <div className="ui-meta-text mt-2 truncate text-[#aaa79e]">{sentAttachmentStatus(attachment)}</div>
@@ -149,15 +156,7 @@ function sentAttachmentStatus(attachment: ComposerAttachment): string {
   if (attachment.status === "uploading") return "Uploading...";
   if (attachment.status === "processing") return "Processing...";
   if (attachment.status === "error") return attachment.error ?? "Upload failed";
-  return formatAttachmentBytes(attachment.sizeBytes);
-}
-
-function formatAttachmentBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb >= 10 ? 0 : 1)} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
+  return formatAttachmentSize(attachment.sizeBytes);
 }
 
 function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {

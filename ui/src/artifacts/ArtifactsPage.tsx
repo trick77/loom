@@ -12,7 +12,8 @@ import {
 import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
 import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
-import { CloseIcon, FileIcon } from "../chat/icons";
+import { CloseIcon } from "../chat/icons";
+import { AttachmentPreview } from "../components/AttachmentPreview";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
 import { useInfiniteList } from "../useInfiniteList";
@@ -288,9 +289,11 @@ function FileArtifactButton({ artifact }: { artifact: Artifact }) {
       aria-label={`Download ${artifact.displayFilename}`}
       onClick={() => void downloadToBrowser(artifact)}
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-        <FileIcon />
-      </span>
+      <AttachmentPreview
+        mimeType={artifact.mimeType}
+        filename={artifact.displayFilename}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]"
+      />
       <span className="block min-w-0">
         <span className="block truncate text-[15px] leading-5 text-[#ecece6]">{artifact.displayFilename}</span>
         <span className="ui-artifacts-row-secondary block truncate text-xs leading-4 text-[#8a887f]">
@@ -341,14 +344,13 @@ function ImageArtifactRow({
             className="flex w-full min-w-0 items-start gap-3 text-left"
             title={`Preview ${artifact.displayFilename}`}
           >
-            <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#1f1f1d] text-[#c7c5bd]">
-              <img
-                className="h-full w-full object-cover"
-                src={artifact.downloadUrl}
-                alt={`${artifact.displayFilename} thumbnail`}
-                loading="lazy"
-              />
-            </span>
+            <AttachmentPreview
+              mimeType={artifact.mimeType}
+              filename={artifact.displayFilename}
+              previewUrl={artifact.downloadUrl}
+              alt={`${artifact.displayFilename} thumbnail`}
+              className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#1f1f1d] text-[#c7c5bd]"
+            />
             <span className="block min-w-0">
               <span className="block truncate text-[15px] leading-5 text-[#ecece6]">{artifact.displayFilename}</span>
               <span className="ui-artifacts-row-secondary block truncate text-xs leading-4 text-[#8a887f]">
