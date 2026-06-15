@@ -12,7 +12,7 @@ const SKIP_TAGS = new Set(["pre", "code"]);
 // sobald es lang genug ist. Bewusst gröber als pro Wort.
 const MAX_SEG_CHARS = 28;
 
-function splitIntoSegments(value: string): string[] {
+export function splitIntoSegments(value: string): string[] {
   // Tokens inkl. anhängendem Whitespace erhalten, damit Spacing bleibt.
   const tokens = value.match(/\S+\s*|\s+/g);
   if (!tokens) return [value];

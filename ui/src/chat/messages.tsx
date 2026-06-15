@@ -204,9 +204,9 @@ export function AssistantText({
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
-        {before !== "" && <ProseMarkdown>{before}</ProseMarkdown>}
+        {before !== "" && <ProseMarkdown streaming={streaming}>{before}</ProseMarkdown>}
         <DownloadResponseBubble artifact={artifact} />
-        {after !== "" && <ProseMarkdown>{after}</ProseMarkdown>}
+        {after !== "" && <ProseMarkdown streaming={streaming}>{after}</ProseMarkdown>}
         <MessageActions
           copyLabel="Copy response"
           copyText={markdownToPlainText(children)}
@@ -228,7 +228,7 @@ export function AssistantText({
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
-        <ProseMarkdown>{before}</ProseMarkdown>
+        <ProseMarkdown streaming={streaming}>{before}</ProseMarkdown>
         <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />
       </div>
     );
