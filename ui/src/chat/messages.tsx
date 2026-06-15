@@ -25,6 +25,7 @@ import { MessageCitations } from "./Citations";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { CheckIcon, DownloadIcon, FileIcon } from "./icons";
 import { Icon } from "./Icon";
+import { rehypeStreamFade } from "./streamFade";
 import { type ComposerAttachment } from "./useDocumentAttachments";
 
 export function MessageBubble({
@@ -154,12 +155,18 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
   );
 }
 
-export function ProseMarkdown({ children }: { children: string }) {
+export function ProseMarkdown({
+  children,
+  streaming = false,
+}: {
+  children: string;
+  streaming?: boolean;
+}) {
   return (
     <div className="ui-message-text ui-markdown text-[#f3f0e8]">
       <Markdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={streaming ? [rehypeHighlight, rehypeStreamFade] : [rehypeHighlight]}
         components={{
           a({ children, ...props }) {
             return (
@@ -229,7 +236,7 @@ export function AssistantText({
 
   return (
     <div className="ui-assistant-message group w-full">
-      <ProseMarkdown>{children}</ProseMarkdown>
+      <ProseMarkdown streaming={streaming}>{children}</ProseMarkdown>
       <MessageActions
         copyLabel="Copy response"
         copyText={markdownToPlainText(children)}
