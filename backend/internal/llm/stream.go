@@ -401,7 +401,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		return fail(err)
 	}
 	result.Duration = time.Since(start)
-	result.Model = c.model
+	result.Model = model
 	result.ReasoningEffort = c.reasoningEffort
 	observeInference(streamCtx, model, result.Duration, result.Usage, result.FinishReason, progress()...)
 	return result, nil

@@ -222,6 +222,35 @@ func TestClient_NeverSendsImagePartsToTextModel(t *testing.T) {
 	}
 }
 
+// The stream can finalize two ways: on a literal `data: [DONE]` or when the
+// connection just ends (EOF) with no terminator. result.Model must reflect the
+// routed model on BOTH paths — this exercises the EOF path (no [DONE]) for an
+// image turn, which a per-path field swap can silently miss.
+func TestClient_ImageTurnReportsVisionModelOnEOFFinishPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		// Content only, then the handler returns → connection closes with no
+		// `data: [DONE]`, forcing the post-loop EOF finalization.
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	result, err := client.StreamChatWithTools(context.Background(), []Message{{
+		Role: "user",
+		ContentParts: []MessageContentPart{
+			{Type: "image_url", ImageURL: &MessageImageURL{URL: "data:image/png;base64,abc"}},
+			{Type: "text", Text: "What is this?"},
+		},
+	}}, nil, func(StreamEvent) error { return nil })
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	if result.Model != visionModel {
+		t.Fatalf("result.Model = %q, want %q on the EOF finish path", result.Model, visionModel)
+	}
+}
+
 func TestClient_StreamChatUsesConfiguredMaxCompletionTokens(t *testing.T) {
 	var gotBody struct {
 		MaxCompletionTokens int `json:"max_completion_tokens"`
