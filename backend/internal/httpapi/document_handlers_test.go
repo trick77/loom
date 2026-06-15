@@ -191,3 +191,15 @@ func TestHandleUploadDocument_disabledWhenServiceNil(t *testing.T) {
 		t.Fatalf("status = %d, want 404 when documents disabled", rec.Code)
 	}
 }
+
+func TestToDocumentResponse_setsDownloadURLFromArtifact(t *testing.T) {
+	artID := "art_42"
+	got := toDocumentResponse(rag.Document{ID: "d1", Filename: "chart.png", MIME: "image/png", ArtifactID: &artID})
+	if got.DownloadURL != "/api/artifacts/art_42/download" {
+		t.Errorf("DownloadURL = %q, want /api/artifacts/art_42/download", got.DownloadURL)
+	}
+	noArt := toDocumentResponse(rag.Document{ID: "d2", Filename: "notes.md"})
+	if noArt.DownloadURL != "" {
+		t.Errorf("DownloadURL = %q, want empty when no artifact", noArt.DownloadURL)
+	}
+}
