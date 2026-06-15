@@ -64,6 +64,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     setLoading(true);
+    setError("");
     void refresh();
   }, [refresh]);
 
