@@ -3,15 +3,17 @@ package chat
 import (
 	"strconv"
 	"strings"
+
+	"github.com/trick77/slopr/internal/titletext"
 )
 
 func NormalizeThreadTitle(title string) string {
 	title = strings.TrimSpace(title)
+	title = titletext.NormalizeQuotes(title)
 	if unquoted, err := strconv.Unquote(title); err == nil {
 		title = strings.TrimSpace(unquoted)
 	} else {
-		title = strings.Trim(title, `"'`)
-		title = strings.TrimSpace(title)
+		title = strings.TrimSpace(titletext.StripWrappingQuotes(title))
 	}
 	title = firstNonEmptyLine(title)
 	title = trimMarkdownTitleSyntax(title)

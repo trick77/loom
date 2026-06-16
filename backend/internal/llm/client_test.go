@@ -1072,6 +1072,27 @@ func TestCleanTitlesStripTrailingDot(t *testing.T) {
 	}
 }
 
+func TestCleanChatTitleQuoteHandling(t *testing.T) {
+	cases := map[string]string{
+		// Real bug: straight opening quote, typographic closing quote. The
+		// opening quote must survive and the closing one is normalized to ASCII.
+		"\"Healing” by Evanescence": `"Healing" by Evanescence`,
+		// Song name quoted with curly quotes, plus trailing words.
+		"“Healing” by Evanescence": `"Healing" by Evanescence`,
+		// Fully wrapped title still loses its wrapping quotes (no regression).
+		`"Blue Sky Explanation"`: "Blue Sky Explanation",
+		// Fully wrapped with curly quotes is unwrapped too.
+		"“Blue Sky Explanation”": "Blue Sky Explanation",
+		// Plain title is untouched.
+		"Blue Sky Explanation": "Blue Sky Explanation",
+	}
+	for in, want := range cases {
+		if got := cleanChatTitle(in); got != want {
+			t.Errorf("cleanChatTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestClient_StreamChatReturnsErrorForHTTP500(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"upstream failed"}`, http.StatusInternalServerError)
