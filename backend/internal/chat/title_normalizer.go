@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/slopr/internal/titletext"
+	"github.com/trick77/lume/internal/titletext"
 )
 
 func NormalizeThreadTitle(title string) string {
