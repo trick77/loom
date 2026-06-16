@@ -71,6 +71,14 @@ describe("AttachmentPreview", () => {
     expect(screen.getByText("PDF")).not.toBeNull();
   });
 
+  it("grid-centres the marker when no fallback box is supplied", () => {
+    // A bare inline wrapper lets the label's line box ride ~2px low; the default
+    // grid wrapper keeps "PDF"/"MD" centred in plain file lists (no fallbackBoxClassName).
+    render(<AttachmentPreview mimeType="application/pdf" filename="report.pdf" />);
+    const wrapper = screen.getByText("PDF").parentElement;
+    expect(wrapper?.className).toContain("place-items-center");
+  });
+
   it("renders the generic file glyph for an unrecognised extension", () => {
     const { container } = render(<AttachmentPreview mimeType="application/octet-stream" filename="data.bin" />);
     expect(container.querySelector("img")).toBeNull();

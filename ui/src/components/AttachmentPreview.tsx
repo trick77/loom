@@ -89,7 +89,10 @@ export function AttachmentPreview({
         </>
       ) : (
         <span className="grid h-full w-full place-items-center text-[#c9c5bb]">
-          <span className={fallbackBoxClassName}>
+          {/* Without a caller box, still grid-center the marker: a bare inline span
+              lets the extension label's line box sit ~2px low (its caps ride the
+              baseline), so a plain file list would show "PDF"/"MD" off-centre. */}
+          <span className={fallbackBoxClassName ?? "grid h-full w-full place-items-center"}>
             {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
           </span>
         </span>
