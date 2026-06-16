@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/trick77/slopr/internal/titletext"
 )
 
 const chatTitleSystemPrompt = "You write short chat titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
@@ -55,11 +57,11 @@ func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMe
 
 func cleanChatTitle(title string) string {
 	title = strings.TrimSpace(title)
+	title = titletext.NormalizeQuotes(title)
 	if unquoted, err := strconv.Unquote(title); err == nil {
 		title = strings.TrimSpace(unquoted)
 	} else {
-		title = strings.Trim(title, `"'`)
-		title = strings.TrimSpace(title)
+		title = strings.TrimSpace(titletext.StripWrappingQuotes(title))
 	}
 	if title == "" {
 		return "New chat"

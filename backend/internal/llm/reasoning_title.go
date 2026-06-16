@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/trick77/slopr/internal/titletext"
 )
 
 const reasoningTitleSystemPrompt = "Summarize the assistant's private reasoning as a short present-participle (gerund) title naming the user's subject matter or the task being worked on. Use 3 to 8 words. Start with an -ing verb (e.g. \"Explaining what causes the northern lights\"). No first person, no sentences, no trailing punctuation. Name the topic the reasoning engages with, not the final answer. Never title the meta-process of reasoning — such as deciding whether tools are needed, choosing a response format, or judging the question's difficulty; name the underlying subject instead. Return only the title."
@@ -56,10 +58,11 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning string) (
 // empty or unusable result yields "" so the caller omits the title entirely.
 func cleanReasoningTitle(title string) string {
 	title = strings.TrimSpace(title)
+	title = titletext.NormalizeQuotes(title)
 	if unquoted, err := strconv.Unquote(title); err == nil {
 		title = strings.TrimSpace(unquoted)
 	} else {
-		title = strings.TrimSpace(strings.Trim(title, `"'`))
+		title = strings.TrimSpace(titletext.StripWrappingQuotes(title))
 	}
 	title = trimTrailingDots(title)
 	if title == "" {
