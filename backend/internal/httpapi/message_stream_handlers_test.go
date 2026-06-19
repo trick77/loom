@@ -1640,7 +1640,8 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 }
 
 func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
-	trace, _ := activityTraceFromResult(nil, llm.StreamResult{
+	b := &blockBuilder{}
+	b.addResult(nil, llm.StreamResult{
 		ToolCalls: []llm.ToolCall{
 			{
 				ID:   "call_pdf",
@@ -1660,8 +1661,9 @@ func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
 			},
 		},
 	})
-	trace = activityTraceWithToolResult(trace, "call_pdf", "created report.pdf")
-	trace = activityTraceWithToolResult(trace, "call_future", "Created draft.pdf")
+	b.setToolResult("call_pdf", "created report.pdf")
+	b.setToolResult("call_future", "Created draft.pdf")
+	trace := b.flatTrace()
 
 	if len(trace) != 2 {
 		t.Fatalf("len(trace) = %d, want 2: %#v", len(trace), trace)

@@ -9,18 +9,21 @@ import {
   stopMessage,
   streamMessage,
   type Artifact,
+  type ContentBlock,
   type McpStatusEvent,
   type Project,
   type Thread,
   type User,
 } from "../api";
 import {
-  appendReasoningDelta,
-  applyReasoningTitle,
-  completeTrace,
-  upsertTraceToolCall,
-  upsertTraceToolResult,
-} from "../activityTrace";
+  appendArtifactBlock,
+  appendReasoningDeltaBlock,
+  appendTextDelta,
+  applyReasoningTitleBlock,
+  graftStreamedBlocks,
+  upsertToolCallBlock,
+  upsertToolResultBlock,
+} from "./contentBlocks";
 import { ChatsPage } from "../ChatsPage";
 import { ArtifactsPage } from "../artifacts/ArtifactsPage";
 import { MemoryPage } from "../MemoryPage";
@@ -28,7 +31,6 @@ import { navigate, routeFromLocation, type RouteState } from "./routing";
 import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
 import { useMediaQuery } from "./useMediaQuery";
-import { useActivityTrace } from "./useActivityTrace";
 import {
   composerAttachmentFromArtifact,
   createComposerAttachment,
@@ -50,7 +52,7 @@ import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
-import { appendStreamingDelta, updateMessageAttachment } from "./chatUtils";
+import { updateMessageAttachment } from "./chatUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export { buildImageStats } from "./artifacts";
@@ -87,16 +89,21 @@ export function ChatShell({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modalError, setModalError] = useState("");
-  const [streamingText, setStreamingText] = useState("");
-  const [streamingArtifacts, setStreamingArtifacts] = useState<Artifact[]>([]);
-  const {
-    trace: activityTrace,
-    traceRef: activityTraceRef,
-    toolPending,
-    setToolPending,
-    update: updateActivityTrace,
-    clear: clearActivityTrace,
-  } = useActivityTrace();
+  // Each assistant turn is reconstructed live as a single ordered ContentBlock[]
+  // (text / trace / artifact) mirroring the order the SSE events arrive, so the
+  // transcript renders text, tool activity and images in true chronological
+  // order. The ref mirrors the state so the streaming closures can read the
+  // current blocks synchronously (e.g. to graft the completed turn onto the
+  // committed message). `toolPending` bridges a model-yielded tool call until its
+  // running trace event surfaces, driving the live "thinking" affordance.
+  const [streamingBlocks, setStreamingBlocks] = useState<ContentBlock[]>([]);
+  const streamingBlocksRef = useRef<ContentBlock[]>([]);
+  const [toolPending, setToolPending] = useState(false);
+  const clearStreamingBlocks = useCallback(() => {
+    streamingBlocksRef.current = [];
+    setStreamingBlocks([]);
+    setToolPending(false);
+  }, []);
   // Flush hook for the deferred new-chat upload: the scope is supplied per call at
   // send time (the thread does not exist yet when the file is picked). Its
   // attachNote carries ingestion status/errors after the start screen is gone, so
@@ -167,11 +174,9 @@ export function ChatShell({
     unstarredProjects,
   } = useChatData({
     activeThreadIDRef,
-    clearActivityTrace,
+    clearStreamingBlocks,
     handleActionError,
     onSessionExpired,
-    setStreamingArtifacts,
-    setStreamingText,
     streamAbortRef,
     streamingThreadIDRef,
   });
@@ -260,14 +265,12 @@ export function ChatShell({
     setActiveThread(null);
     setMessages([]);
     if (streamingThreadIDRef.current === null) {
-      setStreamingText("");
-      setStreamingArtifacts([]);
-      clearActivityTrace();
+      clearStreamingBlocks();
     }
     setSendError("");
     navigate({ view: "new" });
     setRoute({ view: "new" });
-  }, [clearActivityTrace, onChat]);
+  }, [clearStreamingBlocks, onChat]);
 
   const navigateToChats = useCallback(() => {
     onChat();
@@ -362,9 +365,7 @@ export function ChatShell({
       activeThreadIDRef.current = null;
       setActiveThread(null);
       setMessages([]);
-      setStreamingText("");
-      setStreamingArtifacts([]);
-      clearActivityTrace();
+      clearStreamingBlocks();
       setSendError("");
       navigate({ view: "new" });
       setRoute({ view: "new" });
@@ -499,9 +500,7 @@ export function ChatShell({
   ) {
     setDraft("");
     setIsSending(true);
-    setStreamingText("");
-    setStreamingArtifacts([]);
-    clearActivityTrace();
+    clearStreamingBlocks();
     setSendError("");
     let abortController: AbortController | null = null;
     let createdThreadForFallback: Thread | null = null;
@@ -558,13 +557,16 @@ export function ChatShell({
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
       const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
-      // The assistant loop streams each tool round's prose as its own run of
-      // content deltas, all concatenated into one `streamingText`. Across a round
-      // boundary (model finishes a round's prose, runs tools, then resumes) the
-      // last sentence of one round and the first of the next would otherwise fuse
-      // ("…done.Based on…"). A tool event marks that boundary; we flag it so the
-      // next content delta opens a fresh paragraph instead.
-      let pendingTurnBreak = false;
+      // Accumulate this turn's ordered blocks in a closure-local array, the single
+      // source of truth for the graft at turn end. The rendered state mirror is
+      // kept in sync via setStreamingBlocks, but the React ref can be reset by
+      // unrelated route effects mid-stream, so the graft must not depend on it.
+      let liveBlocks: ContentBlock[] = [];
+      const applyBlocks = (updater: (current: ContentBlock[]) => ContentBlock[]) => {
+        liveBlocks = updater(liveBlocks);
+        streamingBlocksRef.current = liveBlocks;
+        setStreamingBlocks(liveBlocks);
+      };
       const documentAttachmentIds = options.attachments
         .filter((attachment) => attachment.documentId !== undefined)
         .map((attachment) => attachment.documentId!);
@@ -583,15 +585,16 @@ export function ChatShell({
           }
         },
         onDelta: (delta) => {
-          const turnBreakPending = pendingTurnBreak;
-          pendingTurnBreak = false;
-          setStreamingText((current) => appendStreamingDelta(current, delta, turnBreakPending));
+          // Each content delta extends the trailing text block, or opens a new one
+          // when the trailing block is a trace/artifact — so prose that resumes
+          // after a tool round becomes its own block, preserving chronology.
+          applyBlocks((current) => appendTextDelta(current, delta));
         },
         onReasoningDelta: (delta) => {
-          updateActivityTrace((current) => appendReasoningDelta(current, delta));
+          applyBlocks((current) => appendReasoningDeltaBlock(current, delta));
         },
         onReasoningTitle: (event) => {
-          updateActivityTrace((current) => applyReasoningTitle(current, event.id, event.title));
+          applyBlocks((current) => applyReasoningTitleBlock(current, event.id, event.title));
         },
         onToolPending: () => {
           setToolPending(true);
@@ -600,37 +603,26 @@ export function ChatShell({
           // The pending call is now a real (running) trace event; let the trace's
           // own running status drive the "thinking" affordance from here.
           setToolPending(false);
-          // A tool call ends this round's prose; the next content delta belongs to
-          // a new round and must start a fresh paragraph.
-          pendingTurnBreak = true;
-          updateActivityTrace((current) => upsertTraceToolCall(current, event));
+          applyBlocks((current) => upsertToolCallBlock(current, event));
         },
         onToolResult: (event) => {
-          pendingTurnBreak = true;
-          updateActivityTrace((current) => upsertTraceToolResult(current, event));
+          applyBlocks((current) => upsertToolResultBlock(current, event));
         },
         onArtifact: (artifact) => {
-          setStreamingArtifacts((current) => [
-            ...current.filter((item) => item.id !== artifact.id),
-            artifact,
-          ]);
+          applyBlocks((current) => appendArtifactBlock(current, artifact));
         },
         onAssistantMessage: (message) => {
-          const completedTrace = completeTrace(activityTraceRef.current);
+          // The persisted message may already carry the backend's ordered
+          // contentBlocks. When it doesn't (older backends / lag), graft the
+          // just-streamed blocks — settled to done — so the chronological order
+          // (and the activity panel) survives the turn settling. The final answer
+          // text can arrive only on the assistant_message (not as deltas), so
+          // ensure the message content is represented as a trailing text block
+          // when the streamed blocks carry no prose of their own.
           if (isCurrentThread()) {
-            setMessages((current) => [
-              ...current,
-              completedTrace.length > 0
-                ? {
-                    ...message,
-                    activityTrace: completedTrace,
-                  }
-                : message,
-            ]);
+            setMessages((current) => [...current, graftStreamedBlocks(message, liveBlocks)]);
           }
-          setStreamingText("");
-          setStreamingArtifacts([]);
-          clearActivityTrace();
+          clearStreamingBlocks();
         },
         onThread: (updatedThread) => {
           receivedThreadEvent = true;
@@ -662,10 +654,9 @@ export function ChatShell({
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setStreamingText("");
-      setStreamingArtifacts([]);
-      // Keep any activity trace visible so a failed turn still shows what was
-      // attempted (e.g. a tool that errored); the next send clears it.
+      // Keep the partial streamed blocks visible so a failed turn still shows what
+      // streamed (prose, an activity trace, a tool that errored); the next send
+      // clears them.
       keepFailedTurnVisible = true;
       if (options.restoreDraftOnError) setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
@@ -680,9 +671,7 @@ export function ChatShell({
 
   const activeThreadOwnsStreamState = activeThread !== null && streamingThreadID === activeThread.id;
   const activeThreadIsStreaming = isSending && activeThreadOwnsStreamState;
-  const visibleStreamingText = activeThreadOwnsStreamState ? streamingText : "";
-  const visibleStreamingArtifacts = activeThreadOwnsStreamState ? streamingArtifacts : [];
-  const visibleActivityTrace = activeThreadOwnsStreamState ? activityTrace : [];
+  const visibleStreamingBlocks = activeThreadOwnsStreamState ? streamingBlocks : [];
   const visibleToolPending = activeThreadOwnsStreamState ? toolPending : false;
   // Keep errors with the thread that owns the active or failed stream state.
   const visibleSendError = streamingThreadID === null || activeThreadOwnsStreamState ? sendError : "";
@@ -866,9 +855,7 @@ export function ChatShell({
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             messages={messages}
             draft={draft}
-            streamingText={visibleStreamingText}
-            streamingArtifacts={visibleStreamingArtifacts}
-            activityTrace={visibleActivityTrace}
+            streamingBlocks={visibleStreamingBlocks}
             toolPending={visibleToolPending}
             sendError={visibleSendError}
             isSending={activeThreadIsStreaming}

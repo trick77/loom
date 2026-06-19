@@ -297,7 +297,7 @@ func TestMessagesPersistCitations(t *testing.T) {
 	}
 
 	rawCitations := json.RawMessage(`[{"documentId":"d1","filename":"guide.pdf","snippet":"make build","score":0.8}]`)
-	message, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "Use make build.", MessageTokenUsage{}, nil, nil, rawCitations)
+	message, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "Use make build.", MessageTokenUsage{}, nil, nil, rawCitations, nil)
 	if err != nil {
 		t.Fatalf("AddMessageWithCitations() error = %v", err)
 	}
@@ -311,6 +311,52 @@ func TestMessagesPersistCitations(t *testing.T) {
 	}
 	if string(messages[0].Citations) != string(rawCitations) {
 		t.Fatalf("listed Citations = %s", messages[0].Citations)
+	}
+}
+
+func TestStore_AddMessageWithCitationsPersistsContentBlocks(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawBlocks := json.RawMessage(`[{"type":"trace","events":[{"id":"call_1","type":"tool","name":"web_fetch","status":"done"}]},{"type":"text","content":"Here is the answer."}]`)
+	message, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "Here is the answer.", MessageTokenUsage{}, nil, nil, nil, rawBlocks)
+	if err != nil {
+		t.Fatalf("AddMessageWithCitations() error = %v", err)
+	}
+	if string(message.ContentBlocks) != string(rawBlocks) {
+		t.Fatalf("message.ContentBlocks = %s, want %s", message.ContentBlocks, rawBlocks)
+	}
+
+	messages, found, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	if string(messages[0].ContentBlocks) != string(rawBlocks) {
+		t.Fatalf("listed ContentBlocks = %s, want %s", messages[0].ContentBlocks, rawBlocks)
+	}
+}
+
+func TestStore_AddMessageDefaultsContentBlocksToEmptyArray(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, "Hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(message.ContentBlocks) != "[]" {
+		t.Fatalf("default ContentBlocks = %s, want []", message.ContentBlocks)
 	}
 }
 

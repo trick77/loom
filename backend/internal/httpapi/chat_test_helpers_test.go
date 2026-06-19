@@ -105,6 +105,7 @@ type fakeChatStore struct {
 	assistantContent          string
 	assistantContextErr       error
 	lastCitations             json.RawMessage
+	lastContentBlocks         json.RawMessage
 	lastAttachments           json.RawMessage
 	createThreadErr           error
 	deleteThreadErr           error
@@ -276,10 +277,10 @@ func (f *fakeChatStore) AddMessageWithArtifacts(ctx context.Context, _ string, t
 }
 
 func (f *fakeChatStore) AddMessageWithActivityTrace(ctx context.Context, userID string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (chat.Message, error) {
-	return f.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil)
+	return f.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil, nil)
 }
 
-func (f *fakeChatStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage) (chat.Message, error) {
+func (f *fakeChatStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (chat.Message, error) {
 	if len(artifacts) == 0 {
 		artifacts = json.RawMessage("[]")
 	}
@@ -289,7 +290,11 @@ func (f *fakeChatStore) AddMessageWithCitations(ctx context.Context, _ string, t
 	if len(citations) == 0 {
 		citations = json.RawMessage("[]")
 	}
+	if len(contentBlocks) == 0 {
+		contentBlocks = json.RawMessage("[]")
+	}
 	f.lastCitations = citations
+	f.lastContentBlocks = contentBlocks
 	message := chat.Message{
 		ID:               "msg_1",
 		ThreadID:         threadID,
@@ -299,6 +304,7 @@ func (f *fakeChatStore) AddMessageWithCitations(ctx context.Context, _ string, t
 		Artifacts:        artifacts,
 		ActivityTrace:    activityTrace,
 		Citations:        citations,
+		ContentBlocks:    contentBlocks,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,

@@ -95,6 +95,11 @@ type Message struct {
 	// MessageAttachment; "[]" for messages sent without attachments.
 	Attachments      json.RawMessage `json:"attachments"`
 	ActivityTrace    json.RawMessage `json:"activityTrace"`
+	// ContentBlocks is the ordered, interleaved timeline of this assistant
+	// message — text prose, tool-activity trace runs, and artifacts — in the
+	// chronological order they were produced. A JSON array of tagged blocks;
+	// "[]" for messages without blocks (e.g. user/tool messages).
+	ContentBlocks    json.RawMessage `json:"contentBlocks"`
 	PromptTokens     *int            `json:"promptTokens,omitempty"`
 	CompletionTokens *int            `json:"completionTokens,omitempty"`
 	TotalTokens      *int            `json:"totalTokens,omitempty"`

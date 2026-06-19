@@ -18,20 +18,16 @@ import type { MessageWithActivityTrace } from "./types";
 
 export function useChatData({
   activeThreadIDRef,
-  clearActivityTrace,
+  clearStreamingBlocks,
   handleActionError,
   onSessionExpired,
-  setStreamingArtifacts,
-  setStreamingText,
   streamAbortRef,
   streamingThreadIDRef,
 }: {
   activeThreadIDRef: React.MutableRefObject<string | null>;
-  clearActivityTrace(): void;
+  clearStreamingBlocks(): void;
   handleActionError(error: unknown, fallback: string, setError: (message: string) => void): void;
   onSessionExpired(): void;
-  setStreamingArtifacts(artifacts: []): void;
-  setStreamingText(text: string): void;
   streamAbortRef: React.MutableRefObject<AbortController | null>;
   streamingThreadIDRef: React.MutableRefObject<string | null>;
 }) {
@@ -93,9 +89,7 @@ export function useChatData({
       setActiveThread(null);
       setMessages([]);
       if (streamingThreadIDRef.current === null) {
-        setStreamingText("");
-        setStreamingArtifacts([]);
-        clearActivityTrace();
+        clearStreamingBlocks();
       }
       return;
     }
@@ -108,9 +102,7 @@ export function useChatData({
         activeThreadIDRef.current = response.thread.id;
         setMessages(response.messages.map(rehydrateLoadedMessage));
         if (streamingThreadIDRef.current === null) {
-          setStreamingText("");
-          setStreamingArtifacts([]);
-          clearActivityTrace();
+          clearStreamingBlocks();
         }
       })
       .catch((error: unknown) => {
@@ -122,10 +114,8 @@ export function useChatData({
     };
   }, [
     activeThreadIDRef,
-    clearActivityTrace,
+    clearStreamingBlocks,
     handleActionError,
-    setStreamingArtifacts,
-    setStreamingText,
     streamingThreadIDRef,
   ]);
 
