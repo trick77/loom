@@ -76,6 +76,16 @@ func threadFilters(userID string, opts ListThreadsOptions) ([]string, []any, err
 		filters = append(filters, `title LIKE ? ESCAPE '\'`)
 		args = append(args, "%"+escapeLike(search)+"%")
 	}
+	// Derive chat visibility from the owning project's archived state instead of
+	// writing to threads. In the resting lists (no project scope, no search,
+	// active threads) hide chats whose project is archived; search and project
+	// detail intentionally bypass this so archived-project chats stay findable
+	// and visible when the project is opened.
+	if opts.ProjectID == nil && strings.TrimSpace(opts.Search) == "" && !opts.Archived {
+		filters = append(filters,
+			"(project_id IS NULL OR NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = threads.project_id AND p.user_id = ? AND p.archived_at IS NOT NULL))")
+		args = append(args, userID)
+	}
 	return filters, args, nil
 }
 

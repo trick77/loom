@@ -1119,3 +1119,99 @@ VALUES ('t_a', ?, 'A', '2026-06-10 09:00:00', '2026-06-10 09:00:00', NULL),
 		t.Fatalf("ListThreadIDs(search) = %v, want [t_c]", filtered)
 	}
 }
+
+func TestStore_ArchivedProjectHidesChatsFromRestingLists(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{
+		Title:     "Greeting notes",
+		ProjectID: &project.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	contains := func(threads []Thread) bool {
+		for _, th := range threads {
+			if th.ID == thread.ID {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Before archiving: the chat shows up in the resting list.
+	active, err := store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads(active) error: %v", err)
+	}
+	if !contains(active) {
+		t.Fatalf("resting list = %#v, want to contain %q before archiving", active, thread.ID)
+	}
+
+	// Archive the owning project (no thread state is mutated).
+	if ok, err := store.SetProjectArchived(ctx, userID, project.ID, true); err != nil {
+		t.Fatalf("SetProjectArchived(true) error: %v", err)
+	} else if !ok {
+		t.Fatal("SetProjectArchived(true) ok = false, want true")
+	}
+
+	// Resting list (no project scope, no search) now hides the chat (C3).
+	resting, err := store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads(resting) error: %v", err)
+	}
+	if contains(resting) {
+		t.Fatalf("resting list = %#v, want to hide archived-project chat %q", resting, thread.ID)
+	}
+
+	// ListThreadIDs shares the same filters, so it stays consistent.
+	ids, err := store.ListThreadIDs(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreadIDs(resting) error: %v", err)
+	}
+	for _, id := range ids {
+		if id == thread.ID {
+			t.Fatalf("ListThreadIDs = %v, want to hide archived-project chat %q", ids, thread.ID)
+		}
+	}
+
+	// Search still finds the chat (C4).
+	bySearch, err := store.ListThreads(ctx, userID, ListThreadsOptions{Search: "Greeting"})
+	if err != nil {
+		t.Fatalf("ListThreads(search) error: %v", err)
+	}
+	if !contains(bySearch) {
+		t.Fatalf("search results = %#v, want to find archived-project chat %q", bySearch, thread.ID)
+	}
+
+	// Opening the project still shows its chats (C5).
+	byProject, err := store.ListThreads(ctx, userID, ListThreadsOptions{ProjectID: &project.ID})
+	if err != nil {
+		t.Fatalf("ListThreads(project) error: %v", err)
+	}
+	if !contains(byProject) {
+		t.Fatalf("project detail = %#v, want to show chat %q of archived project", byProject, thread.ID)
+	}
+
+	// Unarchiving restores the chat to the resting list (C6).
+	if ok, err := store.SetProjectArchived(ctx, userID, project.ID, false); err != nil {
+		t.Fatalf("SetProjectArchived(false) error: %v", err)
+	} else if !ok {
+		t.Fatal("SetProjectArchived(false) ok = false, want true")
+	}
+	restored, err := store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads(restored) error: %v", err)
+	}
+	if !contains(restored) {
+		t.Fatalf("resting list = %#v, want to restore chat %q after unarchive", restored, thread.ID)
+	}
+}
