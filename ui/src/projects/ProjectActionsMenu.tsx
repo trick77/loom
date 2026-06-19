@@ -5,14 +5,18 @@ import { menuIconClass, menuItemClass, TrashMenuIcon } from "../ThreadActionsMen
 export function ProjectActionsMenu({
   project,
   className = "right-0 top-full",
+  archived = false,
   onEdit,
   onArchive,
+  onUnarchive,
   onDelete,
 }: {
   project: Project;
   className?: string;
+  archived?: boolean;
   onEdit(project: Project): void;
   onArchive(project: Project): void;
+  onUnarchive(project: Project): void;
   onDelete(project: Project): void;
 }) {
   return (
@@ -30,15 +34,27 @@ export function ProjectActionsMenu({
         <EditIcon />
         Edit details
       </button>
-      <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
-        role="menuitem"
-        type="button"
-        onClick={() => onArchive(project)}
-      >
-        <ArchiveIcon />
-        Archive
-      </button>
+      {archived ? (
+        <button
+          className={`${menuItemClass} text-[#f3f0e8]`}
+          role="menuitem"
+          type="button"
+          onClick={() => onUnarchive(project)}
+        >
+          <ArchiveIcon />
+          Unarchive
+        </button>
+      ) : (
+        <button
+          className={`${menuItemClass} text-[#f3f0e8]`}
+          role="menuitem"
+          type="button"
+          onClick={() => onArchive(project)}
+        >
+          <ArchiveIcon />
+          Archive
+        </button>
+      )}
       <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
       <button
         className={`${menuItemClass} text-[#d98278]`}

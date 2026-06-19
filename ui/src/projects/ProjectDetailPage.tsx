@@ -38,6 +38,7 @@ export function ProjectDetailPage({
   onCloseThreadMenu,
   onEditProject,
   onArchiveProject,
+  onUnarchiveProject,
   onDeleteProject,
   onToggleStar,
   onOpenSidebar,
@@ -63,6 +64,7 @@ export function ProjectDetailPage({
   onCloseThreadMenu(): void;
   onEditProject(project: Project): void;
   onArchiveProject(project: Project): void;
+  onUnarchiveProject(project: Project): void;
   onDeleteProject(project: Project): void;
   onToggleStar(project: Project, starred: boolean): void;
   onOpenSidebar(): void;
@@ -136,8 +138,10 @@ export function ProjectDetailPage({
                   {openThreadMenuID === projectMenuKey && (
                     <ProjectActionsMenu
                       project={project}
+                      archived={project.archivedAt !== undefined}
                       onEdit={onEditProject}
                       onArchive={onArchiveProject}
+                      onUnarchive={onUnarchiveProject}
                       onDelete={onDeleteProject}
                     />
                   )}

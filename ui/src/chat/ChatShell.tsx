@@ -44,6 +44,7 @@ import { ChatPanel } from "./ChatPanel";
 import { StartPanel } from "./StartPanel";
 import { Sidebar } from "./Sidebar";
 import { DeleteThreadModal, RenameThreadModal } from "./threadModals";
+import { ArchiveProjectModal } from "../projects/ArchiveProjectModal";
 import { DeleteProjectModal } from "../projects/DeleteProjectModal";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage";
 import { ProjectDialog } from "../projects/ProjectDialog";
@@ -309,13 +310,16 @@ export function ChatShell({
   );
 
   const {
+    archivingProject,
     deletingProject,
     editingProject,
     isMutatingProject,
     openProjectDialog,
+    setArchivingProject,
     setDeletingProject,
     setEditingProject,
-    handleArchiveProject,
+    handleArchiveProjectConfirm,
+    handleUnarchiveProject,
     handleDeleteProjectConfirm,
     handleProjectDialogSubmit,
   } = useProjectActions({
@@ -379,6 +383,16 @@ export function ChatShell({
         if (error instanceof AuthExpiredError) onSessionExpired();
       });
   }, [onSessionExpired]);
+
+  function openArchiveProjectModal(project: Project) {
+    setArchivingProject(project);
+    setModalError("");
+    setOpenThreadMenuID(null);
+  }
+
+  function unarchiveProjectAndReload(project: Project) {
+    void handleUnarchiveProject(project).then(reloadThreads);
+  }
 
   async function selectThread(threadID: string) {
     onChat();
@@ -754,7 +768,8 @@ export function ChatShell({
             onCreateProject={() => openProjectDialog(null)}
             onOpenProject={navigateToProject}
             onEditProject={openProjectDialog}
-            onArchiveProject={(project) => void handleArchiveProject(project)}
+            onArchiveProject={openArchiveProjectModal}
+            onUnarchiveProject={unarchiveProjectAndReload}
             onDeleteProject={(project) => {
               setDeletingProject(project);
               setModalError("");
@@ -770,7 +785,8 @@ export function ChatShell({
               onCreateProject={() => openProjectDialog(null)}
               onOpenProject={navigateToProject}
               onEditProject={openProjectDialog}
-              onArchiveProject={(project) => void handleArchiveProject(project)}
+              onArchiveProject={openArchiveProjectModal}
+              onUnarchiveProject={unarchiveProjectAndReload}
               onDeleteProject={(project) => {
                 setDeletingProject(project);
                 setModalError("");
@@ -801,7 +817,8 @@ export function ChatShell({
               }
               onCloseThreadMenu={() => setOpenThreadMenuID(null)}
               onEditProject={openProjectDialog}
-              onArchiveProject={(project) => void handleArchiveProject(project)}
+              onArchiveProject={openArchiveProjectModal}
+              onUnarchiveProject={unarchiveProjectAndReload}
               onDeleteProject={(project) => {
                 setDeletingProject(project);
                 setModalError("");
@@ -892,6 +909,15 @@ export function ChatShell({
           disabled={isMutatingProject}
           onCancel={() => setEditingProject(undefined)}
           onSubmit={(input) => void handleProjectDialogSubmit(input)}
+        />
+      )}
+      {archivingProject !== null && (
+        <ArchiveProjectModal
+          project={archivingProject}
+          error={modalError}
+          disabled={isMutatingProject}
+          onCancel={() => setArchivingProject(null)}
+          onArchive={() => void handleArchiveProjectConfirm()}
         />
       )}
       {deletingProject !== null && (

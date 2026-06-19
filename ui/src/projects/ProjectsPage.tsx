@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 
-import type { Project } from "../api";
+import { listProjects, type Project } from "../api";
 import { Icon } from "../chat/Icon";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 
 type ProjectSort = "recent" | "edited" | "created";
+type ProjectTab = "active" | "archived";
 
 const SORT_LABELS: Record<ProjectSort, string> = {
   recent: "Recent activity",
@@ -22,6 +23,7 @@ export function ProjectsPage({
   onOpenProject,
   onEditProject,
   onArchiveProject,
+  onUnarchiveProject,
   onDeleteProject,
 }: {
   projects: Project[];
@@ -31,22 +33,52 @@ export function ProjectsPage({
   onOpenProject(project: Project): void;
   onEditProject(project: Project): void;
   onArchiveProject(project: Project): void;
+  onUnarchiveProject(project: Project): void;
   onDeleteProject(project: Project): void;
 }) {
   const [query, setQuery] = useState("");
   const [openMenuID, setOpenMenuID] = useState<string | null>(null);
   const [sort, setSort] = useState<ProjectSort>("recent");
   const [sortOpen, setSortOpen] = useState(false);
+  const [tab, setTab] = useState<ProjectTab>("active");
+  const [archived, setArchived] = useState<Project[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+  const [archivedError, setArchivedError] = useState("");
+
+  // Reload the archived list on every activation of the Archived tab so it
+  // stays fresh after archive/unarchive without caching across two state homes.
+  useEffect(() => {
+    if (tab !== "archived") return;
+    let cancelled = false;
+    setArchivedLoading(true);
+    setArchivedError("");
+    listProjects(true)
+      .then((items) => {
+        if (!cancelled) setArchived(items);
+      })
+      .catch(() => {
+        if (!cancelled) setArchivedError("Failed to load archived projects.");
+      })
+      .finally(() => {
+        if (!cancelled) setArchivedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
+
+  const source = tab === "active" ? projects : archived;
+  const error = tab === "active" ? loadError : archivedError;
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
-    const matches = term === "" ? projects : projects.filter((project) =>
+    const matches = term === "" ? source : source.filter((project) =>
       `${project.name} ${project.description}`.toLowerCase().includes(term),
     );
     return [...matches].sort((a, b) => {
       if (sort === "created") return compareDatesDesc(a.createdAt, b.createdAt);
       return compareDatesDesc(a.updatedAt, b.updatedAt);
     });
-  }, [projects, query, sort]);
+  }, [source, query, sort]);
 
   useEffect(() => {
     if (openMenuID === null) return;
@@ -59,6 +91,14 @@ export function ProjectsPage({
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openMenuID]);
+
+  function handleUnarchive(project: Project) {
+    // Optimistically drop it from the archived list; the parent promotes it back
+    // into "Your projects" and restores its chats.
+    setArchived((current) => current.filter((item) => item.id !== project.id));
+    setOpenMenuID(null);
+    onUnarchiveProject(project);
+  }
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -128,14 +168,33 @@ export function ProjectsPage({
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        {loadError !== "" && (
+        <div className="mt-4 flex items-center gap-1.5" role="tablist" aria-label="Project filter">
+          {(["active", "archived"] as const).map((option) => (
+            <button
+              key={option}
+              role="tab"
+              aria-selected={tab === option}
+              className={`ui-control-text rounded-lg px-3 py-1.5 ${
+                tab === option ? "bg-[#3a3a37] text-white" : "text-[#a8a59c] hover:text-[#d5d2c9]"
+              }`}
+              type="button"
+              onClick={() => {
+                setTab(option);
+                setOpenMenuID(null);
+              }}
+            >
+              {option === "active" ? "Your projects" : "Archived"}
+            </button>
+          ))}
+        </div>
+        {error !== "" && (
           <div className="ui-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
-            {loadError}
+            {error}
           </div>
         )}
         {filtered.length === 0 ? (
           <div className="py-10 text-center text-[#807d74]">
-            {query.trim() === "" ? "No projects yet." : "No projects match your search."}
+            {emptyMessage(tab, query, archivedLoading)}
           </div>
         ) : (
         <div className="mt-7 grid gap-6 md:grid-cols-2">
@@ -146,14 +205,17 @@ export function ProjectsPage({
               onClick={() => onOpenProject(project)}
             >
               <button
-                className="block max-w-[calc(100%-42px)] text-left text-sm font-semibold text-[#f4f0e8]"
+                className="flex max-w-[calc(100%-42px)] items-center gap-1.5 text-left text-sm font-semibold text-[#f4f0e8]"
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
                   onOpenProject(project);
                 }}
               >
-                {project.name}
+                <span className="truncate">{project.name}</span>
+                {project.archivedAt !== undefined && (
+                  <Icon name="archived" size="15px" label="Archived" className="shrink-0 text-[#8f8b82]" />
+                )}
               </button>
               {project.description !== "" && (
                 <p className="mt-5 line-clamp-3 text-sm leading-5 text-[#c7c5bd]">{project.description}</p>
@@ -181,8 +243,10 @@ export function ProjectsPage({
                 {openMenuID === project.id && (
                   <ProjectActionsMenu
                     project={project}
+                    archived={tab === "archived"}
                     onEdit={onEditProject}
                     onArchive={onArchiveProject}
+                    onUnarchive={handleUnarchive}
                     onDelete={onDeleteProject}
                   />
                 )}
@@ -194,6 +258,12 @@ export function ProjectsPage({
       </div>
     </div>
   );
+}
+
+function emptyMessage(tab: ProjectTab, query: string, archivedLoading: boolean): string {
+  if (query.trim() !== "") return "No projects match your search.";
+  if (tab === "archived") return archivedLoading ? "Loading archived projects…" : "No archived projects.";
+  return "No projects yet.";
 }
 
 function compareDatesDesc(a: string, b: string): number {
