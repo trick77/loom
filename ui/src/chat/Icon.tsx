@@ -69,6 +69,7 @@ const CODEPOINTS = {
   eye: 0xe069,
   eyeOff: 0xe06a,
   archive: 0xe0c9,
+  archived: 0xe008,
   globe: 0xe082,
   clock: 0xe068,
   moreVertical: 0xe062,
