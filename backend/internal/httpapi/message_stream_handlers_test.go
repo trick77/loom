@@ -1459,6 +1459,19 @@ func TestStreamMessageSystemPromptRoutesURLTools(t *testing.T) {
 	}
 }
 
+func TestSystemPromptForUserIncludesCurrentDate(t *testing.T) {
+	now := time.Date(2026, time.June, 19, 10, 30, 0, 0, time.UTC)
+
+	prompt := systemPromptForUser(auth.User{}, now)
+
+	if !strings.Contains(prompt, "The current date is 2026-06-19") {
+		t.Fatalf("system prompt = %q, want current date line", prompt)
+	}
+	if !strings.Contains(prompt, "do not assume an earlier year") {
+		t.Fatalf("system prompt = %q, want search-year guidance", prompt)
+	}
+}
+
 func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 	var history []llm.Message
 	store := &fakeChatStore{

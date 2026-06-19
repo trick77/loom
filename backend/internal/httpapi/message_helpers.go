@@ -93,7 +93,7 @@ func sendMCPStatus(stream *sse.Writer, ch <-chan mcpStatusResponse) {
 }
 
 func buildLLMHistory(user auth.User, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
-	systemContent := systemPromptForUser(user)
+	systemContent := systemPromptForUser(user, time.Now())
 	if strings.TrimSpace(userContext) != "" {
 		systemContent += "\n\n" + userContext
 	}
@@ -127,11 +127,12 @@ func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 	return currentTitle == chat.NormalizeThreadTitle(firstPrompt)
 }
 
-func systemPromptForUser(user auth.User) string {
+func systemPromptForUser(user auth.User, now time.Time) string {
+	dateLine := "\nThe current date is " + now.Format("2006-01-02") + ". Treat this as today when interpreting time-relative requests and when constructing search queries; do not assume an earlier year."
 	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
-		return loomSystemPrompt + "\nAlways answer in English."
+		return loomSystemPrompt + "\nAlways answer in English." + dateLine
 	}
-	return loomSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "."
+	return loomSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "." + dateLine
 }
 
 // languageName resolves a profile language value to its English name (for
