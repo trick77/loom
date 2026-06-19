@@ -921,7 +921,7 @@ a.ui-activity-tool-url:hover {
   padding-right: 2.75rem;
 }
 
-/* Syntax-Highlighting (highlight.js) — an Lume-Dunkeltheme angepasst */
+/* Syntax-Highlighting (highlight.js) — an Loom-Dunkeltheme angepasst */
 :is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs {
   color: #f3f0e8;
   background: transparent;

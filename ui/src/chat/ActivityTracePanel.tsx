@@ -54,7 +54,7 @@ export function ActivityTracePanel({
   const hasBody = events.length > 0;
   return (
     <div
-      aria-label={active ? "Lume activity trace" : undefined}
+      aria-label={active ? "Loom activity trace" : undefined}
       aria-live={active ? "polite" : undefined}
       className="ui-activity-trace"
       role={active ? "status" : undefined}
@@ -302,12 +302,7 @@ function GeneratedTraceIcon() {
 }
 
 function FetchTraceIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 17 17 7" />
-      <path d="M9 7h8v8" />
-    </svg>
-  );
+  return <Icon name="externalLink" size="1.125rem" className="ui-activity-fetch-icon" />;
 }
 
 function faviconInitial(value: string): string {

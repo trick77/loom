@@ -68,7 +68,7 @@ test("renders signed-out screen when /api/me returns 401", async () => {
     "href",
     "/api/auth/login",
   );
-  expect(screen.getByAltText("Lume")).toBeInTheDocument();
+  expect(screen.getByAltText("Loom")).toBeInTheDocument();
 });
 
 test("renders authenticated shell for signed-in users", async () => {
@@ -1751,7 +1751,7 @@ test("keeps active activity trace while assistant output streams without explici
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  const trace = await screen.findByRole("status", { name: /lume activity trace/i });
+  const trace = await screen.findByRole("status", { name: /loom activity trace/i });
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
   // No reasoning has streamed yet: just the sweeping label, no chevron to expand.
   expect(trace.querySelector(".ui-thinking-chevron")).toBeNull();
@@ -1760,7 +1760,7 @@ test("keeps active activity trace while assistant output streams without explici
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  expect(screen.getByRole("status", { name: /lume activity trace/i })).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: /loom activity trace/i })).toBeInTheDocument();
   expect(screen.getByText("Thinking")).toBeInTheDocument();
 });
 
@@ -1804,7 +1804,7 @@ test("shows the reasoning abstract once its background title arrives", async () 
   );
   expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
-  expect(screen.queryByRole("status", { name: /lume activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
 });
 
 test("auto-opens the live thinking window once and keeps it open after the answer settles", async () => {
@@ -1866,7 +1866,7 @@ test("does not auto-open the live thinking window at the bare start of a turn", 
 
   // The turn has begun but nothing has streamed yet: the window must stay closed —
   // no expanded chevron, no "Hide activity" affordance.
-  const trace = await screen.findByRole("status", { name: /lume activity trace/i });
+  const trace = await screen.findByRole("status", { name: /loom activity trace/i });
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
   expect(trace.querySelector(".ui-thinking-chevron-expanded")).toBeNull();
   expect(within(trace).queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
@@ -2009,7 +2009,7 @@ test("keeps active activity trace visible while assistant text is streaming", as
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
   );
-  const trace = await screen.findByRole("status", { name: /lume activity trace/i });
+  const trace = await screen.findByRole("status", { name: /loom activity trace/i });
   // The window auto-opens while reasoning streams — the body is shown without a click.
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
@@ -2195,7 +2195,7 @@ test("shows active activity trace with reasoning and tool activity before assist
     new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'),
   );
 
-  const trace = await screen.findByRole("status", { name: /lume activity trace/i });
+  const trace = await screen.findByRole("status", { name: /loom activity trace/i });
   expect(within(trace).getByText("Thinking")).toBeInTheDocument();
   // The window auto-opens while inference runs — no click needed.
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
@@ -2225,13 +2225,13 @@ test("hides empty activity trace when the stream fails", async () => {
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  expect(await screen.findByRole("status", { name: /lume activity trace/i })).toBeInTheDocument();
+  expect(await screen.findByRole("status", { name: /loom activity trace/i })).toBeInTheDocument();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
   streamController.current?.close();
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
-  expect(screen.queryByRole("status", { name: /lume activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
 });
 
 test("keeps the transcript pinned while an assistant response streams at the bottom", async () => {
@@ -3514,7 +3514,7 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   const answer = await screen.findByText("I found the update.");
   const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toHaveTextContent("Search current sources");
-  expect(screen.queryByRole("status", { name: /lume activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
   expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
   expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
 
