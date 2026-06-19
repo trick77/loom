@@ -7,10 +7,9 @@ import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
-import { pendingArtifactLabels } from "./artifacts";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
-import { AssistantProse, MessageBubble, PendingArtifactCard } from "./messages";
+import { AssistantProse, MessageBubble } from "./messages";
 import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
@@ -137,13 +136,6 @@ export function ChatPanel({
   // the turn, so a manual collapse in between sticks. The turn ending resets the
   // latch and collapses the now-past trace.
   const liveTraceHasSomethingToShow = isSending && (hasActiveActivityTrace || answerTextStreaming);
-  // Pending artifact cards reconcile by count across the whole live turn: every
-  // tool event from every trace block, against the number of artifact blocks that
-  // have already arrived.
-  const streamingTraceToolEvents = streamingBlocks.flatMap((block) =>
-    block.type === "trace" ? block.events : [],
-  );
-  const streamingArtifactCount = streamingBlocks.filter((block) => block.type === "artifact").length;
   const liveTraceAutoOpenedRef = useRef(false);
   useEffect(() => {
     if (!isSending) {
@@ -406,9 +398,6 @@ export function ChatPanel({
               });
               return elements;
             })()}
-            {pendingArtifactLabels(streamingTraceToolEvents, streamingArtifactCount).map((label, index) => (
-              <PendingArtifactCard key={`pending-artifact-${index}`} label={label} />
-            ))}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
           <div
