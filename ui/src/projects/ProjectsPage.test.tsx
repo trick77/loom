@@ -21,6 +21,9 @@ const projects: Project[] = [
     name: "Research",
     description: "Paper notes",
     starred: false,
+    // The backend serializes archivedAt as null (not omitted) for active
+    // projects; the badge predicate must treat null as "not archived".
+    archivedAt: null,
     createdAt: "2026-06-10T00:00:00Z",
     updatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   },
@@ -99,9 +102,11 @@ test("ProjectsPage shows archived projects only under the Archived tab", async (
     />,
   );
 
-  // Active tab (C2/C8): the active project shows, the archived one does not.
+  // Active tab (C2/C8): the active project shows, the archived one does not,
+  // and an active project (archivedAt: null) carries no badge (C7 regression).
   expect(screen.getByText("Research")).toBeInTheDocument();
   expect(screen.queryByText("Old initiative")).not.toBeInTheDocument();
+  expect(screen.queryByRole("img", { name: "Archived" })).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: "Archived" }));
 

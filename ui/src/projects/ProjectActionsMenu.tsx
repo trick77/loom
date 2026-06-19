@@ -34,27 +34,15 @@ export function ProjectActionsMenu({
         <EditIcon />
         Edit details
       </button>
-      {archived ? (
-        <button
-          className={`${menuItemClass} text-[#f3f0e8]`}
-          role="menuitem"
-          type="button"
-          onClick={() => onUnarchive(project)}
-        >
-          <ArchiveIcon />
-          Unarchive
-        </button>
-      ) : (
-        <button
-          className={`${menuItemClass} text-[#f3f0e8]`}
-          role="menuitem"
-          type="button"
-          onClick={() => onArchive(project)}
-        >
-          <ArchiveIcon />
-          Archive
-        </button>
-      )}
+      <button
+        className={`${menuItemClass} text-[#f3f0e8]`}
+        role="menuitem"
+        type="button"
+        onClick={() => (archived ? onUnarchive : onArchive)(project)}
+      >
+        <ArchiveIcon />
+        {archived ? "Unarchive" : "Archive"}
+      </button>
       <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
       <button
         className={`${menuItemClass} text-[#d98278]`}

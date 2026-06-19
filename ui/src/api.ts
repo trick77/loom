@@ -16,7 +16,9 @@ export type Project = {
   name: string;
   description: string;
   starred: boolean;
-  archivedAt?: string;
+  // Backend serializes this as null (not omitted) for active projects, so
+  // presence checks must use `!= null`, not `!== undefined`.
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };

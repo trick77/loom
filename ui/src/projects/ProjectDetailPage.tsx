@@ -136,7 +136,7 @@ export function ProjectDetailPage({
                   {openThreadMenuID === projectMenuKey && (
                     <ProjectActionsMenu
                       project={project}
-                      archived={project.archivedAt !== undefined}
+                      archived={project.archivedAt != null}
                       onEdit={onEditProject}
                       onArchive={onArchiveProject}
                       onUnarchive={onUnarchiveProject}

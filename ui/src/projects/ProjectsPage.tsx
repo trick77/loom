@@ -213,7 +213,7 @@ export function ProjectsPage({
                 }}
               >
                 <span className="truncate">{project.name}</span>
-                {project.archivedAt !== undefined && (
+                {project.archivedAt != null && (
                   <Icon name="archived" size="15px" label="Archived" className="shrink-0 text-[#8f8b82]" />
                 )}
               </button>

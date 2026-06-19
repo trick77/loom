@@ -255,7 +255,13 @@ export function ChatShell({
   }, [loadProjectThreads, route]);
 
   const displayName = user.displayName || user.username;
-  const activeProject = activeProjectForRoute(route);
+  // Archived projects are absent from the active `projects` list, so fall back
+  // to the project object we navigated into so its detail page (chats +
+  // Unarchive) still resolves.
+  const [openedProject, setOpenedProject] = useState<Project | null>(null);
+  const activeProject =
+    activeProjectForRoute(route) ??
+    (route.view === "project" && openedProject?.id === route.projectID ? openedProject : null);
 
   const navigateToNew = useCallback(() => {
     onChat();
@@ -303,6 +309,7 @@ export function ChatShell({
     (project: Project) => {
       onChat();
       setMobileSidebarOpen(false);
+      setOpenedProject(project);
       navigate({ view: "project", projectID: project.id });
       setRoute({ view: "project", projectID: project.id });
     },
