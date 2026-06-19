@@ -861,19 +861,39 @@ func TestIsImageEditFollowUpGating(t *testing.T) {
 	}
 	withImage := []chat.Message{{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_1","mimeType":"image/png"}]`)}}
 
-	// A restyle/variation request with a prior image is a follow-up edit: the prior
-	// image should be reused as the vision source.
-	for _, content := range []string{"make it cyberpunk", "create a variation", "mach es cyberpunk"} {
+	// An explicit edit/restyle of the existing image — a pronoun pointing back at
+	// it, or a transform verb/noun — reuses the prior image as the vision source.
+	for _, content := range []string{
+		"make it cyberpunk",
+		"mach es cyberpunk",
+		"create a variation",
+		"turn it into a watercolor",
+		"ändere den Stil",
+		"give it a retro look",
+	} {
 		if !srv.isImageEditFollowUp(content, withImage) {
 			t.Fatalf("isImageEditFollowUp(%q) = false, want true", content)
 		}
 	}
 
-	// A fresh creation request never pulls in an unrelated prior image, and a
-	// follow-up phrasing without any prior image has nothing to reuse.
-	if srv.isImageEditFollowUp("generate an image of a robot", withImage) {
-		t.Fatal("isImageEditFollowUp(creation request) = true, want false")
+	// A fresh creation must NOT pull in an unrelated prior image — even when it
+	// carries a style word, and even when (like "draw a retro car") it lacks an
+	// "image"/"logo" object token so isImageCreationRequest alone wouldn't catch it.
+	// A bare style adjective is not an edit signal.
+	for _, content := range []string{
+		"generate an image of a robot",
+		"make a logo with bold colors",
+		"zeichne ein minimalistisches Bild",
+		"draw a retro car",
+		"create a neon sign",
+		"a cyberpunk cityscape",
+	} {
+		if srv.isImageEditFollowUp(content, withImage) {
+			t.Fatalf("isImageEditFollowUp(%q) = true, want false (fresh creation)", content)
+		}
 	}
+
+	// A follow-up phrasing without any prior image has nothing to reuse.
 	if srv.isImageEditFollowUp("make it cyberpunk", nil) {
 		t.Fatal("isImageEditFollowUp(no prior image) = true, want false")
 	}
