@@ -10,7 +10,7 @@ import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
-import { type Artifact, type ContentBlock, type Message } from "../api";
+import { type ContentBlock, type Message } from "../api";
 import { MessageMetrics } from "../MessageMetrics";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import {
@@ -34,12 +34,10 @@ export function MessageBubble({
   message,
   retryContent,
   onRetry,
-  onAttachArtifact,
 }: {
   message: Message & { attachments?: ComposerAttachment[] };
   retryContent: string | null;
   onRetry(content: string): void;
-  onAttachArtifact?(artifact: Artifact): void;
 }) {
   if (message.role === "user") {
     return (
@@ -75,11 +73,7 @@ export function MessageBubble({
   return (
     <div className="max-w-[46rem] space-y-3">
       {blocks.map((block, index) => (
-        <AssistantBlock
-          key={`${message.id}-block-${index}`}
-          block={block}
-          onAttachArtifact={onAttachArtifact}
-        />
+        <AssistantBlock key={`${message.id}-block-${index}`} block={block} />
       ))}
       <MessageActions
         copyLabel="Copy response"
@@ -98,18 +92,12 @@ export function MessageBubble({
 // collapsed, inactive activity panel; text blocks render prose (with
 // downloadable/pending-fenced-artifact detection); artifact blocks render the
 // generated-artifact card.
-function AssistantBlock({
-  block,
-  onAttachArtifact,
-}: {
-  block: ContentBlock;
-  onAttachArtifact?(artifact: Artifact): void;
-}) {
+function AssistantBlock({ block }: { block: ContentBlock }) {
   if (block.type === "trace") {
     return <ActivityTracePanel events={block.events} active={false} />;
   }
   if (block.type === "artifact") {
-    return <GeneratedArtifactCard artifact={block.artifact} onAttach={onAttachArtifact} />;
+    return <GeneratedArtifactCard artifact={block.artifact} />;
   }
   return <AssistantProse>{block.content}</AssistantProse>;
 }

@@ -131,6 +131,23 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Silently reuse the conversation's most recent image as the model's vision
+	// input when this turn is a follow-up edit/restyle ("make it cyberpunk",
+	// "create a variation") and the user attached nothing explicitly — so editing
+	// the just-generated image needs no manual re-attach step. Fresh creation
+	// requests never pull in a prior image. This is best-effort: if the source
+	// can't be loaded the turn proceeds text-only rather than failing, unlike an
+	// explicit attachment (handled above) whose failure is surfaced to the user.
+	if len(imageParts) == 0 && s.isImageEditFollowUp(body.Content, priorMessages) {
+		if sourceID := latestImageArtifactID(priorMessages); sourceID != "" {
+			if parts, partsErr := s.imageContentParts(r.Context(), user.ID, threadID, userMessage.Content, []string{sourceID}); partsErr != nil {
+				slog.Warn("auto-attach of prior image failed; continuing without source image",
+					"thread_id", threadID, "artifact_id", sourceID, "error", partsErr)
+			} else {
+				imageParts = parts
+			}
+		}
+	}
 	if len(imageParts) > 0 {
 		history[len(history)-1].Content = ""
 		history[len(history)-1].ContentParts = imageParts

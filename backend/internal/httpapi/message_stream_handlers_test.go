@@ -832,6 +832,73 @@ func TestImageArtifactRequiredDetectsCreationAndGermanFollowUps(t *testing.T) {
 	}
 }
 
+func TestLatestImageArtifactIDReturnsNewestWithID(t *testing.T) {
+	messages := []chat.Message{
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_old","mimeType":"image/png"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"doc_1","mimeType":"application/pdf"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_new","mimeType":"image/jpeg"}]`)},
+	}
+	if got := latestImageArtifactID(messages); got != "img_new" {
+		t.Fatalf("latestImageArtifactID = %q, want img_new", got)
+	}
+
+	// No image artifacts, or image artifacts missing an id, yield "" — there is
+	// nothing to silently re-attach as the model's vision input.
+	none := []chat.Message{
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"doc_1","mimeType":"text/plain"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"mimeType":"image/png"}]`)},
+	}
+	if got := latestImageArtifactID(none); got != "" {
+		t.Fatalf("latestImageArtifactID = %q, want empty", got)
+	}
+}
+
+func TestIsImageEditFollowUpGating(t *testing.T) {
+	srv := &server{
+		artifacts:  fakeArtifactStore{},
+		usersDir:   t.TempDir(),
+		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+	}
+	withImage := []chat.Message{{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_1","mimeType":"image/png"}]`)}}
+
+	// An explicit edit/restyle of the existing image — a pronoun pointing back at
+	// it, or a transform verb/noun — reuses the prior image as the vision source.
+	for _, content := range []string{
+		"make it cyberpunk",
+		"mach es cyberpunk",
+		"create a variation",
+		"turn it into a watercolor",
+		"ändere den Stil",
+		"give it a retro look",
+	} {
+		if !srv.isImageEditFollowUp(content, withImage) {
+			t.Fatalf("isImageEditFollowUp(%q) = false, want true", content)
+		}
+	}
+
+	// A fresh creation must NOT pull in an unrelated prior image — even when it
+	// carries a style word, and even when (like "draw a retro car") it lacks an
+	// "image"/"logo" object token so isImageCreationRequest alone wouldn't catch it.
+	// A bare style adjective is not an edit signal.
+	for _, content := range []string{
+		"generate an image of a robot",
+		"make a logo with bold colors",
+		"zeichne ein minimalistisches Bild",
+		"draw a retro car",
+		"create a neon sign",
+		"a cyberpunk cityscape",
+	} {
+		if srv.isImageEditFollowUp(content, withImage) {
+			t.Fatalf("isImageEditFollowUp(%q) = true, want false (fresh creation)", content)
+		}
+	}
+
+	// A follow-up phrasing without any prior image has nothing to reuse.
+	if srv.isImageEditFollowUp("make it cyberpunk", nil) {
+		t.Fatal("isImageEditFollowUp(no prior image) = true, want false")
+	}
+}
+
 func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 	srv := &server{
 		artifacts: fakeArtifactStore{},
