@@ -86,7 +86,7 @@ export function StartPanel({
             <PromptChip icon="▱" label="Learn" />
             <PromptChip icon="‹/›" label="Code" />
             <PromptChip icon="☕" label="Life stuff" />
-            <PromptChip icon="◌" label="Lume's choice" />
+            <PromptChip icon="◌" label="Loom's choice" />
           </div>
         </div>
       </div>
