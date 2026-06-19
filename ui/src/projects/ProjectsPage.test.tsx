@@ -210,6 +210,43 @@ test("ProjectDetailPage renders project chats and project chat menu", () => {
   expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
 });
 
+test("ProjectDetailPage offers Unarchive for an archived project", () => {
+  const archivedProject: Project = { ...projects[0], archivedAt: "2026-06-01T00:00:00Z" };
+  render(
+    <ProjectDetailPage
+      project={archivedProject}
+      threads={threads}
+      draft=""
+      sendError=""
+      isSending={false}
+      openThreadMenuID={`Project:${archivedProject.id}`}
+      onBack={vi.fn()}
+      onDraftChange={vi.fn()}
+      onSend={vi.fn()}
+      onStop={vi.fn()}
+      onOpenThread={vi.fn()}
+      onRenameThread={vi.fn()}
+      onDeleteThread={vi.fn()}
+      onStarThread={vi.fn()}
+      onRemoveFromProject={vi.fn()}
+      onToggleThreadMenu={vi.fn()}
+      onCloseThreadMenu={vi.fn()}
+      onEditProject={vi.fn()}
+      onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
+      onDeleteProject={vi.fn()}
+      onToggleStar={vi.fn()}
+      onOpenSidebar={vi.fn()}
+    />,
+  );
+
+  // Its chats stay visible (C5) and the menu offers Unarchive, not Archive.
+  expect(screen.getByRole("button", { name: /Literature review/ })).toBeInTheDocument();
+  const menu = screen.getByRole("menu", { name: "Project actions" });
+  expect(within(menu).getByRole("menuitem", { name: "Unarchive" })).toBeInTheDocument();
+  expect(within(menu).queryByRole("menuitem", { name: "Archive" })).not.toBeInTheDocument();
+});
+
 test("ProjectDetailPage renders project chats with the shared chats-list row", () => {
   render(
     <ProjectDetailPage
