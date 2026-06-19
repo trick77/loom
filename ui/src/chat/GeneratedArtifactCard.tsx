@@ -5,13 +5,7 @@ import { buildImageStats, formatFileSize } from "./artifacts";
 import { CloseIcon, DownloadIcon } from "./icons";
 import { Icon } from "./Icon";
 
-export function GeneratedArtifactCard({
-  artifact,
-  onAttach,
-}: {
-  artifact: Artifact;
-  onAttach?: (artifact: Artifact) => void;
-}) {
+export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -132,17 +126,6 @@ export function GeneratedArtifactCard({
           {imageStats !== null && <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>}
           {error !== "" && <div className="ui-meta-text text-[#d36f67]">{error}</div>}
         </div>
-        {isImage && onAttach !== undefined && (
-          <button
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
-            onClick={() => onAttach(artifact)}
-            type="button"
-            title="Attach this image to your next message"
-            aria-label="Attach this image to your next message"
-          >
-            <Icon name="attach" size="18px" />
-          </button>
-        )}
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
           onClick={handleDownload}

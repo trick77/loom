@@ -832,6 +832,53 @@ func TestImageArtifactRequiredDetectsCreationAndGermanFollowUps(t *testing.T) {
 	}
 }
 
+func TestLatestImageArtifactIDReturnsNewestWithID(t *testing.T) {
+	messages := []chat.Message{
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_old","mimeType":"image/png"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"doc_1","mimeType":"application/pdf"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_new","mimeType":"image/jpeg"}]`)},
+	}
+	if got := latestImageArtifactID(messages); got != "img_new" {
+		t.Fatalf("latestImageArtifactID = %q, want img_new", got)
+	}
+
+	// No image artifacts, or image artifacts missing an id, yield "" — there is
+	// nothing to silently re-attach as the model's vision input.
+	none := []chat.Message{
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"doc_1","mimeType":"text/plain"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"mimeType":"image/png"}]`)},
+	}
+	if got := latestImageArtifactID(none); got != "" {
+		t.Fatalf("latestImageArtifactID = %q, want empty", got)
+	}
+}
+
+func TestIsImageEditFollowUpGating(t *testing.T) {
+	srv := &server{
+		artifacts:  fakeArtifactStore{},
+		usersDir:   t.TempDir(),
+		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+	}
+	withImage := []chat.Message{{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_1","mimeType":"image/png"}]`)}}
+
+	// A restyle/variation request with a prior image is a follow-up edit: the prior
+	// image should be reused as the vision source.
+	for _, content := range []string{"make it cyberpunk", "create a variation", "mach es cyberpunk"} {
+		if !srv.isImageEditFollowUp(content, withImage) {
+			t.Fatalf("isImageEditFollowUp(%q) = false, want true", content)
+		}
+	}
+
+	// A fresh creation request never pulls in an unrelated prior image, and a
+	// follow-up phrasing without any prior image has nothing to reuse.
+	if srv.isImageEditFollowUp("generate an image of a robot", withImage) {
+		t.Fatal("isImageEditFollowUp(creation request) = true, want false")
+	}
+	if srv.isImageEditFollowUp("make it cyberpunk", nil) {
+		t.Fatal("isImageEditFollowUp(no prior image) = true, want false")
+	}
+}
+
 func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 	srv := &server{
 		artifacts: fakeArtifactStore{},

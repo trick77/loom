@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { ActivityTraceEvent } from "../activityTrace";
-import type { Artifact, ContentBlock, McpStatusEvent, Project, Thread } from "../api";
+import type { ContentBlock, McpStatusEvent, Project, Thread } from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ActivityTracePanel } from "./ActivityTracePanel";
@@ -35,7 +35,6 @@ export function ChatPanel({
   onSend,
   onStop,
   onRetry,
-  onAttachArtifact,
   onOpenProject,
   onDeleteThread,
   onRenameThread,
@@ -60,7 +59,6 @@ export function ChatPanel({
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onRetry(content: string): void;
-  onAttachArtifact?(artifact: Artifact): void;
   onOpenProject(project: Project): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
@@ -344,7 +342,6 @@ export function ChatPanel({
                   message={message}
                   retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
                   onRetry={handleRetryRequest}
-                  onAttachArtifact={onAttachArtifact}
                 />
               </div>
             ))}

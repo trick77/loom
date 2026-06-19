@@ -8,7 +8,6 @@ import {
   setThreadStarred,
   stopMessage,
   streamMessage,
-  type Artifact,
   type ContentBlock,
   type McpStatusEvent,
   type Project,
@@ -32,7 +31,6 @@ import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
 import { useMediaQuery } from "./useMediaQuery";
 import {
-  composerAttachmentFromArtifact,
   createComposerAttachment,
   isImageAttachment,
   toSentAttachment,
@@ -467,22 +465,6 @@ export function ChatShell({
     setPendingAttachNote("");
   }
 
-  // Attach an existing image artifact (e.g. an assistant-generated image) to the
-  // next message so it is re-sent as a model image input — this is how "describe
-  // the image you just made" becomes a vision turn. The artifact is already
-  // persisted server-side, so only its id is wired through (no re-upload).
-  function handleAttachArtifact(artifact: Artifact) {
-    if (!isImageAttachment({ mimeType: artifact.mimeType, filename: artifact.displayFilename })) return;
-    setSendError("");
-    if (pendingAttachments.some((attachment) => attachment.artifactId === artifact.id)) return;
-    if (pendingAttachments.length >= DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE) {
-      setPendingAttachNote(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
-      return;
-    }
-    setPendingAttachNote("");
-    setPendingAttachments((current) => [...current, composerAttachmentFromArtifact(artifact)]);
-  }
-
   async function handleSend(attachments: ComposerAttachment[] = pendingAttachments.map(toSentAttachment)) {
     const content = draft.trim();
     if (content === "" || isSending) return;
@@ -866,7 +848,6 @@ export function ChatShell({
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
-            onAttachArtifact={handleAttachArtifact}
             onOpenProject={navigateToProject}
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}

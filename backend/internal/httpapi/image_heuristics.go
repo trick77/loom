@@ -43,6 +43,52 @@ func priorConversationHasImageArtifact(messages []chat.Message) bool {
 	return false
 }
 
+// latestImageArtifactID returns the id of the most recent image artifact across
+// the conversation, or "" when there is none. Messages arrive oldest-first
+// (ORDER BY created_at ASC), so the last image artifact seen is the newest — the
+// one a follow-up edit ("make it cyberpunk") should silently reuse as its source.
+func latestImageArtifactID(messages []chat.Message) string {
+	latest := ""
+	for _, message := range messages {
+		var artifacts []struct {
+			ID            string `json:"id"`
+			MIMEType      string `json:"mimeType"`
+			SnakeMIMEType string `json:"mime_type"`
+		}
+		if err := json.Unmarshal(message.Artifacts, &artifacts); err != nil {
+			continue
+		}
+		for _, item := range artifacts {
+			if item.ID == "" {
+				continue
+			}
+			if strings.HasPrefix(item.MIMEType, "image/") || strings.HasPrefix(item.SnakeMIMEType, "image/") {
+				latest = item.ID
+			}
+		}
+	}
+	return latest
+}
+
+// isImageEditFollowUp reports whether this turn is a follow-up that edits/restyles
+// the conversation's existing image ("make it cyberpunk", "create a variation") —
+// as opposed to a fresh creation request. It mirrors the follow-up branch of
+// imageArtifactRequired, and gates the silent reuse of the prior image as the
+// model's vision input so the user never has to re-attach it by hand.
+func (s *server) isImageEditFollowUp(content string, priorMessages []chat.Message) bool {
+	if len(s.imageTools) == 0 || s.artifacts == nil || strings.TrimSpace(s.usersDir) == "" {
+		return false
+	}
+	tokens := wordTokens(content)
+	if len(tokens) == 0 {
+		return false
+	}
+	if !priorConversationHasImageArtifact(priorMessages) {
+		return false
+	}
+	return isImageFollowUpRequest(tokens)
+}
+
 func isImageCreationRequest(tokens []string) bool {
 	actions := map[string]bool{
 		"generate": true, "create": true, "make": true, "draw": true, "render": true, "paint": true,
