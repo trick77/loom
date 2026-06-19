@@ -1,4 +1,4 @@
-// Package mcp contains Lume's MCP client configuration and tool registry.
+// Package mcp contains Loom's MCP client configuration and tool registry.
 package mcp
 
 import (
@@ -51,7 +51,7 @@ func SplitExposedToolName(name string) (string, string, bool) {
 	return server, tool, true
 }
 
-// TavilyServerConfig builds the synthetic MCP server config for Lume's
+// TavilyServerConfig builds the synthetic MCP server config for Loom's
 // built-in Tavily web search. Auth uses Tavily's documented query parameter
 // (?tavilyApiKey=...), so the key lives in the URL and must be scrubbed from any
 // error before it is logged (see scrubURLError in client.go). The Tools

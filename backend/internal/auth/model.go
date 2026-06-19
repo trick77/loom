@@ -16,7 +16,7 @@ const (
 // DevAdminGroup is the synthetic group used only by local development auth.
 const DevAdminGroup = "slopr-dev-admin"
 
-// User is Lume's app-local user profile.
+// User is Loom's app-local user profile.
 type User struct {
 	ID               string `json:"id"`
 	OIDCSubject      string `json:"-"`
@@ -27,7 +27,7 @@ type User struct {
 	ResponseLanguage string `json:"responseLanguage"`
 }
 
-// Claims contains the verified OIDC identity fields Lume needs.
+// Claims contains the verified OIDC identity fields Loom needs.
 type Claims struct {
 	Subject  string
 	Username string
@@ -38,7 +38,7 @@ type Claims struct {
 
 type contextKey string
 
-const userContextKey contextKey = "slopr_user"
+const userContextKey contextKey = "loom_user"
 
 // UserFromContext returns the authenticated user stored on a request context.
 func UserFromContext(ctx context.Context) (User, bool) {

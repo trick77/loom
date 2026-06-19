@@ -1,4 +1,4 @@
-<img src="ui/src/assets/sloppy-slopr.png" alt="Lume" width="360">
+<img src="ui/src/assets/sloppy-slopr.png" alt="Loom" width="360">
 
 Self-hosted, multi-user LLM chat app with a Go backend, React frontend, SQLite, SSE, and
 authentik-backed authentication.
@@ -24,14 +24,14 @@ make dev
 
 ### Local development without OIDC
 
-For local UI/API work, Lume can sign in as one fixed admin user without contacting authentik.
+For local UI/API work, Loom can sign in as one fixed admin user without contacting authentik.
 Start both the backend and Vite frontend with:
 
 ```bash
 make dev
 ```
 
-The script binds both services to IPv4 loopback so Vite proxies `/api` to Lume predictably.
+The script binds both services to IPv4 loopback so Vite proxies `/api` to Loom predictably.
 
 To run only the backend from `backend/`:
 
@@ -50,12 +50,12 @@ admin session for the fixed local development user; there is no user switcher.
 
 ## Authentik OIDC Setup
 
-Lume delegates sign-in to authentik through OpenID Connect. Authentik owns credentials, MFA, user
-lifecycle, and group membership. Lume stores only app-local users and opaque app sessions.
+Loom delegates sign-in to authentik through OpenID Connect. Authentik owns credentials, MFA, user
+lifecycle, and group membership. Loom stores only app-local users and opaque app sessions.
 
 ### 1. Create an authentik provider
 
-In authentik, create an **OAuth2/OpenID Provider** for Lume.
+In authentik, create an **OAuth2/OpenID Provider** for Loom.
 
 Use these settings:
 
@@ -78,25 +78,25 @@ Create an authentik **Application** that uses the provider.
 
 Suggested values:
 
-- Name: `Lume`
+- Name: `Loom`
 - Slug: `slopr`
 - Launch URL: `https://slopr.example.com/`
 
 ### 3. Configure admin group mapping
 
-Create or choose an authentik group for Lume administrators, for example:
+Create or choose an authentik group for Loom administrators, for example:
 
 ```text
 slopr-admins
 ```
 
-Ensure authentik includes a `groups` claim in the ID token for the Lume provider. Lume maps users
+Ensure authentik includes a `groups` claim in the ID token for the Loom provider. Loom maps users
 to the local `admin` role when the configured admin group appears in that claim. Everyone else is
 mapped to `user`.
 
-### 4. Configure Lume environment
+### 4. Configure Loom environment
 
-Set these variables for Lume:
+Set these variables for Loom:
 
 ```bash
 BACKEND_AUTH_MODE=oidc
@@ -120,7 +120,7 @@ session secrets.
 
 ### 5. Reverse proxy notes
 
-Lume OIDC does not require authentik ForwardAuth headers. In the production Compose stack, the
+Loom OIDC does not require authentik ForwardAuth headers. In the production Compose stack, the
 nginx UI container is the only externally reachable service and proxies `/api/*` to the backend over
 the internal Compose network. Any outer reverse proxy only needs to route normal HTTPS traffic to
 the UI container.
@@ -139,10 +139,10 @@ The callback URL configured in authentik must exactly match `BACKEND_OIDC_REDIRE
 
 ## Chat Setup
 
-Lume supports project-less chats, projects, threads, message persistence, starred/recents, SSE
+Loom supports project-less chats, projects, threads, message persistence, starred/recents, SSE
 streaming, first-exchange thread naming, and MCP-backed tool calls.
 
-Lume uses an OpenAI-compatible chat endpoint:
+Loom uses an OpenAI-compatible chat endpoint:
 
 ```bash
 BACKEND_CHAT_BASE_URL=http://your-mimo-host/v1
@@ -152,7 +152,7 @@ BACKEND_CHAT_TIMEOUT=2m
 BACKEND_CHAT_IDLE_TIMEOUT=60s
 ```
 
-Lume targets MiMo specifically: the model and reasoning effort are hardcoded and no longer
+Loom targets MiMo specifically: the model and reasoning effort are hardcoded and no longer
 configurable. Text-only turns use `mimo-v2.5-pro`; turns that include an image attachment are
 routed to the omnimodal `mimo-v2.5` (the text-only Pro model rejects image input). Both are served
 from the same `BACKEND_CHAT_BASE_URL`, selected per request via the `model` field, and
@@ -170,14 +170,14 @@ error.
 
 ### MCP Tools
 
-Lume exposes built-in Tavily web search when `BACKEND_TAVILY_API_KEY` is set (web search is opt-in;
-without a key there is no built-in search tool). Lume connects to Tavily's hosted MCP server at
+Loom exposes built-in Tavily web search when `BACKEND_TAVILY_API_KEY` is set (web search is opt-in;
+without a key there is no built-in search tool). Loom connects to Tavily's hosted MCP server at
 `BACKEND_TAVILY_URL` (default `https://mcp.tavily.com/mcp/`), authenticating via the `tavilyApiKey`
 query parameter, and exposes only the `tavily_search` tool.
 
-Lume can also expose Context7 documentation tools when `BACKEND_CONTEXT7_API_KEY` is set. It uses
+Loom can also expose Context7 documentation tools when `BACKEND_CONTEXT7_API_KEY` is set. It uses
 the remote Streamable HTTP endpoint `https://mcp.context7.com/mcp` by default; override it with
-`BACKEND_CONTEXT7_MCP_URL` if needed. Lume sends the key as the `CONTEXT7_API_KEY` request header
+`BACKEND_CONTEXT7_MCP_URL` if needed. Loom sends the key as the `CONTEXT7_API_KEY` request header
 and exposes the remote tools as `context7__resolve-library-id` and `context7__query-docs`.
 
 The default Compose setup also includes two MCP sidecars configured with first-class env vars:
@@ -191,7 +191,7 @@ The default Compose setup also includes two MCP sidecars configured with first-c
   `BACKEND_OBSCURA_MCP_URL`.
 
 Configured MCP tools are exposed to the chat model as OpenAI-compatible function tools
-named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Lume pauses
+named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Loom pauses
 when the model emits `tool_calls`, runs the requested tools, streams tool status events to the UI,
 appends tool results to the model history, and resumes the assistant stream.
 
@@ -217,22 +217,22 @@ Still planned for later phases:
 
 ### Smoke Test
 
-1. Start Lume with the environment above.
+1. Start Loom with the environment above.
 2. Open `https://slopr.example.com/`.
 3. Click **Sign in**.
 4. Complete authentik login.
-5. Confirm Lume opens the authenticated app shell.
+5. Confirm Loom opens the authenticated app shell.
 6. Sign in as a member of `BACKEND_OIDC_ADMIN_GROUP` and confirm admin features appear.
 7. Create a new chat.
 8. Send a message and confirm the assistant response streams into the conversation.
 9. If MCP servers are configured and reachable, ask a question that requires a configured tool and
    confirm the tool status appears before the final answer.
 10. Confirm the thread title changes from **New chat** after the first completed response.
-11. Sign out and confirm returning to Lume requires a new authenticated session.
+11. Sign out and confirm returning to Loom requires a new authenticated session.
 
 ### Logout behavior
 
-Lume logout revokes the local Lume session and redirects to
+Loom logout revokes the local Loom session and redirects to
 `BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL`. It does not currently perform RP-initiated logout against
 authentik's `end_session_endpoint`. If the browser still has an active authentik SSO session, clicking
-**Sign in** again can immediately create a new Lume session without showing the authentik login form.
+**Sign in** again can immediately create a new Loom session without showing the authentik login form.

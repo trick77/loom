@@ -129,9 +129,9 @@ func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 
 func systemPromptForUser(user auth.User) string {
 	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
-		return lumeSystemPrompt + "\nAlways answer in English."
+		return loomSystemPrompt + "\nAlways answer in English."
 	}
-	return lumeSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "."
+	return loomSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "."
 }
 
 // languageName resolves a profile language value to its English name (for

@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	oidcStateCookieName = "slopr_oidc_state"
-	oidcNonceCookieName = "slopr_oidc_nonce"
+	oidcStateCookieName = "loom_oidc_state"
+	oidcNonceCookieName = "loom_oidc_nonce"
 )
 
 var (

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	// maxToolRounds caps how many times the model may call tools before lume
+	// maxToolRounds caps how many times the model may call tools before loom
 	// forces a tool-free final answer. Kept moderate: a model that over-researches
 	// (e.g. fetching source after source) otherwise burns rounds — and wall-clock —
 	// without converging. Enough for genuine multi-step research, low enough to stop

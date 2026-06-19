@@ -21,7 +21,7 @@ import (
 	"golang.org/x/image/font/gofont/goregular"
 )
 
-const pdfFontFamily = "lume"
+const pdfFontFamily = "loom"
 
 type PDFGenerator struct{}
 
@@ -29,7 +29,7 @@ func (g PDFGenerator) ToolName() string { return "create_pdf_file" }
 
 func rgbColor(c RGB) *props.Color { return &props.Color{Red: c.R, Green: c.G, Blue: c.B} }
 
-// newMaroto builds a maroto instance with the Lume fonts and an accent header band.
+// newMaroto builds a maroto instance with the Loom fonts and an accent header band.
 func newMaroto(title, subtitle string) (core.Maroto, error) {
 	fonts, err := repository.New().
 		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Normal, goregular.TTF).
