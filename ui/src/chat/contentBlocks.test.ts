@@ -109,6 +109,24 @@ describe("blocksFromLegacyMessage", () => {
     const message = baseMessage({ content: "legacy", contentBlocks: persisted });
     expect(messageBlocks(message)).toEqual(persisted);
   });
+
+  test("messageBlocks normalises persisted trace blocks so tool events gain a computed summary", () => {
+    // The backend persists tool events raw — only name/rawArguments, no summary.
+    // The renderer reads event.summary.kind, so an unnormalised event crashes.
+    const rawToolBlock = {
+      type: "trace",
+      events: [{ id: "c1", type: "tool", name: "search__web", status: "done", rawArguments: '{"query":"x"}' }],
+    } as unknown as ContentBlock;
+    const message = baseMessage({ contentBlocks: [rawToolBlock] });
+
+    const blocks = messageBlocks(message);
+    const trace = blocks[0];
+    if (trace.type !== "trace") throw new Error("expected trace block");
+    const event = trace.events[0];
+    if (event.type !== "tool") throw new Error("expected tool event");
+    expect(event.summary).toBeDefined();
+    expect(event.summary.kind).toBe("search");
+  });
 });
 
 describe("graftStreamedBlocks", () => {

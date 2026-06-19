@@ -55,7 +55,12 @@ function legacyTraceEvents(message: Message): ActivityTraceEvent[] | undefined {
 // ordered blocks when present, otherwise lazily synthesized legacy blocks.
 export function messageBlocks(message: Message): ContentBlock[] {
   if (message.contentBlocks !== undefined && message.contentBlocks.length > 0) {
-    return message.contentBlocks;
+    // The backend persists tool events raw (name/rawArguments only, no summary),
+    // so normalise each persisted trace block — exactly as the legacy path does —
+    // to compute the summary/preview the renderer reads via event.summary.kind.
+    return message.contentBlocks.map((block) =>
+      block.type === "trace" ? { type: "trace", events: normalizeActivityTrace(block.events) ?? block.events } : block,
+    );
   }
   return blocksFromLegacyMessage(message);
 }
