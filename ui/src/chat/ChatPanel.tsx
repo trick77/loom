@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { ActivityTraceEvent } from "../activityTrace";
-import type { Artifact, McpStatusEvent, Project, Thread } from "../api";
+import type { ContentBlock, McpStatusEvent, Project, Thread } from "../api";
+import type { Artifact } from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ActivityTracePanel } from "./ActivityTracePanel";
@@ -10,7 +11,7 @@ import { ErrorText } from "./ErrorText";
 import { pendingArtifactLabels } from "./artifacts";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
-import { AssistantText, MessageBubble, PendingArtifactCard } from "./messages";
+import { AssistantProse, MessageBubble, PendingArtifactCard } from "./messages";
 import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./chatUtils";
 import type { MessageWithActivityTrace } from "./types";
@@ -23,9 +24,7 @@ export function ChatPanel({
   deferredAttachNote,
   messages,
   draft,
-  streamingText,
-  streamingArtifacts,
-  activityTrace,
+  streamingBlocks,
   toolPending,
   sendError,
   isSending,
@@ -51,9 +50,7 @@ export function ChatPanel({
   deferredAttachNote: string;
   messages: MessageWithActivityTrace[];
   draft: string;
-  streamingText: string;
-  streamingArtifacts: Artifact[];
-  activityTrace: ActivityTraceEvent[];
+  streamingBlocks: ContentBlock[];
   toolPending: boolean;
   sendError: string;
   isSending: boolean;
@@ -81,8 +78,32 @@ export function ChatPanel({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const headerMenuKey = thread === null ? null : `Header:${thread.id}`;
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
-  const hasActiveActivityTrace = activityTrace.length > 0;
-  const showActiveActivityTrace = hasActiveActivityTrace || (isSending && sendError === "");
+  // The live turn is an ordered block list (text / trace / artifact). The
+  // currently-active activity panel is the LAST trace block; earlier completed
+  // trace blocks render collapsed and inactive inline among the prose. The live
+  // "Thinking" affordance and the auto-open latch derive from that active block's
+  // events plus whether answer prose has begun streaming after it.
+  const lastTraceBlockIndex = (() => {
+    for (let index = streamingBlocks.length - 1; index >= 0; index -= 1) {
+      if (streamingBlocks[index].type === "trace") return index;
+    }
+    return -1;
+  })();
+  const activeTraceEvents: ActivityTraceEvent[] =
+    lastTraceBlockIndex === -1
+      ? []
+      : (streamingBlocks[lastTraceBlockIndex] as Extract<ContentBlock, { type: "trace" }>).events;
+  const hasActiveActivityTrace = activeTraceEvents.length > 0;
+  // Answer prose has begun once a non-empty text block exists after the active
+  // trace block (the reasoning-free turn has no trace block, so any text block
+  // counts). This is the block-model analog of the former `streamingText !== ""`.
+  const answerTextStreaming = streamingBlocks.some(
+    (block, index) => block.type === "text" && block.content !== "" && index > lastTraceBlockIndex,
+  );
+  // A live activity panel shows for the whole turn: either the active trace block,
+  // or — when no trace has streamed yet — a standalone "Thinking" panel.
+  const showStandaloneActiveTrace = lastTraceBlockIndex === -1 && isSending && sendError === "";
+  const showActiveActivityTrace = hasActiveActivityTrace || showStandaloneActiveTrace;
   // The live thinking window manages its own open/closed state: it opens once per
   // turn when there is something to show and stays open through the answer, then
   // collapses when the turn ends. There is no persisted preference; past traces
@@ -96,15 +117,16 @@ export function ChatPanel({
   // so streamed pre-tool preamble text never settles the label early. The label
   // also stays on "Thinking" until the latest reasoning round's background title
   // has arrived, so the raw-first-sentence fallback never flashes mid-stream.
-  const hasReasoning = activityTrace.some((event) => event.type === "reasoning");
-  const toolRunning = activityTrace.some((event) => event.type === "tool" && event.status === "running");
-  const latestReasoning = activityTrace.reduce<ActivityTraceEvent | undefined>(
+  const hasReasoning = activeTraceEvents.some((event) => event.type === "reasoning");
+  const toolRunning = activeTraceEvents.some((event) => event.type === "tool" && event.status === "running");
+  const latestReasoning = activeTraceEvents.reduce<ActivityTraceEvent | undefined>(
     (acc, event) => (event.type === "reasoning" ? event : acc),
     undefined,
   );
   const latestReasoningTitled =
     latestReasoning?.type === "reasoning" && (latestReasoning.title?.trim() ?? "") !== "";
-  const reasoningSettled = hasReasoning && streamingText !== "" && !toolRunning && !toolPending && latestReasoningTitled;
+  const reasoningSettled =
+    hasReasoning && answerTextStreaming && !toolRunning && !toolPending && latestReasoningTitled;
   // `liveTraceThinking` drives the "Thinking" affordance (active spinner), not the
   // open/closed state: the window stays open through the answer even after the
   // reasoning phase settles.
@@ -115,7 +137,14 @@ export function ChatPanel({
   // streaming (the reasoning-free case). Once opened it stays open for the rest of
   // the turn, so a manual collapse in between sticks. The turn ending resets the
   // latch and collapses the now-past trace.
-  const liveTraceHasSomethingToShow = isSending && (hasActiveActivityTrace || streamingText !== "");
+  const liveTraceHasSomethingToShow = isSending && (hasActiveActivityTrace || answerTextStreaming);
+  // Pending artifact cards reconcile by count across the whole live turn: every
+  // tool event from every trace block, against the number of artifact blocks that
+  // have already arrived.
+  const streamingTraceToolEvents = streamingBlocks.flatMap((block) =>
+    block.type === "trace" ? block.events : [],
+  );
+  const streamingArtifactCount = streamingBlocks.filter((block) => block.type === "artifact").length;
   const liveTraceAutoOpenedRef = useRef(false);
   useEffect(() => {
     if (!isSending) {
@@ -226,9 +255,7 @@ export function ChatPanel({
     scrollToLatest,
     sendError,
     showActiveActivityTrace,
-    streamingArtifacts.length,
-    streamingText,
-    activityTrace,
+    streamingBlocks,
     liveTraceExpanded,
   ]);
 
@@ -314,22 +341,6 @@ export function ChatPanel({
           <div className="ui-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
             {messages.map((message, index) => (
               <div key={message.id} className="space-y-6">
-                {message.role === "assistant" && message.activityTrace !== undefined && (
-                  <ActivityTracePanel events={message.activityTrace} active={false} />
-                )}
-                {message.role === "assistant" && message.activityTrace === undefined && message.reasoningContent && (
-                  <ActivityTracePanel
-                    events={[
-                      {
-                        id: `${message.id}-reasoning`,
-                        type: "reasoning",
-                        content: message.reasoningContent,
-                        status: "done",
-                      },
-                    ]}
-                    active={false}
-                  />
-                )}
                 <MessageBubble
                   message={message}
                   retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
@@ -338,20 +349,65 @@ export function ChatPanel({
                 />
               </div>
             ))}
-            {showActiveActivityTrace && (
-              <ActivityTracePanel
-                events={activityTrace}
-                active={liveTraceThinking}
-                streaming={isSending}
-                expanded={liveTraceExpanded}
-                onExpandedChange={setLiveTraceExpanded}
-              />
-            )}
-            {streamingText !== "" && <AssistantText streaming>{streamingText}</AssistantText>}
-            {streamingArtifacts.map((artifact) => (
-              <GeneratedArtifactCard key={artifact.id} artifact={artifact} />
-            ))}
-            {pendingArtifactLabels(activityTrace, streamingArtifacts.length).map((label, index) => (
+            {/* The live streaming region is built as ONE keyed array so React's
+                keyed reconciliation preserves DOM nodes across the turn. In
+                particular the active trace panel keeps the stable key
+                "live-active-trace" whether it is the pre-content placeholder (no
+                trace block streamed yet) or the inline active trace block — so the
+                first reasoning/tool event reuses the SAME node instead of
+                unmounting the placeholder and mounting a fresh panel. React only
+                preserves a keyed node across position changes within a single
+                array, which is why both live in this one expression. */}
+            {(() => {
+              const elements: React.ReactNode[] = [];
+              const hasTraceBlock = lastTraceBlockIndex !== -1;
+              if (!hasTraceBlock && showStandaloneActiveTrace) {
+                elements.push(
+                  <ActivityTracePanel
+                    key="live-active-trace"
+                    events={[]}
+                    active={liveTraceThinking}
+                    streaming={isSending}
+                    expanded={liveTraceExpanded}
+                    onExpandedChange={setLiveTraceExpanded}
+                  />,
+                );
+              }
+              streamingBlocks.forEach((block, index) => {
+                if (block.type === "text") {
+                  if (block.content === "") return;
+                  elements.push(
+                    <AssistantProse key={`stream-text-${index}`} streaming>
+                      {block.content}
+                    </AssistantProse>,
+                  );
+                  return;
+                }
+                if (block.type === "artifact") {
+                  elements.push(
+                    <GeneratedArtifactCard key={`stream-artifact-${block.artifact.id}`} artifact={block.artifact} />,
+                  );
+                  return;
+                }
+                // Trace block: the active (last) one drives the live "Thinking"
+                // affordance and stays expanded through the answer; earlier
+                // completed trace blocks render collapsed and inactive. The active
+                // one keeps the stable key shared with the placeholder above.
+                const isActiveTrace = index === lastTraceBlockIndex;
+                elements.push(
+                  <ActivityTracePanel
+                    key={isActiveTrace ? "live-active-trace" : `stream-trace-${index}`}
+                    events={block.events}
+                    active={isActiveTrace ? liveTraceThinking : false}
+                    streaming={isActiveTrace ? isSending : false}
+                    expanded={isActiveTrace ? liveTraceExpanded : undefined}
+                    onExpandedChange={isActiveTrace ? setLiveTraceExpanded : undefined}
+                  />,
+                );
+              });
+              return elements;
+            })()}
+            {pendingArtifactLabels(streamingTraceToolEvents, streamingArtifactCount).map((label, index) => (
               <PendingArtifactCard key={`pending-artifact-${index}`} label={label} />
             ))}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}

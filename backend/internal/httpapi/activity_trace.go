@@ -26,23 +26,33 @@ func activityTraceFromResult(current []activityTraceEvent, result llm.StreamResu
 	reasoningID := ""
 	if strings.TrimSpace(result.ReasoningContent) != "" {
 		reasoningID = fmt.Sprintf("reasoning-%d", countActivityTraceReasoning(next)+1)
-		next = append(next, activityTraceEvent{
-			ID:      reasoningID,
-			Type:    "reasoning",
-			Content: result.ReasoningContent,
-			Status:  "done",
-		})
+		next = append(next, reasoningEvent(reasoningID, result.ReasoningContent))
 	}
 	for _, call := range result.ToolCalls {
-		next = append(next, activityTraceEvent{
-			ID:           call.ID,
-			Type:         "tool",
-			Name:         call.Function.Name,
-			Status:       "running",
-			RawArguments: call.Function.Arguments,
-		})
+		next = append(next, toolCallEvent(call))
 	}
 	return next, reasoningID
+}
+
+// reasoningEvent builds the trace event for a turn's reasoning content.
+func reasoningEvent(id, content string) activityTraceEvent {
+	return activityTraceEvent{
+		ID:      id,
+		Type:    "reasoning",
+		Content: content,
+		Status:  "done",
+	}
+}
+
+// toolCallEvent builds the (initially running) trace event for a tool call.
+func toolCallEvent(call llm.ToolCall) activityTraceEvent {
+	return activityTraceEvent{
+		ID:           call.ID,
+		Type:         "tool",
+		Name:         call.Function.Name,
+		Status:       "running",
+		RawArguments: call.Function.Arguments,
+	}
 }
 
 func activityTraceWithToolResult(current []activityTraceEvent, toolCallID, output string) []activityTraceEvent {

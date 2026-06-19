@@ -10,8 +10,9 @@ import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
-import { type Artifact, type Message } from "../api";
+import { type Artifact, type ContentBlock, type Message } from "../api";
 import { MessageMetrics } from "../MessageMetrics";
+import { ActivityTracePanel } from "./ActivityTracePanel";
 import {
   downloadableResponse,
   formatReceivedKB,
@@ -19,6 +20,7 @@ import {
   pendingFencedArtifact,
   type DownloadableResponse,
 } from "./artifacts";
+import { messageBlocks } from "./contentBlocks";
 import { AttachmentPreview, isRevocablePreview } from "../components/AttachmentPreview";
 import { formatAttachmentSize } from "./attachmentFiles";
 import { MessageCitations } from "./Citations";
@@ -60,17 +62,56 @@ export function MessageBubble({
       </div>
     );
   }
+  // Render the assistant message as a single ordered list of content blocks
+  // (text / trace / artifact) so prose, tool-activity panels and images appear in
+  // the exact chronological order they arrived. The copy/retry/TTS + metrics
+  // footer renders ONCE at the bottom; past trace panels render collapsed and
+  // inactive.
+  const blocks = messageBlocks(message);
+  const proseText = blocks
+    .filter((block): block is Extract<ContentBlock, { type: "text" }> => block.type === "text")
+    .map((block) => block.content)
+    .join("\n\n");
   return (
     <div className="max-w-[46rem] space-y-3">
-      <AssistantText metricsMessage={message} onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}>
-        {message.content}
-      </AssistantText>
-      {message.artifacts?.map((artifact) => (
-        <GeneratedArtifactCard key={artifact.id} artifact={artifact} onAttach={onAttachArtifact} />
+      {blocks.map((block, index) => (
+        <AssistantBlock
+          key={`${message.id}-block-${index}`}
+          block={block}
+          onAttachArtifact={onAttachArtifact}
+        />
       ))}
+      <MessageActions
+        copyLabel="Copy response"
+        copyText={markdownToPlainText(proseText)}
+        retryLabel="Retry response"
+        onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}
+        metricsMessage={message}
+        speakable
+      />
       <MessageCitations citations={message.citations} />
     </div>
   );
+}
+
+// AssistantBlock renders one committed content block. Trace blocks become a
+// collapsed, inactive activity panel; text blocks render prose (with
+// downloadable/pending-fenced-artifact detection); artifact blocks render the
+// generated-artifact card.
+function AssistantBlock({
+  block,
+  onAttachArtifact,
+}: {
+  block: ContentBlock;
+  onAttachArtifact?(artifact: Artifact): void;
+}) {
+  if (block.type === "trace") {
+    return <ActivityTracePanel events={block.events} active={false} />;
+  }
+  if (block.type === "artifact") {
+    return <GeneratedArtifactCard artifact={block.artifact} onAttach={onAttachArtifact} />;
+  }
+  return <AssistantProse>{block.content}</AssistantProse>;
 }
 
 function SentAttachments({ attachments }: { attachments: ComposerAttachment[] }) {
@@ -225,15 +266,15 @@ export function ProseMarkdown({
   );
 }
 
-export function AssistantText({
+// AssistantProse renders one run of assistant prose with the
+// downloadable/pending-fenced-artifact detection, but no action/metrics row — the
+// single bottom footer is rendered once per message by MessageBubble. Used for
+// each committed text block and for the live streaming text block.
+export function AssistantProse({
   children,
-  onRetry,
-  metricsMessage,
   streaming = false,
 }: {
   children: string;
-  onRetry?: () => void;
-  metricsMessage?: Message;
   streaming?: boolean;
 }) {
   const downloadable = downloadableResponse(children);
@@ -248,15 +289,6 @@ export function AssistantText({
         {before !== "" && <ProseMarkdown streaming={streaming}>{before}</ProseMarkdown>}
         <DownloadResponseBubble artifact={artifact} />
         {after !== "" && <ProseMarkdown streaming={streaming}>{after}</ProseMarkdown>}
-        <MessageActions
-          copyLabel="Copy response"
-          copyText={markdownToPlainText(children)}
-          retryLabel="Retry response"
-          onRetry={onRetry}
-          metricsMessage={metricsMessage}
-          streaming={streaming}
-          speakable
-        />
       </div>
     );
   }
@@ -278,15 +310,6 @@ export function AssistantText({
   return (
     <div className="ui-assistant-message group w-full">
       <ProseMarkdown streaming={streaming}>{children}</ProseMarkdown>
-      <MessageActions
-        copyLabel="Copy response"
-        copyText={markdownToPlainText(children)}
-        retryLabel="Retry response"
-        onRetry={onRetry}
-        metricsMessage={metricsMessage}
-        streaming={streaming}
-        speakable
-      />
     </div>
   );
 }

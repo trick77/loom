@@ -43,6 +43,16 @@ export type Thread = {
   lastMessageAt?: string;
 };
 
+// ContentBlock is one ordered piece of an assistant message: a run of prose, a
+// contiguous reasoning+tool run (rendered as a single collapsible activity
+// panel), or a generated artifact. The backend persists assistant messages as an
+// ordered ContentBlock[] so text, tool activity and images render in the exact
+// chronological order they arrived; the live stream reconstructs the same order.
+export type ContentBlock =
+  | { type: "text"; content: string }
+  | { type: "trace"; events: ActivityTraceEvent[] }
+  | { type: "artifact"; artifact: Artifact };
+
 export type Message = {
   id: string;
   threadId: string;
@@ -50,6 +60,7 @@ export type Message = {
   content: string;
   reasoningContent?: string;
   activityTrace?: ActivityTraceEvent[];
+  contentBlocks?: ContentBlock[];
   artifacts?: Artifact[];
   citations?: Citation[];
   createdAt: string;

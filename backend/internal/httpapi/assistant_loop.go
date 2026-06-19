@@ -32,16 +32,19 @@ type assistantLoopResult struct {
 	Artifacts     []artifactResponse
 	ToolError     string
 	ActivityTrace []activityTraceEvent
+	Blocks        []contentBlock
 }
 
 func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool) (assistantLoopResult, error) {
 	tools := s.availableTools()
 	if len(tools) == 0 {
-		result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(nil), history, inferenceWithPurpose(inference, "chat", 1), nil)
+		b := &blockBuilder{}
+		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
+		b.addResult(titles, result)
 		if persistInterruptedPartial(result, err) {
-			return assistantLoopResult{StreamResult: result, ActivityTrace: s.appendTraceAndSpawnTitle(titles, nil, result)}, nil
+			return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 		}
-		return assistantLoopResult{StreamResult: result, ActivityTrace: s.appendTraceAndSpawnTitle(titles, nil, result)}, err
+		return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
 	}
 	if imageArtifactRequired {
 		if imageTool := findGenerateImageTool(tools); imageTool != nil {
@@ -52,23 +55,24 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 
 	toolRan := false
 	var artifacts []artifactResponse
-	var trace []activityTraceEvent
+	b := &blockBuilder{}
 	for round := 1; round <= maxToolRounds; round++ {
-		result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
+		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
 			if persistInterruptedPartial(result, err) {
-				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: s.appendTraceAndSpawnTitle(titles, trace, result)}, nil
+				b.addResult(titles, result)
+				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 			}
 			return assistantLoopResult{}, err
 		}
-		trace = s.appendTraceAndSpawnTitle(titles, trace, result)
+		b.addResult(titles, result)
 		if len(result.ToolCalls) == 0 {
 			// A normal textual answer ends the loop. But if the model stops
 			// after running tools without producing any text, fall through to a
 			// forced, tool-free final answer instead of returning an empty (and
 			// therefore discarded) response.
 			if strings.TrimSpace(result.Content) != "" || !toolRan {
-				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
+				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 			}
 			slog.Info("forcing final answer", "reason", "empty_after_tools", "round", round)
 			break
@@ -114,6 +118,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			if handled {
 				if response != nil {
 					artifacts = append(artifacts, *response)
+					b.addArtifact(*response)
 				}
 			} else {
 				output = s.executeToolCall(ctx, user, call, round)
@@ -121,7 +126,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				return assistantLoopResult{}, err
 			}
-			trace = activityTraceWithToolResult(trace, call.ID, output)
+			b.setToolResult(call.ID, output)
 			history = append(history, llm.Message{
 				Role:       "tool",
 				ToolCallID: call.ID,
@@ -141,10 +146,10 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		Role:    "system",
 		Content: "Provide your final answer now using the information already gathered above. Do not call any more tools.",
 	})
-	result, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
-	trace = s.appendTraceAndSpawnTitle(titles, trace, result)
+	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
+	b.addResult(titles, result)
 	if persistInterruptedPartial(result, err) {
-		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
+		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 	}
 	// MiMo regularly answers the forced final call with yet another inline tool call
 	// instead of prose; the inline markup is stripped (so it never leaks), leaving the
@@ -156,17 +161,21 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			Role:    "system",
 			Content: "You have no tools available and must not emit any tool call. Answer the user's question now in plain prose, using only the information already gathered above.",
 		})
-		result, err = s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), retryHistory, inferenceWithPurpose(inference, "chat_final_retry", maxToolRounds+2), nil)
-		trace = s.appendTraceAndSpawnTitle(titles, trace, result)
+		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, inferenceWithPurpose(inference, "chat_final_retry", maxToolRounds+2), nil)
+		b.addResult(titles, result)
 		if persistInterruptedPartial(result, err) {
-			return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, nil
+			return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 		}
 		if err == nil && strings.TrimSpace(result.Content) == "" {
 			slog.Warn("final answer empty after retry; using fallback", "round", maxToolRounds+2)
 			result.Content = finalAnswerFallback
+			// addResult skipped the empty turn's (blank) text; surface the fallback
+			// prose as the final text block so the timeline matches the persisted
+			// content column.
+			b.addText(result.Content)
 		}
 	}
-	return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: trace}, err
+	return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
 }
 
 // finalAnswerFallback is surfaced when the model never commits to a prose answer on
@@ -179,13 +188,17 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		Role:    "system",
 		Content: imagePromptCompilerSystemPrompt,
 	})
-	result, err := s.streamAssistantTurnSuppressingContent(ctx, stream, titles, nextReasoningID(nil), compilerHistory, inferenceWithPurpose(inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
-	trace := s.appendTraceAndSpawnTitle(titles, nil, result)
+	b := &blockBuilder{}
+	result, err := s.streamAssistantTurnSuppressingContent(ctx, stream, titles, b.nextReasoningID(), compilerHistory, inferenceWithPurpose(inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
+	// The compiler turn's content is deliberately suppressed (it is the internal
+	// prompt-compiler output, never shown), so add only its reasoning/tool events
+	// — adding its prose would leak hidden text into the timeline.
+	b.addTraceOnlyResult(titles, result)
 	if err != nil {
 		return assistantLoopResult{}, err
 	}
 	if len(result.ToolCalls) != 1 || result.ToolCalls[0].Function.Name != "generate_image" {
-		return assistantLoopResult{StreamResult: result, ActivityTrace: trace}, nil
+		return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 	}
 
 	call := result.ToolCalls[0]
@@ -200,30 +213,34 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 		return assistantLoopResult{}, err
 	}
-	trace = activityTraceWithToolResult(trace, call.ID, output)
+	b.setToolResult(call.ID, output)
 	history = append(history, llm.Message{
 		Role:       "tool",
 		ToolCallID: call.ID,
 		Content:    output,
 	})
 	if response == nil {
-		return assistantLoopResult{StreamResult: result, ToolError: output, ActivityTrace: trace}, nil
+		return assistantLoopResult{StreamResult: result, ToolError: output, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 	}
 
+	b.addArtifact(*response)
 	artifacts := []artifactResponse{*response}
 	finalHistory := append(history[:len(history):len(history)], llm.Message{
 		Role:    "system",
 		Content: "Provide a brief final response that refers to the created artifact. Do not call any more tools. Never claim an image was created unless the tool result confirms an artifact.",
 	})
-	final, err := s.streamAssistantTurn(ctx, stream, titles, nextReasoningID(trace), finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
-	trace = s.appendTraceAndSpawnTitle(titles, trace, final)
+	final, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
+	b.addResult(titles, final)
 	if persistInterruptedPartial(final, err) {
-		return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: trace}, nil
+		return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 	}
 	if err == nil && strings.TrimSpace(final.Content) == "" {
 		final.Content = fallbackImageArtifactResponse(*response)
+		// addResult skipped the empty final turn's text; surface the fallback prose
+		// so the timeline matches the persisted content column.
+		b.addText(final.Content)
 	}
-	return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: trace}, err
+	return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
 }
 
 func fallbackImageArtifactResponse(response artifactResponse) string {

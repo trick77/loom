@@ -208,6 +208,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// gate here decides what becomes a download.
 	if extracted := s.extractCodeArtifacts(persistCtx, stream, user, thread, assistantContent, artifacts); len(extracted) > 0 {
 		artifacts = append(artifacts, extracted...)
+		// These artifacts are derived from the FINAL answer's inline code, so they
+		// render after the final text: append them as artifact blocks at the END of
+		// the timeline.
+		for i := range extracted {
+			assistantResult.Blocks = append(assistantResult.Blocks, contentBlock{Type: "artifact", Artifact: &extracted[i]})
+		}
 	}
 	artifactsJSON, err := json.Marshal(artifacts)
 	if err != nil {
@@ -218,10 +224,21 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// the trace; this also guarantees the title SSE events precede assistant_message.
 	titles.wait()
 	titles.mergeInto(assistantResult.ActivityTrace)
+	// The blocks' trace events are separate objects from the flat trace but share
+	// reasoning ids, so stamp the same titles onto them too.
+	titles.mergeIntoBlocks(assistantResult.Blocks)
 	activityTraceJSON, err := json.Marshal(assistantResult.ActivityTrace)
 	if err != nil {
 		slog.Warn("marshal activity trace failed", "thread_id", threadID, "error", err)
 		activityTraceJSON = []byte("[]")
+	}
+	contentBlocksJSON := []byte("[]")
+	if len(assistantResult.Blocks) > 0 {
+		if encoded, marshalErr := json.Marshal(assistantResult.Blocks); marshalErr != nil {
+			slog.Warn("marshal content blocks failed", "thread_id", threadID, "error", marshalErr)
+		} else {
+			contentBlocksJSON = encoded
+		}
 	}
 	// Persist the RAG citations so the answer's sources survive a reload.
 	citationsJSON := json.RawMessage("[]")
@@ -230,7 +247,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			citationsJSON = encoded
 		}
 	}
-	assistantMessage, err := s.chat.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON, citationsJSON)
+	assistantMessage, err := s.chat.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return

@@ -86,12 +86,35 @@ func (t *reasoningTitleTracker) mergeInto(trace []activityTraceEvent) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	for i := range trace {
-		if trace[i].Type != "reasoning" {
+	t.stampTitles(trace)
+}
+
+// mergeIntoBlocks stamps collected titles onto the reasoning events inside every
+// trace block. The blocks' trace events are separate objects from the flat
+// trace, but share the same reasoning-event ids, so the same title map applies.
+func (t *reasoningTitleTracker) mergeIntoBlocks(blocks []contentBlock) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for i := range blocks {
+		if blocks[i].Type != "trace" {
 			continue
 		}
-		if title, ok := t.titles[trace[i].ID]; ok {
-			trace[i].Title = title
+		t.stampTitles(blocks[i].Events)
+	}
+}
+
+// stampTitles writes each collected title onto its matching reasoning event.
+// Callers must hold t.mu.
+func (t *reasoningTitleTracker) stampTitles(events []activityTraceEvent) {
+	for i := range events {
+		if events[i].Type != "reasoning" {
+			continue
+		}
+		if title, ok := t.titles[events[i].ID]; ok {
+			events[i].Title = title
 		}
 	}
 }
@@ -99,12 +122,4 @@ func (t *reasoningTitleTracker) mergeInto(trace []activityTraceEvent) {
 type reasoningTitleResponse struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
-}
-
-// appendTraceAndSpawnTitle appends a turn's result to the trace and, when the
-// turn produced reasoning, spawns a background title for it.
-func (s *server) appendTraceAndSpawnTitle(t *reasoningTitleTracker, cur []activityTraceEvent, res llm.StreamResult) []activityTraceEvent {
-	next, reasoningID := activityTraceFromResult(cur, res)
-	t.spawn(reasoningID, res.ReasoningContent)
-	return next
 }

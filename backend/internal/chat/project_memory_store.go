@@ -80,7 +80,7 @@ func (s *Store) ListProjectMessages(ctx context.Context, userID, projectID strin
 		limit = 200
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT m.id, m.thread_id, m.role, m.content, m.reasoning_content, m.tool_calls, m.citations, m.artifacts, m.attachments, m.activity_trace, m.prompt_tokens, m.completion_tokens, m.total_tokens, m.cached_tokens, m.reasoning_tokens, m.duration_ms, m.model, m.reasoning_effort, m.created_at
+SELECT m.id, m.thread_id, m.role, m.content, m.reasoning_content, m.tool_calls, m.citations, m.artifacts, m.attachments, m.activity_trace, m.content_blocks, m.prompt_tokens, m.completion_tokens, m.total_tokens, m.cached_tokens, m.reasoning_tokens, m.duration_ms, m.model, m.reasoning_effort, m.created_at
 FROM messages m
 JOIN threads t ON t.user_id = m.user_id AND t.id = m.thread_id
 WHERE m.user_id = ? AND t.project_id = ?
