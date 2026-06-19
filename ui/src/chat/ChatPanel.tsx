@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { ActivityTraceEvent } from "../activityTrace";
-import type { ContentBlock, McpStatusEvent, Project, Thread } from "../api";
-import type { Artifact } from "../api";
+import type { Artifact, ContentBlock, McpStatusEvent, Project, Thread } from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ActivityTracePanel } from "./ActivityTracePanel";

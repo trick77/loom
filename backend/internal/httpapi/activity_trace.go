@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/trick77/lume/internal/llm"
 )
@@ -16,22 +15,6 @@ type activityTraceEvent struct {
 	Status       string `json:"status"`
 	RawArguments string `json:"rawArguments,omitempty"`
 	RawOutput    string `json:"rawOutput,omitempty"`
-}
-
-// activityTraceFromResult appends a turn's reasoning and tool calls to the
-// trace. It returns the id assigned to the reasoning event (or "" when the turn
-// produced no reasoning) so the caller can attach a background-generated title.
-func activityTraceFromResult(current []activityTraceEvent, result llm.StreamResult) ([]activityTraceEvent, string) {
-	next := append([]activityTraceEvent(nil), current...)
-	reasoningID := ""
-	if strings.TrimSpace(result.ReasoningContent) != "" {
-		reasoningID = fmt.Sprintf("reasoning-%d", countActivityTraceReasoning(next)+1)
-		next = append(next, reasoningEvent(reasoningID, result.ReasoningContent))
-	}
-	for _, call := range result.ToolCalls {
-		next = append(next, toolCallEvent(call))
-	}
-	return next, reasoningID
 }
 
 // reasoningEvent builds the trace event for a turn's reasoning content.
@@ -55,23 +38,7 @@ func toolCallEvent(call llm.ToolCall) activityTraceEvent {
 	}
 }
 
-func activityTraceWithToolResult(current []activityTraceEvent, toolCallID, output string) []activityTraceEvent {
-	next := append([]activityTraceEvent(nil), current...)
-	for i := range next {
-		if next[i].Type != "tool" || next[i].ID != toolCallID {
-			continue
-		}
-		next[i].Status = "done"
-		if strings.HasPrefix(output, toolFailedPrefix) {
-			next[i].Status = "failed"
-		}
-		next[i].RawOutput = output
-		return next
-	}
-	return next
-}
-
-// nextReasoningID is the id activityTraceFromResult will assign to the next
+// nextReasoningID is the id blockBuilder.addResult will assign to the next
 // reasoning event appended to this trace. Computed up front so a title can be
 // spawned at the reasoning->content boundary mid-turn, before the turn returns.
 func nextReasoningID(events []activityTraceEvent) string {
