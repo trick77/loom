@@ -62,8 +62,8 @@
    Palette: warm charcoal surfaces, off-white ink, clay accent.
    Fonts are self-hosted Variable Fonts under src/fonts/. */
 @theme {
-  --color-bg: #1f1e1b;
-  --color-panel: #1b1a18;
+  --color-bg: #1f1f1e;
+  --color-panel: #1b1b1a;
   --color-active: #2c2c2a;
   --color-border: #323230;
   --color-ink: #faf9f5;
