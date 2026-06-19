@@ -136,17 +136,18 @@ test("shows remove from project for project chats when handler is provided", () 
   expect(screen.queryByRole("menuitem", { name: "Add to project" })).not.toBeInTheDocument();
 });
 
-test("shows archive when handler is provided", () => {
+test("no longer offers archiving for chats", () => {
   render(
     <ThreadActionsMenu
       menuKey="t1"
       thread={threadFixture()}
+      onSelect={vi.fn()}
       onDelete={vi.fn()}
       onRename={vi.fn()}
-      onArchive={vi.fn()}
+      onAddToProject={vi.fn()}
       onStarChange={vi.fn()}
     />,
   );
 
-  expect(screen.getByRole("menuitem", { name: "Archive" })).toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "Archive" })).not.toBeInTheDocument();
 });

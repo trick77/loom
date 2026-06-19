@@ -16,7 +16,9 @@ export type Project = {
   name: string;
   description: string;
   starred: boolean;
-  archivedAt?: string;
+  // Backend serializes this as null (not omitted) for active projects, so
+  // presence checks must use `!= null`, not `!== undefined`.
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -227,8 +229,9 @@ export async function logout(): Promise<string> {
   return body.redirectUrl ?? "/";
 }
 
-export async function listProjects(): Promise<Project[]> {
-  const response = await fetch("/api/projects");
+export async function listProjects(archived?: boolean): Promise<Project[]> {
+  const query = archived === undefined ? "" : `?archived=${String(archived)}`;
+  const response = await fetch(`/api/projects${query}`);
   return expectJSON<Project[]>(response, "failed to load projects");
 }
 
@@ -275,6 +278,18 @@ export async function archiveProject(projectId: string): Promise<void> {
   }
   if (!response.ok) {
     throw new Error("failed to archive project");
+  }
+}
+
+export async function unarchiveProject(projectId: string): Promise<void> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/unarchive`, {
+    method: "POST",
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to unarchive project");
   }
 }
 
@@ -446,18 +461,6 @@ export async function updateThread(
     body: JSON.stringify(input),
   });
   return expectJSON<Thread>(response, "failed to update thread");
-}
-
-export async function archiveThread(threadId: string): Promise<void> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/archive`, {
-    method: "POST",
-  });
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to archive thread");
-  }
 }
 
 export async function deleteThread(threadId: string): Promise<void> {

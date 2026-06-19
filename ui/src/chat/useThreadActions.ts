@@ -1,7 +1,6 @@
 import { useState } from "react";
 
 import {
-  archiveThread,
   deleteThread,
   updateThread,
   type Project,
@@ -21,7 +20,6 @@ export function useThreadActions({
   setThreads,
   handleActionError,
   onActiveThreadArchived,
-  onActiveThreadRemoved,
   onOpenThreadModal,
   route,
 }: {
@@ -35,7 +33,6 @@ export function useThreadActions({
   setThreads(update: (current: Thread[]) => Thread[]): void;
   handleActionError(error: unknown, fallback: string, setError: (message: string) => void): void;
   onActiveThreadArchived(): void;
-  onActiveThreadRemoved(): void;
   onOpenThreadModal(): void;
   route: RouteState;
 }) {
@@ -98,26 +95,6 @@ export function useThreadActions({
       setModalError("");
     } catch (error) {
       handleActionError(error, "Thread failed to delete.", setModalError);
-    } finally {
-      setIsMutatingThread(false);
-    }
-  }
-
-  async function handleArchiveThread(thread: Thread) {
-    if (isMutatingThread) return;
-    setIsMutatingThread(true);
-    try {
-      await archiveThread(thread.id);
-      setThreads((current) => current.filter((item) => item.id !== thread.id));
-      setProjectThreads((current) => current.filter((item) => item.id !== thread.id));
-      setThreadMutationVersion((value) => value + 1);
-      if (activeThreadIDRef.current === thread.id) {
-        onActiveThreadRemoved();
-      }
-      setOpenThreadMenuID(null);
-      setModalError("");
-    } catch (error) {
-      handleActionError(error, "Thread failed to archive.", setModalError);
     } finally {
       setIsMutatingThread(false);
     }
@@ -199,7 +176,6 @@ export function useThreadActions({
     movingThreads,
     renameTitle,
     renamingThread,
-    handleArchiveThread,
     handleDeleteConfirm,
     handleMoveThreadsToProject,
     handleRemoveThreadFromProject,

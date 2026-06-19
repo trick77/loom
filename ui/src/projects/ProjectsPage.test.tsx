@@ -3,11 +3,17 @@ import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
+import * as api from "../api";
 import type { Project, Thread } from "../api";
 import { ICONS } from "../chat/Icon";
 import { ProjectDialog } from "./ProjectDialog";
 import { ProjectDetailPage } from "./ProjectDetailPage";
 import { ProjectsPage } from "./ProjectsPage";
+
+vi.mock("../api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api")>();
+  return { ...actual, listProjects: vi.fn() };
+});
 
 const projects: Project[] = [
   {
@@ -15,6 +21,9 @@ const projects: Project[] = [
     name: "Research",
     description: "Paper notes",
     starred: false,
+    // The backend serializes archivedAt as null (not omitted) for active
+    // projects; the badge predicate must treat null as "not archived".
+    archivedAt: null,
     createdAt: "2026-06-10T00:00:00Z",
     updatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   },
@@ -47,6 +56,7 @@ test("ProjectsPage renders projects without reference-only controls", () => {
       onOpenProject={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
     />,
   );
@@ -66,6 +76,54 @@ test("ProjectsPage renders projects without reference-only controls", () => {
   expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
 });
 
+test("ProjectsPage shows archived projects only under the Archived tab", async () => {
+  const archivedProject: Project = {
+    id: "p2",
+    name: "Old initiative",
+    description: "Wrapped up",
+    starred: false,
+    archivedAt: "2026-06-01T00:00:00Z",
+    createdAt: "2026-05-01T00:00:00Z",
+    updatedAt: "2026-06-01T00:00:00Z",
+  };
+  vi.mocked(api.listProjects).mockResolvedValue([archivedProject]);
+
+  render(
+    <ProjectsPage
+      projects={projects}
+      loadError=""
+      onOpenSidebar={vi.fn()}
+      onCreateProject={vi.fn()}
+      onOpenProject={vi.fn()}
+      onEditProject={vi.fn()}
+      onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
+      onDeleteProject={vi.fn()}
+    />,
+  );
+
+  // Active tab (C2/C8): the active project shows, the archived one does not,
+  // and an active project (archivedAt: null) carries no badge (C7 regression).
+  expect(screen.getByText("Research")).toBeInTheDocument();
+  expect(screen.queryByText("Old initiative")).not.toBeInTheDocument();
+  expect(screen.queryByRole("img", { name: "Archived" })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: "Archived" }));
+
+  // Archived tab is tab-local: only the archived project, with its name badge (C7).
+  expect(await screen.findByText("Old initiative")).toBeInTheDocument();
+  expect(screen.queryByText("Research")).not.toBeInTheDocument();
+  expect(api.listProjects).toHaveBeenCalledWith(true);
+  const card = screen.getByText("Old initiative").closest("article");
+  expect(within(card!).getByRole("img", { name: "Archived" })).toBeInTheDocument();
+
+  // The archived card's action menu offers Unarchive instead of Archive.
+  fireEvent.click(screen.getByRole("button", { name: "Open project actions for Old initiative" }));
+  const menu = screen.getByRole("menu", { name: "Project actions" });
+  expect(within(menu).getByRole("menuitem", { name: "Unarchive" })).toBeInTheDocument();
+  expect(within(menu).queryByRole("menuitem", { name: "Archive" })).not.toBeInTheDocument();
+});
+
 test("ProjectsPage opens the sort dropdown with project sort options", () => {
   render(
     <ProjectsPage
@@ -76,6 +134,7 @@ test("ProjectsPage opens the sort dropdown with project sort options", () => {
       onOpenProject={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
     />,
   );
@@ -102,6 +161,7 @@ test("ProjectsPage opens a project from anywhere on the card body", () => {
       onOpenProject={onOpenProject}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
     />,
   );
@@ -129,13 +189,13 @@ test("ProjectDetailPage renders project chats and project chat menu", () => {
       onOpenThread={vi.fn()}
       onRenameThread={vi.fn()}
       onDeleteThread={vi.fn()}
-      onArchiveThread={vi.fn()}
       onStarThread={vi.fn()}
       onRemoveFromProject={vi.fn()}
       onToggleThreadMenu={vi.fn()}
       onCloseThreadMenu={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
       onToggleStar={vi.fn()}
       onOpenSidebar={vi.fn()}
@@ -148,6 +208,43 @@ test("ProjectDetailPage renders project chats and project chat menu", () => {
   expect(screen.getByRole("button", { name: /Literature review/ })).toBeInTheDocument();
   expect(screen.queryByText("Example project")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+});
+
+test("ProjectDetailPage offers Unarchive for an archived project", () => {
+  const archivedProject: Project = { ...projects[0], archivedAt: "2026-06-01T00:00:00Z" };
+  render(
+    <ProjectDetailPage
+      project={archivedProject}
+      threads={threads}
+      draft=""
+      sendError=""
+      isSending={false}
+      openThreadMenuID={`Project:${archivedProject.id}`}
+      onBack={vi.fn()}
+      onDraftChange={vi.fn()}
+      onSend={vi.fn()}
+      onStop={vi.fn()}
+      onOpenThread={vi.fn()}
+      onRenameThread={vi.fn()}
+      onDeleteThread={vi.fn()}
+      onStarThread={vi.fn()}
+      onRemoveFromProject={vi.fn()}
+      onToggleThreadMenu={vi.fn()}
+      onCloseThreadMenu={vi.fn()}
+      onEditProject={vi.fn()}
+      onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
+      onDeleteProject={vi.fn()}
+      onToggleStar={vi.fn()}
+      onOpenSidebar={vi.fn()}
+    />,
+  );
+
+  // Its chats stay visible (C5) and the menu offers Unarchive, not Archive.
+  expect(screen.getByRole("button", { name: /Literature review/ })).toBeInTheDocument();
+  const menu = screen.getByRole("menu", { name: "Project actions" });
+  expect(within(menu).getByRole("menuitem", { name: "Unarchive" })).toBeInTheDocument();
+  expect(within(menu).queryByRole("menuitem", { name: "Archive" })).not.toBeInTheDocument();
 });
 
 test("ProjectDetailPage renders project chats with the shared chats-list row", () => {
@@ -166,13 +263,13 @@ test("ProjectDetailPage renders project chats with the shared chats-list row", (
       onOpenThread={vi.fn()}
       onRenameThread={vi.fn()}
       onDeleteThread={vi.fn()}
-      onArchiveThread={vi.fn()}
       onStarThread={vi.fn()}
       onRemoveFromProject={vi.fn()}
       onToggleThreadMenu={vi.fn()}
       onCloseThreadMenu={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
       onToggleStar={vi.fn()}
       onOpenSidebar={vi.fn()}
@@ -218,13 +315,13 @@ test("ProjectDetailPage uses the same composer surface as new chat", () => {
       onOpenThread={vi.fn()}
       onRenameThread={vi.fn()}
       onDeleteThread={vi.fn()}
-      onArchiveThread={vi.fn()}
       onStarThread={vi.fn()}
       onRemoveFromProject={vi.fn()}
       onToggleThreadMenu={vi.fn()}
       onCloseThreadMenu={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
       onToggleStar={vi.fn()}
       onOpenSidebar={vi.fn()}
@@ -250,6 +347,7 @@ test("project action menus expose edit archive delete", () => {
       onOpenProject={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
     />,
   );
@@ -271,6 +369,7 @@ test("project action menu icons align with the first line of wrapping action tex
       onOpenProject={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
     />,
   );
@@ -297,6 +396,7 @@ test("ProjectsPage closes project action menu when clicking outside", () => {
       onOpenProject={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
     />,
   );
@@ -325,13 +425,13 @@ test("project action triggers use vertical overflow icons", () => {
       onOpenThread={vi.fn()}
       onRenameThread={vi.fn()}
       onDeleteThread={vi.fn()}
-      onArchiveThread={vi.fn()}
       onStarThread={vi.fn()}
       onRemoveFromProject={vi.fn()}
       onToggleThreadMenu={vi.fn()}
       onCloseThreadMenu={vi.fn()}
       onEditProject={vi.fn()}
       onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
       onDeleteProject={vi.fn()}
       onToggleStar={vi.fn()}
       onOpenSidebar={vi.fn()}
@@ -377,13 +477,13 @@ test("ProjectDetailPage thread menu items remain clickable after pointerdown", (
         onOpenThread={vi.fn()}
         onRenameThread={vi.fn()}
         onDeleteThread={vi.fn()}
-        onArchiveThread={vi.fn()}
         onStarThread={vi.fn()}
         onRemoveFromProject={onRemoveFromProject}
         onToggleThreadMenu={(menuKey) => setOpenMenuID((current) => (current === menuKey ? null : menuKey))}
         onCloseThreadMenu={() => setOpenMenuID(null)}
         onEditProject={vi.fn()}
         onArchiveProject={vi.fn()}
+        onUnarchiveProject={vi.fn()}
         onDeleteProject={vi.fn()}
         onToggleStar={vi.fn()}
         onOpenSidebar={vi.fn()}

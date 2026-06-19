@@ -11,7 +11,6 @@ export function ThreadActionsMenu({
   onSelect,
   onDelete,
   onRename,
-  onArchive,
   onAddToProject,
   onRemoveFromProject,
   onStarChange,
@@ -22,7 +21,6 @@ export function ThreadActionsMenu({
   onSelect?(thread: Thread): void;
   onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
-  onArchive?(thread: Thread): void;
   onAddToProject?(thread: Thread): void;
   onRemoveFromProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
@@ -94,17 +92,6 @@ export function ThreadActionsMenu({
         </button>
       )}
       <MenuSeparator />
-      {onArchive !== undefined && (
-        <button
-          className={`${menuItemClass} text-[#f3f0e8]`}
-          role="menuitem"
-          type="button"
-          onClick={() => onArchive(thread)}
-        >
-          <ArchiveMenuIcon />
-          Archive
-        </button>
-      )}
       <button
         className={`${menuItemClass} text-[#d98278]`}
         role="menuitem"
@@ -120,16 +107,6 @@ export function ThreadActionsMenu({
 
 export function TrashMenuIcon() {
   return <Icon name="trash" size="19px" className={menuIconClass} />;
-}
-
-function ArchiveMenuIcon() {
-  return (
-    <svg className={menuIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <path d="M5 8h14v11H5V8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="M4 5h16v3H4V5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="M9 12h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 function MenuSeparator() {
