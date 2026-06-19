@@ -14,14 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/auth"
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/docgen"
-	"github.com/trick77/lume/internal/imagegen"
-	"github.com/trick77/lume/internal/llm"
-	"github.com/trick77/lume/internal/mcp"
-	"github.com/trick77/lume/internal/store"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/docgen"
+	"github.com/trick77/loom/internal/imagegen"
+	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/store"
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {

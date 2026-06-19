@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/loom/internal/chat"
 )
 
 type Store struct {

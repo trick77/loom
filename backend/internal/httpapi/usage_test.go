@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/usage"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/usage"
 )
 
 type stubUsageStore struct{ totals usage.Totals }

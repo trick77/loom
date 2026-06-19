@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/rag"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/rag"
 )
 
 func TestKnowledgeInlineContext_injectsWholeWhenUnderBudget(t *testing.T) {

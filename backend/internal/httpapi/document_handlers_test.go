@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/auth"
-	"github.com/trick77/lume/internal/documents"
-	"github.com/trick77/lume/internal/rag"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/documents"
+	"github.com/trick77/loom/internal/rag"
 )
 
 type fakeDocumentService struct {

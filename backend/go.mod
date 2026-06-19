@@ -1,4 +1,4 @@
-module github.com/trick77/lume
+module github.com/trick77/loom
 
 go 1.25.0
 

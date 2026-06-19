@@ -3,7 +3,7 @@ package httpapi
 import (
 	"strings"
 
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/llm"
 )
 
 // contentBlock is one item in a message's ordered, interleaved timeline. Exactly

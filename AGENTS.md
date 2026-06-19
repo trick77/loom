@@ -1,8 +1,6 @@
-# lume
+# loom
 
 Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an embedded React SPA.
-Full design: `docs/superpowers/specs/2026-05-30-slopr-design.md`. Per-phase plans:
-`docs/superpowers/plans/`. Deferred minors: `docs/superpowers/notes/phase-1-polish-backlog.md`.
 
 ## Working conventions
 - Docs, specs, and code comments are **English only** (conversation with the maintainer is German).
@@ -20,7 +18,7 @@ Full design: `docs/superpowers/specs/2026-05-30-slopr-design.md`. Per-phase plan
 - `docker compose up --build` — full stack (copy `.env.example` → `.env` and fill it first)
 
 ## Locked technical choices (do not change without explicit agreement)
-- Module path `github.com/trick77/lume`. Go 1.25 (`go.mod`; Containerfile uses `golang:1.25-alpine`).
+- Module path `github.com/trick77/loom`. Go 1.25 (`go.mod`; Containerfile uses `golang:1.25-alpine`).
 - **Pure-Go SQLite**: `ncruces/go-sqlite3` pinned to **`v0.23.3`** + `sqlite-vec-go-bindings/ncruces`
   pinned to **`v0.1.7-alpha.2`**.
   `CGO_ENABLED=0` everywhere. Do NOT switch to `mattn/go-sqlite3` — the pin matches the sqlite-vec

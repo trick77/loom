@@ -3,9 +3,9 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/trick77/lume/internal/auth"
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/usage"
+	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/usage"
 )
 
 // usageResponse is the GET /api/me/usage payload: the user's lifetime counters

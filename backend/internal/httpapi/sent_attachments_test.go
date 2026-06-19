@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/rag"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/rag"
 )
 
 func TestResolveSentAttachments_resolvesImageAndScopedDocument(t *testing.T) {

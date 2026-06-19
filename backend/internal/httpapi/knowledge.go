@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/loom/internal/chat"
 )
 
 const (

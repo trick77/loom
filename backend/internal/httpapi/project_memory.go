@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/trick77/lume/internal/auth"
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/llm"
 )
 
 // projectMemoryScope wires the project memory into the shared memory mechanism.

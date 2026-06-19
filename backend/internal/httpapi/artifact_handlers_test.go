@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/auth"
 )
 
 func TestListArtifactsReturnsCurrentUsersArtifacts(t *testing.T) {

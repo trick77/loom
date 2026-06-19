@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/trick77/lume/internal/store"
-	"github.com/trick77/lume/internal/usage"
+	"github.com/trick77/loom/internal/store"
+	"github.com/trick77/loom/internal/usage"
 )
 
 // newTestStore opens a real migrated database (so the test exercises migration

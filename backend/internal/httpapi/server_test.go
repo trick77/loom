@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/auth"
-	"github.com/trick77/lume/internal/mcp"
-	"github.com/trick77/lume/internal/store"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/store"
 )
 
 func TestHealth_returnsOK(t *testing.T) {

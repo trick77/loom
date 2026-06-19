@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/lume/internal/config"
-	"github.com/trick77/lume/internal/mcp"
+	"github.com/trick77/loom/internal/config"
+	"github.com/trick77/loom/internal/mcp"
 )
 
 func TestResponseLogDirForConfigOnlyEnablesDevMode(t *testing.T) {
