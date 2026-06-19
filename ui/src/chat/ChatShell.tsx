@@ -43,6 +43,7 @@ import { useThreadActions } from "./useThreadActions";
 import { ChatPanel } from "./ChatPanel";
 import { StartPanel } from "./StartPanel";
 import { Sidebar } from "./Sidebar";
+import { tabTitle } from "./tabTitle";
 import { DeleteThreadModal, RenameThreadModal } from "./threadModals";
 import { DeleteProjectModal } from "../projects/DeleteProjectModal";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage";
@@ -255,6 +256,10 @@ export function ChatShell({
 
   const displayName = user.displayName || user.username;
   const activeProject = activeProjectForRoute(route);
+
+  useEffect(() => {
+    document.title = tabTitle(route, activeThread, activeProject);
+  }, [route, activeThread?.title, activeProject?.name]);
 
   const navigateToNew = useCallback(() => {
     onChat();
