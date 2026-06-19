@@ -416,29 +416,6 @@ function MessageActions({
   );
 }
 
-// Shown while a document/image tool is still generating its artifact (before the
-// backend emits the `artifact` event). Mirrors the download card layout so it
-// settles into place without a layout shift once the real card replaces it. No
-// download button (inactive) and no byte count — MiMo buffers the tool arguments,
-// so there is no smooth byte signal to stream; the shimmer conveys liveness.
-export function PendingArtifactCard({ label }: { label: string }) {
-  return (
-    <div className="max-w-[28rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
-      <div className="flex items-center gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-          <FileIcon />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">Generating {label}…</div>
-          <span className="ui-thinking-label-active ui-meta-text" data-text="Working…">
-            Working…
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string; receivedBytes: number }) {
   const progressText =
     receivedBytes > 0 ? `Receiving file... ${formatReceivedKB(receivedBytes)} received` : "Receiving file...";

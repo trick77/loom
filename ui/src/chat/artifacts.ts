@@ -59,37 +59,6 @@ export function pendingFencedArtifact(content: string): PendingArtifact | null {
   };
 }
 
-// Tool names whose execution produces a downloadable/displayable artifact. Mirrors
-// the backend generators in backend/internal/docgen/* and imagegen/tool.go. The
-// value is the human label shown while the artifact is still being generated.
-const ARTIFACT_TOOL_LABELS: Record<string, string> = {
-  create_text_file: "text file",
-  create_pdf_file: "PDF",
-  create_xlsx_file: "spreadsheet",
-  create_docx_file: "document",
-  create_pptx_presentation: "presentation",
-  generate_image: "image",
-};
-
-export function artifactToolLabel(toolName: string): string | null {
-  return ARTIFACT_TOOL_LABELS[toolName] ?? null;
-}
-
-// Derive one pending label per running artifact-producing tool call that has not
-// yet been replaced by an arrived artifact. No tool-call <-> artifact id
-// correlation exists (the artifact carries a fresh DB id), so reconcile by count:
-// arrived artifacts cover the earliest running calls.
-export function pendingArtifactLabels(
-  trace: ReadonlyArray<{ type: string; status: string; name?: string }>,
-  arrivedArtifactCount: number,
-): string[] {
-  const labels = trace
-    .filter((event) => event.type === "tool" && event.status === "running" && event.name !== undefined)
-    .map((event) => artifactToolLabel(event.name as string))
-    .filter((label): label is string => label !== null);
-  return labels.slice(arrivedArtifactCount);
-}
-
 export function formatReceivedKB(bytes: number): string {
   const kb = bytes / 1024;
   const rounded = kb >= 10 ? Math.round(kb).toString() : kb.toFixed(1);

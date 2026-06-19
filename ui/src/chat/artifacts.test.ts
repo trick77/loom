@@ -1,10 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  artifactToolLabel,
-  downloadableResponse,
-  pendingArtifactLabels,
-  pendingFencedArtifact,
-} from "./artifacts";
+import { downloadableResponse, pendingFencedArtifact } from "./artifacts";
 
 describe("streamed downloadable artifacts", () => {
   const largeContent = "a".repeat(64 * 1024 + 1);
@@ -86,35 +81,3 @@ describe("streamed downloadable artifacts", () => {
   );
 });
 
-describe("artifactToolLabel", () => {
-  test("maps known artifact tools to a label", () => {
-    expect(artifactToolLabel("create_pdf_file")).toBe("PDF");
-    expect(artifactToolLabel("generate_image")).toBe("image");
-    expect(artifactToolLabel("create_xlsx_file")).toBe("spreadsheet");
-  });
-
-  test("returns null for non-artifact tools", () => {
-    expect(artifactToolLabel("web_search")).toBeNull();
-  });
-});
-
-describe("pendingArtifactLabels", () => {
-  const running = (name: string) => ({ type: "tool", status: "running", name });
-
-  test("lists running artifact tools not yet covered by an arrived artifact", () => {
-    expect(pendingArtifactLabels([running("create_pdf_file")], 0)).toEqual(["PDF"]);
-  });
-
-  test("drops as many as have already arrived", () => {
-    expect(pendingArtifactLabels([running("create_pdf_file")], 1)).toEqual([]);
-  });
-
-  test("ignores done/failed and non-artifact tools", () => {
-    const trace = [
-      { type: "tool", status: "done", name: "create_pdf_file" },
-      { type: "tool", status: "running", name: "web_search" },
-      { type: "reasoning", status: "running" },
-    ];
-    expect(pendingArtifactLabels(trace, 0)).toEqual([]);
-  });
-});
