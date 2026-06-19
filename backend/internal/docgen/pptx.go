@@ -283,17 +283,17 @@ func pptxPresentationXML(slideCount int) string {
 
 func pptxAppXML(slideCount int) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Lume</Application><Slides>%d</Slides></Properties>`, slideCount)
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Loom</Application><Slides>%d</Slides></Properties>`, slideCount)
 }
 
 func pptxCoreXML(title string) string {
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>` + xmlText(title) + `</dc:title><dc:creator>Lume</dc:creator></cp:coreProperties>`
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>` + xmlText(title) + `</dc:title><dc:creator>Loom</dc:creator></cp:coreProperties>`
 }
 
 func pptxThemeXML() string {
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Lume"><a:themeElements><a:clrScheme name="Lume"><a:dk1><a:srgbClr val="1D1D1B"/></a:dk1><a:lt1><a:srgbClr val="F3F0E8"/></a:lt1><a:dk2><a:srgbClr val="343432"/></a:dk2><a:lt2><a:srgbClr val="DEDAD0"/></a:lt2><a:accent1><a:srgbClr val="9A6B4F"/></a:accent1><a:accent2><a:srgbClr val="6F8B6B"/></a:accent2><a:accent3><a:srgbClr val="C7A35F"/></a:accent3><a:accent4><a:srgbClr val="7A7892"/></a:accent4><a:accent5><a:srgbClr val="A66F5F"/></a:accent5><a:accent6><a:srgbClr val="5F7F91"/></a:accent6><a:hlink><a:srgbClr val="4F6F9A"/></a:hlink><a:folHlink><a:srgbClr val="7A7892"/></a:folHlink></a:clrScheme><a:fontScheme name="Lume"><a:majorFont><a:latin typeface="Aptos Display"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/></a:minorFont></a:fontScheme><a:fmtScheme name="Lume"><a:fillStyleLst/><a:lnStyleLst/><a:effectStyleLst/><a:bgFillStyleLst/></a:fmtScheme></a:themeElements></a:theme>`
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Loom"><a:themeElements><a:clrScheme name="Loom"><a:dk1><a:srgbClr val="1D1D1B"/></a:dk1><a:lt1><a:srgbClr val="F3F0E8"/></a:lt1><a:dk2><a:srgbClr val="343432"/></a:dk2><a:lt2><a:srgbClr val="DEDAD0"/></a:lt2><a:accent1><a:srgbClr val="9A6B4F"/></a:accent1><a:accent2><a:srgbClr val="6F8B6B"/></a:accent2><a:accent3><a:srgbClr val="C7A35F"/></a:accent3><a:accent4><a:srgbClr val="7A7892"/></a:accent4><a:accent5><a:srgbClr val="A66F5F"/></a:accent5><a:accent6><a:srgbClr val="5F7F91"/></a:accent6><a:hlink><a:srgbClr val="4F6F9A"/></a:hlink><a:folHlink><a:srgbClr val="7A7892"/></a:folHlink></a:clrScheme><a:fontScheme name="Loom"><a:majorFont><a:latin typeface="Aptos Display"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/></a:minorFont></a:fontScheme><a:fmtScheme name="Loom"><a:fillStyleLst/><a:lnStyleLst/><a:effectStyleLst/><a:bgFillStyleLst/></a:fmtScheme></a:themeElements></a:theme>`
 }
 
 func pptxSlideMasterXML() string {

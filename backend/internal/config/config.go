@@ -1,4 +1,4 @@
-// Package config loads lume's runtime configuration from environment variables.
+// Package config loads loom's runtime configuration from environment variables.
 package config
 
 import (
@@ -32,7 +32,7 @@ const defaultKnowledgeInlineTokenBudget = 24000
 // BACKEND_CHAT_IDLE_TIMEOUT=0 to disable the watchdog.
 const defaultChatIdleTimeout = 60 * time.Second
 
-// AuthMode selects how Lume signs users in.
+// AuthMode selects how Loom signs users in.
 type AuthMode string
 
 const (

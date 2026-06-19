@@ -192,7 +192,7 @@ func (c *remoteClient) initialize(ctx context.Context) error {
 	if err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": "2025-06-18",
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]string{"name": "lume", "version": "dev"},
+		"clientInfo":      map[string]string{"name": "loom", "version": "dev"},
 	}, nil); err != nil {
 		return err
 	}
@@ -442,7 +442,7 @@ func (c *stdioClient) initialize(ctx context.Context) error {
 		c.initErr = c.call(ctx, "initialize", map[string]any{
 			"protocolVersion": "2025-06-18",
 			"capabilities":    map[string]any{},
-			"clientInfo":      map[string]string{"name": "lume", "version": "dev"},
+			"clientInfo":      map[string]string{"name": "loom", "version": "dev"},
 		}, nil)
 	})
 	return c.initErr

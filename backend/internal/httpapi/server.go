@@ -1,4 +1,4 @@
-// Package httpapi builds lume's HTTP handler: JSON/SSE API plus the embedded SPA.
+// Package httpapi builds loom's HTTP handler: JSON/SSE API plus the embedded SPA.
 package httpapi
 
 import (
