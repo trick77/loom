@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/lume/internal/auth"
+	"github.com/trick77/loom/internal/auth"
 )
 
 const maxJSONBodyBytes = 64 * 1024

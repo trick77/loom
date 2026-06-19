@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/llm"
 )
 
 func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {

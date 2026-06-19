@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/lume/internal/auth"
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/llm"
-	"github.com/trick77/lume/internal/sse"
+	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/sse"
 )
 
 const (

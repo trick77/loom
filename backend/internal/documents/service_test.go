@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/rag"
-	"github.com/trick77/lume/internal/store"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/loom/internal/store"
 )
 
 type fakeIndexer struct{ called []string }

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/documents"
-	"github.com/trick77/lume/internal/rag"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/documents"
+	"github.com/trick77/loom/internal/rag"
 )
 
 // DocumentService is the RAG document dependency used by document handlers. It is

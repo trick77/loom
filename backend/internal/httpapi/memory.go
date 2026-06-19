@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/lume/internal/auth"
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/llm"
 )
 
 // Memory tuning, shared by the project and user memories.

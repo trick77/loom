@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/llm"
 )
 
 func TestRenderUserContext(t *testing.T) {

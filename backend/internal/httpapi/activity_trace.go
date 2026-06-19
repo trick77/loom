@@ -3,7 +3,7 @@ package httpapi
 import (
 	"fmt"
 
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/llm"
 )
 
 type activityTraceEvent struct {

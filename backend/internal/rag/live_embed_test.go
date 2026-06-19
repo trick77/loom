@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/trick77/lume/internal/store"
+	"github.com/trick77/loom/internal/store"
 )
 
 // TestLiveEmbedAndRetrieve exercises the real embeddings endpoint + real

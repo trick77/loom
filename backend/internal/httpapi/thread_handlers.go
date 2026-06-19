@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/trick77/lume/internal/chat"
+	"github.com/trick77/loom/internal/chat"
 )
 
 func (s *server) handleListThreads(w http.ResponseWriter, r *http.Request) {

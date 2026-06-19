@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/chat"
-	"github.com/trick77/lume/internal/documents"
-	"github.com/trick77/lume/internal/rag"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/documents"
+	"github.com/trick77/loom/internal/rag"
 )
 
 type stubDocs struct {

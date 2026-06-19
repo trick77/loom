@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/llm"
 )
 
 const (

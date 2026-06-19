@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/trick77/lume/internal/artifact"
-	"github.com/trick77/lume/internal/imagescale"
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/imagescale"
+	"github.com/trick77/loom/internal/llm"
 )
 
 const maxImageAttachmentsPerMessage = 5

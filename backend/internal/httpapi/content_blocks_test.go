@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/trick77/lume/internal/llm"
+	"github.com/trick77/loom/internal/llm"
 )
 
 // TestBlockBuilderInterleavesChronologically drives a full round:
