@@ -232,6 +232,17 @@ export function Sidebar({
                 onToggleMenu={onToggleThreadMenu}
                 onCloseMenu={onCloseThreadMenu}
               />
+              {recentThreads.length > 0 && (
+                <button
+                  type="button"
+                  className="mt-1.5 flex h-7 w-full items-center gap-2.5 rounded-md px-1.5 text-left text-[#c7c5bd] transition-colors hover:bg-[#2a2a28]"
+                  onClick={onChats}
+                  aria-label="All chats"
+                >
+                  <Icon name="allChats" size="21px" className="h-[21px] w-[21px] shrink-0 text-[#f0eee7]" />
+                  <span className="truncate">All chats</span>
+                </button>
+              )}
               {user.role === "admin" && (
                 <button
                   className="mt-3 flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28]"
@@ -244,7 +255,7 @@ export function Sidebar({
             </>
           )}
         </nav>
-        <div className="relative border-t border-[#343432] px-3 py-3">
+        <div className="relative shrink-0 border-t border-[#343432] px-3 py-3">
           {/* The whole row (avatar circle + name) is the menu trigger, so clicking
               the round user circle opens the account menu too - and it works while
               the rail is collapsed, where only the avatar is shown. */}
