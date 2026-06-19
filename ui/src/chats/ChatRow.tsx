@@ -20,7 +20,6 @@ export function ChatRow({
   onSelectFromMenu,
   onRename,
   onDelete,
-  onArchive,
   onAddToProject,
   onRemoveFromProject,
   onStarChange,
@@ -39,7 +38,6 @@ export function ChatRow({
   onSelectFromMenu(): void;
   onRename(thread: Thread): void;
   onDelete(thread: Thread): void;
-  onArchive?(thread: Thread): void;
   onAddToProject?(thread: Thread): void;
   onRemoveFromProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
@@ -76,14 +74,6 @@ export function ChatRow({
           onCloseMenu();
           onRename(target);
         }}
-        onArchive={
-          onArchive === undefined
-            ? undefined
-            : (target) => {
-                onCloseMenu();
-                onArchive(target);
-              }
-        }
         onAddToProject={
           onAddToProject === undefined
             ? undefined

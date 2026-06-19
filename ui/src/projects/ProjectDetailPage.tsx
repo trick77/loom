@@ -32,7 +32,6 @@ export function ProjectDetailPage({
   onRenameThread,
   onDeleteThread,
   onStarThread,
-  onArchiveThread,
   onRemoveFromProject,
   onToggleThreadMenu,
   onCloseThreadMenu,
@@ -57,7 +56,6 @@ export function ProjectDetailPage({
   onOpenThread(threadID: string): void;
   onRenameThread(thread: Thread): void;
   onDeleteThread(thread: Thread): void;
-  onArchiveThread(thread: Thread): void;
   onStarThread(thread: Thread, starred: boolean, menuKey: string): void;
   onRemoveFromProject(thread: Thread): void;
   onToggleThreadMenu(menuKey: string): void;
@@ -209,7 +207,6 @@ export function ProjectDetailPage({
                       onSelectFromMenu={() => undefined}
                       onRename={onRenameThread}
                       onDelete={onDeleteThread}
-                      onArchive={onArchiveThread}
                       onRemoveFromProject={onRemoveFromProject}
                       onStarChange={onStarThread}
                     />

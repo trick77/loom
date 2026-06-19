@@ -340,7 +340,6 @@ export function ChatShell({
     movingThreads,
     renameTitle,
     renamingThread,
-    handleArchiveThread,
     handleDeleteConfirm,
     handleMoveThreadsToProject,
     handleRemoveThreadFromProject,
@@ -362,16 +361,6 @@ export function ChatShell({
     setThreads,
     handleActionError,
     onActiveThreadArchived: navigateToNew,
-    onActiveThreadRemoved: () => {
-      streamAbortRef.current?.abort();
-      activeThreadIDRef.current = null;
-      setActiveThread(null);
-      setMessages([]);
-      clearStreamingBlocks();
-      setSendError("");
-      navigate({ view: "new" });
-      setRoute({ view: "new" });
-    },
     onOpenThreadModal: () => setMobileSidebarOpen(false),
     route,
   });
@@ -809,7 +798,6 @@ export function ChatShell({
               onOpenThread={(threadID) => void selectThread(threadID)}
               onRenameThread={openRenameModal}
               onDeleteThread={openDeleteModal}
-              onArchiveThread={(thread) => void handleArchiveThread(thread)}
               onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
               onRemoveFromProject={(thread) => void handleRemoveThreadFromProject(thread)}
               onToggleThreadMenu={(menuKey) =>

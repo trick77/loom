@@ -461,18 +461,6 @@ export async function updateThread(
   return expectJSON<Thread>(response, "failed to update thread");
 }
 
-export async function archiveThread(threadId: string): Promise<void> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/archive`, {
-    method: "POST",
-  });
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to archive thread");
-  }
-}
-
 export async function deleteThread(threadId: string): Promise<void> {
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
     method: "DELETE",
