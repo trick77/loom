@@ -3,6 +3,10 @@ import { Icon } from "./chat/Icon";
 
 export const menuItemClass = "flex min-h-[30px] w-full items-start gap-2.5 px-3 py-1 text-left";
 export const menuIconClass = "grid h-[21px] w-[21px] shrink-0 place-items-center";
+// Destructive menu entry: muted red by default, solid red highlight on hover
+// (inset with rounded corners, white text/icon). Shared by every Delete menu.
+export const menuDeleteItemClass =
+  "mx-1 flex min-h-[30px] w-[calc(100%-0.5rem)] items-start gap-2.5 rounded-md px-3 py-1 text-left text-[#d98278] transition-colors hover:bg-[#d03b3c] hover:text-white";
 
 export function ThreadActionsMenu({
   menuKey,
@@ -93,7 +97,7 @@ export function ThreadActionsMenu({
       )}
       <MenuSeparator />
       <button
-        className={`${menuItemClass} text-[#d98278]`}
+        className={menuDeleteItemClass}
         role="menuitem"
         type="button"
         onClick={() => onDelete(thread)}
