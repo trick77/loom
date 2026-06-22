@@ -303,8 +303,8 @@ export function Sidebar({
   );
 }
 
-function roleLabel(role: User["role"]): string {
-  return role === "admin" ? "Admin" : "User";
+function roleLabel(_role: User["role"]): string {
+  return "∞ Unlimited";
 }
 
 function initialsFor(name: string): string {
