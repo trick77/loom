@@ -34,6 +34,7 @@ export function ProjectActionsMenu({
         <EditIcon />
         Edit details
       </button>
+      <div className="mx-[14px] my-[5px] h-px bg-[#454540]" role="separator" />
       <button
         className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
@@ -43,7 +44,6 @@ export function ProjectActionsMenu({
         <ArchiveIcon />
         {archived ? "Unarchive" : "Archive"}
       </button>
-      <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
       <button
         className={`${menuItemClass} text-[#d98278]`}
         role="menuitem"
@@ -62,11 +62,5 @@ function EditIcon() {
 }
 
 export function ArchiveIcon() {
-  return (
-    <svg className={menuIconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M5 8h14v11H5V8Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M4 5h16v3H4V5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M9 12h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
+  return <Icon name="archived" size="19px" className={menuIconClass} />;
 }
