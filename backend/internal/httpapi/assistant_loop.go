@@ -54,6 +54,11 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	}
 
 	toolRan := false
+	// One generated image per turn, regardless of format: the model sometimes
+	// emits several generate_image calls (across rounds or within one round).
+	// Only the first that produces an artifact runs; the rest are skipped with a
+	// tool result so the model sees the limit and stops asking.
+	imageGenerated := false
 	var artifacts []artifactResponse
 	b := &blockBuilder{}
 	for round := 1; round <= maxToolRounds; round++ {
@@ -114,14 +119,24 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			ToolCalls: result.ToolCalls,
 		})
 		for _, call := range result.ToolCalls {
-			output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call)
-			if handled {
-				if response != nil {
-					artifacts = append(artifacts, *response)
-					b.addArtifact(*response)
-				}
+			var output string
+			if call.Function.Name == "generate_image" && imageGenerated {
+				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
 			} else {
-				output = s.executeToolCall(ctx, user, call, round)
+				var response *artifactResponse
+				var handled bool
+				output, response, handled = s.executeBuiltInTool(ctx, stream, user, thread, call)
+				if handled {
+					if response != nil {
+						artifacts = append(artifacts, *response)
+						b.addArtifact(*response)
+						if call.Function.Name == "generate_image" {
+							imageGenerated = true
+						}
+					}
+				} else {
+					output = s.executeToolCall(ctx, user, call, round)
+				}
 			}
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				return assistantLoopResult{}, err

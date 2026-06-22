@@ -520,6 +520,86 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 }
 
+func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	threadStore := chat.NewStore(db)
+	artifactStore := artifact.NewStore(db)
+	user := testUser
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// One round emits two generate_image calls; a second round ends the loop with
+	// plain text. The cap must run only the first call regardless of format.
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{ToolCalls: []llm.ToolCall{
+				{ID: "call_1", Type: "function", Function: llm.ToolCallFunction{
+					Name:      "generate_image",
+					Arguments: `{"prompt":"a robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
+				}},
+				{ID: "call_2", Type: "function", Function: llm.ToolCallFunction{
+					Name:      "generate_image",
+					Arguments: `{"prompt":"a cat","filename":"cat","width":512,"height":512,"output_format":"jpeg"}`,
+				}},
+			}},
+			{Content: "Here is your image."},
+		},
+	}
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     threadStore,
+		Artifacts:  artifactStore,
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+	})
+
+	// The prompt avoids image-creation keywords so the request takes the default
+	// tool loop (where the per-turn cap lives), not the required-image path that
+	// already forces exactly one call.
+	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"please help me finish this"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if got := strings.Count(body, "event: artifact"); got != 1 {
+		t.Fatalf("artifact events = %d, want exactly 1:\n%s", got, body)
+	}
+	if !strings.Contains(body, "Only one image can be generated per turn") {
+		t.Fatalf("stream missing per-turn skip notice:\n%s", body)
+	}
+
+	messages, found, err := threadStore.ListMessages(context.Background(), user.ID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("ListMessages() found=%v err=%v", found, err)
+	}
+	var assistant chat.Message
+	for _, message := range messages {
+		if message.Role == chat.RoleAssistant {
+			assistant = message
+		}
+	}
+	var persisted []map[string]any
+	if err := json.Unmarshal(assistant.Artifacts, &persisted); err != nil {
+		t.Fatalf("unmarshal artifacts: %v", err)
+	}
+	if len(persisted) != 1 {
+		t.Fatalf("persisted artifacts = %d, want 1: %s", len(persisted), assistant.Artifacts)
+	}
+}
+
 func TestStreamMessageRequiresGenerateImageForObviousImageRequest(t *testing.T) {
 	llmClient := &fakeToolChatClient{results: []llm.StreamResult{{Content: "I am a text-based AI assistant and cannot generate images."}}}
 	store := &fakeThreadStore{

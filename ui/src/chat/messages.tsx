@@ -2,6 +2,7 @@ import {
   type ComponentPropsWithoutRef,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -27,6 +28,7 @@ import { MessageCitations } from "./Citations";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { CheckIcon, DownloadIcon, FileIcon } from "./icons";
 import { Icon } from "./Icon";
+import { ImageLightbox } from "./ImageLightbox";
 import { rehypeStreamFade } from "./streamFade";
 import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
@@ -265,23 +267,30 @@ export function AssistantProse({
   children: string;
   streaming?: boolean;
 }) {
-  const downloadable = downloadableResponse(children);
+  // Memoize on the text so the parsed artifact keeps a stable identity across
+  // re-renders. SvgResponseBubble's blob effect keys on artifact.content; for a
+  // data-URL SVG that content is a freshly-allocated buffer each parse, so without
+  // this the effect would revoke + recreate the object URL on every parent render.
+  const downloadable = useMemo(() => downloadableResponse(children), [children]);
+  const pendingArtifact = useMemo(() => pendingFencedArtifact(children), [children]);
 
   if (downloadable !== null) {
     const { artifact, before, after } = downloadable;
+    // SVG renders inline like a raster image; every other downloadable format
+    // shows the plain download card.
+    const Bubble = artifact.extension === "svg" ? SvgResponseBubble : DownloadResponseBubble;
     if (before === "" && after === "") {
-      return <DownloadResponseBubble artifact={artifact} />;
+      return <Bubble artifact={artifact} />;
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
         {before !== "" && <ProseMarkdown streaming={streaming}>{before}</ProseMarkdown>}
-        <DownloadResponseBubble artifact={artifact} />
+        <Bubble artifact={artifact} />
         {after !== "" && <ProseMarkdown streaming={streaming}>{after}</ProseMarkdown>}
       </div>
     );
   }
 
-  const pendingArtifact = pendingFencedArtifact(children);
   if (pendingArtifact !== null) {
     const { before, label, receivedBytes } = pendingArtifact;
     if (before === "") {
@@ -443,6 +452,61 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
           <DownloadIcon />
         </button>
       </div>
+    </div>
+  );
+}
+
+// SvgResponseBubble renders a model-emitted SVG inline, the same way generated
+// raster images appear, instead of offering only a download. The SVG is loaded
+// through an <img> blob URL — never inline DOM or an <iframe> — so the browser's
+// secure-image mode applies and any embedded <script>/onload in the (semi-trusted)
+// model output cannot execute. The blob is typed image/svg+xml explicitly because
+// <img> ignores blobs declared as anything else. SVGs usually carry only a
+// viewBox (no intrinsic size), so the preview uses a min-height floor rather than
+// reserving an aspect-ratio box.
+function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(new Blob([artifact.content], { type: "image/svg+xml" }));
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [artifact.content]);
+
+  const altText = `${artifact.label} response`;
+
+  return (
+    <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
+      <button
+        className="block min-h-[16rem] w-full cursor-zoom-in bg-[#1f1f1d]"
+        onClick={() => previewUrl !== "" && setLightboxOpen(true)}
+        type="button"
+        title={`Preview ${altText}`}
+        aria-label={`Preview ${altText}`}
+      >
+        {previewUrl !== "" && (
+          <img className="block max-h-[28rem] w-full object-contain" src={previewUrl} alt={altText} loading="lazy" />
+        )}
+      </button>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="ui-message-text truncate">{altText}</div>
+          <div className="ui-meta-text text-[#aaa79e]">Ready to download</div>
+        </div>
+        <button
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
+          onClick={() => downloadEmbeddedArtifact(artifact)}
+          type="button"
+          title={`Download ${altText}`}
+          aria-label={`Download ${altText}`}
+        >
+          <DownloadIcon />
+        </button>
+      </div>
+      {lightboxOpen && previewUrl !== "" && (
+        <ImageLightbox src={previewUrl} alt={altText} onClose={() => setLightboxOpen(false)} fill />
+      )}
     </div>
   );
 }
