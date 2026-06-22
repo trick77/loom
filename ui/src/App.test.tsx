@@ -79,7 +79,7 @@ test("renders authenticated shell for signed-in users", async () => {
   expect(await screen.findByRole("button", { name: /new thread/i })).toBeInTheDocument();
   expect(await screen.findByText(greetingPattern("Jan"))).toBeInTheDocument();
   expect(screen.getByText("Jan")).toBeInTheDocument();
-  expect(screen.getByText("User")).toBeInTheDocument();
+  expect(screen.getByText("∞ Unlimited")).toBeInTheDocument();
   expect(screen.queryByText("user")).not.toBeInTheDocument();
   expect(window.location.pathname).toBe("/new");
 });
