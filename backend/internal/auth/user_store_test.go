@@ -27,10 +27,10 @@ func TestUserStore_UpsertFromClaimsCreatesAndRefreshesRole(t *testing.T) {
 		Username: "jan",
 		Email:    "jan@example.com",
 		Name:     "Jan",
-		Groups:   []string{"slopr-admins"},
+		Groups:   []string{"loom-admins"},
 	}
 
-	user, err := store.UpsertFromClaims(context.Background(), claims, "slopr-admins")
+	user, err := store.UpsertFromClaims(context.Background(), claims, "loom-admins")
 	if err != nil {
 		t.Fatalf("UpsertFromClaims() error: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestUserStore_UpsertFromClaimsCreatesAndRefreshesRole(t *testing.T) {
 	}
 
 	claims.Groups = []string{"family"}
-	user, err = store.UpsertFromClaims(context.Background(), claims, "slopr-admins")
+	user, err = store.UpsertFromClaims(context.Background(), claims, "loom-admins")
 	if err != nil {
 		t.Fatalf("second upsert error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestUserStore_UpsertFromClaimsFallsBackToEmailForUsername(t *testing.T) {
 	user, err := store.UpsertFromClaims(context.Background(), Claims{
 		Subject: "authentik-sub-2",
 		Email:   "user@example.com",
-	}, "slopr-admins")
+	}, "loom-admins")
 	if err != nil {
 		t.Fatalf("UpsertFromClaims() error: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestUserStore_ListUsersOrdersByUsername(t *testing.T) {
 		{Subject: "sub-b", Username: "zoe"},
 		{Subject: "sub-a", Username: "amy"},
 	} {
-		if _, err := store.UpsertFromClaims(context.Background(), claims, "slopr-admins"); err != nil {
+		if _, err := store.UpsertFromClaims(context.Background(), claims, "loom-admins"); err != nil {
 			t.Fatalf("upsert %s: %v", claims.Subject, err)
 		}
 	}

@@ -110,7 +110,7 @@ func env(key, def string) string {
 func Load() (Config, error) {
 	cfg := Config{
 		Addr:                    env("BACKEND_ADDR", ":8080"),
-		DBPath:                  env("BACKEND_DB_PATH", "/data/slopr.db"),
+		DBPath:                  env("BACKEND_DB_PATH", "/data/loom.db"),
 		UsersDir:                env("BACKEND_USERS_DIR", "/data/users"),
 		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
 		ChatBaseURL:             env("BACKEND_CHAT_BASE_URL", ""),

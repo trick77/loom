@@ -68,7 +68,7 @@ const (
 	obscuraNavigateToolName = "obscura__browser_navigate"
 	obscuraSnapshotToolName = "obscura__browser_snapshot"
 	// tavilyServerName is the map key under which the built-in Tavily web-search
-	// server is registered (see cmd/slopr/main.go).
+	// server is registered (see cmd/loom/main.go).
 	tavilyServerName = "tavily"
 )
 

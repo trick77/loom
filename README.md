@@ -1,4 +1,4 @@
-<img src="ui/src/assets/sloppy-slopr.png" alt="Loom" width="360">
+<img src="ui/src/assets/sloppy-loom.png" alt="Loom" width="360">
 
 Self-hosted, multi-user LLM chat app with a Go backend, React frontend, SQLite, SSE, and
 authentik-backed authentication.
@@ -40,8 +40,8 @@ BACKEND_SESSION_SECRET=dev-secret \
 BACKEND_AUTH_MODE=dev \
 BACKEND_ADDR=127.0.0.1:8080 \
 BACKEND_PUBLIC_URL=http://localhost:8080 \
-BACKEND_DB_PATH=/tmp/slopr-dev.db \
-go run ./cmd/slopr
+BACKEND_DB_PATH=/tmp/loom-dev.db \
+go run ./cmd/loom
 ```
 
 This mode is guarded at startup. `BACKEND_AUTH_MODE=dev` is rejected unless `BACKEND_ADDR` binds to
@@ -61,14 +61,14 @@ Use these settings:
 
 - Flow: the default explicit consent or authorization flow used by your authentik installation.
 - Client type: confidential.
-- Redirect URI: `https://slopr.example.com/api/auth/callback`
+- Redirect URI: `https://loom.example.com/api/auth/callback`
 - Signing key: your normal authentik signing key.
 - Scopes: include `openid`, `profile`, and `email`.
 - Subject mode: stable per-user subject.
 
 Record:
 
-- Issuer URL, for example `https://auth.example.com/application/o/slopr/`
+- Issuer URL, for example `https://auth.example.com/application/o/loom/`
 - Client ID
 - Client Secret
 
@@ -79,15 +79,15 @@ Create an authentik **Application** that uses the provider.
 Suggested values:
 
 - Name: `Loom`
-- Slug: `slopr`
-- Launch URL: `https://slopr.example.com/`
+- Slug: `loom`
+- Launch URL: `https://loom.example.com/`
 
 ### 3. Configure admin group mapping
 
 Create or choose an authentik group for Loom administrators, for example:
 
 ```text
-slopr-admins
+loom-admins
 ```
 
 Ensure authentik includes a `groups` claim in the ID token for the Loom provider. Loom maps users
@@ -100,14 +100,14 @@ Set these variables for Loom:
 
 ```bash
 BACKEND_AUTH_MODE=oidc
-BACKEND_PUBLIC_URL=https://slopr.example.com
+BACKEND_PUBLIC_URL=https://loom.example.com
 BACKEND_SESSION_SECRET=replace-with-a-long-random-secret
-BACKEND_OIDC_ISSUER=https://auth.example.com/application/o/slopr/
+BACKEND_OIDC_ISSUER=https://auth.example.com/application/o/loom/
 BACKEND_OIDC_CLIENT_ID=replace-with-authentik-client-id
 BACKEND_OIDC_CLIENT_SECRET=replace-with-authentik-client-secret
-BACKEND_OIDC_REDIRECT_URL=https://slopr.example.com/api/auth/callback
-BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL=https://slopr.example.com/
-BACKEND_OIDC_ADMIN_GROUP=slopr-admins
+BACKEND_OIDC_REDIRECT_URL=https://loom.example.com/api/auth/callback
+BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL=https://loom.example.com/
+BACKEND_OIDC_ADMIN_GROUP=loom-admins
 BACKEND_CHAT_BASE_URL=http://your-mimo-host/v1
 BACKEND_CHAT_API_KEY=replace-with-chat-api-key
 BACKEND_CHAT_MAX_COMPLETION_TOKENS=2048
@@ -218,7 +218,7 @@ Still planned for later phases:
 ### Smoke Test
 
 1. Start Loom with the environment above.
-2. Open `https://slopr.example.com/`.
+2. Open `https://loom.example.com/`.
 3. Click **Sign in**.
 4. Complete authentik login.
 5. Confirm Loom opens the authenticated app shell.

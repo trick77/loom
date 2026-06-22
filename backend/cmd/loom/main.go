@@ -1,4 +1,4 @@
-// Command slopr is the all-in-one server: API + embedded SPA, backed by SQLite.
+// Command loom is the all-in-one server: API + embedded SPA, backed by SQLite.
 package main
 
 import (

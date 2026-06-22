@@ -1,6 +1,6 @@
 services:
-  slopr-ui:
-    image: ghcr.io/trick77/slopr-ui:latest
+  loom-ui:
+    image: ghcr.io/trick77/loom-ui:latest
     ports:
       - "127.0.0.1:8081:80"
     healthcheck:
@@ -11,26 +11,26 @@ services:
       start_interval: 5s
       retries: 3
     depends_on:
-      slopr:
+      loom:
         condition: service_healthy
     networks:
       - traefik
-      - slopr
+      - loom
     labels:
       traefik.enable: "true"
       traefik.docker.network: traefik
-      traefik.http.routers.slopr.rule: Host(`slopr.trick77.com`)
-      traefik.http.routers.slopr.entrypoints: websecure
-      traefik.http.routers.slopr.tls: "true"
-      traefik.http.services.slopr.loadbalancer.server.port: "80"
+      traefik.http.routers.loom.rule: Host(`loom.trick77.com`)
+      traefik.http.routers.loom.entrypoints: websecure
+      traefik.http.routers.loom.tls: "true"
+      traefik.http.services.loom.loadbalancer.server.port: "80"
 
-  slopr:
-    image: ghcr.io/trick77/slopr:latest
+  loom:
+    image: ghcr.io/trick77/loom:latest
     user: "1000:1000"
     environment:
       BACKEND_ADDR: ":8080"
       BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-info}"
-      BACKEND_DB_PATH: "/data/slopr.db"
+      BACKEND_DB_PATH: "/data/loom.db"
       BACKEND_USERS_DIR: "/data/users"
       BACKEND_PUBLIC_URL: "${BACKEND_PUBLIC_URL}"
       BACKEND_AUTH_MODE: "${BACKEND_AUTH_MODE:-oidc}"
@@ -44,7 +44,7 @@ services:
       BACKEND_OIDC_CLIENT_SECRET: "${BACKEND_OIDC_CLIENT_SECRET}"
       BACKEND_OIDC_REDIRECT_URL: "${BACKEND_OIDC_REDIRECT_URL}"
       BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL: "${BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL}"
-      BACKEND_OIDC_ADMIN_GROUP: "${BACKEND_OIDC_ADMIN_GROUP:-slopr-admins}"
+      BACKEND_OIDC_ADMIN_GROUP: "${BACKEND_OIDC_ADMIN_GROUP:-loom-admins}"
       BACKEND_CHAT_BASE_URL: "${BACKEND_CHAT_BASE_URL}"
       BACKEND_CHAT_API_KEY: "${BACKEND_CHAT_API_KEY}"
       BACKEND_EMBED_BASE_URL: "${BACKEND_EMBED_BASE_URL}"
@@ -57,7 +57,7 @@ services:
       BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"
       BACKEND_SESSION_SECRET: "${BACKEND_SESSION_SECRET}"
     healthcheck:
-      test: ["CMD", "/slopr", "healthcheck"]
+      test: ["CMD", "/loom", "healthcheck"]
       interval: 60s
       timeout: 5s
       start_period: 30s
@@ -67,7 +67,7 @@ services:
       - ./data:/data
       # per-user volumes are mounted manually under /data/users/<user-id>/
     networks:
-      - slopr
+      - loom
       - fetch-mcp
     depends_on:
       tika:
@@ -85,7 +85,7 @@ services:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
     image: apache/tika:2.9.2.1-full
     networks:
-      - slopr
+      - loom
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9998"]
       interval: 60s
@@ -98,10 +98,10 @@ services:
 
   fetch:
     # Lightweight URL/document fetch MCP, bridged to streamable-HTTP by
-    # supergateway. Slopr reaches it via BACKEND_FETCH_MCP_URL.
+    # supergateway. Loom reaches it via BACKEND_FETCH_MCP_URL.
     # Keep it off the default app network so fetched URLs cannot resolve app
     # sidecars such as tika by Compose service name.
-    image: ghcr.io/trick77/slopr-fetch:latest
+    image: ghcr.io/trick77/loom-fetch:latest
     healthcheck:
       test: ["CMD", "node", "-e", "const s=require('net').connect(8090,'127.0.0.1');s.setTimeout(3000);s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
       interval: 60s
@@ -117,7 +117,7 @@ services:
   obscura:
     # Headless-browser MCP. Obscura v0.1.8+ can bind native MCP HTTP to
     # 0.0.0.0, so no local wrapper or stdio bridge is needed.
-    # Slopr reaches it via BACKEND_OBSCURA_MCP_URL; tools are
+    # Loom reaches it via BACKEND_OBSCURA_MCP_URL; tools are
     # surfaced to the LLM as obscura__<tool>.
     image: h4ckf0r0day/obscura:0.1.8
     command:
@@ -129,7 +129,7 @@ services:
       - "8090"
       - --stealth
       # Do not add --allow-private-network: Obscura's default private/loopback
-      # denylist is part of Slopr's SSRF protection for browser tools.
+      # denylist is part of Loom's SSRF protection for browser tools.
     healthcheck:
       # The upstream image is distroless, so there is no shell/curl/node for a
       # real TCP probe. Startup MCP discovery retries within its 30s deadline to
@@ -141,12 +141,12 @@ services:
       start_interval: 5s
       retries: 6
     networks:
-      - slopr
+      - loom
     labels:
       traefik.enable: "false"
 
 networks:
-  slopr:
+  loom:
   fetch-mcp:
   traefik:
     external: true

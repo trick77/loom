@@ -48,7 +48,7 @@ func TestResolveOutputPathUsesProjectlessOutputs(t *testing.T) {
 
 func TestResolveOutputPathRejectsTraversalAndReservedPaths(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{"../secret.pdf", "/tmp/secret.pdf", ".slopr/secret.pdf", "folder/../../secret.pdf"} {
+	for _, name := range []string{"../secret.pdf", "/tmp/secret.pdf", ".loom/secret.pdf", "folder/../../secret.pdf"} {
 		_, err := ResolveOutputPath(OutputRequest{
 			UsersDir:        root,
 			UserID:          "user_1",

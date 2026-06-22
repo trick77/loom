@@ -16,8 +16,8 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.Addr != ":8080" {
 		t.Errorf("Addr default = %q, want :8080", cfg.Addr)
 	}
-	if cfg.DBPath != "/data/slopr.db" {
-		t.Errorf("DBPath default = %q, want /data/slopr.db", cfg.DBPath)
+	if cfg.DBPath != "/data/loom.db" {
+		t.Errorf("DBPath default = %q, want /data/loom.db", cfg.DBPath)
 	}
 	if cfg.UsersDir != "/data/users" {
 		t.Errorf("UsersDir default = %q, want /data/users", cfg.UsersDir)
@@ -265,31 +265,31 @@ func TestLoad_defaultsDoNotRequireAdminPassword(t *testing.T) {
 
 func TestLoad_oidcSettings(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
-	t.Setenv("BACKEND_PUBLIC_URL", "https://slopr.example.com")
-	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/slopr/")
-	t.Setenv("BACKEND_OIDC_CLIENT_ID", "slopr-client")
-	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "slopr-secret")
-	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://slopr.example.com/api/auth/callback")
-	t.Setenv("BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL", "https://slopr.example.com/")
-	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "slopr-admins")
+	t.Setenv("BACKEND_PUBLIC_URL", "https://loom.example.com")
+	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/loom/")
+	t.Setenv("BACKEND_OIDC_CLIENT_ID", "loom-client")
+	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "loom-secret")
+	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://loom.example.com/api/auth/callback")
+	t.Setenv("BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL", "https://loom.example.com/")
+	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "loom-admins")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.OIDC.Issuer != "https://auth.example.com/application/o/slopr/" {
+	if cfg.OIDC.Issuer != "https://auth.example.com/application/o/loom/" {
 		t.Fatalf("OIDC issuer = %q", cfg.OIDC.Issuer)
 	}
-	if cfg.OIDC.AdminGroup != "slopr-admins" {
+	if cfg.OIDC.AdminGroup != "loom-admins" {
 		t.Fatalf("OIDC admin group = %q", cfg.OIDC.AdminGroup)
 	}
 }
 
 func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
-	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/slopr/")
-	t.Setenv("BACKEND_OIDC_CLIENT_ID", "slopr-client")
-	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://slopr.example.com/api/auth/callback")
+	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/loom/")
+	t.Setenv("BACKEND_OIDC_CLIENT_ID", "loom-client")
+	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://loom.example.com/api/auth/callback")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when OIDC issuer is set without client secret")
@@ -310,7 +310,7 @@ func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
 	t.Setenv("BACKEND_AUTH_MODE", "dev")
 	t.Setenv("BACKEND_ADDR", "localhost:8080")
-	t.Setenv("BACKEND_PUBLIC_URL", "https://slopr.example.com")
+	t.Setenv("BACKEND_PUBLIC_URL", "https://loom.example.com")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when dev auth has a non-loopback public URL")

@@ -1,13 +1,13 @@
-# Fetch MCP, bridged to streamable-HTTP for Slopr.
+# Fetch MCP, bridged to streamable-HTTP for Loom.
 #
-# The reference fetch server is a stdio MCP server. Slopr discovers remote MCP
+# The reference fetch server is a stdio MCP server. Loom discovers remote MCP
 # tools at startup, so this container runs the stdio server and lets
 # supergateway expose it as Streamable HTTP on 0.0.0.0:8090/mcp.
 #
 # SSRF: mcp-server-fetch does not document a private-network denylist. Compose
-# keeps this sidecar off Slopr's default app network so it cannot reach sidecars
+# keeps this sidecar off Loom's default app network so it cannot reach sidecars
 # such as Tika by service DNS name. It remains on a dedicated MCP network with
-# Slopr so Slopr can call the bridge.
+# Loom so Loom can call the bridge.
 #
 # Robots/telemetry: we do not pass --ignore-robots-txt, so model-initiated
 # fetches keep the server's default robots.txt behavior. The reference fetch
