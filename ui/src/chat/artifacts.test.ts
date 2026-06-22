@@ -41,6 +41,17 @@ describe("streamed downloadable artifacts", () => {
     },
   );
 
+  test("types completed svg fences as image/svg+xml so they render in an <img>", () => {
+    const embedded = downloadableResponse('```svg\n<svg viewBox="0 0 10 10"></svg>\n```');
+
+    expect(embedded?.artifact).toMatchObject({
+      extension: "svg",
+      label: "SVG",
+      mimeType: "image/svg+xml;charset=utf-8",
+      content: '<svg viewBox="0 0 10 10"></svg>',
+    });
+  });
+
   test.each([
     ["pdf", "PDF", "application/pdf"],
   ])("turns completed %s fences into downloadable responses", (language, label, mimeType) => {

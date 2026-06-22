@@ -139,7 +139,7 @@ const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
     inlineBelowBytes: INLINE_DOWNLOAD_THRESHOLD_BYTES,
   },
   pdf: { mimeType: "application/pdf", languages: ["pdf"], mimeTypes: ["application/pdf"] },
-  svg: { mimeType: "application/xml;charset=utf-8", languages: ["svg"], mimeTypes: ["image/svg+xml"] },
+  svg: { mimeType: "image/svg+xml;charset=utf-8", languages: ["svg"], mimeTypes: ["image/svg+xml"] },
   txt: {
     mimeType: "text/plain;charset=utf-8",
     languages: ["txt", "text"],

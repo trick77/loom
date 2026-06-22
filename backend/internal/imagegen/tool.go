@@ -50,7 +50,7 @@ func (t Tool) ToolName() string {
 func (t Tool) Schema() ToolSchema {
 	return ToolSchema{
 		Name:        t.ToolName(),
-		Description: "Generate a PNG or JPEG image from a text prompt. Use this when the user asks to create, draw, render, or generate an image.",
+		Description: "Generate a PNG or JPEG image from a text prompt. Use this when the user asks to create, draw, render, or generate an image. Generate at most one image per turn.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 
 import { downloadArtifact, type Artifact } from "../api";
 import { buildImageStats, formatFileSize } from "./artifacts";
-import { CloseIcon, DownloadIcon } from "./icons";
+import { DownloadIcon } from "./icons";
 import { Icon } from "./Icon";
+import { ImageLightbox } from "./ImageLightbox";
 
 export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
@@ -58,15 +59,6 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
     setError("");
     setLightboxOpen(true);
   }
-
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setLightboxOpen(false);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightboxOpen]);
 
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
@@ -137,29 +129,11 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
         </button>
       </div>
       {lightboxOpen && previewUrl !== "" && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
-          onClick={() => setLightboxOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Preview ${artifact.displayFilename}`}
-        >
-          <button
-            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-black/40 text-[#f3f0e8] transition-colors hover:bg-black/60"
-            onClick={() => setLightboxOpen(false)}
-            type="button"
-            title="Close preview"
-            aria-label="Close preview"
-          >
-            <CloseIcon />
-          </button>
-          <img
-            className="max-h-full max-w-full object-contain"
-            src={previewUrl}
-            alt={artifact.displayFilename}
-            onClick={(event) => event.stopPropagation()}
-          />
-        </div>
+        <ImageLightbox
+          src={previewUrl}
+          alt={artifact.displayFilename}
+          onClose={() => setLightboxOpen(false)}
+        />
       )}
     </div>
   );
