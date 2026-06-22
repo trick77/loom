@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef } from "react";
 
 import type { McpStatusEvent, Project, Thread } from "../api";
 import { menuIconClass, menuItemClass, ThreadActionsMenu, TrashMenuIcon } from "../ThreadActionsMenu";
+import { ArchiveIcon } from "../projects/ProjectActionsMenu";
 import { Icon } from "./Icon";
 import type { SidebarIconName } from "./types";
 
@@ -221,6 +222,7 @@ export function SidebarProjectItem({
   onNavigate,
   onStarChange,
   onEdit,
+  onArchive,
   onDelete,
   onToggleMenu,
   onCloseMenu,
@@ -232,6 +234,7 @@ export function SidebarProjectItem({
   onNavigate(project: Project): void;
   onStarChange(project: Project, starred: boolean, menuKey: string): void;
   onEdit(project: Project): void;
+  onArchive(project: Project): void;
   onDelete(project: Project): void;
   onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
@@ -287,6 +290,7 @@ export function SidebarProjectItem({
           className="right-1 left-auto md:left-[174px] md:right-auto"
           onStarChange={(target, starred) => onStarChange(target, starred, menuKey)}
           onEdit={onEdit}
+          onArchive={onArchive}
           onDelete={onDelete}
         />
       )}
@@ -299,12 +303,14 @@ function ProjectSidebarMenu({
   className = "right-0 top-full",
   onStarChange,
   onEdit,
+  onArchive,
   onDelete,
 }: {
   project: Project;
   className?: string;
   onStarChange(project: Project, starred: boolean): void;
   onEdit(project: Project): void;
+  onArchive(project: Project): void;
   onDelete(project: Project): void;
 }) {
   return (
@@ -334,6 +340,15 @@ function ProjectSidebarMenu({
           <Icon name="edit" size="19px" />
         </span>
         Edit details
+      </button>
+      <button
+        className={`${menuItemClass} text-[#f3f0e8]`}
+        role="menuitem"
+        type="button"
+        onClick={() => onArchive(project)}
+      >
+        <ArchiveIcon />
+        Archive
       </button>
       <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
       <button

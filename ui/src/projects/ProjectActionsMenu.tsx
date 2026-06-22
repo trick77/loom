@@ -61,7 +61,7 @@ function EditIcon() {
   return <Icon name="edit" size="19px" className={menuIconClass} />;
 }
 
-function ArchiveIcon() {
+export function ArchiveIcon() {
   return (
     <svg className={menuIconClass} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M5 8h14v11H5V8Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
