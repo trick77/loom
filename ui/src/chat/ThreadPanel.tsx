@@ -121,31 +121,41 @@ export function ThreadPanel({
   );
   const latestReasoningTitled =
     latestReasoning?.type === "reasoning" && (latestReasoning.title?.trim() ?? "") !== "";
-  const reasoningSettled =
-    hasReasoning && answerTextStreaming && !toolRunning && !toolPending && latestReasoningTitled;
+  // The answer phase has begun: reasoning produced content and prose is now
+  // streaming, with no tool running or pending (the `toolPending` bridge keeps
+  // pre-tool preamble text from triggering this early).
+  const answerStarted = hasReasoning && answerTextStreaming && !toolRunning && !toolPending;
+  // `reasoningSettled` is `answerStarted` plus the background reasoning title: it
+  // gates the "Thinking" → abstract label flip, which must wait for the title so
+  // the raw-first-sentence fallback never flashes mid-stream. The auto-collapse
+  // below uses bare `answerStarted` instead, so the window collapses the instant
+  // the answer starts rather than when the abstract happens to arrive.
+  const reasoningSettled = answerStarted && latestReasoningTitled;
   // `liveTraceThinking` drives the "Thinking" affordance (active spinner), not the
   // open/closed state: the window stays open through the answer even after the
   // reasoning phase settles.
   const liveTraceThinking = isSending && !reasoningSettled;
-  // Auto-open the live thinking window exactly once per turn. Stay collapsed at the
-  // bare start of a turn (nothing to show yet); open the first moment there is
-  // something to show — reasoning/tool content has arrived, or the answer has begun
-  // streaming (the reasoning-free case). Once opened it stays open for the rest of
-  // the turn, so a manual collapse in between sticks. The turn ending resets the
-  // latch and collapses the now-past trace.
   const liveTraceHasSomethingToShow = isSending && (hasActiveActivityTrace || answerTextStreaming);
-  const liveTraceAutoOpenedRef = useRef(false);
+  // Auto-open/collapse the live thinking window by tracking which phase the turn is
+  // in: open while there is reasoning/tool activity to show and the answer has not
+  // begun, collapse once the answer starts. This is applied only on the transition
+  // (the desired state flipping), so a manual toggle in between sticks until the
+  // next phase change — and a turn that resumes reasoning after an answer (e.g. a
+  // second round around a tool call) re-opens, then re-collapses on the next
+  // answer. The turn ending resets everything and collapses the now-past trace.
+  const liveTraceAutoExpanded = liveTraceHasSomethingToShow && !answerStarted;
+  const liveTraceAutoExpandedRef = useRef(false);
   useEffect(() => {
     if (!isSending) {
-      liveTraceAutoOpenedRef.current = false;
+      liveTraceAutoExpandedRef.current = false;
       setLiveTraceExpanded(false);
       return;
     }
-    if (liveTraceHasSomethingToShow && !liveTraceAutoOpenedRef.current) {
-      liveTraceAutoOpenedRef.current = true;
-      setLiveTraceExpanded(true);
+    if (liveTraceAutoExpanded !== liveTraceAutoExpandedRef.current) {
+      liveTraceAutoExpandedRef.current = liveTraceAutoExpanded;
+      setLiveTraceExpanded(liveTraceAutoExpanded);
     }
-  }, [isSending, liveTraceHasSomethingToShow]);
+  }, [isSending, liveTraceAutoExpanded]);
 
   const refreshScrollState = useCallback(() => {
     const transcript = transcriptRef.current;
