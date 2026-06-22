@@ -269,12 +269,12 @@ export function Sidebar({
             aria-expanded={userMenuOpen}
             onClick={onToggleUserMenu}
           >
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dedbd0] text-xs font-semibold text-[#1d1d1b]">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#bbbaaf] text-sm font-semibold text-[#1d1d1b]">
               {initialsFor(displayName)}
             </div>
             {!railCollapsed && (
               <div className="min-w-0 flex-1 text-left">
-                <div className="truncate text-[#f4f0e8]">{displayName}</div>
+                <div className="truncate text-[#c7c5bd]">{displayName}</div>
                 <div className="truncate font-normal text-[#8f8b82]">{roleLabel(user.role)}</div>
               </div>
             )}
