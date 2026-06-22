@@ -82,6 +82,11 @@ Suggested values:
 - Slug: `loom`
 - Launch URL: `https://loom.example.com/`
 
+The application **Name** and **Description** you set here are rendered by authentik on its
+login/consent page — the screen users land on after clicking "Sign in". Loom does not control
+that text, so set them to match your branding (e.g. Name `Loom`, Description
+"Where your ideas come together.").
+
 ### 3. Configure admin group mapping
 
 Create or choose an authentik group for Loom administrators, for example:
