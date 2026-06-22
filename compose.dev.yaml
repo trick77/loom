@@ -11,13 +11,13 @@
 # Tavily's hosted MCP server).
 services:
   # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
-  slopr-init:
+  loom-init:
     image: alpine
     command: chown -R 65532:65532 /data
     volumes:
-      - slopr-dev-data:/data
+      - loom-dev-data:/data
 
-  slopr:
+  loom:
     build:
       context: .
       dockerfile: backend/Containerfile
@@ -28,7 +28,7 @@ services:
       BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-debug}"
       BACKEND_PUBLIC_URL: "http://localhost:8080"
       BACKEND_SESSION_SECRET: dev-secret-please-change
-      BACKEND_DB_PATH: /data/slopr.db
+      BACKEND_DB_PATH: /data/loom.db
       BACKEND_USERS_DIR: /data/users
       BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:-}"
@@ -43,9 +43,9 @@ services:
       BACKEND_BFL_API_KEY: "${BACKEND_BFL_API_KEY:-}"
       BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"
     volumes:
-      - slopr-dev-data:/data
+      - loom-dev-data:/data
     depends_on:
-      slopr-init:
+      loom-init:
         condition: service_completed_successfully
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
@@ -55,7 +55,7 @@ services:
         condition: service_healthy
 
   fetch:
-    # Lightweight URL/document fetch MCP. Slopr is host-networked here, so the
+    # Lightweight URL/document fetch MCP. Loom is host-networked here, so the
     # bridge is published on a localhost port and reached via BACKEND_FETCH_MCP_URL at
     # http://localhost:8091/mcp.
     build:
@@ -65,7 +65,7 @@ services:
       - "127.0.0.1:8091:8090"
 
   obscura:
-    # Headless-browser MCP. Slopr is host-networked here, so native MCP HTTP is
+    # Headless-browser MCP. Loom is host-networked here, so native MCP HTTP is
     # published on a localhost port and reached via BACKEND_OBSCURA_MCP_URL at
     # http://localhost:8090/mcp.
     image: h4ckf0r0day/obscura:0.1.8
@@ -78,7 +78,7 @@ services:
       - "8090"
       - --stealth
       # Do not add --allow-private-network: Obscura's default private/loopback
-      # denylist is part of Slopr's SSRF protection for browser tools.
+      # denylist is part of Loom's SSRF protection for browser tools.
     ports:
       - "127.0.0.1:8090:8090"
     healthcheck:
@@ -93,4 +93,4 @@ services:
       retries: 6
 
 volumes:
-  slopr-dev-data:
+  loom-dev-data:

@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Refresh the Dockerized local dev stack: build the slopr image and stop the
+# Refresh the Dockerized local dev stack: build the loom image and stop the
 # previous stack in parallel, then start it again.
 #
 # Optional chat API config for local dev:
@@ -21,7 +21,7 @@ cd "$ROOT"
 build_status=0
 down_status=0
 
-docker compose -f compose.dev.yaml build slopr &
+docker compose -f compose.dev.yaml build loom &
 build_pid=$!
 
 docker compose -f compose.dev.yaml down &

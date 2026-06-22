@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-DB_PATH=${BACKEND_DB_PATH:-/tmp/slopr-dev.db}
+DB_PATH=${BACKEND_DB_PATH:-/tmp/loom-dev.db}
 
 cleanup() {
   if [ -n "${BACKEND_PID:-}" ]; then
@@ -18,7 +18,7 @@ trap cleanup EXIT INT TERM
   BACKEND_ADDR=127.0.0.1:8080 \
   BACKEND_PUBLIC_URL=http://127.0.0.1:8080 \
   BACKEND_DB_PATH="$DB_PATH" \
-  go run ./cmd/slopr
+  go run ./cmd/loom
 ) &
 BACKEND_PID=$!
 

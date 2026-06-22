@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/slopr-refresh-test.XXXXXX")
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/loom-refresh-test.XXXXXX")
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -20,7 +20,7 @@ LOG_FILE=${BACKEND_REFRESH_TEST_LOG:?}
 printf '%s\n' "$*" >> "$LOG_FILE"
 
 case "$*" in
-  "compose -f compose.dev.yaml build slopr")
+  "compose -f compose.dev.yaml build loom")
     printf '%s\n' build-start >> "$LOG_FILE"
     sleep 1
     printf '%s\n' build-done >> "$LOG_FILE"

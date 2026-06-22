@@ -9,8 +9,8 @@ ui/dist/
 *.tsbuildinfo
 
 # Go
-/slopr
-/backend/slopr
+/loom
+/backend/loom
 /bin/
 *.test
 

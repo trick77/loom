@@ -23,10 +23,10 @@ fe-build:
 	cd ui && npm ci && npm run build
 
 build: fe-build
-	cd backend && CGO_ENABLED=0 go build -o ../bin/slopr ./cmd/slopr
+	cd backend && CGO_ENABLED=0 go build -o ../bin/loom ./cmd/loom
 
 run:
-	cd backend && go run ./cmd/slopr
+	cd backend && go run ./cmd/loom
 
 dev:
 	./hack/dev.sh

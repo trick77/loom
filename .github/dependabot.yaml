@@ -13,7 +13,7 @@ updates:
       # Pinned at v0.23.x for sqlite-vec ABI compatibility (see AGENTS.md);
       # bumping to v0.24+ breaks the current sqlite-vec binding.
       - dependency-name: github.com/ncruces/go-sqlite3
-      # v2.3.4+ requires Go 1.26.1, while Slopr is intentionally pinned to Go 1.25.
+      # v2.3.4+ requires Go 1.26.1, while Loom is intentionally pinned to Go 1.25.
       - dependency-name: github.com/johnfercher/maroto/v2
         versions: [">=2.3.4"]
 

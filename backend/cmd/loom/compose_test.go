@@ -24,7 +24,7 @@ func TestComposePassesBFLImageGenerationEnv(t *testing.T) {
 				`BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"`,
 			} {
 				if !strings.Contains(compose, want) {
-					t.Fatalf("%s does not pass %s into the slopr container", path, strings.Split(want, ":")[0])
+					t.Fatalf("%s does not pass %s into the loom container", path, strings.Split(want, ":")[0])
 				}
 			}
 		})
@@ -47,9 +47,9 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		`image: ghcr.io/trick77/slopr:latest`,
-		`image: ghcr.io/trick77/slopr-ui:latest`,
-		`image: ghcr.io/trick77/slopr-fetch:latest`,
+		`image: ghcr.io/trick77/loom:latest`,
+		`image: ghcr.io/trick77/loom-ui:latest`,
+		`image: ghcr.io/trick77/loom-fetch:latest`,
 		`image: h4ckf0r0day/obscura:0.1.8`,
 	} {
 		if !strings.Contains(compose, want) {
@@ -95,7 +95,7 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 				}
 			}
 			for _, unwanted := range []string{
-				"ghcr.io/trick77/slopr-obscura",
+				"ghcr.io/trick77/loom-obscura",
 				"context: ./obscura",
 				"supergateway",
 			} {
@@ -104,8 +104,8 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 				}
 			}
 
-			if path == "../../../compose.yaml" && !strings.Contains(service, "- slopr") {
-				t.Fatal("production obscura service must join the slopr network")
+			if path == "../../../compose.yaml" && !strings.Contains(service, "- loom") {
+				t.Fatal("production obscura service must join the loom network")
 			}
 		})
 	}
@@ -118,24 +118,24 @@ func TestProductionComposeOnlyPublishesUI(t *testing.T) {
 	}
 	compose := string(data)
 
-	uiService := strings.Index(compose, "\n  slopr-ui:")
+	uiService := strings.Index(compose, "\n  loom-ui:")
 	if uiService < 0 {
-		t.Fatal("compose.yaml missing slopr-ui service")
+		t.Fatal("compose.yaml missing loom-ui service")
 	}
-	apiService := strings.Index(compose, "\n  slopr:")
+	apiService := strings.Index(compose, "\n  loom:")
 	if apiService < 0 {
-		t.Fatal("compose.yaml missing slopr service")
+		t.Fatal("compose.yaml missing loom service")
 	}
 	if !strings.Contains(compose[uiService:], `- "127.0.0.1:8081:80"`) {
-		t.Fatal("slopr-ui must publish localhost port 8081 to container port 80")
+		t.Fatal("loom-ui must publish localhost port 8081 to container port 80")
 	}
 	backendServiceEnd := strings.Index(compose[apiService+1:], "\n  tika:")
 	if backendServiceEnd < 0 {
-		t.Fatal("compose.yaml service ordering changed; expected tika after slopr")
+		t.Fatal("compose.yaml service ordering changed; expected tika after loom")
 	}
 	backendService := compose[apiService : apiService+1+backendServiceEnd]
 	if strings.Contains(backendService, "\n    ports:") {
-		t.Fatal("slopr backend service must not publish host ports")
+		t.Fatal("loom backend service must not publish host ports")
 	}
 }
 
@@ -146,27 +146,27 @@ func TestProductionComposeDefinesTraefikEntrypoint(t *testing.T) {
 	}
 	compose := string(data)
 
-	uiService := composeService(t, compose, "slopr-ui")
+	uiService := composeService(t, compose, "loom-ui")
 	for _, want := range []string{
 		"- traefik",
 		`traefik.enable: "true"`,
 		`traefik.docker.network: traefik`,
-		`traefik.http.services.slopr.loadbalancer.server.port: "80"`,
-		`traefik.http.routers.slopr.entrypoints: websecure`,
-		"`slopr.trick77.com`",
-		`traefik.http.routers.slopr.tls: "true"`,
+		`traefik.http.services.loom.loadbalancer.server.port: "80"`,
+		`traefik.http.routers.loom.entrypoints: websecure`,
+		"`loom.trick77.com`",
+		`traefik.http.routers.loom.tls: "true"`,
 	} {
 		if !strings.Contains(uiService, want) {
-			t.Fatalf("slopr-ui service missing Traefik fragment %q", want)
+			t.Fatalf("loom-ui service missing Traefik fragment %q", want)
 		}
 	}
-	for _, unwanted := range []string{"certresolver", "slopr-http", "redirect-to-https"} {
+	for _, unwanted := range []string{"certresolver", "loom-http", "redirect-to-https"} {
 		if strings.Contains(uiService, unwanted) {
-			t.Fatalf("slopr-ui service must not include unnecessary Traefik fragment %q", unwanted)
+			t.Fatalf("loom-ui service must not include unnecessary Traefik fragment %q", unwanted)
 		}
 	}
 
-	for _, name := range []string{"slopr", "tika", "fetch", "obscura"} {
+	for _, name := range []string{"loom", "tika", "fetch", "obscura"} {
 		service := composeService(t, compose, name)
 		if !strings.Contains(service, `traefik.enable: "false"`) {
 			t.Fatalf("%s service must disable Traefik", name)
@@ -189,22 +189,22 @@ func TestProductionComposeUsesNamedPrivateNetworks(t *testing.T) {
 		t.Fatal("compose.yaml must use named private networks instead of the implicit default network")
 	}
 
-	uiService := composeService(t, compose, "slopr-ui")
-	for _, want := range []string{"- traefik", "- slopr"} {
+	uiService := composeService(t, compose, "loom-ui")
+	for _, want := range []string{"- traefik", "- loom"} {
 		if !strings.Contains(uiService, want) {
-			t.Fatalf("slopr-ui service missing network %q", want)
+			t.Fatalf("loom-ui service missing network %q", want)
 		}
 	}
 
-	backendService := composeService(t, compose, "slopr")
-	for _, want := range []string{"- slopr", "- fetch-mcp"} {
+	backendService := composeService(t, compose, "loom")
+	for _, want := range []string{"- loom", "- fetch-mcp"} {
 		if !strings.Contains(backendService, want) {
-			t.Fatalf("slopr service missing network %q", want)
+			t.Fatalf("loom service missing network %q", want)
 		}
 	}
 
 	for _, want := range []string{
-		"\n  slopr:",
+		"\n  loom:",
 		"\n  fetch-mcp:",
 		"\n  traefik:\n    external: true",
 	} {
@@ -221,7 +221,7 @@ func TestProductionComposeHealthchecksUseSixtySecondIntervals(t *testing.T) {
 	}
 	compose := string(data)
 
-	for _, name := range []string{"slopr-ui", "slopr", "tika", "fetch", "obscura"} {
+	for _, name := range []string{"loom-ui", "loom", "tika", "fetch", "obscura"} {
 		service := composeService(t, compose, name)
 		if !strings.Contains(service, "\n    healthcheck:") {
 			t.Fatalf("%s service missing healthcheck", name)
@@ -234,8 +234,8 @@ func TestProductionComposeHealthchecksUseSixtySecondIntervals(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(composeService(t, compose, "slopr"), `test: ["CMD", "/slopr", "healthcheck"]`) {
-		t.Fatal("slopr service must use the built-in /slopr healthcheck command")
+	if !strings.Contains(composeService(t, compose, "loom"), `test: ["CMD", "/loom", "healthcheck"]`) {
+		t.Fatal("loom service must use the built-in /loom healthcheck command")
 	}
 }
 
@@ -245,18 +245,18 @@ func TestProductionComposeUsesPhysicalDataDirectory(t *testing.T) {
 		t.Fatalf("read compose.yaml: %v", err)
 	}
 	compose := string(data)
-	service := composeService(t, compose, "slopr")
+	service := composeService(t, compose, "loom")
 
 	for _, want := range []string{
 		`user: "1000:1000"`,
 		"- ./data:/data",
 	} {
 		if !strings.Contains(service, want) {
-			t.Fatalf("slopr service missing physical data directory fragment %q", want)
+			t.Fatalf("loom service missing physical data directory fragment %q", want)
 		}
 	}
-	if strings.Contains(compose, "slopr-data") {
-		t.Fatal("production compose must use ./data, not the slopr-data named volume")
+	if strings.Contains(compose, "loom-data") {
+		t.Fatal("production compose must use ./data, not the loom-data named volume")
 	}
 }
 
@@ -277,8 +277,8 @@ func TestUIContainerfileUsesSingleWorkerNginxProxy(t *testing.T) {
 	for _, want := range []string{
 		"worker_processes 1;",
 		"resolver 127.0.0.11 valid=30s ipv6=off;",
-		"set $slopr_upstream http://slopr:8080;",
-		"proxy_pass $slopr_upstream;",
+		"set $loom_upstream http://loom:8080;",
+		"proxy_pass $loom_upstream;",
 		"proxy_buffering off;",
 		"location = /health",
 		"try_files $uri $uri/ /index.html;",
@@ -322,7 +322,7 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 			t.Fatalf("release workflow missing image tag %q", want)
 		}
 	}
-	if strings.Contains(workflow, "slopr-obscura") || strings.Contains(workflow, "Build and push Obscura MCP image") {
+	if strings.Contains(workflow, "loom-obscura") || strings.Contains(workflow, "Build and push Obscura MCP image") {
 		t.Fatal("release workflow must not build or publish an Obscura wrapper image")
 	}
 
@@ -444,10 +444,10 @@ func TestCleanupWorkflowDoesNotManageObscuraWrapperImage(t *testing.T) {
 	}
 	workflow := string(data)
 
-	if strings.Contains(workflow, "slopr-obscura") {
+	if strings.Contains(workflow, "loom-obscura") {
 		t.Fatal("cleanup workflow must not manage the removed Obscura wrapper image")
 	}
-	if !strings.Contains(workflow, `image-names: "slopr, slopr-ui, slopr-fetch"`) {
-		t.Fatal("cleanup workflow must retain Slopr, UI, and fetch image cleanup")
+	if !strings.Contains(workflow, `image-names: "loom, loom-ui, loom-fetch"`) {
+		t.Fatal("cleanup workflow must retain Loom, UI, and fetch image cleanup")
 	}
 }

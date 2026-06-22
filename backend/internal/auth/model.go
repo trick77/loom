@@ -14,7 +14,7 @@ const (
 )
 
 // DevAdminGroup is the synthetic group used only by local development auth.
-const DevAdminGroup = "slopr-dev-admin"
+const DevAdminGroup = "loom-dev-admin"
 
 // User is Loom's app-local user profile.
 type User struct {

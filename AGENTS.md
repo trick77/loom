@@ -13,7 +13,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - `make test` — backend Go tests (`go test ./...`)
 - `make fe-test` — frontend Vitest
 - `make fe-build` — build the SPA into `backend/web/dist` (embedded by Go)
-- `make build` — full build → `bin/slopr` (CGO_ENABLED=0)
+- `make build` — full build → `bin/loom` (CGO_ENABLED=0)
 - `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_ADMIN_INITIAL_PASSWORD`)
 - `docker compose up --build` — full stack (copy `.env.example` → `.env` and fill it first)
 
