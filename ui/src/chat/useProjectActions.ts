@@ -72,7 +72,7 @@ export function useProjectActions({
     try {
       await archiveProject(project.id);
       // Mirror the backend's derived visibility on the client: drop the project
-      // from the active list and its chats from the sidebar recents so they
+      // from the active list and its threads from the sidebar recents so they
       // vanish immediately without a refetch.
       setProjects((current) => current.filter((item) => item.id !== project.id));
       setThreads((current) => current.filter((thread) => thread.projectId !== project.id));

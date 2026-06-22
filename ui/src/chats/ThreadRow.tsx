@@ -6,7 +6,7 @@ import { Icon } from "../chat/Icon";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { formatTimeAgo } from "../timeago";
 
-export function ChatRow({
+export function ThreadRow({
   thread,
   selectMode,
   selected,
@@ -112,7 +112,7 @@ export function ChatRow({
           type="button"
           role="checkbox"
           aria-checked={selected}
-          aria-label={selected ? "Deselect chat" : "Select chat"}
+          aria-label={selected ? "Deselect thread" : "Select thread"}
           onClick={onToggleSelected}
           className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-md border transition-colors ${
             selected ? "border-[#c6613f] bg-[#c6613f] text-white" : "border-[#56554f] text-transparent"
@@ -135,7 +135,7 @@ export function ChatRow({
           } ${
             !selectMode ? "[@media(hover:none)]:hidden" : ""
           }`}
-          data-chat-row-time
+          data-thread-row-time
         >
           {timeLabel}
         </span>
@@ -143,7 +143,7 @@ export function ChatRow({
       {!selectMode && (
         <button
           aria-expanded={menuOpen}
-          aria-label="Open chat actions"
+          aria-label="Open thread actions"
           className={`absolute right-3 grid h-7 w-7 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
             showMenuButton ? "" : "invisible [@media(hover:none)]:visible"
           }`}

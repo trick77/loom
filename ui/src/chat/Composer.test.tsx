@@ -14,7 +14,7 @@ test("reports unsupported picker files instead of silently ignoring them", () =>
   const onAttachError = vi.fn();
   render(
     <Composer
-      variant="chat"
+      variant="thread"
       draft=""
       isSending={false}
       placeholder="Write a message..."
@@ -47,7 +47,7 @@ test("attaches supported picker files and reports unsupported companions", () =>
   const unsupported = new File(["binary"], "installer.exe", { type: "application/octet-stream" });
   render(
     <Composer
-      variant="chat"
+      variant="thread"
       draft=""
       isSending={false}
       placeholder="Write a message..."
@@ -89,7 +89,7 @@ test("renders uploading attachment previews inside the composer", () => {
 
   render(
     <Composer
-      variant="chat"
+      variant="thread"
       draft=""
       isSending={false}
       placeholder="Write a message..."
@@ -123,7 +123,7 @@ test("shows a thumbnail for previewable image attachments", () => {
 
   render(
     <Composer
-      variant="chat"
+      variant="thread"
       draft=""
       isSending={false}
       placeholder="Write a message..."
@@ -157,7 +157,7 @@ test("keeps attachment previews above the draft text area", () => {
 
   render(
     <Composer
-      variant="chat"
+      variant="thread"
       draft={"Long draft\n".repeat(60)}
       isSending={false}
       placeholder="Write a message..."

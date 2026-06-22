@@ -12,10 +12,10 @@ import type { ContentBlock, Message, ToolCallEvent, ToolResultEvent } from "../a
 // blocksFromLegacyMessage synthesizes an ordered ContentBlock[] for a persisted
 // message that predates the contentBlocks wire field. It reproduces TODAY's
 // fixed on-screen layout exactly so reloaded legacy threads look unchanged: the
-// activity trace panel renders ABOVE the prose (see the former ChatPanel
+// activity trace panel renders ABOVE the prose (see the former ThreadPanel
 // composition), then the text, then one card per artifact. The reasoning-only
 // fallback (a message with reasoningContent but no activityTrace) is preserved as
-// a single done reasoning event, matching the prior ChatPanel behaviour.
+// a single done reasoning event, matching the prior ThreadPanel behaviour.
 export function blocksFromLegacyMessage(message: Message): ContentBlock[] {
   const blocks: ContentBlock[] = [];
 

@@ -39,7 +39,7 @@ type Totals struct {
 	WebFetches        int `json:"webFetches"`
 	ObscuraFetches    int `json:"obscuraFetches"`
 	ImageGens         int `json:"imageGens"`
-	ChatsCreated      int `json:"chatsCreated"`
+	ThreadsCreated    int `json:"threadsCreated"`
 	ProjectsCreated   int `json:"projectsCreated"`
 }
 
@@ -89,7 +89,7 @@ func (s *Store) IncObscuraFetch(ctx context.Context, userID string) error {
 func (s *Store) IncImageGen(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "image_gens")
 }
-func (s *Store) IncChatCreated(ctx context.Context, userID string) error {
+func (s *Store) IncThreadCreated(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "chats_created")
 }
 func (s *Store) IncProjectCreated(ctx context.Context, userID string) error {
@@ -116,7 +116,7 @@ func (s *Store) Get(ctx context.Context, userID string) (Totals, error) {
 	err := s.db.QueryRowContext(ctx, q, userID).Scan(
 		&t.PromptTokens, &t.CompletionTokens, &t.CachedTokens, &t.ReasoningTokens, &t.TotalTokens,
 		&t.EmbeddingTokens, &t.EmbeddingRequests,
-		&t.WebSearches, &t.WebFetches, &t.ObscuraFetches, &t.ImageGens, &t.ChatsCreated, &t.ProjectsCreated,
+		&t.WebSearches, &t.WebFetches, &t.ObscuraFetches, &t.ImageGens, &t.ThreadsCreated, &t.ProjectsCreated,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Totals{}, nil

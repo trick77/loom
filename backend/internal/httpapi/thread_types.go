@@ -17,7 +17,7 @@ type updateProjectRequest struct {
 	Description *string `json:"description"`
 }
 
-func (r updateProjectRequest) chatInput() chat.UpdateProjectInput {
+func (r updateProjectRequest) toInput() chat.UpdateProjectInput {
 	return chat.UpdateProjectInput{
 		Name:        r.Name,
 		Description: r.Description,
@@ -64,7 +64,7 @@ func (r *updateThreadRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (r updateThreadRequest) chatInput() chat.UpdateThreadInput {
+func (r updateThreadRequest) toInput() chat.UpdateThreadInput {
 	return chat.UpdateThreadInput{
 		Title: r.Title,
 		ProjectID: chat.ProjectIDUpdate{

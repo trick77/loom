@@ -11,4 +11,4 @@ export type MessageWithActivityTrace = Message & {
   attachments?: ComposerAttachment[];
 };
 
-export type SidebarIconName = "chats" | "projects" | "artifacts" | "memory";
+export type SidebarIconName = "threads" | "projects" | "artifacts" | "memory";

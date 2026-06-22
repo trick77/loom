@@ -14,7 +14,7 @@ const (
 	RoleTool      Role = "tool"
 )
 
-const DefaultThreadTitle = "New chat"
+const DefaultThreadTitle = "New thread"
 
 const (
 	MaxProjectNameLength        = 120
@@ -93,8 +93,8 @@ type Message struct {
 	// Attachments are the images and documents the user sent with this message,
 	// persisted so a sent message's previews survive a reload. A JSON array of
 	// MessageAttachment; "[]" for messages sent without attachments.
-	Attachments      json.RawMessage `json:"attachments"`
-	ActivityTrace    json.RawMessage `json:"activityTrace"`
+	Attachments   json.RawMessage `json:"attachments"`
+	ActivityTrace json.RawMessage `json:"activityTrace"`
 	// ContentBlocks is the ordered, interleaved timeline of this assistant
 	// message — text prose, tool-activity trace runs, and artifacts — in the
 	// chronological order they were produced. A JSON array of tagged blocks;

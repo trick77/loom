@@ -16,7 +16,7 @@ export function ProjectPickerDialog({
   onSelect(project: Project): void;
 }) {
   const title = threads.length === 1 ? "Add to project" : "Move to project";
-  const subtitle = threads.length === 1 ? threads[0]?.title ?? "" : `${threads.length} chats selected`;
+  const subtitle = threads.length === 1 ? threads[0]?.title ?? "" : `${threads.length} threads selected`;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">

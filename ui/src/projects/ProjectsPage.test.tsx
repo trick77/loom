@@ -289,11 +289,11 @@ test("ProjectDetailPage renders project chats with the shared chats-list row", (
   expect(rowSurface).not.toHaveClass("px-1.5");
   expect(rowSurface).toHaveClass("hover:bg-[#2a2a28]");
   expect(rowSurface).not.toBeNull();
-  const timeLabel = rowSurface?.querySelector("[data-chat-row-time]");
+  const timeLabel = rowSurface?.querySelector("[data-thread-row-time]");
   expect(timeLabel).toHaveClass("ml-auto");
   expect(timeLabel).toHaveClass("group-hover:hidden");
   expect(timeLabel).toHaveClass("[@media(hover:none)]:hidden");
-  const actionButton = within(rowSurface!).getByRole("button", { name: "Open chat actions" });
+  const actionButton = within(rowSurface!).getByRole("button", { name: "Open thread actions" });
   expect(actionButton).toHaveClass("absolute");
   expect(actionButton).toHaveClass("right-3");
   expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
@@ -439,7 +439,7 @@ test("project action triggers use vertical overflow icons", () => {
   );
 
   expect(screen.getByRole("button", { name: "Open project actions" })).toHaveTextContent(ICONS.moreVertical);
-  expect(screen.getByRole("button", { name: "Open chat actions" })).toHaveTextContent(ICONS.moreVertical);
+  expect(screen.getByRole("button", { name: "Open thread actions" })).toHaveTextContent(ICONS.moreVertical);
 });
 
 test("ProjectDialog uses the verified close icon glyph", () => {

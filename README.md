@@ -144,7 +144,7 @@ The callback URL configured in authentik must exactly match `BACKEND_OIDC_REDIRE
 
 ## Chat Setup
 
-Loom supports project-less chats, projects, threads, message persistence, starred/recents, SSE
+Loom supports project-less threads, projects, threads, message persistence, starred/recents, SSE
 streaming, first-exchange thread naming, and MCP-backed tool calls.
 
 Loom uses an OpenAI-compatible chat endpoint:
@@ -170,7 +170,7 @@ defaults to `2048`, and `BACKEND_CHAT_TIMEOUT` defaults to `2m`, so long-running
 bounded even at high reasoning effort. `BACKEND_CHAT_IDLE_TIMEOUT`
 defaults to `60s` and aborts a stream that goes silent mid-turn (a stalled upstream) far sooner than
 the total timeout; set it to `0` to disable the idle watchdog. If `BACKEND_CHAT_BASE_URL` is
-empty, the authenticated shell still loads but sending a chat message returns a service-unavailable
+empty, the authenticated shell still loads but sending a thread message returns a service-unavailable
 error.
 
 ### MCP Tools
@@ -206,7 +206,7 @@ Implemented now:
 
 - Authenticated project/thread/message API.
 - OpenAI-compatible streaming chat.
-- Project-less new chats.
+- Project-less new threads.
 - Starred and recent thread lists.
 - Automatic thread naming after the first completed assistant response.
 - MCP config loading for Streamable HTTP and stdio servers.
@@ -228,11 +228,11 @@ Still planned for later phases:
 4. Complete authentik login.
 5. Confirm Loom opens the authenticated app shell.
 6. Sign in as a member of `BACKEND_OIDC_ADMIN_GROUP` and confirm admin features appear.
-7. Create a new chat.
+7. Create a new thread.
 8. Send a message and confirm the assistant response streams into the conversation.
 9. If MCP servers are configured and reachable, ask a question that requires a configured tool and
    confirm the tool status appears before the final answer.
-10. Confirm the thread title changes from **New chat** after the first completed response.
+10. Confirm the thread title changes from **New thread** after the first completed response.
 11. Sign out and confirm returning to Loom requires a new authenticated session.
 
 ### Logout behavior

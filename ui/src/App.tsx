@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChatShell } from "./ChatShell";
+import { ThreadShell } from "./ThreadShell";
 import loomImage from "./assets/mynd-logo.png";
 import { getMe, listUsers, logout, type User } from "./api";
 
@@ -50,7 +50,7 @@ export default function App() {
     }
   }
 
-  function handleChat() {
+  function handleThread() {
     setShowAdmin(false);
   }
 
@@ -93,11 +93,11 @@ export default function App() {
   }
 
   return (
-    <ChatShell
+    <ThreadShell
       user={user}
       showAdmin={showAdmin}
       onAdmin={handleAdmin}
-      onChat={handleChat}
+      onThread={handleThread}
       onLogout={handleLogout}
       onSessionExpired={handleSessionExpired}
       adminPanel={

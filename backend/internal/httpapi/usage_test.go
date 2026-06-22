@@ -19,15 +19,15 @@ func (s stubUsageStore) IncWebSearch(context.Context, string) error             
 func (s stubUsageStore) IncWebFetch(context.Context, string) error                 { return nil }
 func (s stubUsageStore) IncObscuraFetch(context.Context, string) error             { return nil }
 func (s stubUsageStore) IncImageGen(context.Context, string) error                 { return nil }
-func (s stubUsageStore) IncChatCreated(context.Context, string) error              { return nil }
+func (s stubUsageStore) IncThreadCreated(context.Context, string) error            { return nil }
 func (s stubUsageStore) IncProjectCreated(context.Context, string) error           { return nil }
 func (s stubUsageStore) Get(context.Context, string) (usage.Totals, error)         { return s.totals, nil }
 
 func TestHandleGetUsage_returnsTotalsAndMemoryLength(t *testing.T) {
-	chatStore := &fakeChatStore{userMemory: chat.UserMemory{Content: "hello"}}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat:  chatStore,
-		Usage: stubUsageStore{totals: usage.Totals{TotalTokens: 42, EmbeddingTokens: 12, EmbeddingRequests: 2, WebSearches: 3}},
+	threadStore := &fakeThreadStore{userMemory: chat.UserMemory{Content: "hello"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: threadStore,
+		Usage:  stubUsageStore{totals: usage.Totals{TotalTokens: 42, EmbeddingTokens: 12, EmbeddingRequests: 2, WebSearches: 3}},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/me/usage", "")

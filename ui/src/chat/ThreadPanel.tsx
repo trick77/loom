@@ -11,12 +11,12 @@ import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import { AssistantProse, MessageBubble } from "./messages";
 import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
-import { isNearBottom, previousUserContent } from "./chatUtils";
+import { isNearBottom, previousUserContent } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { McpStatusIndicator } from "./SidebarItems";
 import { WindowFileDrop } from "./WindowFileDrop";
 
-export function ChatPanel({
+export function ThreadPanel({
   thread,
   threadProject,
   deferredAttachNote,
@@ -268,7 +268,7 @@ export function ChatPanel({
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
-        aria-label="Chat header"
+        aria-label="Thread header"
         className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
@@ -288,12 +288,12 @@ export function ChatPanel({
                   <Icon name="chevronRight" size="16px" className="shrink-0 text-[#77736a]" />
                 </>
               )}
-              <span className="min-w-0 truncate">{thread?.title ?? "New chat"}</span>
+              <span className="min-w-0 truncate">{thread?.title ?? "New thread"}</span>
             </h1>
             {thread !== null && headerMenuKey !== null && (
               <button
                 aria-expanded={headerMenuOpen}
-                aria-label="Open chat actions"
+                aria-label="Open thread actions"
                 className="ml-1 grid h-5 w-5 shrink-0 place-items-center rounded-md text-[#88857d] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
                 onClick={() => onToggleThreadMenu(headerMenuKey)}
                 type="button"
@@ -327,7 +327,7 @@ export function ChatPanel({
           onWheel={handleWheel}
           role="region"
         >
-          <div className="ui-chat-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
+          <div className="ui-thread-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
             {messages.map((message, index) => (
               <div key={message.id} className="space-y-6">
                 <MessageBubble
@@ -402,14 +402,14 @@ export function ChatPanel({
             className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
-            <div className="ui-chat-rail pointer-events-auto mx-auto w-full max-w-[754px]">
+            <div className="ui-thread-rail pointer-events-auto mx-auto w-full max-w-[754px]">
               <WindowFileDrop
                 enabled={thread !== null}
                 onAttachFiles={handleAttachFiles}
                 onAttachError={handleAttachError}
               />
               <Composer
-                variant="chat"
+                variant="thread"
                 draft={draft}
                 isSending={isSending}
                 sendDisabled={sendDisabled || imageUploadPending}

@@ -132,7 +132,7 @@ test("composerAttachmentFromArtifact yields a ready, re-sendable image attachmen
   });
 
   // Ready immediately (already persisted server-side), carries the artifact id so
-  // ChatShell wires it through as an imageAttachmentId, and uses the download URL
+  // ThreadShell wires it through as an imageAttachmentId, and uses the download URL
   // as its preview thumbnail. No File: it must skip the upload step.
   expect(attachment.status).toBe("ready");
   expect(attachment.artifactId).toBe("art-123");

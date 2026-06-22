@@ -25,7 +25,7 @@ test("shows the empty state when there is no memory yet", async () => {
   const heading = screen.getByRole("heading", { name: "Memories" });
   expect(heading).toBeInTheDocument();
   expect(heading).toHaveTextContent(ICONS.memory);
-  expect(await screen.findByText(/Memories will show here after a few chats/)).toHaveClass("h-[490px]");
+  expect(await screen.findByText(/Memories will show here after a few threads/)).toHaveClass("h-[490px]");
   expect(screen.queryByText("Memory")).not.toBeInTheDocument();
   expect(screen.queryByText(/Project memory/i)).not.toBeInTheDocument();
 });

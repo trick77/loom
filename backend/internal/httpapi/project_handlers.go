@@ -8,7 +8,7 @@ import (
 
 func (s *server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	archived, err := parseOptionalBool(r, "archived")
@@ -16,7 +16,7 @@ func (s *server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid archived query parameter")
 		return
 	}
-	projects, err := s.chat.ListProjects(r.Context(), user.ID, archived)
+	projects, err := s.thread.ListProjects(r.Context(), user.ID, archived)
 	if err != nil {
 		serverError(w, r, err, "list projects failed")
 		return
@@ -26,7 +26,7 @@ func (s *server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	var body createProjectRequest
@@ -34,12 +34,12 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	project, err := s.chat.CreateProject(r.Context(), user.ID, chat.CreateProjectInput{
+	project, err := s.thread.CreateProject(r.Context(), user.ID, chat.CreateProjectInput{
 		Name:        body.Name,
 		Description: body.Description,
 	})
 	if err != nil {
-		writeChatStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
+		writeThreadStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
 		return
 	}
 	s.recordUsage("project_created", func() error { return s.usage.IncProjectCreated(r.Context(), user.ID) })
@@ -48,7 +48,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	var body updateProjectRequest
@@ -56,9 +56,9 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	project, found, err := s.chat.UpdateProject(r.Context(), user.ID, r.PathValue("projectID"), body.chatInput())
+	project, found, err := s.thread.UpdateProject(r.Context(), user.ID, r.PathValue("projectID"), body.toInput())
 	if err != nil {
-		writeChatStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
+		writeThreadStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
 		return
 	}
 	if !found {
@@ -78,10 +78,10 @@ func (s *server) handleUnstarProject(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleSetProjectStarred(w http.ResponseWriter, r *http.Request, starred bool) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
-	project, found, err := s.chat.SetProjectStarred(r.Context(), user.ID, r.PathValue("projectID"), starred)
+	project, found, err := s.thread.SetProjectStarred(r.Context(), user.ID, r.PathValue("projectID"), starred)
 	if err != nil {
 		serverError(w, r, err, "update project failed")
 		return
@@ -103,10 +103,10 @@ func (s *server) handleUnarchiveProject(w http.ResponseWriter, r *http.Request) 
 
 func (s *server) handleSetProjectArchived(w http.ResponseWriter, r *http.Request, archived bool) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
-	found, err := s.chat.SetProjectArchived(r.Context(), user.ID, r.PathValue("projectID"), archived)
+	found, err := s.thread.SetProjectArchived(r.Context(), user.ID, r.PathValue("projectID"), archived)
 	if err != nil {
 		serverError(w, r, err, "update project failed")
 		return
@@ -120,7 +120,7 @@ func (s *server) handleSetProjectArchived(w http.ResponseWriter, r *http.Request
 
 func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	projectID := r.PathValue("projectID")
@@ -138,7 +138,7 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	found, err := s.chat.DeleteProject(r.Context(), user.ID, projectID)
+	found, err := s.thread.DeleteProject(r.Context(), user.ID, projectID)
 	if err != nil {
 		serverError(w, r, err, "delete project failed")
 		return

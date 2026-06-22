@@ -94,7 +94,7 @@ export function ProjectsPage({
 
   function handleUnarchive(project: Project) {
     // Optimistically drop it from the archived list; the parent promotes it back
-    // into "Your projects" and restores its chats. If the request fails the
+    // into "Your projects" and restores its threads. If the request fails the
     // parent surfaces the error and this row reappears on the next activation of
     // the Archived tab (the effect refetches), so the optimistic removal is
     // self-healing rather than permanently inconsistent.

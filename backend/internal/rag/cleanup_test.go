@@ -88,7 +88,7 @@ func TestStore_DeleteThreadScopeDocuments(t *testing.T) {
 	}
 }
 
-// A project-less chat with a private attachment can be moved into a project; the
+// A project-less thread with a private attachment can be moved into a project; the
 // document keeps its thread scope (project_id NULL, thread_id set). Deleting the
 // project must still purge it, even though it does not match the project_id
 // filter and has no FK to ride the cascade.
@@ -146,7 +146,7 @@ func TestStore_DeleteProjectScopeDocuments(t *testing.T) {
 	if err := s.ReplaceChunks(ctx, "u1", "dP", []TextChunk{{Text: "project"}}, [][]float32{vecAt(1, 0)}); err != nil {
 		t.Fatalf("seed dP: %v", err)
 	}
-	// Unrelated project-less chat doc — must survive.
+	// Unrelated project-less thread doc — must survive.
 	tid := "t9"
 	_ = s.CreateDocument(ctx, Document{ID: "dT", UserID: "u1", ThreadID: &tid, VolumeRelpath: "u/t.txt", Filename: "t.txt", MIME: "text/plain", Status: StatusPending})
 	if err := s.ReplaceChunks(ctx, "u1", "dT", []TextChunk{{Text: "thread"}}, [][]float32{vecAt(1, 0)}); err != nil {

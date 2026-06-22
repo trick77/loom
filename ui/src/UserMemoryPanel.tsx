@@ -6,7 +6,7 @@ import { Icon } from "./chat/Icon";
 /**
  * UserMemoryPanel shows the auto-generated personal memory — the compact set of
  * durable facts about the user (employer, location, lasting preferences) that is
- * injected into every chat so the assistant stays personalized. Unlike the
+ * injected into every thread so the assistant stays personalized. Unlike the
  * project memory it renders as a flat list of discrete facts. It is read-only.
  */
 export function UserMemoryPanel() {
@@ -57,7 +57,7 @@ export function UserMemoryPanel() {
         </ul>
       ) : (
         <p className="mt-3 text-sm leading-5 text-[#807d74]">
-          Memories will show here after a few chats.
+          Memories will show here after a few threads.
         </p>
       )}
     </section>

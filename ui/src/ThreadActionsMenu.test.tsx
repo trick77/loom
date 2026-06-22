@@ -8,7 +8,7 @@ import type { Thread } from "./api";
 function threadFixture(): Thread {
   return {
     id: "t1",
-    title: "Chat title",
+    title: "Thread title",
     starred: false,
     createdAt: "2026-06-01T00:00:00Z",
     updatedAt: "2026-06-04T15:00:00Z",
@@ -26,7 +26,7 @@ test("uses sidebar text sizing regardless of render location", () => {
     />,
   );
 
-  expect(screen.getByRole("menu", { name: "Chat actions" })).toHaveClass("ui-sidebar-text");
+  expect(screen.getByRole("menu", { name: "Thread actions" })).toHaveClass("ui-sidebar-text");
 });
 
 test("adds a divider after select when select is available", () => {
@@ -41,7 +41,7 @@ test("adds a divider after select when select is available", () => {
     />,
   );
 
-  const menu = screen.getByRole("menu", { name: "Chat actions" });
+  const menu = screen.getByRole("menu", { name: "Thread actions" });
   const itemRoles = Array.from(menu.children).map((child) => child.getAttribute("role") ?? child.tagName.toLowerCase());
 
   expect(itemRoles).toEqual(["menuitem", "separator", "menuitem", "menuitem", "menuitem", "separator", "menuitem"]);

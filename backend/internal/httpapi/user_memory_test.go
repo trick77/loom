@@ -28,13 +28,13 @@ func TestRenderUserContext(t *testing.T) {
 // chat — here a projectless thread — via the system message.
 func TestStreamMessageInjectsUserMemory(t *testing.T) {
 	var capturedHistory []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread:     chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Loose chat"},
 		userMemory: chat.UserMemory{Content: "- Works at Acme in Zurich"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{history: &capturedHistory},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{history: &capturedHistory},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Where do I work?"}`)
@@ -55,11 +55,11 @@ func TestStreamMessageInjectsUserMemory(t *testing.T) {
 // TestRefreshUserMemoryIfDue_BelowThresholdIsNoOp guards the gate: too few new
 // messages must not trigger a refresh.
 func TestRefreshUserMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		userMessageCount: memoryRefreshThreshold - 1,
 		messages:         []chat.Message{{Role: chat.RoleUser, Content: "Hi"}},
 	}
-	s := &server{chat: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
 
 	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser)); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
@@ -72,11 +72,11 @@ func TestRefreshUserMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
 // TestRefreshUserMemoryIfDue_AtThresholdRefreshes proves the gate fires and the
 // incremental refresh folds in the recent messages across all threads.
 func TestRefreshUserMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		userMessageCount: memoryRefreshThreshold,
 		messages:         []chat.Message{{Role: chat.RoleUser, Content: "I moved to Zurich"}},
 	}
-	s := &server{chat: store, llm: fakeChatClient{projectMemory: "- Lives in Zurich"}}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- Lives in Zurich"}}
 
 	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser)); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)

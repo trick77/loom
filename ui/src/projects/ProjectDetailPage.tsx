@@ -10,7 +10,7 @@ import {
 } from "../chat/useDocumentAttachments";
 import { WindowFileDrop } from "../chat/WindowFileDrop";
 import { Icon } from "../chat/Icon";
-import { ChatRow } from "../chats/ChatRow";
+import { ThreadRow } from "../chats/ThreadRow";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
@@ -192,7 +192,7 @@ export function ProjectDetailPage({
             )}
             <ul className="mt-6">
               {threads.length === 0 ? (
-                <li className="py-10 text-center text-[#807d74]">No chats in this project yet.</li>
+                <li className="py-10 text-center text-[#807d74]">No threads in this project yet.</li>
               ) : (
                 threads.map((thread, index) => {
                   const nextThread = threads[index + 1];
@@ -200,7 +200,7 @@ export function ProjectDetailPage({
                     nextThread !== undefined &&
                     (hoveredThreadID === nextThread.id || openThreadMenuID === nextThread.id);
                   return (
-                    <ChatRow
+                    <ThreadRow
                       key={thread.id}
                       thread={thread}
                       selectMode={false}

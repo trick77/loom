@@ -173,7 +173,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		if count >= documents.MaxChatDocuments {
-			writeJSONError(w, http.StatusConflict, "too many attachments in this chat")
+			writeJSONError(w, http.StatusConflict, "too many attachments in this thread")
 			return
 		}
 	}

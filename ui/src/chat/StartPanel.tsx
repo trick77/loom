@@ -3,7 +3,7 @@ import logoImage from "../assets/mynd-logo.png";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
-import { greetingForNow } from "./chatUtils";
+import { greetingForNow } from "./threadUtils";
 import { McpStatusIndicator } from "./SidebarItems";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
@@ -42,11 +42,11 @@ export function StartPanel({
   onRemoveAttachment(id: string): void;
 }) {
   // No thread exists yet, so uploads are deferred: files are held (see
-  // pendingAttachmentNames) and bound to the chat once the first send creates it.
+  // pendingAttachmentNames) and bound to the thread once the first send creates it.
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
-        aria-label="Chat header"
+        aria-label="Thread header"
         className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >

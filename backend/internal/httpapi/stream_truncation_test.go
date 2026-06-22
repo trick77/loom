@@ -17,7 +17,7 @@ import (
 // round's prefill (HTTP 500 → generic "stream failed"). The loop must stop at the
 // truncated round with a clear, user-facing cause.
 func TestStreamMessageStopsOnTruncatedToolCall(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	llmClient := &fakeToolChatClient{
@@ -38,9 +38,9 @@ func TestStreamMessageStopsOnTruncatedToolCall(t *testing.T) {
 			// truncated call is never replayed.
 		},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools: []llm.Tool{{
 				Type:     "function",

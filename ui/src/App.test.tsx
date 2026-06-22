@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
-import { GeneratedArtifactCard } from "./ChatShell";
+import { GeneratedArtifactCard } from "./ThreadShell";
 import { ICONS } from "./chat/Icon";
 
 beforeEach(() => {
@@ -76,7 +76,7 @@ test("renders authenticated shell for signed-in users", async () => {
 
   render(<App />);
 
-  expect(await screen.findByRole("button", { name: /new chat/i })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /new thread/i })).toBeInTheDocument();
   expect(await screen.findByText(greetingPattern("Jan"))).toBeInTheDocument();
   expect(screen.getByText("Jan")).toBeInTheDocument();
   expect(screen.getByText("User")).toBeInTheDocument();
@@ -322,7 +322,7 @@ test("shows MCP status on the new chat screen", async () => {
   render(<App />);
 
   expect(await screen.findByPlaceholderText("How can I help you today?")).toBeInTheDocument();
-  const header = screen.getByRole("banner", { name: "Chat header" });
+  const header = screen.getByRole("banner", { name: "Thread header" });
   const indicator = await within(header).findByTitle("3 of 4 MCP servers active. Failed: obscura");
   expect(indicator).toHaveTextContent("3");
 });
@@ -405,7 +405,7 @@ test("shows chat data load errors", async () => {
 
   render(<App />);
 
-  expect(await screen.findByText("Chat data failed to load.")).toBeInTheDocument();
+  expect(await screen.findByText("Thread data failed to load.")).toBeInTheDocument();
 });
 
 test("does not expose project creation from the sidebar", async () => {
@@ -420,7 +420,7 @@ test("does not expose project creation from the sidebar", async () => {
 
   render(<App />);
 
-  await screen.findByRole("button", { name: "New chat" });
+  await screen.findByRole("button", { name: "New thread" });
   expect(screen.getByRole("button", { name: "Memories" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument();
@@ -476,7 +476,7 @@ test("loads a project detail page and creates new chats inside the project", asy
       return Response.json({
         id: "t-project-new",
         projectId: "p1",
-        title: body.title ?? "New chat",
+        title: body.title ?? "New thread",
         starred: false,
         createdAt: "2026-05-30T00:00:00Z",
         updatedAt: "2026-05-30T00:00:00Z",
@@ -511,7 +511,7 @@ test("loads a project detail page and creates new chats inside the project", asy
       }),
     ),
   );
-  await waitFor(() => expect(window.location.pathname).toBe("/chat/t-project-new"));
+  await waitFor(() => expect(window.location.pathname).toBe("/thread/t-project-new"));
 });
 
 test("adds a single chat to a project from the chat actions menu", async () => {
@@ -530,7 +530,7 @@ test("adds a single chat to a project from the chat actions menu", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Add to project" }));
   fireEvent.click(within(await screen.findByRole("dialog", { name: "Add to project" })).getByRole("button", { name: "Research" }));
 
@@ -570,9 +570,9 @@ test("moves selected chats to a project from the chats page", async () => {
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Chats" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Threads" }));
   await screen.findByText("Loose chat one");
-  fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select threads" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
   await screen.findByText("2 selected");
   fireEvent.click(screen.getByRole("button", { name: "Move to project" }));
@@ -605,9 +605,9 @@ test("renders the new-chat plus icon without a new-project sidebar control", asy
 
   render(<App />);
 
-  const newChatButton = await screen.findByRole("button", { name: "New chat" });
+  const newChatButton = await screen.findByRole("button", { name: "New thread" });
 
-  // New chat: a thin SVG plus inside a circle (no literal "+").
+  // New thread: a thin SVG plus inside a circle (no literal "+").
   expect(newChatButton.querySelector("svg")).toBeInTheDocument();
   expect(newChatButton.querySelector("svg")).toHaveClass("h-[13px]", "w-[13px]");
   expect(newChatButton).not.toHaveTextContent("+");
@@ -625,7 +625,7 @@ test("new chat navigation does not create a thread or sidebar entry", async () =
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
-  const button = await screen.findByRole("button", { name: /new chat/i });
+  const button = await screen.findByRole("button", { name: /new thread/i });
   fireEvent.click(button);
   fireEvent.click(button);
 
@@ -653,7 +653,7 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
       return new Response(
         JSON.stringify({
           id: "t1",
-          title: "New chat",
+          title: "New thread",
           starred: false,
           createdAt: "2026-05-30T00:00:00Z",
           updatedAt: "2026-05-30T00:00:00Z",
@@ -693,9 +693,9 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
   );
 
   expect(await screen.findByText("It is hot")).toBeInTheDocument();
-  expect(window.location.pathname).toBe("/chat/t1");
+  expect(window.location.pathname).toBe("/thread/t1");
   expect(
-    within(screen.getByText("Recents").closest("section")!).queryByRole("button", { name: "New chat" }),
+    within(screen.getByText("Recents").closest("section")!).queryByRole("button", { name: "New thread" }),
   ).not.toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "Weather comfort" })).toBeInTheDocument();
   expect(screen.queryByText("Drink water.")).not.toBeInTheDocument();
@@ -746,7 +746,7 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
       return Response.json(
         {
           id: "t1",
-          title: body.title ?? "New chat",
+          title: body.title ?? "New thread",
           starred: false,
           createdAt: "2026-05-30T00:00:00Z",
           updatedAt: "2026-05-30T00:00:00Z",
@@ -906,7 +906,7 @@ test("retries a failed deferred new-chat image upload before streaming", async (
     ),
   );
   expect(imageUploadCalls).toBe(2);
-  expect(window.location.pathname).toBe("/chat/t2");
+  expect(window.location.pathname).toBe("/thread/t2");
 });
 
 test("clears a stale upload size send error when a new valid file is attached on the start screen", async () => {
@@ -982,9 +982,9 @@ test("active sidebar chat shows actions menu with locked entries", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
 
-  expect(await screen.findByRole("menu", { name: "Chat actions" })).toBeInTheDocument();
+  expect(await screen.findByRole("menu", { name: "Thread actions" })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: /^Star$/ })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Add to project" })).toBeDisabled();
@@ -1000,10 +1000,10 @@ test("active chat header chevron opens the shared chat actions menu", async () =
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const header = await screen.findByRole("banner", { name: "Chat header" });
-  fireEvent.click(within(header).getByRole("button", { name: "Open chat actions" }));
+  const header = await screen.findByRole("banner", { name: "Thread header" });
+  fireEvent.click(within(header).getByRole("button", { name: "Open thread actions" }));
 
-  const menu = await screen.findByRole("menu", { name: "Chat actions" });
+  const menu = await screen.findByRole("menu", { name: "Thread actions" });
   expect(within(menu).getByRole("menuitem", { name: /^Star$/ })).toBeInTheDocument();
   expect(within(menu).getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
   expect(within(menu).getByRole("menuitem", { name: "Add to project" })).toBeDisabled();
@@ -1011,7 +1011,7 @@ test("active chat header chevron opens the shared chat actions menu", async () =
 
   fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename" }));
 
-  expect(await screen.findByRole("dialog", { name: "Rename chat" })).toBeInTheDocument();
+  expect(await screen.findByRole("dialog", { name: "Rename thread" })).toBeInTheDocument();
 });
 
 test("project chat header prefixes the title with a clickable project name", async () => {
@@ -1039,7 +1039,7 @@ test("project chat header prefixes the title with a clickable project name", asy
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Inference Spend Statistics Access" }));
 
-  const header = await screen.findByRole("banner", { name: "Chat header" });
+  const header = await screen.findByRole("banner", { name: "Thread header" });
   const headerTitle = within(header).getByRole("heading", { name: /AI Gateway Comparison.*Inference Spend Statistics Access/ });
   expect(headerTitle).toBeInTheDocument();
   expect(headerTitle).not.toHaveTextContent(">");
@@ -1059,12 +1059,12 @@ test("closes the active sidebar chat menu when clicking outside it", async () =>
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
-  expect(await screen.findByRole("menu", { name: "Chat actions" })).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
+  expect(await screen.findByRole("menu", { name: "Thread actions" })).toBeInTheDocument();
 
   fireEvent.pointerDown(screen.getByRole("main"));
 
-  expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menu", { name: "Thread actions" })).not.toBeInTheDocument();
 });
 
 test("add to project stays disabled until projects exist", async () => {
@@ -1073,7 +1073,7 @@ test("add to project stays disabled until projects exist", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
 
   expect(await screen.findByRole("menuitem", { name: "Add to project" })).toBeDisabled();
   expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("project"))).toHaveLength(1);
@@ -1103,19 +1103,19 @@ test("stars and unstars a chat from the sidebar action menu and closes the menu"
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Star" }));
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/star", { method: "POST" }),
   );
-  expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menu", { name: "Thread actions" })).not.toBeInTheDocument();
 
-  fireEvent.click(screen.getAllByRole("button", { name: "Open chat actions" })[0]);
+  fireEvent.click(screen.getAllByRole("button", { name: "Open thread actions" })[0]);
   fireEvent.click(await screen.findByRole("menuitem", { name: "Unstar" }));
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", { method: "POST" }),
   );
-  expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menu", { name: "Thread actions" })).not.toBeInTheDocument();
 });
 
 test("renames a chat from the sidebar menu", async () => {
@@ -1141,11 +1141,11 @@ test("renames a chat from the sidebar menu", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
-  expect(await screen.findByRole("dialog", { name: "Rename chat" })).toBeInTheDocument();
-  const input = await screen.findByRole("textbox", { name: "Chat title" });
+  expect(await screen.findByRole("dialog", { name: "Rename thread" })).toBeInTheDocument();
+  const input = await screen.findByRole("textbox", { name: "Thread title" });
   expect(input).toHaveValue("Existing chat");
   fireEvent.change(input, { target: { value: "Renamed chat" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -1183,11 +1183,11 @@ test("deletes the active chat from the sidebar menu after confirmation", async (
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
-  expect(await screen.findByRole("dialog", { name: "Delete chat" })).toBeInTheDocument();
-  expect(screen.getByText("Are you sure you want to delete this chat?")).toBeInTheDocument();
+  expect(await screen.findByRole("dialog", { name: "Delete thread" })).toBeInTheDocument();
+  expect(screen.getByText("Are you sure you want to delete this thread?")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
   await waitFor(() => expect(window.location.pathname).toBe("/new"));
@@ -1215,13 +1215,13 @@ test("closes a chat modal when clicking the backdrop", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open chat actions" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
-  const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+  const dialog = await screen.findByRole("dialog", { name: "Rename thread" });
   fireEvent.click(dialog.parentElement!);
 
-  expect(screen.queryByRole("dialog", { name: "Rename chat" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Rename thread" })).not.toBeInTheDocument();
 });
 
 test("shows MCP status in the active chat header without the header star action", async () => {
@@ -1245,7 +1245,7 @@ test("shows MCP status in the active chat header without the header star action"
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const header = await screen.findByRole("banner", { name: "Chat header" });
+  const header = await screen.findByRole("banner", { name: "Thread header" });
   expect(within(header).getByTitle("2 of 3 MCP servers active")).toBeInTheDocument();
   expect(within(header).queryByRole("button", { name: /star chat/i })).toBeNull();
 });
@@ -1265,7 +1265,7 @@ test("starting chat exits the admin panel", async () => {
         return new Response(
           JSON.stringify({
             id: "t1",
-            title: "New chat",
+            title: "New thread",
             starred: false,
             createdAt: "2026-05-30T00:00:00Z",
             updatedAt: "2026-05-30T00:00:00Z",
@@ -1277,7 +1277,7 @@ test("starting chat exits the admin panel", async () => {
         return Response.json({
           thread: {
             id: "t1",
-            title: "New chat",
+            title: "New thread",
             starred: false,
             createdAt: "2026-05-30T00:00:00Z",
             updatedAt: "2026-05-30T00:00:00Z",
@@ -1293,7 +1293,7 @@ test("starting chat exits the admin panel", async () => {
   fireEvent.click(await screen.findByRole("button", { name: /admin/i }));
   expect(await screen.findByText("Sam")).toBeInTheDocument();
 
-  fireEvent.click(await screen.findByRole("button", { name: /new chat/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /new thread/i }));
 
   expect(await screen.findByText(greetingPattern("jan"))).toBeInTheDocument();
   expect(screen.getByPlaceholderText("How can I help you today?")).toBeInTheDocument();
@@ -2581,7 +2581,7 @@ test("loads MCP status into the chat header", async () => {
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const header = await screen.findByRole("banner", { name: "Chat header" });
+  const header = await screen.findByRole("banner", { name: "Thread header" });
   const indicator = within(header).getByTitle("1 of 2 MCP servers active");
   expect(indicator).toHaveTextContent("1");
   expect(indicator.querySelector(".border-danger")).not.toBeNull();
@@ -2636,8 +2636,8 @@ test("aligns chat messages and composer to the same readable rail", async () => 
   const transcript = await screen.findByRole("region", { name: "Conversation transcript" });
   const composerDock = screen.getByLabelText("Message composer dock");
 
-  expect(transcript.querySelector(".ui-chat-rail")).toBeInTheDocument();
-  expect(composerDock.querySelector(".ui-chat-rail")).toBeInTheDocument();
+  expect(transcript.querySelector(".ui-thread-rail")).toBeInTheDocument();
+  expect(composerDock.querySelector(".ui-thread-rail")).toBeInTheDocument();
   expect(transcript.querySelector(".ui-user-message")).toHaveClass("ml-auto");
   expect(transcript.querySelector(".ui-assistant-message")).toBeInTheDocument();
 });

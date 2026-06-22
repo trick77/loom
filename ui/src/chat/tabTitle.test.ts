@@ -21,19 +21,19 @@ const project: Project = {
 };
 
 test("static views map to their label with the Loom suffix", () => {
-  expect(tabTitle({ view: "new" }, null, null)).toBe("New chat — Loom");
-  expect(tabTitle({ view: "chats" }, null, null)).toBe("Recents — Loom");
+  expect(tabTitle({ view: "new" }, null, null)).toBe("New thread — Loom");
+  expect(tabTitle({ view: "threads" }, null, null)).toBe("Recents — Loom");
   expect(tabTitle({ view: "artifacts" }, null, null)).toBe("Artifacts — Loom");
   expect(tabTitle({ view: "memory" }, null, null)).toBe("Memories — Loom");
   expect(tabTitle({ view: "projects" }, null, null)).toBe("Projects — Loom");
 });
 
 test("chat view uses the active thread title", () => {
-  expect(tabTitle({ view: "chat", threadID: "t1" }, thread, null)).toBe("My great chat — Loom");
+  expect(tabTitle({ view: "thread", threadID: "t1" }, thread, null)).toBe("My great chat — Loom");
 });
 
 test("chat view falls back to plain Loom while the thread is loading", () => {
-  expect(tabTitle({ view: "chat", threadID: "t1" }, null, null)).toBe("Loom");
+  expect(tabTitle({ view: "thread", threadID: "t1" }, null, null)).toBe("Loom");
 });
 
 test("project view uses the active project name", () => {

@@ -19,18 +19,18 @@ func (s *server) projectMemoryScope(user auth.User, project chat.Project) memory
 		header:       projectMemoryHeader(project),
 		systemPrompt: llm.ProjectMemorySystemPrompt,
 		get: func(ctx context.Context) (string, int, error) {
-			memory, _, err := s.chat.GetProjectMemory(ctx, user.ID, project.ID)
+			memory, _, err := s.thread.GetProjectMemory(ctx, user.ID, project.ID)
 			return memory.Content, memory.SourceMessageCount, err
 		},
 		upsert: func(ctx context.Context, content string, sourceCount int) error {
-			_, err := s.chat.UpsertProjectMemory(ctx, user.ID, project.ID, content, sourceCount)
+			_, err := s.thread.UpsertProjectMemory(ctx, user.ID, project.ID, content, sourceCount)
 			return err
 		},
 		count: func(ctx context.Context) (int, error) {
-			return s.chat.CountProjectMessages(ctx, user.ID, project.ID)
+			return s.thread.CountProjectMessages(ctx, user.ID, project.ID)
 		},
 		list: func(ctx context.Context, limit int) ([]chat.Message, error) {
-			return s.chat.ListProjectMessages(ctx, user.ID, project.ID, limit)
+			return s.thread.ListProjectMessages(ctx, user.ID, project.ID, limit)
 		},
 	}
 }
@@ -64,7 +64,7 @@ func (s *server) projectContextForThread(ctx context.Context, userID string, thr
 	if project == nil {
 		return ""
 	}
-	memory, _, err := s.chat.GetProjectMemory(ctx, userID, *thread.ProjectID)
+	memory, _, err := s.thread.GetProjectMemory(ctx, userID, *thread.ProjectID)
 	if err != nil {
 		slog.Warn("load project memory failed", "error", err)
 		memory = chat.ProjectMemory{}
@@ -76,7 +76,7 @@ func (s *server) projectContextForThread(ctx context.Context, userID string, thr
 // and its shared memory.
 func renderProjectContext(project chat.Project, memory string) string {
 	var b strings.Builder
-	b.WriteString("This chat belongs to a project. Use the project context below to stay consistent with other chats in the same project.\n")
+	b.WriteString("This thread belongs to a project. Use the project context below to stay consistent with other threads in the same project.\n")
 	b.WriteString("Project name: ")
 	b.WriteString(strings.TrimSpace(project.Name))
 	if strings.TrimSpace(project.Description) != "" {
@@ -84,7 +84,7 @@ func renderProjectContext(project chat.Project, memory string) string {
 		b.WriteString(strings.TrimSpace(project.Description))
 	}
 	if strings.TrimSpace(memory) != "" {
-		b.WriteString("\nProject memory (key facts and decisions from other chats):\n")
+		b.WriteString("\nProject memory (key facts and decisions from other threads):\n")
 		b.WriteString(strings.TrimSpace(memory))
 	}
 	return b.String()
@@ -128,7 +128,7 @@ func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, proje
 }
 
 func (s *server) findProject(ctx context.Context, userID, projectID string) (*chat.Project, error) {
-	project, found, err := s.chat.GetProject(ctx, userID, projectID)
+	project, found, err := s.thread.GetProject(ctx, userID, projectID)
 	if err != nil || !found {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func (s *server) findProject(ctx context.Context, userID, projectID string) (*ch
 
 func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	projectID := r.PathValue("projectID")
@@ -150,7 +150,7 @@ func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	memory, _, err := s.chat.GetProjectMemory(r.Context(), user.ID, projectID)
+	memory, _, err := s.thread.GetProjectMemory(r.Context(), user.ID, projectID)
 	if err != nil {
 		serverError(w, r, err, "get project memory failed")
 		return
@@ -162,7 +162,7 @@ func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) 
 // across all of the project's threads (bounded by memoryRebuildLimit).
 func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	if s.llm == nil {
@@ -179,12 +179,12 @@ func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Reque
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	count, err := s.chat.CountProjectMessages(r.Context(), user.ID, projectID)
+	count, err := s.thread.CountProjectMessages(r.Context(), user.ID, projectID)
 	if err != nil {
 		serverError(w, r, err, "refresh project memory failed")
 		return
 	}
-	messages, err := s.chat.ListProjectMessages(r.Context(), user.ID, projectID, memoryRebuildLimit)
+	messages, err := s.thread.ListProjectMessages(r.Context(), user.ID, projectID, memoryRebuildLimit)
 	if err != nil {
 		serverError(w, r, err, "refresh project memory failed")
 		return
@@ -194,7 +194,7 @@ func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Reque
 		writeJSONError(w, http.StatusBadGateway, "refresh project memory failed")
 		return
 	}
-	memory, _, err := s.chat.GetProjectMemory(r.Context(), user.ID, projectID)
+	memory, _, err := s.thread.GetProjectMemory(r.Context(), user.ID, projectID)
 	if err != nil {
 		serverError(w, r, err, "get project memory failed")
 		return

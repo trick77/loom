@@ -32,8 +32,8 @@ func TestCreateThreadRequiresAuth(t *testing.T) {
 }
 
 func TestCreateThreadReturnsThread(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads", `{}`)
 
@@ -52,8 +52,8 @@ func TestCreateThreadReturnsThread(t *testing.T) {
 }
 
 func TestListThreadsUsesCurrentUserScope(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/threads", "")
 
@@ -68,8 +68,8 @@ func TestListThreadsUsesCurrentUserScope(t *testing.T) {
 }
 
 func TestListThreadsParsesQueryOptions(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/threads?projectId=null&starred=true&archived=true&limit=12", "")
 
@@ -93,8 +93,8 @@ func TestListThreadsParsesQueryOptions(t *testing.T) {
 }
 
 func TestGetThreadNotFoundReturns404(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/threads/missing", "")
 
@@ -122,13 +122,13 @@ VALUES (?, ?, ?, 'user')`,
 			t.Fatalf("insert user %s: %v", userID, err)
 		}
 	}
-	chatStore := chat.NewStore(db)
-	bobThread, err := chatStore.CreateThread(ctx, "bob", chat.CreateThreadInput{Title: "Bob private thread"})
+	threadStore := chat.NewStore(db)
+	bobThread, err := threadStore.CreateThread(ctx, "bob", chat.CreateThreadInput{Title: "Bob private thread"})
 	if err != nil {
 		t.Fatalf("create bob thread: %v", err)
 	}
 	alice := auth.User{ID: "alice", Username: "alice", Role: auth.RoleUser, ResponseLanguage: "auto"}
-	srv := newAuthenticatedChatServerForUser(t, alice, Deps{Chat: chatStore})
+	srv := newAuthenticatedServerForUser(t, alice, Deps{Thread: threadStore})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/threads/"+bobThread.ID, "")
 
@@ -149,10 +149,10 @@ func TestArchiveAndDeleteThreadReturn204(t *testing.T) {
 		{name: "delete", method: http.MethodDelete, path: "/api/threads/thr_1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &fakeChatStore{
+			store := &fakeThreadStore{
 				thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
 			}
-			srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+			srv := newAuthenticatedServer(t, Deps{Thread: store})
 			rec := httptest.NewRecorder()
 			req := authenticatedRequest(tc.method, tc.path, "")
 
@@ -166,8 +166,8 @@ func TestArchiveAndDeleteThreadReturn204(t *testing.T) {
 }
 
 func TestUpdateThreadCanMoveIntoProject(t *testing.T) {
-	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", `{"projectId":"proj_1"}`)
 
@@ -186,8 +186,8 @@ func TestUpdateThreadCanMoveIntoProject(t *testing.T) {
 
 func TestUpdateThreadCanRemoveFromProject(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Thread"}}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Thread"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", `{"projectId":null}`)
 
@@ -205,11 +205,11 @@ func TestUpdateThreadCanRemoveFromProject(t *testing.T) {
 }
 
 func TestUpdateThreadProjectNotFoundReturns404(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
 		updateThreadErr: errors.New("project not found"),
 	}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", `{"projectId":"missing"}`)
 
@@ -230,11 +230,11 @@ func TestDeleteThreadRemovesGeneratedArtifactFiles(t *testing.T) {
 	if err := os.WriteFile(absPath, []byte("report"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
 			ID:            "art_1",
 			UserID:        testUser.ID,
@@ -257,9 +257,9 @@ func TestDeleteThreadRemovesGeneratedArtifactFiles(t *testing.T) {
 }
 
 func TestDeleteThreadPurgesThreadRAGData(t *testing.T) {
-	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	docs := &fakeDocumentService{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store, Documents: docs})
+	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodDelete, "/api/threads/thr_1", "")
 
@@ -274,9 +274,9 @@ func TestDeleteThreadPurgesThreadRAGData(t *testing.T) {
 }
 
 func TestBulkDeleteThreadsPurgesThreadRAGData(t *testing.T) {
-	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	docs := &fakeDocumentService{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store, Documents: docs})
+	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads:delete", `{"threadIds":["thr_1","thr_2"]}`)
 
@@ -305,9 +305,9 @@ func TestBulkDeleteThreadsRemovesArtifactsAndCountsDeleted(t *testing.T) {
 	absOne := writeArtifact("files/outputs/one.txt")
 	absTwo := writeArtifact("files/outputs/two.txt")
 
-	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: testUser.ID, ThreadID: "thr_1", VolumeRelPath: "files/outputs/one.txt"},
 			{ID: "art_2", UserID: testUser.ID, ThreadID: "thr_2", VolumeRelPath: "files/outputs/two.txt"},
@@ -340,8 +340,8 @@ func TestBulkDeleteThreadsRemovesArtifactsAndCountsDeleted(t *testing.T) {
 }
 
 func TestBulkDeleteThreadsSkipsEmptyAndDuplicateIDs(t *testing.T) {
-	store := &fakeChatStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads:delete", `{"threadIds":["thr_1","thr_1",""]}`)
 
@@ -362,8 +362,8 @@ func TestBulkDeleteThreadsSkipsEmptyAndDuplicateIDs(t *testing.T) {
 }
 
 func TestCreateThreadRejectsUnknownJSONFields(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads", `{"unexpected":true}`)
 
@@ -375,8 +375,8 @@ func TestCreateThreadRejectsUnknownJSONFields(t *testing.T) {
 }
 
 func TestCreateThreadHidesInternalStoreErrors(t *testing.T) {
-	store := &fakeChatStore{createThreadErr: errors.New("insert thread: database unavailable")}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{createThreadErr: errors.New("insert thread: database unavailable")}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads", `{}`)
 
@@ -398,11 +398,11 @@ func TestDeleteThreadLogsUnderlyingCauseOn500(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
 		deleteThreadErr: errors.New("delete thread: database is locked"),
 	}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodDelete, "/api/threads/thr_1", "")
 
@@ -423,8 +423,8 @@ func TestDeleteThreadLogsUnderlyingCauseOn500(t *testing.T) {
 	}
 }
 
-func TestListThreadsReturns503WhenChatDependencyMissing(t *testing.T) {
-	srv := newAuthenticatedChatServer(t, Deps{})
+func TestListThreadsReturns503WhenThreadStoreMissing(t *testing.T) {
+	srv := newAuthenticatedServer(t, Deps{})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/threads", "")
 
@@ -433,7 +433,7 @@ func TestListThreadsReturns503WhenChatDependencyMissing(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"error":"chat is not configured"`) {
-		t.Fatalf("body = %q, want chat configuration error", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"error":"thread store is not configured"`) {
+		t.Fatalf("body = %q, want thread store configuration error", rec.Body.String())
 	}
 }

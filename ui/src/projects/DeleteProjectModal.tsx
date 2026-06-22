@@ -22,8 +22,8 @@ export function DeleteProjectModal({
       >
         <h2 className="font-sans text-[22px] font-semibold text-[#f4f0e8]">Delete project</h2>
         <p className="mt-3 text-sm leading-6 text-[#d5d2c9]">
-          Delete {project.name}? This permanently deletes the project, its chats, and generated
-          artifacts for those chats.
+          Delete {project.name}? This permanently deletes the project, its threads, and generated
+          artifacts for those threads.
         </p>
         {error !== "" && <p className="mt-3 text-sm text-[#d98278]">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">

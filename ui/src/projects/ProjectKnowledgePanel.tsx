@@ -39,7 +39,7 @@ function statusBadge(doc: Document): Badge {
 /**
  * ProjectKnowledgePanel lists the documents added to a project's knowledge and
  * lets the user upload, re-index, and remove them. It mirrors AnythingLLM's
- * workspace documents: uploaded files are extracted and embedded so every chat in
+ * workspace documents: uploaded files are extracted and embedded so every thread in
  * the project can retrieve them. It sits beside the auto-generated memory panel
  * but is user-owned content, not a generated digest.
  */
@@ -176,7 +176,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       </div>
 
       <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
-        Upload documents so every chat in this project can search and cite them.
+        Upload documents so every thread in this project can search and cite them.
       </p>
 
       {error !== "" && (

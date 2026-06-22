@@ -28,7 +28,7 @@ func serverError(w http.ResponseWriter, r *http.Request, err error, clientMessag
 	writeJSONError(w, http.StatusInternalServerError, clientMessage)
 }
 
-func writeChatStoreError(w http.ResponseWriter, r *http.Request, err error, validationStatus int, validationMessages ...string) {
+func writeThreadStoreError(w http.ResponseWriter, r *http.Request, err error, validationStatus int, validationMessages ...string) {
 	message := err.Error()
 	for _, validationMessage := range validationMessages {
 		if message == validationMessage {
@@ -36,16 +36,16 @@ func writeChatStoreError(w http.ResponseWriter, r *http.Request, err error, vali
 			return
 		}
 	}
-	serverError(w, r, err, "chat store failed")
+	serverError(w, r, err, "thread store failed")
 }
 
-func writeMappedChatStoreError(w http.ResponseWriter, r *http.Request, err error, statuses map[string]int) {
+func writeMappedThreadStoreError(w http.ResponseWriter, r *http.Request, err error, statuses map[string]int) {
 	message := err.Error()
 	if status, ok := statuses[message]; ok {
 		writeJSONError(w, status, message)
 		return
 	}
-	serverError(w, r, err, "chat store failed")
+	serverError(w, r, err, "thread store failed")
 }
 
 func currentUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {
@@ -57,9 +57,9 @@ func currentUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {
 	return user, true
 }
 
-func requireChat(w http.ResponseWriter, s *server) bool {
-	if s.chat == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "chat is not configured")
+func requireThreadStore(w http.ResponseWriter, s *server) bool {
+	if s.thread == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "thread store is not configured")
 		return false
 	}
 	return true

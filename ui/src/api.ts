@@ -149,7 +149,7 @@ export const DOCUMENT_ACCEPT =
 // DOCUMENT_ACCEPT already includes images, so it covers every composer attachment.
 export const ATTACHMENT_ACCEPT = DOCUMENT_ACCEPT;
 export const DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE = 5;
-export const DOCUMENT_MAX_CHAT_ATTACHMENTS = 10;
+export const DOCUMENT_MAX_THREAD_ATTACHMENTS = 10;
 export const DOCUMENT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export type ArtifactListType = "all" | "images" | "files";
@@ -334,7 +334,7 @@ export type Usage = {
   webFetches: number;
   obscuraFetches: number;
   imageGens: number;
-  chatsCreated: number;
+  threadsCreated: number;
   projectsCreated: number;
   userMemoryLength: number;
   userMemoryMax: number;
@@ -523,7 +523,7 @@ export async function uploadDocument(
     throw new Error("Unsupported document format");
   }
   if (response.status === 409) {
-    throw new Error(`A chat can have up to ${DOCUMENT_MAX_CHAT_ATTACHMENTS} attached files.`);
+    throw new Error(`A thread can have up to ${DOCUMENT_MAX_THREAD_ATTACHMENTS} attached files.`);
   }
   if (response.status === 413) {
     throw new Error("Files must be 25 MB or smaller.");
@@ -547,7 +547,7 @@ export async function uploadImageAttachment(
     throw new Error("Unsupported image format");
   }
   if (response.status === 409) {
-    throw new Error(`A chat can have up to ${DOCUMENT_MAX_CHAT_ATTACHMENTS} attached files.`);
+    throw new Error(`A thread can have up to ${DOCUMENT_MAX_THREAD_ATTACHMENTS} attached files.`);
   }
   if (response.status === 413) {
     throw new Error("Files must be 25 MB or smaller.");

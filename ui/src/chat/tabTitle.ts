@@ -14,9 +14,9 @@ export function tabTitle(
   let base: string | null;
   switch (route.view) {
     case "new":
-      base = "New chat";
+      base = "New thread";
       break;
-    case "chats":
+    case "threads":
       base = "Recents";
       break;
     case "artifacts":
@@ -31,7 +31,7 @@ export function tabTitle(
     case "project":
       base = activeProject?.name ?? "Projects";
       break;
-    case "chat":
+    case "thread":
       base = activeThread?.title ?? null;
       break;
     default: {

@@ -23,7 +23,7 @@ import {
   upsertToolCallBlock,
   upsertToolResultBlock,
 } from "./contentBlocks";
-import { ChatsPage } from "../ChatsPage";
+import { ThreadsPage } from "../ThreadsPage";
 import { ArtifactsPage } from "../artifacts/ArtifactsPage";
 import { MemoryPage } from "../MemoryPage";
 import { navigate, routeFromLocation, type RouteState } from "./routing";
@@ -37,10 +37,10 @@ import {
   useDocumentAttachments,
   type ComposerAttachment,
 } from "./useDocumentAttachments";
-import { useChatData } from "./useChatData";
+import { useThreadData } from "./useThreadData";
 import { useProjectActions } from "./useProjectActions";
 import { useThreadActions } from "./useThreadActions";
-import { ChatPanel } from "./ChatPanel";
+import { ThreadPanel } from "./ThreadPanel";
 import { StartPanel } from "./StartPanel";
 import { Sidebar } from "./Sidebar";
 import { tabTitle } from "./tabTitle";
@@ -52,37 +52,37 @@ import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
-import { updateMessageAttachment } from "./chatUtils";
+import { updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export { buildImageStats } from "./artifacts";
 export { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 export { ProseMarkdown } from "./messages";
 
-type ChatShellProps = {
+type ThreadShellProps = {
   user: User;
   adminPanel: React.ReactNode;
   showAdmin: boolean;
   onAdmin(): void;
-  onChat(): void;
+  onThread(): void;
   onLogout(): void;
   onSessionExpired(): void;
 };
 
-export function ChatShell({
+export function ThreadShell({
   user,
   adminPanel,
   showAdmin,
   onAdmin,
-  onChat,
+  onThread,
   onLogout,
   onSessionExpired,
-}: ChatShellProps) {
+}: ThreadShellProps) {
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
   const [draft, setDraft] = useState("");
-  // Files attached on the new-chat start screen, held until the first send creates
+  // Files attached on the new-thread start screen, held until the first send creates
   // a thread to bind them to (deferred upload — avoids orphan empty threads and
-  // scopes the upload to the chat it was attached in).
+  // scopes the upload to the thread it was attached in).
   const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>([]);
   const [pendingAttachNote, setPendingAttachNote] = useState("");
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
@@ -104,10 +104,10 @@ export function ChatShell({
     setStreamingBlocks([]);
     setToolPending(false);
   }, []);
-  // Flush hook for the deferred new-chat upload: the scope is supplied per call at
+  // Flush hook for the deferred new-thread upload: the scope is supplied per call at
   // send time (the thread does not exist yet when the file is picked). Its
   // attachNote carries ingestion status/errors after the start screen is gone, so
-  // it is surfaced in the chat panel the user lands on.
+  // it is surfaced in the thread panel the user lands on.
   const { attachNote: deferredAttachNote, uploadExistingAttachments: flushPendingAttachments } =
     useDocumentAttachments({});
   const [sendError, setSendError] = useState("");
@@ -153,7 +153,7 @@ export function ChatShell({
     activeProject: activeProjectForRoute,
     activeThread,
     activeThreadProject,
-    chatDataLoaded,
+    threadDataLoaded,
     loadError,
     loadProjectThreads,
     loadRoute,
@@ -172,7 +172,7 @@ export function ChatShell({
     starredThreads,
     threads,
     unstarredProjects,
-  } = useChatData({
+  } = useThreadData({
     activeThreadIDRef,
     clearStreamingBlocks,
     handleActionError,
@@ -238,7 +238,7 @@ export function ChatShell({
   }, [loadRoute, route]);
 
   // Drop files staged on the start screen if the user leaves it without sending,
-  // so they can't bind to a different chat later.
+  // so they can't bind to a different thread later.
   useEffect(() => {
     if (route.view !== "new") {
       setPendingAttachments((current) => {
@@ -257,7 +257,7 @@ export function ChatShell({
 
   const displayName = user.displayName || user.username;
   // Archived projects are absent from the active `projects` list, so fall back
-  // to the project object we navigated into so its detail page (chats +
+  // to the project object we navigated into so its detail page (threads +
   // Unarchive) still resolves.
   const [openedProject, setOpenedProject] = useState<Project | null>(null);
   const activeProject =
@@ -269,7 +269,7 @@ export function ChatShell({
   }, [route, activeThread?.title, activeProject?.name]);
 
   const navigateToNew = useCallback(() => {
-    onChat();
+    onThread();
     setMobileSidebarOpen(false);
     activeThreadIDRef.current = null;
     setActiveThread(null);
@@ -280,45 +280,45 @@ export function ChatShell({
     setSendError("");
     navigate({ view: "new" });
     setRoute({ view: "new" });
-  }, [clearStreamingBlocks, onChat]);
+  }, [clearStreamingBlocks, onThread]);
 
-  const navigateToChats = useCallback(() => {
-    onChat();
+  const navigateToThreads = useCallback(() => {
+    onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "chats" });
-    setRoute({ view: "chats" });
-  }, [onChat]);
+    navigate({ view: "threads" });
+    setRoute({ view: "threads" });
+  }, [onThread]);
 
   const navigateToArtifacts = useCallback(() => {
-    onChat();
+    onThread();
     setMobileSidebarOpen(false);
     navigate({ view: "artifacts" });
     setRoute({ view: "artifacts" });
-  }, [onChat]);
+  }, [onThread]);
 
   const navigateToProjects = useCallback(() => {
-    onChat();
+    onThread();
     setMobileSidebarOpen(false);
     navigate({ view: "projects" });
     setRoute({ view: "projects" });
-  }, [onChat]);
+  }, [onThread]);
 
   const navigateToMemory = useCallback(() => {
-    onChat();
+    onThread();
     setMobileSidebarOpen(false);
     navigate({ view: "memory" });
     setRoute({ view: "memory" });
-  }, [onChat]);
+  }, [onThread]);
 
   const navigateToProject = useCallback(
     (project: Project) => {
-      onChat();
+      onThread();
       setMobileSidebarOpen(false);
       setOpenedProject(project);
       navigate({ view: "project", projectID: project.id });
       setRoute({ view: "project", projectID: project.id });
     },
-    [onChat],
+    [onThread],
   );
 
   const {
@@ -396,10 +396,10 @@ export function ChatShell({
   }
 
   async function selectThread(threadID: string) {
-    onChat();
+    onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "chat", threadID });
-    setRoute({ view: "chat", threadID });
+    navigate({ view: "thread", threadID });
+    setRoute({ view: "thread", threadID });
   }
 
   async function handleSetThreadStarred(thread: Thread, starred: boolean, menuKey?: string) {
@@ -518,7 +518,7 @@ export function ChatShell({
             : await createThread({ projectId: projectIDForNewThread, title: content });
         createdThreadForFallback = targetThread;
         // Now that a thread exists, flush files attached on the start screen,
-        // bound to it (project-less => private to this chat). Image uploads must
+        // bound to it (project-less => private to this thread). Image uploads must
         // finish before the first model request so their artifact ids can be sent
         // as multimodal inputs; document indexing still continues in the background.
         if (pendingAttachments.length > 0) {
@@ -544,8 +544,8 @@ export function ChatShell({
         setActiveThread(targetThread);
         activeThreadIDRef.current = targetThread.id;
         setMessages([]);
-        navigate({ view: "chat", threadID: targetThread.id });
-        setRoute({ view: "chat", threadID: targetThread.id });
+        navigate({ view: "thread", threadID: targetThread.id });
+        setRoute({ view: "thread", threadID: targetThread.id });
       }
       const targetThreadID = targetThread.id;
       activeThreadIDRef.current = targetThreadID;
@@ -704,8 +704,8 @@ export function ChatShell({
         onOpenSettings={() => setSettingsOpen(true)}
         onLogout={onLogout}
         onAdmin={onAdmin}
-        onNewChat={navigateToNew}
-        onChats={navigateToChats}
+        onNewThread={navigateToNew}
+        onThreads={navigateToThreads}
         onArtifacts={navigateToArtifacts}
         onProjects={navigateToProjects}
         onMemory={navigateToMemory}
@@ -733,12 +733,12 @@ export function ChatShell({
       <main className="min-w-0 bg-bg">
         {showAdmin ? (
           adminPanel
-        ) : route.view === "chats" ? (
-          <ChatsPage
+        ) : route.view === "threads" ? (
+          <ThreadsPage
             mutationVersion={threadMutationVersion}
             projectsAvailable={projects.length > 0}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
-            onNewChat={navigateToNew}
+            onNewThread={navigateToNew}
             onSelectThread={(threadID) => void selectThread(threadID)}
             onRenameThread={openRenameModal}
             onDeleteThread={openDeleteModal}
@@ -781,7 +781,7 @@ export function ChatShell({
           activeProject === null ? (
             <ProjectsPage
               projects={projects}
-              loadError={loadError === "" && chatDataLoaded ? "Project not found." : loadError}
+              loadError={loadError === "" && threadDataLoaded ? "Project not found." : loadError}
               onOpenSidebar={() => setMobileSidebarOpen(true)}
               onCreateProject={() => openProjectDialog(null)}
               onOpenProject={navigateToProject}
@@ -847,7 +847,7 @@ export function ChatShell({
             onRemoveAttachment={handleRemovePendingAttachment}
           />
         ) : (
-          <ChatPanel
+          <ThreadPanel
             thread={activeThread}
             threadProject={activeThreadProject}
             deferredAttachNote={deferredAttachNote}

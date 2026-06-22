@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { ChatsPage } from "./ChatsPage";
+import { ThreadsPage } from "./ThreadsPage";
 import * as api from "./api";
 import type { Thread } from "./api";
 
@@ -32,11 +32,11 @@ function thread(id: string, title: string): Thread {
 
 const FIXTURES = [thread("t1", "Greeting"), thread("t2", "Morning greeting"), thread("t3", "Apps and websites")];
 
-function renderPage(overrides: Partial<Parameters<typeof ChatsPage>[0]> = {}) {
+function renderPage(overrides: Partial<Parameters<typeof ThreadsPage>[0]> = {}) {
   const props = {
     mutationVersion: 0,
     onOpenSidebar: vi.fn(),
-    onNewChat: vi.fn(),
+    onNewThread: vi.fn(),
     onSelectThread: vi.fn(),
     onRenameThread: vi.fn(),
     onDeleteThread: vi.fn(),
@@ -47,7 +47,7 @@ function renderPage(overrides: Partial<Parameters<typeof ChatsPage>[0]> = {}) {
     onSessionExpired: vi.fn(),
     ...overrides,
   };
-  render(<ChatsPage {...props} />);
+  render(<ThreadsPage {...props} />);
   return props;
 }
 
@@ -94,11 +94,11 @@ test("chat rows use the sidebar hover surface", async () => {
   expect(rowSurface).toHaveClass("transition-colors");
   expect(rowSurface).toHaveClass("hover:bg-[#2a2a28]");
   expect(rowSurface).not.toBeNull();
-  const timeLabel = rowSurface?.querySelector("[data-chat-row-time]");
+  const timeLabel = rowSurface?.querySelector("[data-thread-row-time]");
   expect(timeLabel).toHaveClass("ml-auto");
   expect(timeLabel).toHaveClass("group-hover:hidden");
   expect(timeLabel).toHaveClass("[@media(hover:none)]:hidden");
-  const actionButton = within(rowSurface!).getByRole("button", { name: "Open chat actions" });
+  const actionButton = within(rowSurface!).getByRole("button", { name: "Open thread actions" });
   expect(actionButton).toHaveClass("absolute");
   expect(actionButton).toHaveClass("right-3");
   expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
@@ -121,7 +121,7 @@ test("chat rows fade adjacent dividers behind the rounded hover surface", async 
 test("search input uses the standard input text size", async () => {
   renderPage();
 
-  const searchInput = await screen.findByRole("textbox", { name: "Search chats" });
+  const searchInput = await screen.findByRole("textbox", { name: "Search threads" });
 
   expect(searchInput).toHaveClass("ui-composer-text");
   expect(searchInput).not.toHaveClass("ui-control-text");
@@ -131,7 +131,7 @@ test("search filters by title (debounced)", async () => {
   renderPage();
   await screen.findByText("Apps and websites");
 
-  fireEvent.change(screen.getByLabelText("Search chats"), { target: { value: "greet" } });
+  fireEvent.change(screen.getByLabelText("Search threads"), { target: { value: "greet" } });
 
   await waitFor(() => {
     expect(screen.queryByText("Apps and websites")).not.toBeInTheDocument();
@@ -145,7 +145,7 @@ test("Select all selects the filtered set and toggles button states", async () =
   renderPage();
   await screen.findByText("Greeting");
 
-  fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select threads" }));
 
   // Nothing selected yet: destructive actions are disabled (muted).
   expect(screen.getByText("0 selected")).toBeInTheDocument();
@@ -166,7 +166,7 @@ test("bulk delete confirms then calls the API with the selected ids", async () =
   const props = renderPage();
   await screen.findByText("Greeting");
 
-  fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select threads" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
   await screen.findByText("3 selected");
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
@@ -185,7 +185,7 @@ test("bulk delete confirms then calls the API with the selected ids", async () =
 test("Move to project sends selected chats to the move handler", async () => {
   const props = renderPage();
   await screen.findByText("Greeting");
-  fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select threads" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
   await screen.findByText("3 selected");
 

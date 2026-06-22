@@ -114,7 +114,7 @@ export function useThreadActions({
         .filter((result): result is PromiseFulfilledResult<{ original: Thread; updated: Thread }> => result.status === "fulfilled")
         .map((result) => result.value.updated);
       if (updatedThreads.length === 0) {
-        throw new Error("No chats moved.");
+        throw new Error("No threads moved.");
       }
       const failedThreads = results
         .map((result, index) => (result.status === "rejected" ? targetThreads[index] : null))
@@ -142,9 +142,9 @@ export function useThreadActions({
       setMovingThreads(failedThreads);
       setThreadMutationVersion((value) => value + 1);
       const failedCount = failedThreads.length;
-      setModalError(failedCount > 0 ? `${failedCount} chat${failedCount === 1 ? "" : "s"} failed to move.` : "");
+      setModalError(failedCount > 0 ? `${failedCount} thread${failedCount === 1 ? "" : "s"} failed to move.` : "");
     } catch (error) {
-      handleActionError(error, "Chats failed to move.", setModalError);
+      handleActionError(error, "Threads failed to move.", setModalError);
     } finally {
       setIsMutatingThread(false);
     }
@@ -164,7 +164,7 @@ export function useThreadActions({
       setOpenThreadMenuID(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, "Chat failed to remove from project.", setModalError);
+      handleActionError(error, "Thread failed to remove from project.", setModalError);
     } finally {
       setIsMutatingThread(false);
     }

@@ -9,7 +9,7 @@ import {
 } from "../api";
 import { useInfiniteList } from "../useInfiniteList";
 import { BulkDeleteModal } from "./BulkDeleteModal";
-import { ChatRow } from "./ChatRow";
+import { ThreadRow } from "./ThreadRow";
 import { Icon } from "../chat/Icon";
 import { PillButton } from "./PillButton";
 import { SidebarOpenButton } from "../SidebarOpenButton";
@@ -17,11 +17,11 @@ import { SidebarOpenButton } from "../SidebarOpenButton";
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
 
-export function ChatsPage({
+export function ThreadsPage({
   mutationVersion,
   projectsAvailable = false,
   onOpenSidebar,
-  onNewChat,
+  onNewThread,
   onSelectThread,
   onRenameThread,
   onDeleteThread,
@@ -34,7 +34,7 @@ export function ChatsPage({
   mutationVersion: number;
   projectsAvailable?: boolean;
   onOpenSidebar(): void;
-  onNewChat(): void;
+  onNewThread(): void;
   onSelectThread(threadID: string): void;
   onRenameThread(thread: Thread): void;
   onDeleteThread(thread: Thread): void;
@@ -83,7 +83,7 @@ export function ChatsPage({
       onSessionExpired();
       return;
     }
-    setLoadError(error !== null ? "Chats failed to load." : "");
+    setLoadError(error !== null ? "Threads failed to load." : "");
   }, [error, onSessionExpired]);
 
   // A new search changes what "all" means, so clear any selection it carried.
@@ -127,7 +127,7 @@ export function ChatsPage({
           onSessionExpired();
           return;
         }
-        setLoadError("Chats failed to load.");
+        setLoadError("Threads failed to load.");
       }
     })();
   }, [searchTerm, onSessionExpired]);
@@ -158,7 +158,7 @@ export function ChatsPage({
         onSessionExpired();
         return;
       }
-      setLoadError("Chats failed to delete.");
+      setLoadError("Threads failed to delete.");
       setConfirmingDelete(false);
     } finally {
       setIsDeleting(false);
@@ -171,7 +171,7 @@ export function ChatsPage({
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <SidebarOpenButton onClick={onOpenSidebar} />
-            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Chats</h1>
+            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Threads</h1>
           </div>
           {selectMode ? (
             <div className="flex flex-wrap items-center gap-2.5">
@@ -182,7 +182,7 @@ export function ChatsPage({
               <PillButton
                 variant="muted"
                 enabled={hasSelection && projectsAvailable}
-                title={projectsAvailable ? undefined : "Create a project before moving chats"}
+                title={projectsAvailable ? undefined : "Create a project before moving threads"}
                 onClick={() => {
                   if (!hasSelection || !projectsAvailable || onMoveSelectedToProject === undefined) return;
                   onMoveSelectedToProject(threads.filter((thread) => selectedIds.has(thread.id)));
@@ -208,10 +208,10 @@ export function ChatsPage({
           ) : (
             <div className="flex flex-wrap items-center gap-2.5">
               <PillButton variant="solid" onClick={() => setSelectMode(true)}>
-                Select chats
+                Select threads
               </PillButton>
-              <PillButton variant="white" onClick={onNewChat}>
-                New chat
+              <PillButton variant="white" onClick={onNewThread}>
+                New thread
               </PillButton>
             </div>
           )}
@@ -228,8 +228,8 @@ export function ChatsPage({
             autoFocus
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search chats…"
-            aria-label="Search chats"
+            placeholder="Search threads…"
+            aria-label="Search threads"
             className="ui-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
           />
         </div>
@@ -244,7 +244,7 @@ export function ChatsPage({
           {threads.length === 0 && loadError === "" ? (
             loaded && (
               <li className="py-10 text-center text-[#807d74]">
-                {searchTerm === "" ? "No chats yet." : "No chats match your search."}
+                {searchTerm === "" ? "No threads yet." : "No threads match your search."}
               </li>
             )
           ) : (
@@ -254,7 +254,7 @@ export function ChatsPage({
                 nextThread !== undefined &&
                 (hoveredID === nextThread.id || openMenuID === nextThread.id || selectedIds.has(nextThread.id));
               return (
-                <ChatRow
+                <ThreadRow
                   key={thread.id}
                   thread={thread}
                   selectMode={selectMode}

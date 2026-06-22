@@ -7,9 +7,9 @@ import { Icon } from "../chat/Icon";
 
 /**
  * ProjectMemoryPanel shows the project's auto-generated shared memory — the
- * compact digest injected into every chat in the project so sibling chats stay
+ * compact digest injected into every thread in the project so sibling threads stay
  * aware of each other. It is read-only; the memory refreshes automatically in
- * the background after chats.
+ * the background after threads.
  */
 export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
   const [content, setContent] = useState("");
@@ -81,7 +81,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <p className="mt-2 h-[490px] px-5 pb-5 text-sm leading-5 text-[#8f8b82]">
-          Memories will show here after a few chats.
+          Memories will show here after a few threads.
         </p>
       )}
     </section>

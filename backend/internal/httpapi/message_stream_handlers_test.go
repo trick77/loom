@@ -25,12 +25,12 @@ import (
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{title: "# Albert Einstein 🧠⚛️ The legendary physicist"},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{title: "# Albert Einstein 🧠⚛️ The legendary physicist"},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -74,12 +74,12 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 }
 
 func TestStreamMessageGeneratesTitleWhenThreadTitleIsFirstPrompt(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Explain this document"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{title: "Document summary"},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{title: "Document summary"},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Explain this document"}`)
@@ -96,12 +96,12 @@ func TestStreamMessageGeneratesTitleWhenThreadTitleIsFirstPrompt(t *testing.T) {
 }
 
 func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	streamText := "Answer."
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		LLM: fakeChatClient{
 			streamText:    &streamText,
 			reasoningText: "I should reason first.",
@@ -132,12 +132,12 @@ func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
 }
 
 func TestStreamMessageEmitsAndPersistsReasoningTitle(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	streamText := "Answer."
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		LLM: fakeChatClient{
 			streamText:     &streamText,
 			reasoningText:  "The user wants the latest sources, so I will search.",
@@ -173,7 +173,7 @@ func TestStreamMessageEmitsAndPersistsReasoningTitle(t *testing.T) {
 }
 
 func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	llmClient := &fakeToolChatClient{
@@ -199,9 +199,9 @@ func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 			}
 		},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools: []llm.Tool{{
 				Type:     "function",
@@ -257,10 +257,10 @@ INSERT INTO users (id, oidc_subject, username, role)
 VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		t.Fatal(err)
 	}
-	chatStore := chat.NewStore(db)
+	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
-	thread, err := chatStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Fallback"})
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Fallback"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,8 +279,8 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		},
 		plain: "", // every tool-free call (final + retry) returns empty, as if the inline XML was stripped
 	}
-	server := newAuthenticatedChatServer(t, Deps{
-		Chat:      chatStore,
+	server := newAuthenticatedServer(t, Deps{
+		Thread:    threadStore,
 		Artifacts: artifactStore,
 		DocTools:  []docgen.Generator{docgen.TextGenerator{}},
 		UsersDir:  t.TempDir(),
@@ -294,7 +294,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	messages, found, err := chatStore.ListMessages(context.Background(), user.ID, thread.ID)
+	messages, found, err := threadStore.ListMessages(context.Background(), user.ID, thread.ID)
 	if err != nil || !found {
 		t.Fatalf("ListMessages() found=%v err=%v", found, err)
 	}
@@ -324,10 +324,10 @@ INSERT INTO users (id, oidc_subject, username, role)
 VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		t.Fatal(err)
 	}
-	chatStore := chat.NewStore(db)
+	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
-	thread, err := chatStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Artifacts"})
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Artifacts"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,8 +348,8 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 			{Content: "Created notes.md."},
 		},
 	}
-	server := newAuthenticatedChatServer(t, Deps{
-		Chat:      chatStore,
+	server := newAuthenticatedServer(t, Deps{
+		Thread:    threadStore,
 		Artifacts: artifactStore,
 		DocTools:  []docgen.Generator{docgen.TextGenerator{}},
 		UsersDir:  t.TempDir(),
@@ -366,7 +366,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		t.Fatalf("stream missing artifact event:\n%s", rec.Body.String())
 	}
 
-	messages, found, err := chatStore.ListMessages(context.Background(), user.ID, thread.ID)
+	messages, found, err := threadStore.ListMessages(context.Background(), user.ID, thread.ID)
 	if err != nil || !found {
 		t.Fatalf("ListMessages() found=%v err=%v", found, err)
 	}
@@ -393,10 +393,10 @@ INSERT INTO users (id, oidc_subject, username, role)
 VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		t.Fatal(err)
 	}
-	chatStore := chat.NewStore(db)
+	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
-	thread, err := chatStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Images"})
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Images"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,8 +417,8 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		},
 		plain: "Created robot.png.",
 	}
-	server := newAuthenticatedChatServer(t, Deps{
-		Chat:       chatStore,
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     threadStore,
 		Artifacts:  artifactStore,
 		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		UsersDir:   t.TempDir(),
@@ -439,7 +439,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		t.Fatalf("stream missing image mime type:\n%s", body)
 	}
 
-	messages, found, err := chatStore.ListMessages(context.Background(), user.ID, thread.ID)
+	messages, found, err := threadStore.ListMessages(context.Background(), user.ID, thread.ID)
 	if err != nil || !found {
 		t.Fatalf("ListMessages() found=%v err=%v", found, err)
 	}
@@ -466,10 +466,10 @@ INSERT INTO users (id, oidc_subject, username, role)
 VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		t.Fatal(err)
 	}
-	chatStore := chat.NewStore(db)
+	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
-	thread, err := chatStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Images"})
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Images"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,8 +485,8 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 			}},
 		}},
 	}
-	server := newAuthenticatedChatServer(t, Deps{
-		Chat:       chatStore,
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     threadStore,
 		Artifacts:  artifactStore,
 		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		UsersDir:   t.TempDir(),
@@ -501,7 +501,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	if strings.Contains(body, "event: error") {
 		t.Fatalf("SSE body contains error despite image artifact:\n%s", body)
 	}
-	messages, found, err := chatStore.ListMessages(context.Background(), user.ID, thread.ID)
+	messages, found, err := threadStore.ListMessages(context.Background(), user.ID, thread.ID)
 	if err != nil || !found {
 		t.Fatalf("ListMessages() found=%v err=%v", found, err)
 	}
@@ -522,11 +522,11 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 
 func TestStreamMessageRequiresGenerateImageForObviousImageRequest(t *testing.T) {
 	llmClient := &fakeToolChatClient{results: []llm.StreamResult{{Content: "I am a text-based AI assistant and cannot generate images."}}}
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
-	server := newAuthenticatedChatServer(t, Deps{
-		Chat:       store,
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
 		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		UsersDir:   t.TempDir(),
@@ -587,11 +587,11 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 			}},
 		}},
 	}
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
-	server := newAuthenticatedChatServer(t, Deps{
-		Chat:       store,
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
 		ImageTools: []imagegen.Tool{imagegen.NewTool(errorImageProvider{err: errors.New("BFL generation timed out: context deadline exceeded")})},
 		UsersDir:   t.TempDir(),
@@ -628,11 +628,11 @@ func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T)
 		},
 		plain: "Created robot.png.",
 	}
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
-	server := newAuthenticatedChatServer(t, Deps{
-		Chat:       store,
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
 		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		UsersDir:   t.TempDir(),
@@ -657,7 +657,7 @@ func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T)
 func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
 	textOnlyImageClaim := "Here's your trick77 logo in full cyberpunk style."
 	var history []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 		messages: []chat.Message{{
 			ID:        "old_1",
@@ -668,8 +668,8 @@ func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
 		}},
 	}
 	capturingLLM := &fakeToolChatClient{results: []llm.StreamResult{{Content: textOnlyImageClaim}}}
-	server := newAuthenticatedChatServer(t, Deps{
-		Chat:       store,
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
 		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		UsersDir:   t.TempDir(),
@@ -709,12 +709,12 @@ func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
 }
 
 func TestStreamMessagePersistsEmptyArtifactListForTextOnlyAssistant(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -741,11 +741,11 @@ func TestStreamMessageAddsImageAttachmentsToLLMHistory(t *testing.T) {
 		t.Fatalf("write image: %v", err)
 	}
 	var history []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
 			ID:              "art_image",
 			UserID:          testUser.ID,
@@ -1031,11 +1031,11 @@ func (f errorImageProvider) Generate(context.Context, imagegen.GenerateRequest) 
 }
 
 func TestStreamMessagePersistsAssistantTokenUsage(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		LLM: fakeChatClient{usage: llm.TokenUsage{
 			PromptTokens:     7,
 			CompletionTokens: 3,
@@ -1084,12 +1084,12 @@ func derefInt(value *int) int {
 // The persisted stats must include the background helper calls — the reasoning
 // abstract and the thread title — not just the answer turn.
 func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		// Default title so the thread-title helper call fires this turn.
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		LLM: fakeChatClient{
 			title:          "Fresh title",
 			reasoningTitle: "Explaining things",
@@ -1137,7 +1137,7 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 
 // The persisted stats must sum every tool round, not just the final answer turn.
 func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &fakeToolChatClient{
@@ -1157,9 +1157,9 @@ func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 			},
 		},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools: []llm.Tool{{
 				Type: "function",
@@ -1196,12 +1196,12 @@ func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 }
 
 func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	var cancel context.CancelFunc
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		LLM: fakeChatClient{afterStream: func() {
 			cancel()
 		}},
@@ -1223,16 +1223,16 @@ func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
 }
 
 func TestStopStreamMessageCancelsActiveAssistantTurn(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &blockingChatClient{
 		started: make(chan struct{}),
 		done:    make(chan struct{}),
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 	})
 
 	streamCtx, cancelStream := context.WithCancel(context.Background())
@@ -1330,7 +1330,7 @@ func TestStreamCancelDetailsClassifiesCancellationSource(t *testing.T) {
 }
 
 func TestStopStreamMessagePersistsPartialAssistantContent(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &blockingChatClient{
@@ -1338,9 +1338,9 @@ func TestStopStreamMessagePersistsPartialAssistantContent(t *testing.T) {
 		done:           make(chan struct{}),
 		partialContent: "Partial answer",
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 	})
 
 	streamDone := make(chan struct{})
@@ -1376,12 +1376,12 @@ func TestStopStreamMessagePersistsPartialAssistantContent(t *testing.T) {
 
 func TestStreamMessageRejectsEmptyAssistantResponse(t *testing.T) {
 	empty := ""
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{streamText: &empty},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{streamText: &empty},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -1399,15 +1399,15 @@ func TestStreamMessageRejectsEmptyAssistantResponse(t *testing.T) {
 
 func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 	var history []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread:   chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 		messages: []chat.Message{{ID: "old_1", ThreadID: "thr_1", Role: chat.RoleAssistant, Content: "Earlier answer"}},
 	}
 	user := testUser
 	user.ResponseLanguage = "de"
-	srv := newAuthenticatedChatServerForUser(t, user, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{history: &history},
+	srv := newAuthenticatedServerForUser(t, user, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{history: &history},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Neue Frage"}`)
@@ -1433,12 +1433,12 @@ func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 
 func TestStreamMessageSystemPromptRoutesURLTools(t *testing.T) {
 	var history []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{history: &history},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{history: &history},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Read https://example.com"}`)
@@ -1474,12 +1474,12 @@ func TestSystemPromptForUserIncludesCurrentDate(t *testing.T) {
 
 func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 	var history []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{history: &history},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{history: &history},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"What happened last week?"}`)
@@ -1502,12 +1502,12 @@ func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 
 func TestStreamMessageSystemPromptBoundsOpenEndedBrainstorming(t *testing.T) {
 	var history []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{history: &history},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{history: &history},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Name my chatbot"}`)
@@ -1529,10 +1529,10 @@ func TestStreamMessageSystemPromptBoundsOpenEndedBrainstorming(t *testing.T) {
 }
 
 func TestStreamMessageReturns503WhenLLMDependencyMissing(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
 
@@ -1547,12 +1547,12 @@ func TestStreamMessageReturns503WhenLLMDependencyMissing(t *testing.T) {
 }
 
 func TestStreamMessageStillCompletesWhenTitleGenerationFails(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{titleErr: errors.New("title model unavailable")},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{titleErr: errors.New("title model unavailable")},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -1572,12 +1572,12 @@ func TestStreamMessageStillCompletesWhenTitleGenerationFails(t *testing.T) {
 }
 
 func TestStreamMessageEmitsMcpStatus(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{title: "Greeting"},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{title: "Greeting"},
 		MCP: fakeMCPService{statuses: []mcp.ServerStatus{
 			{Name: "alpha", Active: true},
 			{Name: "zeta", Active: false},
@@ -1601,13 +1601,13 @@ func TestStreamMessageEmitsMcpStatus(t *testing.T) {
 }
 
 func TestStreamMessageOmitsMcpStatusWhenNoneConfigured(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{title: "Greeting"},
-		MCP:  fakeMCPService{},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{title: "Greeting"},
+		MCP:    fakeMCPService{},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -1620,7 +1620,7 @@ func TestStreamMessageOmitsMcpStatusWhenNoneConfigured(t *testing.T) {
 }
 
 func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &fakeToolChatClient{
@@ -1639,9 +1639,9 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 			{Content: "I found Lume."},
 		},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools: []llm.Tool{{
 				Type: "function",
@@ -1757,7 +1757,7 @@ func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
 }
 
 func TestStreamMessageRecoversFromToolError(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &fakeToolChatClient{
@@ -1772,9 +1772,9 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 			{Content: "The search tool failed, but I can continue."},
 		},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
 			err:   errFakeTool,
@@ -1798,7 +1798,7 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 }
 
 func TestStreamMessageStopsAfterToolCallLimit(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	toolCalls := make([]llm.ToolCall, maxToolCallsPerRound+1)
@@ -1811,10 +1811,10 @@ func TestStreamMessageStopsAfterToolCallLimit(t *testing.T) {
 			},
 		}
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  &fakeToolChatClient{results: []llm.StreamResult{{ToolCalls: toolCalls}}},
-		MCP:  fakeMCPService{tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    &fakeToolChatClient{results: []llm.StreamResult{{ToolCalls: toolCalls}}},
+		MCP:    fakeMCPService{tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
@@ -1831,7 +1831,7 @@ func TestStreamMessageStopsAfterToolCallLimit(t *testing.T) {
 }
 
 func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	results := make([]llm.StreamResult, maxToolRounds)
@@ -1845,9 +1845,9 @@ func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
 		}}}
 	}
 	llmClient := &fakeToolChatClient{results: results, plain: "Final answer without more tools."}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
 			result: "search result",
@@ -1868,7 +1868,7 @@ func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
 }
 
 func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	// Round 1 runs a tool; round 2 returns nothing (no tool call, no content) —
@@ -1880,9 +1880,9 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 		},
 		plain: "Final answer after the tool ran.",
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  llmClient,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
 			result: "search result",

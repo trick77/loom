@@ -21,18 +21,18 @@ func (s *server) userMemoryScope(user auth.User) memoryScope {
 		header:       "",
 		systemPrompt: llm.UserMemorySystemPrompt,
 		get: func(ctx context.Context) (string, int, error) {
-			memory, _, err := s.chat.GetUserMemory(ctx, user.ID)
+			memory, _, err := s.thread.GetUserMemory(ctx, user.ID)
 			return memory.Content, memory.SourceMessageCount, err
 		},
 		upsert: func(ctx context.Context, content string, sourceCount int) error {
-			_, err := s.chat.UpsertUserMemory(ctx, user.ID, content, sourceCount)
+			_, err := s.thread.UpsertUserMemory(ctx, user.ID, content, sourceCount)
 			return err
 		},
 		count: func(ctx context.Context) (int, error) {
-			return s.chat.CountUserMessages(ctx, user.ID)
+			return s.thread.CountUserMessages(ctx, user.ID)
 		},
 		list: func(ctx context.Context, limit int) ([]chat.Message, error) {
-			return s.chat.ListUserMessages(ctx, user.ID, limit)
+			return s.thread.ListUserMessages(ctx, user.ID, limit)
 		},
 	}
 }
@@ -41,7 +41,7 @@ func (s *server) userMemoryScope(user auth.User) memoryScope {
 // injected into every chat. Returns "" when there is no memory yet or on any
 // error (user context is best-effort and never blocks a chat).
 func (s *server) userContextForUser(ctx context.Context, userID string) string {
-	memory, _, err := s.chat.GetUserMemory(ctx, userID)
+	memory, _, err := s.thread.GetUserMemory(ctx, userID)
 	if err != nil {
 		slog.Warn("load user memory failed", "error", err)
 		return ""
@@ -56,7 +56,7 @@ func renderUserContext(memory string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("Personal context about the user you are chatting with (durable facts they shared across chats). Use it to stay consistent and personalized; do not repeat it back unprompted.\n")
+	b.WriteString("Personal context about the user you are chatting with (durable facts they shared across threads). Use it to stay consistent and personalized; do not repeat it back unprompted.\n")
 	b.WriteString(strings.TrimSpace(memory))
 	return b.String()
 }
@@ -78,10 +78,10 @@ func (s *server) maybeRefreshUserMemoryAsync(parent context.Context, user auth.U
 
 func (s *server) handleGetUserMemory(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
-	memory, _, err := s.chat.GetUserMemory(r.Context(), user.ID)
+	memory, _, err := s.thread.GetUserMemory(r.Context(), user.ID)
 	if err != nil {
 		serverError(w, r, err, "get user memory failed")
 		return
@@ -93,19 +93,19 @@ func (s *server) handleGetUserMemory(w http.ResponseWriter, r *http.Request) {
 // messages across all threads (bounded by memoryRebuildLimit).
 func (s *server) handleRefreshUserMemory(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	if s.llm == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
 		return
 	}
-	count, err := s.chat.CountUserMessages(r.Context(), user.ID)
+	count, err := s.thread.CountUserMessages(r.Context(), user.ID)
 	if err != nil {
 		serverError(w, r, err, "refresh user memory failed")
 		return
 	}
-	messages, err := s.chat.ListUserMessages(r.Context(), user.ID, memoryRebuildLimit)
+	messages, err := s.thread.ListUserMessages(r.Context(), user.ID, memoryRebuildLimit)
 	if err != nil {
 		serverError(w, r, err, "refresh user memory failed")
 		return
@@ -115,7 +115,7 @@ func (s *server) handleRefreshUserMemory(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusBadGateway, "refresh user memory failed")
 		return
 	}
-	memory, _, err := s.chat.GetUserMemory(r.Context(), user.ID)
+	memory, _, err := s.thread.GetUserMemory(r.Context(), user.ID)
 	if err != nil {
 		serverError(w, r, err, "get user memory failed")
 		return

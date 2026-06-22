@@ -41,7 +41,7 @@ test("uploadImageAttachment maps chat attachment limit errors", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 409 })));
 
   await expect(uploadImageAttachment(new File(["png"], "screenshot.png", { type: "image/png" }))).rejects.toThrow(
-    "A chat can have up to 10 attached files.",
+    "A thread can have up to 10 attached files.",
   );
 });
 
