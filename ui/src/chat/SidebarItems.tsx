@@ -203,7 +203,7 @@ function SidebarThreadItem({
         <ThreadActionsMenu
           menuKey={menuKey}
           thread={thread}
-          className="right-2 left-auto md:left-[174px] md:right-auto"
+          className="right-4 left-auto md:left-[160px] md:right-auto"
           onDelete={onDelete}
           onRename={onRename}
           onAddToProject={onAddToProject}
@@ -287,7 +287,7 @@ export function SidebarProjectItem({
       {menuOpen && (
         <ProjectSidebarMenu
           project={project}
-          className="right-2 left-auto"
+          className="right-4 left-auto"
           onStarChange={(target, starred) => onStarChange(target, starred, menuKey)}
           onEdit={onEdit}
           onArchive={onArchive}
