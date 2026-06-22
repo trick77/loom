@@ -1807,7 +1807,7 @@ test("shows the reasoning abstract once its background title arrives", async () 
   expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
 });
 
-test("auto-opens the live thinking window once and keeps it open after the answer settles", async () => {
+test("auto-opens the live thinking window once, then collapses it when the answer starts", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1833,16 +1833,16 @@ test("auto-opens the live thinking window once and keeps it open after the answe
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
 
-  // The answer settles (text + background title). The window does NOT collapse on
-  // its own — it stays open through the answer for the rest of the turn; only the
-  // headline label flips to the generated abstract.
+  // The answer starts streaming: the window collapses on its own — it does not wait
+  // for the whole answer to finish — while the headline label flips to the generated
+  // abstract. The reasoning body is now hidden behind the collapsed toggle.
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
   );
   expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
-  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
 });
 
 test("does not auto-open the live thinking window at the bare start of a turn", async () => {
@@ -2017,9 +2017,12 @@ test("keeps active activity trace visible while assistant text is streaming", as
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  // No reasoning title has arrived yet, so the window stays open while the answer streams.
-  expect(within(trace).getByText("I checked the source first.")).toBeInTheDocument();
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  // The answer has started: the window collapses on its own without waiting for a
+  // reasoning title to arrive. Only the (still "Thinking") headline label remains,
+  // and the reasoning body is hidden behind the collapsed toggle.
+  expect(await within(trace).findByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  expect(within(trace).queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
+  await waitFor(() => expect(within(trace).queryByText("I checked the source first.")).not.toBeInTheDocument());
   // Reasoning rows use the clock node — no per-row completion checkmark mid-stream.
   expect(document.querySelector(".ui-activity-trace-icon-reasoning-complete")).toBeNull();
 
