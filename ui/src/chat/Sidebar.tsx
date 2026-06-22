@@ -304,7 +304,7 @@ export function Sidebar({
 }
 
 function roleLabel(_role: User["role"]): string {
-  return "∞ Unlimited";
+  return "Unlimited Plan";
 }
 
 function initialsFor(name: string): string {
