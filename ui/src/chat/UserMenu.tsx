@@ -30,7 +30,7 @@ export function UserMenu({
   return (
     <div
       aria-label="User menu"
-      className={`ui-sidebar-text absolute z-30 w-[220px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
+      className={`ui-sidebar-text absolute z-30 w-[220px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
       <button
