@@ -203,7 +203,7 @@ function SidebarThreadItem({
         <ThreadActionsMenu
           menuKey={menuKey}
           thread={thread}
-          className="right-1 left-auto md:left-[174px] md:right-auto"
+          className="right-2 left-auto md:left-[174px] md:right-auto"
           onDelete={onDelete}
           onRename={onRename}
           onAddToProject={onAddToProject}
@@ -287,7 +287,7 @@ export function SidebarProjectItem({
       {menuOpen && (
         <ProjectSidebarMenu
           project={project}
-          className="right-1 left-auto"
+          className="right-2 left-auto"
           onStarChange={(target, starred) => onStarChange(target, starred, menuKey)}
           onEdit={onEdit}
           onArchive={onArchive}
@@ -316,7 +316,7 @@ function ProjectSidebarMenu({
   return (
     <div
       aria-label="Project actions"
-      className={`ui-sidebar-text absolute z-20 mt-1 w-[155px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
+      className={`ui-sidebar-text absolute z-20 mt-1 w-[155px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
       <button
