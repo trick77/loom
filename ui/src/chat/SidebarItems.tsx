@@ -287,7 +287,7 @@ export function SidebarProjectItem({
       {menuOpen && (
         <ProjectSidebarMenu
           project={project}
-          className="right-1 left-auto md:left-[174px] md:right-auto"
+          className="right-1 left-auto"
           onStarChange={(target, starred) => onStarChange(target, starred, menuKey)}
           onEdit={onEdit}
           onArchive={onArchive}
@@ -316,7 +316,7 @@ function ProjectSidebarMenu({
   return (
     <div
       aria-label="Project actions"
-      className={`ui-sidebar-text absolute z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
+      className={`ui-sidebar-text absolute z-20 mt-1 w-[155px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
       <button
@@ -341,6 +341,7 @@ function ProjectSidebarMenu({
         </span>
         Edit details
       </button>
+      <div className="mx-[14px] my-[5px] h-px bg-[#454540]" role="separator" />
       <button
         className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
@@ -350,7 +351,6 @@ function ProjectSidebarMenu({
         <ArchiveIcon />
         Archive
       </button>
-      <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
       <button
         className={`${menuItemClass} text-[#d98278]`}
         role="menuitem"
