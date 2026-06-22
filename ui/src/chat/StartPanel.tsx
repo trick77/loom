@@ -1,5 +1,5 @@
 import type { McpStatusEvent } from "../api";
-import logoImage from "../assets/mynd-logo.png";
+import logoImage from "../assets/loom-logo.png";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
@@ -56,9 +56,9 @@ export function StartPanel({
         {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator compact status={mcpStatus} />}
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-[14vh] sm:px-8">
-        <h2 className="ui-greeting-text mb-8 flex items-center gap-4 font-serif">
-          <img className="h-16 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
-          {greetingForNow(displayName)}
+        <h2 className="ui-greeting-text mb-8 flex items-center gap-2 font-serif">
+          <img className="h-12 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
+          <span className="-translate-y-0.5">{greetingForNow(displayName)}</span>
         </h2>
         <div className="w-full max-w-[674px]">
           <WindowFileDrop enabled onAttachFiles={onAttachFiles} onAttachError={onAttachError} />
@@ -81,24 +81,8 @@ export function StartPanel({
             <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
           )}
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-          <div className="ui-meta-text mt-4 flex flex-wrap justify-center gap-2 text-[#e8e4da]">
-            <PromptChip icon="◇" label="Write" />
-            <PromptChip icon="▱" label="Learn" />
-            <PromptChip icon="‹/›" label="Code" />
-            <PromptChip icon="☕" label="Life stuff" />
-            <PromptChip icon="◌" label="Loom's choice" />
-          </div>
         </div>
       </div>
     </section>
-  );
-}
-
-function PromptChip({ icon, label }: { icon: string; label: string }) {
-  return (
-    <button className="ui-meta-text flex h-8 items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 text-[#eeeae2]" type="button">
-      <span className="text-[#aaa79e]">{icon}</span>
-      {label}
-    </button>
   );
 }
