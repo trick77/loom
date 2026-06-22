@@ -11,9 +11,9 @@ import (
 	"github.com/trick77/loom/internal/titletext"
 )
 
-const chatTitleSystemPrompt = "You write short chat titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
+const threadTitleSystemPrompt = "You write short thread titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
 
-func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
+func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
 	start := time.Now()
 	// Frame the request as material to be titled, not a turn to answer. Passed as
 	// a bare user message, an imperative prompt ("Explain why glaciers are blue")
@@ -25,7 +25,7 @@ func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMe
 	}
 	framed += "\n\nTitle:"
 	messages := []Message{
-		{Role: "system", Content: chatTitleSystemPrompt},
+		{Role: "system", Content: threadTitleSystemPrompt},
 		{Role: "user", Content: framed},
 	}
 	resp, err := c.executeUtilityChatRequest(ctx, messages)
@@ -43,19 +43,19 @@ func (c *Client) GenerateChatTitle(ctx context.Context, userMessage, assistantMe
 	}
 	if len(completion.Choices) == 0 {
 		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
-		return "New chat", nil
+		return "New thread", nil
 	}
 	choice := completion.Choices[0]
 	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
 	// A title cut off at the token cap is unreliable; fall back rather than store
 	// a half phrase as the thread title.
 	if choice.FinishReason == "length" {
-		return "New chat", nil
+		return "New thread", nil
 	}
-	return cleanChatTitle(choice.Message.Content), nil
+	return cleanThreadTitle(choice.Message.Content), nil
 }
 
-func cleanChatTitle(title string) string {
+func cleanThreadTitle(title string) string {
 	title = strings.TrimSpace(title)
 	title = titletext.NormalizeQuotes(title)
 	if unquoted, err := strconv.Unquote(title); err == nil {
@@ -64,15 +64,15 @@ func cleanChatTitle(title string) string {
 		title = strings.TrimSpace(titletext.StripWrappingQuotes(title))
 	}
 	if title == "" {
-		return "New chat"
+		return "New thread"
 	}
 	title = rewriteFirstPersonCreationTitle(title)
 	if isAnswerLikeTitle(title) {
-		return "New chat"
+		return "New thread"
 	}
 	title = trimTrailingDots(title)
 	if title == "" {
-		return "New chat"
+		return "New thread"
 	}
 
 	runes := []rune(title)

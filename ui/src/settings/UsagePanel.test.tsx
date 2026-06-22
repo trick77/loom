@@ -17,7 +17,7 @@ const sample: api.Usage = {
   webFetches: 7,
   obscuraFetches: 2,
   imageGens: 1,
-  chatsCreated: 9,
+  threadsCreated: 9,
   projectsCreated: 3,
   userMemoryLength: 1234,
   userMemoryMax: 2000,

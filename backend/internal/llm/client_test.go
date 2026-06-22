@@ -962,9 +962,9 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	title, err := client.GenerateChatTitle(context.Background(), "Can you explain x?", "Sure.")
+	title, err := client.GenerateThreadTitle(context.Background(), "Can you explain x?", "Sure.")
 	if err != nil {
-		t.Fatalf("GenerateChatTitle() error: %v", err)
+		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
 
 	if gotBody.Stream {
@@ -978,7 +978,7 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	if len(gotBody.Messages) != 2 {
 		t.Fatalf("len(messages) = %d, want 2", len(gotBody.Messages))
 	}
-	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != chatTitleSystemPrompt {
+	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != threadTitleSystemPrompt {
 		t.Fatalf("system message = %#v", gotBody.Messages[0])
 	}
 	if gotBody.Messages[1].Role != "user" || !strings.Contains(gotBody.Messages[1].Content, "Can you explain x?") || !strings.Contains(gotBody.Messages[1].Content, "Sure.") {
@@ -994,7 +994,7 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 		name string
 		call func(c *Client) (string, error)
 	}{
-		{"chat title", func(c *Client) (string, error) { return c.GenerateChatTitle(context.Background(), "Hi", "") }},
+		{"chat title", func(c *Client) (string, error) { return c.GenerateThreadTitle(context.Background(), "Hi", "") }},
 		{"reasoning title", func(c *Client) (string, error) {
 			return c.GenerateReasoningTitle(context.Background(), "some reasoning")
 		}},
@@ -1055,20 +1055,20 @@ func TestClient_TitlesSkippedWhenTruncatedAtTokenCap(t *testing.T) {
 	if got, err := client.GenerateReasoningTitle(context.Background(), "some reasoning"); err != nil || got != "" {
 		t.Fatalf("reasoning title = %q, err = %v; want skipped (empty)", got, err)
 	}
-	if got, err := client.GenerateChatTitle(context.Background(), "Hi", ""); err != nil || got != "New chat" {
-		t.Fatalf("chat title = %q, err = %v; want New chat", got, err)
+	if got, err := client.GenerateThreadTitle(context.Background(), "Hi", ""); err != nil || got != "New thread" {
+		t.Fatalf("thread title = %q, err = %v; want New thread", got, err)
 	}
 }
 
 func TestCleanTitlesStripTrailingDot(t *testing.T) {
-	if got := cleanChatTitle("Blue sky explanation."); got != "Blue sky explanation" {
-		t.Fatalf("cleanChatTitle trailing dot = %q", got)
+	if got := cleanThreadTitle("Blue sky explanation."); got != "Blue sky explanation" {
+		t.Fatalf("cleanThreadTitle trailing dot = %q", got)
 	}
 	if got := cleanReasoningTitle("Contrasting TCP and UDP protocols."); got != "Contrasting TCP and UDP protocols" {
 		t.Fatalf("cleanReasoningTitle trailing dot = %q", got)
 	}
-	if got := cleanChatTitle("Done..."); got != "Done" {
-		t.Fatalf("cleanChatTitle ellipsis = %q", got)
+	if got := cleanThreadTitle("Done..."); got != "Done" {
+		t.Fatalf("cleanThreadTitle ellipsis = %q", got)
 	}
 }
 
@@ -1087,8 +1087,8 @@ func TestCleanChatTitleQuoteHandling(t *testing.T) {
 		"Blue Sky Explanation": "Blue Sky Explanation",
 	}
 	for in, want := range cases {
-		if got := cleanChatTitle(in); got != want {
-			t.Errorf("cleanChatTitle(%q) = %q, want %q", in, got, want)
+		if got := cleanThreadTitle(in); got != want {
+			t.Errorf("cleanThreadTitle(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -1148,9 +1148,9 @@ func TestClient_GenerateTitleOmitsEmptyAssistantMessage(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	title, err := client.GenerateChatTitle(context.Background(), "Hi", "")
+	title, err := client.GenerateThreadTitle(context.Background(), "Hi", "")
 	if err != nil {
-		t.Fatalf("GenerateChatTitle() error: %v", err)
+		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
 	if title != "Greeting" {
 		t.Fatalf("title = %q, want Greeting", title)
@@ -1182,12 +1182,12 @@ func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	title, err := client.GenerateChatTitle(context.Background(), `Tell me about "Lens" by IPverse`, "")
+	title, err := client.GenerateThreadTitle(context.Background(), `Tell me about "Lens" by IPverse`, "")
 	if err != nil {
-		t.Fatalf("GenerateChatTitle() error: %v", err)
+		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
-	if title != "New chat" {
-		t.Fatalf("title = %q, want New chat", title)
+	if title != "New thread" {
+		t.Fatalf("title = %q, want New thread", title)
 	}
 }
 
@@ -1198,16 +1198,16 @@ func TestCleanTitleFallsBackForRefusalLikeCompletion(t *testing.T) {
 		"As a text-based AI assistant, I cannot generate images.",
 	} {
 		t.Run(raw, func(t *testing.T) {
-			title := cleanChatTitle(raw)
-			if title != "New chat" {
-				t.Fatalf("title = %q, want New chat", title)
+			title := cleanThreadTitle(raw)
+			if title != "New thread" {
+				t.Fatalf("title = %q, want New thread", title)
 			}
 		})
 	}
 }
 
 func TestCleanTitleRewritesFirstPersonCreationSentence(t *testing.T) {
-	title := cleanChatTitle(`"I'll create a photorealistic image of a male Maine Coon cat for you."`)
+	title := cleanThreadTitle(`"I'll create a photorealistic image of a male Maine Coon cat for you."`)
 
 	if title != "Creation of a photorealistic image of a male Maine Coon cat" {
 		t.Fatalf("title = %q, want passive creation title", title)
@@ -1231,8 +1231,8 @@ func TestClient_GenerateTitleFramesAssistantReplyWhenPresent(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	if _, err := client.GenerateChatTitle(context.Background(), "Hi", "Hi there"); err != nil {
-		t.Fatalf("GenerateChatTitle() error: %v", err)
+	if _, err := client.GenerateThreadTitle(context.Background(), "Hi", "Hi there"); err != nil {
+		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
 	// Both the user request and the assistant reply are framed into one user turn
 	// (no separate assistant-role message that the model might continue answering).

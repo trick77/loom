@@ -17,11 +17,11 @@ import (
 // client instead of the generic "stream failed", and must not silently drop the
 // turn the way a client disconnect (context.Canceled) does.
 func TestStreamMessageSurfacesStallAsClearError(t *testing.T) {
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		LLM: fakeChatClient{
 			reasoningText: "thinking",
 			streamErr:     fmt.Errorf("read chat completion stream: %w", llm.ErrStreamStalled),

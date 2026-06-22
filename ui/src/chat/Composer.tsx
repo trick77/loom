@@ -21,7 +21,7 @@ export function Composer({
   attachments = [],
   onRemoveAttachment,
 }: {
-  variant: "start" | "chat";
+  variant: "start" | "thread";
   draft: string;
   isSending: boolean;
   sendDisabled?: boolean;
@@ -41,7 +41,7 @@ export function Composer({
   // Base (empty) height per variant, preserved as the textarea's min-height so
   // the composer keeps its current look before any auto-grow kicks in.
   const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
-  const sendIconClass = variant === "chat" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
+  const sendIconClass = variant === "thread" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   const padX = "px-6";
   const canSend = !isSending && !sendDisabled && draft.trim() !== "";
   const actionButtonClass = isSending
@@ -50,7 +50,7 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Auto-grow: measure content height and apply it inline. The CSS max-height
   // caps the box; once content exceeds it, overflow-y-auto shows the scrollbar.
-  // Direction of growth follows layout anchoring (the chat dock is sticky-bottom
+  // Direction of growth follows layout anchoring (the thread dock is sticky-bottom
   // -> grows upward; the start composer is top-anchored -> grows downward).
   const autoGrow = useCallback(() => {
     const el = textareaRef.current;

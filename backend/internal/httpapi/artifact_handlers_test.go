@@ -17,7 +17,7 @@ import (
 )
 
 func TestListArtifactsReturnsCurrentUsersArtifacts(t *testing.T) {
-	server := newAuthenticatedChatServer(t, Deps{
+	server := newAuthenticatedServer(t, Deps{
 		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{
 			{
 				ID:              "art_1",
@@ -77,7 +77,7 @@ func TestUploadImageAttachmentEnforcesThreadImageLimit(t *testing.T) {
 			Source:          "user_uploaded",
 		})
 	}
-	server := newAuthenticatedChatServer(t, Deps{
+	server := newAuthenticatedServer(t, Deps{
 		Artifacts: fakeArtifactStore{artifacts: items},
 	})
 
@@ -94,7 +94,7 @@ func TestUploadImageAttachmentEnforcesThreadImageLimit(t *testing.T) {
 }
 
 func TestUploadImageAttachmentReturnsPayloadTooLarge(t *testing.T) {
-	server := newAuthenticatedChatServer(t, Deps{
+	server := newAuthenticatedServer(t, Deps{
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
 	})
@@ -113,7 +113,7 @@ func TestUploadImageAttachmentReturnsPayloadTooLarge(t *testing.T) {
 }
 
 func TestUploadImageAttachmentAllowsMaxSizeFileWithMultipartOverhead(t *testing.T) {
-	server := newAuthenticatedChatServer(t, Deps{
+	server := newAuthenticatedServer(t, Deps{
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
 	})
@@ -157,7 +157,7 @@ func TestDeleteArtifactRemovesOwnArtifactRowAndFile(t *testing.T) {
 			{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png"},
 		},
 	}
-	server := newAuthenticatedChatServer(t, Deps{Artifacts: store, UsersDir: usersDir})
+	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: usersDir})
 
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/artifacts/art_1", ""))
@@ -181,7 +181,7 @@ func TestDeleteArtifactRejectsAnotherUsersArtifact(t *testing.T) {
 			{ID: "art_2", UserID: "user_2", VolumeRelPath: "art_2.png", DisplayFilename: "b.png"},
 		},
 	}
-	server := newAuthenticatedChatServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
+	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
 
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/artifacts/art_2", ""))

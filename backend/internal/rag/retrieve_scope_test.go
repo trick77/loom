@@ -67,7 +67,7 @@ func TestStore_retrieveScopeComposesWithK(t *testing.T) {
 	}
 }
 
-// A thread-private document (composer upload in a project-less chat) must be
+// A thread-private document (composer upload in a project-less thread) must be
 // retrievable only within its own thread: visible in thread t1, invisible in a
 // different project-less thread t2 and in a project thread. User-global legacy
 // chunks stay visible everywhere.

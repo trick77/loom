@@ -142,7 +142,7 @@ func (s *Store) DeleteThreadScopeDocuments(ctx context.Context, userID, threadID
 //
 // It catches two kinds of document: project-scoped ones (project_id = ?) and
 // thread-private ones (project_id NULL, thread_id set) whose thread now lives in
-// the project. The latter arise when a project-less chat with an attachment is
+// the project. The latter arise when a project-less thread with an attachment is
 // moved into a project — the document keeps its thread scope, so it is invisible
 // to the project_id filter and, with no FK on thread_id, also escapes cascade.
 // Relies on the project's threads still existing, i.e. on running before

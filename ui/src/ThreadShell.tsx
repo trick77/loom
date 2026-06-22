@@ -1,6 +1,6 @@
 export {
-  ChatShell,
+  ThreadShell,
   GeneratedArtifactCard,
   ProseMarkdown,
   buildImageStats,
-} from "./chat/ChatShell";
+} from "./chat/ThreadShell";

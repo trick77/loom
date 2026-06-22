@@ -81,7 +81,7 @@ func multipartUpload(t *testing.T, filename, content string, fields map[string]s
 
 func TestHandleUploadDocument_success(t *testing.T) {
 	svc := &fakeDocumentService{doc: rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusPending}}
-	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
 
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, multipartUpload(t, "a.pdf", "bytes", map[string]string{"projectId": "p1"}))
@@ -99,7 +99,7 @@ func TestHandleUploadDocument_success(t *testing.T) {
 
 func TestHandleUploadDocument_unsupportedFormat(t *testing.T) {
 	svc := &fakeDocumentService{uploadErr: documents.ErrUnsupportedFormat}
-	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
 
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, multipartUpload(t, "x.exe", "bytes", nil))
@@ -110,8 +110,8 @@ func TestHandleUploadDocument_unsupportedFormat(t *testing.T) {
 }
 
 func TestHandleUploadDocument_chatDocumentLimit(t *testing.T) {
-	svc := &fakeDocumentService{uploadErr: documents.ErrChatDocumentLimit}
-	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	svc := &fakeDocumentService{uploadErr: documents.ErrThreadDocumentLimit}
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
 
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, multipartUpload(t, "a.txt", "bytes", map[string]string{"threadId": "t1"}))
@@ -126,7 +126,7 @@ func TestHandleUploadDocument_payloadTooLarge(t *testing.T) {
 	// ErrTooLarge); the handler must map that to 413 so the client reports a size
 	// error. The request body itself stays within the handler's MaxBytesReader.
 	svc := &fakeDocumentService{uploadErr: documents.ErrTooLarge}
-	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
 
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, multipartUpload(t, "large.pdf", "bytes", map[string]string{"threadId": "t1"}))
@@ -140,7 +140,7 @@ func TestHandleUploadDocument_oversizedBodyRejectedByMaxBytes(t *testing.T) {
 	// A body that exceeds even the multipart-overhead allowance is stopped at the
 	// handler's MaxBytesReader during parsing, before reaching the service.
 	svc := &fakeDocumentService{}
-	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	fw, err := mw.CreateFormFile("file", "huge.pdf")
@@ -167,7 +167,7 @@ func TestHandleUploadDocument_oversizedBodyRejectedByMaxBytes(t *testing.T) {
 
 func TestHandleUploadDocument_malformedBodyIsBadRequestNotTooLarge(t *testing.T) {
 	svc := &fakeDocumentService{}
-	server := newAuthenticatedChatServer(t, Deps{Documents: svc})
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
 	// A multipart content type with a body that is not actually valid multipart:
 	// the parse fails for a reason other than size, so it must not be reported as
 	// a 413 (which the client renders as a "25 MB or smaller" size error).
@@ -184,7 +184,7 @@ func TestHandleUploadDocument_malformedBodyIsBadRequestNotTooLarge(t *testing.T)
 }
 
 func TestHandleUploadDocument_disabledWhenServiceNil(t *testing.T) {
-	server := newAuthenticatedChatServer(t, Deps{})
+	server := newAuthenticatedServer(t, Deps{})
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, multipartUpload(t, "a.pdf", "bytes", nil))
 	if rec.Code != http.StatusNotFound {

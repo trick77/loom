@@ -19,9 +19,9 @@ const MaxChatDocuments = 10
 // ErrUnsupportedFormat is returned when an upload's extension is not allowlisted.
 var ErrUnsupportedFormat = errors.New("unsupported document format")
 
-// ErrChatDocumentLimit is returned when a project-less chat already has the
+// ErrThreadDocumentLimit is returned when a project-less thread already has the
 // maximum number of private uploaded attachments.
-var ErrChatDocumentLimit = errors.New("chat document limit reached")
+var ErrThreadDocumentLimit = errors.New("thread document limit reached")
 
 // ErrTooLarge is returned when an upload's content exceeds
 // artifact.MaxArtifactSizeBytes. The content size (not the multipart envelope)
@@ -91,14 +91,14 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		threadID := strings.TrimSpace(in.ThreadID)
 		documentCount, err := s.store.CountThreadDocuments(ctx, in.UserID, threadID)
 		if err != nil {
-			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count chat documents: %w", err)
+			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count thread documents: %w", err)
 		}
 		uploadCount, err := s.countThreadUploads(ctx, in.UserID, threadID)
 		if err != nil {
-			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count chat uploads: %w", err)
+			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count thread uploads: %w", err)
 		}
 		if documentCount >= MaxChatDocuments || uploadCount >= MaxChatDocuments {
-			return rag.Document{}, artifact.Artifact{}, ErrChatDocumentLimit
+			return rag.Document{}, artifact.Artifact{}, ErrThreadDocumentLimit
 		}
 	}
 	ext := strings.TrimPrefix(filepath.Ext(in.Filename), ".")
@@ -146,7 +146,7 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("record artifact: %w", err)
 	}
 
-	// A composer upload in a project-less chat is private to that one thread; a
+	// A composer upload in a project-less thread is private to that one thread; a
 	// project upload keeps the project scope (ThreadID is then provenance-only).
 	// A project-less upload with no thread stays user-global — a legacy-only state
 	// no caller produces today (see UploadInput).

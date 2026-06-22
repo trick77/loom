@@ -29,7 +29,7 @@ type Deps struct {
 	Auth                  *auth.Middleware
 	Sessions              SessionService
 	Users                 UserService
-	Chat                  ChatStore
+	Thread                ThreadStore
 	Usage                 UsageStore
 	Artifacts             ArtifactStore
 	Documents             DocumentService
@@ -52,7 +52,7 @@ type server struct {
 	auth                       *auth.Middleware
 	sessions                   SessionService
 	users                      UserService
-	chat                       ChatStore
+	thread                     ThreadStore
 	usage                      UsageStore
 	artifacts                  ArtifactStore
 	documents                  DocumentService
@@ -68,8 +68,8 @@ type server struct {
 	activeStreams              activeStreamRegistry
 }
 
-// ChatStore is the chat persistence dependency used by chat handlers.
-type ChatStore interface {
+// ThreadStore is the thread persistence dependency used by thread handlers.
+type ThreadStore interface {
 	CreateProject(context.Context, string, chat.CreateProjectInput) (chat.Project, error)
 	GetProject(context.Context, string, string) (chat.Project, bool, error)
 	ListProjects(context.Context, string, bool) ([]chat.Project, error)
@@ -112,7 +112,7 @@ type UsageStore interface {
 	IncWebFetch(context.Context, string) error
 	IncObscuraFetch(context.Context, string) error
 	IncImageGen(context.Context, string) error
-	IncChatCreated(context.Context, string) error
+	IncThreadCreated(context.Context, string) error
 	IncProjectCreated(context.Context, string) error
 	Get(context.Context, string) (usage.Totals, error)
 }
@@ -144,7 +144,7 @@ type ChatClient interface {
 	StreamChat(context.Context, []llm.Message, func(string) error) (string, error)
 	StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error)
 	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
-	GenerateChatTitle(context.Context, string, string) (string, error)
+	GenerateThreadTitle(context.Context, string, string) (string, error)
 	GenerateReasoningTitle(context.Context, string) (string, error)
 	GenerateMemory(context.Context, string, string, string, string) (string, error)
 	GenerateProjectDescription(context.Context, string, string) (string, error)
@@ -188,7 +188,7 @@ func New(d Deps) http.Handler {
 		auth:                       d.Auth,
 		sessions:                   d.Sessions,
 		users:                      d.Users,
-		chat:                       d.Chat,
+		thread:                     d.Thread,
 		usage:                      d.Usage,
 		artifacts:                  d.Artifacts,
 		documents:                  d.Documents,

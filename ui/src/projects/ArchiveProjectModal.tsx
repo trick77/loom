@@ -22,7 +22,7 @@ export function ArchiveProjectModal({
       >
         <h2 className="font-sans text-[22px] font-semibold text-[#f4f0e8]">Archive project</h2>
         <p className="mt-3 text-sm leading-6 text-[#d5d2c9]">
-          Are you sure you want to archive {project.name}? Its chats disappear from your recents but
+          Are you sure you want to archive {project.name}? Its threads disappear from your recents but
           stay searchable, and you can unarchive it anytime.
         </p>
         {error !== "" && <p className="mt-3 text-sm text-[#d98278]">{error}</p>}

@@ -33,8 +33,8 @@ func (s *server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	// Live value, not a counter: current length of the user's memory in runes.
 	memLen := 0
-	if s.chat != nil {
-		if mem, _, err := s.chat.GetUserMemory(r.Context(), user.ID); err == nil {
+	if s.thread != nil {
+		if mem, _, err := s.thread.GetUserMemory(r.Context(), user.ID); err == nil {
 			memLen = len([]rune(mem.Content))
 		}
 	}

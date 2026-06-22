@@ -23,7 +23,7 @@ export function RenameThreadModal({
     inputRef.current?.select();
   }, []);
   return (
-    <ModalShell title="Rename chat" onCancel={onCancel}>
+    <ModalShell title="Rename thread" onCancel={onCancel}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -32,7 +32,7 @@ export function RenameThreadModal({
       >
         <input
           ref={inputRef}
-          aria-label="Chat title"
+          aria-label="Thread title"
           className="ui-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
@@ -67,8 +67,8 @@ export function DeleteThreadModal({
   onDelete(): void;
 }) {
   return (
-    <ModalShell title="Delete chat" onCancel={onCancel}>
-      <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">Are you sure you want to delete this chat?</div>
+    <ModalShell title="Delete thread" onCancel={onCancel}>
+      <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">Are you sure you want to delete this thread?</div>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
         <button

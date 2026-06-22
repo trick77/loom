@@ -61,7 +61,7 @@ export function SidebarPrimaryItem({
 
 function SidebarIcon({ name }: { name: SidebarIconName }) {
   const className = "h-[21px] w-[21px] shrink-0 text-[#f0eee7]";
-  if (name === "chats") {
+  if (name === "threads") {
     return <Icon name="messages" size="21px" className={className} />;
   }
   if (name === "projects") {
@@ -187,7 +187,7 @@ function SidebarThreadItem({
         </button>
         <button
           aria-expanded={menuOpen}
-          aria-label="Open chat actions"
+          aria-label="Open thread actions"
           className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white"
           onClick={(event) => {
             event.stopPropagation();

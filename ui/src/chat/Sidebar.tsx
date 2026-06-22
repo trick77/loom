@@ -29,8 +29,8 @@ export function Sidebar({
   onOpenSettings,
   onLogout,
   onAdmin,
-  onNewChat,
-  onChats,
+  onNewThread,
+  onThreads,
   onArtifacts,
   onProjects,
   onMemory,
@@ -70,8 +70,8 @@ export function Sidebar({
   onOpenSettings(): void;
   onLogout(): void;
   onAdmin(): void;
-  onNewChat(): void;
-  onChats(): void;
+  onNewThread(): void;
+  onThreads(): void;
   onArtifacts(): void;
   onProjects(): void;
   onMemory(): void;
@@ -123,23 +123,23 @@ export function Sidebar({
             className={`flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
               railCollapsed ? "justify-center" : "gap-2.5"
             } ${route.view === "new" && !showAdmin ? "bg-[#111110]" : ""}`}
-            onClick={onNewChat}
+            onClick={onNewThread}
             type="button"
-            aria-label="New chat"
+            aria-label="New thread"
           >
             <span className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full bg-[hsl(180deg_3%_19%)] text-[hsl(55deg_9%_74%)]">
               <svg className="h-[13px] w-[13px]" viewBox="0 0 24 24" aria-hidden="true" fill="none">
                 <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </span>
-            {!railCollapsed && <span>New chat</span>}
+            {!railCollapsed && <span>New thread</span>}
           </button>
           <SidebarPrimaryItem
-            label="Chats"
-            icon="chats"
+            label="Threads"
+            icon="threads"
             collapsed={railCollapsed}
-            active={route.view === "chats" && !showAdmin}
-            onClick={onChats}
+            active={route.view === "threads" && !showAdmin}
+            onClick={onThreads}
           />
           <SidebarPrimaryItem
             label="Artifacts"
@@ -172,7 +172,7 @@ export function Sidebar({
               <SidebarSection
                 title="Starred"
                 threads={starredThreads}
-                activeThreadID={route.view === "chat" ? route.threadID : null}
+                activeThreadID={route.view === "thread" ? route.threadID : null}
                 openThreadMenuID={openThreadMenuID}
                 onSelect={onSelectThread}
                 onDelete={onDeleteThread}
@@ -222,7 +222,7 @@ export function Sidebar({
               <SidebarSection
                 title="Recents"
                 threads={recentThreads}
-                activeThreadID={route.view === "chat" ? route.threadID : null}
+                activeThreadID={route.view === "thread" ? route.threadID : null}
                 openThreadMenuID={openThreadMenuID}
                 onSelect={onSelectThread}
                 onDelete={onDeleteThread}
@@ -236,11 +236,11 @@ export function Sidebar({
                 <button
                   type="button"
                   className="mt-1.5 flex h-7 w-full items-center gap-2.5 rounded-md px-1.5 text-left text-[#c7c5bd] transition-colors hover:bg-[#2a2a28]"
-                  onClick={onChats}
-                  aria-label="All chats"
+                  onClick={onThreads}
+                  aria-label="All threads"
                 >
-                  <Icon name="allChats" size="21px" className="h-[21px] w-[21px] shrink-0 text-[#f0eee7]" />
-                  <span className="truncate">All chats</span>
+                  <Icon name="allThreads" size="21px" className="h-[21px] w-[21px] shrink-0 text-[#f0eee7]" />
+                  <span className="truncate">All threads</span>
                 </button>
               )}
               {user.role === "admin" && (

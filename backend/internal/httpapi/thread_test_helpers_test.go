@@ -18,9 +18,9 @@ import (
 
 var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
 
-func newAuthenticatedChatServer(t *testing.T, deps Deps) http.Handler {
+func newAuthenticatedServer(t *testing.T, deps Deps) http.Handler {
 	t.Helper()
-	return newAuthenticatedChatServerForUser(t, testUser, deps)
+	return newAuthenticatedServerForUser(t, testUser, deps)
 }
 
 type fakeArtifactStore struct {
@@ -80,7 +80,7 @@ func (f fakeArtifactStore) ListForProject(_ context.Context, _ string, projectID
 	return out, nil
 }
 
-func newAuthenticatedChatServerForUser(t *testing.T, user auth.User, deps Deps) http.Handler {
+func newAuthenticatedServerForUser(t *testing.T, user auth.User, deps Deps) http.Handler {
 	t.Helper()
 	deps.Version = "test"
 	deps.Auth = auth.NewMiddleware(
@@ -96,7 +96,7 @@ func authenticatedRequest(method, target, body string) *http.Request {
 	return req
 }
 
-type fakeChatStore struct {
+type fakeThreadStore struct {
 	thread                    chat.Thread
 	project                   chat.Project
 	messages                  []chat.Message
@@ -118,33 +118,33 @@ type fakeChatStore struct {
 	userMessageCount          int
 }
 
-func (f *fakeChatStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
+func (f *fakeThreadStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
 	f.project = chat.Project{ID: "proj_1", UserID: userID, Name: in.Name, Description: in.Description}
 	return f.project, nil
 }
 
-func (f *fakeChatStore) GetProject(_ context.Context, _ string, projectID string) (chat.Project, bool, error) {
+func (f *fakeThreadStore) GetProject(_ context.Context, _ string, projectID string) (chat.Project, bool, error) {
 	if f.project.ID == "" || f.project.ID != projectID {
 		return chat.Project{}, false, nil
 	}
 	return f.project, true, nil
 }
 
-func (f *fakeChatStore) ListProjects(context.Context, string, bool) ([]chat.Project, error) {
+func (f *fakeThreadStore) ListProjects(context.Context, string, bool) ([]chat.Project, error) {
 	if f.project.ID == "" {
 		return []chat.Project{}, nil
 	}
 	return []chat.Project{f.project}, nil
 }
 
-func (f *fakeChatStore) UpdateProject(_ context.Context, _ string, projectID string, _ chat.UpdateProjectInput) (chat.Project, bool, error) {
+func (f *fakeThreadStore) UpdateProject(_ context.Context, _ string, projectID string, _ chat.UpdateProjectInput) (chat.Project, bool, error) {
 	if f.project.ID == "" || f.project.ID != projectID {
 		return chat.Project{}, false, nil
 	}
 	return f.project, true, nil
 }
 
-func (f *fakeChatStore) SetProjectDescriptionIfEmpty(_ context.Context, _ string, projectID, description string) (chat.Project, bool, error) {
+func (f *fakeThreadStore) SetProjectDescriptionIfEmpty(_ context.Context, _ string, projectID, description string) (chat.Project, bool, error) {
 	if f.project.ID == "" || f.project.ID != projectID {
 		return chat.Project{}, false, nil
 	}
@@ -156,7 +156,7 @@ func (f *fakeChatStore) SetProjectDescriptionIfEmpty(_ context.Context, _ string
 	return f.project, true, nil
 }
 
-func (f *fakeChatStore) SetProjectStarred(_ context.Context, _ string, projectID string, starred bool) (chat.Project, bool, error) {
+func (f *fakeThreadStore) SetProjectStarred(_ context.Context, _ string, projectID string, starred bool) (chat.Project, bool, error) {
 	if f.project.ID == "" || f.project.ID != projectID {
 		return chat.Project{}, false, nil
 	}
@@ -164,15 +164,15 @@ func (f *fakeChatStore) SetProjectStarred(_ context.Context, _ string, projectID
 	return f.project, true, nil
 }
 
-func (f *fakeChatStore) SetProjectArchived(_ context.Context, _ string, projectID string, _ bool) (bool, error) {
+func (f *fakeThreadStore) SetProjectArchived(_ context.Context, _ string, projectID string, _ bool) (bool, error) {
 	return f.project.ID != "" && f.project.ID == projectID, nil
 }
 
-func (f *fakeChatStore) DeleteProject(_ context.Context, _ string, projectID string) (bool, error) {
+func (f *fakeThreadStore) DeleteProject(_ context.Context, _ string, projectID string) (bool, error) {
 	return f.project.ID != "" && f.project.ID == projectID, nil
 }
 
-func (f *fakeChatStore) CreateThread(_ context.Context, userID string, in chat.CreateThreadInput) (chat.Thread, error) {
+func (f *fakeThreadStore) CreateThread(_ context.Context, userID string, in chat.CreateThreadInput) (chat.Thread, error) {
 	if f.createThreadErr != nil {
 		return chat.Thread{}, f.createThreadErr
 	}
@@ -184,14 +184,14 @@ func (f *fakeChatStore) CreateThread(_ context.Context, userID string, in chat.C
 	return f.thread, nil
 }
 
-func (f *fakeChatStore) GetThread(context.Context, string, string) (chat.Thread, bool, error) {
+func (f *fakeThreadStore) GetThread(context.Context, string, string) (chat.Thread, bool, error) {
 	if f.thread.ID == "" {
 		return chat.Thread{}, false, nil
 	}
 	return f.thread, true, nil
 }
 
-func (f *fakeChatStore) ListThreads(_ context.Context, userID string, opts chat.ListThreadsOptions) ([]chat.Thread, error) {
+func (f *fakeThreadStore) ListThreads(_ context.Context, userID string, opts chat.ListThreadsOptions) ([]chat.Thread, error) {
 	f.listThreadsUserID = userID
 	f.listThreadsOptions = opts
 	if f.thread.ID == "" {
@@ -200,7 +200,7 @@ func (f *fakeChatStore) ListThreads(_ context.Context, userID string, opts chat.
 	return []chat.Thread{f.thread}, nil
 }
 
-func (f *fakeChatStore) ListThreadIDs(_ context.Context, userID string, opts chat.ListThreadsOptions) ([]string, error) {
+func (f *fakeThreadStore) ListThreadIDs(_ context.Context, userID string, opts chat.ListThreadsOptions) ([]string, error) {
 	f.listThreadsUserID = userID
 	f.listThreadsOptions = opts
 	if f.thread.ID == "" {
@@ -209,7 +209,7 @@ func (f *fakeChatStore) ListThreadIDs(_ context.Context, userID string, opts cha
 	return []string{f.thread.ID}, nil
 }
 
-func (f *fakeChatStore) UpdateThread(_ context.Context, userID, threadID string, in chat.UpdateThreadInput) (chat.Thread, bool, error) {
+func (f *fakeThreadStore) UpdateThread(_ context.Context, userID, threadID string, in chat.UpdateThreadInput) (chat.Thread, bool, error) {
 	f.updateThreadInput = in
 	if f.updateThreadErr != nil {
 		return chat.Thread{}, false, f.updateThreadErr
@@ -230,26 +230,26 @@ func (f *fakeChatStore) UpdateThread(_ context.Context, userID, threadID string,
 	return f.thread, true, nil
 }
 
-func (f *fakeChatStore) SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error) {
+func (f *fakeThreadStore) SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error) {
 	return f.thread, true, nil
 }
 
-func (f *fakeChatStore) SetThreadArchived(context.Context, string, string, bool) (bool, error) {
+func (f *fakeThreadStore) SetThreadArchived(context.Context, string, string, bool) (bool, error) {
 	return true, nil
 }
 
-func (f *fakeChatStore) DeleteThread(context.Context, string, string) (bool, error) {
+func (f *fakeThreadStore) DeleteThread(context.Context, string, string) (bool, error) {
 	if f.deleteThreadErr != nil {
 		return false, f.deleteThreadErr
 	}
 	return true, nil
 }
 
-func (f *fakeChatStore) AddMessage(ctx context.Context, _ string, threadID string, role chat.Role, content string) (chat.Message, error) {
+func (f *fakeThreadStore) AddMessage(ctx context.Context, _ string, threadID string, role chat.Role, content string) (chat.Message, error) {
 	return f.AddMessageWithUsage(ctx, "", threadID, role, content, chat.MessageTokenUsage{})
 }
 
-func (f *fakeChatStore) AddMessageWithAttachments(ctx context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage) (chat.Message, error) {
+func (f *fakeThreadStore) AddMessageWithAttachments(ctx context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage) (chat.Message, error) {
 	if len(attachments) == 0 {
 		attachments = json.RawMessage("[]")
 	}
@@ -268,19 +268,19 @@ func (f *fakeChatStore) AddMessageWithAttachments(ctx context.Context, _ string,
 	return message, nil
 }
 
-func (f *fakeChatStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
+func (f *fakeThreadStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
 	return f.AddMessageWithArtifacts(ctx, "", threadID, role, content, usage, nil)
 }
 
-func (f *fakeChatStore) AddMessageWithArtifacts(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage) (chat.Message, error) {
+func (f *fakeThreadStore) AddMessageWithArtifacts(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage) (chat.Message, error) {
 	return f.AddMessageWithActivityTrace(ctx, "", threadID, role, content, usage, artifacts, nil)
 }
 
-func (f *fakeChatStore) AddMessageWithActivityTrace(ctx context.Context, userID string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (chat.Message, error) {
+func (f *fakeThreadStore) AddMessageWithActivityTrace(ctx context.Context, userID string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (chat.Message, error) {
 	return f.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil, nil)
 }
 
-func (f *fakeChatStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (chat.Message, error) {
+func (f *fakeThreadStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (chat.Message, error) {
 	if len(artifacts) == 0 {
 		artifacts = json.RawMessage("[]")
 	}
@@ -320,47 +320,47 @@ func (f *fakeChatStore) AddMessageWithCitations(ctx context.Context, _ string, t
 	return message, nil
 }
 
-func (f *fakeChatStore) ListMessages(context.Context, string, string) ([]chat.Message, bool, error) {
+func (f *fakeThreadStore) ListMessages(context.Context, string, string) ([]chat.Message, bool, error) {
 	return append([]chat.Message(nil), f.messages...), true, nil
 }
 
-func (f *fakeChatStore) GetProjectMemory(_ context.Context, _ string, projectID string) (chat.ProjectMemory, bool, error) {
+func (f *fakeThreadStore) GetProjectMemory(_ context.Context, _ string, projectID string) (chat.ProjectMemory, bool, error) {
 	if f.projectMemory.ProjectID == "" {
 		return chat.ProjectMemory{ProjectID: projectID}, false, nil
 	}
 	return f.projectMemory, true, nil
 }
 
-func (f *fakeChatStore) UpsertProjectMemory(_ context.Context, _ string, projectID, content string, sourceMessageCount int) (chat.ProjectMemory, error) {
+func (f *fakeThreadStore) UpsertProjectMemory(_ context.Context, _ string, projectID, content string, sourceMessageCount int) (chat.ProjectMemory, error) {
 	f.projectMemory = chat.ProjectMemory{ProjectID: projectID, Content: content, SourceMessageCount: sourceMessageCount}
 	return f.projectMemory, nil
 }
 
-func (f *fakeChatStore) CountProjectMessages(context.Context, string, string) (int, error) {
+func (f *fakeThreadStore) CountProjectMessages(context.Context, string, string) (int, error) {
 	return f.projectMessageCount, nil
 }
 
-func (f *fakeChatStore) ListProjectMessages(_ context.Context, _ string, _ string, _ int) ([]chat.Message, error) {
+func (f *fakeThreadStore) ListProjectMessages(_ context.Context, _ string, _ string, _ int) ([]chat.Message, error) {
 	return append([]chat.Message(nil), f.messages...), nil
 }
 
-func (f *fakeChatStore) GetUserMemory(context.Context, string) (chat.UserMemory, bool, error) {
+func (f *fakeThreadStore) GetUserMemory(context.Context, string) (chat.UserMemory, bool, error) {
 	if f.userMemory.Content == "" {
 		return chat.UserMemory{}, false, nil
 	}
 	return f.userMemory, true, nil
 }
 
-func (f *fakeChatStore) UpsertUserMemory(_ context.Context, _ string, content string, sourceMessageCount int) (chat.UserMemory, error) {
+func (f *fakeThreadStore) UpsertUserMemory(_ context.Context, _ string, content string, sourceMessageCount int) (chat.UserMemory, error) {
 	f.userMemory = chat.UserMemory{Content: content, SourceMessageCount: sourceMessageCount}
 	return f.userMemory, nil
 }
 
-func (f *fakeChatStore) CountUserMessages(context.Context, string) (int, error) {
+func (f *fakeThreadStore) CountUserMessages(context.Context, string) (int, error) {
 	return f.userMessageCount, nil
 }
 
-func (f *fakeChatStore) ListUserMessages(_ context.Context, _ string, _ int) ([]chat.Message, error) {
+func (f *fakeThreadStore) ListUserMessages(_ context.Context, _ string, _ int) ([]chat.Message, error) {
 	return append([]chat.Message(nil), f.messages...), nil
 }
 
@@ -406,7 +406,7 @@ func (f fakeChatClient) StreamChatResult(_ context.Context, history []llm.Messag
 	return llm.StreamResult{Content: "Hello", Usage: f.usage}, nil
 }
 
-func (f fakeChatClient) GenerateChatTitle(ctx context.Context, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, _ string) (string, error) {
 	if f.titleErr != nil {
 		return "", f.titleErr
 	}
@@ -494,7 +494,7 @@ func (f *blockingChatClient) StreamChatWithTools(ctx context.Context, _ []llm.Me
 	return f.StreamChatResult(ctx, nil, nil)
 }
 
-func (f *blockingChatClient) GenerateChatTitle(context.Context, string, string) (string, error) {
+func (f *blockingChatClient) GenerateThreadTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
 
@@ -583,7 +583,7 @@ func (f *fakeToolChatClient) StreamChatWithTools(ctx context.Context, history []
 	return result, nil
 }
 
-func (f *fakeToolChatClient) GenerateChatTitle(context.Context, string, string) (string, error) {
+func (f *fakeToolChatClient) GenerateThreadTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
 

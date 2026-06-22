@@ -41,7 +41,7 @@ function sectionsFor(u: Usage): { group: string; rows: Row[] }[] {
     {
       group: "Activity",
       rows: [
-        { label: "Chats created", value: fmt(u.chatsCreated) },
+        { label: "Threads created", value: fmt(u.threadsCreated) },
         { label: "Projects created", value: fmt(u.projectsCreated) },
       ],
     },

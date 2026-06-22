@@ -14,8 +14,8 @@ import (
 )
 
 func TestCreateProjectReturns201(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects", `{"name":"School","description":"Homework"}`)
 
@@ -34,8 +34,8 @@ func TestCreateProjectReturns201(t *testing.T) {
 }
 
 func TestCreateProjectRejectsOversizedRequestBody(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects", strings.Repeat(" ", maxJSONBodyBytes+1))
 
@@ -56,10 +56,10 @@ func TestArchiveAndDeleteProjectReturn204(t *testing.T) {
 		{name: "delete", method: http.MethodDelete, path: "/api/projects/proj_1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &fakeChatStore{
+			store := &fakeThreadStore{
 				project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"},
 			}
-			srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+			srv := newAuthenticatedServer(t, Deps{Thread: store})
 			rec := httptest.NewRecorder()
 			req := authenticatedRequest(tc.method, tc.path, "")
 
@@ -82,10 +82,10 @@ func TestStarAndUnstarProjectReturnUpdatedProject(t *testing.T) {
 		{name: "unstar", path: "/api/projects/proj_1/unstar", expected: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &fakeChatStore{
+			store := &fakeThreadStore{
 				project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"},
 			}
-			srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+			srv := newAuthenticatedServer(t, Deps{Thread: store})
 			rec := httptest.NewRecorder()
 			req := authenticatedRequest(http.MethodPost, tc.path, "")
 
@@ -106,8 +106,8 @@ func TestStarAndUnstarProjectReturnUpdatedProject(t *testing.T) {
 }
 
 func TestStarProjectNotFoundReturns404(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects/missing/star", "")
 
@@ -129,11 +129,11 @@ func TestDeleteProjectRemovesGeneratedArtifactFiles(t *testing.T) {
 	if err := os.WriteFile(absPath, []byte("report"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "School"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
 		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
 			ID:            "art_1",
 			UserID:        testUser.ID,
@@ -157,9 +157,9 @@ func TestDeleteProjectRemovesGeneratedArtifactFiles(t *testing.T) {
 }
 
 func TestDeleteProjectPurgesProjectRAGData(t *testing.T) {
-	store := &fakeChatStore{project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"}}
+	store := &fakeThreadStore{project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"}}
 	docs := &fakeDocumentService{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store, Documents: docs})
+	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodDelete, "/api/projects/proj_1", "")
 
@@ -174,8 +174,8 @@ func TestDeleteProjectPurgesProjectRAGData(t *testing.T) {
 }
 
 func TestArchiveProjectNotFoundReturns404(t *testing.T) {
-	store := &fakeChatStore{}
-	srv := newAuthenticatedChatServer(t, Deps{Chat: store})
+	store := &fakeThreadStore{}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects/missing/archive", "")
 

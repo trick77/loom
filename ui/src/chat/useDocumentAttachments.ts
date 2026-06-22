@@ -124,8 +124,8 @@ type AttachmentStatusHandler = (id: string, patch: Partial<ComposerAttachment>) 
 // Shared "+" composer attachment flow: upload a picked file, add it to knowledge,
 // and surface ingestion progress via attachNote. Scope decides where the document
 // lands for retrieval: a projectId scopes it to a project; a project-less upload
-// with a threadId is private to that one chat; without either it is user-global.
-// The scope can be overridden per call (used by the new-chat deferred upload,
+// with a threadId is private to that one thread; without either it is user-global.
+// The scope can be overridden per call (used by the new-thread deferred upload,
 // which only knows the freshly created thread id at send time).
 export function useDocumentAttachments(scope: { threadId?: string; projectId?: string }) {
   const [attachNote, setAttachNote] = useState("");
@@ -273,7 +273,7 @@ async function uploadAttachments(
     }
     // Await the upload (not the background indexing) so the document's id is set
     // before the caller collects documentAttachmentIds on send — otherwise a
-    // document attached on a new chat is uploaded fire-and-forget and its id
+    // document attached on a new thread is uploaded fire-and-forget and its id
     // misses the send, so the model never sees it and it isn't persisted. Mirrors
     // the awaited image path above; indexDocument still runs in the background.
     await uploadDocumentAttachment(attachment);

@@ -3,7 +3,7 @@ import { UserMemoryPanel } from "./UserMemoryPanel";
 
 /**
  * MemoryPage hosts the user's global memory — the durable personal facts the
- * assistant reuses across every chat. It mirrors the other full-page views
+ * assistant reuses across every thread. It mirrors the other full-page views
  * (Artifacts, Projects) and renders the read-only UserMemoryPanel.
  */
 export function MemoryPage({ onOpenSidebar }: { onOpenSidebar(): void }) {

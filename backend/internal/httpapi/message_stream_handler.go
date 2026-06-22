@@ -32,7 +32,7 @@ const streamHeartbeatInterval = 20 * time.Second
 
 func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	if s.llm == nil {
@@ -46,7 +46,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	threadID := r.PathValue("threadID")
-	thread, found, err := s.chat.GetThread(r.Context(), user.ID, threadID)
+	thread, found, err := s.thread.GetThread(r.Context(), user.ID, threadID)
 	if err != nil {
 		serverError(w, r, err, "get thread failed")
 		return
@@ -55,7 +55,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	priorMessages, found, err := s.chat.ListMessages(r.Context(), user.ID, threadID)
+	priorMessages, found, err := s.thread.ListMessages(r.Context(), user.ID, threadID)
 	if err != nil {
 		serverError(w, r, err, "list messages failed")
 		return
@@ -67,9 +67,9 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Persist the images and documents the user sent with this message so the sent
 	// previews survive a reload (resolved user-scoped; out-of-scope ids skipped).
 	sentAttachments := s.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs)
-	userMessage, err := s.chat.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments)
+	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments)
 	if err != nil {
-		writeChatStoreError(w, r, err, http.StatusBadRequest, "message content is required", "message content is too long")
+		writeThreadStoreError(w, r, err, http.StatusBadRequest, "message content is required", "message content is too long")
 		return
 	}
 	streamCtx, cancelStream := context.WithCancelCause(r.Context())
@@ -264,7 +264,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			citationsJSON = encoded
 		}
 	}
-	assistantMessage, err := s.chat.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
+	assistantMessage, err := s.thread.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		return
@@ -310,11 +310,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
-	if !ok || !requireChat(w, s) {
+	if !ok || !requireThreadStore(w, s) {
 		return
 	}
 	threadID := r.PathValue("threadID")
-	_, found, err := s.chat.GetThread(r.Context(), user.ID, threadID)
+	_, found, err := s.thread.GetThread(r.Context(), user.ID, threadID)
 	if err != nil {
 		serverError(w, r, err, "get thread failed")
 		return

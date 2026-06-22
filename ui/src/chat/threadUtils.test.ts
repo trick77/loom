@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { updateMessageAttachment } from "./chatUtils";
+import { updateMessageAttachment } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 
 test("updates an attachment inside an already rendered user message", () => {

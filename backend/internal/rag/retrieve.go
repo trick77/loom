@@ -10,7 +10,7 @@ import (
 // user and the thread's knowledge scope: every thread sees user-global chunks; a
 // project thread (projectID != nil) also sees that project's chunks; and a thread
 // additionally sees its own thread-private chunks (composer uploads in a
-// project-less chat).
+// project-less thread).
 func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID *string, queryEmbedding []float32, k int) ([]RetrievedChunk, error) {
 	if k <= 0 {
 		k = 5

@@ -135,8 +135,8 @@ func TestService_Upload_rejectsWhenThreadDocumentLimitReached(t *testing.T) {
 		ThreadID: "thread_1",
 		Filename: "overflow.txt",
 		Reader:   strings.NewReader("hi"),
-	}); !errors.Is(err, ErrChatDocumentLimit) {
-		t.Fatalf("Upload overflow error = %v, want ErrChatDocumentLimit", err)
+	}); !errors.Is(err, ErrThreadDocumentLimit) {
+		t.Fatalf("Upload overflow error = %v, want ErrThreadDocumentLimit", err)
 	}
 }
 
@@ -163,8 +163,8 @@ func TestService_Upload_rejectsWhenThreadUploadLimitReachedByImages(t *testing.T
 		ThreadID: "thread_1",
 		Filename: "overflow.txt",
 		Reader:   strings.NewReader("hi"),
-	}); !errors.Is(err, ErrChatDocumentLimit) {
-		t.Fatalf("Upload overflow error = %v, want ErrChatDocumentLimit", err)
+	}); !errors.Is(err, ErrThreadDocumentLimit) {
+		t.Fatalf("Upload overflow error = %v, want ErrThreadDocumentLimit", err)
 	}
 }
 

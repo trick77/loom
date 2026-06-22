@@ -203,7 +203,7 @@ const reconcileLegacyMarker = "reconcile_legacy_document_scopes_v1"
 
 // ReconcileLegacyDocumentScopes fixes documents uploaded before thread-private
 // scoping existed, which were stored user-global (project_id IS NULL, thread_id
-// IS NULL) and therefore leaked into every project-less chat.
+// IS NULL) and therefore leaked into every project-less thread.
 //
 //   - Recoverable: a composer upload still linked to its originating artifact
 //     (which records the source thread) is rebound to that thread — thread_id is

@@ -16,7 +16,7 @@ import type { RouteState } from "./routing";
 import { composerAttachmentFromMessageAttachment } from "./useDocumentAttachments";
 import type { MessageWithActivityTrace } from "./types";
 
-export function useChatData({
+export function useThreadData({
   activeThreadIDRef,
   clearStreamingBlocks,
   handleActionError,
@@ -34,7 +34,7 @@ export function useChatData({
   const [projects, setProjects] = useState<Project[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [projectThreads, setProjectThreads] = useState<Thread[]>([]);
-  const [chatDataLoaded, setChatDataLoaded] = useState(false);
+  const [threadDataLoaded, setThreadDataLoaded] = useState(false);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<MessageWithActivityTrace[]>([]);
   const [loadError, setLoadError] = useState("");
@@ -47,17 +47,17 @@ export function useChatData({
         if (!active) return;
         setProjects(nextProjects);
         setThreads(nextThreads.items);
-        setChatDataLoaded(true);
+        setThreadDataLoaded(true);
         setLoadError("");
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setChatDataLoaded(true);
+        setThreadDataLoaded(true);
         if (error instanceof AuthExpiredError) {
           onSessionExpired();
           return;
         }
-        setLoadError("Chat data failed to load.");
+        setLoadError("Thread data failed to load.");
       });
     return () => {
       active = false;
@@ -84,7 +84,7 @@ export function useChatData({
   }, [onSessionExpired]);
 
   const loadRoute = useCallback((route: RouteState) => {
-    if (route.view !== "chat") {
+    if (route.view !== "thread") {
       activeThreadIDRef.current = null;
       setActiveThread(null);
       setMessages([]);
@@ -107,7 +107,7 @@ export function useChatData({
       })
       .catch((error: unknown) => {
         if (!active) return;
-        handleActionError(error, "Chat failed to load.", setLoadError);
+        handleActionError(error, "Thread failed to load.", setLoadError);
       });
     return () => {
       active = false;
@@ -133,7 +133,7 @@ export function useChatData({
       })
       .catch((error: unknown) => {
         if (!active) return;
-        handleActionError(error, "Project chats failed to load.", setLoadError);
+        handleActionError(error, "Project threads failed to load.", setLoadError);
       });
     return () => {
       active = false;
@@ -162,7 +162,7 @@ export function useChatData({
     activeProject,
     activeThread,
     activeThreadProject,
-    chatDataLoaded,
+    threadDataLoaded,
     loadError,
     loadProjectThreads,
     loadRoute,

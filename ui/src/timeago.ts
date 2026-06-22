@@ -1,5 +1,5 @@
 /**
- * Format an ISO timestamp as a short relative label, matching the Chats list:
+ * Format an ISO timestamp as a short relative label, matching the Threads list:
  * "just now", "3 minutes ago", "20 hours ago", "yesterday", "4 days ago".
  *
  * Thresholds are elapsed-time based so the output is deterministic:

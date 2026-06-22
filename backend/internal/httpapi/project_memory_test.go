@@ -58,14 +58,14 @@ func TestRenderProjectContext(t *testing.T) {
 func TestStreamMessageInjectsProjectMemory(t *testing.T) {
 	projectID := "proj_1"
 	var capturedHistory []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread:        chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Flights"},
 		project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip", Description: "Family trip planning"},
 		projectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "Travel month: May"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{history: &capturedHistory},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{history: &capturedHistory},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"What should I pack?"}`)
@@ -88,7 +88,7 @@ func TestStreamMessageInjectsProjectMemory(t *testing.T) {
 
 func TestStreamMessageAutoFillsEmptyProjectDescriptionAfterTwoTurns(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Planning"},
 		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
 		messages: []chat.Message{
@@ -96,9 +96,9 @@ func TestStreamMessageAutoFillsEmptyProjectDescriptionAfterTwoTurns(t *testing.T
 			{ID: "msg_2", ThreadID: "thr_1", Role: chat.RoleAssistant, Content: "I will track the reading list."},
 		},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{projectDescription: "Tracks paper research and reading priorities."},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{projectDescription: "Tracks paper research and reading priorities."},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Add comparison notes."}`)
@@ -122,13 +122,13 @@ func TestStreamMessageAutoFillsEmptyProjectDescriptionAfterTwoTurns(t *testing.T
 
 func TestStreamMessageDoesNotAutoFillProjectDescriptionBeforeTwoTurns(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Planning"},
 		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{projectDescription: "Must not be used."},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{projectDescription: "Must not be used."},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Start notes."}`)
@@ -150,12 +150,12 @@ func TestStreamMessageDoesNotAutoFillProjectDescriptionBeforeTwoTurns(t *testing
 // without a project get no injected context.
 func TestStreamMessageOmitsProjectContextForProjectlessThread(t *testing.T) {
 	var capturedHistory []llm.Message
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Loose chat"},
 	}
-	srv := newAuthenticatedChatServer(t, Deps{
-		Chat: store,
-		LLM:  fakeChatClient{history: &capturedHistory},
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{history: &capturedHistory},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -174,10 +174,10 @@ func TestStreamMessageOmitsProjectContextForProjectlessThread(t *testing.T) {
 // the LLM-produced memory is persisted with the source message count.
 func TestRefreshProjectMemory_GeneratesAndStores(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
 	}
-	s := &server{chat: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
 
 	err := s.refreshProjectMemory(
 		context.Background(),
@@ -202,12 +202,12 @@ func TestRefreshProjectMemory_GeneratesAndStores(t *testing.T) {
 // new messages must not trigger a refresh.
 func TestRefreshProjectMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
 		projectMessageCount: memoryRefreshThreshold - 1,
 		messages:            []chat.Message{{Role: chat.RoleUser, Content: "When?"}},
 	}
-	s := &server{chat: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
 
 	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
@@ -221,12 +221,12 @@ func TestRefreshProjectMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
 // the incremental refresh folds in the recent (cross-thread) project messages.
 func TestRefreshProjectMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeChatStore{
+	store := &fakeThreadStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
 		projectMessageCount: memoryRefreshThreshold,
 		messages:            []chat.Message{{Role: chat.RoleUser, Content: "Traveling in May"}},
 	}
-	s := &server{chat: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
 
 	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)

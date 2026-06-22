@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import { ProseMarkdown } from "./ChatShell";
+import { ProseMarkdown } from "./ThreadShell";
 
 const codeSample = "```ts\nconst answer = 42;\n```";
 

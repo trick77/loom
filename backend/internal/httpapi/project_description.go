@@ -25,7 +25,7 @@ func (s *server) maybeAutoDescribeProject(ctx, persistCtx context.Context, strea
 	if completedTurns(messages) < projectDescriptionCompletedTurnThreshold {
 		return
 	}
-	project, found, err := s.chat.GetProject(persistCtx, user.ID, *thread.ProjectID)
+	project, found, err := s.thread.GetProject(persistCtx, user.ID, *thread.ProjectID)
 	if err != nil {
 		slog.Warn("load project for auto description failed", "project_id", *thread.ProjectID, "error", err)
 		return
@@ -46,7 +46,7 @@ func (s *server) maybeAutoDescribeProject(ctx, persistCtx context.Context, strea
 	if strings.TrimSpace(description) == "" {
 		return
 	}
-	updated, changedDescription, err := s.chat.SetProjectDescriptionIfEmpty(persistCtx, user.ID, project.ID, description)
+	updated, changedDescription, err := s.thread.SetProjectDescriptionIfEmpty(persistCtx, user.ID, project.ID, description)
 	if err != nil {
 		slog.Warn("persist project description failed", "project_id", project.ID, "error", err)
 		return

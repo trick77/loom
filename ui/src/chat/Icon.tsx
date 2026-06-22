@@ -81,7 +81,7 @@ const CODEPOINTS = {
   volume: 0xe0e4,
   sortUp: 0xe013,
   sortDown: 0xe009,
-  allChats: 0xe060,
+  allThreads: 0xe060,
 } as const;
 
 export type IconName = keyof typeof CODEPOINTS;

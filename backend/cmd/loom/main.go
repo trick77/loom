@@ -120,7 +120,7 @@ func run() error {
 		return err
 	}
 	authMW := auth.NewMiddleware(sessionStore, userStore)
-	chatStore := chat.NewStore(db)
+	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	usageStore := usage.NewStore(db)
 
@@ -139,7 +139,7 @@ func run() error {
 			return err
 		}
 		// One-time data fix: rebind or remove pre-thread-scoping uploads that were
-		// stored user-global and leaked into unrelated chats.
+		// stored user-global and leaked into unrelated threads.
 		if err := ragStore.ReconcileLegacyDocumentScopes(context.Background()); err != nil {
 			return err
 		}
@@ -242,7 +242,7 @@ func run() error {
 		Auth:                       authMW,
 		Sessions:                   sessionStore,
 		Users:                      userStore,
-		Chat:                       chatStore,
+		Thread:                     threadStore,
 		Usage:                      usageStore,
 		Artifacts:                  artifactStore,
 		Documents:                  documentService,

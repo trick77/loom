@@ -117,7 +117,7 @@ func TestMeReturnsCurrentUser(t *testing.T) {
 }
 
 func TestMCPStatusReturnsConfiguredServerCounts(t *testing.T) {
-	srv := newAuthenticatedChatServer(t, Deps{
+	srv := newAuthenticatedServer(t, Deps{
 		MCP: fakeMCPService{statuses: []mcp.ServerStatus{
 			{Name: "alpha", Active: true},
 			{Name: "zeta", Active: false},
@@ -185,7 +185,7 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 		t.Fatal(err)
 	}
 
-	server := newAuthenticatedChatServer(t, Deps{Artifacts: artifacts, UsersDir: usersDir})
+	server := newAuthenticatedServer(t, Deps{Artifacts: artifacts, UsersDir: usersDir})
 	req := authenticatedRequest(http.MethodGet, "/api/artifacts/"+created.ID+"/download", "")
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, req)
