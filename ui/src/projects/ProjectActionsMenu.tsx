@@ -1,6 +1,6 @@
 import type { Project } from "../api";
 import { Icon } from "../chat/Icon";
-import { menuIconClass, menuItemClass, TrashMenuIcon } from "../ThreadActionsMenu";
+import { menuDeleteItemClass, menuIconClass, menuItemClass, TrashMenuIcon } from "../ThreadActionsMenu";
 
 export function ProjectActionsMenu({
   project,
@@ -45,7 +45,7 @@ export function ProjectActionsMenu({
         {archived ? "Unarchive" : "Archive"}
       </button>
       <button
-        className={`${menuItemClass} text-[#d98278]`}
+        className={menuDeleteItemClass}
         role="menuitem"
         type="button"
         onClick={() => onDelete(project)}

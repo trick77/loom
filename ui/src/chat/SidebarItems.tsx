@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef } from "react";
 
 import type { McpStatusEvent, Project, Thread } from "../api";
-import { menuIconClass, menuItemClass, ThreadActionsMenu, TrashMenuIcon } from "../ThreadActionsMenu";
+import { menuDeleteItemClass, menuIconClass, menuItemClass, ThreadActionsMenu, TrashMenuIcon } from "../ThreadActionsMenu";
 import { ArchiveIcon } from "../projects/ProjectActionsMenu";
 import { Icon } from "./Icon";
 import type { SidebarIconName } from "./types";
@@ -352,7 +352,7 @@ function ProjectSidebarMenu({
         Archive
       </button>
       <button
-        className={`${menuItemClass} text-[#d98278]`}
+        className={menuDeleteItemClass}
         role="menuitem"
         type="button"
         onClick={() => onDelete(project)}
