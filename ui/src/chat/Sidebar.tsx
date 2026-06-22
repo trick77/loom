@@ -42,6 +42,7 @@ export function Sidebar({
   onNavigateProject,
   onStarProject,
   onEditProject,
+  onArchiveProject,
   onDeleteProject,
   onToggleThreadMenu,
   onCloseThreadMenu,
@@ -83,6 +84,7 @@ export function Sidebar({
   onNavigateProject(project: Project): void;
   onStarProject(project: Project, starred: boolean, menuKey: string): void;
   onEditProject(project: Project): void;
+  onArchiveProject(project: Project): void;
   onDeleteProject(project: Project): void;
   onToggleThreadMenu(menuKey: string): void;
   onCloseThreadMenu(): void;
@@ -191,6 +193,7 @@ export function Sidebar({
                     onNavigate={onNavigateProject}
                     onStarChange={onStarProject}
                     onEdit={onEditProject}
+                    onArchive={onArchiveProject}
                     onDelete={onDeleteProject}
                     onToggleMenu={onToggleThreadMenu}
                     onCloseMenu={onCloseThreadMenu}
@@ -212,6 +215,7 @@ export function Sidebar({
                       onNavigate={onNavigateProject}
                       onStarChange={onStarProject}
                       onEdit={onEditProject}
+                      onArchive={onArchiveProject}
                       onDelete={onDeleteProject}
                       onToggleMenu={onToggleThreadMenu}
                       onCloseMenu={onCloseThreadMenu}

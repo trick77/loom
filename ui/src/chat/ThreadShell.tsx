@@ -720,6 +720,7 @@ export function ThreadShell({
         onNavigateProject={navigateToProject}
         onStarProject={handleSetProjectStarred}
         onEditProject={openProjectDialog}
+        onArchiveProject={openArchiveProjectModal}
         onDeleteProject={(project) => {
           setDeletingProject(project);
           setModalError("");
