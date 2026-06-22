@@ -101,7 +101,7 @@ export default function App() {
       onLogout={handleLogout}
       onSessionExpired={handleSessionExpired}
       adminPanel={
-        <section className="p-6">
+        <section className="h-full overflow-y-auto p-6">
           <h1 className="font-serif text-2xl font-light tracking-tight">Admin</h1>
           <div className="mt-4 divide-y divide-border border-y border-border">
             {adminUsers.map((adminUser) => (

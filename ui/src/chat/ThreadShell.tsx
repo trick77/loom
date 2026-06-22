@@ -675,7 +675,7 @@ export function ThreadShell({
 
   return (
     <div
-      className={`grid h-svh bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out grid-cols-[1fr] ${
+      className={`grid h-svh grid-rows-[minmax(0,1fr)] bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out grid-cols-[1fr] ${
         sidebarCollapsed ? "md:grid-cols-[56px_1fr]" : "md:grid-cols-[362px_1fr]"
       }`}
     >
@@ -731,7 +731,7 @@ export function ThreadShell({
         }
         onCloseThreadMenu={() => setOpenThreadMenuID(null)}
       />
-      <main className="min-w-0 bg-bg">
+      <main className="min-h-0 min-w-0 overflow-hidden bg-bg">
         {showAdmin ? (
           adminPanel
         ) : route.view === "threads" ? (
