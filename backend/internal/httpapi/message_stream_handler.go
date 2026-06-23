@@ -105,12 +105,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	// category drives the prompt-classifier block injected below. On the first
 	// message we classify now (synchronously, before the answer history is built)
-	// and use the fresh result; on later turns we reuse the stored category.
+	// and use the fresh result; on later turns we reuse the stored category. The
+	// classification is adopted for this turn even if the concurrent title call
+	// failed (generateAndSendThreadTitle returns the category regardless).
 	category := thread.Category
 	if shouldGenerateThreadTitle(thread.Title, userMessage.Content) {
-		if classified, err := s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, ""); err == nil {
-			category = classified
-		}
+		category, _ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
 	}
 
 	userContext := s.userContextForUser(r.Context(), user.ID)

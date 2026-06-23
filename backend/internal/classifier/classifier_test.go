@@ -18,6 +18,29 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
+func TestMatch(t *testing.T) {
+	cases := map[string]Category{
+		"coding":                    Coding,
+		"\"coding\"":                Coding,         // wrapping quotes
+		"coding.":                   Coding,         // trailing punctuation
+		"  coding  ":                Coding,         // surrounding whitespace
+		"Coding":                    Coding,         // case-insensitive
+		"The category is coding":    Coding,         // surrounding prose
+		"knowledge_discovery":       KnowledgeDiscovery,
+		"url_lookup":                URLLookup,      // underscore preserved
+		"general":                   General,
+		"":                          General,        // empty
+		"   ":                       General,        // whitespace only
+		"definitely not a category": General,        // unknown words
+		"encoding":                  General,        // must not partial-match "coding"
+	}
+	for in, want := range cases {
+		if got := Match(in); got != want {
+			t.Errorf("Match(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestBlock(t *testing.T) {
 	// General and unknown values inject nothing.
 	if Block(string(General)) != "" {

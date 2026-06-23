@@ -46,7 +46,9 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 	}
 	choice := completion.Choices[0]
 	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
-	// Normalize coerces any unknown or empty reply (including a truncated one) to
-	// General, so a "length" finish or stray prose never produces a bad category.
-	return string(classifier.Normalize(strings.TrimSpace(choice.Message.Content))), nil
+	// Match tolerantly extracts the category from the reply (handling quotes,
+	// punctuation, or stray prose) and coerces anything unrecognized — including a
+	// truncated "length" reply — to General, so a bad reply never produces a bad
+	// category.
+	return string(classifier.Match(choice.Message.Content)), nil
 }
