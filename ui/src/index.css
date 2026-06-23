@@ -147,30 +147,31 @@ body {
 }
 
 /* Stops sampled directly from claude.ai's chip spring (rAF capture of the live
-   translateY): 10px -> reaches 0 at ~49% -> overshoots to -1.2px (~12%) at ~62%
-   -> settles back to 0 by 100%, ~285ms total. Because the curve lives in the
-   stops, the animation plays with linear timing (a cubic-bezier on top would
-   double-ease and distort it). */
+   translateY): 10px -> reaches 0 at ~51% -> overshoots to -1.2px (~12%) at ~65%
+   -> settles back to 0 by 100%, ~285ms total. Percentages are the measured
+   timestamps over the 285ms duration (e.g. 146ms/285ms = 51%, 185ms/285ms = 65%).
+   Because the curve lives in the stops, the animation plays with linear timing
+   (a cubic-bezier on top would double-ease and distort it). */
 @keyframes prompt-rise-in {
   0% {
     transform: translateY(10px);
   }
-  23% {
+  25% {
     transform: translateY(4px);
   }
-  42% {
+  44% {
     transform: translateY(0.6px);
   }
-  49% {
+  51% {
     transform: translateY(0);
   }
-  62% {
+  65% {
     transform: translateY(-1.2px);
   }
-  75% {
+  79% {
     transform: translateY(-0.9px);
   }
-  89% {
+  93% {
     transform: translateY(-0.38px);
   }
   100% {
