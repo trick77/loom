@@ -18,13 +18,13 @@ export function MessageMetrics({ message, category }: { message: Message; catego
 
   if (pill === null && line === null) return null;
 
-  // Metrics text is styled to match the reasoning-trace title (.ui-activity-reasoning-title):
-  // Anthropic Sans, 0.8125rem, weight 500, 1.45rem line-height, cream #d6d3ca.
+  // Metrics text color matches the action icons to the left (idle #858178) so the
+  // row reads as one muted cluster; the pill keeps its own chip styling.
   return (
     <span className="ml-auto flex items-center gap-2">
       {pill}
       {line !== null && (
-        <span className="font-sans text-[0.8125rem] font-medium leading-[1.45rem] text-[#d6d3ca]">{line}</span>
+        <span className="font-sans text-[0.8125rem] leading-[1.45rem] text-[#858178]">{line}</span>
       )}
     </span>
   );
