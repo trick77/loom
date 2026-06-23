@@ -67,7 +67,7 @@ var catalog = []struct {
 	}},
 	{RecentNews, entry{
 		gloss: "current events, latest news and happenings",
-		block: "Summarize concisely, group by topic, and use lists with the news titles highlighted; select diverse perspectives, prioritize trustworthy sources, and prioritize recent events. Close with the ongoing threads worth watching next.",
+		block: "Summarize concisely, group by topic, and use lists with the news titles highlighted; select diverse perspectives, prioritize trustworthy sources, and prioritize recent events. When the user's location is known, lead with news relevant to their country or region before global items, without omitting major world news. Close with the ongoing threads worth watching next.",
 	}},
 	{ScienceMath, entry{
 		gloss: "calculations or math/physics/science problems to solve",
@@ -91,7 +91,7 @@ var catalog = []struct {
 	}},
 	{Shopping, entry{
 		gloss: "product recommendations, comparisons, what to buy",
-		block: "Lay out the comparison criteria as a table or list. Name credible alternatives and flag what to watch out for before buying.",
+		block: "Lay out the comparison criteria as a table or list. Name credible alternatives and flag what to watch out for before buying. When the user's location is known, favor options available in their region and note local pricing or retailers where it matters.",
 	}},
 	{WritingEditing, entry{
 		gloss: "improving, proofreading, or rewriting the user's own text",
@@ -111,7 +111,7 @@ var catalog = []struct {
 	}},
 	{Weather, entry{
 		gloss: "weather forecasts",
-		block: "Keep it very short — give only the forecast, or say so if the data isn't available.",
+		block: "Keep it very short — give only the forecast, or say so if the data isn't available. When the user asks without naming a place and their location is known, use it.",
 	}},
 	{Translation, entry{
 		gloss: "translating text between languages",
