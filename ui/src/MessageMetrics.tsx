@@ -9,5 +9,5 @@ export function MessageMetrics({ message }: { message: Message }) {
   const line = buildMetricsString(message);
   if (line === null) return null;
 
-  return <span className="ml-auto font-mono text-xs text-[#88857d]">{line}</span>;
+  return <span className="ml-auto font-sans text-[0.8125rem] text-[#d6d3ca]">{line}</span>;
 }

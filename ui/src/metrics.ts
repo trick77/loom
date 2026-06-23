@@ -12,6 +12,17 @@ function hasPositiveValue(value: number | undefined): value is number {
   return value !== undefined && value > 0;
 }
 
+/**
+ * MiMo-V2.5-Pro's context window in tokens. Hardcoded here like the model name on
+ * the backend (both are fixed) and used to show how full the context window is.
+ */
+const CONTEXT_WINDOW_TOKENS = 1_048_576;
+
+/** Format total token usage as a percentage of the context window (e.g. "4.9%"). */
+function contextUsagePercent(totalTokens: number): string {
+  return `${((totalTokens / CONTEXT_WINDOW_TOKENS) * 100).toFixed(1)}%`;
+}
+
 function cachedSuffix(message: Message): string {
   return hasPositiveValue(message.cachedTokens) ? ` (${groupThousands(message.cachedTokens)}/c)` : "";
 }
@@ -25,7 +36,7 @@ export function formatDuration(ms: number): string {
   if (ms < 0) return "";
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  if (seconds <= 120) return `${seconds.toFixed(1)}s`;
   if (seconds < 3600) {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
@@ -47,7 +58,7 @@ export function hasRenderableMetrics(message: Message): boolean {
 }
 
 /**
- * Build the metrics line (model (effort) · duration · ↑in (cached/c) · ↓out (reasoning/r) · ∑total),
+ * Build the metrics line (model (effort) · duration · ↑in (cached/c) · ↓out (reasoning/r) · context%),
  * or null when there is nothing renderable.
  */
 export function buildMetricsString(message: Message): string | null {
@@ -69,7 +80,7 @@ export function buildMetricsString(message: Message): string | null {
     segments.push(`↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`);
   }
   if (hasPositiveValue(message.totalTokens)) {
-    segments.push(`∑${THIN_SPACE}${groupThousands(message.totalTokens)}`);
+    segments.push(contextUsagePercent(message.totalTokens));
   }
   return segments.join(" · ");
 }
