@@ -146,11 +146,34 @@ body {
   }
 }
 
+/* Stops sampled directly from claude.ai's chip spring (rAF capture of the live
+   translateY): 10px -> reaches 0 at ~49% -> overshoots to -1.2px (~12%) at ~62%
+   -> settles back to 0 by 100%, ~285ms total. Because the curve lives in the
+   stops, the animation plays with linear timing (a cubic-bezier on top would
+   double-ease and distort it). */
 @keyframes prompt-rise-in {
-  from {
+  0% {
     transform: translateY(10px);
   }
-  to {
+  23% {
+    transform: translateY(4px);
+  }
+  42% {
+    transform: translateY(0.6px);
+  }
+  49% {
+    transform: translateY(0);
+  }
+  62% {
+    transform: translateY(-1.2px);
+  }
+  75% {
+    transform: translateY(-0.9px);
+  }
+  89% {
+    transform: translateY(-0.38px);
+  }
+  100% {
     transform: translateY(0);
   }
 }
@@ -159,7 +182,7 @@ body {
   /* A single animation-delay (set inline per button) applies to both animations. */
   animation:
     prompt-fade-in 300ms cubic-bezier(0.25, 0.1, 0.35, 1) both,
-    prompt-rise-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    prompt-rise-in 285ms linear both;
 }
 
 @media (prefers-reduced-motion: reduce) {
