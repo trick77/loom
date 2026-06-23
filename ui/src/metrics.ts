@@ -48,7 +48,7 @@ export function formatDuration(ms: number): string {
   if (ms < 0) return "";
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
-  if (seconds <= 120) return `${seconds.toFixed(1)}s`;
+  if (seconds <= 120) return `${Math.round(seconds)}s`;
   if (seconds < 3600) {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);

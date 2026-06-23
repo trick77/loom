@@ -19,5 +19,5 @@ test("renders the metrics line when data is present", () => {
       message={assistant({ model: "mimo", durationMs: 5000, promptTokens: 10, completionTokens: 500, totalTokens: 510 })}
     />,
   );
-  expect(screen.getByText(/^mimo · 5\.0s · ↑/)).toBeInTheDocument();
+  expect(screen.getByText(/^mimo · 5s · ↑/)).toBeInTheDocument();
 });
