@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom Prompt Classifier — Design Spec</title>
+<style>
+  :root {
+    --bg: #1c1b18; --panel: #24231f; --ink: #e8e5dd; --muted: #a8a399;
+    --accent: #c9a86a; --line: #36342e; --code-bg: #2a2823; --pill: #2f2d27;
+    --green: #8fae6e; --blue: #7fa8c9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 48px 28px 96px; }
+  h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 21px; margin: 44px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 26px 0 8px; color: var(--accent); }
+  p { margin: 10px 0; }
+  .sub { color: var(--muted); margin: 0 0 8px; }
+  .tag { display: inline-block; font-size: 12px; color: var(--bg); background: var(--accent);
+         border-radius: 999px; padding: 2px 10px; font-weight: 600; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: 13.5px;
+         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #ddd6c4; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+          padding: 18px 22px; margin: 14px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 11px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.cat code { background: transparent; padding: 0; color: var(--accent); font-weight: 600; }
+  .src { font-size: 11px; color: var(--muted); display: block; margin-top: 3px; }
+  .fmt { color: var(--blue); }
+  .srf { color: var(--green); }
+  .pill { display: inline-block; background: var(--pill); border: 1px solid var(--line);
+          border-radius: 999px; padding: 2px 11px; font-size: 13px; color: #d6d3ca; }
+  .lead { font-size: 17px; color: var(--ink); }
+  .note { border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; color: var(--muted); margin: 12px 0; }
+  .pillrow { background: #161512; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+             font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #d6d3ca; }
+  .twogrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .twogrid { grid-template-columns: 1fr; } }
+  .foot { color: var(--muted); font-size: 13px; margin-top: 60px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .kbd { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="sub"><span class="tag">DESIGN SPEC</span> &nbsp; 2026-06-23 &nbsp;·&nbsp; <code>loom</code> &nbsp;·&nbsp; branch <code>worktree-prompt-classifier</code></p>
+  <h1>Loom Prompt Classifier</h1>
+  <p class="lead">Dynamic system-prompt enrichment driven by a per-conversation category, classified for free on the first message.</p>
+
+  <h2>1 · Context &amp; goal</h2>
+  <div class="card">
+    <p>Loom sends one static base system prompt to every conversation. The goal is to make the
+    assistant <strong>think differently and surface different unasked-for value</strong> depending on
+    what kind of request the conversation is.</p>
+    <p>Where Perplexity's classifier answers <em>"how should I <strong>format</strong> this?"</em>,
+    Loom's answers <em>"how should I <strong>think</strong> about this, and what should I
+    <strong>surface</strong> that the user didn't ask for?"</em> — the <strong>enrichment gap</strong>.
+    Perplexity would handle "who was Einstein" with a generic People template (short bio, done);
+    Loom answers the bio <em>and</em> proactively points toward gravitational-wave detection or the
+    latest relativity-adjacent research.</p>
+    <p><strong>The win:</strong> Loom already makes a cheap, thinking-disabled utility LLM call on the
+    first message to generate the thread <strong>title</strong>. We add a <strong>second, separate</strong>
+    utility call — also off the first message, also thinking-disabled — that returns just the
+    <strong>category</strong>, run <strong>concurrently</strong> with the title call (added latency ≈ one
+    call). Keeping it separate from titling leaves the carefully-tuned title prompt untouched (no
+    title-quality regression) and lets the classify prompt be purpose-built for accuracy; cost is
+    negligible (tiny input + ~3–5 output tokens). The category is stored on the thread and drives a
+    small, lean instruction block injected into the system prompt for every turn, and shows up as a pill
+    in the status line.</p>
+    <p class="sub" style="font-size:13px">Note on caching: the title and classify calls use different
+    system prompts, so the shared first-message text won't yield a prompt-cache hit — fine, the classify
+    call is cheap in absolute terms regardless.</p>
+  </div>
+
+  <h3>Decisions locked with the user</h3>
+  <ul>
+    <li><strong>Classify once</strong>, piggybacked on the existing title call → thread-level, fixed for the conversation (re-classification on drift deferred to v2).</li>
+    <li><strong>Single category + <code>general</code> fallback</strong> — the model is never forced to mis-bucket.</li>
+    <li>Named <strong>"prompt classifier"</strong>; DB/API field is <code>category</code> (not "semantic router" — that term implies embedding-based routing, which this isn't).</li>
+    <li>Fully automatic — <strong>no manual category picker</strong> (matches the no-button UX preference).</li>
+  </ul>
+
+  <h2>2 · Taxonomy</h2>
+  <div class="card">
+    <p><strong>Anchored on proven leak data.</strong> The base is Perplexity's leaked
+    "Query type specifications" (10 types). Perplexity uses them to decide <em>how to format</em>; Loom
+    reuses the same proven partition of what-people-ask but swaps each rule from <em>format</em> →
+    <em>think + enrich</em>. Perplexity is search-first, so it omits the categories that dominate
+    <em>general assistant</em> usage — Loom adds those.</p>
+    <p><strong>Every block has two parts:</strong>
+      <span class="fmt">(a) FORMAT</span> — how to shape the answer;
+      <span class="srf">(b) THINK/SURFACE</span> — how to think about it and what to surface unasked.
+      Utility categories carry FORMAT only. Register: lean and filler-free, but <strong>complete
+      directives</strong> (the <code>knowledge_discovery</code> block sets the bar).</p>
+    <p><strong>Sourcing:</strong> the 10 Perplexity types take their FORMAT <strong>verbatim from the
+      leak</strong>; the THINK/SURFACE half is always Loom's design (that's the enrichment gap). The 7
+      Loom-only categories are marked <code>[Loom]</code>.</p>
+  </div>
+
+  <h3>Class A — Enrichment (FORMAT + THINK/SURFACE)</h3>
+  <table>
+    <thead><tr><th style="width:22%">category</th><th style="width:39%">(a) format</th><th style="width:39%">(b) think / surface</th></tr></thead>
+    <tbody>
+      <tr><td class="cat"><code>knowledge_discovery</code><span class="src">absorbs Perplexity <em>People</em></span></td>
+        <td class="fmt">Flowing prose. If about a person: short comprehensive biography; if multiple people match, describe each individually — never mix their info.</td>
+        <td class="srf">A "Further exploration" section with 2–3 recent developments or adjacent topics the user might not know to ask about, tailored to the angle — historical, practical, theoretical.</td></tr>
+      <tr><td class="cat"><code>academic_research</code><span class="src">FORMAT: Perplexity</span></td>
+        <td class="fmt">Long, detailed scientific write-up with markdown sections and headings.</td>
+        <td class="srf">Seminal + recent work, key researchers; open debates &amp; competing methods; flag evidence strength.</td></tr>
+      <tr><td class="cat"><code>recent_news</code><span class="src">FORMAT: Perplexity (verbatim)</span></td>
+        <td class="fmt">Summarize concisely, group by topic, lists with highlighted news titles, diverse perspectives, trustworthy + recent sources.</td>
+        <td class="srf">Close with the ongoing threads worth watching next.</td></tr>
+      <tr><td class="cat"><code>science_math</code><span class="src">FORMAT: Perplexity</span></td>
+        <td class="fmt">Simple calc → final result only. Otherwise show steps, math in LaTeX.</td>
+        <td class="srf">Intuition behind the result, a related concept, a common pitfall.</td></tr>
+      <tr><td class="cat"><code>coding</code><span class="src">FORMAT: Perplexity</span></td>
+        <td class="fmt">Fenced code blocks, language-tagged; code first, then explain.</td>
+        <td class="srf">Edge cases, gotchas, version caveats; one alternative approach when relevant.</td></tr>
+      <tr><td class="cat"><code>cooking_recipes</code><span class="src">FORMAT: Perplexity</span></td>
+        <td class="fmt">Ingredients = bullet list with exact amounts; numbered step-by-step instructions.</td>
+        <td class="srf">Useful substitutions and one technique tip.</td></tr>
+      <tr><td class="cat"><code>creative_writing</code><span class="src">FORMAT: Perplexity</span></td>
+        <td class="fmt">Follow instructions precisely; no search results.</td>
+        <td class="srf">Offer one variation in a different tone or angle.</td></tr>
+      <tr><td class="cat"><code>how_to</code><span class="src">[Loom]</span></td>
+        <td class="fmt">Numbered steps; required tools/materials as a bullet list first.</td>
+        <td class="srf">Flag the single most common mistake.</td></tr>
+      <tr><td class="cat"><code>shopping</code><span class="src">[Loom]</span></td>
+        <td class="fmt">Comparison criteria as a table or list.</td>
+        <td class="srf">Credible alternatives; what to watch out for before buying.</td></tr>
+      <tr><td class="cat"><code>writing_editing</code><span class="src">[Loom]</span></td>
+        <td class="fmt">Return the revised text.</td>
+        <td class="srf">Note key changes briefly; offer one tighter alternative.</td></tr>
+      <tr><td class="cat"><code>summarization</code><span class="src">[Loom]</span></td>
+        <td class="fmt">Tight summary; list when multiple distinct points.</td>
+        <td class="srf">The one thing the source leaves out, or the key tension.</td></tr>
+      <tr><td class="cat"><code>brainstorming</code><span class="src">[Loom] · rule moved out of static base</span></td>
+        <td class="fmt">At most 12 options.</td>
+        <td class="srf">Recommend one; add a non-obvious angle.</td></tr>
+      <tr><td class="cat"><code>planning</code><span class="src">[Loom]</span></td>
+        <td class="fmt">Structured plan, numbered or grouped into phases.</td>
+        <td class="srf">A thing people commonly forget + one contingency.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Class B — Utility (FORMAT only; all verbatim from Perplexity)</h3>
+  <table>
+    <thead><tr><th style="width:22%">category</th><th>(a) format</th></tr></thead>
+    <tbody>
+      <tr><td class="cat"><code>weather</code></td><td class="fmt">Very short — only the forecast, or say so if unavailable.</td></tr>
+      <tr><td class="cat"><code>translation</code></td><td class="fmt">Only the translation. No notes, no citations.</td></tr>
+      <tr><td class="cat"><code>url_lookup</code></td><td class="fmt">Answer relying solely on the page at the URL, and cite it.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Class C — Fallback</h3>
+  <p><code>general</code> — catch-all incl. chit-chat / personal / open conversation (the conversational
+  bucket Perplexity's search-first set lacks). <strong>Injects nothing.</strong></p>
+
+  <div class="note">
+    <strong>Enum = 17 values.</strong> <code>people</code> (proven set) is folded into
+    <code>knowledge_discovery</code> because Loom routes on <em>thinking</em>, not format — its bio format
+    is preserved as a conditional sub-rule. A <code>sensitive</code> (health/legal/finance caveat) class
+    is deferred to v2.
+  </div>
+
+  <h2>3 · Static vs. dynamic prompt — conflict resolution</h2>
+  <div class="card">
+    <p>The current static base prompt hard-mandates prose and forbids lists
+    (<em>"Do NOT use bullet points or numbered lists… When in doubt, use prose."</em>). This
+    <strong>clashes</strong> with list-shaped categories (<code>cooking_recipes</code>, <code>how_to</code>,
+    <code>coding</code>, <code>shopping</code>).</p>
+    <p><strong>Resolution</strong> (per user — pull clash-risky formatting out of static, push it into the
+    dynamic blocks where lists make sense):</p>
+    <ul>
+      <li><strong>Soften the static base:</strong> keep a light prose default for uncategorized/<code>general</code>
+        chats, but <strong>remove the hard "no bullet/numbered lists" prohibition</strong> so it can't
+        override a category block.</li>
+      <li><strong>Each category block owns its formatting</strong> — the injected block is authoritative
+        for that conversation's shape.</li>
+      <li><strong>Relocate:</strong> the static base's brainstorming rule (<em>"at most 12 options and
+        recommend one"</em>) moves into the <code>brainstorming</code> block. Tool-routing rules
+        (file-creation, image-generation) stay in static.</li>
+    </ul>
+  </div>
+
+  <h2>4 · Implementation</h2>
+  <div class="note"><strong>Branch from fresh <code>origin/master</code>.</strong> Local master was 16 commits
+    behind; the metrics restyle (<code>73d9aa5</code>) and Loom rebrand live there. Work happens in a git
+    worktree off freshly fetched <code>origin/master</code>.</div>
+
+  <h3>4.1 Classifier call — a separate utility call, concurrent with the title call</h3>
+  <ul>
+    <li>New shared package <code>backend/internal/classifier</code>: the 17-value enum, the literal injected
+      block per category, a <code>PromptGuide()</code> for the classifying prompt, plus <code>Valid</code> /
+      <code>Normalize</code> / <code>Block</code>. Single source of truth, imported by both <code>llm</code> and <code>httpapi</code>.</li>
+    <li><strong>Title call untouched:</strong> <code>GenerateThreadTitle</code> (<code>llm/thread_title.go</code>)
+      keeps its proven prompt and <code>(string, error)</code> return — no regression risk.</li>
+    <li><strong>New <code>ClassifyThread(ctx, userMessage)</code></strong> (<code>llm/thread_classify.go</code>):
+      system prompt = a short classify instruction + <code>classifier.PromptGuide()</code>; the model replies with
+      <em>only one category value</em> (not JSON, ~3–5 tokens). Reuses the existing
+      <code>executeUtilityChatRequest</code> path (<code>thinking: disabled</code>, 32-token cap is ample). Parse =
+      trim + <code>classifier.Normalize</code> → invalid/empty → <code>general</code>; request error → <code>general</code>
+      (never block the answer).</li>
+    <li><strong>Concurrency:</strong> <code>generateAndSendThreadTitle</code> runs the title and classify calls
+      concurrently, awaits both, then writes title + category in one <code>UpdateThread</code>. Added latency ≈
+      <code>max(title, classify)</code>.</li>
+  </ul>
+
+  <h3>4.2 Persist category on the thread</h3>
+  <ul>
+    <li>Migration <code>0013_thread_category.sql</code>: <code>ALTER TABLE threads ADD COLUMN category TEXT NOT NULL DEFAULT ''</code>.</li>
+    <li><code>chat.Thread.Category</code>, <code>UpdateThreadInput.Category</code>, <code>scanThread</code>, both thread
+      <code>SELECT</code> lists, and the <code>UPDATE</code> SET clause all carry <code>category</code>.</li>
+    <li><code>generateAndSendThreadTitle</code> persists title + category in one update, emits the existing
+      <code>thread</code> SSE event (now carrying category), and <strong>returns the category</strong> so the
+      first turn can inject the block immediately (the call is synchronous, before the answer history is built).</li>
+  </ul>
+
+  <h3>4.3 Inject the block into the system prompt</h3>
+  <ul>
+    <li><code>buildLLMHistory</code> gains a <code>classifierContext</code> block appended exactly like the existing
+      user/project/knowledge/document blocks. The handler passes <code>classifier.Block(category)</code> —
+      enrichment categories get both parts, utility categories FORMAT-only, <code>general</code>/unknown nothing.</li>
+  </ul>
+
+  <h3>4.4 Status-line pill</h3>
+  <p>The metrics line was just restyled on master (<code>73d9aa5</code>). <code>buildMetricsString</code> stays
+  text-only; the category is a <strong>pill</strong> rendered as its own badge in <code>MessageMetrics.tsx</code>,
+  to the left of the metrics span, sourced from <strong>thread state</strong> (single source of truth — correct
+  even on the first message once the <code>thread</code> SSE event lands). <code>category?: string</code> is added to
+  the <code>Thread</code> type. A humanizer turns <code>knowledge_discovery</code> → "Knowledge discovery".</p>
+  <div class="pillrow"><span class="pill">Knowledge discovery</span> &nbsp; mimo-v2.5-pro &nbsp;·&nbsp; 5.0s &nbsp;·&nbsp; ↑ 1 234 &nbsp;·&nbsp; ↓ 500 &nbsp;·&nbsp; 0.2%</div>
+
+  <h2>5 · Verification</h2>
+  <ul>
+    <li><strong>Backend:</strong> unit-test <code>ClassifyThread</code> parse/normalize (exact value, value with
+      surrounding prose, unknown → <code>general</code>, empty → <code>general</code>) and <code>classifier.Normalize</code>/<code>Block</code>;
+      run <code>go test ./...</code>.</li>
+    <li><strong>Migration:</strong> confirm <code>category</code> column exists and defaults to <code>''</code> on existing threads.</li>
+    <li><strong>End-to-end:</strong> fresh threads for "who was Einstein", "weather in Zürich", "fix a leaky faucet"
+      → verify title still generated, correct category on the thread, the matching block in the outgoing system
+      prompt, utility = FORMAT only, <code>general</code> = nothing.</li>
+    <li><strong>Frontend:</strong> metrics tests pass; the pill shows the humanized label and updates live when
+      the <code>thread</code> SSE event lands.</li>
+  </ul>
+
+  <h2>6 · Risks &amp; open notes</h2>
+  <ul>
+    <li><strong>Classification accuracy</strong> (the main remaining risk): a 17-way pick in one fast,
+      thinking-disabled call. A purpose-built classify prompt (separate from titling) helps; the
+      <code>general</code> fallback guards parse failure, not confident mis-classification. If routing is noisy:
+      shrink the taxonomy, or give this one call a small reasoning budget. (Title-quality regression is no longer a
+      risk — the title call is untouched.)</li>
+    <li><strong>Deferred to v2:</strong> re-classification on topic drift; a <code>sensitive</code> caveat class.</li>
+  </ul>
+
+  <p class="foot">Spec for review. Implementation does not proceed until this is approved.
+  <span class="kbd">Companion plan file: <code>~/.claude/plans/i-want-to-use-stateless-origami.md</code></span></p>
+
+</div>
+</body>
+</html>

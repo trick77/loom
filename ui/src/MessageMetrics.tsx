@@ -1,15 +1,29 @@
 import type { Message } from "./api";
-import { buildMetricsString } from "./metrics";
+import { buildMetricsString, humanizeCategory } from "./metrics";
 
 /**
  * Renders the stats line for an assistant message, right-aligned via `ml-auto`
- * within the actions row. Always visible.
+ * within the actions row. When the thread has a prompt-classifier category, a pill
+ * with the humanized label sits to the left of the metrics. The pill can show on
+ * its own even before token metrics exist (the metrics line may be null).
  */
-export function MessageMetrics({ message }: { message: Message }) {
+export function MessageMetrics({ message, category }: { message: Message; category?: string }) {
   const line = buildMetricsString(message);
-  if (line === null) return null;
+  const pill =
+    category !== undefined && category !== "" ? (
+      <span className="rounded-full bg-[#2a2823] px-2 py-0.5 font-sans text-[0.75rem] text-[#d6d3ca]">
+        {humanizeCategory(category)}
+      </span>
+    ) : null;
 
-  // Color matches the action icons to the left (idle #858178) so the row reads as
-  // one muted cluster; the brighter reasoning-title cream was too loud here.
-  return <span className="ml-auto font-sans text-[0.8125rem] text-[#858178]">{line}</span>;
+  if (pill === null && line === null) return null;
+
+  // Metrics text color matches the action icons to the left (idle #858178) so the
+  // row reads as one muted cluster; the pill keeps its own chip styling.
+  return (
+    <span className="ml-auto flex items-center gap-2">
+      {pill}
+      {line !== null && <span className="font-sans text-[0.8125rem] text-[#858178]">{line}</span>}
+    </span>
+  );
 }

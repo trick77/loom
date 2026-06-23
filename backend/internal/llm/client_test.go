@@ -995,6 +995,7 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 		call func(c *Client) (string, error)
 	}{
 		{"chat title", func(c *Client) (string, error) { return c.GenerateThreadTitle(context.Background(), "Hi", "") }},
+		{"classify", func(c *Client) (string, error) { return c.ClassifyThread(context.Background(), "Hi") }},
 		{"reasoning title", func(c *Client) (string, error) {
 			return c.GenerateReasoningTitle(context.Background(), "some reasoning")
 		}},
@@ -1057,6 +1058,39 @@ func TestClient_TitlesSkippedWhenTruncatedAtTokenCap(t *testing.T) {
 	}
 	if got, err := client.GenerateThreadTitle(context.Background(), "Hi", ""); err != nil || got != "New thread" {
 		t.Fatalf("thread title = %q, err = %v; want New thread", got, err)
+	}
+}
+
+func TestClient_ClassifyThreadParsesReply(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"bare value", "coding", "coding"},
+		{"quoted", `"coding"`, "coding"},
+		{"trailing punctuation", "coding.", "coding"},
+		{"surrounding prose", "The category is coding.", "coding"},
+		{"unknown value falls back", "nonsense", "general"},
+		{"empty falls back", "", "general"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"choices": []map[string]any{{"message": map[string]string{"content": tc.content}}},
+				})
+			}))
+			t.Cleanup(server.Close)
+
+			client := NewClient(Config{BaseURL: server.URL}, server.Client())
+			got, err := client.ClassifyThread(context.Background(), "Write a Go function")
+			if err != nil {
+				t.Fatalf("ClassifyThread() error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("category = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

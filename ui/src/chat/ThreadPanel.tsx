@@ -344,6 +344,7 @@ export function ThreadPanel({
                   message={message}
                   retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
                   onRetry={handleRetryRequest}
+                  category={thread?.category}
                 />
               </div>
             ))}

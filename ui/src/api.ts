@@ -38,6 +38,8 @@ export type Thread = {
   id: string;
   projectId?: string;
   title: string;
+  /** Prompt-classifier category chosen on the first message; "" until classified. */
+  category?: string;
   starred: boolean;
   archivedAt?: string;
   createdAt: string;

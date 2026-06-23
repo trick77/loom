@@ -367,6 +367,7 @@ func (f *fakeThreadStore) ListUserMessages(_ context.Context, _ string, _ int) (
 type fakeChatClient struct {
 	title               string
 	titleErr            error
+	category            string
 	reasoningTitle      string
 	history             *[]llm.Message
 	streamText          *string
@@ -414,6 +415,10 @@ func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, _ string) (s
 	// request accumulator on ctx.
 	llm.RecordUsage(ctx, f.titleUsage)
 	return f.title, nil
+}
+
+func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, error) {
+	return f.category, nil
 }
 
 func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _ string) (string, error) {
@@ -495,6 +500,10 @@ func (f *blockingChatClient) StreamChatWithTools(ctx context.Context, _ []llm.Me
 }
 
 func (f *blockingChatClient) GenerateThreadTitle(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func (f *blockingChatClient) ClassifyThread(context.Context, string) (string, error) {
 	return "", nil
 }
 
@@ -584,6 +593,10 @@ func (f *fakeToolChatClient) StreamChatWithTools(ctx context.Context, history []
 }
 
 func (f *fakeToolChatClient) GenerateThreadTitle(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeToolChatClient) ClassifyThread(context.Context, string) (string, error) {
 	return "", nil
 }
 

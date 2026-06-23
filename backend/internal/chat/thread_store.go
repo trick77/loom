@@ -109,7 +109,7 @@ func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreads
 	args = append(args, limit)
 
 	query := fmt.Sprintf(`
-SELECT id, user_id, project_id, title, starred, archived_at, created_at, updated_at, last_message_at
+SELECT id, user_id, project_id, title, category, starred, archived_at, created_at, updated_at, last_message_at
 FROM threads
 WHERE %s
 ORDER BY COALESCE(last_message_at, updated_at) DESC, updated_at DESC, id DESC
@@ -197,11 +197,16 @@ func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in Up
 		}
 	}
 
+	category := thread.Category
+	if in.Category != nil {
+		category = *in.Category
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 UPDATE threads
-SET title = ?, project_id = ?, updated_at = datetime('now')
+SET title = ?, category = ?, project_id = ?, updated_at = datetime('now')
 WHERE user_id = ? AND id = ?`,
-		title, projectID, userID, threadID,
+		title, category, projectID, userID, threadID,
 	)
 	if err != nil {
 		return Thread{}, false, fmt.Errorf("update thread: %w", err)
@@ -268,7 +273,7 @@ func escapeLike(term string) string {
 
 func (s *Store) getThread(ctx context.Context, userID, threadID string) (Thread, bool, error) {
 	thread, err := scanThread(s.db.QueryRowContext(ctx, `
-SELECT id, user_id, project_id, title, starred, archived_at, created_at, updated_at, last_message_at
+SELECT id, user_id, project_id, title, category, starred, archived_at, created_at, updated_at, last_message_at
 FROM threads
 WHERE user_id = ? AND id = ?`,
 		userID, threadID,

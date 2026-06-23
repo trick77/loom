@@ -17,6 +17,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
@@ -1580,10 +1581,13 @@ func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 	}
 }
 
+// The bounded-brainstorming directive moved out of the static base prompt into the
+// dynamic `brainstorming` category block. A thread classified `brainstorming` must
+// therefore receive that directive via the injected block.
 func TestStreamMessageSystemPromptBoundsOpenEndedBrainstorming(t *testing.T) {
 	var history []llm.Message
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title", Category: string(classifier.Brainstorming)},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
@@ -1600,11 +1604,11 @@ func TestStreamMessageSystemPromptBoundsOpenEndedBrainstorming(t *testing.T) {
 	if len(history) == 0 {
 		t.Fatal("history is empty")
 	}
-	if !strings.Contains(history[0].Content, "For brainstorming, naming, or idea-generation requests without an explicit count") {
-		t.Fatalf("system prompt = %q, want bounded brainstorming directive", history[0].Content)
+	if !strings.Contains(history[0].Content, "at most 12 options") {
+		t.Fatalf("system prompt = %q, want bounded brainstorming directive from the injected block", history[0].Content)
 	}
-	if !strings.Contains(history[0].Content, "give at most 12 options and recommend one") {
-		t.Fatalf("system prompt = %q, want finite option count directive", history[0].Content)
+	if !strings.Contains(history[0].Content, "non-obvious angle") {
+		t.Fatalf("system prompt = %q, want brainstorming surface directive", history[0].Content)
 	}
 }
 

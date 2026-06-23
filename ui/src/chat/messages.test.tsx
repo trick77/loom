@@ -150,3 +150,33 @@ test("revokes sent attachment preview URLs when they unmount", () => {
 
   expect(revoke).toHaveBeenCalledWith("blob:image-preview");
 });
+
+test("renders the prompt-classifier category as a humanized pill on assistant messages", () => {
+  const message: Message = {
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "Newton was a physicist.",
+    createdAt: "2026-06-14T00:00:00Z",
+  };
+
+  render(
+    <MessageBubble message={message} retryContent={null} onRetry={vi.fn()} category="knowledge_discovery" />,
+  );
+
+  expect(screen.getByText("Knowledge discovery")).toBeInTheDocument();
+});
+
+test("renders no category pill when the thread is unclassified", () => {
+  const message: Message = {
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "Newton was a physicist.",
+    createdAt: "2026-06-14T00:00:00Z",
+  };
+
+  render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} category="" />);
+
+  expect(screen.queryByText("Knowledge discovery")).not.toBeInTheDocument();
+});
