@@ -10,6 +10,7 @@ import {
 } from "../chat/useDocumentAttachments";
 import { WindowFileDrop } from "../chat/WindowFileDrop";
 import { Icon } from "../chat/Icon";
+import { PromptStarters } from "../chat/PromptStarters";
 import { ThreadRow } from "../chats/ThreadRow";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
@@ -190,6 +191,7 @@ export function ProjectDetailPage({
                 {sendError}
               </div>
             )}
+            {draft.trim() === "" && <PromptStarters onPick={onDraftChange} />}
             <ul className="mt-6">
               {threads.length === 0 ? (
                 <li className="py-10 text-center text-[#807d74]">No threads in this project yet.</li>

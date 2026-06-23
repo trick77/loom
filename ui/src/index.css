@@ -111,9 +111,71 @@ body {
 
 .ui-greeting-text {
   color: #c3c2b7;
-  font-size: 2.125rem;
+  font-size: 2.5rem;
   font-weight: 300;
-  line-height: 1;
+  line-height: 1.5;
+}
+
+/* Prompt-starter suggestions panel: gentle fade/slide when it opens. */
+@keyframes prompt-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.prompt-panel-in {
+  animation: prompt-panel-in 200ms ease;
+}
+
+/* Staggered entrance for the prompt-starter category buttons. Each button does two
+   layered things, matched to the reference: opacity fades 0 -> 1 (captured easing),
+   and it springs up from translateY(10px) with a slight overshoot above its resting
+   position before settling. The per-button animation-delay (index * 50ms) staggers
+   them so the row reveals left-to-right as one rising, brightening wave. */
+@keyframes prompt-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes prompt-rise-in {
+  from {
+    transform: translateY(10px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.prompt-pop-in {
+  /* A single animation-delay (set inline per button) applies to both animations. */
+  animation:
+    prompt-fade-in 300ms cubic-bezier(0.25, 0.1, 0.35, 1) both,
+    prompt-rise-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-pop-in,
+  .prompt-panel-in {
+    animation: none;
+  }
+}
+
+/* Hairline dividers between prompt suggestions (last row has none). */
+.ui-prompt-option {
+  border-bottom: 1px solid rgba(226, 225, 218, 0.15);
+}
+
+.ui-prompt-option:last-child {
+  border-bottom-width: 0;
 }
 
 .ui-sidebar-text {
