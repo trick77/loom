@@ -36,10 +36,13 @@ export function MessageBubble({
   message,
   retryContent,
   onRetry,
+  category,
 }: {
   message: Message & { attachments?: ComposerAttachment[] };
   retryContent: string | null;
   onRetry(content: string): void;
+  /** Thread-level prompt-classifier category, shown as a pill in the assistant metrics row. */
+  category?: string;
 }) {
   if (message.role === "user") {
     return (
@@ -83,6 +86,7 @@ export function MessageBubble({
         retryLabel="Retry response"
         onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}
         metricsMessage={message}
+        category={category}
         speakable
       />
       <MessageCitations citations={message.citations} />
@@ -317,6 +321,7 @@ function MessageActions({
   retryLabel,
   onRetry,
   metricsMessage,
+  category,
   speakable = false,
   alignRight = false,
   streaming = false,
@@ -326,6 +331,7 @@ function MessageActions({
   retryLabel: string;
   onRetry?: () => void;
   metricsMessage?: Message;
+  category?: string;
   speakable?: boolean;
   alignRight?: boolean;
   streaming?: boolean;
@@ -408,7 +414,7 @@ function MessageActions({
           <Icon name="retry" size="1.15rem" />
         </button>
       )}
-      {metricsMessage && <MessageMetrics message={metricsMessage} />}
+      {metricsMessage && <MessageMetrics message={metricsMessage} category={category} />}
     </div>
   );
 }

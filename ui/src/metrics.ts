@@ -1,5 +1,15 @@
 import type { Message } from "./api";
 
+/**
+ * Turn a snake_case prompt-classifier category into a display label for the pill
+ * (e.g. "knowledge_discovery" -> "Knowledge discovery"). Sentence case.
+ */
+export function humanizeCategory(category: string): string {
+  const spaced = category.replace(/_/g, " ").trim();
+  if (spaced === "") return "";
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 /** Narrow no-break space (U+202F) — used as the thousands separator and after the arrows. */
 const THIN_SPACE = " ";
 

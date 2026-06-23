@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/sse"
 	"golang.org/x/text/language"
@@ -59,20 +61,46 @@ func strPtr(value string) *string {
 	return &value
 }
 
-func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage string) error {
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
-	title, err := s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(requestCtx, inference), userMessage, assistantMessage)
-	if err != nil {
-		return err
+// generateAndSendThreadTitle titles and classifies the first message, persists
+// both onto the thread, and emits the updated thread over SSE. The title and
+// category come from two separate utility calls run concurrently (added latency ≈
+// one call); classification is best-effort and falls back to General. It returns
+// the chosen category so the caller can inject the matching system-prompt block on
+// this very turn (both calls finish before the answer history is built).
+func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage string) (string, error) {
+	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
+	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
+
+	var (
+		title    string
+		titleErr error
+		category = string(classifier.General)
+		wg       sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		title, titleErr = s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(requestCtx, titleInference), userMessage, assistantMessage)
+	}()
+	go func() {
+		defer wg.Done()
+		// ClassifyThread always returns a valid category (General on failure); the
+		// error is informational, so a failed classification never blocks the title.
+		category, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(requestCtx, classifyInference), userMessage)
+	}()
+	wg.Wait()
+
+	if titleErr != nil {
+		return category, titleErr
 	}
-	thread, found, err := s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Title: &title})
+	thread, found, err := s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Title: &title, Category: &category})
 	if err != nil {
-		return err
+		return category, err
 	}
 	if !found {
-		return nil
+		return category, nil
 	}
-	return sendSSEJSON(stream, "thread", thread)
+	return category, sendSSEJSON(stream, "thread", thread)
 }
 
 // startMCPStatus begins a live reachability probe of the configured MCP servers
@@ -104,8 +132,11 @@ func sendMCPStatus(stream *sse.Writer, ch <-chan mcpStatusResponse) {
 	_ = sendSSEJSON(stream, "mcp_status", status)
 }
 
-func buildLLMHistory(user auth.User, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+func buildLLMHistory(user auth.User, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	systemContent := systemPromptForUser(user, time.Now())
+	if strings.TrimSpace(classifierContext) != "" {
+		systemContent += "\n\n" + classifierContext
+	}
 	if strings.TrimSpace(userContext) != "" {
 		systemContent += "\n\n" + userContext
 	}

@@ -16,7 +16,7 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 	user := auth.User{ID: "u1", ResponseLanguage: "auto"}
 	newMsg := chat.Message{Role: chat.RoleUser, Content: "Hi"}
 
-	without := buildLLMHistory(user, "", "", "", "", nil, newMsg)
+	without := buildLLMHistory(user, "", "", "", "", "", nil, newMsg)
 	if without[0].Role != "system" {
 		t.Fatalf("first message role = %q, want system", without[0].Role)
 	}
@@ -24,7 +24,7 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 		t.Fatalf("system prompt unexpectedly contains project context: %q", without[0].Content)
 	}
 
-	with := buildLLMHistory(user, "", "Project name: Amsterdam Trip", "", "", nil, newMsg)
+	with := buildLLMHistory(user, "", "", "Project name: Amsterdam Trip", "", "", nil, newMsg)
 	if !strings.Contains(with[0].Content, "Project name: Amsterdam Trip") {
 		t.Fatalf("system prompt missing project context: %q", with[0].Content)
 	}

@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/sse"
 	"github.com/trick77/loom/internal/usage"
 )
 
-const loomSystemPrompt = "Write in flowing prose by default — full sentences grouped into paragraphs — no matter the topic or how long the answer is. Presenting information, explaining or describing something is prose, not a list. Do NOT use bullet points or numbered lists to break an answer into points. Use a list ONLY when the content is a true enumeration the user would naturally keep as a list: sequential steps to follow, distinct API parameters, or a literal checklist. When in doubt, use prose. For brainstorming, naming, or idea-generation requests without an explicit count, give at most 12 options and recommend one. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. Only call a file-creation tool (create_text_file, create_pdf_file, create_xlsx_file, create_docx_file, create_pptx_presentation) when the user explicitly asks to save, create, export, or download a file; for summarize, explain, or analyze requests — including about attached documents — answer inline in the chat and do not produce a downloadable file. Long code or data you include inline is fine and is offered for download automatically. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
+const loomSystemPrompt = "Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Use a list when the content is a true enumeration the user would naturally keep as a list: steps to follow, distinct parameters, or a checklist. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. Only call a file-creation tool (create_text_file, create_pdf_file, create_xlsx_file, create_docx_file, create_pptx_presentation) when the user explicitly asks to save, create, export, or download a file; for summarize, explain, or analyze requests — including about attached documents — answer inline in the chat and do not produce a downloadable file. Long code or data you include inline is fine and is offered for download automatically. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
 
 const imagePromptCompilerSystemPrompt = "The latest user request requires image generation or editing. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Transform the user's request into a concise, visually rich prompt that preserves subject, setting, style, composition, mood, medium, text requirements, and constraints. Add only helpful visual details consistent with the request. Always set `filename` to a short, descriptive name based on the image's main subject (2-4 words, lowercase, hyphen-separated, no path or extension), e.g. `red-fox-in-snow`. After the tool result, provide a brief final response that refers to the created artifact. Never claim an image was created unless the tool result confirms an artifact."
 
@@ -102,8 +103,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// assistant generation instead of delaying the final events.
 	mcpStatusCh := s.startMCPStatus(streamCtx)
 
+	// category drives the prompt-classifier block injected below. On the first
+	// message we classify now (synchronously, before the answer history is built)
+	// and use the fresh result; on later turns we reuse the stored category.
+	category := thread.Category
 	if shouldGenerateThreadTitle(thread.Title, userMessage.Content) {
-		_ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
+		if classified, err := s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, ""); err == nil {
+			category = classified
+		}
 	}
 
 	userContext := s.userContextForUser(r.Context(), user.ID)
@@ -125,7 +132,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	if len(knowledgeSources) > 0 {
 		_ = sendSSEJSON(stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
-	history := buildLLMHistory(user, userContext, projectContext, knowledgeContext, documentContext, priorMessages, userMessage)
+	history := buildLLMHistory(user, classifier.Block(category), userContext, projectContext, knowledgeContext, documentContext, priorMessages, userMessage)
 	imageParts, err := s.imageContentParts(r.Context(), user.ID, threadID, userMessage.Content, body.ImageAttachmentIDs)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())

@@ -69,10 +69,14 @@ const MaxUserMemoryLength = 3000
 
 // Thread is a single chat conversation.
 type Thread struct {
-	ID            string     `json:"id"`
-	UserID        string     `json:"-"`
-	ProjectID     *string    `json:"projectId"`
-	Title         string     `json:"title"`
+	ID        string  `json:"id"`
+	UserID    string  `json:"-"`
+	ProjectID *string `json:"projectId"`
+	Title     string  `json:"title"`
+	// Category is the prompt-classifier label chosen on the first message (e.g.
+	// "coding", "cooking_recipes"); empty until classified. Drives the
+	// category-specific system-prompt block and the status-line pill.
+	Category      string     `json:"category"`
 	Starred       bool       `json:"starred"`
 	ArchivedAt    *time.Time `json:"archivedAt"`
 	CreatedAt     time.Time  `json:"createdAt"`
@@ -173,7 +177,10 @@ type ProjectIDUpdate struct {
 }
 
 type UpdateThreadInput struct {
-	Title     *string
+	Title *string
+	// Category, when non-nil, sets the thread's prompt-classifier label. A nil
+	// pointer leaves the stored category unchanged.
+	Category  *string
 	ProjectID ProjectIDUpdate
 }
 
