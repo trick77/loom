@@ -4,6 +4,7 @@ import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
 import { greetingForNow } from "./threadUtils";
+import { PromptStarters } from "./PromptStarters";
 import { McpStatusIndicator } from "./SidebarItems";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
@@ -55,7 +56,7 @@ export function StartPanel({
         </div>
         {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator compact status={mcpStatus} />}
       </header>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-[14vh] sm:px-8">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
         <h2 className="ui-greeting-text mb-8 flex items-center gap-2 font-serif">
           <img className="h-12 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
           <span className="-translate-y-0.5">{greetingForNow(displayName)}</span>
@@ -81,6 +82,7 @@ export function StartPanel({
             <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
           )}
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+          {draft.trim() === "" && <PromptStarters onPick={onDraftChange} />}
         </div>
       </div>
     </section>
