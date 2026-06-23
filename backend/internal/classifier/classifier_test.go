@@ -42,15 +42,12 @@ func TestMatch(t *testing.T) {
 }
 
 func TestBlock(t *testing.T) {
-	// General and unknown values inject nothing.
-	if Block(string(General)) != "" {
-		t.Errorf("Block(general) = %q, want empty", Block(string(General)))
-	}
+	// Unknown values inject nothing.
 	if Block("not_a_category") != "" {
 		t.Errorf("Block(unknown) = %q, want empty", Block("not_a_category"))
 	}
-	// Enrichment and utility categories inject a non-empty block.
-	for _, c := range []Category{KnowledgeDiscovery, Coding, CookingRecipes, Weather, Translation, URLLookup} {
+	// Every catalog category, including General, injects a non-empty block.
+	for _, c := range []Category{KnowledgeDiscovery, Coding, CookingRecipes, Weather, Translation, URLLookup, General} {
 		if Block(string(c)) == "" {
 			t.Errorf("Block(%q) is empty, want a directive", c)
 		}
