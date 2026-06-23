@@ -24,7 +24,7 @@ export function MessageMetrics({ message, category }: { message: Message; catego
     <span className="ml-auto flex items-center gap-2">
       {pill}
       {line !== null && (
-        <span className="font-sans text-[0.8125rem] leading-[1.45rem] text-[#858178]">{line}</span>
+        <span className="font-sans text-[0.8125rem] font-medium leading-[1.45rem] text-[#858178]">{line}</span>
       )}
     </span>
   );
