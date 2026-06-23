@@ -309,9 +309,9 @@ body {
   --ui-activity-icon-offset: 0.09rem;
   /* Breathing room between the collapsed trace label and the answer text. */
   margin-bottom: 0.5rem;
-  /* Match the answer prose's left inset (.ui-markdown has padding-left: 8px)
+  /* Match the answer prose's left inset (.ui-markdown has padding-left: 0)
      so the headline and reasoning line up with the answer text below. */
-  padding-left: 0.5rem;
+  padding-left: 0;
   max-width: 46rem;
   overflow: hidden;
   border: 0;
@@ -759,8 +759,8 @@ a.ui-activity-tool-url:hover {
   font-family: var(--font-serif);
   font-weight: 360;
   line-height: 1.5;
-  padding-left: 0.5rem;
-  padding-right: 2rem;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .ui-markdown :where(p, ul, ol, blockquote, pre, table) {
