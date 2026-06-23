@@ -71,6 +71,11 @@ export type Message = {
   totalTokens?: number;
   cachedTokens?: number;
   reasoningTokens?: number;
+  // contextTokens is the final answer call's model-reported total_tokens — the
+  // real size of that single generation's context — used for the context-window
+  // percentage. Unlike totalTokens (summed across every call in the turn), it is
+  // not double-counted. Absent on messages predating the field.
+  contextTokens?: number;
   durationMs?: number;
   model?: string;
   reasoningEffort?: string;
