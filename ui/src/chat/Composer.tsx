@@ -116,6 +116,7 @@ export function Composer({
       )}
       <textarea
         ref={textareaRef}
+        rows={1}
         className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} ${attachments.length > 0 ? "pt-2" : "pt-5"} pb-3 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
         placeholder={placeholder}
         value={draft}
