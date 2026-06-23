@@ -105,10 +105,15 @@ type Message struct {
 	TotalTokens      *int            `json:"totalTokens,omitempty"`
 	CachedTokens     *int            `json:"cachedTokens,omitempty"`
 	ReasoningTokens  *int            `json:"reasoningTokens,omitempty"`
-	DurationMs       *int            `json:"durationMs,omitempty"`
-	Model            *string         `json:"model,omitempty"`
-	ReasoningEffort  *string         `json:"reasoningEffort,omitempty"`
-	CreatedAt        time.Time       `json:"createdAt"`
+	// ContextTokens is the final answer call's model-reported total_tokens — the
+	// real context size of that single generation, the correct basis for the
+	// context-window percentage. Distinct from TotalTokens, which sums usage
+	// across every model call in the turn. Nil for messages predating this field.
+	ContextTokens   *int      `json:"contextTokens,omitempty"`
+	DurationMs      *int      `json:"durationMs,omitempty"`
+	Model           *string   `json:"model,omitempty"`
+	ReasoningEffort *string   `json:"reasoningEffort,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
 // MessageAttachment is one image or document a user sent with a message. It is
@@ -137,6 +142,10 @@ type MessageTokenUsage struct {
 	TotalTokens      *int
 	CachedTokens     *int
 	ReasoningTokens  *int
+	// ContextTokens is the final answer call's model-reported total_tokens (the
+	// single generation's context size), persisted separately from the per-turn
+	// accumulated TotalTokens so the UI can show true context-window occupancy.
+	ContextTokens    *int
 	DurationMs       *int
 	Model            *string
 	ReasoningEffort  *string

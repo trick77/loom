@@ -17,7 +17,10 @@ import (
 // effort, and reasoning content describe the final answer call (result), while
 // usage and duration cover the whole turn: usage is the sum across every model
 // call (answer turns, tool rounds, and the reasoning/thread-title helpers) and
-// duration is the turn's wall-clock.
+// duration is the turn's wall-clock. ContextTokens is the exception — it is the
+// final answer call's own model-reported total_tokens (result.Usage), the true
+// context size of that single generation, kept separate from the accumulated
+// usage so the UI can report context-window occupancy without double-counting.
 func messageMetricsFromTurn(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration) chat.MessageTokenUsage {
 	metrics := chat.MessageTokenUsage{ReasoningContent: result.ReasoningContent}
 	if result.Model != "" {
@@ -35,6 +38,15 @@ func messageMetricsFromTurn(result llm.StreamResult, usage llm.TokenUsage, durat
 		metrics.TotalTokens = intPtr(usage.TotalTokens)
 		metrics.CachedTokens = intPtr(usage.PromptTokensDetails.CachedTokens)
 		metrics.ReasoningTokens = intPtr(usage.CompletionTokenDetails.ReasoningTokens)
+	}
+	// ContextTokens is the final answer call's own model-reported total_tokens (the
+	// real size of that single generation's context), not the per-turn accumulated
+	// `usage` total which double-counts the prompt across tool rounds and helper
+	// calls. This is the correct basis for the context-window percentage shown in
+	// the UI. Sourced from the returned StreamResult, which is always the final
+	// answer call.
+	if result.Usage.TotalTokens > 0 {
+		metrics.ContextTokens = intPtr(result.Usage.TotalTokens)
 	}
 	return metrics
 }

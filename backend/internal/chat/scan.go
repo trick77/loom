@@ -74,7 +74,7 @@ func scanMessage(row rowScanner) (Message, error) {
 	var message Message
 	var role string
 	var toolCalls, citations, artifacts, attachments, activityTrace, contentBlocks string
-	var promptTokens, completionTokens, totalTokens, cachedTokens, reasoningTokens, durationMs sql.NullInt64
+	var promptTokens, completionTokens, totalTokens, cachedTokens, reasoningTokens, contextTokens, durationMs sql.NullInt64
 	var model, reasoningEffort sql.NullString
 	var createdAt string
 	if err := row.Scan(
@@ -94,6 +94,7 @@ func scanMessage(row rowScanner) (Message, error) {
 		&totalTokens,
 		&cachedTokens,
 		&reasoningTokens,
+		&contextTokens,
 		&durationMs,
 		&model,
 		&reasoningEffort,
@@ -113,6 +114,7 @@ func scanMessage(row rowScanner) (Message, error) {
 	message.TotalTokens = nullableInt(totalTokens)
 	message.CachedTokens = nullableInt(cachedTokens)
 	message.ReasoningTokens = nullableInt(reasoningTokens)
+	message.ContextTokens = nullableInt(contextTokens)
 	message.DurationMs = nullableInt(durationMs)
 	message.Model = nullableString(model)
 	message.ReasoningEffort = nullableString(reasoningEffort)

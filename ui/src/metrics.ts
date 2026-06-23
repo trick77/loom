@@ -13,14 +13,26 @@ function hasPositiveValue(value: number | undefined): value is number {
 }
 
 /**
+ * Segment separator: a middle dot with a widened gap on each side. The inner
+ * U+00A0 no-break spaces supply the extra width (consecutive normal spaces
+ * collapse to one in HTML); the outer normal spaces keep the line breakable at
+ * separators.
+ */
+const DOT_SEPARATOR = " \u00A0\u00B7\u00A0 ";
+
+/**
  * MiMo-V2.5-Pro's context window in tokens. Hardcoded here like the model name on
  * the backend (both are fixed) and used to show how full the context window is.
  */
 const CONTEXT_WINDOW_TOKENS = 1_048_576;
 
-/** Format total token usage as a percentage of the context window (e.g. "4.9%"). */
-function contextUsagePercent(totalTokens: number): string {
-  return `${((totalTokens / CONTEXT_WINDOW_TOKENS) * 100).toFixed(1)}%`;
+/**
+ * Format the context-window occupancy as a percentage (e.g. "4.9%"). contextTokens
+ * is the final answer call's model-reported total_tokens — the true size of that
+ * single generation's context — so this is bounded by the window by construction.
+ */
+function contextUsagePercent(contextTokens: number): string {
+  return `${((contextTokens / CONTEXT_WINDOW_TOKENS) * 100).toFixed(1)}%`;
 }
 
 function cachedSuffix(message: Message): string {
@@ -73,14 +85,14 @@ export function buildMetricsString(message: Message): string | null {
   if (hasPositiveValue(message.promptTokens) && hasPositiveValue(message.completionTokens)) {
     const up = `↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cachedSuffix(message)}`;
     const down = `↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`;
-    segments.push(`${up} · ${down}`);
+    segments.push(`${up}${DOT_SEPARATOR}${down}`);
   } else if (hasPositiveValue(message.promptTokens)) {
     segments.push(`↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cachedSuffix(message)}`);
   } else if (hasPositiveValue(message.completionTokens)) {
     segments.push(`↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`);
   }
-  if (hasPositiveValue(message.totalTokens)) {
-    segments.push(contextUsagePercent(message.totalTokens));
+  if (hasPositiveValue(message.contextTokens)) {
+    segments.push(contextUsagePercent(message.contextTokens));
   }
-  return segments.join(" · ");
+  return segments.join(DOT_SEPARATOR);
 }

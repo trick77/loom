@@ -9,5 +9,7 @@ export function MessageMetrics({ message }: { message: Message }) {
   const line = buildMetricsString(message);
   if (line === null) return null;
 
-  return <span className="ml-auto font-sans text-[0.8125rem] text-[#d6d3ca]">{line}</span>;
+  // Color matches the action icons to the left (idle #858178) so the row reads as
+  // one muted cluster; the brighter reasoning-title cream was too loud here.
+  return <span className="ml-auto font-sans text-[0.8125rem] text-[#858178]">{line}</span>;
 }
