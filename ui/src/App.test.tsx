@@ -185,13 +185,13 @@ test("inactive sidebar project actions stay hidden until hover or keyboard focus
   expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
 });
 
-test("greets signed-in users with up late after 22:00", async () => {
+test("greets signed-in users with up late after 23:00", async () => {
   const realDate = Date;
   type DateArgs = [] | [string | number | Date] | [number, number, number?, number?, number?, number?, number?];
   class LateDate extends realDate {
     constructor(...args: DateArgs) {
       if (args.length === 0) {
-        super(2026, 5, 8, 22, 0, 0);
+        super(2026, 5, 8, 23, 0, 0);
         return;
       }
       if (args.length === 1) {
@@ -202,7 +202,7 @@ test("greets signed-in users with up late after 22:00", async () => {
     }
 
     static now() {
-      return new realDate(2026, 5, 8, 22, 0, 0).getTime();
+      return new realDate(2026, 5, 8, 23, 0, 0).getTime();
     }
   }
   vi.stubGlobal("Date", LateDate);

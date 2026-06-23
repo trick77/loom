@@ -58,7 +58,7 @@ export function StartPanel({
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
         <h2 className="ui-greeting-text mb-8 flex items-center gap-2 font-serif">
-          <img className="h-12 w-auto shrink-0 -translate-y-1" src={logoImage} alt="" aria-hidden="true" />
+          <img className="h-9 w-auto shrink-0 -translate-y-0.5" src={logoImage} alt="" aria-hidden="true" />
           <span className="-translate-y-0.5">{greetingForNow(displayName)}</span>
         </h2>
         <div className="w-full max-w-[674px]">
