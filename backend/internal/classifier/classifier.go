@@ -38,13 +38,14 @@ const (
 	Translation        Category = "translation"
 	URLLookup          Category = "url_lookup"
 	// General is the fallback: anything that does not clearly fit another
-	// category, including chit-chat and personal conversation. It injects nothing.
+	// category, including chit-chat and personal conversation. It injects a lean
+	// prose-default directive (no FORMAT/THINK structure).
 	General Category = "general"
 )
 
 // entry holds the per-category metadata: the short gloss shown to the classifying
 // model and the instruction block injected into the system prompt for that
-// category. An empty block means "inject nothing" (General).
+// category. An empty block means "inject nothing".
 type entry struct {
 	gloss string
 	block string
@@ -58,11 +59,11 @@ var catalog = []struct {
 }{
 	{KnowledgeDiscovery, entry{
 		gloss: "explaining or learning about a topic, concept, or person",
-		block: "Answer in flowing prose. If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. After answering, include a 'Further exploration' section with 2–3 recent developments or adjacent topics the user might not know to ask about. Tailor suggestions to the angle revealed by the query — historical, practical, or theoretical.",
+		block: "Answer in flowing prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. After answering, include a 'Further exploration' section with 2–3 recent developments or adjacent topics the user might not know to ask about. Tailor suggestions to the angle revealed by the query — historical, practical, or theoretical.",
 	}},
 	{AcademicResearch, entry{
 		gloss: "scholarly, paper-oriented, rigorous research questions",
-		block: "Give a long, detailed answer as a scientific write-up using markdown sections and headings. Name the seminal and most recent work and the key researchers, surface open debates and competing methodologies, and flag the strength of the evidence behind each claim.",
+		block: "Give a long, detailed answer as a scientific write-up using markdown sections and headings, in prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). Name the seminal and most recent work and the key researchers, surface open debates and competing methodologies, and flag the strength of the evidence behind each claim.",
 	}},
 	{RecentNews, entry{
 		gloss: "current events, latest news and happenings",
@@ -122,7 +123,7 @@ var catalog = []struct {
 	}},
 	{General, entry{
 		gloss: "anything else, including chit-chat and personal conversation",
-		block: "",
+		block: "Answer in prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist).",
 	}},
 }
 
@@ -151,7 +152,7 @@ func Normalize(s string) Category {
 }
 
 // Block returns the system-prompt instruction block for a category, or "" when
-// the category is General, empty, or unknown (inject nothing).
+// the category is empty or unknown (inject nothing).
 func Block(s string) string {
 	return byCategory[Category(s)].block
 }
