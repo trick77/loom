@@ -15,7 +15,7 @@ function artifact(extra: Partial<Artifact>): Artifact {
 
 test("buildImageStats joins model, resolution and duration", () => {
   const line = buildImageStats(artifact({ model: "flux-pro-1.1", width: 1024, height: 1024, durationMs: 4200 }));
-  expect(line).toBe("flux-pro-1.1 · 1024×1024 · 4.2s");
+  expect(line).toBe("flux-pro-1.1 · 1024×1024 · 4s");
 });
 
 test("buildImageStats omits missing or zero segments", () => {
