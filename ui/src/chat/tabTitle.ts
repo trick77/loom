@@ -2,9 +2,9 @@ import type { Project, Thread } from "../api";
 import type { RouteState } from "./routing";
 
 /**
- * Browser-Tab-Titel für die aktuelle Ansicht. An jeden Titel wird " — Loom"
- * (Em-Dash) angehängt; nur wenn für die aktive Ansicht (noch) kein Name
- * feststeht, fällt der Titel auf "Loom" zurück.
+ * Browser-Tab-Titel für die aktuelle Ansicht. An jeden Titel wird " - Loom"
+ * (einfacher Bindestrich) angehängt; nur wenn für die aktive Ansicht (noch) kein
+ * Name feststeht, fällt der Titel auf "Loom" zurück.
  */
 export function tabTitle(
   route: RouteState,
@@ -40,5 +40,5 @@ export function tabTitle(
       return _exhaustive;
     }
   }
-  return base !== null ? `${base} — Loom` : "Loom";
+  return base !== null ? `${base} - Loom` : "Loom";
 }

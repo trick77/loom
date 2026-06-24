@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { editProjectMemory, getProjectMemory } from "../api";
 import { Icon } from "../chat/Icon";
-import { MemoryEditComposer } from "../MemoryEditComposer";
+import { MemoryComposer, useDismissOnOutside } from "../MemoryEditComposer";
 
 /**
  * ProjectMemoryPanel shows the project's auto-generated shared memory — the
@@ -63,85 +63,78 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
 
   const hasContent = content.trim() !== "";
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  useDismissOnOutside(composerOpen, containerRef, () => setComposerOpen(false));
+
   return (
-    <section
-      aria-label="Memories"
-      className="relative overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
-    >
-      <h2 className="flex items-center gap-1.5 px-5 pt-5 text-[15px] font-medium text-[#ecece6]">
-        <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
-        <span>Memories</span>
-      </h2>
-
-      <button
-        type="button"
-        data-testid="memory-edit-button"
-        aria-label={composerOpen ? "Close memory editor" : "Edit memories"}
-        onClick={() => {
-          setError(undefined);
-          setComposerOpen((open) => !open);
-        }}
-        className="absolute right-4 top-4 z-10 grid h-8 w-8 place-items-center rounded-full text-[#d5d2c9] transition-colors hover:bg-[#3a3a36]"
+    <div className="relative" ref={containerRef}>
+      <section
+        aria-label="Memories"
+        className="relative overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
       >
-        <Icon name={composerOpen ? "close" : "edit"} size="18px" />
-      </button>
+        <h2 className="flex items-center gap-1.5 px-5 pt-5 text-[15px] font-medium text-[#ecece6]">
+          <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
+          <span>Memories</span>
+        </h2>
 
-      <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
-        A short summary of what your threads in this project have covered, so each new one picks up
-        where the others left off.
-      </p>
-
-      {loading ? (
-        <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">Loading…</p>
-      ) : hasContent ? (
-        <div
-          className="relative mt-2 h-[490px] text-sm leading-5 text-[#c7c5bd]"
-          data-project-memory-content
-          data-testid="project-memory-content"
-        >
-          <div
-            className="ui-sidebar-scroll h-full overflow-y-auto"
-            data-testid="project-memory-scroll"
-          >
-            <div className="ui-memory-markdown px-5 pb-8">
-              <Markdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  a({ children, ...props }) {
-                    return (
-                      <a {...props} target="_blank" rel="noreferrer">
-                        {children}
-                      </a>
-                    );
-                  },
-                }}
-              >
-                {content}
-              </Markdown>
-            </div>
-          </div>
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#1f1f1d] to-transparent"
-            data-testid="project-memory-bottom-fade"
-          />
-        </div>
-      ) : (
-        <p className="mt-2 h-[490px] px-5 pb-5 text-sm leading-5 text-[#8f8b82]">
-          Memories will show here after a few threads.
+        <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
+          A short summary of what your threads in this project have covered, so each new one picks up
+          where the others left off.
         </p>
-      )}
 
-      {composerOpen ? (
-        <div className="absolute inset-x-3 bottom-3 z-20">
-          <MemoryEditComposer
-            pending={pending}
-            error={error}
-            onSubmit={handleEdit}
-            onClose={() => setComposerOpen(false)}
-          />
-        </div>
-      ) : null}
-    </section>
+        {loading ? (
+          <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">Loading…</p>
+        ) : hasContent ? (
+          <div
+            className="relative mt-2 h-[490px] text-sm leading-5 text-[#c7c5bd]"
+            data-project-memory-content
+            data-testid="project-memory-content"
+          >
+            <div
+              className="ui-sidebar-scroll h-full overflow-y-auto"
+              data-testid="project-memory-scroll"
+            >
+              <div className="ui-memory-markdown px-5 pb-8">
+                <Markdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a({ children, ...props }) {
+                      return (
+                        <a {...props} target="_blank" rel="noreferrer">
+                          {children}
+                        </a>
+                      );
+                    },
+                  }}
+                >
+                  {content}
+                </Markdown>
+              </div>
+            </div>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#1f1f1d] to-transparent"
+              data-testid="project-memory-bottom-fade"
+            />
+          </div>
+        ) : (
+          <p className="mt-2 h-[490px] px-5 pb-5 text-sm leading-5 text-[#8f8b82]">
+            Memories will show here after a few threads.
+          </p>
+        )}
+
+      </section>
+      <MemoryComposer
+        open={composerOpen}
+        onOpen={() => {
+          setError(undefined);
+          setComposerOpen(true);
+        }}
+        onClose={() => setComposerOpen(false)}
+        pending={pending}
+        error={error}
+        onSubmit={handleEdit}
+      />
+    </div>
   );
 }
