@@ -97,6 +97,8 @@ func MIMEType(extension string) string {
 		return "image/jpeg"
 	case "webp":
 		return "image/webp"
+	case "svg":
+		return "image/svg+xml; charset=utf-8"
 	default:
 		return "text/plain; charset=utf-8"
 	}
