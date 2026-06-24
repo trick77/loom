@@ -1,6 +1,7 @@
 services:
   loom-ui:
     image: ghcr.io/trick77/loom-ui:latest
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8081:80"
     healthcheck:
@@ -27,6 +28,7 @@ services:
   loom:
     image: ghcr.io/trick77/loom:latest
     user: "1000:1000"
+    restart: unless-stopped
     environment:
       BACKEND_ADDR: ":8080"
       BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-info}"
@@ -84,6 +86,7 @@ services:
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
     image: apache/tika:2.9.2.1-full
+    restart: unless-stopped
     networks:
       - loom
     healthcheck:
@@ -102,6 +105,7 @@ services:
     # Keep it off the default app network so fetched URLs cannot resolve app
     # sidecars such as tika by Compose service name.
     image: ghcr.io/trick77/loom-fetch:latest
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "const s=require('net').connect(8090,'127.0.0.1');s.setTimeout(3000);s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
       interval: 60s
@@ -120,6 +124,7 @@ services:
     # Loom reaches it via BACKEND_OBSCURA_MCP_URL; tools are
     # surfaced to the LLM as obscura__<tool>.
     image: h4ckf0r0day/obscura:0.1.8
+    restart: unless-stopped
     command:
       - mcp
       - --http
