@@ -59,7 +59,7 @@ var catalog = []struct {
 }{
 	{KnowledgeDiscovery, entry{
 		gloss: "explaining or learning about a topic, concept, or person",
-		block: "Answer in flowing prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. After answering, include a section with 1-3 recent developments tailored to the angle revealed by the query — historical, practical, or theoretical.",
+		block: "Answer in flowing prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. When the topic has real depth worth exploring, end with a section of 1-3 recent developments tailored to the angle revealed by the query — historical, practical, or theoretical. Skip it for simple factual lookups that a sentence or two fully answers.",
 	}},
 	{AcademicResearch, entry{
 		gloss: "scholarly, paper-oriented, rigorous research questions",
@@ -71,7 +71,7 @@ var catalog = []struct {
 	}},
 	{ScienceMath, entry{
 		gloss: "calculations or math/physics/science problems to solve",
-		block: "For a simple calculation, give only the final result. Otherwise show the working steps and wrap all math in LaTeX. Add the intuition behind the result, and flag a common pitfall or misconception.",
+		block: "For a simple calculation, give only the final result. Otherwise show the working steps and wrap all math in LaTeX, then add the intuition behind the result and flag a common pitfall or misconception.",
 	}},
 	{Coding, entry{
 		gloss: "programming, code, debugging, software questions",
