@@ -21,6 +21,7 @@ export type PendingArtifact = {
 };
 
 const INLINE_DOWNLOAD_THRESHOLD_BYTES = 64 * 1024;
+const INLINE_DATA_THRESHOLD_BYTES = 16 * 1024;
 
 export function buildImageStats(artifact: Artifact): string | null {
   const segments: string[] = [];
@@ -123,9 +124,19 @@ function fencedArtifact(content: string): EmbeddedArtifact | null {
 type DownloadFormat = { mimeType: string; languages: string[]; mimeTypes: string[]; inlineBelowBytes?: number };
 
 const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
-  csv: { mimeType: "text/csv;charset=utf-8", languages: ["csv"], mimeTypes: ["text/csv"] },
+  csv: {
+    mimeType: "text/csv;charset=utf-8",
+    languages: ["csv"],
+    mimeTypes: ["text/csv"],
+    inlineBelowBytes: INLINE_DATA_THRESHOLD_BYTES,
+  },
   html: { mimeType: "text/html;charset=utf-8", languages: ["html"], mimeTypes: ["text/html"] },
-  json: { mimeType: "application/json;charset=utf-8", languages: ["json"], mimeTypes: ["application/json"] },
+  json: {
+    mimeType: "application/json;charset=utf-8",
+    languages: ["json"],
+    mimeTypes: ["application/json"],
+    inlineBelowBytes: INLINE_DATA_THRESHOLD_BYTES,
+  },
   log: {
     mimeType: "text/plain;charset=utf-8",
     languages: ["log"],
@@ -146,7 +157,12 @@ const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
     mimeTypes: ["text/plain"],
     inlineBelowBytes: INLINE_DOWNLOAD_THRESHOLD_BYTES,
   },
-  xml: { mimeType: "application/xml;charset=utf-8", languages: ["xml"], mimeTypes: ["application/xml", "text/xml"] },
+  xml: {
+    mimeType: "application/xml;charset=utf-8",
+    languages: ["xml"],
+    mimeTypes: ["application/xml", "text/xml"],
+    inlineBelowBytes: INLINE_DATA_THRESHOLD_BYTES,
+  },
   yaml: {
     mimeType: "application/yaml;charset=utf-8",
     languages: ["yaml", "yml"],
