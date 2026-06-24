@@ -59,7 +59,7 @@ var catalog = []struct {
 }{
 	{KnowledgeDiscovery, entry{
 		gloss: "explaining or learning about a topic, concept, or person",
-		block: "Answer in flowing prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. After answering, include a section with 1-3 recent developments. Tailor suggestions to the angle revealed by the query — historical, practical, or theoretical.",
+		block: "Answer in flowing prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. After answering, include a section with 1-3 recent developments tailored to the angle revealed by the query — historical, practical, or theoretical.",
 	}},
 	{AcademicResearch, entry{
 		gloss: "scholarly, paper-oriented, rigorous research questions",
@@ -71,7 +71,7 @@ var catalog = []struct {
 	}},
 	{ScienceMath, entry{
 		gloss: "calculations or math/physics/science problems to solve",
-		block: "For a simple calculation, give only the final result. Otherwise show the working steps and wrap all math in LaTeX. Add the intuition behind the result, note a related concept, and flag a common pitfall or misconception.",
+		block: "For a simple calculation, give only the final result. Otherwise show the working steps and wrap all math in LaTeX. Add the intuition behind the result, and flag a common pitfall or misconception.",
 	}},
 	{Coding, entry{
 		gloss: "programming, code, debugging, software questions",
@@ -79,11 +79,11 @@ var catalog = []struct {
 	}},
 	{CookingRecipes, entry{
 		gloss: "recipes and cooking instructions",
-		block: "List ingredients as a bullet list with exact amounts, then give numbered step-by-step instructions with precise detail at each step. Note useful substitutions and one technique tip that improves the result.",
+		block: "List ingredients as a bullet list with exact amounts, then give numbered step-by-step instructions with precise detail at each step. Note useful substitutions.",
 	}},
 	{CreativeWriting, entry{
 		gloss: "stories, poems, fiction, lyrics, other creative writing",
-		block: "Follow the user's instructions precisely; do not use or cite search results. After the piece, offer one variation in a different tone or angle.",
+		block: "Follow the user's instructions precisely; do not use or cite search results.",
 	}},
 	{HowTo, entry{
 		gloss: "practical, real-world step-by-step how-to tasks (not programming)",
@@ -95,7 +95,7 @@ var catalog = []struct {
 	}},
 	{WritingEditing, entry{
 		gloss: "improving, proofreading, or rewriting the user's own text",
-		block: "Return the revised text. Briefly note the key changes you made, and offer one tighter alternative.",
+		block: "Return the revised text. Briefly note the key changes you made.",
 	}},
 	{Summarization, entry{
 		gloss: "summarizing or condensing provided material",
@@ -103,7 +103,7 @@ var catalog = []struct {
 	}},
 	{Brainstorming, entry{
 		gloss: "generating ideas, names, or options",
-		block: "Give at most 12 options. Recommend one, and add a non-obvious angle the user probably hasn't considered.",
+		block: "Give at most 12 options. Recommend one, and add a non-obvious angle.",
 	}},
 	{Planning, entry{
 		gloss: "trips, schedules, itineraries, multi-step plans",
