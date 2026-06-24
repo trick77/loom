@@ -26,7 +26,7 @@ export function ProjectActionsMenu({
       role="menu"
     >
       <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
+        className={`${menuItemClass} text-[#f3f0e8] hover:bg-[#3f3f3a]`}
         role="menuitem"
         type="button"
         onClick={() => onEdit(project)}
@@ -36,7 +36,7 @@ export function ProjectActionsMenu({
       </button>
       <div className="mx-[14px] my-[5px] h-px bg-[#454540]" role="separator" />
       <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
+        className={`${menuItemClass} text-[#f3f0e8] hover:bg-[#3f3f3a]`}
         role="menuitem"
         type="button"
         onClick={() => (archived ? onUnarchive : onArchive)(project)}

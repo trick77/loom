@@ -1,7 +1,12 @@
 import type { Thread } from "./api";
 import { Icon } from "./chat/Icon";
 
-export const menuItemClass = "flex min-h-[30px] w-full items-start gap-2.5 px-3 py-1 text-left";
+// Standard menu entry: inset with rounded corners so the hover highlight floats
+// inside the menu (matching menuDeleteItemClass). Geometry only — each entry adds
+// its own text color and hover fill (hover:bg-[#3f3f3a], or enabled:hover:... when
+// the entry can be disabled).
+export const menuItemClass =
+  "mx-1 flex min-h-[30px] w-[calc(100%-0.5rem)] items-start gap-2.5 rounded-md px-3 py-1 text-left transition-colors";
 export const menuIconClass = "grid h-[21px] w-[21px] shrink-0 place-items-center";
 // Destructive menu entry: muted red by default, solid red highlight on hover
 // (inset with rounded corners, white text/icon). Shared by every Delete menu.
@@ -39,7 +44,7 @@ export function ThreadActionsMenu({
       {onSelect !== undefined && (
         <>
           <button
-            className={`${menuItemClass} text-[#f3f0e8]`}
+            className={`${menuItemClass} text-[#f3f0e8] hover:bg-[#3f3f3a]`}
             role="menuitem"
             type="button"
             onClick={() => onSelect(thread)}
@@ -51,7 +56,7 @@ export function ThreadActionsMenu({
         </>
       )}
       <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
+        className={`${menuItemClass} text-[#f3f0e8] hover:bg-[#3f3f3a]`}
         role="menuitem"
         type="button"
         onClick={() => onStarChange(thread, !thread.starred, menuKey)}
@@ -62,7 +67,7 @@ export function ThreadActionsMenu({
         {thread.starred ? "Unstar" : "Star"}
       </button>
       <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
+        className={`${menuItemClass} text-[#f3f0e8] hover:bg-[#3f3f3a]`}
         role="menuitem"
         type="button"
         onClick={() => onRename(thread)}
@@ -74,7 +79,7 @@ export function ThreadActionsMenu({
       </button>
       {hasProject ? (
         <button
-          className={`${menuItemClass} text-[#f3f0e8] disabled:cursor-default disabled:opacity-100`}
+          className={`${menuItemClass} text-[#f3f0e8] enabled:hover:bg-[#3f3f3a] disabled:cursor-default disabled:opacity-100`}
           disabled={onRemoveFromProject === undefined}
           role="menuitem"
           type="button"
@@ -85,7 +90,7 @@ export function ThreadActionsMenu({
         </button>
       ) : (
         <button
-          className={`${menuItemClass} text-[#f3f0e8] disabled:cursor-default disabled:opacity-100`}
+          className={`${menuItemClass} text-[#f3f0e8] enabled:hover:bg-[#3f3f3a] disabled:cursor-default disabled:opacity-100`}
           disabled={onAddToProject === undefined}
           role="menuitem"
           type="button"
