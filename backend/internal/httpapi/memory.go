@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"strings"
 	"time"
 
@@ -83,6 +85,47 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 		return nil
 	}
 	return scope.upsert(ctx, content, sourceCount)
+}
+
+// editMemory applies a user's natural-language instruction to the memory in
+// place — adding, modifying, or removing facts as asked — and stores the result.
+// It preserves the current source-message count so the background-refresh gate is
+// undisturbed, and allows an empty result (the user emptied the memory).
+func (s *server) editMemory(ctx context.Context, user auth.User, scope memoryScope, instruction string) error {
+	current, sourceCount, err := scope.get(ctx)
+	if err != nil {
+		return err
+	}
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
+	// scope.systemPrompt is reused here only to keep the OUTPUT format/style
+	// consistent with the auto-generated memory (user = flat fact list, project =
+	// markdown). ApplyMemoryEdit's own user message supplies the authoritative
+	// "apply only this instruction, leave the rest unchanged" framing that
+	// overrides the prompt's summarize-from-conversation wording.
+	edited, err := s.llm.ApplyMemoryEdit(llm.WithInferenceMetadata(ctx, inference), scope.header, current, instruction, scope.systemPrompt)
+	if err != nil {
+		return err
+	}
+	return scope.upsert(ctx, strings.TrimSpace(edited), sourceCount)
+}
+
+// decodeMemoryInstruction reads the {"instruction": "..."} body shared by the
+// user and project memory edit endpoints, writing a 400 and returning false when
+// the body is malformed or the instruction is blank.
+func decodeMemoryInstruction(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var body struct {
+		Instruction string `json:"instruction"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return "", false
+	}
+	instruction := strings.TrimSpace(body.Instruction)
+	if instruction == "" {
+		writeJSONError(w, http.StatusBadRequest, "instruction is required")
+		return "", false
+	}
+	return instruction, true
 }
 
 // transcriptFromMessages renders messages as a plain "Role: content" transcript

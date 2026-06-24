@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { getProjectMemory } from "../api";
+import { editProjectMemory, getProjectMemory } from "../api";
 import { Icon } from "../chat/Icon";
+import { MemoryEditComposer } from "../MemoryEditComposer";
 
 /**
  * ProjectMemoryPanel shows the project's auto-generated shared memory — the
@@ -14,6 +15,33 @@ import { Icon } from "../chat/Icon";
 export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  // Tracks the panel's current project so an edit that resolves after the panel
+  // has switched projects does not write the stale result into the new project.
+  const projectIdRef = useRef(projectId);
+  useEffect(() => {
+    projectIdRef.current = projectId;
+  }, [projectId]);
+
+  async function handleEdit(instruction: string) {
+    setPending(true);
+    setError(undefined);
+    try {
+      const updated = await editProjectMemory(projectId, instruction);
+      if (projectIdRef.current !== projectId) return;
+      setContent(updated.content);
+      setComposerOpen(false);
+    } catch {
+      if (projectIdRef.current === projectId) {
+        setError("Couldn't apply that — please try again.");
+      }
+    } finally {
+      setPending(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -38,12 +66,25 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
   return (
     <section
       aria-label="Memories"
-      className="overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
+      className="relative overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
     >
       <h2 className="flex items-center gap-1.5 px-5 pt-5 text-[15px] font-medium text-[#ecece6]">
         <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
         <span>Memories</span>
       </h2>
+
+      <button
+        type="button"
+        data-testid="memory-edit-button"
+        aria-label={composerOpen ? "Close memory editor" : "Edit memories"}
+        onClick={() => {
+          setError(undefined);
+          setComposerOpen((open) => !open);
+        }}
+        className="absolute right-4 top-4 z-10 grid h-8 w-8 place-items-center rounded-full text-[#d5d2c9] transition-colors hover:bg-[#3a3a36]"
+      >
+        <Icon name={composerOpen ? "close" : "edit"} size="18px" />
+      </button>
 
       <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
         A short summary of what your threads in this project have covered, so each new one picks up
@@ -90,6 +131,17 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
           Memories will show here after a few threads.
         </p>
       )}
+
+      {composerOpen ? (
+        <div className="absolute inset-x-3 bottom-3 z-20">
+          <MemoryEditComposer
+            pending={pending}
+            error={error}
+            onSubmit={handleEdit}
+            onClose={() => setComposerOpen(false)}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -239,6 +239,112 @@ func TestRefreshProjectMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
 	}
 }
 
+// TestEditProjectMemory_AppliesAndReturns proves the project edit path stores
+// and returns the LLM-applied memory, preserving the gate.
+func TestEditProjectMemory_AppliesAndReturns(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeThreadStore{
+		project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		projectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "- Travel month: May", SourceMessageCount: 5},
+	}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{editedMemory: "- Travel month: June"},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":"We moved the trip to June"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "June") {
+		t.Fatalf("response missing edited memory:\n%s", rec.Body.String())
+	}
+	if store.projectMemory.Content != "- Travel month: June" {
+		t.Fatalf("stored content = %q, want edited memory", store.projectMemory.Content)
+	}
+	if store.projectMemory.SourceMessageCount != 5 {
+		t.Fatalf("source count = %d, want 5 (gate undisturbed)", store.projectMemory.SourceMessageCount)
+	}
+}
+
+// TestEditProjectMemory_EmptyResultEmptiesMemory mirrors the user case: an empty
+// LLM result is stored, preserving the gate.
+func TestEditProjectMemory_EmptyResultEmptiesMemory(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeThreadStore{
+		project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		projectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "- Old fact", SourceMessageCount: 6},
+	}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{editedMemory: ""}})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":"Forget everything"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if store.projectMemory.Content != "" {
+		t.Fatalf("stored content = %q, want emptied", store.projectMemory.Content)
+	}
+	if store.projectMemory.SourceMessageCount != 6 {
+		t.Fatalf("source count = %d, want 6 (gate undisturbed)", store.projectMemory.SourceMessageCount)
+	}
+}
+
+// TestEditProjectMemory_UnownedProjectIs404 guards the ownership path. The real
+// store filters GetProject by user_id, so another user's project resolves to
+// not-found; modelled here as a project whose id does not match the request. The
+// edit must 404 and never upsert.
+func TestEditProjectMemory_UnownedProjectIs404(t *testing.T) {
+	store := &fakeThreadStore{
+		project: chat.Project{ID: "someone_elses", UserID: "other_user", Name: "Theirs"},
+	}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{editedMemory: "must not be stored"}})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":"Remember X"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if store.projectMemory.Content != "" {
+		t.Fatalf("memory upserted for an unowned project: %q", store.projectMemory.Content)
+	}
+}
+
+func TestEditProjectMemory_EmptyInstructionIsBadRequest(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeThreadStore{project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{}})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":""}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestEditProjectMemory_NoLLMIsServiceUnavailable(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeThreadStore{project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":"We moved the trip to June"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
 func TestTranscriptFromMessages_SkipsNonChatRoles(t *testing.T) {
 	transcript := transcriptFromMessages([]chat.Message{
 		{Role: chat.RoleUser, Content: "When?"},

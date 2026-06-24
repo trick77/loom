@@ -158,6 +158,44 @@ func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, memory)
 }
 
+// handleEditProjectMemory applies a natural-language instruction to the
+// project's memory in place (add / modify / remove) and returns the updated
+// memory.
+func (s *server) handleEditProjectMemory(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireThreadStore(w, s) {
+		return
+	}
+	if s.llm == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
+		return
+	}
+	projectID := r.PathValue("projectID")
+	project, err := s.findProject(r.Context(), user.ID, projectID)
+	if err != nil {
+		serverError(w, r, err, "edit project memory failed")
+		return
+	}
+	if project == nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	instruction, ok := decodeMemoryInstruction(w, r)
+	if !ok {
+		return
+	}
+	if err := s.editMemory(r.Context(), user, s.projectMemoryScope(user, *project), instruction); err != nil {
+		writeJSONError(w, http.StatusBadGateway, "edit project memory failed")
+		return
+	}
+	memory, _, err := s.thread.GetProjectMemory(r.Context(), user.ID, projectID)
+	if err != nil {
+		serverError(w, r, err, "get project memory failed")
+		return
+	}
+	writeJSON(w, memory)
+}
+
 // handleRefreshProjectMemory forces a full rebuild from the most recent messages
 // across all of the project's threads (bounded by memoryRebuildLimit).
 func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Request) {

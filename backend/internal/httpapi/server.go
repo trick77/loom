@@ -148,6 +148,7 @@ type ChatClient interface {
 	ClassifyThread(context.Context, string) (string, error)
 	GenerateReasoningTitle(context.Context, string) (string, error)
 	GenerateMemory(context.Context, string, string, string, string) (string, error)
+	ApplyMemoryEdit(context.Context, string, string, string, string) (string, error)
 	GenerateProjectDescription(context.Context, string, string) (string, error)
 }
 
@@ -214,6 +215,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/me/usage", s.requireAuth(http.HandlerFunc(s.handleGetUsage)))
 	mux.Handle("GET /api/me/memory", s.requireAuth(http.HandlerFunc(s.handleGetUserMemory)))
 	mux.Handle("POST /api/me/memory:refresh", s.requireAuth(http.HandlerFunc(s.handleRefreshUserMemory)))
+	mux.Handle("POST /api/me/memory:edit", s.requireAuth(http.HandlerFunc(s.handleEditUserMemory)))
 	mux.Handle("GET /api/admin/users", s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdminUsers))))
 	mux.Handle("GET /api/mcp/status", s.requireAuth(http.HandlerFunc(s.handleMCPStatus)))
 	mux.Handle("GET /api/projects", s.requireAuth(http.HandlerFunc(s.handleListProjects)))
@@ -226,6 +228,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("DELETE /api/projects/{projectID}", s.requireAuth(http.HandlerFunc(s.handleDeleteProject)))
 	mux.Handle("GET /api/projects/{projectID}/memory", s.requireAuth(http.HandlerFunc(s.handleGetProjectMemory)))
 	mux.Handle("POST /api/projects/{projectID}/memory:refresh", s.requireAuth(http.HandlerFunc(s.handleRefreshProjectMemory)))
+	mux.Handle("POST /api/projects/{projectID}/memory:edit", s.requireAuth(http.HandlerFunc(s.handleEditProjectMemory)))
 	mux.Handle("GET /api/threads", s.requireAuth(http.HandlerFunc(s.handleListThreads)))
 	mux.Handle("POST /api/threads", s.requireAuth(http.HandlerFunc(s.handleCreateThread)))
 	mux.Handle("POST /api/threads:delete", s.requireAuth(http.HandlerFunc(s.handleBulkDeleteThreads)))

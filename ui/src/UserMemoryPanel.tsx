@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { getUserMemory } from "./api";
+import { editUserMemory, getUserMemory } from "./api";
 import { Icon } from "./chat/Icon";
+import { MemoryEditComposer } from "./MemoryEditComposer";
 
 /**
  * UserMemoryPanel shows the auto-generated personal memory — the compact set of
@@ -12,6 +13,23 @@ import { Icon } from "./chat/Icon";
 export function UserMemoryPanel() {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function handleEdit(instruction: string) {
+    setPending(true);
+    setError(undefined);
+    try {
+      const updated = await editUserMemory(instruction);
+      setContent(updated.content);
+      setComposerOpen(false);
+    } catch {
+      setError("Couldn't apply that — please try again.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -36,12 +54,25 @@ export function UserMemoryPanel() {
   return (
     <section
       aria-label="Memories"
-      className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
+      className="relative rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
     >
       <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
         <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
         <span>Memories</span>
       </h2>
+
+      <button
+        type="button"
+        data-testid="memory-edit-button"
+        aria-label={composerOpen ? "Close memory editor" : "Edit memories"}
+        onClick={() => {
+          setError(undefined);
+          setComposerOpen((open) => !open);
+        }}
+        className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full text-[#d5d2c9] transition-colors hover:bg-[#3a3a36]"
+      >
+        <Icon name={composerOpen ? "close" : "edit"} size="18px" />
+      </button>
       {loading ? (
         <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
       ) : facts.length > 0 ? (
@@ -60,6 +91,17 @@ export function UserMemoryPanel() {
           Memories will show here after a few threads.
         </p>
       )}
+
+      {composerOpen ? (
+        <div className="mt-4">
+          <MemoryEditComposer
+            pending={pending}
+            error={error}
+            onSubmit={handleEdit}
+            onClose={() => setComposerOpen(false)}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
