@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { editProjectMemory, getProjectMemory } from "../api";
 import { Icon } from "../chat/Icon";
-import { MemoryEditButton, MemoryEditComposer, useDismissOnOutside } from "../MemoryEditComposer";
+import { MemoryComposer, useDismissOnOutside } from "../MemoryEditComposer";
 
 /**
  * ProjectMemoryPanel shows the project's auto-generated shared memory — the
@@ -68,13 +68,6 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
 
   return (
     <div className="relative" ref={containerRef}>
-      <MemoryEditButton
-        open={composerOpen}
-        onClick={() => {
-          setError(undefined);
-          setComposerOpen((open) => !open);
-        }}
-      />
       <section
         aria-label="Memories"
         className="relative overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
@@ -130,17 +123,18 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
           </p>
         )}
 
-        {composerOpen ? (
-          <div className="absolute inset-x-3 bottom-3 z-20">
-            <MemoryEditComposer
-              pending={pending}
-              error={error}
-              onSubmit={handleEdit}
-              onClose={() => setComposerOpen(false)}
-            />
-          </div>
-        ) : null}
       </section>
+      <MemoryComposer
+        open={composerOpen}
+        onOpen={() => {
+          setError(undefined);
+          setComposerOpen(true);
+        }}
+        onClose={() => setComposerOpen(false)}
+        pending={pending}
+        error={error}
+        onSubmit={handleEdit}
+      />
     </div>
   );
 }

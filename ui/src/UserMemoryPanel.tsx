@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { editUserMemory, getUserMemory } from "./api";
 import { Icon } from "./chat/Icon";
-import { MemoryEditButton, MemoryEditComposer, useDismissOnOutside } from "./MemoryEditComposer";
+import { MemoryComposer, useDismissOnOutside } from "./MemoryEditComposer";
 
 /**
  * UserMemoryPanel shows the auto-generated personal memory — the compact set of
@@ -56,16 +56,9 @@ export function UserMemoryPanel() {
 
   return (
     <div className="relative" ref={containerRef}>
-      <MemoryEditButton
-        open={composerOpen}
-        onClick={() => {
-          setError(undefined);
-          setComposerOpen((open) => !open);
-        }}
-      />
       <section
         aria-label="Memories"
-        className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
+        className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5 pb-20"
       >
         <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
           <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
@@ -90,17 +83,18 @@ export function UserMemoryPanel() {
           </p>
         )}
 
-        {composerOpen ? (
-          <div className="mt-4">
-            <MemoryEditComposer
-              pending={pending}
-              error={error}
-              onSubmit={handleEdit}
-              onClose={() => setComposerOpen(false)}
-            />
-          </div>
-        ) : null}
       </section>
+      <MemoryComposer
+        open={composerOpen}
+        onOpen={() => {
+          setError(undefined);
+          setComposerOpen(true);
+        }}
+        onClose={() => setComposerOpen(false)}
+        pending={pending}
+        error={error}
+        onSubmit={handleEdit}
+      />
     </div>
   );
 }

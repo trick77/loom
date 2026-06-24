@@ -2,31 +2,156 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "./chat/Icon";
 
+// Crayon and arrow glyphs are inlined (rather than the icon font) to match
+// claude.ai's project-memory composer 1:1.
+const CRAYON_PATH =
+  "M9.728 2.88a1.5 1.5 0 0 1 1.946-.847l2.792 1.1a1.5 1.5 0 0 1 .845 1.945l-3.92 9.953a1.5 1.5 0 0 1-.452.615l-.088.066-3.143 2.186a.75.75 0 0 1-1.135-.362l-.026-.095-.81-3.742a1.5 1.5 0 0 1 .071-.867zm-2.99 10.319a.5.5 0 0 0-.023.288l.73 3.376 2.835-1.971.058-.047a.5.5 0 0 0 .122-.18l2.637-6.698-3.721-1.466zm4.57-10.236a.5.5 0 0 0-.65.283L9.743 5.57l3.722 1.467.917-2.327a.5.5 0 0 0-.283-.648z";
+const ARROW_PATH =
+  "M224.49,136.49l-72,72a12,12,0,0,1-17-17L187,140H40a12,12,0,0,1,0-24H187L135.51,64.48a12,12,0,0,1,17-17l72,72A12,12,0,0,1,224.49,136.49Z";
+
 /**
- * MemoryEditButton is the circular crayon affordance that floats half-outside the
- * left edge of a memory panel (see the reference design). It only ever shows the
- * crayon — the composer is dismissed with Escape or an outside click, never an X.
- * Its parent must be `position: relative`.
+ * MemoryComposer is the crayon affordance in the lower-left of a memory panel. It
+ * replicates claude.ai's project-memory composer: a 56px circle that, on click,
+ * animates its width out into a full pill-shaped text input (and collapses back to
+ * the crayon on Escape / outside click). There is no X.
+ *
+ * Geometry/animation measured from claude.ai: 56px tall, rounded-full throughout,
+ * width morphs over 0.3s cubic-bezier(0.165, 0.84, 0.44, 1).
+ *
+ * The parent must be `position: relative`; pass a ref wrapping both this and the
+ * panel to `useDismissOnOutside`.
  */
-export function MemoryEditButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+export function MemoryComposer({
+  open,
+  onOpen,
+  onClose,
+  pending,
+  error,
+  placeholder = "Tell me what to remember or forget…",
+  onSubmit,
+}: {
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  pending: boolean;
+  error?: string;
+  placeholder?: string;
+  onSubmit: (instruction: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      inputRef.current?.focus();
+    } else {
+      setDraft("");
+    }
+  }, [open]);
+
+  const canSend = draft.trim() !== "" && !pending;
+
+  function submit() {
+    if (!canSend) return;
+    onSubmit(draft.trim());
+  }
+
   return (
-    <button
-      type="button"
-      data-testid="memory-edit-button"
-      aria-label="Edit memories"
-      aria-expanded={open}
-      onClick={onClick}
-      className="absolute left-0 top-1/2 z-20 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#3f3f3a] bg-[#2a2a27] text-[#d5d2c9] shadow-lg transition-colors hover:bg-[#33332f]"
-    >
-      <Icon name="edit" size="22px" />
-    </button>
+    <>
+      {open && error ? (
+        <p
+          className="absolute bottom-[4.75rem] left-5 z-20 text-xs text-[#d98278]"
+          role="alert"
+          aria-live="polite"
+          data-testid="memory-edit-error"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      <div
+        data-testid="memory-edit-composer"
+        className={`group absolute bottom-4 left-4 z-20 flex h-14 items-center overflow-hidden rounded-full border border-[#e2e1da]/15 bg-[#2c2c2a]/70 shadow-lg backdrop-blur-sm transition-[width] duration-300 ease-[cubic-bezier(0.165,0.84,0.44,1)] ${
+          open ? "w-[calc(100%-2rem)]" : "w-14"
+        }`}
+      >
+        {/* Collapsed: the crayon. Fades out as the input fades in. */}
+        <button
+          type="button"
+          data-testid="memory-edit-button"
+          aria-label="Edit memories"
+          aria-expanded={open}
+          aria-hidden={open}
+          tabIndex={open ? -1 : 0}
+          onClick={onOpen}
+          className={`absolute inset-0 grid place-items-center text-[#b7b5ad] transition-opacity duration-150 ${
+            open ? "pointer-events-none opacity-0" : "opacity-100"
+          }`}
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+            className="transition-transform ease-in-out group-hover:rotate-[10deg]"
+          >
+            <path d={CRAYON_PATH} />
+          </svg>
+        </button>
+
+        {/* Expanded: the text input. */}
+        <div
+          className={`flex w-full items-center gap-2 pl-6 pr-2.5 transition-opacity duration-200 ${
+            open ? "opacity-100 delay-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            data-testid="memory-edit-input"
+            tabIndex={open ? 0 : -1}
+            className="ui-composer-text w-full bg-transparent text-[#f3f0e8] outline-none placeholder:text-[#8f8d85]"
+            placeholder={placeholder}
+            value={draft}
+            disabled={pending}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submit();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                onClose();
+              }
+            }}
+          />
+          <button
+            type="button"
+            data-testid="memory-edit-submit"
+            aria-label="Apply memory edit"
+            disabled={!canSend}
+            onClick={submit}
+            className="grid h-9 w-9 flex-none place-items-center rounded-full text-[#8f8d85] transition-colors enabled:text-[#e5e3db] enabled:hover:bg-[#e2e1da]/10 disabled:opacity-50"
+          >
+            {pending ? (
+              <Icon name="spinner" size="18px" className="animate-spin" />
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">
+                <path d={ARROW_PATH} />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
 /**
- * useDismissOnOutside closes an open composer when the user clicks anywhere
- * outside `ref` or presses Escape. Pass the wrapper that contains BOTH the crayon
- * button and the composer so clicking either does not self-dismiss.
+ * useDismissOnOutside collapses an open composer when the user clicks anywhere
+ * outside `ref` or presses Escape. Pass the wrapper that contains BOTH the composer
+ * and the panel so clicking either does not self-dismiss.
  */
 export function useDismissOnOutside(
   open: boolean,
@@ -48,104 +173,4 @@ export function useDismissOnOutside(
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open, ref, onClose]);
-}
-
-/**
- * MemoryEditComposer is the small inline composer revealed by the crayon button
- * on a memory panel. The user types a natural-language instruction — "Remember I
- * live in Zurich", "Forget my baseball career" — which the backend applies to the
- * memory in place. It is intentionally lightweight (no attachments): a growing
- * input and a submit arrow. Submit on Enter, dismiss on Escape.
- */
-export function MemoryEditComposer({
-  placeholder = "Tell me what to remember or forget…",
-  pending,
-  error,
-  onSubmit,
-  onClose,
-}: {
-  placeholder?: string;
-  pending: boolean;
-  error?: string;
-  onSubmit: (instruction: string) => void;
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Focus on open and auto-grow up to a small cap.
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-  }, [draft]);
-
-  const canSend = draft.trim() !== "" && !pending;
-
-  function submit() {
-    if (!canSend) return;
-    onSubmit(draft.trim());
-  }
-
-  return (
-    <div className="flex flex-col gap-1" data-testid="memory-edit-composer">
-      <div className="flex items-center gap-2 rounded-2xl border border-[#454540] bg-[#2a2a27] px-4 py-3 shadow-lg">
-        <textarea
-          ref={textareaRef}
-          rows={1}
-          data-testid="memory-edit-input"
-          className="ui-composer-text ui-sidebar-scroll block max-h-[120px] w-full resize-none overflow-y-auto bg-transparent text-[#f3f0e8] outline-none placeholder:text-[#aaa79e]"
-          placeholder={placeholder}
-          value={draft}
-          disabled={pending}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              onClose();
-            }
-          }}
-        />
-        <button
-          type="button"
-          data-testid="memory-edit-submit"
-          aria-label="Apply memory edit"
-          disabled={!canSend}
-          onClick={submit}
-          className="grid h-8 w-8 flex-none place-items-center rounded-full bg-[#d97757] text-[#1a1a18] transition-colors enabled:hover:bg-[#e08a6e] disabled:bg-[#3f3f3a] disabled:text-[#807d74]"
-        >
-          {pending ? (
-            <Icon name="spinner" size="16px" className="animate-spin" />
-          ) : (
-            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none">
-              <path
-                d="M5 12h14M13 6l6 6-6 6"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
-        </button>
-      </div>
-      {error ? (
-        <p
-          className="px-1 text-xs text-[#d98278]"
-          data-testid="memory-edit-error"
-          role="alert"
-          aria-live="polite"
-        >
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
 }
