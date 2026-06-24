@@ -882,6 +882,12 @@ func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
 		"change the subject and tell me about Rome",
 		"make sure to cite that source",
 		"try again, explain it differently",
+		// Coding/CSS vocabulary overlaps image words but must not force the tool.
+		"what version of python should I use",
+		"set the background color of my css to blue",
+		"add a red border to the table",
+		"i prefer a minimal style for my code",
+		"make the font bigger",
 	} {
 		t.Run(content, func(t *testing.T) {
 			if srv.imageArtifactRequired(content, priorMessages) {
@@ -956,12 +962,12 @@ func TestIsImageEditFollowUpGating(t *testing.T) {
 		"turn it into a watercolor",
 		"ändere den Stil",
 		"give it a retro look",
-		// Edits without a style word: an edit-target (size, colour, part, medium)
-		// near an action verb, or a strong image-specific verb on its own.
+		// Edits without a style word: an edit-target (size, brightness, medium)
+		// near a back-reference pronoun, or a strong image-specific verb on its own.
 		"make it bigger",
 		"make it darker",
-		"remove the background",
-		"make the background blue",
+		"make it a watercolor",
+		"turn it into a sketch",
 		"crop it",
 	} {
 		if !srv.isImageEditFollowUp(content, withImage) {
@@ -995,10 +1001,18 @@ func TestIsImageEditFollowUpGating(t *testing.T) {
 		"how do I render this template",
 		"change the subject and tell me about Rome",
 		"make sure to cite that source",
-		// An edit-target word ("red") near a bare pronoun is NOT enough — only an
-		// action verb corroborates a target — so ordinary chat does not misfire.
-		"what does this red error mean",
-		"this is a red flag",
+		// Coding/chat vocabulary that overlaps image words must NOT misfire just
+		// because an image exists earlier in the thread.
+		"what version of python should I use",
+		"edit my config file",
+		"turn off dark mode",
+		"set the background color of my css to blue",
+		"add a red border to the table",
+		"change the oil and replace the brake pads",
+		"make the contrast clearer in your explanation",
+		"i prefer a minimal style for my code",
+		"make the font bigger",
+		"make sure the sky is blue",
 	} {
 		if srv.isImageEditFollowUp(content, withImage) {
 			t.Fatalf("isImageEditFollowUp(%q) = true, want false (not an edit)", content)

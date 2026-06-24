@@ -105,18 +105,21 @@ func (s *server) isImageEditFollowUp(content string, priorMessages []chat.Messag
 // an existing image. A single weak token never suffices, because the most common
 // edit words are also the most common chat words: a bare back-reference pronoun
 // ("what does THIS mean?") or a bare generic verb ("CHANGE the subject") would
-// otherwise silently re-feed the prior image as vision input. An edit needs two
-// corroborating signals:
+// otherwise silently re-feed the prior image as vision input. And because loom is
+// also a coding assistant, the vocabulary is kept clear of words that collide with
+// everyday code/CSS chat (colours, "background", "border", "version", "edit",
+// "set the … to …"). An edit is recognized only by:
 //
 //   - a strong, image-specific edit word on its own ("create a VARIATION",
-//     "CROP it", "TURN it into a watercolor", "RESTYLE"); or
-//   - a style descriptor near a pronoun OR an action verb ("make IT CYBERPUNK",
-//     "give IT a RETRO look", "ÄNDERE den STIL") — style words are distinctive
-//     enough that a pronoun alone corroborates them; or
-//   - a generic edit-target word (a size, colour, medium, or part — "bigger",
-//     "darker", "background", "watercolor", "blue") near an ACTION verb ("MAKE it
-//     BIGGER", "REMOVE the BACKGROUND"). These require a verb, never a bare
-//     pronoun, so chat like "what does THIS RED error mean" does not misfire.
+//     "CROP it", "RESTYLE", "UPSCALE"); or
+//   - a distinctive style descriptor ("cyberpunk", "retro", "neon", "stil") near a
+//     pronoun OR an action verb ("make IT CYBERPUNK", "give IT a RETRO look",
+//     "ÄNDERE den STIL"); or
+//   - a generic edit-target word (a size, brightness, or medium — "bigger",
+//     "darker", "watercolor") near a back-reference PRONOUN ("make IT BIGGER",
+//     "turn IT into a WATERCOLOR"). A target requires a pronoun, never a bare verb,
+//     so "make the FONT BIGGER" or "set the background color to blue" (code, no
+//     pronoun pointing at the image) do not misfire.
 //
 // A standalone style/target word still does NOT count — it equally describes a
 // brand-new image — and a standalone pronoun or generic verb does not either.
@@ -127,7 +130,7 @@ func mentionsImageEditIntent(tokens []string) bool {
 	if nearbyTokensEitherOrder(tokens, imageStyleDescriptors, imageStyleCorroborators, imageEditPairDistance) {
 		return true
 	}
-	return nearbyTokensEitherOrder(tokens, imageEditTargets, imageEditActions, imageEditPairDistance)
+	return nearbyTokensEitherOrder(tokens, imageEditTargets, imageBackrefPronouns, imageEditPairDistance)
 }
 
 func isImageCreationRequest(tokens []string) bool {
@@ -144,14 +147,13 @@ func isImageCreationRequest(tokens []string) bool {
 }
 
 // isImageFollowUpRequest reports whether — given a prior image in the thread — this
-// turn should route to image generation. It fires on a standalone style descriptor
-// ("mach es CYBERPUNK", "ändere den STIL") or on any genuine edit intent
-// (mentionsImageEditIntent). It deliberately does NOT fire on bare generic verbs
-// like "make"/"change"/"try" anymore: those alone shoved unrelated turns ("MAKE
-// sure to cite that", "CHANGE the subject and tell me about Rome") at the image
-// tool.
+// turn should route to image generation. It routes exactly when the turn reads as
+// an edit (mentionsImageEditIntent). It deliberately no longer fires on a bare
+// generic verb ("MAKE sure to cite that", "CHANGE the subject") or a standalone
+// style word ("a MINIMAL style for my code"): those shoved unrelated turns at the
+// image tool.
 func isImageFollowUpRequest(tokens []string) bool {
-	return containsAnyToken(tokens, imageStyleDescriptors) || mentionsImageEditIntent(tokens)
+	return mentionsImageEditIntent(tokens)
 }
 
 func hasNearbyTokens(tokens []string, left, right map[string]bool, maxDistance int) bool {
@@ -205,73 +207,65 @@ func wordTokens(content string) []string {
 	return tokens
 }
 
-// imageEditPairDistance is the token window within which two corroborating signals
-// must co-occur to read as an image edit.
-const imageEditPairDistance = 6
+// imageEditPairDistance is the (small) token window within which two corroborating
+// signals must co-occur to read as an image edit. Kept tight so the pair does not
+// straddle a clause boundary (tokenization drops punctuation).
+const imageEditPairDistance = 4
 
 // strongImageEditWords are image-specific enough to signal an edit on their own.
-// "turn" stays here ("turn it into a watercolor"); "change" was demoted to a
-// generic action so "change the subject" no longer reads as an edit. The added
-// verbs (crop, rotate, flip, mirror, blur, sharpen, upscale + German) almost never
-// occur in ordinary chat after an image, so a bare occurrence is a safe edit cue.
+// Deliberately narrow: words that also pepper coding/chat ("version", "edit",
+// "turn", "flip", "mirror", "rotate", "blur", "sharpen") are NOT here — they live
+// in imageEditActions and need a cue. "change" likewise is a generic action, so
+// "change the subject" does not read as an edit.
 var strongImageEditWords = map[string]bool{
-	"restyle": true, "recolor": true, "recolour": true, "edit": true,
-	"variation": true, "variations": true, "variant": true, "variants": true, "version": true,
-	"turn": true, "wandle": true, "bearbeite": true, "variante": true,
-	"crop": true, "rotate": true, "flip": true, "mirror": true, "blur": true, "sharpen": true, "upscale": true,
-	"zuschneide": true, "drehe": true, "spiegle": true, "spiegele": true,
+	"restyle": true, "recolor": true, "recolour": true, "upscale": true, "crop": true,
+	"variation": true, "variations": true, "variant": true, "variants": true,
+	"wandle": true, "bearbeite": true, "variante": true, "zuschneide": true,
 }
 
-// imageStyleDescriptors name a visual style/treatment. Standalone they route a
-// follow-up to image generation; near a pronoun or action verb they signal an edit
-// of the existing image. They are distinctive enough that a bare pronoun ("make IT
-// cyberpunk") is sufficient corroboration.
+// imageStyleDescriptors name a distinctive visual style/treatment that rarely shows
+// up in ordinary coding chat. Near a pronoun OR an action verb they signal an edit
+// ("make IT cyberpunk", "ändere den STIL"). They do NOT route on their own — a bare
+// "a minimal style for my code" must not reach the image tool.
 var imageStyleDescriptors = map[string]bool{
 	"cyberpunk": true, "retro": true, "minimal": true, "minimalist": true, "minimalistisch": true,
-	"glitch": true, "neon": true, "colors": true, "colour": true, "farben": true,
-	"stil": true, "style": true,
+	"glitch": true, "neon": true, "stil": true,
 }
 
-// imageEditTargets are generic "what to change" words — sizes, brightness, colours,
-// mediums, and image parts. Unlike style descriptors they DO occur in ordinary chat
-// ("a red flag", "this dark theme"), so they corroborate an edit only when near an
-// action verb ("MAKE it BIGGER", "REMOVE the BACKGROUND"), never via a bare pronoun.
-// The list is deliberately common-case, not exhaustive — lexical edit detection
-// cannot enumerate every phrasing.
+// imageEditTargets are generic "what to change" words — sizes, brightness, and
+// mediums. They occur in ordinary (especially front-end) chat, so they corroborate
+// an edit only when near a back-reference PRONOUN pointing at the image ("make IT
+// BIGGER", "turn IT into a WATERCOLOR") — never via a bare action verb, so "make
+// the FONT bigger" or "set the background color to blue" do not misfire. Colours
+// and CSS-ish parts (background, border, shadow, contrast) are intentionally absent:
+// they collide head-on with code/CSS chat. The list is common-case, not exhaustive
+// — lexical edit detection cannot enumerate every phrasing.
 var imageEditTargets = map[string]bool{
 	// Size / scale.
-	"bigger": true, "smaller": true, "larger": true, "taller": true, "wider": true, "narrower": true, "huge": true, "tiny": true,
-	// Brightness / sharpness / appearance.
-	"brighter": true, "darker": true, "lighter": true, "dimmer": true, "bolder": true, "sharper": true, "softer": true, "grainier": true,
-	"contrast": true, "saturation": true, "saturated": true, "desaturated": true,
-	// Medium / treatment nouns.
-	"watercolor": true, "watercolour": true, "sketch": true, "cartoon": true, "anime": true, "realistic": true, "photorealistic": true,
-	"oil": true, "pencil": true, "charcoal": true, "pixelated": true, "vintage": true, "sepia": true, "grayscale": true, "greyscale": true,
+	"bigger": true, "smaller": true, "larger": true, "taller": true, "wider": true, "narrower": true,
+	// Brightness / appearance.
+	"brighter": true, "darker": true, "lighter": true, "dimmer": true, "grainier": true,
+	// Medium / treatment.
+	"watercolor": true, "watercolour": true, "sketch": true, "cartoon": true, "anime": true, "photorealistic": true,
+	"charcoal": true, "pixelated": true, "vintage": true, "sepia": true, "grayscale": true, "greyscale": true,
 	"monochrome": true, "pastel": true,
-	// Image parts.
-	"background": true, "foreground": true, "backdrop": true, "border": true, "frame": true, "shadow": true, "lighting": true,
-	// Colours.
-	"red": true, "orange": true, "yellow": true, "green": true, "blue": true, "purple": true, "violet": true, "pink": true,
-	"black": true, "white": true, "gray": true, "grey": true, "brown": true, "teal": true, "cyan": true, "magenta": true,
 	// German targets (Swiss orthography: ss, no ß).
-	"grösser": true, "groesser": true, "kleiner": true, "heller": true, "dunkler": true, "schärfer": true, "schaerfer": true,
-	"hintergrund": true, "vordergrund": true, "rahmen": true, "schatten": true, "kontrast": true,
-	"aquarell": true, "skizze": true, "realistisch": true,
-	"rot": true, "blau": true, "grün": true, "gruen": true, "gelb": true, "schwarz": true, "weiss": true, "grau": true,
+	"grösser": true, "groesser": true, "kleiner": true, "heller": true, "dunkler": true,
+	"aquarell": true, "skizze": true,
 }
 
-// imageEditActions are imperative verbs that, near a style descriptor or an
-// edit-target word, confirm an edit of the prior image. They never fire alone
-// ("make sure to cite that" has no cue nearby, so it stays out).
+// imageEditActions are imperative verbs that, near a distinctive style descriptor,
+// confirm an edit ("ÄNDERE den Stil", "make everything CYBERPUNK"). They never fire
+// alone, and they do NOT corroborate a generic edit-target (that needs a pronoun).
+// Kept narrow and free of CSS-ish verbs ("set", "give", "put", "add", "remove") so
+// "set the background color" / "add a red border" stay out.
 var imageEditActions = map[string]bool{
-	"make": true, "change": true, "try": true, "add": true, "remove": true, "delete": true, "replace": true, "erase": true,
-	"give": true, "put": true, "set": true,
+	"make": true, "change": true, "try": true, "turn": true, "edit": true, "restyle": true,
 	"mach": true, "mache": true, "machen": true, "aendere": true, "ändere": true, "probiere": true,
-	"füge": true, "fuege": true, "entferne": true, "entfernen": true, "ersetze": true, "setze": true, "gib": true,
 }
 
 // imageBackrefPronouns stand in for the prior image ("make IT cyberpunk", "mach ES
-// ..."). They corroborate a style descriptor but never a generic edit-target word.
+// ..."). They corroborate either a style descriptor or a generic edit-target.
 var imageBackrefPronouns = map[string]bool{
 	"it": true, "its": true, "this": true, "that": true, "these": true, "those": true, "them": true,
 	"es": true, "das": true, "dies": true, "dieses": true, "diese": true, "ihn": true,
