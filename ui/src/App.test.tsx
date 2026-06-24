@@ -160,7 +160,8 @@ test("places project rows below starred chats with matching chat row sizing", as
   const projectRowSurface = projectRow.parentElement as HTMLElement;
   expect(projectRowSurface).toHaveClass("h-7");
   expect(projectRow).not.toHaveClass("text-xs");
-  expect(chatRow).toHaveClass("h-7");
+  const chatRowSurface = chatRow.parentElement as HTMLElement;
+  expect(chatRowSurface).toHaveClass("h-7");
 });
 
 test("inactive sidebar project actions stay hidden until hover or keyboard focus", async () => {
