@@ -121,7 +121,7 @@ export function ArtifactsPage({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-[860px] px-4 pb-16 pt-10 md:px-6">
+      <div className="mx-auto w-full max-w-[802px] px-4 pb-16 pt-10 md:px-6">
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <SidebarOpenButton onClick={onOpenSidebar} />
