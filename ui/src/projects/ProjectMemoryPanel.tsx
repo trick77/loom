@@ -69,12 +69,12 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
   return (
     <div className="relative" ref={containerRef}>
       <section
-        aria-label="Memories"
+        aria-label="Project memory"
         className="relative overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
       >
         <h2 className="flex items-center gap-1.5 px-5 pt-5 text-[15px] font-medium text-[#ecece6]">
           <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
-          <span>Memories</span>
+          <span>Project memory</span>
         </h2>
 
         <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
@@ -86,7 +86,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
           <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">Loading…</p>
         ) : hasContent ? (
           <div
-            className="relative mt-2 h-[490px] text-sm leading-5 text-[#c7c5bd]"
+            className="relative mt-2 h-[490px] text-base text-[#f3f0e8]"
             data-project-memory-content
             data-testid="project-memory-content"
           >
@@ -119,7 +119,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
           </div>
         ) : (
           <p className="mt-2 h-[490px] px-5 pb-5 text-sm leading-5 text-[#8f8b82]">
-            Memories will show here after a few threads.
+            Project memory will show here after a few threads.
           </p>
         )}
 

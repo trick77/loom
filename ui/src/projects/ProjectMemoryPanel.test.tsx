@@ -21,13 +21,13 @@ test("shows the empty state when there is no memory yet", async () => {
 
   render(<ProjectMemoryPanel projectId="p1" />);
 
-  expect(screen.getByRole("region", { name: "Memories" })).toBeInTheDocument();
-  const heading = screen.getByRole("heading", { name: "Memories" });
+  expect(screen.getByRole("region", { name: "Project memory" })).toBeInTheDocument();
+  const heading = screen.getByRole("heading", { name: "Project memory" });
   expect(heading).toBeInTheDocument();
   expect(heading).toHaveTextContent(ICONS.memory);
-  expect(await screen.findByText(/Memories will show here after a few threads/)).toHaveClass("h-[490px]");
-  expect(screen.queryByText("Memory")).not.toBeInTheDocument();
-  expect(screen.queryByText(/Project memory/i)).not.toBeInTheDocument();
+  expect(
+    await screen.findByText(/Project memory will show here after a few threads/),
+  ).toHaveClass("h-[490px]");
 });
 
 test("renders memory content when present", async () => {

@@ -67,7 +67,10 @@ export function UserMemoryPanel() {
         {loading ? (
           <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
         ) : facts.length > 0 ? (
-          <ul className="mt-3 space-y-1.5 text-sm leading-5 text-[#c7c5bd]" data-user-memory-content>
+          <ul
+            className="mt-3 space-y-1.5 font-serif text-base leading-6 text-[#f3f0e8]"
+            data-user-memory-content
+          >
             {facts.map((fact, index) => (
               <li key={index} className="flex gap-2">
                 <span aria-hidden className="select-none text-[#807d74]">
