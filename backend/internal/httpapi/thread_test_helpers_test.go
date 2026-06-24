@@ -403,6 +403,7 @@ type fakeChatClient struct {
 	reasoningTitleUsage llm.TokenUsage
 	afterStream         func()
 	projectMemory       string
+	editedMemory        string
 	projectDescription  string
 	// streamErr, when set, makes StreamChatWithTools emit any reasoning then return
 	// the error (no content), modelling a turn that fails/stalls mid-stream.
@@ -454,6 +455,10 @@ func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _ string) (s
 
 func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _ string) (string, error) {
 	return f.projectMemory, nil
+}
+
+func (f fakeChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _ string) (string, error) {
+	return f.editedMemory, nil
 }
 
 func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _, _ string) (string, error) {
@@ -538,6 +543,10 @@ func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string) (st
 }
 
 func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string) (string, error) {
+	return "", nil
+}
+
+func (f *blockingChatClient) ApplyMemoryEdit(context.Context, string, string, string, string) (string, error) {
 	return "", nil
 }
 
@@ -634,6 +643,10 @@ func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning
 }
 
 func (f *fakeToolChatClient) GenerateMemory(_ context.Context, _, _, _, _ string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeToolChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 
