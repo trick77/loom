@@ -78,7 +78,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
         </h2>
 
         <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
-          A short summary of what your threads in this project have covered, so each new one picks up
+          A summary of what your threads in this project have covered, so each new one picks up
           where the others left off.
         </p>
 
