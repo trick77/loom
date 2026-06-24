@@ -64,6 +64,11 @@ export function UserMemoryPanel() {
           <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
           <span>Memories</span>
         </h2>
+
+        <p className="mt-1.5 text-[13px] leading-5 text-[#8a887f]">
+          What Loom has picked up about you across your threads, so each new one starts with context.
+        </p>
+
         {loading ? (
           <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
         ) : facts.length > 0 ? (
