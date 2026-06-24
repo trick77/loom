@@ -67,19 +67,6 @@ export function DownloadIcon() {
   );
 }
 
-export function CloseIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M6 6 18 18M18 6 6 18"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 export function RetryIcon() {
   return (
     <svg className="h-[1.33rem] w-[1.33rem]" viewBox="0 0 24 24" fill="none" aria-hidden="true">

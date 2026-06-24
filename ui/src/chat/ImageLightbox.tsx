@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { CloseIcon } from "./icons";
+import { Icon } from "./Icon";
 
 // Full-screen modal preview shared by the generated-image card and the inline
 // SVG response bubble. Closes on backdrop click or Escape; clicking the image
@@ -42,7 +42,7 @@ export function ImageLightbox({
         title="Close preview"
         aria-label="Close preview"
       >
-        <CloseIcon />
+        <Icon name="close" size="20px" />
       </button>
       <img
         className={`object-contain ${fill ? "h-full w-full" : "max-h-full max-w-full"}`}

@@ -1,4 +1,5 @@
 import type { Project, Thread } from "../api";
+import { Icon } from "../chat/Icon";
 
 export function ProjectPickerDialog({
   threads,
@@ -28,12 +29,12 @@ export function ProjectPickerDialog({
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-sans text-[20px] font-semibold text-[#f4f0e8]">{title}</h2>
           <button
-            className="text-2xl leading-none text-[#d5d2c9] hover:text-white"
+            className="leading-none text-[#d5d2c9] hover:text-white"
             type="button"
             aria-label="Close"
             onClick={onCancel}
           >
-            x
+            <Icon name="close" size="1.5rem" />
           </button>
         </div>
         <p className="mt-2 truncate text-sm text-[#aaa79e]">{subtitle}</p>
