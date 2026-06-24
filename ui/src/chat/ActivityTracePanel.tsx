@@ -11,6 +11,7 @@ import {
   type ActivityTraceToolEvent,
 } from "../activityTrace";
 import { Icon } from "./Icon";
+import { rehypeStreamFade } from "./streamFade";
 
 export function ActivityTracePanel({
   events,
@@ -96,7 +97,7 @@ export function ActivityTracePanel({
           <div className="ui-activity-trace-collapsible-inner">
             <div className="ui-activity-trace-body">
               {events.map((event) => (
-                <ActivityTraceRow key={event.id} event={event} headline={label} />
+                <ActivityTraceRow key={event.id} event={event} headline={label} streaming={streaming} />
               ))}
               {complete && <ActivityTraceDoneRow />}
             </div>
@@ -112,7 +113,7 @@ export function ActivityTracePanel({
 // .ui-activity-reasoning-clamp (12rem @ 16px root).
 const REASONING_CAP_PX = 192;
 
-function ReasoningContent({ content }: { content: string }) {
+function ReasoningContent({ content, streaming = false }: { content: string; streaming?: boolean }) {
   const [showFull, setShowFull] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -128,7 +129,10 @@ function ReasoningContent({ content }: { content: string }) {
   return (
     <>
       <div ref={ref} className={clamped ? "ui-activity-reasoning ui-activity-reasoning-clamp" : "ui-activity-reasoning"}>
-        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={streaming ? [rehypeHighlight, rehypeStreamFade] : [rehypeHighlight]}
+        >
           {content}
         </Markdown>
       </div>
@@ -144,9 +148,11 @@ function ReasoningContent({ content }: { content: string }) {
 function ActivityTraceRow({
   event,
   headline,
+  streaming,
 }: {
   event: ActivityTraceEvent;
   headline: string;
+  streaming: boolean;
 }) {
   if (event.type === "reasoning") {
     // Every reasoning round is a timeline node marked with the clock glyph,
@@ -163,7 +169,7 @@ function ActivityTraceRow({
         </span>
         <div className="min-w-0 flex-1">
           {showTitle && <div className="ui-activity-reasoning-title">{event.title}</div>}
-          <ReasoningContent content={event.content.trim()} />
+          <ReasoningContent content={event.content.trim()} streaming={streaming} />
         </div>
       </div>
     );
