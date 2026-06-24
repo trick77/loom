@@ -34,9 +34,13 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 		if !ok {
 			return nil, fmt.Errorf("image attachment not found")
 		}
-		if item.ThreadID != "" && item.ThreadID != threadID {
-			return nil, fmt.Errorf("image attachment is out of scope")
-		}
+		// No thread-scope check here: s.artifacts.Get already user-scopes the lookup,
+		// so a forged id pointing at another user's artifact can't resolve. An
+		// artifact keeps the thread it was generated/uploaded in, and "Use in thread"
+		// deliberately re-references an existing artifact from a *new* thread, so
+		// requiring item.ThreadID == threadID would reject every cross-thread reuse
+		// (the image would display via resolveSentAttachments but never reach the
+		// model). User ownership is the real boundary; the thread match added nothing.
 		// Enforce the same image allowlist as the upload path here too: a re-attached
 		// artifact (e.g. a generated image, or any artifact referenced by id) must be
 		// an accepted image type, not merely image/*, so an out-of-allowlist format
