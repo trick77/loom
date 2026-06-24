@@ -137,7 +137,7 @@ function CheckMenuIcon() {
 export function ProjectMenuIcon() {
   return (
     <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
-      <Icon name="project" size="19px" />
+      <Icon name="archive" size="19px" />
     </span>
   );
 }
