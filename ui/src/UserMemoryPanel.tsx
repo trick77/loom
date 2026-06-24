@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { editUserMemory, getUserMemory } from "./api";
 import { Icon } from "./chat/Icon";
-import { MemoryEditComposer } from "./MemoryEditComposer";
+import { MemoryEditButton, MemoryEditComposer, useDismissOnOutside } from "./MemoryEditComposer";
 
 /**
  * UserMemoryPanel shows the auto-generated personal memory — the compact set of
@@ -51,58 +51,57 @@ export function UserMemoryPanel() {
 
   const facts = toFacts(content);
 
-  return (
-    <section
-      aria-label="Memories"
-      className="relative rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
-    >
-      <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
-        <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
-        <span>Memories</span>
-      </h2>
+  const containerRef = useRef<HTMLDivElement>(null);
+  useDismissOnOutside(composerOpen, containerRef, () => setComposerOpen(false));
 
-      <button
-        type="button"
-        data-testid="memory-edit-button"
-        aria-label={composerOpen ? "Close memory editor" : "Edit memories"}
+  return (
+    <div className="relative" ref={containerRef}>
+      <MemoryEditButton
+        open={composerOpen}
         onClick={() => {
           setError(undefined);
           setComposerOpen((open) => !open);
         }}
-        className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full text-[#d5d2c9] transition-colors hover:bg-[#3a3a36]"
+      />
+      <section
+        aria-label="Memories"
+        className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
       >
-        <Icon name={composerOpen ? "close" : "edit"} size="18px" />
-      </button>
-      {loading ? (
-        <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
-      ) : facts.length > 0 ? (
-        <ul className="mt-3 space-y-1.5 text-sm leading-5 text-[#c7c5bd]" data-user-memory-content>
-          {facts.map((fact, index) => (
-            <li key={index} className="flex gap-2">
-              <span aria-hidden className="select-none text-[#807d74]">
-                •
-              </span>
-              <span>{fact}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-3 text-sm leading-5 text-[#807d74]">
-          Memories will show here after a few threads.
-        </p>
-      )}
+        <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
+          <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
+          <span>Memories</span>
+        </h2>
+        {loading ? (
+          <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
+        ) : facts.length > 0 ? (
+          <ul className="mt-3 space-y-1.5 text-sm leading-5 text-[#c7c5bd]" data-user-memory-content>
+            {facts.map((fact, index) => (
+              <li key={index} className="flex gap-2">
+                <span aria-hidden className="select-none text-[#807d74]">
+                  •
+                </span>
+                <span>{fact}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm leading-5 text-[#807d74]">
+            Memories will show here after a few threads.
+          </p>
+        )}
 
-      {composerOpen ? (
-        <div className="mt-4">
-          <MemoryEditComposer
-            pending={pending}
-            error={error}
-            onSubmit={handleEdit}
-            onClose={() => setComposerOpen(false)}
-          />
-        </div>
-      ) : null}
-    </section>
+        {composerOpen ? (
+          <div className="mt-4">
+            <MemoryEditComposer
+              pending={pending}
+              error={error}
+              onSubmit={handleEdit}
+              onClose={() => setComposerOpen(false)}
+            />
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
