@@ -42,6 +42,24 @@ describe("streamed downloadable artifacts", () => {
     },
   );
 
+  test.each([
+    ["json", "JSON"],
+    ["csv", "CSV"],
+    ["xml", "XML"],
+  ])("detects pending %s fences only after the data inline threshold", (language, label) => {
+    const pending = pendingFencedArtifact(`\`\`\`${language}\n${largeData}`);
+
+    expect(pending).toEqual({
+      label,
+      before: "",
+      receivedBytes: 16 * 1024 + 1,
+    });
+  });
+
+  test.each(["json", "csv", "xml"])("keeps small pending %s fences inline", (language) => {
+    expect(pendingFencedArtifact(`\`\`\`${language}\nsmall content`)).toBeNull();
+  });
+
   test("types completed svg fences as image/svg+xml so they render in an <img>", () => {
     const embedded = downloadableResponse('```svg\n<svg viewBox="0 0 10 10"></svg>\n```');
 

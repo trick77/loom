@@ -2929,7 +2929,10 @@ test("downloads fenced generated data without markdown fences", async () => {
   });
   const revokeObjectURL = vi.fn();
   vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
-  const content = "```csv\nname,score\nAda,42\nGrace,37\n```";
+  // CSV renders inline below 16 KB, so use a payload above the threshold to exercise download.
+  const rows = Array.from({ length: 4000 }, (_, index) => `Ada,${index}`).join("\n");
+  const body = `name,score\n${rows}`;
+  const content = "```csv\n" + body + "\n```";
   vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
 
   await sendMessageInExistingChat();
@@ -2940,7 +2943,7 @@ test("downloads fenced generated data without markdown fences", async () => {
   const blob = downloadedBlob;
   expect(blob).toBeInstanceOf(Blob);
   if (blob === undefined) throw new Error("expected download blob");
-  await expect(blob.text()).resolves.toBe("name,score\nAda,42\nGrace,37");
+  await expect(blob.text()).resolves.toBe(body);
 });
 
 test("renders invalid streaming data URLs inline until they can be decoded", async () => {
