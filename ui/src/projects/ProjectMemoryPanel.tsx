@@ -46,8 +46,8 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
       </h2>
 
       <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
-        A running digest Loom writes from this project's threads, so every thread in it builds on what
-        the others have learned.
+        A short summary of what your threads in this project have covered, so each new one picks up
+        where the others left off.
       </p>
 
       {loading ? (
