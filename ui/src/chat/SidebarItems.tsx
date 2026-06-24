@@ -168,28 +168,27 @@ function SidebarThreadItem({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [menuOpen, onCloseMenu]);
 
-  if (!active) {
-    return (
-      <button
-        className="block h-7 w-full truncate rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28]"
-        onClick={() => onSelect(thread.id)}
-        type="button"
-      >
-        {thread.title}
-      </button>
-    );
-  }
   return (
     <div ref={itemRef} className="relative">
-      <div className="flex h-7 w-full items-center rounded-md bg-[#10100f] py-0 pl-1.5 pr-1 text-left text-white">
+      <div
+        className={`group flex h-7 w-full items-center rounded-md py-0 pl-1.5 pr-1 text-left transition-colors ${
+          active ? "bg-[#10100f] text-white" : "hover:bg-[#2a2a28]"
+        }`}
+      >
         <button className="relative min-w-0 flex-1 overflow-hidden text-left" onClick={() => onSelect(thread.id)} type="button">
-          <span className="block whitespace-nowrap pr-7">{thread.title}</span>
-          <span className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]" aria-hidden="true" />
+          <span className={`block whitespace-nowrap ${active ? "pr-7" : "truncate"}`}>{thread.title}</span>
+          {active && (
+            <span className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]" aria-hidden="true" />
+          )}
         </button>
         <button
           aria-expanded={menuOpen}
           aria-label="Open thread actions"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white"
+          // Keep inactive rows visually quiet while preserving keyboard access
+          // to the thread actions.
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
+            active || menuOpen ? "" : "invisible group-hover:visible group-focus-within:visible [@media(hover:none)]:visible"
+          }`}
           onClick={(event) => {
             event.stopPropagation();
             onToggleMenu(menuKey);
