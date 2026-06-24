@@ -902,10 +902,12 @@ a.ui-activity-tool-url:hover {
 }
 
 /* Kompakte Markdown-Variante für das schmale Project-memory-Panel.
-   Bewusst eigenständig statt .ui-markdown: kleinere Überschriften, engere
-   Abstände und gedämpfte Farben passend zur Sidebar. */
+   Bewusst eigenständig statt .ui-markdown: kleinere Überschriften und engere
+   Abstände passend zur Sidebar. Schrift und Farben entsprechen dem Chat-Text. */
 .ui-memory-markdown {
-  font-family: var(--font-sans);
+  font-family: var(--font-serif);
+  font-weight: 360;
+  line-height: 1.5;
 }
 
 .ui-memory-markdown :where(p, ul, ol):first-child {
@@ -922,21 +924,15 @@ a.ui-activity-tool-url:hover {
 
 .ui-memory-markdown :where(h1, h2, h3, h4) {
   margin: 0.6rem 0 0.25rem;
-  color: #ecece6;
+  color: #f3f0e8;
+  /* Headings keep their bold weight but stay the same size as body text. */
+  font-size: 1rem;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.5;
 }
 
 .ui-memory-markdown :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
   margin-top: 0;
-}
-
-.ui-memory-markdown h1 {
-  font-size: 1rem;
-}
-
-.ui-memory-markdown :where(h2, h3, h4) {
-  font-size: 0.9375rem;
 }
 
 .ui-memory-markdown :where(ul, ol) {
@@ -960,12 +956,12 @@ a.ui-activity-tool-url:hover {
 }
 
 .ui-memory-markdown strong {
-  color: #ecece6;
+  color: #faf9f5;
   font-weight: 600;
 }
 
 .ui-memory-markdown em {
-  color: #ddd9cf;
+  color: #e2ded4;
 }
 
 .ui-memory-markdown a {
