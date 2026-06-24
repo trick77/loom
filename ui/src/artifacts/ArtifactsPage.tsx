@@ -160,7 +160,7 @@ export function ArtifactsPage({
         <div className="mt-3">
           {artifacts.length > 0 && (
             <div
-              className={`grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center border-b px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem] ${
+              className={`grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem_2rem] items-center border-b px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem_2rem] ${
                 hoveredArtifactID === artifacts[0]?.id ? "border-transparent" : "border-[#343432]"
               }`}
             >
@@ -409,34 +409,28 @@ function ArtifactRowFrame({
         }
       }}
     >
-      <div className="ui-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
+      <div className="ui-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem_2rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem_2rem]">
         <div className="min-w-0 pr-3">{action}</div>
         <div className="shrink-0 text-[13px] text-[#8a887f]">{formatTimeAgo(modifiedAt)}</div>
-        {/* The size yields its space to the actions button while the row is
-            hovered or its menu is open (and always on touch, where the button is
-            permanently shown), matching the thread row's time-label behaviour. */}
-        <div
-          className={`shrink-0 text-[13px] text-[#c7c5bd] [@media(hover:none)]:invisible ${
-            showMenuButton ? "invisible" : ""
+        <div className="shrink-0 text-[13px] text-[#c7c5bd]">{formatFileSize(artifact.sizeBytes)}</div>
+        {/* The actions button has its own reserved column so the size stays put
+            and visible; the button only toggles visibility (keeping its slot) on
+            hover, and is permanently shown on touch. */}
+        <button
+          aria-expanded={menuOpen}
+          aria-label={`Actions for ${artifact.displayFilename}`}
+          className={`grid h-7 w-7 place-items-center justify-self-end rounded-md text-[#d8d4ca] transition-colors hover:bg-[#363632] hover:text-white ${
+            showMenuButton ? "" : "invisible [@media(hover:none)]:visible"
           }`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleMenu();
+          }}
+          type="button"
         >
-          {formatFileSize(artifact.sizeBytes)}
-        </div>
+          <Icon name="moreVertical" size="18px" />
+        </button>
       </div>
-      <button
-        aria-expanded={menuOpen}
-        aria-label={`Actions for ${artifact.displayFilename}`}
-        className={`absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#363632] hover:text-white ${
-          showMenuButton ? "" : "invisible [@media(hover:none)]:visible"
-        }`}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleMenu();
-        }}
-        type="button"
-      >
-        <Icon name="moreVertical" size="18px" />
-      </button>
     </BrowsingListRowFrame>
   );
 }
