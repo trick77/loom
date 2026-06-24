@@ -877,6 +877,11 @@ func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
 		"explain how to draw a UML diagram",
 		"lifestyle changes",
 		"conversion tracking",
+		// Bare generic verbs and pronouns no longer route an unrelated turn to the
+		// image tool just because an image exists earlier in the thread.
+		"change the subject and tell me about Rome",
+		"make sure to cite that source",
+		"try again, explain it differently",
 	} {
 		t.Run(content, func(t *testing.T) {
 			if srv.imageArtifactRequired(content, priorMessages) {
@@ -951,6 +956,13 @@ func TestIsImageEditFollowUpGating(t *testing.T) {
 		"turn it into a watercolor",
 		"ändere den Stil",
 		"give it a retro look",
+		// Edits without a style word: an edit-target (size, colour, part, medium)
+		// near an action verb, or a strong image-specific verb on its own.
+		"make it bigger",
+		"make it darker",
+		"remove the background",
+		"make the background blue",
+		"crop it",
 	} {
 		if !srv.isImageEditFollowUp(content, withImage) {
 			t.Fatalf("isImageEditFollowUp(%q) = false, want true", content)
@@ -971,6 +983,25 @@ func TestIsImageEditFollowUpGating(t *testing.T) {
 	} {
 		if srv.isImageEditFollowUp(content, withImage) {
 			t.Fatalf("isImageEditFollowUp(%q) = true, want false (fresh creation)", content)
+		}
+	}
+
+	// Ordinary chat that merely contains a back-reference pronoun or a generic
+	// verb — with no image-style descriptor nearby — must NOT silently re-feed the
+	// prior image as vision input.
+	for _, content := range []string{
+		"what does this mean",
+		"do you understand that",
+		"how do I render this template",
+		"change the subject and tell me about Rome",
+		"make sure to cite that source",
+		// An edit-target word ("red") near a bare pronoun is NOT enough — only an
+		// action verb corroborates a target — so ordinary chat does not misfire.
+		"what does this red error mean",
+		"this is a red flag",
+	} {
+		if srv.isImageEditFollowUp(content, withImage) {
+			t.Fatalf("isImageEditFollowUp(%q) = true, want false (not an edit)", content)
 		}
 	}
 
