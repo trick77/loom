@@ -194,6 +194,78 @@ func TestDeleteArtifactRejectsAnotherUsersArtifact(t *testing.T) {
 	}
 }
 
+func TestRenameArtifactUpdatesNameForOwner(t *testing.T) {
+	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+		{ID: "art_1", UserID: "user_1", DisplayFilename: "old.md", MIMEType: "text/markdown"},
+	}}
+	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, authenticatedRequest(http.MethodPatch, "/api/artifacts/art_1", `{"displayFilename":"new.md"}`))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var got artifactResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.DisplayFilename != "new.md" {
+		t.Fatalf("DisplayFilename = %q, want new.md", got.DisplayFilename)
+	}
+}
+
+func TestRenameArtifactLocksOriginalExtension(t *testing.T) {
+	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+		{ID: "art_1", UserID: "user_1", DisplayFilename: "report.md", MIMEType: "text/markdown"},
+	}}
+	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
+
+	// A direct PATCH trying to change the extension is forced back to the original.
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, authenticatedRequest(http.MethodPatch, "/api/artifacts/art_1", `{"displayFilename":"evil.exe"}`))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var got artifactResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.DisplayFilename != "evil.md" {
+		t.Fatalf("DisplayFilename = %q, want evil.md (extension locked)", got.DisplayFilename)
+	}
+}
+
+func TestRenameArtifactRejectsBadInput(t *testing.T) {
+	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+		{ID: "art_1", UserID: "user_1", DisplayFilename: "a.md"},
+		{ID: "art_2", UserID: "user_2", DisplayFilename: "b.md"},
+	}}
+	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
+
+	cases := []struct {
+		name   string
+		id     string
+		body   string
+		status int
+	}{
+		{"empty name", "art_1", `{"displayFilename":"   "}`, http.StatusBadRequest},
+		{"traversal", "art_1", `{"displayFilename":"../../etc/passwd"}`, http.StatusBadRequest},
+		{"another user", "art_2", `{"displayFilename":"hijack.md"}`, http.StatusNotFound},
+		{"unknown id", "art_x", `{"displayFilename":"x.md"}`, http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			server.ServeHTTP(rec, authenticatedRequest(http.MethodPatch, "/api/artifacts/"+tc.id, tc.body))
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), tc.status)
+			}
+		})
+	}
+}
+
 func multipartUploadBody(t *testing.T, field, filename, contentType string, content []byte) (*bytes.Buffer, string) {
 	t.Helper()
 	var body bytes.Buffer

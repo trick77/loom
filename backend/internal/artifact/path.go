@@ -162,6 +162,35 @@ func sanitizeDisplayFilename(input, extension string) (string, error) {
 	return name, nil
 }
 
+// SanitizeDisplayName cleans a user-supplied artifact display name to the same
+// standard the upload path enforces: it strips the directory portion, removes
+// null bytes and filesystem-unsafe characters, collapses surrounding spaces/dots,
+// rejects path traversal, and caps the length. Unlike sanitizeDisplayFilename it
+// does not force a particular extension — the rename handler locks the original
+// extension separately. Returns an error when nothing usable remains.
+func SanitizeDisplayName(input string) (string, error) {
+	slashInput := filepath.ToSlash(input)
+	if filepath.IsAbs(input) || strings.Contains(slashInput, "../") || strings.HasPrefix(slashInput, ".loom/") {
+		return "", errors.New("invalid filename")
+	}
+	name := strings.TrimSpace(filepath.Base(input))
+	name = strings.ReplaceAll(name, "\x00", "")
+	name = safeFilenameChars.ReplaceAllString(name, "_")
+	name = strings.Trim(name, " .")
+	if name == "" {
+		return "", errors.New("invalid filename")
+	}
+	if len(name) > MaxDisplayFilenameLength {
+		ext := filepath.Ext(name)
+		if len(ext) < MaxDisplayFilenameLength {
+			name = strings.TrimSuffix(name, ext)[:MaxDisplayFilenameLength-len(ext)] + ext
+		} else {
+			name = name[:MaxDisplayFilenameLength]
+		}
+	}
+	return name, nil
+}
+
 func collisionFreeName(dir, name string) (string, string) {
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -146,13 +147,16 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	displayFilename := strings.TrimSpace(body.DisplayFilename)
-	if displayFilename == "" {
+	if strings.TrimSpace(body.DisplayFilename) == "" {
 		writeJSONError(w, http.StatusBadRequest, "displayFilename is required")
 		return
 	}
-	if len(displayFilename) > artifact.MaxDisplayFilenameLength {
-		writeJSONError(w, http.StatusBadRequest, "displayFilename is too long")
+	// Clean the name to the same standard uploads enforce (strip unsafe chars,
+	// reject traversal, cap length) so a direct PATCH cannot store something the
+	// upload path would reject.
+	displayFilename, err := artifact.SanitizeDisplayName(body.DisplayFilename)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid displayFilename")
 		return
 	}
 	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
@@ -163,6 +167,12 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
+	}
+	// Lock the extension to the artifact's original so a rename can't change the
+	// file type the bytes/MIME imply (the UI keeps it fixed; enforce it server-side too).
+	if originalExt := filepath.Ext(found.DisplayFilename); originalExt != "" &&
+		!strings.EqualFold(filepath.Ext(displayFilename), originalExt) {
+		displayFilename = strings.TrimSuffix(displayFilename, filepath.Ext(displayFilename)) + originalExt
 	}
 	if err := s.artifacts.Rename(r.Context(), user.ID, found.ID, displayFilename); err != nil {
 		serverError(w, r, err, "rename artifact failed")
