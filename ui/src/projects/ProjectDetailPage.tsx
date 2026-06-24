@@ -116,7 +116,7 @@ export function ProjectDetailPage({
           </svg>
           All projects
         </button>
-        <div className="mt-2 flex flex-col gap-8 lg:flex-row lg:items-start">
+        <div className="mt-2 flex flex-col gap-8">
           <div className="min-w-0 w-full lg:max-w-[674px]">
             <header className="mt-5 flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -226,7 +226,7 @@ export function ProjectDetailPage({
               )}
             </ul>
           </div>
-          <aside className="flex w-full flex-col gap-4 lg:w-[320px] lg:shrink-0">
+          <aside className="flex w-full flex-col gap-4 lg:max-w-[674px]">
             <ProjectKnowledgePanel projectId={project.id} />
             <ProjectMemoryPanel projectId={project.id} />
           </aside>
