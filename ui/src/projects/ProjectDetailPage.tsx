@@ -97,7 +97,7 @@ export function ProjectDetailPage({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-[1080px] px-4 pb-16 pt-10 md:px-6">
+      <div className="mx-auto w-full max-w-[722px] px-4 pb-16 pt-10 md:px-6">
         <button
           aria-label="All projects"
           className="ui-control-text flex items-center gap-1.5 text-[#c7c5bd] hover:text-white"
