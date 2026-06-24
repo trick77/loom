@@ -34,7 +34,7 @@ export function UserMenu({
       role="menu"
     >
       <button
-        className={`${menuItemClass} text-[#f3f0e8] hover:bg-[#3f3f3a]`}
+        className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
         type="button"
         onClick={() => {
@@ -46,7 +46,7 @@ export function UserMenu({
         Settings
       </button>
       <button
-        className={`${menuItemClass} text-[#f3f0e8] hover:bg-[#3f3f3a]`}
+        className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
         type="button"
         onClick={() => {
@@ -58,7 +58,7 @@ export function UserMenu({
       </button>
       <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
       <button
-        className={`${menuItemClass} text-[#f3f0e8] hover:bg-[#3f3f3a]`}
+        className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
         type="button"
         onClick={() => {
