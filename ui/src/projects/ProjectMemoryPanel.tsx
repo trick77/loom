@@ -44,6 +44,12 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
         <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
         <span>Memories</span>
       </h2>
+
+      <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
+        A short summary of what your threads in this project have covered, so each new one picks up
+        where the others left off.
+      </p>
+
       {loading ? (
         <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">Loading…</p>
       ) : hasContent ? (
