@@ -3,6 +3,7 @@ import { downloadableResponse, pendingFencedArtifact } from "./artifacts";
 
 describe("streamed downloadable artifacts", () => {
   const largeContent = "a".repeat(64 * 1024 + 1);
+  const largeData = "a".repeat(16 * 1024 + 1);
 
   test.each([
     ["pdf", "PDF"],
@@ -90,5 +91,31 @@ describe("streamed downloadable artifacts", () => {
       expect(downloadableResponse(`\`\`\`${language}\nsmall content\n\`\`\``)).toBeNull();
     },
   );
+
+  test.each(["json", "csv", "xml"])("keeps small completed %s fences inline", (language) => {
+    expect(downloadableResponse(`\`\`\`${language}\nsmall content\n\`\`\``)).toBeNull();
+  });
+
+  test.each([
+    ["json", "JSON", "application/json;charset=utf-8"],
+    ["csv", "CSV", "text/csv;charset=utf-8"],
+    ["xml", "XML", "application/xml;charset=utf-8"],
+  ])("turns large completed %s fences into downloadable responses", (language, label, mimeType) => {
+    const embedded = downloadableResponse(`\`\`\`${language}\n${largeData}\n\`\`\``);
+
+    expect(embedded?.artifact).toMatchObject({
+      extension: language,
+      label,
+      mimeType,
+      content: largeData,
+    });
+  });
+
+  test("keeps completed html fences downloadable regardless of size", () => {
+    expect(downloadableResponse("```html\n<p>hi</p>\n```")?.artifact).toMatchObject({
+      extension: "html",
+      label: "HTML",
+    });
+  });
 });
 
