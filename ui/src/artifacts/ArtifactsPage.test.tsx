@@ -75,6 +75,7 @@ function renderPage() {
   const props = {
     onOpenSidebar: vi.fn(),
     onSessionExpired: vi.fn(),
+    onUseInThread: vi.fn(),
   };
   render(<ArtifactsPage {...props} />);
   return props;
@@ -302,4 +303,35 @@ test("opens image previews when clicking empty row space", async () => {
   fireEvent.click(rowSurface!);
 
   expect(await screen.findByRole("dialog", { name: "Preview robot.png" })).toBeInTheDocument();
+});
+
+test("offers \"Use in thread\" for an image artifact and reports the chosen artifact", async () => {
+  const props = renderPage();
+  await screen.findByText("robot.png");
+
+  fireEvent.click(screen.getByRole("button", { name: "Actions for robot.png" }));
+  const useInThread = screen.getByRole("menuitem", { name: "Use in thread" });
+  expect(useInThread).toBeInTheDocument();
+
+  fireEvent.click(useInThread);
+  expect(props.onUseInThread).toHaveBeenCalledTimes(1);
+  expect(props.onUseInThread).toHaveBeenCalledWith(expect.objectContaining({ id: "art_image" }));
+});
+
+test("hides \"Use in thread\" for a non-image file artifact", async () => {
+  renderPage();
+  await screen.findByText("quarterly-board-update.pdf");
+
+  fireEvent.click(screen.getByRole("button", { name: "Actions for quarterly-board-update.pdf" }));
+  expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "Use in thread" })).not.toBeInTheDocument();
+});
+
+test("hides \"Use in thread\" for a deleted image artifact", async () => {
+  listArtifactsMock.mockResolvedValue(page([artifact({ ...robot, deleted: true })]));
+  renderPage();
+  await screen.findByText("robot.png");
+
+  fireEvent.click(screen.getByRole("button", { name: "Actions for robot.png" }));
+  expect(screen.queryByRole("menuitem", { name: "Use in thread" })).not.toBeInTheDocument();
 });

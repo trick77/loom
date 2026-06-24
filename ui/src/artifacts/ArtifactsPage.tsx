@@ -14,6 +14,7 @@ import {
 import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
 import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
+import { isImageAttachment } from "../chat/useDocumentAttachments";
 import { AttachmentPreview } from "../components/AttachmentPreview";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
@@ -27,9 +28,13 @@ const SEARCH_DEBOUNCE_MS = 250;
 export function ArtifactsPage({
   onOpenSidebar,
   onSessionExpired,
+  onUseInThread,
 }: {
   onOpenSidebar(): void;
   onSessionExpired(): void;
+  // Start a new chat with this artifact pre-attached (no re-upload). Only wired
+  // for artifacts that can be referenced as an image input.
+  onUseInThread(artifact: Artifact): void;
 }) {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -192,6 +197,15 @@ export function ArtifactsPage({
                     menuOpen={menuOpen}
                     onToggleMenu={() => setOpenMenuID((prev) => (prev === artifact.id ? null : artifact.id))}
                     onCloseMenu={() => setOpenMenuID((prev) => (prev === artifact.id ? null : prev))}
+                    onUseInThread={
+                      // Only image artifacts can be re-referenced in a new chat
+                      // without re-uploading; gate on the same predicate the send
+                      // path uses (isImageAttachment) and skip deleted ones.
+                      isImageAttachment({ mimeType: artifact.mimeType, filename: artifact.displayFilename }) &&
+                      artifact.deleted !== true
+                        ? () => onUseInThread(artifact)
+                        : undefined
+                    }
                     onRequestRename={() => {
                       setActionError("");
                       setRenameTarget(artifact);
@@ -287,6 +301,9 @@ type ArtifactRowMenuProps = {
   menuOpen: boolean;
   onToggleMenu(): void;
   onCloseMenu(): void;
+  // Present only for artifacts that can be re-referenced in a new chat without
+  // re-uploading (image artifacts); undefined hides the "Use in thread" entry.
+  onUseInThread?(): void;
   onRequestRename(): void;
   onRequestDelete(): void;
 };
@@ -338,6 +355,7 @@ function ArtifactRowFrame({
   menuOpen,
   onToggleMenu,
   onCloseMenu,
+  onUseInThread,
   onRequestRename,
   onRequestDelete,
 }: {
@@ -380,6 +398,14 @@ function ArtifactRowFrame({
       after={
         menuOpen ? (
           <ArtifactActionsMenu
+            onUseInThread={
+              onUseInThread === undefined
+                ? undefined
+                : () => {
+                    onCloseMenu();
+                    onUseInThread();
+                  }
+            }
             onRename={() => {
               onCloseMenu();
               onRequestRename();

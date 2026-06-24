@@ -8,6 +8,7 @@ import {
   setThreadStarred,
   stopMessage,
   streamMessage,
+  type Artifact,
   type ContentBlock,
   type McpStatusEvent,
   type Project,
@@ -31,6 +32,7 @@ import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
 import { useMediaQuery } from "./useMediaQuery";
 import {
+  composerAttachmentFromArtifact,
   createComposerAttachment,
   isImageAttachment,
   toSentAttachment,
@@ -281,6 +283,22 @@ export function ThreadShell({
     navigate({ view: "new" });
     setRoute({ view: "new" });
   }, [clearStreamingBlocks, onThread]);
+
+  // "Use in thread" from the Artifacts library: open the new-chat screen with the
+  // artifact pre-attached so the user can prompt against it. navigateToNew() nulls
+  // activeThread (so sendContent creates a fresh thread, not appends to a stale
+  // one); setting pendingAttachments in the same synchronous handler is batched
+  // with the route switch, so the start-screen clear effect (which only wipes when
+  // route.view !== "new") leaves it intact. composerAttachmentFromArtifact carries
+  // only the artifact id (no File), so it is referenced on send — never re-uploaded
+  // or duplicated — and removing the chip won't delete the original artifact.
+  const handleUseArtifactInThread = useCallback(
+    (artifact: Artifact) => {
+      navigateToNew();
+      setPendingAttachments([composerAttachmentFromArtifact(artifact)]);
+    },
+    [navigateToNew],
+  );
 
   const navigateToThreads = useCallback(() => {
     onThread();
@@ -759,6 +777,7 @@ export function ThreadShell({
           <ArtifactsPage
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onSessionExpired={onSessionExpired}
+            onUseInThread={handleUseArtifactInThread}
           />
         ) : route.view === "memory" ? (
           <MemoryPage onOpenSidebar={() => setMobileSidebarOpen(true)} />

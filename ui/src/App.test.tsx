@@ -814,6 +814,103 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
   expect(await screen.findByRole("button", { name: "What is this image?" })).toBeInTheDocument();
 });
 
+test("\"Use in thread\" references an existing artifact without re-uploading it", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Describe this","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"A robot.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
+      controller.close();
+    },
+  });
+  let imageUploadCalls = 0;
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+    if (url === "/api/mcp/status") return Response.json({ active: 0, configured: 0 });
+    if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
+      return Response.json({
+        items: [
+          {
+            id: "art_1",
+            threadId: "t0",
+            displayFilename: "robot.png",
+            mimeType: "image/png",
+            sizeBytes: 1024,
+            modifiedAt: "2026-06-10T12:00:00Z",
+            downloadUrl: "/api/artifacts/art_1/download",
+          },
+        ],
+        nextCursor: null,
+      });
+    }
+    if (url === "/api/threads" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as { title?: string };
+      return Response.json(
+        {
+          id: "t1",
+          title: body.title ?? "New thread",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        },
+        { status: 201 },
+      );
+    }
+    if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
+      // The artifact already exists; re-uploading here would duplicate it. This
+      // path must never be hit for a "Use in thread" hand-off.
+      imageUploadCalls += 1;
+      throw new Error("artifact was re-uploaded (duplicated)");
+    }
+    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") return new Response(stream, { status: 200 });
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+
+  // Open the library and pick "Use in thread" on the existing image artifact.
+  fireEvent.click(await screen.findByRole("button", { name: "Artifacts" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Actions for robot.png" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Use in thread" }));
+
+  // Lands on the new-chat composer with the artifact pre-attached (preview points
+  // at the existing download URL, not a freshly uploaded one).
+  const textbox = await screen.findByPlaceholderText("How can I help you today?");
+  expect(window.location.pathname).toBe("/new");
+  expect(document.querySelector('img[src="/api/artifacts/art_1/download"]')).toBeInTheDocument();
+
+  fireEvent.change(textbox, { target: { value: "Describe this" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  // The send references the existing artifact id; no upload call is made.
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stream",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "Describe this", imageAttachmentIds: ["art_1"] }),
+      }),
+    ),
+  );
+  expect(imageUploadCalls).toBe(0);
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    "/api/artifacts/images/upload",
+    expect.anything(),
+  );
+});
+
 test("retries a failed deferred new-chat image upload before streaming", async () => {
   let createThreadCalls = 0;
   let imageUploadCalls = 0;
