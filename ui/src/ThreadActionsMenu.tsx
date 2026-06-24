@@ -115,7 +115,11 @@ export function ThreadActionsMenu({
 }
 
 export function TrashMenuIcon() {
-  return <Icon name="trash" size="19px" className={menuIconClass} />;
+  return (
+    <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+      <Icon name="trash" size="19px" />
+    </span>
+  );
 }
 
 function MenuSeparator() {
@@ -131,5 +135,9 @@ function CheckMenuIcon() {
 }
 
 export function ProjectMenuIcon() {
-  return <Icon name="project" size="19px" className={menuIconClass} />;
+  return (
+    <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+      <Icon name="project" size="19px" />
+    </span>
+  );
 }

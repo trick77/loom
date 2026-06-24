@@ -58,9 +58,17 @@ export function ProjectActionsMenu({
 }
 
 function EditIcon() {
-  return <Icon name="edit" size="19px" className={menuIconClass} />;
+  return (
+    <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+      <Icon name="edit" size="19px" />
+    </span>
+  );
 }
 
 export function ArchiveIcon() {
-  return <Icon name="archived" size="19px" className={menuIconClass} />;
+  return (
+    <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+      <Icon name="archived" size="19px" />
+    </span>
+  );
 }
