@@ -402,10 +402,10 @@ body {
    gedimmten Farbe auf die normale Textfarbe auf. */
 @keyframes ui-stream-fade {
   from {
-    color: color-mix(in srgb, #f3f0e8 20%, transparent);
+    color: color-mix(in srgb, var(--ui-stream-fade-to, #f3f0e8) 20%, transparent);
   }
   to {
-    color: #f3f0e8;
+    color: var(--ui-stream-fade-to, #f3f0e8);
   }
 }
 
@@ -416,7 +416,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ui-stream-seg {
     animation: none;
-    color: #f3f0e8;
+    color: var(--ui-stream-fade-to, #f3f0e8);
   }
 }
 
@@ -532,6 +532,15 @@ body {
 .ui-activity-done-label {
   color: #d6d3ca;
   font-weight: 500;
+}
+
+/* Reasoning prose rests at the dimmed trace grey (inherited from
+   .ui-activity-trace), not the brighter answer-text colour. Point the shared
+   streaming fade-in (ui-stream-fade / .ui-stream-seg) at that resting colour so
+   faded reasoning segments land on grey instead of overshooting to #f3f0e8 and
+   snapping dim when streaming ends. */
+.ui-activity-reasoning {
+  --ui-stream-fade-to: #9b9790;
 }
 
 .ui-activity-reasoning p {
