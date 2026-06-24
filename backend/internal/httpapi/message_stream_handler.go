@@ -280,6 +280,17 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bump the thread to the top of the sidebar live. last_message_at was just
+	// updated by the assistant message; the frontend reorders on this event
+	// (ThreadShell onThread -> upsertThread). On new threads a thread event was
+	// already sent during title generation; re-sending is idempotent (upsertThread
+	// moves to top) and now carries the final last_message_at. Best-effort: a
+	// failed/not-found fetch skips the event — the DB order is already correct for
+	// the next refetch.
+	if updated, found, getErr := s.thread.GetThread(persistCtx, user.ID, threadID); getErr == nil && found {
+		_ = sendSSEJSON(stream, "thread", updated)
+	}
+
 	// Add this turn's token burn to the user's lifetime totals. usageTotal was
 	// summed across the answer, tool rounds, and the title/reasoning helpers, and
 	// is read here after titles.wait() above so helper-call tokens are included —
