@@ -12,7 +12,6 @@ import {
 import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
 import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
-import { CloseIcon } from "../chat/icons";
 import { AttachmentPreview } from "../components/AttachmentPreview";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
@@ -375,7 +374,7 @@ function ImageArtifactRow({
             title="Close preview"
             aria-label="Close preview"
           >
-            <CloseIcon />
+            <Icon name="close" size="20px" />
           </button>
           <img
             className="max-h-full max-w-full object-contain"
