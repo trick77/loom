@@ -877,6 +877,17 @@ func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
 		"explain how to draw a UML diagram",
 		"lifestyle changes",
 		"conversion tracking",
+		// Bare generic verbs and pronouns no longer route an unrelated turn to the
+		// image tool just because an image exists earlier in the thread.
+		"change the subject and tell me about Rome",
+		"make sure to cite that source",
+		"try again, explain it differently",
+		// Coding/CSS vocabulary overlaps image words but must not force the tool.
+		"what version of python should I use",
+		"set the background color of my css to blue",
+		"add a red border to the table",
+		"i prefer a minimal style for my code",
+		"make the font bigger",
 	} {
 		t.Run(content, func(t *testing.T) {
 			if srv.imageArtifactRequired(content, priorMessages) {
@@ -951,6 +962,13 @@ func TestIsImageEditFollowUpGating(t *testing.T) {
 		"turn it into a watercolor",
 		"ändere den Stil",
 		"give it a retro look",
+		// Edits without a style word: an edit-target (size, brightness, medium)
+		// near a back-reference pronoun, or a strong image-specific verb on its own.
+		"make it bigger",
+		"make it darker",
+		"make it a watercolor",
+		"turn it into a sketch",
+		"crop it",
 	} {
 		if !srv.isImageEditFollowUp(content, withImage) {
 			t.Fatalf("isImageEditFollowUp(%q) = false, want true", content)
@@ -971,6 +989,41 @@ func TestIsImageEditFollowUpGating(t *testing.T) {
 	} {
 		if srv.isImageEditFollowUp(content, withImage) {
 			t.Fatalf("isImageEditFollowUp(%q) = true, want false (fresh creation)", content)
+		}
+	}
+
+	// Ordinary chat that merely contains a back-reference pronoun or a generic
+	// verb — with no image-style descriptor nearby — must NOT silently re-feed the
+	// prior image as vision input.
+	for _, content := range []string{
+		"what does this mean",
+		"do you understand that",
+		"how do I render this template",
+		"change the subject and tell me about Rome",
+		"make sure to cite that source",
+		// Coding/chat vocabulary that overlaps image words must NOT misfire just
+		// because an image exists earlier in the thread.
+		"what version of python should I use",
+		"edit my config file",
+		"turn off dark mode",
+		"set the background color of my css to blue",
+		"add a red border to the table",
+		"change the oil and replace the brake pads",
+		"make the contrast clearer in your explanation",
+		"i prefer a minimal style for my code",
+		"make the font bigger",
+		"make sure the sky is blue",
+		// "minimal" is no longer a style descriptor, "upscale" needs an object
+		// pronoun, and demonstratives this/that do not corroborate size targets —
+		// so these code/devops/layout phrasings stay out.
+		"a minimal change to that function",
+		"try a minimal style for my code",
+		"upscale the kubernetes deployment",
+		"make this div bigger",
+		"can you make that smaller in the layout",
+	} {
+		if srv.isImageEditFollowUp(content, withImage) {
+			t.Fatalf("isImageEditFollowUp(%q) = true, want false (not an edit)", content)
 		}
 	}
 
