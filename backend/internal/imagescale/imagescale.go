@@ -26,6 +26,14 @@ const (
 	// still heavy on disk (e.g. a low-resolution but lossless PNG photo).
 	softByteCap = 1 << 20 // 1 MiB
 	jpegQuality = 85
+	// editMaxDimension bounds source images forwarded to the image model for
+	// direct editing/transformation. Unlike the vision-input path, detail is the
+	// whole point here, so the cap is generous — it only trims images that would
+	// breach BFL's ~20MP input envelope (a 4096-long side stays well under 20MP at
+	// common aspect ratios). Typical phone photos pass through untouched.
+	editMaxDimension = 4096
+	// editByteCap matches BFL's 20MB per-image input limit.
+	editByteCap = 20 << 20
 )
 
 // DownscaleForModel decodes an image and, when it exceeds the model-input budget,
@@ -35,6 +43,21 @@ const (
 // MIME unchanged, so a chat turn never fails because of resizing. The returned
 // MIME is what the data URL should advertise.
 func DownscaleForModel(data []byte, mimeType string) ([]byte, string) {
+	return fitWithin(data, mimeType, MaxDimension, softByteCap)
+}
+
+// DownscaleForEditInput bounds a source image forwarded to the image model for
+// direct editing to BFL's input envelope, preserving as much detail as possible.
+// Like DownscaleForModel it is best-effort and returns the input unchanged when it
+// already fits or when recompression cannot decode/shrink it.
+func DownscaleForEditInput(data []byte, mimeType string) ([]byte, string) {
+	return fitWithin(data, mimeType, editMaxDimension, editByteCap)
+}
+
+// fitWithin resizes (longest side <= maxDimension) and/or re-encodes as JPEG only
+// when the input exceeds maxDimension or byteCap; otherwise it returns the bytes
+// and MIME unchanged.
+func fitWithin(data []byte, mimeType string, maxDimension, byteCap int) ([]byte, string) {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return data, mimeType
@@ -48,13 +71,13 @@ func DownscaleForModel(data []byte, mimeType string) ([]byte, string) {
 	if h > longest {
 		longest = h
 	}
-	if longest <= MaxDimension && len(data) <= softByteCap {
+	if longest <= maxDimension && len(data) <= byteCap {
 		return data, mimeType
 	}
 
 	nw, nh := w, h
-	if longest > MaxDimension {
-		scale := float64(MaxDimension) / float64(longest)
+	if longest > maxDimension {
+		scale := float64(maxDimension) / float64(longest)
 		nw = max(1, int(float64(w)*scale))
 		nh = max(1, int(float64(h)*scale))
 	}

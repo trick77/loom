@@ -8,7 +8,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 )
 
-func (s *server) imageArtifactRequired(content string, priorMessages []chat.Message) bool {
+func (s *server) imageArtifactRequired(content string, hasAttachedImage bool, priorMessages []chat.Message) bool {
 	if len(s.imageTools) == 0 || s.artifacts == nil || strings.TrimSpace(s.usersDir) == "" {
 		return false
 	}
@@ -19,11 +19,44 @@ func (s *server) imageArtifactRequired(content string, priorMessages []chat.Mess
 	if isImageCreationRequest(tokens) {
 		return true
 	}
+	// A freshly uploaded photo plus a transform/edit instruction ("render a lego
+	// set from this photo") routes straight to the image tool. Without this the
+	// request carries no object noun ("image"/"bild"), so it would fall through to
+	// the normal tool loop where the classifier's writing/general block can steer
+	// the model away from generating. Requiring an edit verb (not a bare
+	// attachment) keeps "describe this image" / "what's wrong with this code?" out.
+	if hasAttachedImage && isAttachedImageEditRequest(tokens) {
+		return true
+	}
 	if !priorConversationHasImageArtifact(priorMessages) {
 		return false
 	}
 	return isImageFollowUpRequest(tokens)
 }
+
+// isAttachedImageEditRequest reports whether — given the user attached an image
+// this turn — the text reads as a request to edit/transform that image rather than
+// merely ask about it. It fires on an inherently image-producing verb on its own
+// ("RENDER a lego set", "DRAW this as a cartoon"), on the existing edit-intent
+// vocabulary ("make it cyberpunk", "UPSCALE it"), or on a generic transform verb
+// paired with a visual target/style noun ("TURN this into a LEGO set"). It does
+// NOT fire on a bare question or a text/data conversion ("convert this to CSV"),
+// so describe/extract turns stay on the normal chat path.
+func isAttachedImageEditRequest(tokens []string) bool {
+	if containsAnyToken(tokens, imageOutputVerbs) {
+		return true
+	}
+	if mentionsImageEditIntent(tokens) {
+		return true
+	}
+	return nearbyTokensEitherOrder(tokens, imageTransformVerbs, imageVisualTargets, imageAttachmentEditPairDistance)
+}
+
+// imageAttachmentEditPairDistance is the verb↔target window for an explicitly
+// attached image. It is wider than imageEditPairDistance because the attachment
+// already disambiguates intent (no code/CSS false-positive risk), so a natural
+// phrase like "transform this into a marble statue" still pairs.
+const imageAttachmentEditPairDistance = 6
 
 func priorConversationHasImageArtifact(messages []chat.Message) bool {
 	for _, message := range messages {
@@ -286,6 +319,42 @@ var imageBackrefObjectPronouns = map[string]bool{
 // imageStyleCorroborators = action verbs + back-reference pronouns: either is
 // enough to turn a distinctive style descriptor into an edit signal.
 var imageStyleCorroborators = mergeTokenSets(imageEditActions, imageBackrefPronouns)
+
+// imageOutputVerbs are unambiguously about producing/altering a picture, so when
+// the user has attached a source image they signal an edit on their own
+// ("ILLUSTRATE this", "REDRAW it", "ZEICHNE das neu"). Polysemous verbs whose
+// dominant sense is non-visual (render an engine, draw a conclusion, sketch a
+// plan, paint a picture of the situation) are intentionally NOT here — they live in
+// imageTransformVerbs and require a visual target so an attached chart/screenshot
+// question does not misfire.
+var imageOutputVerbs = map[string]bool{
+	"illustrate": true, "redraw": true, "restyle": true, "recolor": true,
+	"recolour": true, "repaint": true,
+	"rendere": true, "zeichne": true, "male": true, "illustriere": true, "skizziere": true,
+}
+
+// imageTransformVerbs reshape an existing thing into something else. They are
+// generic enough to also describe text/data conversions ("convert this to CSV") or
+// non-visual idioms ("draw a conclusion", "render the JSON"), so they only signal
+// an image edit when paired (within imageAttachmentEditPairDistance) with a visual
+// target/style noun.
+var imageTransformVerbs = map[string]bool{
+	"turn": true, "convert": true, "transform": true, "make": true, "change": true,
+	"render": true, "draw": true, "paint": true, "sketch": true,
+	"verwandle": true, "umwandle": true, "mache": true, "mach": true, "machen": true,
+	"aendere": true, "ändere": true,
+}
+
+// imageVisualTargets are nouns/styles whose output is inherently a picture, used to
+// disambiguate a transform verb as an image edit ("turn this into a LEGO set",
+// "make it a watercolor") from a text/data conversion. Superset of the style and
+// medium edit-target vocabulary plus common physical-build / art outputs.
+var imageVisualTargets = mergeTokenSets(imageStyleDescriptors, imageEditTargets, map[string]bool{
+	"lego": true, "painting": true, "drawing": true, "portrait": true, "statue": true,
+	"sculpture": true, "figurine": true, "poster": true, "mosaic": true, "mural": true,
+	"caricature": true, "comic": true, "origami": true, "gemälde": true, "gemaelde": true,
+	"zeichnung": true, "skulptur": true,
+})
 
 func mergeTokenSets(sets ...map[string]bool) map[string]bool {
 	merged := map[string]bool{}

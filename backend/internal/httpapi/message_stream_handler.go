@@ -20,6 +20,12 @@ const loomSystemPrompt = "Default to flowing prose — full sentences grouped in
 
 const imagePromptCompilerSystemPrompt = "The latest user request requires image generation or editing. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Transform the user's request into a concise, visually rich prompt that preserves subject, setting, style, composition, mood, medium, text requirements, and constraints. Add only helpful visual details consistent with the request. Always set `filename` to a short, descriptive name based on the image's main subject (2-4 words, lowercase, hyphen-separated, no path or extension), e.g. `red-fox-in-snow`. After the tool result, provide a brief final response that refers to the created artifact. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Never claim an image was created unless the tool result confirms an artifact."
 
+// imageEditPromptCompilerSystemPrompt is used when the user's source image is being
+// forwarded to the model directly (image-to-image). The model already sees the
+// pixels, so the prompt must describe only the transformation — re-describing the
+// scene would reintroduce the detail loss the direct-upload path exists to avoid.
+const imageEditPromptCompilerSystemPrompt = "The latest user request edits or transforms an image the user provided, and that source image is supplied to the image model directly. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Write the `prompt` as a concise editing instruction describing ONLY the desired transformation, style, or change to apply to the provided image (e.g. \"Rebuild the provided photo as a detailed LEGO brick set, faithful to its composition and colors\"). Do NOT re-describe the original scene in detail — the model already sees it; restating it discards detail. Always set `filename` to a short, descriptive name based on the result's main subject (2-4 words, lowercase, hyphen-separated, no path or extension), e.g. `lego-city-skyline`. After the tool result, provide a brief final response that refers to the created artifact. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Never claim an image was created unless the tool result confirms an artifact."
+
 var (
 	errStreamStopRequested = errors.New("stream stop requested")
 	errStreamSuperseded    = errors.New("stream superseded by newer request")
@@ -138,6 +144,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// editSourceID is the image whose original pixels are forwarded to the image
+	// model for direct editing (image-to-image). Defaults to the photo the user
+	// attached this turn; the follow-up branch below sets it to a reused prior image.
+	editSourceID := ""
+	if len(body.ImageAttachmentIDs) > 0 {
+		editSourceID = body.ImageAttachmentIDs[0]
+	}
 	// Silently reuse the conversation's most recent image as the model's vision
 	// input when this turn is a follow-up edit/restyle ("make it cyberpunk",
 	// "create a variation") and the user attached nothing explicitly — so editing
@@ -152,6 +165,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 					"thread_id", threadID, "artifact_id", sourceID, "error", partsErr)
 			} else {
 				imageParts = parts
+				editSourceID = sourceID
 			}
 		}
 	}
@@ -159,14 +173,27 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		history[len(history)-1].Content = ""
 		history[len(history)-1].ContentParts = imageParts
 	}
-	imageArtifactRequired := s.imageArtifactRequired(body.Content, priorMessages)
+	imageArtifactRequired := s.imageArtifactRequired(body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
+	// When the image path will run, forward the source image's original full-res
+	// bytes so the model edits the actual pixels instead of a lossy text
+	// re-description. Best-effort: on failure the turn still generates, just without
+	// the source image.
+	var editSource *editImageSource
+	if imageArtifactRequired && editSourceID != "" {
+		if src, ok, srcErr := s.loadEditSourceImage(r.Context(), user.ID, threadID, editSourceID); srcErr != nil {
+			slog.Warn("load edit source image failed; generating without source image",
+				"thread_id", threadID, "artifact_id", editSourceID, "error", srcErr)
+		} else if ok {
+			editSource = &src
+		}
+	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	// Background reasoning-title generation. The deferred wait is a safety net so
 	// no title goroutine writes to the SSE stream after the handler returns on an
 	// early error path.
 	titles := newReasoningTitleTracker(s, stream, streamCtx, inference)
 	defer titles.wait()
-	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, imageArtifactRequired)
+	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, imageArtifactRequired, editSource)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)

@@ -14,6 +14,14 @@ const (
 	DefaultOutputFormat = "png"
 	MaxPromptRunes      = 4000
 	MaxOutputPixels     = 4_000_000
+	// MaxInputImages caps how many source images may be forwarded for editing.
+	// FLUX.2 [klein] (the default model) accepts up to 4 reference images
+	// (input_image..input_image_4); the larger [pro]/[max] tiers allow 8. The
+	// dispatcher currently sends one, so this is a guard, not a live limit — kept at
+	// the klein ceiling to match the configured model.
+	MaxInputImages = 4
+	// MaxInputImageBytes guards each source image against BFL's 20MB input limit.
+	MaxInputImageBytes = 20 << 20
 )
 
 type GenerateRequest struct {
@@ -24,6 +32,12 @@ type GenerateRequest struct {
 	Seed            *int64
 	OutputFormat    string
 	SafetyTolerance *int
+	// InputImages carries raw source-image bytes to edit/transform directly
+	// (e.g. "render a LEGO set from this photo"). When present, the provider
+	// sends the pixels to the model alongside the prompt instead of relying on a
+	// lossy text re-description. Index 0 is the primary image. Never populated
+	// from LLM tool arguments — the dispatcher injects it from the user's upload.
+	InputImages [][]byte
 }
 
 type GenerateResult struct {
@@ -83,6 +97,17 @@ func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 	}
 	if *out.SafetyTolerance < 0 || *out.SafetyTolerance > 5 {
 		return GenerateRequest{}, errors.New("safety_tolerance must be between 0 and 5")
+	}
+	if len(out.InputImages) > MaxInputImages {
+		return GenerateRequest{}, fmt.Errorf("at most %d input images are supported", MaxInputImages)
+	}
+	for _, img := range out.InputImages {
+		if len(img) == 0 {
+			return GenerateRequest{}, errors.New("input image is empty")
+		}
+		if len(img) > MaxInputImageBytes {
+			return GenerateRequest{}, errors.New("input image exceeds the 20MB limit")
+		}
 	}
 	out.Filename = normalizeFilename(out.Filename, out.Prompt, out.OutputFormat)
 	return out, nil

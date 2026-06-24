@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/imagescale"
 	"github.com/trick77/loom/internal/llm"
 )
@@ -66,4 +68,52 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 	}
 	parts = append(parts, llm.MessageContentPart{Type: "text", Text: text})
 	return parts, nil
+}
+
+// editImageSource carries the original bytes of an uploaded/prior image that is
+// forwarded to the image model for direct editing or transformation. BFL encodes
+// the raw bytes as base64 with no MIME prefix, so only the bytes are needed.
+type editImageSource struct {
+	Data []byte
+}
+
+// loadEditSourceImage reads the original full-resolution bytes of an image
+// artifact for direct editing. Unlike imageContentParts (which downscales hard to
+// the vision-input budget and so would reintroduce detail loss), this keeps the
+// original and only trims to BFL's input envelope. Returns ok=false when the
+// artifact is missing, out of scope, or not a supported image type.
+func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, artifactID string) (editImageSource, bool, error) {
+	if s.artifacts == nil || strings.TrimSpace(artifactID) == "" {
+		return editImageSource{}, false, nil
+	}
+	item, ok, err := s.artifacts.Get(ctx, userID, artifactID)
+	if err != nil {
+		return editImageSource{}, false, fmt.Errorf("load edit source image: %w", err)
+	}
+	if !ok {
+		return editImageSource{}, false, nil
+	}
+	if item.ThreadID != "" && item.ThreadID != threadID {
+		return editImageSource{}, false, nil
+	}
+	if !allowedImageMIME(item.MIMEType) {
+		return editImageSource{}, false, nil
+	}
+	abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)
+	if err != nil {
+		return editImageSource{}, false, fmt.Errorf("edit source image path rejected: %w", err)
+	}
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		return editImageSource{}, false, fmt.Errorf("read edit source image: %w", err)
+	}
+	data, _ := imagescale.DownscaleForEditInput(raw, item.MIMEType)
+	// DownscaleForEditInput is best-effort: an undecodable (e.g. corrupt) image is
+	// returned unshrunk and could still exceed BFL's input cap, which Normalized()
+	// would later reject as a hard tool error. Skip it here so the turn degrades to
+	// prompt-only generation instead of failing outright.
+	if len(data) > imagegen.MaxInputImageBytes {
+		return editImageSource{}, false, nil
+	}
+	return editImageSource{Data: data}, true, nil
 }

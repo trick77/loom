@@ -3,6 +3,7 @@ package imagegen
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -68,6 +69,35 @@ func TestToolGenerateWritesImage(t *testing.T) {
 	}
 	if provider.req.Prompt != "a robot" || provider.req.Width != 512 {
 		t.Fatalf("provider request = %#v", provider.req)
+	}
+}
+
+func TestToolGenerateForwardsInputImages(t *testing.T) {
+	provider := &fakeProvider{}
+	tool := NewTool(provider)
+	var out bytes.Buffer
+	src := []byte("source-photo-bytes")
+	_, err := tool.Generate(context.Background(), ToolRequest{
+		Prompt:      "render this as a lego set",
+		InputImages: [][]byte{src},
+	}, &out)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(provider.req.InputImages) != 1 || !bytes.Equal(provider.req.InputImages[0], src) {
+		t.Fatalf("InputImages = %#v, want the source bytes forwarded", provider.req.InputImages)
+	}
+}
+
+// TestToolRequestInputImagesNotJSONSettable guards that the model cannot inject
+// raw image bytes through the tool-call arguments: InputImages is dispatcher-only.
+func TestToolRequestInputImagesNotJSONSettable(t *testing.T) {
+	var req ToolRequest
+	if err := json.Unmarshal([]byte(`{"prompt":"x","InputImages":["aGVsbG8="],"input_images":["aGVsbG8="]}`), &req); err != nil {
+		t.Fatalf("Unmarshal error = %v", err)
+	}
+	if req.InputImages != nil {
+		t.Fatalf("InputImages = %#v, want nil (must not be settable from JSON)", req.InputImages)
 	}
 }
 

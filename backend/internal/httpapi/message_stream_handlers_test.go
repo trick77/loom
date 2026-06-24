@@ -890,7 +890,7 @@ func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
 		"make the font bigger",
 	} {
 		t.Run(content, func(t *testing.T) {
-			if srv.imageArtifactRequired(content, priorMessages) {
+			if srv.imageArtifactRequired(content, false, priorMessages) {
 				t.Fatalf("imageArtifactRequired(%q) = true, want false", content)
 			}
 		})
@@ -917,10 +917,102 @@ func TestImageArtifactRequiredDetectsCreationAndGermanFollowUps(t *testing.T) {
 		"ändere den Stil",
 	} {
 		t.Run(content, func(t *testing.T) {
-			if !srv.imageArtifactRequired(content, priorMessages) {
+			if !srv.imageArtifactRequired(content, false, priorMessages) {
 				t.Fatalf("imageArtifactRequired(%q) = false, want true", content)
 			}
 		})
+	}
+}
+
+func TestImageArtifactRequiredRoutesAttachedImageEdits(t *testing.T) {
+	srv := &server{
+		artifacts:  fakeArtifactStore{},
+		usersDir:   t.TempDir(),
+		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+	}
+
+	// With a freshly attached photo, a transform/edit instruction routes to the
+	// image tool even though it carries no "image"/"bild" object noun (which is why
+	// the text-only heuristic alone would miss it and let the classifier suppress it).
+	for _, content := range []string{
+		"render a lego set from this photo",
+		"turn this into a lego set",
+		"make it a watercolor",
+		"draw this as a cartoon",
+		"transform this into a marble statue",
+		"verwandle das in ein Gemälde",
+	} {
+		t.Run("edit/"+content, func(t *testing.T) {
+			if !srv.imageArtifactRequired(content, true, nil) {
+				t.Fatalf("imageArtifactRequired(%q, attached) = false, want true", content)
+			}
+			// Without the attachment (and no prior image), the same text must not route.
+			if srv.imageArtifactRequired(content, false, nil) {
+				t.Fatalf("imageArtifactRequired(%q, no attachment) = true, want false", content)
+			}
+		})
+	}
+
+	// A bare attachment with a question or a text/data conversion must NOT route to
+	// image generation — those are the "describe this image" use case, not editing.
+	for _, content := range []string{
+		"describe this image",
+		"what's wrong with this code",
+		"convert this to csv",
+		"summarize this",
+		"what is this",
+		"extract the text from this",
+		// Polysemous verbs whose dominant sense is non-visual must not route just
+		// because an image is attached and they need no visual target.
+		"draw a conclusion from this chart",
+		"what render engine produced this",
+		"give me a rough sketch of the plan",
+		"render the json in this screenshot as text",
+	} {
+		t.Run("describe/"+content, func(t *testing.T) {
+			if srv.imageArtifactRequired(content, true, nil) {
+				t.Fatalf("imageArtifactRequired(%q, attached) = true, want false", content)
+			}
+		})
+	}
+}
+
+func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
+	usersDir := t.TempDir()
+	userID := "user-1"
+	// Write a real PNG for the in-scope artifact so ResolveExisting + ReadFile succeed.
+	rel := "files/photo.png"
+	abs := filepath.Join(usersDir, userID, rel)
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	png := []byte("\x89PNG\r\n\x1a\nthe-original-bytes")
+	if err := os.WriteFile(abs, png, 0o644); err != nil {
+		t.Fatalf("write png: %v", err)
+	}
+	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+		{ID: "img_ok", UserID: userID, ThreadID: "thr_1", VolumeRelPath: rel, MIMEType: "image/png"},
+		{ID: "img_other_thread", UserID: userID, ThreadID: "thr_2", VolumeRelPath: rel, MIMEType: "image/png"},
+		{ID: "img_bad_mime", UserID: userID, ThreadID: "thr_1", VolumeRelPath: rel, MIMEType: "image/bmp"},
+	}}
+	srv := &server{artifacts: store, usersDir: usersDir}
+
+	// Happy path: original bytes are returned for an in-scope, allowed image.
+	src, ok, err := srv.loadEditSourceImage(context.Background(), userID, "thr_1", "img_ok")
+	if err != nil || !ok {
+		t.Fatalf("loadEditSourceImage(img_ok) = ok %v, err %v", ok, err)
+	}
+	if !bytes.Equal(src.Data, png) {
+		t.Fatalf("Data = %q, want original bytes", src.Data)
+	}
+
+	// Out-of-scope (different thread), unsupported MIME, missing, and empty id all
+	// degrade to ok=false without an error so the turn proceeds prompt-only.
+	for _, id := range []string{"img_other_thread", "img_bad_mime", "img_missing", ""} {
+		_, ok, err := srv.loadEditSourceImage(context.Background(), userID, "thr_1", id)
+		if err != nil || ok {
+			t.Fatalf("loadEditSourceImage(%q) = ok %v, err %v, want ok=false, err=nil", id, ok, err)
+		}
 	}
 }
 

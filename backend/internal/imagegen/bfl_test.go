@@ -2,6 +2,7 @@ package imagegen
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -67,6 +68,100 @@ func TestBFLClientGenerateSubmitsPollsAndDownloadsImage(t *testing.T) {
 	}
 	if result.CostCredits == nil || *result.CostCredits != 1.4 {
 		t.Fatalf("CostCredits = %#v", result.CostCredits)
+	}
+}
+
+func TestBFLClientGenerateForwardsInputImagesAsBase64(t *testing.T) {
+	var submitted map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/flux-2-klein-4b":
+			if err := json.NewDecoder(r.Body).Decode(&submitted); err != nil {
+				t.Fatalf("decode submit body: %v", err)
+			}
+			writeJSON(t, w, map[string]any{
+				"id":          "task-1",
+				"polling_url": serverURL(r) + "/v1/get_result?id=task-1",
+			})
+		case "/v1/get_result":
+			writeJSON(t, w, map[string]any{
+				"id":     "task-1",
+				"status": "Ready",
+				"result": map[string]any{"sample": serverURL(r) + "/delivery/image.png"},
+			})
+		case "/delivery/image.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("\x89PNG\r\n\x1a\nimage"))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewBFLClient(BFLConfig{
+		BaseURL:      server.URL + "/v1",
+		APIKey:       "test-key",
+		Model:        "flux-2-klein-4b",
+		PollInterval: time.Millisecond,
+		HTTPClient:   server.Client(),
+	})
+	primary := []byte("primary-photo-bytes")
+	secondary := []byte("second-reference-bytes")
+	_, err := client.Generate(context.Background(), GenerateRequest{
+		Prompt:       "render this as a lego set",
+		OutputFormat: "png",
+		InputImages:  [][]byte{primary, secondary},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if got := submitted["input_image"]; got != base64.StdEncoding.EncodeToString(primary) {
+		t.Fatalf("input_image = %#v, want base64 of primary", got)
+	}
+	if got := submitted["input_image_2"]; got != base64.StdEncoding.EncodeToString(secondary) {
+		t.Fatalf("input_image_2 = %#v, want base64 of secondary", got)
+	}
+}
+
+func TestBFLClientGenerateOmitsInputImageWhenNone(t *testing.T) {
+	var submitted map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/flux-2-klein-4b":
+			if err := json.NewDecoder(r.Body).Decode(&submitted); err != nil {
+				t.Fatalf("decode submit body: %v", err)
+			}
+			writeJSON(t, w, map[string]any{
+				"id":          "task-1",
+				"polling_url": serverURL(r) + "/v1/get_result?id=task-1",
+			})
+		case "/v1/get_result":
+			writeJSON(t, w, map[string]any{
+				"id":     "task-1",
+				"status": "Ready",
+				"result": map[string]any{"sample": serverURL(r) + "/delivery/image.png"},
+			})
+		case "/delivery/image.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("\x89PNG\r\n\x1a\nimage"))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewBFLClient(BFLConfig{
+		BaseURL:      server.URL + "/v1",
+		APIKey:       "test-key",
+		Model:        "flux-2-klein-4b",
+		PollInterval: time.Millisecond,
+		HTTPClient:   server.Client(),
+	})
+	if _, err := client.Generate(context.Background(), GenerateRequest{Prompt: "a small robot", OutputFormat: "png"}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if _, ok := submitted["input_image"]; ok {
+		t.Fatalf("input_image present without source images: %#v", submitted["input_image"])
 	}
 }
 

@@ -19,6 +19,10 @@ type ToolRequest struct {
 	Seed            *int64 `json:"seed,omitempty"`
 	OutputFormat    string `json:"output_format,omitempty"`
 	SafetyTolerance *int   `json:"safety_tolerance,omitempty"`
+	// InputImages is injected by the dispatcher (never parsed from LLM tool
+	// arguments — note the json:"-") to forward the user's uploaded photo for
+	// direct editing/transformation.
+	InputImages [][]byte `json:"-"`
 }
 
 type ToolMeta struct {
@@ -102,6 +106,7 @@ func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolM
 		Seed:            req.Seed,
 		OutputFormat:    req.OutputFormat,
 		SafetyTolerance: req.SafetyTolerance,
+		InputImages:     req.InputImages,
 	})
 	if err != nil {
 		return ToolMeta{}, err
