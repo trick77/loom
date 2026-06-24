@@ -162,8 +162,8 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 	return nil
 }
 
-func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall) (string, *artifactResponse, bool) {
-	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call); handled {
+func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource) (string, *artifactResponse, bool) {
+	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call, editSource); handled {
 		return output, response, true
 	}
 	generator := s.docGenerator(call.Function.Name)
@@ -232,7 +232,7 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response, true
 }
 
-func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall) (*artifactResponse, string, bool) {
+func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource) (*artifactResponse, string, bool) {
 	generator := s.imageTool(call.Function.Name)
 	if generator == nil {
 		return nil, "", false
@@ -262,6 +262,11 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	}
 	if seed, ok := int64Arg(args["seed"]); ok {
 		req.Seed = &seed
+	}
+	// Forward the user's uploaded/prior image so the model edits the actual pixels
+	// instead of a lossy text re-description. Injected here (never from LLM args).
+	if editSource != nil && len(editSource.Data) > 0 {
+		req.InputImages = [][]byte{editSource.Data}
 	}
 	var buffer bytes.Buffer
 	meta, err := generator.Generate(ctx, req, &buffer)

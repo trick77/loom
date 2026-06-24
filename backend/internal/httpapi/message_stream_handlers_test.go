@@ -890,7 +890,7 @@ func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
 		"make the font bigger",
 	} {
 		t.Run(content, func(t *testing.T) {
-			if srv.imageArtifactRequired(content, priorMessages) {
+			if srv.imageArtifactRequired(content, false, priorMessages) {
 				t.Fatalf("imageArtifactRequired(%q) = true, want false", content)
 			}
 		})
@@ -917,8 +917,55 @@ func TestImageArtifactRequiredDetectsCreationAndGermanFollowUps(t *testing.T) {
 		"ändere den Stil",
 	} {
 		t.Run(content, func(t *testing.T) {
-			if !srv.imageArtifactRequired(content, priorMessages) {
+			if !srv.imageArtifactRequired(content, false, priorMessages) {
 				t.Fatalf("imageArtifactRequired(%q) = false, want true", content)
+			}
+		})
+	}
+}
+
+func TestImageArtifactRequiredRoutesAttachedImageEdits(t *testing.T) {
+	srv := &server{
+		artifacts:  fakeArtifactStore{},
+		usersDir:   t.TempDir(),
+		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+	}
+
+	// With a freshly attached photo, a transform/edit instruction routes to the
+	// image tool even though it carries no "image"/"bild" object noun (which is why
+	// the text-only heuristic alone would miss it and let the classifier suppress it).
+	for _, content := range []string{
+		"render a lego set from this photo",
+		"turn this into a lego set",
+		"make it a watercolor",
+		"draw this as a cartoon",
+		"transform this into a marble statue",
+		"verwandle das in ein Gemälde",
+	} {
+		t.Run("edit/"+content, func(t *testing.T) {
+			if !srv.imageArtifactRequired(content, true, nil) {
+				t.Fatalf("imageArtifactRequired(%q, attached) = false, want true", content)
+			}
+			// Without the attachment (and no prior image), the same text must not route.
+			if srv.imageArtifactRequired(content, false, nil) {
+				t.Fatalf("imageArtifactRequired(%q, no attachment) = true, want false", content)
+			}
+		})
+	}
+
+	// A bare attachment with a question or a text/data conversion must NOT route to
+	// image generation — those are the "describe this image" use case, not editing.
+	for _, content := range []string{
+		"describe this image",
+		"what's wrong with this code",
+		"convert this to csv",
+		"summarize this",
+		"what is this",
+		"extract the text from this",
+	} {
+		t.Run("describe/"+content, func(t *testing.T) {
+			if srv.imageArtifactRequired(content, true, nil) {
+				t.Fatalf("imageArtifactRequired(%q, attached) = true, want false", content)
 			}
 		})
 	}

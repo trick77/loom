@@ -3,6 +3,7 @@ package imagegen
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -112,6 +113,17 @@ func (c *BFLClient) submit(ctx context.Context, req GenerateRequest) (bflSubmitR
 	}
 	if req.Seed != nil {
 		payload["seed"] = *req.Seed
+	}
+	// Forward source images for direct editing/transformation. BFL accepts a
+	// raw base64-encoded image (no data: prefix) in input_image, with extra
+	// references as input_image_2, input_image_3, … — so the model edits the
+	// actual pixels instead of a lossy text re-description.
+	for i, img := range req.InputImages {
+		field := "input_image"
+		if i > 0 {
+			field = fmt.Sprintf("input_image_%d", i+1)
+		}
+		payload[field] = base64.StdEncoding.EncodeToString(img)
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

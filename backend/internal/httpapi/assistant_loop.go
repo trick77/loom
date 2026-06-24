@@ -35,7 +35,7 @@ type assistantLoopResult struct {
 	Blocks        []contentBlock
 }
 
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool) (assistantLoopResult, error) {
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool, editSource *editImageSource) (assistantLoopResult, error) {
 	tools := s.availableTools()
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -48,7 +48,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	}
 	if imageArtifactRequired {
 		if imageTool := findGenerateImageTool(tools); imageTool != nil {
-			return s.runRequiredImageAssistantLoop(ctx, stream, titles, history, inference, user, thread, *imageTool)
+			return s.runRequiredImageAssistantLoop(ctx, stream, titles, history, inference, user, thread, *imageTool, editSource)
 		}
 		slog.Warn("image artifact required but generate_image tool is unavailable", "thread_id", thread.ID, "tools", len(tools))
 	}
@@ -125,7 +125,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			} else {
 				var response *artifactResponse
 				var handled bool
-				output, response, handled = s.executeBuiltInTool(ctx, stream, user, thread, call)
+				output, response, handled = s.executeBuiltInTool(ctx, stream, user, thread, call, editSource)
 				if handled {
 					if response != nil {
 						artifacts = append(artifacts, *response)
@@ -198,10 +198,18 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 // clear message rather than an empty bubble.
 const finalAnswerFallback = "I couldn't put together a final answer from the information gathered. Please try rephrasing or narrowing your question."
 
-func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool) (assistantLoopResult, error) {
+func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool, editSource *editImageSource) (assistantLoopResult, error) {
+	compilerPrompt := imagePromptCompilerSystemPrompt
+	if editSource != nil && len(editSource.Data) > 0 {
+		// The source image is forwarded to the model directly, so the compiler must
+		// write a concise editing instruction describing only the desired
+		// transformation — re-describing the scene would reintroduce the detail loss
+		// this path exists to avoid.
+		compilerPrompt = imageEditPromptCompilerSystemPrompt
+	}
 	compilerHistory := append(history[:len(history):len(history)], llm.Message{
 		Role:    "system",
-		Content: imagePromptCompilerSystemPrompt,
+		Content: compilerPrompt,
 	})
 	b := &blockBuilder{}
 	result, err := s.streamAssistantTurnSuppressingContent(ctx, stream, titles, b.nextReasoningID(), compilerHistory, inferenceWithPurpose(inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
@@ -221,7 +229,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		Role:      "assistant",
 		ToolCalls: result.ToolCalls,
 	})
-	output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call)
+	output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call, editSource)
 	if !handled {
 		output = capToolOutput("tool failed: generate_image is not available")
 	}
