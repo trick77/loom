@@ -44,6 +44,11 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
         <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
         <span>Memories</span>
       </h2>
+
+      <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
+        Notes Loom writes itself as threads progress, so every thread shares what the others have learned.
+      </p>
+
       {loading ? (
         <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">Loading…</p>
       ) : hasContent ? (

@@ -12,6 +12,7 @@ import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
 import type { IconName } from "../chat/Icon";
 import { AttachmentPreview } from "../components/AttachmentPreview";
+import { DeleteDocumentModal } from "./DeleteDocumentModal";
 
 // A document is still settling (badge should show "Indexing…" and the panel keeps
 // polling) while it is anything other than a terminal state.
@@ -50,6 +51,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
   const [error, setError] = useState("");
   const [hoveredID, setHoveredID] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Document | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -95,13 +99,24 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
     }
   };
 
-  const handleDelete = async (doc: Document) => {
-    setError("");
+  const handleDeleteRequest = (doc: Document) => {
+    setDeleteError("");
+    setPendingDelete(doc);
+  };
+
+  const confirmDelete = async () => {
+    if (pendingDelete === null) return;
+    const doc = pendingDelete;
+    setDeleting(true);
+    setDeleteError("");
     try {
       await deleteDocument(doc.id);
       setDocs((current) => current.filter((d) => d.id !== doc.id));
+      setPendingDelete(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Could not remove ${doc.filename}.`);
+      setDeleteError(err instanceof Error ? err.message : `Could not remove ${doc.filename}.`);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -249,9 +264,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                     type="button"
                     aria-label={`Remove ${doc.filename}`}
                     className="grid h-7 w-7 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#343432]"
-                    onClick={() => void handleDelete(doc)}
+                    onClick={() => handleDeleteRequest(doc)}
                   >
-                    <Icon name="trash" size="14px" />
+                    <Icon name="trash" size="19px" />
                   </button>
                 </div>
               </li>
@@ -276,6 +291,18 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
             <span>Drag here or tap to add</span>
           </button>
         </div>
+      )}
+
+      {pendingDelete !== null && (
+        <DeleteDocumentModal
+          doc={pendingDelete}
+          error={deleteError}
+          disabled={deleting}
+          onCancel={() => {
+            if (!deleting) setPendingDelete(null);
+          }}
+          onDelete={() => void confirmDelete()}
+        />
       )}
     </section>
   );
