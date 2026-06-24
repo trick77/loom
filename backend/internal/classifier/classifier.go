@@ -59,7 +59,7 @@ var catalog = []struct {
 }{
 	{KnowledgeDiscovery, entry{
 		gloss: "explaining or learning about a topic, concept, or person",
-		block: "Answer in flowing prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. After answering, include a 'Further exploration' section with 2–3 adjacent or deeper topics the user might not know to ask about. Tailor suggestions to the angle revealed by the query — historical, practical, or theoretical.",
+		block: "Answer in flowing prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. After answering, include a section with 1-3 recent developments. Tailor suggestions to the angle revealed by the query — historical, practical, or theoretical.",
 	}},
 	{AcademicResearch, entry{
 		gloss: "scholarly, paper-oriented, rigorous research questions",
