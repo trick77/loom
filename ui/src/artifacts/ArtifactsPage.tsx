@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   AuthExpiredError,
+  deleteArtifact,
   downloadArtifact,
   listArtifacts,
+  renameArtifact,
   type Artifact,
   type ArtifactListType,
   type ArtifactSort,
@@ -16,6 +18,8 @@ import { AttachmentPreview } from "../components/AttachmentPreview";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
 import { useInfiniteList } from "../useInfiniteList";
+import { ArtifactActionsMenu } from "./ArtifactActionsMenu";
+import { DeleteArtifactModal, RenameArtifactModal } from "./ArtifactActionModals";
 
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -33,6 +37,11 @@ export function ArtifactsPage({
   const [sort, setSort] = useState<ArtifactSort>("modified");
   const [order, setOrder] = useState<SortOrder>("desc");
   const [hoveredArtifactID, setHoveredArtifactID] = useState<string | null>(null);
+  const [openMenuID, setOpenMenuID] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Artifact | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Artifact | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [actionPending, setActionPending] = useState(false);
 
   useEffect(() => {
     const handle = window.setTimeout(() => setSearchTerm(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -46,7 +55,7 @@ export function ArtifactsPage({
       listArtifacts({ type, sort, order, search: searchTerm, limit: PAGE_SIZE, cursor }),
     [type, sort, order, searchTerm],
   );
-  const { items: artifacts, loaded, loadingMore, hasMore, error, sentinelRef } = useInfiniteList(
+  const { items: artifacts, setItems, loaded, loadingMore, hasMore, error, sentinelRef } = useInfiniteList(
     fetchPage,
     [type, sort, order, searchTerm],
   );
@@ -63,6 +72,51 @@ export function ArtifactsPage({
     }
     setSort(nextSort);
     setOrder(nextSort === "modified" ? "desc" : "asc");
+  }
+
+  // Translate a failed artifact action into either a session expiry (bubbled up)
+  // or an inline modal error; returns true when the error was a session expiry.
+  function reportActionError(err: unknown, fallback: string): boolean {
+    if (err instanceof AuthExpiredError) {
+      onSessionExpired();
+      return true;
+    }
+    setActionError(fallback);
+    return false;
+  }
+
+  async function handleRename(displayFilename: string) {
+    if (renameTarget === null) return;
+    setActionPending(true);
+    setActionError("");
+    try {
+      await renameArtifact(renameTarget.id, displayFilename);
+      // Reflect the new name in place; the chat transcript updates server-side
+      // via the read-time overlay, so no refetch is needed here.
+      setItems((prev) =>
+        prev.map((item) => (item.id === renameTarget.id ? { ...item, displayFilename } : item)),
+      );
+      setRenameTarget(null);
+    } catch (err) {
+      reportActionError(err, "Rename failed.");
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (deleteTarget === null) return;
+    setActionPending(true);
+    setActionError("");
+    try {
+      await deleteArtifact(deleteTarget.id);
+      setItems((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      reportActionError(err, "Delete failed.");
+    } finally {
+      setActionPending(false);
+    }
   }
 
   return (
@@ -127,13 +181,25 @@ export function ArtifactsPage({
                 const nextArtifact = artifacts[index + 1];
                 const hovered = hoveredArtifactID === artifact.id;
                 const nextHovered = nextArtifact !== undefined && hoveredArtifactID === nextArtifact.id;
+                const menuOpen = openMenuID === artifact.id;
                 return (
                   <ArtifactRow
                     key={artifact.id}
                     artifact={artifact}
                     hovered={hovered}
-                    hideDivider={hovered || nextHovered}
+                    hideDivider={hovered || nextHovered || menuOpen}
                     onHoverChange={(hovered) => setHoveredArtifactID(hovered ? artifact.id : null)}
+                    menuOpen={menuOpen}
+                    onToggleMenu={() => setOpenMenuID((prev) => (prev === artifact.id ? null : artifact.id))}
+                    onCloseMenu={() => setOpenMenuID((prev) => (prev === artifact.id ? null : prev))}
+                    onRequestRename={() => {
+                      setActionError("");
+                      setRenameTarget(artifact);
+                    }}
+                    onRequestDelete={() => {
+                      setActionError("");
+                      setDeleteTarget(artifact);
+                    }}
                   />
                 );
               })}
@@ -146,6 +212,25 @@ export function ArtifactsPage({
           )}
         </div>
       </div>
+
+      {renameTarget !== null && (
+        <RenameArtifactModal
+          filename={renameTarget.displayFilename}
+          error={actionError}
+          disabled={actionPending}
+          onCancel={() => setRenameTarget(null)}
+          onSubmit={(displayFilename) => void handleRename(displayFilename)}
+        />
+      )}
+      {deleteTarget !== null && (
+        <DeleteArtifactModal
+          filename={deleteTarget.displayFilename}
+          error={actionError}
+          disabled={actionPending}
+          onCancel={() => setDeleteTarget(null)}
+          onDelete={() => void handleDelete()}
+        />
+      )}
     </div>
   );
 }
@@ -198,17 +283,26 @@ function SortButton({
   );
 }
 
+type ArtifactRowMenuProps = {
+  menuOpen: boolean;
+  onToggleMenu(): void;
+  onCloseMenu(): void;
+  onRequestRename(): void;
+  onRequestDelete(): void;
+};
+
 function ArtifactRow({
   artifact,
   hideDivider,
   hovered,
   onHoverChange,
+  ...menu
 }: {
   artifact: Artifact;
   hideDivider: boolean;
   hovered: boolean;
   onHoverChange(hovered: boolean): void;
-}) {
+} & ArtifactRowMenuProps) {
   const isImage = artifact.mimeType.startsWith("image/");
   if (isImage) {
     return (
@@ -217,6 +311,7 @@ function ArtifactRow({
         hideDivider={hideDivider}
         hovered={hovered}
         onHoverChange={onHoverChange}
+        {...menu}
       />
     );
   }
@@ -227,6 +322,7 @@ function ArtifactRow({
       hideDivider={hideDivider}
       hovered={hovered}
       onHoverChange={onHoverChange}
+      {...menu}
     />
   );
 }
@@ -239,6 +335,11 @@ function ArtifactRowFrame({
   hovered,
   onClick,
   onHoverChange,
+  menuOpen,
+  onToggleMenu,
+  onCloseMenu,
+  onRequestRename,
+  onRequestDelete,
 }: {
   action: ReactNode;
   artifact: Artifact;
@@ -247,15 +348,52 @@ function ArtifactRowFrame({
   hovered: boolean;
   onClick?: () => void;
   onHoverChange(hovered: boolean): void;
-}) {
+} & ArtifactRowMenuProps) {
   const modifiedAt = artifact.modifiedAt ?? "";
   const interactive = onClick !== undefined;
+  const rowRef = useRef<HTMLLIElement | null>(null);
+  const showMenuButton = hovered || menuOpen;
+
+  // Close the menu on an outside click or Escape, mirroring the thread row menu.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node) || rowRef.current?.contains(target)) return;
+      onCloseMenu();
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onCloseMenu();
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen, onCloseMenu]);
+
   return (
     <BrowsingListRowFrame
-      active={hovered}
+      ref={rowRef}
+      active={hovered || menuOpen}
+      after={
+        menuOpen ? (
+          <ArtifactActionsMenu
+            onRename={() => {
+              onCloseMenu();
+              onRequestRename();
+            }}
+            onDelete={() => {
+              onCloseMenu();
+              onRequestDelete();
+            }}
+          />
+        ) : null
+      }
       hideDivider={hideDivider}
       surfaceAriaLabel={ariaLabel}
-      surfaceClassName={`ui-artifacts-row-surface min-h-[56px] rounded-xl px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
+      surfaceClassName={`ui-artifacts-row-surface relative min-h-[56px] rounded-xl px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
         interactive ? "cursor-pointer" : ""
       }`}
       surfaceRole={interactive ? "button" : undefined}
@@ -274,8 +412,31 @@ function ArtifactRowFrame({
       <div className="ui-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem]">
         <div className="min-w-0 pr-3">{action}</div>
         <div className="shrink-0 text-[13px] text-[#8a887f]">{formatTimeAgo(modifiedAt)}</div>
-        <div className="shrink-0 text-[13px] text-[#c7c5bd]">{formatFileSize(artifact.sizeBytes)}</div>
+        {/* The size yields its space to the actions button while the row is
+            hovered or its menu is open (and always on touch, where the button is
+            permanently shown), matching the thread row's time-label behaviour. */}
+        <div
+          className={`shrink-0 text-[13px] text-[#c7c5bd] [@media(hover:none)]:invisible ${
+            showMenuButton ? "invisible" : ""
+          }`}
+        >
+          {formatFileSize(artifact.sizeBytes)}
+        </div>
       </div>
+      <button
+        aria-expanded={menuOpen}
+        aria-label={`Actions for ${artifact.displayFilename}`}
+        className={`absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#363632] hover:text-white ${
+          showMenuButton ? "" : "invisible [@media(hover:none)]:visible"
+        }`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleMenu();
+        }}
+        type="button"
+      >
+        <Icon name="moreVertical" size="18px" />
+      </button>
     </BrowsingListRowFrame>
   );
 }
@@ -308,12 +469,13 @@ function ImageArtifactRow({
   hideDivider,
   hovered,
   onHoverChange,
+  ...menu
 }: {
   artifact: Artifact;
   hideDivider: boolean;
   hovered: boolean;
   onHoverChange(hovered: boolean): void;
-}) {
+} & ArtifactRowMenuProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
@@ -338,6 +500,7 @@ function ImageArtifactRow({
         hovered={hovered}
         onHoverChange={onHoverChange}
         onClick={openPreview}
+        {...menu}
         action={
           <div
             className="flex w-full min-w-0 items-start gap-3 text-left"

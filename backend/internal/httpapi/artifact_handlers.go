@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -125,6 +126,60 @@ func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 		_ = os.Remove(abs)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRenameArtifact changes an artifact's display filename. The new name
+// propagates into chat transcripts through the read-time overlay in
+// handleGetThread, so no message rows are rewritten here. Ownership is enforced
+// via the user-scoped Get (which excludes soft-deleted artifacts), so a foreign,
+// unknown, or already-deleted id is a 404.
+func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	if s.artifacts == nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	var body renameArtifactRequest
+	if err := decodeJSONBody(w, r, &body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if strings.TrimSpace(body.DisplayFilename) == "" {
+		writeJSONError(w, http.StatusBadRequest, "displayFilename is required")
+		return
+	}
+	// Clean the name to the same standard uploads enforce (strip unsafe chars,
+	// reject traversal, cap length) so a direct PATCH cannot store something the
+	// upload path would reject.
+	displayFilename, err := artifact.SanitizeDisplayName(body.DisplayFilename)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid displayFilename")
+		return
+	}
+	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
+	if err != nil {
+		serverError(w, r, err, "load artifact failed")
+		return
+	}
+	if !exists {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	// Lock the extension to the artifact's original so a rename can't change the
+	// file type the bytes/MIME imply (the UI keeps it fixed; enforce it server-side too).
+	if originalExt := filepath.Ext(found.DisplayFilename); originalExt != "" &&
+		!strings.EqualFold(filepath.Ext(displayFilename), originalExt) {
+		displayFilename = strings.TrimSuffix(displayFilename, filepath.Ext(displayFilename)) + originalExt
+	}
+	if err := s.artifacts.Rename(r.Context(), user.ID, found.ID, displayFilename); err != nil {
+		serverError(w, r, err, "rename artifact failed")
+		return
+	}
+	found.DisplayFilename = displayFilename
+	writeJSON(w, artifactResponseFromArtifact(found))
 }
 
 func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Request) {

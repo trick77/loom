@@ -61,14 +61,67 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return artifact, nil
 }
 
-// Delete removes an artifact row scoped to the user. It does not touch the file
-// on disk; the caller handles volume cleanup.
+// Delete soft-deletes an artifact row scoped to the user: it stamps deleted_at so
+// the row is hidden from the Artifacts library but kept for chat tombstones. It
+// does not touch the file on disk; the caller handles volume cleanup. Re-deleting
+// an already-deleted row is a no-op.
 func (s *Store) Delete(ctx context.Context, userID, artifactID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM artifacts WHERE user_id = ? AND id = ?`, userID, artifactID)
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE artifacts SET deleted_at = datetime('now') WHERE user_id = ? AND id = ? AND deleted_at IS NULL`,
+		userID, artifactID)
 	if err != nil {
 		return fmt.Errorf("delete artifact: %w", err)
 	}
 	return nil
+}
+
+// Rename changes an artifact's display filename, scoped to the user. Only live
+// (non-deleted) artifacts are renamable. The caller validates the new name.
+func (s *Store) Rename(ctx context.Context, userID, artifactID, displayFilename string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE artifacts SET display_filename = ? WHERE user_id = ? AND id = ? AND deleted_at IS NULL`,
+		displayFilename, userID, artifactID)
+	if err != nil {
+		return fmt.Errorf("rename artifact: %w", err)
+	}
+	return nil
+}
+
+// GetMany loads artifacts by id for a user, INCLUDING soft-deleted ones, returned
+// as a map keyed by id. It powers the read-time overlay that refreshes the
+// artifact snapshots embedded in chat messages with the current display filename
+// and deleted status. Ids the user does not own are simply absent from the map.
+func (s *Store) GetMany(ctx context.Context, userID string, ids []string) (map[string]Artifact, error) {
+	out := make(map[string]Artifact, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, userID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, deleted_at
+FROM artifacts
+WHERE user_id = ? AND id IN (%s)`, placeholders), args...)
+	if err != nil {
+		return nil, fmt.Errorf("get many artifacts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		item, deletedAt, err := scanArtifactWithDeleted(rows)
+		if err != nil {
+			return nil, err
+		}
+		item.Deleted = deletedAt.Valid
+		out[item.ID] = item
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan get many artifacts: %w", err)
+	}
+	return out, nil
 }
 
 func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, bool, error) {
@@ -78,7 +131,7 @@ func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, b
 	err := s.db.QueryRowContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
 FROM artifacts
-WHERE user_id = ? AND id = ?`, userID, artifactID).Scan(
+WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 		&out.ID,
 		&out.UserID,
 		&threadID,
@@ -112,7 +165,7 @@ WHERE user_id = ? AND id = ?`, userID, artifactID).Scan(
 func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Artifact, error) {
 	limit := EffectiveArtifactLimit(opts.Limit)
 
-	filters := []string{"user_id = ?"}
+	filters := []string{"user_id = ?", "deleted_at IS NULL"}
 	args := []any{userID}
 	if search := strings.TrimSpace(opts.Search); search != "" {
 		filters = append(filters, `display_filename LIKE ? ESCAPE '\'`)
@@ -154,7 +207,7 @@ func (s *Store) ListForThread(ctx context.Context, userID, threadID string) ([]A
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
 FROM artifacts
-WHERE user_id = ? AND thread_id = ?
+WHERE user_id = ? AND thread_id = ? AND deleted_at IS NULL
 ORDER BY created_at ASC`, userID, threadID)
 	if err != nil {
 		return nil, fmt.Errorf("list thread artifacts: %w", err)
@@ -187,7 +240,7 @@ func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
 FROM artifacts
-WHERE user_id = ? AND project_id = ?
+WHERE user_id = ? AND project_id = ? AND deleted_at IS NULL
 ORDER BY created_at ASC`, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list project artifacts: %w", err)
@@ -242,6 +295,44 @@ func scanArtifact(scanner interface {
 	out.CreatedAt = parsed
 	out.DownloadURL = "/api/artifacts/" + out.ID + "/download"
 	return out, nil
+}
+
+// scanArtifactWithDeleted scans a row that also selects the deleted_at column,
+// returning the artifact plus the raw nullable deleted_at so the caller can set
+// the Deleted flag. Used by GetMany, which (unlike the other queries) must surface
+// soft-deleted rows.
+func scanArtifactWithDeleted(scanner interface {
+	Scan(dest ...any) error
+}) (Artifact, sql.NullString, error) {
+	var out Artifact
+	var createdAt string
+	var threadID, projectID, deletedAt sql.NullString
+	if err := scanner.Scan(
+		&out.ID,
+		&out.UserID,
+		&threadID,
+		&projectID,
+		&out.DisplayFilename,
+		&out.VolumeRelPath,
+		&out.MIMEType,
+		&out.SizeBytes,
+		&out.Source,
+		&createdAt,
+		&deletedAt,
+	); err != nil {
+		return Artifact{}, sql.NullString{}, fmt.Errorf("scan artifact: %w", err)
+	}
+	out.ThreadID = threadID.String
+	if projectID.Valid {
+		out.ProjectID = &projectID.String
+	}
+	parsed, err := parseSQLiteTime(createdAt)
+	if err != nil {
+		return Artifact{}, sql.NullString{}, fmt.Errorf("parse artifact created_at: %w", err)
+	}
+	out.CreatedAt = parsed
+	out.DownloadURL = "/api/artifacts/" + out.ID + "/download"
+	return out, deletedAt, nil
 }
 
 func parseSQLiteTime(value string) (time.Time, error) {

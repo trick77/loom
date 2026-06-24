@@ -19,6 +19,10 @@ type Artifact struct {
 	Source          string    `json:"source"`
 	CreatedAt       time.Time `json:"createdAt"`
 	DownloadURL     string    `json:"downloadUrl"`
+	// Deleted is true when the artifact has been soft-deleted: its bytes are gone
+	// from disk but the row is kept so chat messages can render a tombstone. The
+	// Artifacts library filters these out; only GetMany surfaces them.
+	Deleted bool `json:"deleted,omitempty"`
 }
 
 type ListType string

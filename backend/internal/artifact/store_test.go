@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -179,6 +180,123 @@ func collectPages(t *testing.T, s *Store, opts ListOptions) []Artifact {
 		opts.Cursor = EncodeArtifactCursor(page[len(page)-1], opts.Sort)
 	}
 	return all
+}
+
+func TestStoreSoftDeleteHidesFromListAndGet(t *testing.T) {
+	ctx := context.Background()
+	db, s := newArtifactTestStore(t)
+
+	created, err := s.Create(ctx, CreateInput{
+		UserID:          "user_1",
+		ThreadID:        "thread_1",
+		DisplayFilename: "report.pdf",
+		VolumeRelPath:   "files/outputs/report.pdf",
+		MIMEType:        "application/pdf",
+		SizeBytes:       12,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if err := s.Delete(ctx, "user_1", created.ID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	// Soft-deleted: gone from list and from the user-facing Get.
+	all, err := s.List(ctx, "user_1", ListOptions{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	assertArtifactIDs(t, all, []string{})
+	if _, ok, err := s.Get(ctx, "user_1", created.ID); err != nil || ok {
+		t.Fatalf("Get() after delete ok=%v err=%v, want false nil", ok, err)
+	}
+
+	// The row survives for the tombstone overlay: GetMany still returns it, flagged.
+	many, err := s.GetMany(ctx, "user_1", []string{created.ID})
+	if err != nil {
+		t.Fatalf("GetMany() error = %v", err)
+	}
+	got, ok := many[created.ID]
+	if !ok {
+		t.Fatalf("GetMany() missing soft-deleted artifact")
+	}
+	if !got.Deleted {
+		t.Fatalf("GetMany() Deleted = false, want true")
+	}
+	if got.DisplayFilename != "report.pdf" {
+		t.Fatalf("GetMany() DisplayFilename = %q, want report.pdf", got.DisplayFilename)
+	}
+
+	// Ensure deleted_at was actually stamped (not merely filtered by chance).
+	var deletedAt sql.NullString
+	if err := db.QueryRowContext(ctx, `SELECT deleted_at FROM artifacts WHERE id = ?`, created.ID).Scan(&deletedAt); err != nil {
+		t.Fatalf("query deleted_at error = %v", err)
+	}
+	if !deletedAt.Valid {
+		t.Fatalf("deleted_at is NULL, want a timestamp")
+	}
+}
+
+func TestStoreRenameUpdatesDisplayFilename(t *testing.T) {
+	ctx := context.Background()
+	_, s := newArtifactTestStore(t)
+
+	created, err := s.Create(ctx, CreateInput{
+		UserID:          "user_1",
+		ThreadID:        "thread_1",
+		DisplayFilename: "draft.pdf",
+		VolumeRelPath:   "files/outputs/draft.pdf",
+		MIMEType:        "application/pdf",
+		SizeBytes:       12,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if err := s.Rename(ctx, "user_1", created.ID, "final.pdf"); err != nil {
+		t.Fatalf("Rename() error = %v", err)
+	}
+	found, ok, err := s.Get(ctx, "user_1", created.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get() after rename ok=%v err=%v", ok, err)
+	}
+	if found.DisplayFilename != "final.pdf" {
+		t.Fatalf("DisplayFilename = %q, want final.pdf", found.DisplayFilename)
+	}
+
+	// A foreign user cannot rename.
+	if err := s.Rename(ctx, "user_2", created.ID, "hijacked.pdf"); err != nil {
+		t.Fatalf("Rename(other user) error = %v", err)
+	}
+	found, _, _ = s.Get(ctx, "user_1", created.ID)
+	if found.DisplayFilename != "final.pdf" {
+		t.Fatalf("cross-user rename changed name to %q", found.DisplayFilename)
+	}
+}
+
+// newArtifactTestStore opens a fresh migrated DB with one user and thread, and
+// returns the handle plus a Store. Mirrors the inline setup used across the suite.
+func newArtifactTestStore(t *testing.T) (*sql.DB, *Store) {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user'),
+       ('user_2', 'subject-user_2', 'user_2', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO threads (id, user_id, title)
+VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
+		t.Fatal(err)
+	}
+	return db, NewStore(db)
 }
 
 func assertArtifactIDs(t *testing.T, artifacts []Artifact, want []string) {
