@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/imagescale"
 	"github.com/trick77/loom/internal/llm"
 )
@@ -70,10 +71,10 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 }
 
 // editImageSource carries the original bytes of an uploaded/prior image that is
-// forwarded to the image model for direct editing or transformation.
+// forwarded to the image model for direct editing or transformation. BFL encodes
+// the raw bytes as base64 with no MIME prefix, so only the bytes are needed.
 type editImageSource struct {
 	Data []byte
-	MIME string
 }
 
 // loadEditSourceImage reads the original full-resolution bytes of an image
@@ -106,6 +107,13 @@ func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, arti
 	if err != nil {
 		return editImageSource{}, false, fmt.Errorf("read edit source image: %w", err)
 	}
-	data, mime := imagescale.DownscaleForEditInput(raw, item.MIMEType)
-	return editImageSource{Data: data, MIME: mime}, true, nil
+	data, _ := imagescale.DownscaleForEditInput(raw, item.MIMEType)
+	// DownscaleForEditInput is best-effort: an undecodable (e.g. corrupt) image is
+	// returned unshrunk and could still exceed BFL's input cap, which Normalized()
+	// would later reject as a hard tool error. Skip it here so the turn degrades to
+	// prompt-only generation instead of failing outright.
+	if len(data) > imagegen.MaxInputImageBytes {
+		return editImageSource{}, false, nil
+	}
+	return editImageSource{Data: data}, true, nil
 }

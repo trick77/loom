@@ -320,23 +320,27 @@ var imageBackrefObjectPronouns = map[string]bool{
 // enough to turn a distinctive style descriptor into an edit signal.
 var imageStyleCorroborators = mergeTokenSets(imageEditActions, imageBackrefPronouns)
 
-// imageOutputVerbs produce a picture by their very meaning, so when the user has
-// attached a source image they signal an edit/transformation on their own ("RENDER
-// a lego set from this photo", "DRAW this as a cartoon"). Kept to verbs that do not
-// read as text/data operations (so "convert"/"make" live in imageTransformVerbs and
-// need a visual target).
+// imageOutputVerbs are unambiguously about producing/altering a picture, so when
+// the user has attached a source image they signal an edit on their own
+// ("ILLUSTRATE this", "REDRAW it", "ZEICHNE das neu"). Polysemous verbs whose
+// dominant sense is non-visual (render an engine, draw a conclusion, sketch a
+// plan, paint a picture of the situation) are intentionally NOT here — they live in
+// imageTransformVerbs and require a visual target so an attached chart/screenshot
+// question does not misfire.
 var imageOutputVerbs = map[string]bool{
-	"render": true, "draw": true, "paint": true, "sketch": true, "illustrate": true,
-	"redraw": true, "restyle": true, "recolor": true, "recolour": true, "repaint": true,
+	"illustrate": true, "redraw": true, "restyle": true, "recolor": true,
+	"recolour": true, "repaint": true,
 	"rendere": true, "zeichne": true, "male": true, "illustriere": true, "skizziere": true,
 }
 
 // imageTransformVerbs reshape an existing thing into something else. They are
-// generic enough to also describe text/data conversions ("convert this to CSV"), so
-// they only signal an image edit when paired (within imageEditPairDistance) with a
-// visual target/style noun.
+// generic enough to also describe text/data conversions ("convert this to CSV") or
+// non-visual idioms ("draw a conclusion", "render the JSON"), so they only signal
+// an image edit when paired (within imageAttachmentEditPairDistance) with a visual
+// target/style noun.
 var imageTransformVerbs = map[string]bool{
 	"turn": true, "convert": true, "transform": true, "make": true, "change": true,
+	"render": true, "draw": true, "paint": true, "sketch": true,
 	"verwandle": true, "umwandle": true, "mache": true, "mach": true, "machen": true,
 	"aendere": true, "ändere": true,
 }
