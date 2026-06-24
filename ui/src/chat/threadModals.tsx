@@ -92,7 +92,7 @@ export function DeleteThreadModal({
   );
 }
 
-function ModalShell({
+export function ModalShell({
   title,
   children,
   onCancel,

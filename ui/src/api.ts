@@ -97,6 +97,10 @@ export type Artifact = {
   width?: number;
   height?: number;
   durationMs?: number;
+  // deleted is true when the artifact has been removed from the Artifacts
+  // library. Set by the read-time overlay on artifacts embedded in chat messages
+  // so the chat can render a tombstone; never set on live library listings.
+  deleted?: boolean;
 };
 
 // MessageAttachment is the persisted shape of one image or document a user sent
@@ -619,6 +623,23 @@ export async function deleteArtifact(artifactId: string): Promise<void> {
   }
   if (!response.ok) {
     throw new Error("failed to delete artifact");
+  }
+}
+
+// renameArtifact changes an artifact's display filename. The new name propagates
+// into the chat transcript where the artifact appears via the server's read-time
+// overlay, so no message rewrite is needed client-side.
+export async function renameArtifact(artifactId: string, displayFilename: string): Promise<void> {
+  const response = await fetch(`/api/artifacts/${encodeURIComponent(artifactId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ displayFilename }),
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error("failed to rename artifact");
   }
 }
 

@@ -125,6 +125,10 @@ type mcpServerStatus struct {
 	Active bool   `json:"active"`
 }
 
+type renameArtifactRequest struct {
+	DisplayFilename string `json:"displayFilename"`
+}
+
 type artifactResponse struct {
 	ID              string  `json:"id"`
 	DisplayFilename string  `json:"displayFilename"`

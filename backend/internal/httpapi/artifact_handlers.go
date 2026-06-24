@@ -127,6 +127,51 @@ func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleRenameArtifact changes an artifact's display filename. The new name
+// propagates into chat transcripts through the read-time overlay in
+// handleGetThread, so no message rows are rewritten here. Ownership is enforced
+// via the user-scoped Get (which excludes soft-deleted artifacts), so a foreign,
+// unknown, or already-deleted id is a 404.
+func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	if s.artifacts == nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	var body renameArtifactRequest
+	if err := decodeJSONBody(w, r, &body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	displayFilename := strings.TrimSpace(body.DisplayFilename)
+	if displayFilename == "" {
+		writeJSONError(w, http.StatusBadRequest, "displayFilename is required")
+		return
+	}
+	if len(displayFilename) > artifact.MaxDisplayFilenameLength {
+		writeJSONError(w, http.StatusBadRequest, "displayFilename is too long")
+		return
+	}
+	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
+	if err != nil {
+		serverError(w, r, err, "load artifact failed")
+		return
+	}
+	if !exists {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err := s.artifacts.Rename(r.Context(), user.ID, found.ID, displayFilename); err != nil {
+		serverError(w, r, err, "rename artifact failed")
+		return
+	}
+	found.DisplayFilename = displayFilename
+	writeJSON(w, artifactResponseFromArtifact(found))
+}
+
 func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok {

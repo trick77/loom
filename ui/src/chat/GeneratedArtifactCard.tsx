@@ -10,7 +10,10 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const isImage = artifact.mimeType.startsWith("image/");
+  // A deleted artifact has no bytes on disk: render a tombstone (disabled
+  // download + notice) and skip every fetch/preview path below.
+  const deleted = artifact.deleted === true;
+  const isImage = artifact.mimeType.startsWith("image/") && !deleted;
   const imageStats = isImage ? buildImageStats(artifact) : null;
 
   useEffect(() => {
@@ -111,22 +114,36 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">{artifact.displayFilename}</div>
+          <div className={`ui-message-text truncate ${deleted ? "text-[#aaa79e] line-through" : ""}`}>
+            {artifact.displayFilename}
+          </div>
           <div className="ui-meta-text text-[#aaa79e]">
             {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
           </div>
           {imageStats !== null && <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>}
+          {deleted && <div className="ui-meta-text text-[#d09a73]">This file was deleted</div>}
           {error !== "" && <div className="ui-meta-text text-[#d36f67]">{error}</div>}
         </div>
-        <button
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
-          onClick={handleDownload}
-          type="button"
-          title={`Download ${artifact.displayFilename}`}
-          aria-label={`Download ${artifact.displayFilename}`}
-        >
-          <DownloadIcon />
-        </button>
+        {deleted ? (
+          <span
+            className="grid h-8 w-8 shrink-0 cursor-not-allowed place-items-center rounded-md bg-[#33332f] text-[#6f6d66]"
+            title="File was deleted"
+            aria-label="File was deleted"
+            aria-disabled="true"
+          >
+            <DownloadIcon />
+          </span>
+        ) : (
+          <button
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
+            onClick={handleDownload}
+            type="button"
+            title={`Download ${artifact.displayFilename}`}
+            aria-label={`Download ${artifact.displayFilename}`}
+          >
+            <DownloadIcon />
+          </button>
+        )}
       </div>
       {lightboxOpen && previewUrl !== "" && (
         <ImageLightbox

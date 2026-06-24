@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -97,7 +98,33 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
+	if err := s.refreshMessageArtifacts(r.Context(), user.ID, messages); err != nil {
+		serverError(w, r, err, "refresh message artifacts failed")
+		return
+	}
 	writeJSON(w, getThreadResponse{Thread: thread, Messages: messages})
+}
+
+// refreshMessageArtifacts overlays each message's embedded artifact snapshots with
+// the artifacts' current display filename and deleted status, so renames and
+// deletes made from the Artifacts library show up in the chat transcript. A no-op
+// when the artifact store is unconfigured or no artifacts are referenced.
+func (s *server) refreshMessageArtifacts(ctx context.Context, userID string, messages []chat.Message) error {
+	if s.artifacts == nil {
+		return nil
+	}
+	ids, err := collectArtifactIDs(messages)
+	if err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	byID, err := s.artifacts.GetMany(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+	return overlayMessageArtifacts(messages, byID)
 }
 
 func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {

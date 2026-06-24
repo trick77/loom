@@ -37,6 +37,32 @@ func (f fakeArtifactStore) Delete(_ context.Context, _ string, artifactID string
 	return nil
 }
 
+func (f fakeArtifactStore) Rename(_ context.Context, userID, artifactID, displayFilename string) error {
+	for i := range f.artifacts {
+		if f.artifacts[i].UserID == userID && f.artifacts[i].ID == artifactID {
+			f.artifacts[i].DisplayFilename = displayFilename
+		}
+	}
+	return nil
+}
+
+func (f fakeArtifactStore) GetMany(_ context.Context, userID string, ids []string) (map[string]artifact.Artifact, error) {
+	want := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	out := make(map[string]artifact.Artifact)
+	for _, item := range f.artifacts {
+		if item.UserID != userID {
+			continue
+		}
+		if _, ok := want[item.ID]; ok {
+			out[item.ID] = item
+		}
+	}
+	return out, nil
+}
+
 func (f fakeArtifactStore) Create(context.Context, artifact.CreateInput) (artifact.Artifact, error) {
 	return artifact.Artifact{}, nil
 }
