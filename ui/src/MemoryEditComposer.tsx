@@ -84,7 +84,7 @@ export function MemoryComposer({
           aria-hidden={open}
           tabIndex={open ? -1 : 0}
           onClick={onOpen}
-          className={`absolute inset-0 grid place-items-center text-[#b7b5ad] transition-opacity duration-150 ${
+          className={`absolute inset-y-0 left-0 grid w-14 place-items-center text-[#b7b5ad] transition-opacity duration-150 ${
             open ? "pointer-events-none opacity-0" : "opacity-100"
           }`}
         >
