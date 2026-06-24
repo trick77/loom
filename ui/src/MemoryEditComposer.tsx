@@ -132,7 +132,7 @@ export function MemoryComposer({
             aria-label="Apply memory edit"
             disabled={!canSend}
             onClick={submit}
-            className="grid h-9 w-9 flex-none place-items-center rounded-full text-[#8f8d85] transition-colors enabled:text-[#e5e3db] enabled:hover:bg-[#e2e1da]/10 disabled:opacity-50"
+            className="grid h-9 w-9 flex-none place-items-center rounded-full bg-accent text-[#eeeae2] transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-45"
           >
             {pending ? (
               <Icon name="spinner" size="18px" className="animate-spin" />
