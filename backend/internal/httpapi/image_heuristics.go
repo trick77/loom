@@ -75,15 +75,14 @@ func latestImageArtifactID(messages []chat.Message) string {
 // reuse of the prior image as the model's vision input so the user never has to
 // re-attach it by hand.
 //
-// This is deliberately STRICTER than imageArtifactRequired's follow-up branch.
-// That branch fires on any style word so a styled request still routes to image
-// generation, but a bare style word describes a NEW image as readily as an edit:
-// "draw a retro car" or "create a neon sign" should produce a fresh image, not a
-// recolour of whatever was generated earlier in the thread. So reusing the prior
-// image requires (a) not being a creation request, and (b) an explicit edit
-// signal — a transform verb/noun ("change", "variation", "version") or a pronoun
-// pointing back at the existing image ("make IT cyberpunk") — never a style
-// adjective alone.
+// It shares mentionsImageEditIntent with imageArtifactRequired's follow-up branch,
+// so the two recognize an edit identically; the only difference is that this gate
+// treats a fresh-creation request ("draw a retro car", "create a neon sign") as
+// NOT an edit — there is no prior image to silently reuse — whereas
+// imageArtifactRequired routes creations to the image tool as well. Reusing the
+// prior image therefore requires (a) not being a creation request, (b) a prior
+// image to reuse, and (c) a genuine edit signal (see mentionsImageEditIntent) —
+// never a bare style adjective or a lone pronoun.
 func (s *server) isImageEditFollowUp(content string, priorMessages []chat.Message) bool {
 	if len(s.imageTools) == 0 || s.artifacts == nil || strings.TrimSpace(s.usersDir) == "" {
 		return false
@@ -116,10 +115,12 @@ func (s *server) isImageEditFollowUp(content string, priorMessages []chat.Messag
 //     pronoun OR an action verb ("make IT CYBERPUNK", "give IT a RETRO look",
 //     "ÄNDERE den STIL"); or
 //   - a generic edit-target word (a size, brightness, or medium — "bigger",
-//     "darker", "watercolor") near a back-reference PRONOUN ("make IT BIGGER",
-//     "turn IT into a WATERCOLOR"). A target requires a pronoun, never a bare verb,
-//     so "make the FONT BIGGER" or "set the background color to blue" (code, no
-//     pronoun pointing at the image) do not misfire.
+//     "darker", "watercolor") near a direct-object back-reference pronoun ("make IT
+//     BIGGER", "turn IT into a WATERCOLOR"). A target requires an object pronoun
+//     (it/its/them/es/ihn), never a bare verb nor the looser demonstratives
+//     this/that, so "make the FONT BIGGER", "set the background color to blue", or
+//     "make THIS div bigger" (all code, no object pronoun on the image) do not
+//     misfire.
 //
 // A standalone style/target word still does NOT count — it equally describes a
 // brand-new image — and a standalone pronoun or generic verb does not either.
@@ -130,7 +131,7 @@ func mentionsImageEditIntent(tokens []string) bool {
 	if nearbyTokensEitherOrder(tokens, imageStyleDescriptors, imageStyleCorroborators, imageEditPairDistance) {
 		return true
 	}
-	return nearbyTokensEitherOrder(tokens, imageEditTargets, imageBackrefPronouns, imageEditPairDistance)
+	return nearbyTokensEitherOrder(tokens, imageEditTargets, imageBackrefObjectPronouns, imageEditPairDistance)
 }
 
 func isImageCreationRequest(tokens []string) bool {
@@ -218,31 +219,33 @@ const imageEditPairDistance = 4
 // in imageEditActions and need a cue. "change" likewise is a generic action, so
 // "change the subject" does not read as an edit.
 var strongImageEditWords = map[string]bool{
-	"restyle": true, "recolor": true, "recolour": true, "upscale": true, "crop": true,
+	"restyle": true, "recolor": true, "recolour": true, "crop": true,
 	"variation": true, "variations": true, "variant": true, "variants": true,
 	"wandle": true, "bearbeite": true, "variante": true, "zuschneide": true,
 }
 
 // imageStyleDescriptors name a distinctive visual style/treatment that rarely shows
 // up in ordinary coding chat. Near a pronoun OR an action verb they signal an edit
-// ("make IT cyberpunk", "ändere den STIL"). They do NOT route on their own — a bare
-// "a minimal style for my code" must not reach the image tool.
+// ("make IT cyberpunk", "ändere den STIL"). They do NOT route on their own.
+// "minimal"/"minimalist" are intentionally absent — they collide with everyday
+// code/design chat ("a minimal change to that function", "a minimal style").
 var imageStyleDescriptors = map[string]bool{
-	"cyberpunk": true, "retro": true, "minimal": true, "minimalist": true, "minimalistisch": true,
-	"glitch": true, "neon": true, "stil": true,
+	"cyberpunk": true, "retro": true, "glitch": true, "neon": true, "stil": true,
 }
 
 // imageEditTargets are generic "what to change" words — sizes, brightness, and
-// mediums. They occur in ordinary (especially front-end) chat, so they corroborate
-// an edit only when near a back-reference PRONOUN pointing at the image ("make IT
-// BIGGER", "turn IT into a WATERCOLOR") — never via a bare action verb, so "make
-// the FONT bigger" or "set the background color to blue" do not misfire. Colours
-// and CSS-ish parts (background, border, shadow, contrast) are intentionally absent:
-// they collide head-on with code/CSS chat. The list is common-case, not exhaustive
-// — lexical edit detection cannot enumerate every phrasing.
+// mediums. They occur in ordinary (especially front-end / devops) chat, so they
+// corroborate an edit only when near a direct-object back-reference pronoun pointing
+// at the image ("make IT BIGGER", "turn IT into a WATERCOLOR", "UPSCALE it") — never
+// via a bare action verb nor a loose demonstrative, so "make the FONT bigger", "set
+// the background color to blue", "make THIS div bigger", or "upscale the deployment"
+// do not misfire. Colours and CSS-ish parts (background, border, shadow, contrast)
+// are intentionally absent: they collide head-on with code/CSS chat. The list is
+// common-case, not exhaustive — lexical edit detection cannot enumerate every
+// phrasing.
 var imageEditTargets = map[string]bool{
 	// Size / scale.
-	"bigger": true, "smaller": true, "larger": true, "taller": true, "wider": true, "narrower": true,
+	"bigger": true, "smaller": true, "larger": true, "taller": true, "wider": true, "narrower": true, "upscale": true,
 	// Brightness / appearance.
 	"brighter": true, "darker": true, "lighter": true, "dimmer": true, "grainier": true,
 	// Medium / treatment.
@@ -265,10 +268,19 @@ var imageEditActions = map[string]bool{
 }
 
 // imageBackrefPronouns stand in for the prior image ("make IT cyberpunk", "mach ES
-// ..."). They corroborate either a style descriptor or a generic edit-target.
+// ..."). They corroborate a distinctive style descriptor — distinctive enough that
+// even a loose demonstrative ("make THIS cyberpunk") is safe.
 var imageBackrefPronouns = map[string]bool{
 	"it": true, "its": true, "this": true, "that": true, "these": true, "those": true, "them": true,
 	"es": true, "das": true, "dies": true, "dieses": true, "diese": true, "ihn": true,
+}
+
+// imageBackrefObjectPronouns are the tighter direct-object pronouns that
+// unambiguously point at the prior image as a thing being acted on ("make IT
+// bigger", "UPSCALE it"). Used to corroborate the generic edit-target words, where
+// the looser demonstratives this/that would leak ("make THIS div bigger").
+var imageBackrefObjectPronouns = map[string]bool{
+	"it": true, "its": true, "them": true, "es": true, "ihn": true,
 }
 
 // imageStyleCorroborators = action verbs + back-reference pronouns: either is

@@ -1013,6 +1013,14 @@ func TestIsImageEditFollowUpGating(t *testing.T) {
 		"i prefer a minimal style for my code",
 		"make the font bigger",
 		"make sure the sky is blue",
+		// "minimal" is no longer a style descriptor, "upscale" needs an object
+		// pronoun, and demonstratives this/that do not corroborate size targets —
+		// so these code/devops/layout phrasings stay out.
+		"a minimal change to that function",
+		"try a minimal style for my code",
+		"upscale the kubernetes deployment",
+		"make this div bigger",
+		"can you make that smaller in the layout",
 	} {
 		if srv.isImageEditFollowUp(content, withImage) {
 			t.Fatalf("isImageEditFollowUp(%q) = true, want false (not an edit)", content)
