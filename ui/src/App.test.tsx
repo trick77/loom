@@ -717,6 +717,61 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
   );
 });
 
+test("shows the prompt optimistically before the server echoes the user_message", async () => {
+  // Buffering proxies (e.g. corporate networks) can hold the whole SSE response until
+  // the end, delaying the `user_message` event. The prompt must still appear on send.
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+    },
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+    if (url === "/api/threads" && init?.method === "POST") {
+      return new Response(
+        JSON.stringify({
+          id: "t1",
+          title: "New thread",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        }),
+        { status: 201 },
+      );
+    }
+    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") return new Response(stream, { status: 200 });
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.change(await screen.findByPlaceholderText("How can I help you today?"), {
+    target: { value: "Ping with nothing streamed back yet" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  // The prompt is rendered without ANY SSE event being delivered — proving the bubble
+  // is optimistic and not gated on the server's first event.
+  expect(await screen.findByText("Ping with nothing streamed back yet")).toBeInTheDocument();
+
+  // When the delayed user_message finally arrives, it reconciles in place — still
+  // exactly one bubble, no duplicate.
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Ping with nothing streamed back yet","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.getAllByText("Ping with nothing streamed back yet")).toHaveLength(1),
+  );
+
+  streamController.current?.close();
+});
+
 test("sends a deferred new-chat image with the first prompt and shows the prompt as the initial chat title", async () => {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

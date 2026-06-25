@@ -31,6 +31,27 @@ func TestWriter_writesEventAndData(t *testing.T) {
 	}
 }
 
+func TestWriter_setsAntiBufferingHeaderAndPrelude(t *testing.T) {
+	rec := httptest.NewRecorder()
+
+	if _, err := NewWriter(rec); err != nil {
+		t.Fatalf("NewWriter error: %v", err)
+	}
+
+	if v := rec.Header().Get("X-Accel-Buffering"); v != "no" {
+		t.Errorf("X-Accel-Buffering = %q, want no", v)
+	}
+	out := rec.Body.String()
+	// The prelude is a single SSE comment (": ...\n\n") flushed before any event, large
+	// enough to push past common proxy buffer thresholds.
+	if !strings.HasPrefix(out, ": ") || !strings.HasSuffix(out, "\n\n") {
+		t.Errorf("prelude is not a single SSE comment: %q", out[:min(16, len(out))])
+	}
+	if len(out) < 2048 {
+		t.Errorf("prelude length = %d, want >= 2048 to defeat threshold buffering", len(out))
+	}
+}
+
 func TestWriter_HeartbeatEmitsCommentDuringSilence(t *testing.T) {
 	rec := httptest.NewRecorder()
 	w, err := NewWriter(rec)

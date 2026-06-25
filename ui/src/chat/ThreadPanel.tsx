@@ -339,7 +339,9 @@ export function ThreadPanel({
         >
           <div className="ui-thread-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
             {messages.map((message, index) => (
-              <div key={message.id} className="space-y-6">
+              // Key off clientKey when present (an optimistic message keeps it across
+              // reconcile to the persisted id) so the bubble's DOM node is stable.
+              <div key={message.clientKey ?? message.id} className="space-y-6">
                 <MessageBubble
                   message={message}
                   retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}

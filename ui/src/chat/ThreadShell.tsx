@@ -521,6 +521,9 @@ export function ThreadShell({
     let createdThreadForFallback: Thread | null = null;
     let receivedThreadEvent = false;
     let keepFailedTurnVisible = false;
+    // Id of the optimistic user bubble until the server confirms it; the catch reads
+    // this to decide whether to drop the placeholder, so it must outlive the try block.
+    let optimisticUserMessageID: string | null = null;
     const projectIDForNewThread = route.view === "project" ? route.projectID : null;
     const updateSentAttachmentStatus = (id: string, patch: Partial<ComposerAttachment>) => {
       const attachment = options.attachments.find((item) => item.id === id);
@@ -588,16 +591,57 @@ export function ThreadShell({
       const imageAttachmentIds = options.attachments
         .filter((attachment) => isImageAttachment(attachment) && attachment.artifactId !== undefined)
         .map((attachment) => attachment.artifactId!);
+      // Show the user's prompt immediately, before the stream's first event. The
+      // server later echoes it as a `user_message` event, but on buffering networks
+      // (e.g. a corporate proxy holding the whole SSE response) that event can be
+      // delayed until the end, so without an optimistic bubble the prompt appears to
+      // vanish on send. `onUserMessage` reconciles this temp message to the persisted
+      // one by id; the catch removes it if the send never reached the server.
+      if (isCurrentThread()) {
+        // Avoid crypto.randomUUID: it is undefined in insecure contexts (plain http://),
+        // which a corporate intranet deployment may well be — and that is exactly where
+        // this fix matters. Date.now()+random is unique enough for a transient id.
+        const tempID = `temp-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        optimisticUserMessageID = tempID;
+        const optimisticMessage: MessageWithActivityTrace = {
+          id: tempID,
+          clientKey: tempID,
+          threadId: targetThreadID,
+          role: "user",
+          content,
+          createdAt: new Date().toISOString(),
+          ...(options.attachments.length > 0
+            ? { attachments: options.attachments.map(toSentAttachment) }
+            : {}),
+        };
+        setMessages((current) => [...current, optimisticMessage]);
+      }
       await streamMessage(targetThreadID, content, {
         onUserMessage: (message) => {
-          if (isCurrentThread()) {
-            setMessages((current) => [
-              ...current,
-              options.attachments.length > 0
-                ? { ...message, attachments: options.attachments.map(toSentAttachment) }
-                : message,
-            ]);
-          }
+          if (!isCurrentThread()) return;
+          const confirmed =
+            options.attachments.length > 0
+              ? { ...message, attachments: options.attachments.map(toSentAttachment) }
+              : message;
+          // Replace the optimistic placeholder in place so the persisted id/metadata
+          // take over without reordering or duplicating the bubble. Carry over its
+          // clientKey so React keeps the same DOM node (no remount/scroll jump). If
+          // it's already gone (e.g. a route effect reset the list), fall back to
+          // appending — but guard against a duplicate: a buffering proxy can delay
+          // this event until after a navigate-away-and-back reloaded the message.
+          setMessages((current) => {
+            if (optimisticUserMessageID !== null) {
+              const index = current.findIndex((item) => item.id === optimisticUserMessageID);
+              if (index !== -1) {
+                const next = current.slice();
+                next[index] = { ...confirmed, clientKey: current[index].clientKey };
+                return next;
+              }
+            }
+            if (current.some((item) => item.id === confirmed.id)) return current;
+            return [...current, confirmed];
+          });
+          optimisticUserMessageID = null;
         },
         onDelta: (delta) => {
           // Each content delta extends the trailing text block, or opens a new one
@@ -673,6 +717,15 @@ export function ThreadShell({
       // streamed (prose, an activity trace, a tool that errored); the next send
       // clears them.
       keepFailedTurnVisible = true;
+      // If the server never confirmed the user message (still the unreconciled
+      // optimistic placeholder), drop it — the draft is restored below so the user
+      // can retry, and a lingering sent-bubble with no reply would be misleading. A
+      // placeholder already reconciled to a persisted message keeps its real id and
+      // is left in place as part of the failed-but-visible turn.
+      if (optimisticUserMessageID !== null) {
+        const staleID = optimisticUserMessageID;
+        setMessages((current) => current.filter((item) => item.id !== staleID));
+      }
       if (options.restoreDraftOnError) setDraft(content);
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
