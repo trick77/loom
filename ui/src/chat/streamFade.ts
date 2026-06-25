@@ -2,10 +2,11 @@
 // neu eintreffender Streaming-Text segmentweise von dunkel auf normal faden
 // kann (siehe index.css .ui-stream-seg / @keyframes ui-stream-fade).
 //
-// Muss NACH rehype-highlight laufen und steigt nicht in code/pre ab, damit die
-// Highlight-Spans nicht doppelt gewrappt werden.
+// Muss NACH rehype-highlight laufen und steigt nicht in code/pre/a ab, damit die
+// Highlight-Spans nicht doppelt gewrappt werden und Links nicht bei jedem
+// Streaming-Tick neu einfaden (flackern).
 
-const SKIP_TAGS = new Set(["pre", "code"]);
+const SKIP_TAGS = new Set(["pre", "code", "a"]);
 
 // Grobe „Segment/Zeile"-Granularität: Wörter (inkl. nachfolgendem Whitespace)
 // zu Segmenten gruppieren; Segment beenden nach Satz-/Klausel-Zeichen oder
@@ -57,7 +58,7 @@ function transform(node: HastNode): void {
       next.push(...wrapTextNode(child.value));
     } else {
       if (child.type === "element" && child.tagName && SKIP_TAGS.has(child.tagName)) {
-        // code/pre unangetastet lassen
+        // code/pre/a unangetastet lassen (keine Segment-Spans, kein Flackern)
         next.push(child);
         continue;
       }
