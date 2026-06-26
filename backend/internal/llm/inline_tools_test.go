@@ -30,6 +30,11 @@ func TestFirstInlineToolName(t *testing.T) {
 	if got := firstInlineToolName("<tool_call>\n<function=create_pdf_file>\n<parameter=content>partial"); got != "create_pdf_file" {
 		t.Fatalf("firstInlineToolName = %q, want create_pdf_file", got)
 	}
+	// The <tool_invocation …/> variant surfaces its name attribute the same way, even
+	// while the large arguments value is still streaming.
+	if got := firstInlineToolName(`<tool_invocation name="generate_image" arguments={"prompt": "partial`); got != "generate_image" {
+		t.Fatalf("firstInlineToolName (variant) = %q, want generate_image", got)
+	}
 }
 
 func TestInlineToolCallID(t *testing.T) {
@@ -128,6 +133,85 @@ func TestParseInlineToolCalls_KeepsSurroundingProse(t *testing.T) {
 
 func TestParseInlineToolCalls_NoToolCallReturnsContentUnchanged(t *testing.T) {
 	content := "Colossus: The Forbin Project is a 1970 film."
+
+	calls, cleaned := parseInlineToolCalls(content)
+
+	if calls != nil {
+		t.Fatalf("calls = %#v, want nil", calls)
+	}
+	if cleaned != content {
+		t.Fatalf("cleaned = %q, want unchanged", cleaned)
+	}
+}
+
+// Verbatim assistant content from the logo-redesign thread, where MiMo invented a
+// third tool-call syntax (<tool_invocation name=… arguments={…} />) that no prompt
+// teaches, leaking the raw markup to the UI instead of generating an image.
+func TestParseInlineToolCalls_ToolInvocationVariant(t *testing.T) {
+	content := `<tool_invocation name="generate_image" arguments={"filename": "rethinked-logo", "height": 1024, "prompt": "A modern, minimalist logo on a solid black background, icon in burnt orange (#c15f3c)."} />`
+
+	calls, cleaned := parseInlineToolCalls(content)
+
+	if len(calls) != 1 {
+		t.Fatalf("calls = %#v, want 1", calls)
+	}
+	if calls[0].ID != "inline_call_1" {
+		t.Fatalf("call id = %q, want inline_call_1", calls[0].ID)
+	}
+	if calls[0].Type != "function" {
+		t.Fatalf("call type = %q, want function", calls[0].Type)
+	}
+	if calls[0].Function.Name != "generate_image" {
+		t.Fatalf("call name = %q", calls[0].Function.Name)
+	}
+	// The arguments value is already valid JSON and is passed through verbatim.
+	wantArgs := `{"filename": "rethinked-logo", "height": 1024, "prompt": "A modern, minimalist logo on a solid black background, icon in burnt orange (#c15f3c)."}`
+	if calls[0].Function.Arguments != wantArgs {
+		t.Fatalf("call arguments = %q", calls[0].Function.Arguments)
+	}
+	if cleaned != "" {
+		t.Fatalf("cleaned = %q, want empty", cleaned)
+	}
+}
+
+func TestParseInlineToolCalls_ToolInvocationKeepsSurroundingProse(t *testing.T) {
+	content := `Sure, here it is. <tool_invocation name="generate_image" arguments={"prompt": "a red fox"} /> Done.`
+
+	calls, cleaned := parseInlineToolCalls(content)
+
+	if len(calls) != 1 || calls[0].Function.Name != "generate_image" {
+		t.Fatalf("calls = %#v, want one generate_image call", calls)
+	}
+	if calls[0].Function.Arguments != `{"prompt": "a red fox"}` {
+		t.Fatalf("call arguments = %q", calls[0].Function.Arguments)
+	}
+	if cleaned != "Sure, here it is.  Done." {
+		t.Fatalf("cleaned = %q", cleaned)
+	}
+}
+
+// A JSON value containing braces and a '>' must not end the argument scan or the tag
+// scan early.
+func TestParseInlineToolCalls_ToolInvocationNestedBracesAndAngle(t *testing.T) {
+	content := `<tool_invocation name="generate_image" arguments={"prompt": "a sign reading {SALE} 50% off >> here", "meta": {"w": 1024}} />`
+
+	calls, cleaned := parseInlineToolCalls(content)
+
+	if len(calls) != 1 {
+		t.Fatalf("calls = %#v, want 1", calls)
+	}
+	if calls[0].Function.Arguments != `{"prompt": "a sign reading {SALE} 50% off >> here", "meta": {"w": 1024}}` {
+		t.Fatalf("call arguments = %q", calls[0].Function.Arguments)
+	}
+	if cleaned != "" {
+		t.Fatalf("cleaned = %q, want empty", cleaned)
+	}
+}
+
+// Malformed/unbalanced arguments degrade gracefully: no panic, no parsed call, and
+// the markup is left in place so finishStream's warning can surface it.
+func TestParseInlineToolCalls_ToolInvocationUnbalancedArgsLeftForWarning(t *testing.T) {
+	content := `<tool_invocation name="generate_image" arguments={"prompt": "truncated`
 
 	calls, cleaned := parseInlineToolCalls(content)
 

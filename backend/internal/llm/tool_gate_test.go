@@ -42,6 +42,30 @@ func TestToolCallStreamGate_SuppressesMarkerSplitAcrossDeltas(t *testing.T) {
 	}
 }
 
+func TestToolCallStreamGate_SuppressesToolInvocationVariant(t *testing.T) {
+	g := &toolCallStreamGate{}
+
+	emitted := collect(g,
+		"Sure. ",
+		`<tool_invocation name="generate_image" `,
+		`arguments={"prompt": "a red fox"} />`,
+	)
+
+	if emitted != "Sure. " {
+		t.Fatalf("emitted = %q, want prose only (invocation suppressed)", emitted)
+	}
+}
+
+func TestToolCallStreamGate_SuppressesToolInvocationSplitAcrossDeltas(t *testing.T) {
+	g := &toolCallStreamGate{}
+
+	emitted := collect(g, "<tool_inv", "ocation name=\"x\" arguments={} />")
+
+	if emitted != "" {
+		t.Fatalf("emitted = %q, want empty (split invocation marker still suppressed)", emitted)
+	}
+}
+
 func TestToolCallStreamGate_PassesNormalContentThrough(t *testing.T) {
 	g := &toolCallStreamGate{}
 

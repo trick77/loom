@@ -2,13 +2,33 @@ package llm
 
 import "strings"
 
-const inlineToolCallMarker = "<tool_call>"
+const (
+	inlineToolCallMarker   = "<tool_call>"
+	inlineInvocationMarker = "<tool_invocation"
+)
+
+// inlineToolCallMarkers are the opening markers of every inline tool-call syntax
+// MiMo is known to emit instead of native tool_calls: the documented
+// <tool_call>…</tool_call> form and the <tool_invocation name=… arguments={…} />
+// variant it sometimes invents. The gate suppresses streamed content from the
+// earliest of these so no raw markup of either form reaches the client.
+var inlineToolCallMarkers = []string{inlineToolCallMarker, inlineInvocationMarker}
+
+// containsInlineToolMarker reports whether s contains any inline tool-call marker.
+func containsInlineToolMarker(s string) bool {
+	for _, m := range inlineToolCallMarkers {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
 
 // toolCallStreamGate buffers streamed content for models that emit tool calls as
-// inline XML (e.g. MiMo), so the raw <tool_call> markup is never streamed to the
-// client. Normal content still streams token-by-token; only a (potential) tool
-// call is held back. Once a full marker is seen, the remainder is suppressed,
-// since MiMo emits nothing but tool calls after the first one.
+// inline XML (e.g. MiMo), so the raw markup is never streamed to the client.
+// Normal content still streams token-by-token; only a (potential) tool call is
+// held back. Once a full marker is seen, the remainder is suppressed, since MiMo
+// emits nothing but tool calls after the first one.
 type toolCallStreamGate struct {
 	buffer     string
 	suppressed bool
@@ -20,14 +40,26 @@ func (g *toolCallStreamGate) push(delta string) string {
 		return ""
 	}
 	g.buffer += delta
-	if idx := strings.Index(g.buffer, inlineToolCallMarker); idx >= 0 {
-		out := g.buffer[:idx]
+	// Suppress from the earliest complete marker of any known inline syntax.
+	earliest := -1
+	for _, m := range inlineToolCallMarkers {
+		if idx := strings.Index(g.buffer, m); idx >= 0 && (earliest < 0 || idx < earliest) {
+			earliest = idx
+		}
+	}
+	if earliest >= 0 {
+		out := g.buffer[:earliest]
 		g.buffer = ""
 		g.suppressed = true
 		return out
 	}
-	// Hold back a trailing suffix that could be the start of the marker.
-	hold := partialMarkerSuffixLen(g.buffer, inlineToolCallMarker)
+	// Hold back a trailing suffix that could be the start of any marker.
+	hold := 0
+	for _, m := range inlineToolCallMarkers {
+		if h := partialMarkerSuffixLen(g.buffer, m); h > hold {
+			hold = h
+		}
+	}
 	out := g.buffer[:len(g.buffer)-hold]
 	g.buffer = g.buffer[len(g.buffer)-hold:]
 	return out

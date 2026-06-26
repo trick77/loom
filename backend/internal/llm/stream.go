@@ -473,14 +473,15 @@ func finishStream(ctx context.Context, model string, content string, reasoningCo
 				slog.Int("count", len(inlineCalls)),
 				slog.String("tool", inlineCalls[0].Function.Name),
 			)
-		} else if strings.Contains(result.Content, inlineToolCallMarker) || strings.Contains(result.ReasoningContent, inlineToolCallMarker) {
-			// A <tool_call> marker was emitted but produced no parsable call (truncated
-			// or malformed block). The gate already withheld it from the client, so this
-			// would otherwise be a silent dead end with no tool run — surface it.
+		} else if containsInlineToolMarker(result.Content) || containsInlineToolMarker(result.ReasoningContent) {
+			// An inline tool-call marker (either syntax) was emitted but produced no
+			// parsable call (truncated or malformed block). The gate already withheld it
+			// from the client, so this would otherwise be a silent dead end with no tool
+			// run — surface it.
 			slog.WarnContext(ctx, "inline tool-call markup not parsed",
 				slog.String("model", model),
-				slog.Bool("in_content", strings.Contains(result.Content, inlineToolCallMarker)),
-				slog.Bool("in_reasoning", strings.Contains(result.ReasoningContent, inlineToolCallMarker)),
+				slog.Bool("in_content", containsInlineToolMarker(result.Content)),
+				slog.Bool("in_reasoning", containsInlineToolMarker(result.ReasoningContent)),
 			)
 		}
 		for _, call := range inlineCalls {
