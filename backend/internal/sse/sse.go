@@ -5,19 +5,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
-
-// prelude is a one-time SSE comment written immediately after the headers. Some
-// intermediaries (notably TLS-intercepting corporate forward proxies) buffer the
-// response until they have accumulated a byte threshold before forwarding anything,
-// which collapses streaming into a single render at the end. Flushing ~2 KB up front
-// pushes past common thresholds and coaxes those proxies into streaming. It is an SSE
-// comment (": ...\n\n"), so EventSource clients and our own parser ignore it. A proxy
-// that buffers until the connection closes cannot be beaten from here; that is infra.
-var prelude = ": " + strings.Repeat("x", 2048) + "\n\n"
 
 // Writer streams SSE events to an http.ResponseWriter. Send is safe for
 // concurrent use: the main assistant loop and background workers (e.g.
@@ -41,10 +31,6 @@ func NewWriter(w http.ResponseWriter) (*Writer, error) {
 	w.Header().Set("Connection", "keep-alive")
 	// Tell loom's own reverse proxy (nginx and several LBs honor this) not to buffer.
 	w.Header().Set("X-Accel-Buffering", "no")
-	// Flush a padding comment now to defeat threshold-based buffering proxies upstream.
-	if _, err := fmt.Fprint(w, prelude); err == nil {
-		flusher.Flush()
-	}
 	return &Writer{w: w, flusher: flusher, lastActivity: time.Now()}, nil
 }
 
