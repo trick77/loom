@@ -941,6 +941,11 @@ func TestImageArtifactRequiredRoutesAttachedImageEdits(t *testing.T) {
 		"draw this as a cartoon",
 		"transform this into a marble statue",
 		"verwandle das in ein Gemälde",
+		// Re-imagine family paired with a visual target ("logo"/"icon"): a redesign of
+		// an attached image routes to the image tool.
+		"rethink this logo. black background, icon color #c15f3c",
+		"redesign the icon",
+		"reimagine this logo as a minimalist mark",
 	} {
 		t.Run("edit/"+content, func(t *testing.T) {
 			if !srv.imageArtifactRequired(content, true, nil) {
@@ -968,6 +973,11 @@ func TestImageArtifactRequiredRoutesAttachedImageEdits(t *testing.T) {
 		"what render engine produced this",
 		"give me a rough sketch of the plan",
 		"render the json in this screenshot as text",
+		// Re-imagine verbs are polysemous: without a visual target they must not route,
+		// even with an image attached (a screenshot of code, say).
+		"rethink this function",
+		"redesign the architecture",
+		"rework this approach",
 	} {
 		t.Run("describe/"+content, func(t *testing.T) {
 			if srv.imageArtifactRequired(content, true, nil) {

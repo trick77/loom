@@ -343,6 +343,11 @@ var imageTransformVerbs = map[string]bool{
 	"render": true, "draw": true, "paint": true, "sketch": true,
 	"verwandle": true, "umwandle": true, "mache": true, "mach": true, "machen": true,
 	"aendere": true, "ändere": true,
+	// Re-imagine family: polysemous (apply equally to code/plans/text), so they need a
+	// nearby visual target just like the verbs above — "rethink this LOGO", "redesign
+	// the ICON" route, but "rework this function" / "redesign the architecture" do not.
+	"rethink": true, "reimagine": true, "rework": true, "redesign": true, "reinvent": true,
+	"überdenke": true, "überarbeite": true, "umgestalte": true, "umgestalten": true,
 }
 
 // imageVisualTargets are nouns/styles whose output is inherently a picture, used to
@@ -354,6 +359,7 @@ var imageVisualTargets = mergeTokenSets(imageStyleDescriptors, imageEditTargets,
 	"sculpture": true, "figurine": true, "poster": true, "mosaic": true, "mural": true,
 	"caricature": true, "comic": true, "origami": true, "gemälde": true, "gemaelde": true,
 	"zeichnung": true, "skulptur": true,
+	"logo": true, "logos": true, "icon": true, "icons": true,
 })
 
 func mergeTokenSets(sets ...map[string]bool) map[string]bool {

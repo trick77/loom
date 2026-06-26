@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -79,6 +80,69 @@ func TestClient_StreamSurfacesInlineToolNameBeforeArguments(t *testing.T) {
 	}
 	if final.Function.Arguments == "" {
 		t.Fatalf("final tool-call must carry the parsed argument, got empty")
+	}
+}
+
+// MiMo sometimes invents a <tool_invocation name=… arguments={…} /> syntax instead
+// of the documented <tool_call> form. The stream must gate the raw markup out of the
+// client deltas and still recover a structured tool call (with the typed-JSON
+// arguments preserved) at end-of-stream, so dispatch runs it instead of the markup
+// leaking as the reply.
+func TestClient_StreamRecoversToolInvocationVariant(t *testing.T) {
+	chunks := []string{
+		`data: {"choices":[{"delta":{"content":"Sure. "}}]}`,
+		`data: {"choices":[{"delta":{"content":"<tool_invocation name=\"generate_image\" "}}]}`,
+		`data: {"choices":[{"delta":{"content":"arguments={\"prompt\": \"a red fox\", \"height\": 1024} />"}}]}`,
+		`data: [DONE]`,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		for _, c := range chunks {
+			_, _ = w.Write([]byte(c + "\n\n"))
+			if flusher != nil {
+				flusher.Flush()
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "generate_image"}}}
+
+	var streamedContent string
+	var toolCallEvents []ToolCall
+	// The client defaults to a MiMo model, so inline parsing engages (same as the
+	// <tool_call> inline test above).
+	result, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "rethink this logo"}}, tools, func(event StreamEvent) error {
+		streamedContent += event.Delta
+		if event.ToolCall.Function.Name != "" {
+			toolCallEvents = append(toolCallEvents, event.ToolCall)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+
+	// The raw markup must never reach the client; only the leading prose streams.
+	if strings.Contains(streamedContent, "tool_invocation") {
+		t.Fatalf("streamed content leaked raw markup: %q", streamedContent)
+	}
+	if len(result.ToolCalls) != 1 {
+		t.Fatalf("result.ToolCalls = %#v, want 1 recovered call", result.ToolCalls)
+	}
+	call := result.ToolCalls[0]
+	if call.Function.Name != "generate_image" {
+		t.Fatalf("recovered call name = %q, want generate_image", call.Function.Name)
+	}
+	// Typed JSON (number height) is preserved verbatim for dispatch to coerce.
+	if call.Function.Arguments != `{"prompt": "a red fox", "height": 1024}` {
+		t.Fatalf("recovered call arguments = %q", call.Function.Arguments)
+	}
+	if len(toolCallEvents) == 0 {
+		t.Fatalf("expected at least one tool-call event surfaced to the client")
 	}
 }
 
