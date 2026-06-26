@@ -24,6 +24,35 @@ export function previousUserContent(messages: Message[], beforeIndex: number): s
   return null;
 }
 
+// reconcileUserMessage folds the server-confirmed user message into the list,
+// replacing the optimistic placeholder identified by `placeholderID` in place so
+// its clientKey/position survive (a stable React key => no remount or scroll jump).
+// It is idempotent: any existing copy of the placeholder *and* of the confirmed id
+// are removed before a single insert, so a delayed/duplicate user_message event or
+// a copy already loaded by a route refresh can never leave two bubbles behind.
+export function reconcileUserMessage(
+  messages: MessageWithActivityTrace[],
+  placeholderID: string | null,
+  confirmed: MessageWithActivityTrace,
+): MessageWithActivityTrace[] {
+  const placeholder =
+    placeholderID !== null
+      ? messages.find((message) => message.id === placeholderID)
+      : undefined;
+  const reconciled: MessageWithActivityTrace = {
+    ...confirmed,
+    clientKey: placeholder?.clientKey ?? confirmed.id,
+  };
+  const insertAt = messages.findIndex(
+    (message) => message.id === placeholderID || message.id === confirmed.id,
+  );
+  const without = messages.filter(
+    (message) => message.id !== placeholderID && message.id !== confirmed.id,
+  );
+  if (insertAt === -1) return [...without, reconciled];
+  return [...without.slice(0, insertAt), reconciled, ...without.slice(insertAt)];
+}
+
 export function updateMessageAttachment(
   messages: MessageWithActivityTrace[],
   attachmentId: string,
