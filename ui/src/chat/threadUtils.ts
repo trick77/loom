@@ -24,33 +24,36 @@ export function previousUserContent(messages: Message[], beforeIndex: number): s
   return null;
 }
 
-// reconcileUserMessage folds the server-confirmed user message into the list,
-// replacing the optimistic placeholder identified by `placeholderID` in place so
-// its clientKey/position survive (a stable React key => no remount or scroll jump).
-// It is idempotent: any existing copy of the placeholder *and* of the confirmed id
-// are removed before a single insert, so a delayed/duplicate user_message event or
-// a copy already loaded by a route refresh can never leave two bubbles behind.
+// reconcileUserMessage folds the server-confirmed user message into the list.
+// When the optimistic placeholder identified by `placeholderID` is present it is
+// replaced in place — keeping its slot and clientKey so the React key is stable
+// (no remount/scroll jump) — and any stray copy of the confirmed id is dropped, so
+// a delayed/duplicate user_message event can never leave two bubbles behind. When
+// the placeholder is gone but a copy of the confirmed message is already present
+// (e.g. a route refresh reloaded it), the list is returned unchanged: that keeps
+// the loaded object's richer fields, key and position rather than overwriting them
+// with the streamed payload. Otherwise the message is appended once.
 export function reconcileUserMessage(
   messages: MessageWithActivityTrace[],
   placeholderID: string | null,
   confirmed: MessageWithActivityTrace,
 ): MessageWithActivityTrace[] {
-  const placeholder =
-    placeholderID !== null
-      ? messages.find((message) => message.id === placeholderID)
-      : undefined;
-  const reconciled: MessageWithActivityTrace = {
-    ...confirmed,
-    clientKey: placeholder?.clientKey ?? confirmed.id,
-  };
-  const insertAt = messages.findIndex(
-    (message) => message.id === placeholderID || message.id === confirmed.id,
-  );
-  const without = messages.filter(
-    (message) => message.id !== placeholderID && message.id !== confirmed.id,
-  );
-  if (insertAt === -1) return [...without, reconciled];
-  return [...without.slice(0, insertAt), reconciled, ...without.slice(insertAt)];
+  const placeholderIndex =
+    placeholderID !== null ? messages.findIndex((message) => message.id === placeholderID) : -1;
+  if (placeholderIndex !== -1) {
+    const reconciled: MessageWithActivityTrace = {
+      ...confirmed,
+      clientKey: messages[placeholderIndex].clientKey,
+    };
+    const result: MessageWithActivityTrace[] = [];
+    messages.forEach((message, index) => {
+      if (index === placeholderIndex) result.push(reconciled);
+      else if (message.id !== confirmed.id) result.push(message);
+    });
+    return result;
+  }
+  if (messages.some((message) => message.id === confirmed.id)) return messages;
+  return [...messages, { ...confirmed, clientKey: confirmed.id }];
 }
 
 export function updateMessageAttachment(

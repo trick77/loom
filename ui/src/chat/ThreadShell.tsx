@@ -672,7 +672,17 @@ export function ThreadShell({
           // ensure the message content is represented as a trailing text block
           // when the streamed blocks carry no prose of their own.
           if (isCurrentThread()) {
-            setMessages((current) => [...current, graftStreamedBlocks(message, liveBlocks)]);
+            setMessages((current) => {
+              const grafted = graftStreamedBlocks(message, liveBlocks);
+              // Mirror the user-message dedup: if a route refresh already loaded this
+              // assistant message, replace it in place (keeping the richer grafted
+              // blocks and its clientKey) instead of appending a duplicate bubble.
+              const index = current.findIndex((item) => item.id === grafted.id);
+              if (index === -1) return [...current, grafted];
+              const next = current.slice();
+              next[index] = { ...grafted, clientKey: current[index].clientKey };
+              return next;
+            });
           }
           clearStreamingBlocks();
         },

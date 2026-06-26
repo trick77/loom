@@ -41,6 +41,26 @@ test("replaces in place even when called after the reset that caused the bug", (
   expect(result[0].clientKey).toBe("temp-1");
 });
 
+test("preserves an already-loaded copy on a duplicate/late event (no key flip or field overwrite)", () => {
+  // A route refresh loaded the persisted message (richer fields, keyed off its id),
+  // and the placeholder is already gone. A delayed/duplicate user_message must not
+  // remount the bubble (clientKey flip) or revert its fields to the streamed payload.
+  const loaded = userMessage({
+    id: "m1",
+    content: "hi",
+    createdAt: "2026-06-14T00:00:01Z",
+    attachments: [
+      { id: "att-1", filename: "a.pdf", mimeType: "application/pdf", sizeBytes: 1, status: "ready" },
+    ],
+  });
+  const messages = [userMessage({ id: "m0", content: "earlier" }), loaded];
+
+  const result = reconcileUserMessage(messages, null, userMessage({ id: "m1", content: "hi" }));
+
+  expect(result).toEqual(messages);
+  expect(result[1]).toBe(loaded); // same object reference => no remount, fields intact
+});
+
 test("appends once when no placeholder was inserted (id null, no temp bubble)", () => {
   // placeholderID is null only when the optimistic insert was skipped, so the list
   // holds no temp bubble to reconcile — the confirmed message is simply added once.
