@@ -54,7 +54,7 @@ import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
-import { updateMessageAttachment } from "./threadUtils";
+import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export { buildImageStats } from "./artifacts";
@@ -623,25 +623,18 @@ export function ThreadShell({
             options.attachments.length > 0
               ? { ...message, attachments: options.attachments.map(toSentAttachment) }
               : message;
-          // Replace the optimistic placeholder in place so the persisted id/metadata
-          // take over without reordering or duplicating the bubble. Carry over its
-          // clientKey so React keeps the same DOM node (no remount/scroll jump). If
-          // it's already gone (e.g. a route effect reset the list), fall back to
-          // appending — but guard against a duplicate: a buffering proxy can delay
-          // this event until after a navigate-away-and-back reloaded the message.
-          setMessages((current) => {
-            if (optimisticUserMessageID !== null) {
-              const index = current.findIndex((item) => item.id === optimisticUserMessageID);
-              if (index !== -1) {
-                const next = current.slice();
-                next[index] = { ...confirmed, clientKey: current[index].clientKey };
-                return next;
-              }
-            }
-            if (current.some((item) => item.id === confirmed.id)) return current;
-            return [...current, confirmed];
-          });
+          // Fold the persisted message into the list, replacing the optimistic
+          // placeholder in place (its clientKey/position survive => stable React key,
+          // no remount or scroll jump). Capture the placeholder id into a const rather
+          // than reading the outer `optimisticUserMessageID` inside the updater: the
+          // latter is reset to null synchronously below, but React may defer the
+          // updater (when its queue is non-empty mid-stream) until after that reset —
+          // reading null then would miss the placeholder, append a second bubble, and
+          // leave the orphaned optimistic one. Reset before setMessages so the catch
+          // block treats the message as confirmed and won't drop it.
+          const placeholderID = optimisticUserMessageID;
           optimisticUserMessageID = null;
+          setMessages((current) => reconcileUserMessage(current, placeholderID, confirmed));
         },
         onDelta: (delta) => {
           // Each content delta extends the trailing text block, or opens a new one
@@ -679,7 +672,17 @@ export function ThreadShell({
           // ensure the message content is represented as a trailing text block
           // when the streamed blocks carry no prose of their own.
           if (isCurrentThread()) {
-            setMessages((current) => [...current, graftStreamedBlocks(message, liveBlocks)]);
+            setMessages((current) => {
+              const grafted = graftStreamedBlocks(message, liveBlocks);
+              // Mirror the user-message dedup: if a route refresh already loaded this
+              // assistant message, replace it in place (keeping the richer grafted
+              // blocks and its clientKey) instead of appending a duplicate bubble.
+              const index = current.findIndex((item) => item.id === grafted.id);
+              if (index === -1) return [...current, grafted];
+              const next = current.slice();
+              next[index] = { ...grafted, clientKey: current[index].clientKey };
+              return next;
+            });
           }
           clearStreamingBlocks();
         },
