@@ -24,6 +24,24 @@ func containsInlineToolMarker(s string) bool {
 	return false
 }
 
+// cutAtFirstInlineMarker returns s truncated at the earliest inline tool-call marker,
+// mirroring what the stream gate withholds live. It is the persistence-side safety net:
+// when a tool-call block fails to parse (truncated/malformed) the parser leaves the raw
+// markup in place, and this keeps that markup out of stored content so a reloaded thread
+// never shows it. A no-op when no marker is present (the common, fully-parsed case).
+func cutAtFirstInlineMarker(s string) string {
+	cut := -1
+	for _, m := range inlineToolCallMarkers {
+		if idx := strings.Index(s, m); idx >= 0 && (cut < 0 || idx < cut) {
+			cut = idx
+		}
+	}
+	if cut < 0 {
+		return s
+	}
+	return strings.TrimSpace(s[:cut])
+}
+
 // toolCallStreamGate buffers streamed content for models that emit tool calls as
 // inline XML (e.g. MiMo), so the raw markup is never streamed to the client.
 // Normal content still streams token-by-token; only a (potential) tool call is
