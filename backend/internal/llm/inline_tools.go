@@ -30,8 +30,10 @@ var (
 
 	// For the <tool_invocation …/> variant. The arguments value is raw JSON containing
 	// nested braces and quotes, so it is located by balanced-brace scanning (see
-	// scanJSONObject) rather than a regex; only the name attribute is matched here.
-	inlineInvocationName = regexp.MustCompile(`name\s*=\s*"([^"]*)"`)
+	// scanJSONObject) rather than a regex; only the name attribute is matched here. The
+	// \b anchors the match to the `name` attribute so a name-suffixed attribute ahead of
+	// it (display_name="x" …) can't be mistaken for the tool name.
+	inlineInvocationName = regexp.MustCompile(`\bname\s*=\s*"([^"]*)"`)
 	inlineInvocationArgs = regexp.MustCompile(`arguments\s*=\s*`)
 )
 
@@ -113,6 +115,11 @@ func parseInlineToolCalls(content string) ([]ToolCall, string) {
 // parse cleanly (no name, truncated, unbalanced JSON) are left in place so the
 // end-of-stream "unparsed markup" warning can surface them.
 func parseInvocationTags(content string) ([]ToolCall, string) {
+	// Fast path: the vast majority of completions carry no variant marker, so skip
+	// allocating/copying the whole body into a builder when there's nothing to find.
+	if !strings.Contains(content, inlineInvocationMarker) {
+		return nil, content
+	}
 	var calls []ToolCall
 	var b strings.Builder
 	i := 0
@@ -138,15 +145,12 @@ func parseInvocationTags(content string) ([]ToolCall, string) {
 }
 
 // parseInvocationAt parses a single <tool_invocation …/> tag beginning at start.
-// It returns the call and the index just past the tag's closing '>'. The scan is
-// bounded to before the next marker so a tag missing its own arguments can't absorb a
-// later tag's. ok is false when the tag has no usable name or never closes.
+// It returns the call and the index just past the tag's closing '>'. ok is false when
+// the tag has no usable name, never closes, or carries a present-but-malformed
+// arguments value (so the caller leaves the raw markup for the unparsed-markup warning
+// rather than dispatching a degenerate call).
 func parseInvocationAt(content string, start int) (ToolCall, int, bool) {
 	seg := content[start:]
-	// Bound to this single tag: never read past the next <tool_invocation.
-	if next := strings.Index(seg[len(inlineInvocationMarker):], inlineInvocationMarker); next >= 0 {
-		seg = seg[:len(inlineInvocationMarker)+next]
-	}
 
 	nameMatch := inlineInvocationName.FindStringSubmatchIndex(seg)
 	if nameMatch == nil {
@@ -157,22 +161,38 @@ func parseInvocationAt(content string, start int) (ToolCall, int, bool) {
 		return ToolCall{}, 0, false
 	}
 
-	// arguments={…}: the value is raw JSON, so brace-scan it. Absent or malformed
-	// arguments degrade to an empty object rather than failing the whole call.
+	// The first '>' after the name attribute closes a no-arguments tag, and for a tag
+	// with arguments it serves as a sentinel: this tag's own arguments= sits before it
+	// (the '>' is then inside the JSON), whereas a *later* tag's arguments= sits after
+	// it. That distinction replaces an earlier marker-literal bound that wrongly
+	// truncated tags whose JSON contained the literal "<tool_invocation".
+	gt := strings.IndexByte(seg[nameMatch[1]:], '>')
+	firstGt := -1
+	if gt >= 0 {
+		firstGt = nameMatch[1] + gt
+	}
+
+	// arguments={…}: the value is raw JSON, located by brace scan. A present-but-broken
+	// value (truncated, single-quoted, trailing junk) must NOT silently degrade to an
+	// empty object and dispatch a prompt-less image — fail the tag instead. A genuinely
+	// absent arguments attribute faithfully degrades to {}.
 	args := "{}"
 	afterAttrs := nameMatch[1]
-	if loc := inlineInvocationArgs.FindStringIndex(seg); loc != nil {
+	if loc := inlineInvocationArgs.FindStringIndex(seg); loc != nil && (firstGt < 0 || loc[0] < firstGt) {
 		valStart := loc[1]
-		if valStart < len(seg) && seg[valStart] == '{' {
-			if jsonEnd, ok := scanJSONObject(seg, valStart); ok {
-				if raw := seg[valStart:jsonEnd]; json.Valid([]byte(raw)) {
-					args = raw
-				}
-				if jsonEnd > afterAttrs {
-					afterAttrs = jsonEnd
-				}
-			}
+		if valStart >= len(seg) || seg[valStart] != '{' {
+			return ToolCall{}, 0, false
 		}
+		jsonEnd, ok := scanJSONObject(seg, valStart)
+		if !ok {
+			return ToolCall{}, 0, false
+		}
+		raw := seg[valStart:jsonEnd]
+		if !json.Valid([]byte(raw)) {
+			return ToolCall{}, 0, false
+		}
+		args = raw
+		afterAttrs = jsonEnd
 	}
 
 	// The tag closes at the first '>' after the attributes (covers both "/>" and ">").

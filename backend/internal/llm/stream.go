@@ -493,5 +493,14 @@ func finishStream(ctx context.Context, model string, content string, reasoningCo
 			}
 		}
 	}
+	// Persistence safety net: the live stream is gated, but a failed/partial parse — or
+	// markup in the channel that did not carry the recovered call — can leave raw tool-
+	// call markup in the stored content, which then reappears on thread reload (the exact
+	// leak the gating exists to prevent). Scrub any residual markup so stored content
+	// matches what was streamed. A no-op for fully-parsed turns (no marker remains).
+	if parseInlineTools {
+		result.Content = cutAtFirstInlineMarker(result.Content)
+		result.ReasoningContent = cutAtFirstInlineMarker(result.ReasoningContent)
+	}
 	return result, nil
 }

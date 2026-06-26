@@ -66,6 +66,21 @@ func TestToolCallStreamGate_SuppressesToolInvocationSplitAcrossDeltas(t *testing
 	}
 }
 
+func TestCutAtFirstInlineMarker(t *testing.T) {
+	// No marker: returned unchanged.
+	if got := cutAtFirstInlineMarker("a normal answer with no markup"); got != "a normal answer with no markup" {
+		t.Fatalf("cutAtFirstInlineMarker(no marker) = %q, want unchanged", got)
+	}
+	// Truncated <tool_invocation> markup is scrubbed, keeping the prose before it.
+	if got := cutAtFirstInlineMarker(`Here you go. <tool_invocation name="generate_image" arguments={"prompt": "truncated`); got != "Here you go." {
+		t.Fatalf("cutAtFirstInlineMarker(invocation) = %q, want %q", got, "Here you go.")
+	}
+	// Either marker is honored; the earliest wins.
+	if got := cutAtFirstInlineMarker("prose <tool_call> then <tool_invocation"); got != "prose" {
+		t.Fatalf("cutAtFirstInlineMarker(tool_call) = %q, want %q", got, "prose")
+	}
+}
+
 func TestToolCallStreamGate_PassesNormalContentThrough(t *testing.T) {
 	g := &toolCallStreamGate{}
 

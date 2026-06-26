@@ -146,6 +146,54 @@ func TestClient_StreamRecoversToolInvocationVariant(t *testing.T) {
 	}
 }
 
+// A truncated <tool_invocation> tag (model hit the token cap mid-tag) must not leave
+// raw markup in result.Content — the gate hides it from the live stream, and the
+// persistence safety net must keep it out of stored content too.
+func TestClient_StreamScrubsTruncatedToolInvocationFromContent(t *testing.T) {
+	chunks := []string{
+		`data: {"choices":[{"delta":{"content":"Working on it. "}}]}`,
+		`data: {"choices":[{"delta":{"content":"<tool_invocation name=\"generate_image\" arguments={\"prompt\": \"a red"}}]}`,
+		`data: [DONE]`,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		for _, c := range chunks {
+			_, _ = w.Write([]byte(c + "\n\n"))
+			if flusher != nil {
+				flusher.Flush()
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "generate_image"}}}
+
+	var streamedContent string
+	result, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "make an image"}}, tools, func(event StreamEvent) error {
+		streamedContent += event.Delta
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+
+	if len(result.ToolCalls) != 0 {
+		t.Fatalf("result.ToolCalls = %#v, want none (tag truncated)", result.ToolCalls)
+	}
+	if strings.Contains(result.Content, "tool_invocation") {
+		t.Fatalf("persisted content leaked raw markup: %q", result.Content)
+	}
+	if strings.Contains(streamedContent, "tool_invocation") {
+		t.Fatalf("streamed content leaked raw markup: %q", streamedContent)
+	}
+	if result.Content != "Working on it." {
+		t.Fatalf("result.Content = %q, want %q", result.Content, "Working on it.")
+	}
+}
+
 // The real xiaomimimo.com endpoint streams NATIVE tool_calls: the first chunk
 // carries the id + name, the (large) argument streams or bursts over later chunks.
 // The name must surface early under the call's real id so the client can show the

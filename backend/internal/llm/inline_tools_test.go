@@ -223,6 +223,67 @@ func TestParseInlineToolCalls_ToolInvocationUnbalancedArgsLeftForWarning(t *test
 	}
 }
 
+// A name-suffixed attribute (display_name, tool_name) ahead of the real `name` must
+// not be mistaken for the tool name.
+func TestParseInlineToolCalls_ToolInvocationIgnoresNameSuffixedAttribute(t *testing.T) {
+	content := `<tool_invocation display_name="Friendly Label" name="generate_image" arguments={"prompt": "a fox"} />`
+
+	calls, _ := parseInlineToolCalls(content)
+
+	if len(calls) != 1 {
+		t.Fatalf("calls = %#v, want 1", calls)
+	}
+	if calls[0].Function.Name != "generate_image" {
+		t.Fatalf("call name = %q, want generate_image", calls[0].Function.Name)
+	}
+	if got := firstInlineToolName(content); got != "generate_image" {
+		t.Fatalf("firstInlineToolName = %q, want generate_image", got)
+	}
+}
+
+// A present-but-malformed arguments value must NOT degrade to {} (which would dispatch
+// a prompt-less image and drop the user's prompt); the markup is left for the warning.
+func TestParseInlineToolCalls_ToolInvocationMalformedArgsNotDegraded(t *testing.T) {
+	cases := map[string]string{
+		// Truncated value whose string contains a '>' — the old code took that '>' as the
+		// tag close and produced a call with empty {} args plus leftover residue.
+		"truncated with inner >": `<tool_invocation name="generate_image" arguments={"prompt": "a > b"`,
+		// JS-style single quotes: not valid JSON.
+		"single-quoted":          `<tool_invocation name="generate_image" arguments={'prompt': 'fox'} />`,
+		// Trailing junk after a closed object is still a malformed object scan target.
+		"non-object value":       `<tool_invocation name="generate_image" arguments=oops />`,
+	}
+	for label, content := range cases {
+		t.Run(label, func(t *testing.T) {
+			calls, cleaned := parseInlineToolCalls(content)
+			if calls != nil {
+				t.Fatalf("calls = %#v, want nil (left for warning)", calls)
+			}
+			if cleaned != content {
+				t.Fatalf("cleaned = %q, want unchanged", cleaned)
+			}
+		})
+	}
+}
+
+// The literal substring "<tool_invocation" inside the arguments JSON must not truncate
+// the tag and drop an otherwise-valid call.
+func TestParseInlineToolCalls_ToolInvocationMarkerInsideArgsJSON(t *testing.T) {
+	content := `<tool_invocation name="generate_image" arguments={"prompt": "a diagram of a <tool_invocation> tag"} />`
+
+	calls, cleaned := parseInlineToolCalls(content)
+
+	if len(calls) != 1 {
+		t.Fatalf("calls = %#v, want 1", calls)
+	}
+	if calls[0].Function.Arguments != `{"prompt": "a diagram of a <tool_invocation> tag"}` {
+		t.Fatalf("call arguments = %q", calls[0].Function.Arguments)
+	}
+	if cleaned != "" {
+		t.Fatalf("cleaned = %q, want empty", cleaned)
+	}
+}
+
 func TestParseInlineToolCalls_EscapesSpecialCharactersInArguments(t *testing.T) {
 	content := `<tool_call><function=tavily__tavily_search><parameter=q>"quoted" & line
 break</parameter></function></tool_call>`
