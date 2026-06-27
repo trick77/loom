@@ -81,3 +81,56 @@ func TestDownscaleForModel_returnsInputOnUndecodableData(t *testing.T) {
 		t.Fatalf("undecodable data was modified")
 	}
 }
+
+func TestThumbnail_scalesLargeImageToJPEGWithinMaxDimension(t *testing.T) {
+	// Given: an image far larger than the thumbnail cap.
+	in := pngBytes(t, 1024, 768)
+
+	// When
+	out, err := Thumbnail(in, 144)
+
+	// Then: a JPEG capped to 144 on the long side, preserving aspect ratio.
+	if err != nil {
+		t.Fatalf("Thumbnail: %v", err)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("decode thumbnail: %v", err)
+	}
+	if format != "jpeg" {
+		t.Fatalf("format = %q, want jpeg", format)
+	}
+	if cfg.Width != 144 {
+		t.Fatalf("width = %d, want 144 (long side capped)", cfg.Width)
+	}
+	if want := 144 * 3 / 4; cfg.Height < want-2 || cfg.Height > want+2 {
+		t.Fatalf("height = %d, want ~%d (4:3 preserved)", cfg.Height, want)
+	}
+	if len(out) >= len(in) {
+		t.Fatalf("thumbnail size = %d, want smaller than original %d", len(out), len(in))
+	}
+}
+
+func TestThumbnail_doesNotUpscaleSmallImage(t *testing.T) {
+	in := pngBytes(t, 50, 40)
+	out, err := Thumbnail(in, 144)
+	if err != nil {
+		t.Fatalf("Thumbnail: %v", err)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("decode thumbnail: %v", err)
+	}
+	if format != "jpeg" {
+		t.Fatalf("format = %q, want jpeg", format)
+	}
+	if cfg.Width != 50 || cfg.Height != 40 {
+		t.Fatalf("dimensions = %dx%d, want 50x40 (no upscale)", cfg.Width, cfg.Height)
+	}
+}
+
+func TestThumbnail_errorsOnUndecodableData(t *testing.T) {
+	if _, err := Thumbnail([]byte("<svg/>"), 144); err == nil {
+		t.Fatal("Thumbnail of non-raster data = nil error, want error")
+	}
+}

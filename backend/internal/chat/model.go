@@ -138,6 +138,11 @@ type MessageAttachment struct {
 	MIMEType    string `json:"mimeType"`
 	SizeBytes   int64  `json:"sizeBytes"`
 	DownloadURL string `json:"downloadUrl,omitempty"`
+	// ThumbnailURL points at the artifact's thumbnail endpoint for raster image
+	// attachments (empty for SVGs and documents). Computed at send time and
+	// persisted, so a reloaded sent image renders from the small thumbnail rather
+	// than the full original. Older rows lack it and fall back to DownloadURL.
+	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
 }
 
 const (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,12 @@ import (
 )
 
 const multipartUploadOverheadBytes = 1 << 20
+
+// artifactCacheControl marks artifact bytes as cacheable forever: an artifact's
+// file is immutable once created (uploads/generation write a fresh, unique path
+// with O_CREATE|O_EXCL and never overwrite), and rename only changes metadata. It
+// is "private" because every download is auth-scoped to one user.
+const artifactCacheControl = "private, immutable, max-age=31536000"
 
 func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
@@ -46,6 +53,7 @@ func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 			SizeBytes:       item.SizeBytes,
 			ModifiedAt:      item.CreatedAt,
 			DownloadURL:     item.DownloadURL,
+			ThumbnailURL:    item.ThumbnailURL,
 		})
 	}
 	var nextCursor *string
@@ -91,7 +99,97 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 	defer file.Close()
 	w.Header().Set("Content-Type", found.MIMEType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+headerSafeFilename(found.DisplayFilename)+`"`)
+	// Immutable bytes → let the browser cache aggressively. ServeContent turns the
+	// ETag into a 304 on revisit (If-None-Match), so the lightbox/full-resolution
+	// path stops re-downloading megabytes on every artifacts visit.
+	w.Header().Set("Cache-Control", artifactCacheControl)
+	w.Header().Set("ETag", artifactETag(found.ID, found.SizeBytes))
 	http.ServeContent(w, r, found.DisplayFilename, found.CreatedAt, file)
+}
+
+// artifactETag builds a strong validator from an artifact's immutable identity
+// (id + byte size). The variant tag distinguishes the full download from the
+// thumbnail so the two cannot collide in a shared cache.
+func artifactETag(id string, sizeBytes int64) string {
+	return fmt.Sprintf("%q", fmt.Sprintf("art-%s-%d", id, sizeBytes))
+}
+
+func artifactThumbnailETag(id string, sizeBytes int64) string {
+	return fmt.Sprintf("%q", fmt.Sprintf("thumb-%s-%d", id, sizeBytes))
+}
+
+// handleThumbnailArtifact serves a small JPEG preview for a raster image artifact.
+// A non-image (or SVG) artifact has no thumbnail and returns 404 so the UI falls
+// back to the original/typed icon. The thumbnail is generated eagerly at
+// upload/generation time; this handler also lazily generates and persists one on
+// first view for artifacts that predate the feature (or whose sidecar went
+// missing), so old images speed up the first time they are shown.
+func (s *server) handleThumbnailArtifact(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	if s.artifacts == nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
+	if err != nil {
+		serverError(w, r, err, "load artifact failed")
+		return
+	}
+	if !exists || !artifact.IsThumbnailableMIME(found.MIMEType) {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	abs, err := s.resolveOrCreateThumbnail(r.Context(), user.ID, found)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	file, err := os.Open(abs)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	defer file.Close()
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Cache-Control", artifactCacheControl)
+	w.Header().Set("ETag", artifactThumbnailETag(found.ID, found.SizeBytes))
+	http.ServeContent(w, r, found.DisplayFilename+artifact.ThumbnailSuffix, found.CreatedAt, file)
+}
+
+// resolveOrCreateThumbnail returns the absolute path of the artifact's sidecar
+// thumbnail, generating and persisting it on demand when it is missing. It is the
+// lazy-backfill core: a stored relpath whose file still exists is served directly;
+// otherwise the original is decoded into a fresh thumbnail, the path is recorded
+// (best-effort — a failed write of the column still serves this request), and the
+// new file's path is returned. An error means no thumbnail could be produced.
+func (s *server) resolveOrCreateThumbnail(ctx context.Context, userID string, found artifact.Artifact) (string, error) {
+	if found.ThumbnailRelPath != "" {
+		if abs, err := artifact.ResolveExisting(s.usersDir, userID, found.ThumbnailRelPath); err == nil {
+			if _, statErr := os.Stat(abs); statErr == nil {
+				return abs, nil
+			}
+		}
+	}
+	origAbs, err := artifact.ResolveExisting(s.usersDir, userID, found.VolumeRelPath)
+	if err != nil {
+		return "", err
+	}
+	src, err := os.ReadFile(origAbs)
+	if err != nil {
+		return "", err
+	}
+	thumbRel, err := artifact.WriteThumbnail(src, origAbs, found.VolumeRelPath)
+	if err != nil {
+		return "", err
+	}
+	if err := s.artifacts.SetThumbnailRelPath(ctx, userID, found.ID, thumbRel); err != nil {
+		slog.Warn("persist artifact thumbnail path failed", "artifact_id", found.ID, "err", err)
+	}
+	return artifact.ResolveExisting(s.usersDir, userID, thumbRel)
 }
 
 // handleDeleteArtifact removes an artifact the caller owns: its row and its file
@@ -124,6 +222,10 @@ func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	if abs, err := artifact.ResolveExisting(s.usersDir, user.ID, found.VolumeRelPath); err == nil {
 		_ = os.Remove(abs)
+		// Best-effort: drop the sidecar thumbnail alongside the original. It lives at
+		// <original>.thumb.jpg whether or not the row recorded a path (lazy backfill
+		// may have written one without a stored relpath if the column update failed).
+		_ = os.Remove(abs + artifact.ThumbnailSuffix)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -259,18 +361,26 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
 		return
 	}
+	// Eagerly generate the sidecar thumbnail (best-effort) so the artifacts list and
+	// composer previews are fast immediately; the bytes were just written to disk.
+	var thumbnailRelPath string
+	if src, rerr := os.ReadFile(output.AbsPath); rerr == nil {
+		thumbnailRelPath = generateThumbnailBestEffort(mimeType, src, output.AbsPath, output.VolumeRelPath)
+	}
 	created, err := s.artifacts.Create(r.Context(), artifact.CreateInput{
-		UserID:          user.ID,
-		ThreadID:        threadID,
-		ProjectID:       projectIDPtr,
-		DisplayFilename: output.DisplayFilename,
-		VolumeRelPath:   output.VolumeRelPath,
-		MIMEType:        mimeType,
-		SizeBytes:       size,
-		Source:          "user_uploaded",
+		UserID:           user.ID,
+		ThreadID:         threadID,
+		ProjectID:        projectIDPtr,
+		DisplayFilename:  output.DisplayFilename,
+		VolumeRelPath:    output.VolumeRelPath,
+		MIMEType:         mimeType,
+		SizeBytes:        size,
+		Source:           "user_uploaded",
+		ThumbnailRelPath: thumbnailRelPath,
 	})
 	if err != nil {
 		_ = os.Remove(output.AbsPath)
+		_ = os.Remove(output.AbsPath + artifact.ThumbnailSuffix)
 		serverError(w, r, err, "save upload failed")
 		return
 	}
@@ -299,7 +409,24 @@ func artifactResponseFromArtifact(item artifact.Artifact) artifactResponse {
 		SizeBytes:       item.SizeBytes,
 		ProjectID:       item.ProjectID,
 		DownloadURL:     item.DownloadURL,
+		ThumbnailURL:    item.ThumbnailURL,
 	}
+}
+
+// generateThumbnailBestEffort writes a sidecar thumbnail for a freshly-created
+// raster image artifact, returning its volume-relative path (empty for non-raster
+// types or on failure). It never propagates an error: a missing thumbnail is
+// backfilled lazily by the thumbnail endpoint on first view.
+func generateThumbnailBestEffort(mimeType string, src []byte, absPath, relPath string) string {
+	if !artifact.IsThumbnailableMIME(mimeType) {
+		return ""
+	}
+	thumbRel, err := artifact.WriteThumbnail(src, absPath, relPath)
+	if err != nil {
+		slog.Warn("generate artifact thumbnail failed", "path", relPath, "err", err)
+		return ""
+	}
+	return thumbRel
 }
 
 func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, error) {

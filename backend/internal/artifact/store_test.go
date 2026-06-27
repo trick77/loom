@@ -309,3 +309,116 @@ func assertArtifactIDs(t *testing.T, artifacts []Artifact, want []string) {
 		t.Fatalf("artifact ids = %#v, want %#v", got, want)
 	}
 }
+
+func TestStoreThumbnailRelPathRoundTripAndDerivedURL(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO threads (id, user_id, title)
+VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(db)
+
+	// A raster image created with an eager thumbnail relpath round-trips it and
+	// exposes the derived thumbnail URL.
+	img, err := s.Create(ctx, CreateInput{
+		UserID:           "user_1",
+		ThreadID:         "thread_1",
+		DisplayFilename:  "robot.png",
+		VolumeRelPath:    "files/outputs/robot.png",
+		MIMEType:         "image/png",
+		SizeBytes:        10,
+		ThumbnailRelPath: "files/outputs/robot.png.thumb.jpg",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	wantURL := "/api/artifacts/" + img.ID + "/thumbnail"
+	if img.ThumbnailRelPath != "files/outputs/robot.png.thumb.jpg" || img.ThumbnailURL != wantURL {
+		t.Fatalf("create result relpath=%q url=%q, want stored relpath and %q", img.ThumbnailRelPath, img.ThumbnailURL, wantURL)
+	}
+	got, ok, err := s.Get(ctx, "user_1", img.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get() ok=%v err=%v", ok, err)
+	}
+	if got.ThumbnailRelPath != "files/outputs/robot.png.thumb.jpg" || got.ThumbnailURL != wantURL {
+		t.Fatalf("get result relpath=%q url=%q, want round-trip and %q", got.ThumbnailRelPath, got.ThumbnailURL, wantURL)
+	}
+
+	// A raster image created WITHOUT a thumbnail still advertises the URL (lazy
+	// backfill fulfils it on first view) but has no stored relpath yet.
+	noThumb, err := s.Create(ctx, CreateInput{
+		UserID:          "user_1",
+		ThreadID:        "thread_1",
+		DisplayFilename: "photo.jpg",
+		VolumeRelPath:   "files/outputs/photo.jpg",
+		MIMEType:        "image/jpeg",
+		SizeBytes:       10,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if noThumb.ThumbnailRelPath != "" {
+		t.Fatalf("ThumbnailRelPath = %q, want empty before backfill", noThumb.ThumbnailRelPath)
+	}
+	if noThumb.ThumbnailURL == "" {
+		t.Fatal("raster image without a thumbnail should still advertise a thumbnail URL")
+	}
+
+	// SetThumbnailRelPath persists onto the existing row (the lazy-backfill path).
+	if err := s.SetThumbnailRelPath(ctx, "user_1", noThumb.ID, "files/outputs/photo.jpg.thumb.jpg"); err != nil {
+		t.Fatalf("SetThumbnailRelPath() error = %v", err)
+	}
+	after, _, err := s.Get(ctx, "user_1", noThumb.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.ThumbnailRelPath != "files/outputs/photo.jpg.thumb.jpg" {
+		t.Fatalf("after backfill relpath = %q, want persisted", after.ThumbnailRelPath)
+	}
+
+	// A non-raster artifact (SVG) carries no thumbnail URL.
+	svg, err := s.Create(ctx, CreateInput{
+		UserID:          "user_1",
+		ThreadID:        "thread_1",
+		DisplayFilename: "diagram.svg",
+		VolumeRelPath:   "files/outputs/diagram.svg",
+		MIMEType:        "image/svg+xml; charset=utf-8",
+		SizeBytes:       10,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if svg.ThumbnailURL != "" {
+		t.Fatalf("SVG ThumbnailURL = %q, want empty (served as its own preview)", svg.ThumbnailURL)
+	}
+
+	// List also surfaces the thumbnail URL for raster images.
+	items, err := s.List(ctx, "user_1", ListOptions{Type: ListTypeImages})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawImg bool
+	for _, it := range items {
+		if it.ID == img.ID {
+			sawImg = true
+			if it.ThumbnailURL != wantURL {
+				t.Fatalf("List ThumbnailURL = %q, want %q", it.ThumbnailURL, wantURL)
+			}
+		}
+	}
+	if !sawImg {
+		t.Fatal("List did not return the raster image artifact")
+	}
+}

@@ -7,6 +7,7 @@ package imagescale
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/draw"
@@ -82,18 +83,57 @@ func fitWithin(data []byte, mimeType string, maxDimension, byteCap int) ([]byte,
 		nh = max(1, int(float64(h)*scale))
 	}
 
+	out, err := scaleToJPEG(img, src, nw, nh)
+	if err != nil {
+		return data, mimeType
+	}
+	if len(out) >= len(data) {
+		return data, mimeType
+	}
+	return out, "image/jpeg"
+}
+
+// Thumbnail decodes data and produces a small JPEG whose longest side is at most
+// maxDimension, flattening any transparency onto white. Unlike DownscaleForModel
+// it ALWAYS re-encodes as JPEG (callers serve the result with a fixed image/jpeg
+// content type) and returns an error for input it cannot decode as a raster image
+// (SVG, corrupt bytes); callers treat that as "no thumbnail" and fall back to the
+// original. An image already within maxDimension is re-encoded at its current size
+// rather than upscaled.
+func Thumbnail(data []byte, maxDimension int) ([]byte, error) {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	src := img.Bounds()
+	w, h := src.Dx(), src.Dy()
+	if w == 0 || h == 0 {
+		return nil, errors.New("imagescale: image has zero dimension")
+	}
+	nw, nh := w, h
+	longest := w
+	if h > longest {
+		longest = h
+	}
+	if longest > maxDimension {
+		scale := float64(maxDimension) / float64(longest)
+		nw = max(1, int(float64(w)*scale))
+		nh = max(1, int(float64(h)*scale))
+	}
+	return scaleToJPEG(img, src, nw, nh)
+}
+
+// scaleToJPEG resizes the src region of img into an nw×nh canvas and encodes it as
+// JPEG. Any transparency is flattened onto white first, since JPEG has no alpha and
+// would otherwise render transparent regions as black.
+func scaleToJPEG(img image.Image, src image.Rectangle, nw, nh int) ([]byte, error) {
 	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
-	// Flatten any transparency onto white so JPEG (which has no alpha) does not
-	// render transparent regions as black.
 	draw.Draw(dst, dst.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
 	xdraw.CatmullRom.Scale(dst, dst.Bounds(), img, src, xdraw.Over, nil)
 
 	var out bytes.Buffer
 	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: jpegQuality}); err != nil {
-		return data, mimeType
+		return nil, err
 	}
-	if out.Len() >= len(data) {
-		return data, mimeType
-	}
-	return out.Bytes(), "image/jpeg"
+	return out.Bytes(), nil
 }

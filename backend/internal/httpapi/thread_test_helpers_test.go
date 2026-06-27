@@ -46,6 +46,15 @@ func (f fakeArtifactStore) Rename(_ context.Context, userID, artifactID, display
 	return nil
 }
 
+func (f fakeArtifactStore) SetThumbnailRelPath(_ context.Context, userID, artifactID, relPath string) error {
+	for i := range f.artifacts {
+		if f.artifacts[i].UserID == userID && f.artifacts[i].ID == artifactID {
+			f.artifacts[i].ThumbnailRelPath = relPath
+		}
+	}
+	return nil
+}
+
 func (f fakeArtifactStore) GetMany(_ context.Context, userID string, ids []string) (map[string]artifact.Artifact, error) {
 	want := make(map[string]struct{}, len(ids))
 	for _, id := range ids {

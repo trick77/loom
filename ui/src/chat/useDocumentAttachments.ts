@@ -82,6 +82,7 @@ export function composerAttachmentFromArtifact(artifact: {
   mimeType: string;
   sizeBytes: number;
   downloadUrl: string;
+  thumbnailUrl?: string;
 }): ComposerAttachment {
   nextAttachmentID += 1;
   return {
@@ -90,7 +91,7 @@ export function composerAttachmentFromArtifact(artifact: {
     mimeType: artifact.mimeType,
     sizeBytes: artifact.sizeBytes,
     status: "ready",
-    previewUrl: artifact.downloadUrl,
+    previewUrl: artifact.thumbnailUrl ?? artifact.downloadUrl,
     artifactId: artifact.id,
   };
 }
@@ -109,14 +110,14 @@ export function composerAttachmentFromMessageAttachment(attachment: MessageAttac
     mimeType: attachment.mimeType,
     sizeBytes: attachment.sizeBytes,
     status: "ready",
-    previewUrl: attachment.downloadUrl,
+    previewUrl: attachment.thumbnailUrl ?? attachment.downloadUrl,
     documentId: attachment.documentId,
     artifactId: attachment.artifactId,
   };
 }
 
 export function isImageAttachment(attachment: Pick<ComposerAttachment, "mimeType" | "filename">): boolean {
-  return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(attachment.filename);
+  return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(attachment.filename);
 }
 
 type AttachmentStatusHandler = (id: string, patch: Partial<ComposerAttachment>) => void;

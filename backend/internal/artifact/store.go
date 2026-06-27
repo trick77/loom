@@ -25,6 +25,9 @@ type CreateInput struct {
 	// Source records how the artifact came to exist ("assistant_generated" by
 	// default, "user_uploaded" for uploads). Empty falls back to the column default.
 	Source string
+	// ThumbnailRelPath is the volume-relative path of the eagerly-generated sidecar
+	// thumbnail, empty when none was produced (non-raster, or generation failed).
+	ThumbnailRelPath string
 }
 
 func NewStore(db *sql.DB) *Store {
@@ -43,10 +46,16 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (Artifact, error) {
 	if in.ThreadID != "" {
 		threadID = in.ThreadID
 	}
+	// NULL when no thumbnail was generated, so the lazy backfill path can tell an
+	// "untried" raster artifact apart from one that genuinely has no thumbnail.
+	var thumbnailRelPath any
+	if in.ThumbnailRelPath != "" {
+		thumbnailRelPath = in.ThumbnailRelPath
+	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO artifacts (id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, in.UserID, threadID, in.ProjectID, in.DisplayFilename, in.VolumeRelPath, in.MIMEType, in.SizeBytes, source,
+INSERT INTO artifacts (id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, thumbnail_relpath)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, in.UserID, threadID, in.ProjectID, in.DisplayFilename, in.VolumeRelPath, in.MIMEType, in.SizeBytes, source, thumbnailRelPath,
 	)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("insert artifact: %w", err)
@@ -87,6 +96,20 @@ func (s *Store) Rename(ctx context.Context, userID, artifactID, displayFilename 
 	return nil
 }
 
+// SetThumbnailRelPath records the volume-relative path of an artifact's sidecar
+// thumbnail, scoped to the user. It is used by the lazy-backfill path on the
+// thumbnail endpoint to persist a thumbnail generated on first view, so subsequent
+// requests serve it directly. Only live (non-deleted) artifacts are updated.
+func (s *Store) SetThumbnailRelPath(ctx context.Context, userID, artifactID, relPath string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE artifacts SET thumbnail_relpath = ? WHERE user_id = ? AND id = ? AND deleted_at IS NULL`,
+		relPath, userID, artifactID)
+	if err != nil {
+		return fmt.Errorf("set artifact thumbnail: %w", err)
+	}
+	return nil
+}
+
 // GetMany loads artifacts by id for a user, INCLUDING soft-deleted ones, returned
 // as a map keyed by id. It powers the read-time overlay that refreshes the
 // artifact snapshots embedded in chat messages with the current display filename
@@ -103,7 +126,7 @@ func (s *Store) GetMany(ctx context.Context, userID string, ids []string) (map[s
 		args = append(args, id)
 	}
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, deleted_at
+SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath, deleted_at
 FROM artifacts
 WHERE user_id = ? AND id IN (%s)`, placeholders), args...)
 	if err != nil {
@@ -127,9 +150,9 @@ WHERE user_id = ? AND id IN (%s)`, placeholders), args...)
 func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, bool, error) {
 	var out Artifact
 	var createdAt string
-	var threadID, projectID sql.NullString
+	var threadID, projectID, thumbnailRelPath sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
+SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
 WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 		&out.ID,
@@ -142,6 +165,7 @@ WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 		&out.SizeBytes,
 		&out.Source,
 		&createdAt,
+		&thumbnailRelPath,
 	)
 	if err == sql.ErrNoRows {
 		return Artifact{}, false, nil
@@ -153,12 +177,13 @@ WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 	if projectID.Valid {
 		out.ProjectID = &projectID.String
 	}
+	out.ThumbnailRelPath = thumbnailRelPath.String
 	parsed, err := parseSQLiteTime(createdAt)
 	if err != nil {
 		return Artifact{}, false, fmt.Errorf("parse artifact created_at: %w", err)
 	}
 	out.CreatedAt = parsed
-	out.DownloadURL = "/api/artifacts/" + out.ID + "/download"
+	setArtifactURLs(&out)
 	return out, true, nil
 }
 
@@ -190,7 +215,7 @@ func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Ar
 	args = append(args, limit)
 
 	query := fmt.Sprintf(`
-SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
+SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
 WHERE %s
 ORDER BY %s
@@ -205,7 +230,7 @@ LIMIT ?`, strings.Join(filters, " AND "), listOrderBy(opts.Sort, opts.Order))
 
 func (s *Store) ListForThread(ctx context.Context, userID, threadID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
+SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
 WHERE user_id = ? AND thread_id = ? AND deleted_at IS NULL
 ORDER BY created_at ASC`, userID, threadID)
@@ -238,7 +263,7 @@ func escapeLike(term string) string {
 
 func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at
+SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
 WHERE user_id = ? AND project_id = ? AND deleted_at IS NULL
 ORDER BY created_at ASC`, userID, projectID)
@@ -269,7 +294,7 @@ func scanArtifact(scanner interface {
 }) (Artifact, error) {
 	var out Artifact
 	var createdAt string
-	var threadID, projectID sql.NullString
+	var threadID, projectID, thumbnailRelPath sql.NullString
 	if err := scanner.Scan(
 		&out.ID,
 		&out.UserID,
@@ -281,6 +306,7 @@ func scanArtifact(scanner interface {
 		&out.SizeBytes,
 		&out.Source,
 		&createdAt,
+		&thumbnailRelPath,
 	); err != nil {
 		return Artifact{}, fmt.Errorf("scan artifact: %w", err)
 	}
@@ -288,12 +314,13 @@ func scanArtifact(scanner interface {
 	if projectID.Valid {
 		out.ProjectID = &projectID.String
 	}
+	out.ThumbnailRelPath = thumbnailRelPath.String
 	parsed, err := parseSQLiteTime(createdAt)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("parse artifact created_at: %w", err)
 	}
 	out.CreatedAt = parsed
-	out.DownloadURL = "/api/artifacts/" + out.ID + "/download"
+	setArtifactURLs(&out)
 	return out, nil
 }
 
@@ -306,7 +333,7 @@ func scanArtifactWithDeleted(scanner interface {
 }) (Artifact, sql.NullString, error) {
 	var out Artifact
 	var createdAt string
-	var threadID, projectID, deletedAt sql.NullString
+	var threadID, projectID, thumbnailRelPath, deletedAt sql.NullString
 	if err := scanner.Scan(
 		&out.ID,
 		&out.UserID,
@@ -318,6 +345,7 @@ func scanArtifactWithDeleted(scanner interface {
 		&out.SizeBytes,
 		&out.Source,
 		&createdAt,
+		&thumbnailRelPath,
 		&deletedAt,
 	); err != nil {
 		return Artifact{}, sql.NullString{}, fmt.Errorf("scan artifact: %w", err)
@@ -326,13 +354,26 @@ func scanArtifactWithDeleted(scanner interface {
 	if projectID.Valid {
 		out.ProjectID = &projectID.String
 	}
+	out.ThumbnailRelPath = thumbnailRelPath.String
 	parsed, err := parseSQLiteTime(createdAt)
 	if err != nil {
 		return Artifact{}, sql.NullString{}, fmt.Errorf("parse artifact created_at: %w", err)
 	}
 	out.CreatedAt = parsed
-	out.DownloadURL = "/api/artifacts/" + out.ID + "/download"
+	setArtifactURLs(&out)
 	return out, deletedAt, nil
+}
+
+// setArtifactURLs fills the derived URL fields from the artifact's id and MIME
+// type. The download URL is always present; the thumbnail URL is set only for
+// raster image artifacts (the thumbnail endpoint lazily generates on first hit),
+// so SVGs and non-images carry no thumbnail URL and the client falls back to the
+// original. Call after the id and MIME type have been scanned.
+func setArtifactURLs(a *Artifact) {
+	a.DownloadURL = "/api/artifacts/" + a.ID + "/download"
+	if IsThumbnailableMIME(a.MIMEType) {
+		a.ThumbnailURL = "/api/artifacts/" + a.ID + "/thumbnail"
+	}
 }
 
 func parseSQLiteTime(value string) (time.Time, error) {

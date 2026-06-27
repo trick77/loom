@@ -92,6 +92,9 @@ export type Artifact = {
   projectId?: string;
   modifiedAt?: string;
   downloadUrl: string;
+  // thumbnailUrl points at a small JPEG preview for raster image artifacts; absent
+  // for SVGs and non-images, so callers fall back to downloadUrl / a typed icon.
+  thumbnailUrl?: string;
   model?: string;
   provider?: string;
   width?: number;
@@ -116,6 +119,9 @@ export type MessageAttachment = {
   mimeType: string;
   sizeBytes: number;
   downloadUrl?: string;
+  // thumbnailUrl is the small-preview source for raster image attachments (absent
+  // for documents, SVGs, and older rows), with downloadUrl as the fallback.
+  thumbnailUrl?: string;
 };
 
 // LoadedMessage is a message as returned by the thread-load endpoint: a Message

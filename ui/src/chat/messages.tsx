@@ -143,16 +143,19 @@ function useRevokeSentPreview(previewUrl: string | undefined) {
 function SentImageAttachment({ attachment }: { attachment: ComposerAttachment }) {
   useRevokeSentPreview(attachment.previewUrl);
 
-  // Once sent, the image lives on the server as an artifact. Render it from that
-  // stable download URL rather than the composer's ephemeral object URL, which is
-  // revoked the moment the start screen is left (and gone after a reload) — that
-  // revocation is exactly what turned the thumbnail into a placeholder. Fall back
-  // to the blob only if the id is somehow missing. (Full reload-survival, i.e.
-  // persisting the attachment record, is the later persistence stage.)
+  // Once sent, the image lives on the server as an artifact. Prefer the stable
+  // server preview URL the rehydrator computed (the small thumbnail for raster
+  // images, or the original for SVGs) over the composer's ephemeral object URL,
+  // which is revoked the moment the start screen is left (and gone after a reload)
+  // — that revocation is exactly what turned the thumbnail into a placeholder. When
+  // the preview is still a revocable blob (a freshly-sent image whose row hasn't
+  // been rehydrated), fall back to the artifact's download URL by id.
   const src =
-    attachment.artifactId !== undefined
-      ? `/api/artifacts/${encodeURIComponent(attachment.artifactId)}/download`
-      : attachment.previewUrl;
+    attachment.previewUrl !== undefined && !isRevocablePreview(attachment.previewUrl)
+      ? attachment.previewUrl
+      : attachment.artifactId !== undefined
+        ? `/api/artifacts/${encodeURIComponent(attachment.artifactId)}/download`
+        : attachment.previewUrl;
 
   return (
     <AttachmentPreview

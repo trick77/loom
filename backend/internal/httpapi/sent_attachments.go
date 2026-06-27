@@ -38,12 +38,13 @@ func (s *server) resolveSentAttachments(ctx context.Context, userID string, thre
 				continue
 			}
 			attachments = append(attachments, chat.MessageAttachment{
-				Kind:        chat.AttachmentKindImage,
-				ArtifactID:  art.ID,
-				Filename:    art.DisplayFilename,
-				MIMEType:    art.MIMEType,
-				SizeBytes:   art.SizeBytes,
-				DownloadURL: art.DownloadURL,
+				Kind:         chat.AttachmentKindImage,
+				ArtifactID:   art.ID,
+				Filename:     art.DisplayFilename,
+				MIMEType:     art.MIMEType,
+				SizeBytes:    art.SizeBytes,
+				DownloadURL:  art.DownloadURL,
+				ThumbnailURL: art.ThumbnailURL,
 			})
 		}
 	}

@@ -207,17 +207,22 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 		_ = os.Remove(out.AbsPath)
 		return capToolOutput("tool failed: close artifact: " + err.Error()), nil, true
 	}
+	// Eagerly generate the sidecar thumbnail (best-effort) from the bytes already in
+	// hand; a non-raster artifact yields none and is served via lazy backfill later.
+	thumbnailRelPath := generateThumbnailBestEffort(out.MIMEType, buffer.Bytes(), out.AbsPath, out.VolumeRelPath)
 	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
-		UserID:          user.ID,
-		ThreadID:        thread.ID,
-		ProjectID:       thread.ProjectID,
-		DisplayFilename: out.DisplayFilename,
-		VolumeRelPath:   out.VolumeRelPath,
-		MIMEType:        out.MIMEType,
-		SizeBytes:       int64(buffer.Len()),
+		UserID:           user.ID,
+		ThreadID:         thread.ID,
+		ProjectID:        thread.ProjectID,
+		DisplayFilename:  out.DisplayFilename,
+		VolumeRelPath:    out.VolumeRelPath,
+		MIMEType:         out.MIMEType,
+		SizeBytes:        int64(buffer.Len()),
+		ThumbnailRelPath: thumbnailRelPath,
 	})
 	if err != nil {
 		_ = os.Remove(out.AbsPath)
+		_ = os.Remove(out.AbsPath + artifact.ThumbnailSuffix)
 		return capToolOutput("tool failed: persist artifact: " + err.Error()), nil, true
 	}
 	response := artifactResponse{
@@ -227,6 +232,7 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 		SizeBytes:       created.SizeBytes,
 		ProjectID:       created.ProjectID,
 		DownloadURL:     created.DownloadURL,
+		ThumbnailURL:    created.ThumbnailURL,
 	}
 	_ = sendSSEJSON(stream, "artifact", response)
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response, true
@@ -336,17 +342,22 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 		_ = os.Remove(out.AbsPath)
 		return nil, capToolOutput("tool failed: close artifact: " + err.Error()), true
 	}
+	// Eagerly generate the sidecar thumbnail (best-effort) from the generated image
+	// bytes already in hand; failure is harmless, the endpoint backfills lazily.
+	thumbnailRelPath := generateThumbnailBestEffort(meta.MIMEType, buffer.Bytes(), out.AbsPath, out.VolumeRelPath)
 	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
-		UserID:          user.ID,
-		ThreadID:        thread.ID,
-		ProjectID:       thread.ProjectID,
-		DisplayFilename: out.DisplayFilename,
-		VolumeRelPath:   out.VolumeRelPath,
-		MIMEType:        meta.MIMEType,
-		SizeBytes:       int64(buffer.Len()),
+		UserID:           user.ID,
+		ThreadID:         thread.ID,
+		ProjectID:        thread.ProjectID,
+		DisplayFilename:  out.DisplayFilename,
+		VolumeRelPath:    out.VolumeRelPath,
+		MIMEType:         meta.MIMEType,
+		SizeBytes:        int64(buffer.Len()),
+		ThumbnailRelPath: thumbnailRelPath,
 	})
 	if err != nil {
 		_ = os.Remove(out.AbsPath)
+		_ = os.Remove(out.AbsPath + artifact.ThumbnailSuffix)
 		return nil, capToolOutput("tool failed: persist artifact: " + err.Error()), true
 	}
 	response := artifactResponse{
@@ -356,6 +367,7 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 		SizeBytes:       created.SizeBytes,
 		ProjectID:       created.ProjectID,
 		DownloadURL:     created.DownloadURL,
+		ThumbnailURL:    created.ThumbnailURL,
 		Model:           meta.Model,
 		Provider:        meta.Provider,
 		Width:           meta.Width,
