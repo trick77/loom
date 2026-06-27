@@ -1,7 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { ThreadShell } from "./ThreadShell";
-import loomImage from "./assets/loom-logo-with-text.png";
+import loomLogo from "./assets/loom-logo.svg";
 import { getMe, listUsers, logout, type User } from "./api";
+
+const TAGLINES = [
+  "Weave your thoughts, thread by thread.",
+  "Pull a thread. See where it leads.",
+  "Every thought has another thread.",
+  "Where every idea forks.",
+  "One prompt, a thousand threads.",
+  "Follow the thread. Find the thought.",
+  "Think in threads.",
+  "Wander every branch of thought.",
+  "Untangle. Explore. Weave.",
+  "Where conversations branch.",
+  "Spin ideas into threads.",
+  "A loom for a branching mind.",
+];
 
 type Status = "loading" | "signed-out" | "ready" | "error";
 
@@ -10,6 +25,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
 
   useEffect(() => {
     let active = true;
@@ -71,8 +87,11 @@ export default function App() {
     return (
       <main className="flex h-svh items-center justify-center bg-bg px-6 font-sans text-ink">
         <section className="flex w-full max-w-md flex-col items-center gap-5 text-center">
-          <img src={loomImage} alt="Loom" className="w-full max-w-[16rem] rounded-ui" />
-          <p className="-mt-2 whitespace-nowrap font-sans text-xl text-muted">Weave your thoughts, thread by thread.</p>
+          <div className="flex items-center gap-3">
+            <img src={loomLogo} alt="" aria-hidden className="h-16 w-16" />
+            <span className="font-serif font-medium leading-none text-[64px] text-[#f4f3ee]">Loom</span>
+          </div>
+          <p className="-mt-2 whitespace-nowrap font-sans text-xl text-muted">{tagline}</p>
           <a
             href="/api/auth/login"
             className="mt-6 rounded-ui bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"

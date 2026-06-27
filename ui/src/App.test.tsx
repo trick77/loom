@@ -68,7 +68,7 @@ test("renders signed-out screen when /api/me returns 401", async () => {
     "href",
     "/api/auth/login",
   );
-  expect(screen.getByAltText("Loom")).toBeInTheDocument();
+  expect(screen.getByText("Loom")).toBeInTheDocument();
 });
 
 test("renders authenticated shell for signed-in users", async () => {

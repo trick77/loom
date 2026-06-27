@@ -7,6 +7,7 @@ import { PromptStarters } from "./PromptStarters";
 import { McpStatusIndicator } from "./SidebarItems";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
+import loomLogo from "../assets/loom-logo.svg";
 
 export function StartPanel({
   displayName,
@@ -56,7 +57,8 @@ export function StartPanel({
         {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator compact status={mcpStatus} />}
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
-        <h2 className="ui-greeting-text mb-8 flex items-center gap-2 font-serif">
+        <h2 className="ui-greeting-text mb-8 flex items-center gap-1.5 font-serif">
+          <img src={loomLogo} alt="" aria-hidden className="h-10 w-10 -translate-y-1" />
           <span className="-translate-y-0.5">{greetingForNow(displayName)}</span>
         </h2>
         <div className="w-full max-w-[674px]">
