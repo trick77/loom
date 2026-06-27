@@ -170,8 +170,14 @@ func mentionsImageEditIntent(tokens []string) bool {
 func isImageCreationRequest(tokens []string) bool {
 	actions := map[string]bool{
 		"generate": true, "create": true, "make": true, "draw": true, "render": true, "paint": true,
+		// "imagine"/"design" are inherently generative requests ("imagine a favicon",
+		// "design a mascot"). They are polysemous on their own ("imagine you are an
+		// expert", "design a database") but only fire when paired with one of the
+		// image-object nouns below, so non-visual uses carry no nearby object and stay out.
+		"imagine": true, "design": true,
 		"generiere": true, "generieren": true, "erstelle": true, "erstellen": true, "erzeuge": true, "erzeugen": true,
 		"zeichne": true, "zeichnen": true, "male": true, "malen": true, "mach": true, "mache": true, "machen": true,
+		"entwirf": true, "entwerfe": true, "entwerfen": true,
 	}
 	objects := map[string]bool{
 		"image": true, "images": true, "picture": true, "pictures": true, "logo": true, "logos": true,
@@ -180,6 +186,23 @@ func isImageCreationRequest(tokens []string) bool {
 		// image-generated (and routed to the typography model). "create an
 		// infographic about X" carries no "image"/"picture" noun, so name it here.
 		"infographic": true, "infographics": true, "infografik": true, "infografiken": true,
+		// Concrete visual-artifact nouns whose output is inherently a picture, so
+		// "create a favicon", "make a sticker", "design a mascot" route to the image
+		// tool. Deliberately excludes words that double as code identifiers, UI
+		// component names, or layout/print terms — in a coding assistant these must
+		// NOT force image generation: "icon"/"avatar"/"banner"/"thumbnail"/
+		// "sprite"/"mockup"/"button"/"card" (components), "emoji" ("emoji picker
+		// component"), "portrait" ("portrait mode" / PDF orientation), "drawing"
+		// ("drawing app/canvas"). Favicon stays because it names a literal image
+		// file, never a code identifier.
+		"favicon": true, "favicons": true, "wallpaper": true, "wallpapers": true,
+		"sticker": true, "stickers": true, "mascot": true, "mascots": true,
+		"caricature": true, "caricatures": true, "illustration": true, "illustrations": true,
+		"painting": true, "paintings": true, "meme": true, "memes": true,
+		// German (Swiss orthography: ss, no ß). "porträt"/"zeichnung" lack the
+		// English orientation/app-compound collisions and stay.
+		"maskottchen": true, "aufkleber": true, "hintergrundbild": true,
+		"porträt": true, "portraet": true, "zeichnung": true, "zeichnungen": true,
 	}
 	return hasNearbyTokens(tokens, actions, objects, 5)
 }

@@ -888,6 +888,22 @@ func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
 		"add a red border to the table",
 		"i prefer a minimal style for my code",
 		"make the font bigger",
+		// Widened verbs are polysemous; they must stay out without a nearby image
+		// noun (the object-noun pairing is the guard).
+		"imagine you are a senior engineer reviewing this code",
+		"design a REST API for the users service",
+		"design a database schema for orders",
+		// Words that double as code identifiers / UI components / layout terms are
+		// deliberately NOT image-creation nouns, so these coding/layout requests must
+		// not force the tool.
+		"create a button component for the navbar",
+		"create an icon component for the navbar",
+		"make an avatar component",
+		"generate thumbnails for the video list",
+		"create a sprite sheet for the game",
+		"make an emoji picker component",
+		"render a PDF in portrait mode",
+		"create a drawing app with a canvas",
 	} {
 		t.Run(content, func(t *testing.T) {
 			if srv.imageArtifactRequired(content, false, priorMessages) {
@@ -915,6 +931,14 @@ func TestImageArtifactRequiredDetectsCreationAndGermanFollowUps(t *testing.T) {
 		"zeichne mir ein Bild",
 		"mach es cyberpunk",
 		"ändere den Stil",
+		// Widened creation vocabulary: new verbs (imagine/design) and concrete
+		// visual-artifact nouns (favicon, sticker, mascot, …).
+		"Imagine a favicon for Loom, an AI based knowledge research prompting web app.",
+		"design a mascot for my startup",
+		"create a favicon",
+		"make a sticker of a cat",
+		"draw a caricature of my friend",
+		"entwirf ein Maskottchen",
 	} {
 		t.Run(content, func(t *testing.T) {
 			if !srv.imageArtifactRequired(content, false, priorMessages) {
