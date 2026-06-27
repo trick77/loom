@@ -148,9 +148,11 @@ func TestRefreshProjectMemory_DoesNotOverwriteExistingDescription(t *testing.T) 
 	store := &fakeThreadStore{
 		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: "Hand-written summary."},
 	}
+	descCalls := 0
 	s := &server{thread: store, llm: fakeChatClient{
-		projectMemory:      "Reading list tracked.",
-		projectDescription: "Must not be used.",
+		projectMemory:           "Reading list tracked.",
+		projectDescription:      "Must not be used.",
+		projectDescriptionCalls: &descCalls,
 	}}
 
 	err := s.refreshProjectMemory(
@@ -159,6 +161,13 @@ func TestRefreshProjectMemory_DoesNotOverwriteExistingDescription(t *testing.T) 
 	)
 	if err != nil {
 		t.Fatalf("refreshProjectMemory() error: %v", err)
+	}
+	// The in-memory guard must short-circuit before any inference: an already-described
+	// project never reaches GenerateProjectDescription (no wasted LLM call). Asserting
+	// only the persisted result would pass even with that guard deleted, because the
+	// fake store independently rejects a non-empty overwrite.
+	if descCalls != 0 {
+		t.Fatalf("GenerateProjectDescription called %d times for an already-described project; in-memory guard not exercised", descCalls)
 	}
 	if store.projectDescriptionChanged {
 		t.Fatal("existing description was overwritten")

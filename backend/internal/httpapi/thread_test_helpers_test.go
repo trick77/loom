@@ -418,6 +418,10 @@ type fakeChatClient struct {
 	projectMemory       string
 	editedMemory        string
 	projectDescription  string
+	// projectDescriptionCalls, when set, counts GenerateProjectDescription
+	// invocations so a test can assert the in-memory guard short-circuited before
+	// any (wasted) inference.
+	projectDescriptionCalls *int
 	// streamErr, when set, makes StreamChatWithTools emit any reasoning then return
 	// the error (no content), modelling a turn that fails/stalls mid-stream.
 	streamErr error
@@ -475,6 +479,9 @@ func (f fakeChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _ string) (s
 }
 
 func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _, _ string) (string, error) {
+	if f.projectDescriptionCalls != nil {
+		*f.projectDescriptionCalls++
+	}
 	return f.projectDescription, nil
 }
 
