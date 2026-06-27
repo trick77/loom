@@ -2151,3 +2151,115 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 		t.Fatalf("final turn history missing the no-more-tools nudge: %#v", lastHistory)
 	}
 }
+
+// On the first message of an image-generation thread, the category is stamped
+// deterministically as image_generation, overriding (and skipping) the text
+// classifier — even when the classifier would have returned something else.
+func TestStreamMessageStampsImageGenerationCategory(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	threadStore := chat.NewStore(db)
+	artifactStore := artifact.NewStore(db)
+	user := testUser
+	// DefaultThreadTitle so the first-message title+classify path runs.
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: chat.DefaultThreadTitle})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	llmClient := &fakeToolChatClient{
+		titleResult: "Cat astronaut",
+		// The classifier would say creative_writing; the override must win.
+		classifyResult: string(classifier.CreativeWriting),
+		results: []llm.StreamResult{{
+			ToolCalls: []llm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "generate_image",
+					Arguments: `{"prompt":"a cat astronaut","filename":"cat","width":512,"height":512,"output_format":"png"}`,
+				},
+			}},
+		}},
+		plain: "Created cat.png.",
+	}
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     threadStore,
+		Artifacts:  artifactStore,
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"create an image of a cat astronaut"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	got, found, err := threadStore.GetThread(context.Background(), user.ID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("GetThread() found=%v err=%v", found, err)
+	}
+	if got.Category != string(classifier.ImageGeneration) {
+		t.Fatalf("thread category = %q, want %q", got.Category, classifier.ImageGeneration)
+	}
+}
+
+// Without image generation configured (no imageTools), imageArtifactRequired
+// short-circuits, so an image-phrased prompt is classified normally and is never
+// stamped image_generation.
+func TestStreamMessageDoesNotStampImageGenerationWhenImageToolsAbsent(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	threadStore := chat.NewStore(db)
+	user := testUser
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: chat.DefaultThreadTitle})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	llmClient := &fakeToolChatClient{
+		titleResult:    "Cat astronaut",
+		classifyResult: string(classifier.CreativeWriting),
+		results:        []llm.StreamResult{{Content: "A cat astronaut would look like..."}},
+		plain:          "A cat astronaut would look like...",
+	}
+	// No ImageTools dependency: image generation is unconfigured.
+	server := newAuthenticatedServer(t, Deps{
+		Thread: threadStore,
+		LLM:    llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"create an image of a cat astronaut"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	got, found, err := threadStore.GetThread(context.Background(), user.ID, thread.ID)
+	if err != nil || !found {
+		t.Fatalf("GetThread() found=%v err=%v", found, err)
+	}
+	if got.Category != string(classifier.CreativeWriting) {
+		t.Fatalf("thread category = %q, want %q (normal classification)", got.Category, classifier.CreativeWriting)
+	}
+}

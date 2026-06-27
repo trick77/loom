@@ -37,6 +37,11 @@ const (
 	Weather            Category = "weather"
 	Translation        Category = "translation"
 	URLLookup          Category = "url_lookup"
+	// ImageGeneration labels threads routed to image generation. It is a hidden
+	// category: assigned deterministically by the request heuristics
+	// (imageArtifactRequired), never offered to or chosen by the classifying model.
+	// It injects no block — the image path ignores the classifier block anyway.
+	ImageGeneration Category = "image_generation"
 	// General is the fallback: anything that does not clearly fit another
 	// category, including chit-chat and personal conversation. It injects a lean
 	// prose-default directive (no FORMAT/THINK structure).
@@ -45,10 +50,13 @@ const (
 
 // entry holds the per-category metadata: the short gloss shown to the classifying
 // model and the instruction block injected into the system prompt for that
-// category. An empty block means "inject nothing".
+// category. An empty block means "inject nothing". A hidden entry is a valid
+// category assigned by other code paths (e.g. request heuristics) but never
+// offered to the classifying model — PromptGuide omits it.
 type entry struct {
-	gloss string
-	block string
+	gloss  string
+	block  string
+	hidden bool
 }
 
 // catalog is the ordered taxonomy. Order is the order categories are presented to
@@ -121,6 +129,11 @@ var catalog = []struct {
 		gloss: "reading or answering about a specific URL the user gave",
 		block: "Answer relying solely on the content of the page at the URL, and cite it.",
 	}},
+	{ImageGeneration, entry{
+		gloss:  "image or visual-artifact generation (assigned by request heuristics, never chosen by this classifier)",
+		block:  "",
+		hidden: true,
+	}},
 	{General, entry{
 		gloss: "anything else, including chit-chat and personal conversation",
 		block: "Answer in prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist).",
@@ -185,12 +198,18 @@ func Values() []Category {
 
 // PromptGuide renders the taxonomy as a newline-separated list of
 // "- value: gloss" lines, for embedding in the classifying model's system prompt.
+// Hidden categories are omitted so the model is never offered them.
 func PromptGuide() string {
 	var b strings.Builder
-	for i, c := range catalog {
-		if i > 0 {
+	first := true
+	for _, c := range catalog {
+		if c.entry.hidden {
+			continue
+		}
+		if !first {
 			b.WriteByte('\n')
 		}
+		first = false
 		b.WriteString("- ")
 		b.WriteString(string(c.cat))
 		b.WriteString(": ")

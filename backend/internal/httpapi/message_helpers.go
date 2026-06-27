@@ -67,7 +67,12 @@ func strPtr(value string) *string {
 // one call); classification is best-effort and falls back to General. It returns
 // the chosen category so the caller can inject the matching system-prompt block on
 // this very turn (both calls finish before the answer history is built).
-func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage string) (string, error) {
+//
+// When categoryOverride is non-empty the classify call is skipped entirely and
+// the override is used as the category. The caller passes this for requests it
+// has already routed deterministically (e.g. image generation), where the
+// text-classifier's guess would be both wrong and pointless.
+func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage, categoryOverride string) (string, error) {
 	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
 	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
 
@@ -77,17 +82,22 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 		category = string(classifier.General)
 		wg       sync.WaitGroup
 	)
-	wg.Add(2)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		title, titleErr = s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(requestCtx, titleInference), userMessage, assistantMessage)
 	}()
-	go func() {
-		defer wg.Done()
-		// ClassifyThread always returns a valid category (General on failure); the
-		// error is informational, so a failed classification never blocks the title.
-		category, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(requestCtx, classifyInference), userMessage)
-	}()
+	if categoryOverride != "" {
+		category = categoryOverride
+	} else {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// ClassifyThread always returns a valid category (General on failure); the
+			// error is informational, so a failed classification never blocks the title.
+			category, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(requestCtx, classifyInference), userMessage)
+		}()
+	}
 	wg.Wait()
 
 	if titleErr != nil {

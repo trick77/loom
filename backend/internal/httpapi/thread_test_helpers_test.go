@@ -563,11 +563,13 @@ func (f *blockingChatClient) GenerateProjectDescription(context.Context, string,
 }
 
 type fakeToolChatClient struct {
-	results   []llm.StreamResult
-	histories [][]llm.Message
-	tools     [][]llm.Tool
-	plain     string
-	titleFor  func(reasoning string) string
+	results        []llm.StreamResult
+	histories      [][]llm.Message
+	tools          [][]llm.Tool
+	plain          string
+	classifyResult string
+	titleResult    string
+	titleFor       func(reasoning string) string
 }
 
 func (f *fakeToolChatClient) StreamChat(context.Context, []llm.Message, func(string) error) (string, error) {
@@ -636,11 +638,11 @@ func (f *fakeToolChatClient) StreamChatWithTools(ctx context.Context, history []
 }
 
 func (f *fakeToolChatClient) GenerateThreadTitle(context.Context, string, string) (string, error) {
-	return "", nil
+	return f.titleResult, nil
 }
 
 func (f *fakeToolChatClient) ClassifyThread(context.Context, string) (string, error) {
-	return "", nil
+	return f.classifyResult, nil
 }
 
 func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning string) (string, error) {
