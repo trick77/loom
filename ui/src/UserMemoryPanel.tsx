@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { editUserMemory, getUserMemory } from "./api";
+import { getUserMemory } from "./api";
 import { Icon } from "./chat/Icon";
 import { MemoryMarkdown } from "./MemoryMarkdown";
-import { MemoryComposer, useDismissOnOutside } from "./MemoryEditComposer";
 
 /**
  * UserMemoryPanel shows the auto-generated personal memory — durable facts about
@@ -15,23 +14,6 @@ import { MemoryComposer, useDismissOnOutside } from "./MemoryEditComposer";
 export function UserMemoryPanel() {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
-
-  async function handleEdit(instruction: string) {
-    setPending(true);
-    setError(undefined);
-    try {
-      const updated = await editUserMemory(instruction);
-      setContent(updated.content);
-      setComposerOpen(false);
-    } catch {
-      setError("Couldn't apply that — please try again.");
-    } finally {
-      setPending(false);
-    }
-  }
 
   useEffect(() => {
     let active = true;
@@ -53,14 +35,11 @@ export function UserMemoryPanel() {
 
   const hasContent = content.trim() !== "";
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  useDismissOnOutside(composerOpen, containerRef, () => setComposerOpen(false));
-
   return (
-    <div className="relative" ref={containerRef}>
+    <div>
       <section
         aria-label="Memories"
-        className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5 pb-20"
+        className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
       >
         <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
           <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
@@ -82,19 +61,7 @@ export function UserMemoryPanel() {
             Memories will show here after a few threads.
           </p>
         )}
-
       </section>
-      <MemoryComposer
-        open={composerOpen}
-        onOpen={() => {
-          setError(undefined);
-          setComposerOpen(true);
-        }}
-        onClose={() => setComposerOpen(false)}
-        pending={pending}
-        error={error}
-        onSubmit={handleEdit}
-      />
     </div>
   );
 }
