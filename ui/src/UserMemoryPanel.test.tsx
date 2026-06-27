@@ -29,7 +29,7 @@ test("shows the empty state when there is no memory yet", async () => {
   expect(screen.queryByText("Memory")).not.toBeInTheDocument();
 });
 
-test("renders the discrete facts as a list, stripping bullet markers", async () => {
+test("renders a flat bullet memory as a markdown list", async () => {
   getUserMemoryMock.mockResolvedValue({
     content: "- Works at Acme\n- Lives in Zurich",
     updatedAt: "2026-06-11T00:00:00Z",
@@ -41,8 +41,24 @@ test("renders the discrete facts as a list, stripping bullet markers", async () 
   expect(items).toHaveLength(2);
   expect(items[0]).toHaveTextContent("Works at Acme");
   expect(items[1]).toHaveTextContent("Lives in Zurich");
-  // Bullet markers from the stored content are not rendered as text.
+  // Markdown consumes the "- " markers; they are not rendered as literal text.
   expect(items[0]).not.toHaveTextContent("- Works");
+});
+
+test("renders the Core and Current focus sections as distinct headings", async () => {
+  getUserMemoryMock.mockResolvedValue({
+    content: "## Core\n- Lives in Zurich\n\n## Current focus\n- Building Loom",
+    updatedAt: "2026-06-11T00:00:00Z",
+  });
+
+  render(<UserMemoryPanel />);
+
+  // The structured markdown headings render as real headings, not literal "##".
+  expect(await screen.findByRole("heading", { name: "Core" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Current focus" })).toBeInTheDocument();
+  expect(screen.getByText("Lives in Zurich")).toBeInTheDocument();
+  expect(screen.getByText("Building Loom")).toBeInTheDocument();
+  expect(screen.queryByText(/## Core/)).not.toBeInTheDocument();
 });
 
 test("does not show a manual refresh action", async () => {

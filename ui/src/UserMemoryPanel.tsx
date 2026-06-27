@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { editUserMemory, getUserMemory } from "./api";
 import { Icon } from "./chat/Icon";
+import { MemoryMarkdown } from "./MemoryMarkdown";
 import { MemoryComposer, useDismissOnOutside } from "./MemoryEditComposer";
 
 /**
- * UserMemoryPanel shows the auto-generated personal memory — the compact set of
- * durable facts about the user (employer, location, lasting preferences) that is
- * injected into every thread so the assistant stays personalized. Unlike the
- * project memory it renders as a flat list of discrete facts. It is read-only.
+ * UserMemoryPanel shows the auto-generated personal memory — durable facts about
+ * the user that are injected into every thread so the assistant stays
+ * personalized. It renders the memory as markdown, so the structured `## Core`
+ * (protected identity) and `## Current focus` (active work) sections show as
+ * distinct labeled groups. It is read-only.
  */
 export function UserMemoryPanel() {
   const [content, setContent] = useState("");
@@ -49,7 +51,7 @@ export function UserMemoryPanel() {
     };
   }, []);
 
-  const facts = toFacts(content);
+  const hasContent = content.trim() !== "";
 
   const containerRef = useRef<HTMLDivElement>(null);
   useDismissOnOutside(composerOpen, containerRef, () => setComposerOpen(false));
@@ -71,20 +73,10 @@ export function UserMemoryPanel() {
 
         {loading ? (
           <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
-        ) : facts.length > 0 ? (
-          <ul
-            className="mt-3 space-y-1.5 font-serif text-base leading-6 text-[#f3f0e8]"
-            data-user-memory-content
-          >
-            {facts.map((fact, index) => (
-              <li key={index} className="flex gap-2">
-                <span aria-hidden className="select-none text-[#807d74]">
-                  •
-                </span>
-                <span>{fact}</span>
-              </li>
-            ))}
-          </ul>
+        ) : hasContent ? (
+          <div className="mt-3 text-base text-[#f3f0e8]" data-user-memory-content>
+            <MemoryMarkdown content={content} />
+          </div>
         ) : (
           <p className="mt-3 text-sm leading-5 text-[#807d74]">
             Memories will show here after a few threads.
@@ -105,13 +97,4 @@ export function UserMemoryPanel() {
       />
     </div>
   );
-}
-
-// toFacts splits the stored memory into discrete fact lines, stripping the
-// leading bullet markers the model is asked to emit.
-function toFacts(content: string): string[] {
-  return content
-    .split("\n")
-    .map((line) => line.replace(/^\s*[-*•]\s*/, "").trim())
-    .filter((line) => line !== "");
 }

@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import { editProjectMemory, getProjectMemory } from "../api";
 import { Icon } from "../chat/Icon";
+import { MemoryMarkdown } from "../MemoryMarkdown";
 import { MemoryComposer, useDismissOnOutside } from "../MemoryEditComposer";
 
 /**
@@ -94,22 +93,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
               className="ui-sidebar-scroll h-full overflow-y-auto"
               data-testid="project-memory-scroll"
             >
-              <div className="ui-memory-markdown px-5 pb-8">
-                <Markdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    a({ children, ...props }) {
-                      return (
-                        <a {...props} target="_blank" rel="noreferrer">
-                          {children}
-                        </a>
-                      );
-                    },
-                  }}
-                >
-                  {content}
-                </Markdown>
-              </div>
+              <MemoryMarkdown content={content} className="px-5 pb-8" />
             </div>
             <div
               aria-hidden="true"
