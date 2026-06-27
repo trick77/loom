@@ -10,8 +10,9 @@ import (
 
 // memoryMaxCompletionTokens caps memory generation. A memory is a short markdown
 // digest (a handful of lines), so this is far above a title's 32-token cap but
-// still small enough to keep the helper call cheap.
-const memoryMaxCompletionTokens = 512
+// still small enough to keep the helper call cheap. Sized so a full user memory
+// (well under 2000 characters ≈ ~500 tokens) is never clipped mid-output.
+const memoryMaxCompletionTokens = 768
 
 // ProjectMemorySystemPrompt drives project-memory generation: a compact,
 // topic-grouped digest shared across the project's chats. It prioritizes
@@ -25,23 +26,28 @@ const ProjectMemorySystemPrompt = "You maintain a compact, durable memory for a 
 	"You are curating, not accumulating — actively drop items that are resolved, superseded, no longer relevant, or have not come up again. " +
 	"Use terse fragments in short markdown bullet lines, grouped under brief headings if helpful. " +
 	"Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. " +
+	"Write in a terse, telegraphic \"caveman\" style: keep only load-bearing words; drop articles (a/the), pronouns, and linking verbs (e.g. \"Deadline March 1; chose Postgres over Mongo\"). " +
 	"Stay well under 1000 characters. Output ONLY the memory content, no preamble."
 
 // UserMemorySystemPrompt drives user-memory generation: a structured digest with
-// a protected identity Core and a capped, churning "Current focus" section, so
-// durable identity facts are never lost while transient work ages out instead of
-// piling up.
+// a protected identity Core, a capped churning "Current focus" section, and a
+// "Style" section capturing how the user wants to be answered — so durable
+// identity facts are never lost, transient work ages out instead of piling up,
+// and learned response preferences steer future replies.
 const UserMemorySystemPrompt = "You maintain a compact, durable memory about the user so the assistant can stay personalized across all of their chats. " +
-	"Given the existing memory and recent conversation, output an UPDATED memory in exactly these two sections, each a markdown heading followed by terse '- ' fragment lines:\n" +
+	"Given the existing memory and recent conversation, output an UPDATED memory in exactly these three sections, each a markdown heading followed by terse '- ' fragment lines:\n" +
 	"## Core — durable identity facts the user revealed about THEMSELVES: where they live, employer/role, languages, hobbies and favourite things (places, games, food, media, and the like), strong dislikes (things they hate or loathe), and lasting preferences. " +
 	"These are high priority: once captured, KEEP them — only replace a Core fact with its newer value; never drop one to save space.\n" +
-	"## Current focus — at most 5 items: the user's active projects, ongoing goals, and current work. " +
-	"This section CHURNS: when it is full and a new item appears, drop the oldest or least-active one; also drop items that look finished, superseded, or have not come up in recent conversation. Never let it grow beyond a handful.\n" +
+	"## Current focus — at most 10 items: the user's active projects, ongoing goals, and current work. " +
+	"This section CHURNS: when it is full and a new item appears, drop the oldest or least-active one; also drop items that look finished, superseded, or have not come up in recent conversation. Never let it grow past the 10-item cap.\n" +
+	"## Style — how the user wants the assistant to respond, inferred from their feedback and reactions: preferred answer length, level of detail, tone, format, and language. " +
+	"Capture a preference only when the user signals it — an explicit request or a repeated reaction (e.g. complaining answers are too long → \"prefers concise answers\"; switching to another language → records that language). Replace a preference with its newer value when the signals change.\n" +
 	"Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. " +
+	"Write in a terse, telegraphic \"caveman\" style: keep only load-bearing words; drop articles (a/the), pronouns, and linking verbs (e.g. \"Lives Zurich; backend dev at Acme\"). " +
 	"Drop chit-chat, one-off task details, and anything about other people. Replace outdated facts with their newest value instead of listing both. " +
 	"Omit a heading entirely if it has no items. " +
 	"NEVER store passwords, API keys, secrets, payment details, or other sensitive credentials. " +
-	"Keep the whole memory well under 800 characters. Output ONLY the memory content, no preamble."
+	"Keep the whole memory well under 2000 characters. Output ONLY the memory content, no preamble."
 
 // GenerateMemory re-summarizes a memory. It is given a scope-specific header
 // block (for example a project's name/description, or empty for user memory),

@@ -8,8 +8,8 @@ import { MemoryMarkdown } from "./MemoryMarkdown";
  * UserMemoryPanel shows the auto-generated personal memory — durable facts about
  * the user that are injected into every thread so the assistant stays
  * personalized. It renders the memory as markdown, so the structured `## Core`
- * (protected identity) and `## Current focus` (active work) sections show as
- * distinct labeled groups. It is read-only.
+ * (protected identity), `## Current focus` (active work), and `## Style` (learned
+ * response preferences) sections show as distinct labeled groups. It is read-only.
  */
 export function UserMemoryPanel() {
   const [content, setContent] = useState("");
