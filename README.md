@@ -1,5 +1,3 @@
-<img src="ui/src/assets/sloppy-loom.png" alt="Loom" width="360">
-
 Self-hosted, multi-user LLM chat app with a Go backend, React frontend, SQLite, SSE, and
 authentik-backed authentication.
 
