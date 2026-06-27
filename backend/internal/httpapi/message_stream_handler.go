@@ -349,14 +349,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	turnMessages = append(turnMessages, userMessage, assistantMessage)
 	s.maybeAutoDescribeProject(r.Context(), persistCtx, stream, user, thread, turnMessages)
 
-	// Best-effort, gated background refresh of the project's shared memory so
-	// sibling chats stay aware of this turn. Detaches from the request context so
-	// it survives the handler returning.
+	// Best-effort, debounced background refresh of the project's shared memory so
+	// sibling chats stay aware of this turn (at most once per memoryProjectDebounce).
+	// Detaches from the request context so it survives the handler returning. User
+	// memory is intentionally NOT refreshed here — it is handled by the once-a-day
+	// MemoryWorker sweep so it does not fire on every turn.
 	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread)
-	// Best-effort, gated background refresh of the user's personal memory so the
-	// assistant stays personalized across all chats. Applies to every chat
-	// (project-bound or not). Detaches from the request context too.
-	s.maybeRefreshUserMemoryAsync(r.Context(), user)
 
 	sendMCPStatus(stream, mcpStatusCh)
 	_ = stream.Send("done", "{}")

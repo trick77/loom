@@ -235,7 +235,7 @@ func run() error {
 		DiscoveredToolCount: discoveredTools,
 	})
 
-	handler := httpapi.New(httpapi.Deps{
+	deps := httpapi.Deps{
 		Version:                    version,
 		Static:                     web.SPAHandler(),
 		OIDC:                       oidcService,
@@ -257,7 +257,9 @@ func run() error {
 		DevAuthClaims:              devAuthClaims,
 		PostLogoutRedirectURL:      cfg.OIDC.PostLogoutRedirectURL,
 		KnowledgeInlineTokenBudget: cfg.KnowledgeInlineTokenBudget,
-	})
+	}
+	handler := httpapi.New(deps)
+	memoryWorker := httpapi.NewMemoryWorker(deps)
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: handler}
 
@@ -270,6 +272,8 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// Background memory refresh sweeps until shutdown cancels ctx.
+	go memoryWorker.Run(ctx)
 	<-ctx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

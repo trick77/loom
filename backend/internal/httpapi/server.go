@@ -193,9 +193,11 @@ type UserService interface {
 	ListUsers(context.Context) ([]auth.User, error)
 }
 
-// New returns the fully wired HTTP handler.
-func New(d Deps) http.Handler {
-	s := &server{
+// newServer builds the server struct from its dependencies. Shared by New (which
+// also wires the HTTP routes) and NewMemoryWorker (which only needs the stores
+// and LLM client for the background refresh).
+func newServer(d Deps) *server {
+	return &server{
 		version:                    d.Version,
 		oidc:                       d.OIDC,
 		auth:                       d.Auth,
@@ -217,6 +219,11 @@ func New(d Deps) http.Handler {
 		postLogoutRedirectURL:      d.PostLogoutRedirectURL,
 		knowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
 	}
+}
+
+// New returns the fully wired HTTP handler.
+func New(d Deps) http.Handler {
+	s := newServer(d)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.handleHealth)

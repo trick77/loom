@@ -137,7 +137,7 @@ func TestRefreshUserMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
 	}
 	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
 
-	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser)); err != nil {
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
 	if store.userMemory.Content != "" {
@@ -154,7 +154,7 @@ func TestRefreshUserMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
 	}
 	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- Lives in Zurich"}}
 
-	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser)); err != nil {
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
 	if store.userMemory.Content != "- Lives in Zurich" {
