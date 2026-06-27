@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
@@ -18,9 +19,9 @@ func (s *server) projectMemoryScope(user auth.User, project chat.Project) memory
 		purpose:      "project_memory",
 		header:       projectMemoryHeader(project),
 		systemPrompt: llm.ProjectMemorySystemPrompt,
-		get: func(ctx context.Context) (string, int, error) {
+		get: func(ctx context.Context) (string, int, *time.Time, error) {
 			memory, _, err := s.thread.GetProjectMemory(ctx, user.ID, project.ID)
-			return memory.Content, memory.SourceMessageCount, err
+			return memory.Content, memory.SourceMessageCount, memory.UpdatedAt, err
 		},
 		upsert: func(ctx context.Context, content string, sourceCount int) error {
 			_, err := s.thread.UpsertProjectMemory(ctx, user.ID, project.ID, content, sourceCount)
@@ -91,9 +92,12 @@ func renderProjectContext(project chat.Project, memory string) string {
 }
 
 // maybeRefreshProjectMemoryAsync incrementally refreshes a project's memory in
-// the background after an assistant turn, gated so it only runs once enough new
-// messages have accumulated. It detaches from the request context so it survives
-// the handler returning, and is best-effort (errors are logged, never surfaced).
+// the background after an assistant turn, debounced so it runs at most once per
+// memoryProjectDebounce per project (and only once enough new messages have
+// accumulated). This keeps the project's shared context fresh for sibling threads
+// without paying for a regeneration every turn. It detaches from the request
+// context so it survives the handler returning, and is best-effort (errors are
+// logged, never surfaced).
 func (s *server) maybeRefreshProjectMemoryAsync(parent context.Context, user auth.User, thread chat.Thread) {
 	if thread.ProjectID == nil {
 		return
@@ -114,7 +118,7 @@ func (s *server) refreshProjectMemoryIfDue(ctx context.Context, user auth.User, 
 	if err != nil || project == nil {
 		return err
 	}
-	return s.refreshMemoryIfDue(ctx, user, s.projectMemoryScope(user, *project))
+	return s.refreshMemoryIfDue(ctx, user, s.projectMemoryScope(user, *project), memoryProjectDebounce)
 }
 
 // refreshProjectMemory generates and stores an updated memory from the given

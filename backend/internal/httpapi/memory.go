@@ -15,17 +15,29 @@ import (
 // Memory tuning, shared by the project and user memories.
 const (
 	// memoryRefreshThreshold is how many new messages must accumulate (since the
-	// last refresh) before the background auto-refresh runs — the "after a few
-	// chats" gate.
+	// last refresh) before a refresh is eligible — the "got updated" gate.
 	memoryRefreshThreshold = 4
-	// memoryRebuildLimit caps how many recent messages a full rebuild reads, so
-	// it never loads the entire history.
+	// memoryRebuildLimit caps how many recent messages a refresh reads, so it never
+	// loads the entire history. It also caps the incremental fold window.
 	memoryRebuildLimit = 200
-	// memoryTranscriptLimit caps how many recent messages feed an incremental
-	// refresh.
-	memoryTranscriptLimit = 40
 	// memoryBackgroundTimeout bounds a background refresh's LLM call.
 	memoryBackgroundTimeout = 2 * time.Minute
+	// memoryBatchInterval is how often the background MemoryWorker sweeps for scopes
+	// that are due a refresh.
+	memoryBatchInterval = 1 * time.Hour
+	// memoryBatchInitialDelay is how long after boot the first sweep runs, so user
+	// memory is populated without waiting a full interval while staying off the
+	// startup hot path.
+	memoryBatchInitialDelay = 1 * time.Minute
+	// memoryUserRefreshAge debounces user-memory regeneration to at most once per
+	// this window per user. User memory is slow-moving identity data, so a daily
+	// batch refresh is plenty and keeps generation cheap.
+	memoryUserRefreshAge = 24 * time.Hour
+	// memoryProjectDebounce debounces project-memory regeneration to at most once
+	// per this window per project. Project memory is the cross-thread shared
+	// context, so it stays responsive (refreshed within a turn of crossing the
+	// window) while never firing on every turn.
+	memoryProjectDebounce = 1 * time.Hour
 )
 
 // memoryScope describes one memory's storage and generation so the project and
@@ -38,30 +50,42 @@ type memoryScope struct {
 	header       string // generation header block (e.g. project name/description)
 	systemPrompt string // llm system prompt selecting the memory's style
 
-	get    func(ctx context.Context) (content string, sourceCount int, err error)
+	get    func(ctx context.Context) (content string, sourceCount int, updatedAt *time.Time, err error)
 	upsert func(ctx context.Context, content string, sourceCount int) error
 	count  func(ctx context.Context) (int, error)
 	list   func(ctx context.Context, limit int) ([]chat.Message, error)
 }
 
 // refreshMemoryIfDue runs an incremental refresh when the gate is met. It is the
-// synchronous core of the background job (split out so it is testable without a
-// goroutine).
-func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope memoryScope) error {
+// synchronous core of the background refresh (split out so it is testable without
+// a goroutine). minAge debounces regeneration: when the memory was refreshed more
+// recently than minAge ago, the refresh is skipped (pass 0 to disable). This is
+// what keeps the daily user sweep and the hourly project refresh from firing on
+// every turn.
+func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope memoryScope, minAge time.Duration) error {
 	count, err := scope.count(ctx)
 	if err != nil {
 		return err
 	}
-	prior, sourceCount, err := scope.get(ctx)
+	prior, sourceCount, updatedAt, err := scope.get(ctx)
 	if err != nil {
 		return err
 	}
 	if count-sourceCount < memoryRefreshThreshold {
 		return nil
 	}
-	// Fold the prior memory with the most recent messages (bounded by
-	// memoryTranscriptLimit).
-	messages, err := scope.list(ctx, memoryTranscriptLimit)
+	// Debounce: skip when the memory was refreshed within minAge. A never-generated
+	// memory (nil updatedAt) has no timestamp and is always treated as due.
+	if minAge > 0 && updatedAt != nil && time.Since(*updatedAt) < minAge {
+		return nil
+	}
+	// Fold the prior memory with the messages accumulated since the last refresh,
+	// capped at memoryRebuildLimit. Sizing the window to the backlog (rather than a
+	// fixed 40) avoids skipping messages when refreshes are spaced hours/days apart,
+	// up to memoryRebuildLimit — a backlog larger than that still folds only the
+	// most recent memoryRebuildLimit, but that is strictly better than the old cap.
+	window := min(count-sourceCount, memoryRebuildLimit)
+	messages, err := scope.list(ctx, window)
 	if err != nil {
 		return err
 	}
@@ -92,7 +116,7 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 // It preserves the current source-message count so the background-refresh gate is
 // undisturbed, and allows an empty result (the user emptied the memory).
 func (s *server) editMemory(ctx context.Context, user auth.User, scope memoryScope, instruction string) error {
-	current, sourceCount, err := scope.get(ctx)
+	current, sourceCount, _, err := scope.get(ctx)
 	if err != nil {
 		return err
 	}

@@ -14,27 +14,34 @@ import (
 const memoryMaxCompletionTokens = 512
 
 // ProjectMemorySystemPrompt drives project-memory generation: a compact,
-// topic-grouped digest shared across the project's chats.
+// topic-grouped digest shared across the project's chats. It prioritizes
+// still-relevant facts and actively prunes resolved ones (rather than keeping
+// everything forever) so the memory stays small and current.
 const ProjectMemorySystemPrompt = "You maintain a compact, durable memory for a chat project so separate chats share context. " +
 	"Given the project name, description, the existing memory, and recent conversation, output an UPDATED memory. " +
 	"Keep ONLY durable, project-wide facts, decisions, and open questions (dates, budgets, people, hard constraints, choices made). " +
 	"Drop chit-chat and one-off details. Replace outdated facts with their newest value instead of listing both. " +
-	"Always preserve the durable facts, decisions, and constraints already captured — never drop a captured durable fact merely to save space; compress the wording, not the facts. " +
+	"Prioritize what is still in force: hard constraints, decisions that still stand, and open questions come first. " +
+	"You are curating, not accumulating — actively drop items that are resolved, superseded, no longer relevant, or have not come up again. " +
 	"Use terse fragments in short markdown bullet lines, grouped under brief headings if helpful. " +
 	"Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. " +
-	"Stay well under 1000 characters (this governs phrasing, not whether to keep a captured durable fact). Output ONLY the memory content, no preamble."
+	"Stay well under 1000 characters. Output ONLY the memory content, no preamble."
 
-// UserMemorySystemPrompt drives user-memory generation: a flat list of atomic,
-// single-sentence facts about the user, injected into all of their chats.
-const UserMemorySystemPrompt = "You maintain a compact, durable memory of facts about the user so the assistant can stay personalized across all of their chats. " +
-	"Given the existing memory and recent conversation, output an UPDATED memory. " +
-	"Keep ONLY durable, personal facts the user revealed about THEMSELVES (employer/role, location, languages, lasting preferences, recurring goals). " +
-	"Always preserve durable, identity-defining facts already captured — location, languages, hobbies, favourite things (places, games, food, media, and the like), strong dislikes (things the user hates or loathes), lasting preferences, and recurring goals — and never drop a captured durable fact merely to save space; compress the wording, not the facts. " +
-	"Use terse fragments: each fact must be a fragment on its own line, prefixed with '- '. Do NOT group under headings. " +
+// UserMemorySystemPrompt drives user-memory generation: a structured digest with
+// a protected identity Core and a capped, churning "Current focus" section, so
+// durable identity facts are never lost while transient work ages out instead of
+// piling up.
+const UserMemorySystemPrompt = "You maintain a compact, durable memory about the user so the assistant can stay personalized across all of their chats. " +
+	"Given the existing memory and recent conversation, output an UPDATED memory in exactly these two sections, each a markdown heading followed by terse '- ' fragment lines:\n" +
+	"## Core — durable identity facts the user revealed about THEMSELVES: where they live, employer/role, languages, hobbies and favourite things (places, games, food, media, and the like), strong dislikes (things they hate or loathe), and lasting preferences. " +
+	"These are high priority: once captured, KEEP them — only replace a Core fact with its newer value; never drop one to save space.\n" +
+	"## Current focus — at most 5 items: the user's active projects, ongoing goals, and current work. " +
+	"This section CHURNS: when it is full and a new item appears, drop the oldest or least-active one; also drop items that look finished, superseded, or have not come up in recent conversation. Never let it grow beyond a handful.\n" +
 	"Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. " +
-	"Drop chit-chat, one-off details, and anything about other people. Replace outdated facts with their newest value instead of listing both. " +
+	"Drop chit-chat, one-off task details, and anything about other people. Replace outdated facts with their newest value instead of listing both. " +
+	"Omit a heading entirely if it has no items. " +
 	"NEVER store passwords, API keys, secrets, payment details, or other sensitive credentials. " +
-	"Stay well under 800 characters (this governs phrasing, not whether to keep a captured durable fact). Output ONLY the memory content, no preamble."
+	"Keep the whole memory well under 800 characters. Output ONLY the memory content, no preamble."
 
 // GenerateMemory re-summarizes a memory. It is given a scope-specific header
 // block (for example a project's name/description, or empty for user memory),

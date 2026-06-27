@@ -142,6 +142,9 @@ type fakeThreadStore struct {
 	projectDescriptionChanged bool
 	userMemory                chat.UserMemory
 	userMessageCount          int
+	// listLimit records the limit passed to the most recent ListUserMessages /
+	// ListProjectMessages call, so tests can assert the adaptive fold window.
+	listLimit int
 }
 
 func (f *fakeThreadStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
@@ -374,7 +377,8 @@ func (f *fakeThreadStore) CountProjectMessages(context.Context, string, string) 
 	return f.projectMessageCount, nil
 }
 
-func (f *fakeThreadStore) ListProjectMessages(_ context.Context, _ string, _ string, _ int) ([]chat.Message, error) {
+func (f *fakeThreadStore) ListProjectMessages(_ context.Context, _ string, _ string, limit int) ([]chat.Message, error) {
+	f.listLimit = limit
 	return append([]chat.Message(nil), f.messages...), nil
 }
 
@@ -394,7 +398,8 @@ func (f *fakeThreadStore) CountUserMessages(context.Context, string) (int, error
 	return f.userMessageCount, nil
 }
 
-func (f *fakeThreadStore) ListUserMessages(_ context.Context, _ string, _ int) ([]chat.Message, error) {
+func (f *fakeThreadStore) ListUserMessages(_ context.Context, _ string, limit int) ([]chat.Message, error) {
+	f.listLimit = limit
 	return append([]chat.Message(nil), f.messages...), nil
 }
 
