@@ -157,7 +157,7 @@ func (s *server) handleThumbnailArtifact(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Cache-Control", artifactCacheControl)
 	w.Header().Set("ETag", artifactThumbnailETag(found.ID, found.SizeBytes))
-	http.ServeContent(w, r, found.DisplayFilename+artifact.ThumbnailSuffix, found.CreatedAt, file)
+	http.ServeContent(w, r, found.DisplayFilename+".jpg", found.CreatedAt, file)
 }
 
 // resolveOrCreateThumbnail returns the absolute path of the artifact's sidecar
@@ -168,7 +168,7 @@ func (s *server) handleThumbnailArtifact(w http.ResponseWriter, r *http.Request)
 // new file's path is returned. An error means no thumbnail could be produced.
 func (s *server) resolveOrCreateThumbnail(ctx context.Context, userID string, found artifact.Artifact) (string, error) {
 	if found.ThumbnailRelPath != "" {
-		if abs, err := artifact.ResolveExisting(s.usersDir, userID, found.ThumbnailRelPath); err == nil {
+		if abs, err := artifact.ResolveThumbnailExisting(s.usersDir, userID, found.ThumbnailRelPath); err == nil {
 			if _, statErr := os.Stat(abs); statErr == nil {
 				return abs, nil
 			}
@@ -182,14 +182,14 @@ func (s *server) resolveOrCreateThumbnail(ctx context.Context, userID string, fo
 	if err != nil {
 		return "", err
 	}
-	thumbRel, err := artifact.WriteThumbnail(src, origAbs, found.VolumeRelPath)
+	thumbRel, err := artifact.WriteThumbnail(s.usersDir, userID, found.VolumeRelPath, src)
 	if err != nil {
 		return "", err
 	}
 	if err := s.artifacts.SetThumbnailRelPath(ctx, userID, found.ID, thumbRel); err != nil {
 		slog.Warn("persist artifact thumbnail path failed", "artifact_id", found.ID, "err", err)
 	}
-	return artifact.ResolveExisting(s.usersDir, userID, thumbRel)
+	return artifact.ResolveThumbnailExisting(s.usersDir, userID, thumbRel)
 }
 
 // handleDeleteArtifact removes an artifact the caller owns: its row and its file
@@ -222,11 +222,12 @@ func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	if abs, err := artifact.ResolveExisting(s.usersDir, user.ID, found.VolumeRelPath); err == nil {
 		_ = os.Remove(abs)
-		// Best-effort: drop the sidecar thumbnail alongside the original. It lives at
-		// <original>.thumb.jpg whether or not the row recorded a path (lazy backfill
-		// may have written one without a stored relpath if the column update failed).
-		_ = os.Remove(abs + artifact.ThumbnailSuffix)
 	}
+	// Best-effort: drop the sidecar thumbnail from the reserved subtree. Derived from
+	// the original's relpath, so it is removed whether or not the row recorded a path
+	// (lazy backfill may have written one without a stored relpath if the column
+	// update failed) and can never target a real artifact file.
+	artifact.RemoveThumbnail(s.usersDir, user.ID, found.VolumeRelPath)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -365,7 +366,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	// composer previews are fast immediately; the bytes were just written to disk.
 	var thumbnailRelPath string
 	if src, rerr := os.ReadFile(output.AbsPath); rerr == nil {
-		thumbnailRelPath = generateThumbnailBestEffort(mimeType, src, output.AbsPath, output.VolumeRelPath)
+		thumbnailRelPath = generateThumbnailBestEffort(s.usersDir, user.ID, mimeType, src, output.VolumeRelPath)
 	}
 	created, err := s.artifacts.Create(r.Context(), artifact.CreateInput{
 		UserID:           user.ID,
@@ -380,7 +381,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	})
 	if err != nil {
 		_ = os.Remove(output.AbsPath)
-		_ = os.Remove(output.AbsPath + artifact.ThumbnailSuffix)
+		artifact.RemoveThumbnail(s.usersDir, user.ID, output.VolumeRelPath)
 		serverError(w, r, err, "save upload failed")
 		return
 	}
@@ -417,13 +418,13 @@ func artifactResponseFromArtifact(item artifact.Artifact) artifactResponse {
 // raster image artifact, returning its volume-relative path (empty for non-raster
 // types or on failure). It never propagates an error: a missing thumbnail is
 // backfilled lazily by the thumbnail endpoint on first view.
-func generateThumbnailBestEffort(mimeType string, src []byte, absPath, relPath string) string {
+func generateThumbnailBestEffort(usersDir, userID, mimeType string, src []byte, volumeRelPath string) string {
 	if !artifact.IsThumbnailableMIME(mimeType) {
 		return ""
 	}
-	thumbRel, err := artifact.WriteThumbnail(src, absPath, relPath)
+	thumbRel, err := artifact.WriteThumbnail(usersDir, userID, volumeRelPath, src)
 	if err != nil {
-		slog.Warn("generate artifact thumbnail failed", "path", relPath, "err", err)
+		slog.Warn("generate artifact thumbnail failed", "path", volumeRelPath, "err", err)
 		return ""
 	}
 	return thumbRel

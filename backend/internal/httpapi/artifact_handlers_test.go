@@ -354,13 +354,15 @@ func TestThumbnailArtifactGeneratesServesAndBackfills(t *testing.T) {
 	if longest > artifact.ThumbnailMaxDimension {
 		t.Fatalf("thumbnail longest side = %d, want <= %d", longest, artifact.ThumbnailMaxDimension)
 	}
-	// The sidecar file was written next to the original...
-	if _, err := os.Stat(absFile + artifact.ThumbnailSuffix); err != nil {
+	// The sidecar file was written into the reserved thumbnail subtree...
+	wantThumbRel := artifact.ThumbnailRelPath(relPath)
+	thumbAbs := filepath.Join(usersDir, "user_1", filepath.FromSlash(wantThumbRel))
+	if _, err := os.Stat(thumbAbs); err != nil {
 		t.Fatalf("thumbnail sidecar not written: %v", err)
 	}
 	// ...and the relpath was backfilled onto the row for future requests.
-	if got := store.artifacts[0].ThumbnailRelPath; got != relPath+artifact.ThumbnailSuffix {
-		t.Fatalf("ThumbnailRelPath = %q, want %q (lazy backfill persisted)", got, relPath+artifact.ThumbnailSuffix)
+	if got := store.artifacts[0].ThumbnailRelPath; got != wantThumbRel {
+		t.Fatalf("ThumbnailRelPath = %q, want %q (lazy backfill persisted)", got, wantThumbRel)
 	}
 }
 
@@ -446,7 +448,11 @@ func TestDeleteArtifactRemovesThumbnailSidecar(t *testing.T) {
 	if err := os.WriteFile(absFile, []byte("png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	thumbFile := absFile + artifact.ThumbnailSuffix
+	thumbRel := artifact.ThumbnailRelPath(relPath)
+	thumbFile := filepath.Join(usersDir, "user_1", filepath.FromSlash(thumbRel))
+	if err := os.MkdirAll(filepath.Dir(thumbFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(thumbFile, []byte("jpg"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +460,7 @@ func TestDeleteArtifactRemovesThumbnailSidecar(t *testing.T) {
 	store := fakeArtifactStore{
 		deleted: &deleted,
 		artifacts: []artifact.Artifact{
-			{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png", ThumbnailRelPath: relPath + artifact.ThumbnailSuffix},
+			{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png", ThumbnailRelPath: thumbRel},
 		},
 	}
 	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: usersDir})

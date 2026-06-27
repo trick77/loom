@@ -339,20 +339,21 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 		VolumeRelPath:    "files/outputs/robot.png",
 		MIMEType:         "image/png",
 		SizeBytes:        10,
-		ThumbnailRelPath: "files/outputs/robot.png.thumb.jpg",
+		ThumbnailRelPath: ThumbnailRelPath("files/outputs/robot.png"),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
 	wantURL := "/api/artifacts/" + img.ID + "/thumbnail"
-	if img.ThumbnailRelPath != "files/outputs/robot.png.thumb.jpg" || img.ThumbnailURL != wantURL {
+	wantThumbRel := ThumbnailRelPath("files/outputs/robot.png")
+	if img.ThumbnailRelPath != wantThumbRel || img.ThumbnailURL != wantURL {
 		t.Fatalf("create result relpath=%q url=%q, want stored relpath and %q", img.ThumbnailRelPath, img.ThumbnailURL, wantURL)
 	}
 	got, ok, err := s.Get(ctx, "user_1", img.ID)
 	if err != nil || !ok {
 		t.Fatalf("Get() ok=%v err=%v", ok, err)
 	}
-	if got.ThumbnailRelPath != "files/outputs/robot.png.thumb.jpg" || got.ThumbnailURL != wantURL {
+	if got.ThumbnailRelPath != wantThumbRel || got.ThumbnailURL != wantURL {
 		t.Fatalf("get result relpath=%q url=%q, want round-trip and %q", got.ThumbnailRelPath, got.ThumbnailURL, wantURL)
 	}
 
@@ -377,14 +378,14 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 	}
 
 	// SetThumbnailRelPath persists onto the existing row (the lazy-backfill path).
-	if err := s.SetThumbnailRelPath(ctx, "user_1", noThumb.ID, "files/outputs/photo.jpg.thumb.jpg"); err != nil {
+	if err := s.SetThumbnailRelPath(ctx, "user_1", noThumb.ID, ThumbnailRelPath("files/outputs/photo.jpg")); err != nil {
 		t.Fatalf("SetThumbnailRelPath() error = %v", err)
 	}
 	after, _, err := s.Get(ctx, "user_1", noThumb.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.ThumbnailRelPath != "files/outputs/photo.jpg.thumb.jpg" {
+	if after.ThumbnailRelPath != ThumbnailRelPath("files/outputs/photo.jpg") {
 		t.Fatalf("after backfill relpath = %q, want persisted", after.ThumbnailRelPath)
 	}
 

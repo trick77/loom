@@ -209,7 +209,7 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	}
 	// Eagerly generate the sidecar thumbnail (best-effort) from the bytes already in
 	// hand; a non-raster artifact yields none and is served via lazy backfill later.
-	thumbnailRelPath := generateThumbnailBestEffort(out.MIMEType, buffer.Bytes(), out.AbsPath, out.VolumeRelPath)
+	thumbnailRelPath := generateThumbnailBestEffort(s.usersDir, user.ID, out.MIMEType, buffer.Bytes(), out.VolumeRelPath)
 	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
 		UserID:           user.ID,
 		ThreadID:         thread.ID,
@@ -222,7 +222,7 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	})
 	if err != nil {
 		_ = os.Remove(out.AbsPath)
-		_ = os.Remove(out.AbsPath + artifact.ThumbnailSuffix)
+		artifact.RemoveThumbnail(s.usersDir, user.ID, out.VolumeRelPath)
 		return capToolOutput("tool failed: persist artifact: " + err.Error()), nil, true
 	}
 	response := artifactResponse{
@@ -344,7 +344,7 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	}
 	// Eagerly generate the sidecar thumbnail (best-effort) from the generated image
 	// bytes already in hand; failure is harmless, the endpoint backfills lazily.
-	thumbnailRelPath := generateThumbnailBestEffort(meta.MIMEType, buffer.Bytes(), out.AbsPath, out.VolumeRelPath)
+	thumbnailRelPath := generateThumbnailBestEffort(s.usersDir, user.ID, meta.MIMEType, buffer.Bytes(), out.VolumeRelPath)
 	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
 		UserID:           user.ID,
 		ThreadID:         thread.ID,
@@ -357,7 +357,7 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	})
 	if err != nil {
 		_ = os.Remove(out.AbsPath)
-		_ = os.Remove(out.AbsPath + artifact.ThumbnailSuffix)
+		artifact.RemoveThumbnail(s.usersDir, user.ID, out.VolumeRelPath)
 		return nil, capToolOutput("tool failed: persist artifact: " + err.Error()), true
 	}
 	response := artifactResponse{

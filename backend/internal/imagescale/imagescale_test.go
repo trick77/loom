@@ -2,6 +2,8 @@ package imagescale
 
 import (
 	"bytes"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -133,4 +135,38 @@ func TestThumbnail_errorsOnUndecodableData(t *testing.T) {
 	if _, err := Thumbnail([]byte("<svg/>"), 144); err == nil {
 		t.Fatal("Thumbnail of non-raster data = nil error, want error")
 	}
+}
+
+func TestThumbnail_rejectsDecompressionBomb(t *testing.T) {
+	// A tiny PNG header declaring 20000×20000 (400 MP, over the 100 MP cap). Its
+	// dimensions are read via DecodeConfig and rejected before the full decode would
+	// allocate gigabytes; the caller treats the error as "no thumbnail".
+	bomb := pngHeaderWithDimensions(20000, 20000)
+	if _, err := Thumbnail(bomb, 144); err == nil {
+		t.Fatal("Thumbnail accepted an oversized image; want rejection before decode")
+	}
+}
+
+// pngHeaderWithDimensions builds the PNG signature plus a single valid IHDR chunk
+// declaring the given dimensions — enough for image.DecodeConfig to report the size
+// without any pixel data, so we can exercise the dimension guard cheaply.
+func pngHeaderWithDimensions(w, h uint32) []byte {
+	var buf bytes.Buffer
+	buf.Write([]byte("\x89PNG\r\n\x1a\n"))
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:4], w)
+	binary.BigEndian.PutUint32(ihdr[4:8], h)
+	ihdr[8] = 8 // bit depth
+	ihdr[9] = 2 // color type: truecolor
+	var chunk bytes.Buffer
+	length := make([]byte, 4)
+	binary.BigEndian.PutUint32(length, uint32(len(ihdr)))
+	chunk.Write(length)
+	chunk.WriteString("IHDR")
+	chunk.Write(ihdr)
+	crc := make([]byte, 4)
+	binary.BigEndian.PutUint32(crc, crc32.ChecksumIEEE(append([]byte("IHDR"), ihdr...)))
+	chunk.Write(crc)
+	buf.Write(chunk.Bytes())
+	return buf.Bytes()
 }

@@ -93,6 +93,13 @@ func fitWithin(data []byte, mimeType string, maxDimension, byteCap int) ([]byte,
 	return out, "image/jpeg"
 }
 
+// maxThumbnailSourcePixels caps the pixel area of an image we will fully decode to
+// build a thumbnail. It is a decompression-bomb guard, not a typical-photo limit:
+// at 100 MP it sits far above a 4096² (~16 MP) edit input or any real camera, so it
+// rejects only crafted inputs (a tiny file declaring e.g. 30000×30000) that would
+// otherwise allocate gigabytes on decode. A rejected image simply gets no thumbnail.
+const maxThumbnailSourcePixels = 100 << 20
+
 // Thumbnail decodes data and produces a small JPEG whose longest side is at most
 // maxDimension, flattening any transparency onto white. Unlike DownscaleForModel
 // it ALWAYS re-encodes as JPEG (callers serve the result with a fixed image/jpeg
@@ -101,6 +108,15 @@ func fitWithin(data []byte, mimeType string, maxDimension, byteCap int) ([]byte,
 // original. An image already within maxDimension is re-encoded at its current size
 // rather than upscaled.
 func Thumbnail(data []byte, maxDimension int) ([]byte, error) {
+	// Read the declared dimensions cheaply (no pixel allocation) and reject a
+	// decompression bomb before the full decode below would blow up memory.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxThumbnailSourcePixels {
+		return nil, errors.New("imagescale: source image too large to thumbnail")
+	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
