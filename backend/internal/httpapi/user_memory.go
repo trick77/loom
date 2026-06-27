@@ -57,7 +57,7 @@ func renderUserContext(memory string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("Personal context about the user you are chatting with (durable facts they shared across threads). Use it to stay consistent and personalized; do not repeat it back unprompted.\n")
+	b.WriteString("Personal context about the user you are chatting with (durable facts they shared across threads). Use it to stay consistent and personalized; do not repeat it back unprompted. If a \"## Style\" section is present, treat those as response preferences and follow them when answering.\n")
 	b.WriteString(strings.TrimSpace(memory))
 	return b.String()
 }

@@ -17,6 +17,7 @@ func TestUserMemorySystemPromptRequiresTerseFragments(t *testing.T) {
 		"terse '- ' fragment lines",
 		"Do NOT start facts with \"The user\"",
 		"drop filler words",
+		"caveman",
 	} {
 		if !strings.Contains(UserMemorySystemPrompt, want) {
 			t.Fatalf("user memory prompt missing %q:\n%s", want, UserMemorySystemPrompt)
@@ -24,18 +25,37 @@ func TestUserMemorySystemPromptRequiresTerseFragments(t *testing.T) {
 	}
 }
 
-// TestUserMemorySystemPromptIsStructured guards the Core/Current-focus structure:
-// a protected identity section and a capped, churning section so transient work
-// ages out instead of piling up.
+// TestUserMemorySystemPromptIsStructured guards the Core/Current-focus/Style
+// structure: a protected identity section, a capped churning section so transient
+// work ages out instead of piling up, and a Style section for response steering —
+// all within a 2000-character budget.
 func TestUserMemorySystemPromptIsStructured(t *testing.T) {
 	for _, want := range []string{
 		"## Core",
 		"## Current focus",
-		"at most 5 items",
+		"## Style",
+		"at most 10 items",
 		"CHURNS",
+		"2000 characters",
 	} {
 		if !strings.Contains(UserMemorySystemPrompt, want) {
 			t.Fatalf("user memory prompt missing structural marker %q:\n%s", want, UserMemorySystemPrompt)
+		}
+	}
+}
+
+// TestUserMemorySystemPromptCapturesResponsePreferences guards the
+// behaviour-steering intent: the Style section must capture how the user wants to
+// be answered (length/tone/format) inferred from their feedback.
+func TestUserMemorySystemPromptCapturesResponsePreferences(t *testing.T) {
+	for _, want := range []string{
+		"## Style",
+		"wants the assistant to respond",
+		"feedback",
+		"prefers concise answers",
+	} {
+		if !strings.Contains(UserMemorySystemPrompt, want) {
+			t.Fatalf("user memory prompt missing steering marker %q:\n%s", want, UserMemorySystemPrompt)
 		}
 	}
 }
@@ -45,6 +65,7 @@ func TestProjectMemorySystemPromptRequiresTerseFragments(t *testing.T) {
 		"terse fragments",
 		"Do NOT start facts with \"The user\"",
 		"drop filler words",
+		"caveman",
 	} {
 		if !strings.Contains(ProjectMemorySystemPrompt, want) {
 			t.Fatalf("project memory prompt missing %q:\n%s", want, ProjectMemorySystemPrompt)
