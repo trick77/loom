@@ -109,6 +109,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// assistant generation instead of delaying the final events.
 	mcpStatusCh := s.startMCPStatus(streamCtx)
 
+	// Decide whether the image path will run before classifying: when it will, we
+	// stamp the thread's category deterministically as image_generation instead of
+	// letting the text classifier guess (it would mislabel and the image path
+	// discards the classifier block anyway). Computed once here and reused below.
+	imageArtifactRequired := s.imageArtifactRequired(body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
+
 	// category drives the prompt-classifier block injected below. On the first
 	// message we classify now (synchronously, before the answer history is built)
 	// and use the fresh result; on later turns we reuse the stored category. The
@@ -116,7 +122,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// failed (generateAndSendThreadTitle returns the category regardless).
 	category := thread.Category
 	if shouldGenerateThreadTitle(thread.Title, userMessage.Content) {
-		category, _ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "")
+		categoryOverride := ""
+		if imageArtifactRequired {
+			categoryOverride = string(classifier.ImageGeneration)
+		}
+		category, _ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "", categoryOverride)
 	}
 
 	userContext := s.userContextForUser(r.Context(), user.ID)
@@ -173,7 +183,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		history[len(history)-1].Content = ""
 		history[len(history)-1].ContentParts = imageParts
 	}
-	imageArtifactRequired := s.imageArtifactRequired(body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
 	// When the image path will run, forward the source image's original full-res
 	// bytes so the model edits the actual pixels instead of a lossy text
 	// re-description. Best-effort: on failure the turn still generates, just without
