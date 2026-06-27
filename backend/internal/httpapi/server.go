@@ -25,18 +25,24 @@ type Deps struct {
 	Version string
 	Static  http.Handler // serves the embedded SPA; may be nil in tests
 
-	OIDC                  OIDCService
-	Auth                  *auth.Middleware
-	Sessions              SessionService
-	Users                 UserService
-	Thread                ThreadStore
-	Usage                 UsageStore
-	Artifacts             ArtifactStore
-	Documents             DocumentService
-	LLM                   ChatClient
-	MCP                   ToolService
-	DocTools              []docgen.Generator
-	ImageTools            []imagegen.Tool
+	OIDC       OIDCService
+	Auth       *auth.Middleware
+	Sessions   SessionService
+	Users      UserService
+	Thread     ThreadStore
+	Usage      UsageStore
+	Artifacts  ArtifactStore
+	Documents  DocumentService
+	LLM        ChatClient
+	MCP        ToolService
+	DocTools   []docgen.Generator
+	ImageTools []imagegen.Tool
+	// BFLDefaultModel is the configured baseline image model (e.g.
+	// "flux-2-klein-4b"); BFLTypographyModel (e.g. "flux-2-flex") is used instead
+	// for the first image of a thread when it reads as typography/logo/text work.
+	// Empty BFLTypographyModel disables typography routing.
+	BFLDefaultModel       string
+	BFLTypographyModel    string
 	UsersDir              string
 	OIDCAdminGroup        string
 	DevAuthClaims         auth.Claims
@@ -60,6 +66,8 @@ type server struct {
 	mcp                        ToolService
 	docTools                   []docgen.Generator
 	imageTools                 []imagegen.Tool
+	bflDefaultModel            string
+	bflTypographyModel         string
 	usersDir                   string
 	oidcAdminGroup             string
 	devAuthClaims              auth.Claims
@@ -84,6 +92,7 @@ type ThreadStore interface {
 	ListThreadIDs(context.Context, string, chat.ListThreadsOptions) ([]string, error)
 	UpdateThread(context.Context, string, string, chat.UpdateThreadInput) (chat.Thread, bool, error)
 	SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error)
+	SetThreadImageModelIfEmpty(context.Context, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
 	AddMessage(context.Context, string, string, chat.Role, string) (chat.Message, error)
@@ -200,6 +209,8 @@ func New(d Deps) http.Handler {
 		mcp:                        d.MCP,
 		docTools:                   d.DocTools,
 		imageTools:                 d.ImageTools,
+		bflDefaultModel:            d.BFLDefaultModel,
+		bflTypographyModel:         d.BFLTypographyModel,
 		usersDir:                   d.UsersDir,
 		oidcAdminGroup:             d.OIDCAdminGroup,
 		devAuthClaims:              d.DevAuthClaims,

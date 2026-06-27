@@ -44,7 +44,7 @@ func scanThread(row rowScanner) (Thread, error) {
 	var projectID sql.NullString
 	var archivedAt, lastMessageAt sql.NullString
 	var createdAt, updatedAt string
-	if err := row.Scan(&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt); err != nil {
+	if err := row.Scan(&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt); err != nil {
 		return Thread{}, err
 	}
 	if projectID.Valid {

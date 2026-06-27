@@ -109,7 +109,7 @@ func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreads
 	args = append(args, limit)
 
 	query := fmt.Sprintf(`
-SELECT id, user_id, project_id, title, category, starred, archived_at, created_at, updated_at, last_message_at
+SELECT id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at
 FROM threads
 WHERE %s
 ORDER BY COALESCE(last_message_at, updated_at) DESC, updated_at DESC, id DESC
@@ -235,6 +235,38 @@ WHERE user_id = ? AND id = ?`,
 	return s.GetThread(ctx, userID, threadID)
 }
 
+// SetThreadImageModelIfEmpty locks the image-generation model for a thread on the
+// first image generated in it: it writes image_model only while the column is
+// still empty (WHERE ... AND image_model = ''), so the choice is made exactly once
+// and every later image in the thread reuses it (no mid-conversation flip-flop).
+// A subsequent call with a different model is a no-op. It always returns the
+// current (locked) thread; an empty model argument is a read-only no-op.
+func (s *Store) SetThreadImageModelIfEmpty(ctx context.Context, userID, threadID, model string) (Thread, bool, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		thread, _, err := s.getThread(ctx, userID, threadID)
+		return thread, false, err
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE threads
+SET image_model = ?, updated_at = datetime('now')
+WHERE user_id = ? AND id = ? AND image_model = ''`,
+		model, userID, threadID,
+	)
+	if err != nil {
+		return Thread{}, false, fmt.Errorf("lock thread image model: %w", err)
+	}
+	updated, err := changed(result)
+	if err != nil {
+		return Thread{}, false, err
+	}
+	thread, ok, err := s.getThread(ctx, userID, threadID)
+	if err != nil || !ok {
+		return Thread{}, updated, err
+	}
+	return thread, updated, nil
+}
+
 func (s *Store) SetThreadArchived(ctx context.Context, userID, threadID string, archived bool) (bool, error) {
 	setArchivedAt := "archived_at = NULL"
 	if archived {
@@ -273,7 +305,7 @@ func escapeLike(term string) string {
 
 func (s *Store) getThread(ctx context.Context, userID, threadID string) (Thread, bool, error) {
 	thread, err := scanThread(s.db.QueryRowContext(ctx, `
-SELECT id, user_id, project_id, title, category, starred, archived_at, created_at, updated_at, last_message_at
+SELECT id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at
 FROM threads
 WHERE user_id = ? AND id = ?`,
 		userID, threadID,

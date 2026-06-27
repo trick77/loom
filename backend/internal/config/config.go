@@ -63,7 +63,12 @@ type Config struct {
 	BFLBaseURL                 string
 	BFLAPIKey                  string
 	BFLModel                   string
-	BFLPollTimeout             time.Duration
+	// BFLTypographyModel is used instead of BFLModel for the first image of a
+	// thread when the request reads as typography/logo/text work (FLUX.2 [flex]
+	// renders legible text far better than the klein default). Empty disables
+	// typography routing — every image stays on BFLModel.
+	BFLTypographyModel string
+	BFLPollTimeout     time.Duration
 
 	TikaURL        string
 	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
@@ -123,6 +128,7 @@ func Load() (Config, error) {
 		BFLBaseURL:              env("BACKEND_BFL_BASE_URL", "https://api.bfl.ai/v1"),
 		BFLAPIKey:               env("BACKEND_BFL_API_KEY", ""),
 		BFLModel:                env("BACKEND_BFL_MODEL", "flux-2-klein-4b"),
+		BFLTypographyModel:      env("BACKEND_BFL_TYPOGRAPHY_MODEL", "flux-2-flex"),
 		TikaURL:                 env("BACKEND_TIKA_URL", "http://tika:9998"),
 		TavilyURL:               env("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
 		TavilyAPIKey:            env("BACKEND_TAVILY_API_KEY", ""),

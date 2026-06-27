@@ -260,6 +260,14 @@ func (f *fakeThreadStore) SetThreadStarred(context.Context, string, string, bool
 	return f.thread, true, nil
 }
 
+func (f *fakeThreadStore) SetThreadImageModelIfEmpty(_ context.Context, _, _, model string) (chat.Thread, bool, error) {
+	if model != "" && f.thread.ImageModel == "" {
+		f.thread.ImageModel = model
+		return f.thread, true, nil
+	}
+	return f.thread, false, nil
+}
+
 func (f *fakeThreadStore) SetThreadArchived(context.Context, string, string, bool) (bool, error) {
 	return true, nil
 }

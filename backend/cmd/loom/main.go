@@ -250,6 +250,8 @@ func run() error {
 		MCP:                        toolService,
 		DocTools:                   docTools,
 		ImageTools:                 imageTools,
+		BFLDefaultModel:            cfg.BFLModel,
+		BFLTypographyModel:         cfg.BFLTypographyModel,
 		UsersDir:                   cfg.UsersDir,
 		OIDCAdminGroup:             cfg.OIDC.AdminGroup,
 		DevAuthClaims:              devAuthClaims,

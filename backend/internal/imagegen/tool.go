@@ -19,6 +19,10 @@ type ToolRequest struct {
 	Seed            *int64 `json:"seed,omitempty"`
 	OutputFormat    string `json:"output_format,omitempty"`
 	SafetyTolerance *int   `json:"safety_tolerance,omitempty"`
+	// Model is injected by the dispatcher (never parsed from LLM tool arguments —
+	// note the json:"-") to override the provider's configured model for this
+	// request, e.g. routing typography/logo work to FLUX.2 [flex].
+	Model string `json:"-"`
 	// InputImages is injected by the dispatcher (never parsed from LLM tool
 	// arguments — note the json:"-") to forward the user's uploaded photo for
 	// direct editing/transformation.
@@ -106,6 +110,7 @@ func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolM
 		Seed:            req.Seed,
 		OutputFormat:    req.OutputFormat,
 		SafetyTolerance: req.SafetyTolerance,
+		Model:           req.Model,
 		InputImages:     req.InputImages,
 	})
 	if err != nil {

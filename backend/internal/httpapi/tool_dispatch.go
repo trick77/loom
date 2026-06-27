@@ -232,6 +232,35 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response, true
 }
 
+// maxTypographyImageSide caps typography-model (FLUX.2 [flex]) output to the same
+// ~1024 px ceiling as the klein default; flex otherwise supports up to 4 MP.
+const maxTypographyImageSide = 1024
+
+// resolveThreadImageModel returns the image model to use for this thread, locking
+// the choice on the first image generated in it. If the thread has no locked
+// model yet it picks the typography model when typography routing is configured
+// and the (compiled) prompt reads as typography/logo/text work, otherwise the
+// default model, then persists the choice via the atomic set-if-empty. Every
+// later image in the thread reuses the locked value, so the model never
+// flip-flops mid-conversation. If persistence fails it falls back to the in-memory
+// decision so generation still proceeds (an empty result defers to the provider's
+// configured default).
+func (s *server) resolveThreadImageModel(ctx context.Context, userID string, thread chat.Thread, prompt string) string {
+	if locked := strings.TrimSpace(thread.ImageModel); locked != "" {
+		return locked
+	}
+	candidate := s.bflDefaultModel
+	if tm := strings.TrimSpace(s.bflTypographyModel); tm != "" && isTypographyImageRequest(prompt) {
+		candidate = tm
+	}
+	if updated, _, err := s.thread.SetThreadImageModelIfEmpty(ctx, userID, thread.ID, candidate); err == nil {
+		if locked := strings.TrimSpace(updated.ImageModel); locked != "" {
+			return locked
+		}
+	}
+	return candidate
+}
+
 func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource) (*artifactResponse, string, bool) {
 	generator := s.imageTool(call.Function.Name)
 	if generator == nil {
@@ -267,6 +296,12 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	// instead of a lossy text re-description. Injected here (never from LLM args).
 	if editSource != nil && len(editSource.Data) > 0 {
 		req.InputImages = [][]byte{editSource.Data}
+	}
+	// Pick (and lock, once per thread) the image model. When it is the typography
+	// model, clamp output to ≤1024 px/side so flex matches the klein default's size.
+	req.Model = s.resolveThreadImageModel(ctx, user.ID, thread, req.Prompt)
+	if tm := strings.TrimSpace(s.bflTypographyModel); tm != "" && req.Model == tm {
+		req.Width, req.Height = imagegen.ClampMaxSide(req.Width, req.Height, maxTypographyImageSide)
 	}
 	var buffer bytes.Buffer
 	meta, err := generator.Generate(ctx, req, &buffer)

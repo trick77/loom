@@ -71,6 +71,54 @@ func TestBFLClientGenerateSubmitsPollsAndDownloadsImage(t *testing.T) {
 	}
 }
 
+func TestBFLClientGenerateUsesPerRequestModelOverride(t *testing.T) {
+	var submitPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/flux-2-flex":
+			submitPath = r.URL.Path
+			writeJSON(t, w, map[string]any{
+				"id":          "task-2",
+				"polling_url": serverURL(r) + "/v1/get_result?id=task-2",
+			})
+		case "/v1/get_result":
+			writeJSON(t, w, map[string]any{
+				"id":     "task-2",
+				"status": "Ready",
+				"result": map[string]any{"sample": serverURL(r) + "/delivery/image.png"},
+			})
+		case "/delivery/image.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("\x89PNG\r\n\x1a\nimage"))
+		default:
+			t.Fatalf("unexpected path %s (the override should hit /v1/flux-2-flex, not the configured default)", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewBFLClient(BFLConfig{
+		BaseURL:      server.URL + "/v1",
+		APIKey:       "test-key",
+		Model:        "flux-2-klein-4b",
+		PollInterval: time.Millisecond,
+		HTTPClient:   server.Client(),
+	})
+	result, err := client.Generate(context.Background(), GenerateRequest{
+		Prompt:       "a bold LOOM wordmark",
+		OutputFormat: "png",
+		Model:        "flux-2-flex",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if submitPath != "/v1/flux-2-flex" {
+		t.Fatalf("submit path = %q, want /v1/flux-2-flex", submitPath)
+	}
+	if result.Model != "flux-2-flex" {
+		t.Fatalf("result.Model = %q, want flux-2-flex (metadata must report the model actually used)", result.Model)
+	}
+}
+
 func TestBFLClientGenerateForwardsInputImagesAsBase64(t *testing.T) {
 	var submitted map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

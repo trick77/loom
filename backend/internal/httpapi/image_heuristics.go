@@ -176,6 +176,10 @@ func isImageCreationRequest(tokens []string) bool {
 	objects := map[string]bool{
 		"image": true, "images": true, "picture": true, "pictures": true, "logo": true, "logos": true,
 		"bild": true, "bilder": true,
+		// Infographics are inherently visual+text artifacts the user wants
+		// image-generated (and routed to the typography model). "create an
+		// infographic about X" carries no "image"/"picture" noun, so name it here.
+		"infographic": true, "infographics": true, "infografik": true, "infografiken": true,
 	}
 	return hasNearbyTokens(tokens, actions, objects, 5)
 }

@@ -2,6 +2,32 @@ package imagegen
 
 import "testing"
 
+func TestClampMaxSide(t *testing.T) {
+	cases := []struct {
+		name      string
+		w, h, max int
+		wantW     int
+		wantH     int
+	}{
+		{"within bound untouched", 1024, 768, 1024, 1024, 768},
+		{"square downscaled", 2048, 2048, 1024, 1024, 1024},
+		{"landscape preserves aspect", 2048, 1024, 1024, 1024, 512},
+		{"portrait preserves aspect", 1024, 2048, 1024, 512, 1024},
+		{"unset zero untouched", 0, 0, 1024, 0, 0},
+		{"only one side over", 1536, 256, 1024, 1024, 170},
+		{"never collapses below one", 4000, 1, 1024, 1024, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotW, gotH := ClampMaxSide(tc.w, tc.h, tc.max)
+			if gotW != tc.wantW || gotH != tc.wantH {
+				t.Fatalf("ClampMaxSide(%d, %d, %d) = (%d, %d), want (%d, %d)",
+					tc.w, tc.h, tc.max, gotW, gotH, tc.wantW, tc.wantH)
+			}
+		})
+	}
+}
+
 func TestGenerateRequestNormalize(t *testing.T) {
 	req := GenerateRequest{
 		Prompt:       "  a clay robot reading a book  ",

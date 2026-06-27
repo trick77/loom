@@ -76,7 +76,12 @@ type Thread struct {
 	// Category is the prompt-classifier label chosen on the first message (e.g.
 	// "coding", "cooking_recipes"); empty until classified. Drives the
 	// category-specific system-prompt block and the status-line pill.
-	Category      string     `json:"category"`
+	Category string `json:"category"`
+	// ImageModel is the image-generation model locked on the first image generated
+	// in this thread (e.g. "flux-2-klein-4b" or "flux-2-flex"); empty until the
+	// first image. Once set it is reused for every later image in the thread so the
+	// model never flip-flops mid-conversation.
+	ImageModel    string     `json:"imageModel"`
 	Starred       bool       `json:"starred"`
 	ArchivedAt    *time.Time `json:"archivedAt"`
 	CreatedAt     time.Time  `json:"createdAt"`
