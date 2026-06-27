@@ -189,6 +189,7 @@ func (s *server) createCodeArtifact(ctx context.Context, user auth.User, thread 
 		SizeBytes:       record.SizeBytes,
 		ProjectID:       record.ProjectID,
 		DownloadURL:     record.DownloadURL,
+		ThumbnailURL:    record.ThumbnailURL,
 	}, nil
 }
 

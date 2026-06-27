@@ -5,7 +5,7 @@ import { attachmentExtensionLabel } from "../chat/attachmentFiles";
 import { FileIcon } from "../chat/icons";
 
 function isImageLike(mimeType: string, filename: string): boolean {
-  return mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(filename);
+  return mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(filename);
 }
 
 // isRevocablePreview reports whether a preview URL is a local object URL that must

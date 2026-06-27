@@ -69,6 +69,7 @@ const robot = artifact({
   sizeBytes: 842 * 1024,
   modifiedAt: "2026-06-10T14:52:00Z",
   downloadUrl: "/api/artifacts/art_image/download",
+  thumbnailUrl: "/api/artifacts/art_image/thumbnail",
 });
 
 function renderPage() {
@@ -274,11 +275,13 @@ test("loads further pages via the infinite-scroll sentinel", async () => {
 test("opens image previews and downloads file rows", async () => {
   renderPage();
 
+  // The grid thumbnail uses the small thumbnail endpoint...
   expect(
     await screen.findByRole("img", { name: "robot.png thumbnail" }),
-  ).toHaveAttribute("src", "/api/artifacts/art_image/download");
+  ).toHaveAttribute("src", "/api/artifacts/art_image/thumbnail");
   expect(downloadArtifactMock).not.toHaveBeenCalled();
 
+  // ...while the opened lightbox shows the full-resolution original.
   fireEvent.click(await screen.findByRole("button", { name: "Preview robot.png" }));
   const dialog = await screen.findByRole("dialog", { name: "Preview robot.png" });
   expect(within(dialog).getByRole("img", { name: "robot.png" })).toHaveAttribute(

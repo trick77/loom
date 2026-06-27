@@ -529,7 +529,7 @@ function ImageArtifactRow({
             <AttachmentPreview
               mimeType={artifact.mimeType}
               filename={artifact.displayFilename}
-              previewUrl={artifact.downloadUrl}
+              previewUrl={artifact.thumbnailUrl ?? artifact.downloadUrl}
               alt={`${artifact.displayFilename} thumbnail`}
               className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#1f1f1d] text-[#c7c5bd]"
             />

@@ -136,6 +136,7 @@ type artifactResponse struct {
 	SizeBytes       int64   `json:"sizeBytes"`
 	ProjectID       *string `json:"projectId,omitempty"`
 	DownloadURL     string  `json:"downloadUrl"`
+	ThumbnailURL    string  `json:"thumbnailUrl,omitempty"`
 	Model           string  `json:"model,omitempty"`
 	Provider        string  `json:"provider,omitempty"`
 	Width           int     `json:"width,omitempty"`
@@ -157,4 +158,5 @@ type artifactListItemResponse struct {
 	SizeBytes       int64     `json:"sizeBytes"`
 	ModifiedAt      time.Time `json:"modifiedAt"`
 	DownloadURL     string    `json:"downloadUrl"`
+	ThumbnailURL    string    `json:"thumbnailUrl,omitempty"`
 }

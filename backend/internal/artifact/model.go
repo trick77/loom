@@ -19,6 +19,14 @@ type Artifact struct {
 	Source          string    `json:"source"`
 	CreatedAt       time.Time `json:"createdAt"`
 	DownloadURL     string    `json:"downloadUrl"`
+	// ThumbnailRelPath is the volume-relative path of the sidecar JPEG thumbnail,
+	// empty when none has been generated (non-raster artifact, or not yet
+	// backfilled). Internal only — the client never sees the path.
+	ThumbnailRelPath string `json:"-"`
+	// ThumbnailURL points at the thumbnail endpoint; set for raster image artifacts
+	// (the endpoint lazily generates on first hit) and empty otherwise, so the UI
+	// falls back to DownloadURL for SVGs and the typed icon for non-images.
+	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
 	// Deleted is true when the artifact has been soft-deleted: its bytes are gone
 	// from disk but the row is kept so chat messages can render a tombstone. The
 	// Artifacts library filters these out; only GetMany surfaces them.
