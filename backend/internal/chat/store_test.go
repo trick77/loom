@@ -136,6 +136,53 @@ func TestStore_SetProjectDescriptionIfEmptyIsOneShot(t *testing.T) {
 	}
 }
 
+func TestStore_SetThreadImageModelIfEmptyLocksOnce(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Logo work"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if thread.ImageModel != "" {
+		t.Fatalf("ImageModel = %q, want empty on a fresh thread", thread.ImageModel)
+	}
+
+	locked, changed, err := store.SetThreadImageModelIfEmpty(ctx, userID, thread.ID, "  flux-2-flex  ")
+	if err != nil {
+		t.Fatalf("SetThreadImageModelIfEmpty() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("changed = false, want true for initially empty image_model")
+	}
+	if locked.ImageModel != "flux-2-flex" {
+		t.Fatalf("ImageModel = %q, want trimmed flux-2-flex", locked.ImageModel)
+	}
+
+	// A later image in the same thread must not flip the model.
+	again, changed, err := store.SetThreadImageModelIfEmpty(ctx, userID, thread.ID, "flux-2-klein-4b")
+	if err != nil {
+		t.Fatalf("second SetThreadImageModelIfEmpty() error: %v", err)
+	}
+	if changed {
+		t.Fatal("changed = true, want false once the model is locked")
+	}
+	if again.ImageModel != "flux-2-flex" {
+		t.Fatalf("ImageModel after second attempt = %q, want original flux-2-flex", again.ImageModel)
+	}
+
+	// An empty candidate is a read-only no-op.
+	noop, changed, err := store.SetThreadImageModelIfEmpty(ctx, userID, thread.ID, "")
+	if err != nil {
+		t.Fatalf("empty SetThreadImageModelIfEmpty() error: %v", err)
+	}
+	if changed || noop.ImageModel != "flux-2-flex" {
+		t.Fatalf("empty candidate changed lock: changed=%v model=%q", changed, noop.ImageModel)
+	}
+}
+
 func TestStore_ListMethodsReturnEmptySlices(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

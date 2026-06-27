@@ -67,7 +67,8 @@ func (c *BFLClient) Generate(ctx context.Context, input GenerateRequest) (Genera
 	if err != nil {
 		return GenerateResult{}, err
 	}
-	submitted, err := c.submit(ctx, req)
+	model := c.effectiveModel(req.Model)
+	submitted, err := c.submit(ctx, req, model)
 	if err != nil {
 		return GenerateResult{}, err
 	}
@@ -93,7 +94,7 @@ func (c *BFLClient) Generate(ctx context.Context, input GenerateRequest) (Genera
 		MIMEType:    mimeType,
 		Bytes:       body,
 		Provider:    "bfl",
-		Model:       c.model,
+		Model:       model,
 		RequestID:   submitted.ID,
 		Prompt:      req.Prompt,
 		Seed:        req.Seed,
@@ -103,7 +104,17 @@ func (c *BFLClient) Generate(ctx context.Context, input GenerateRequest) (Genera
 	}, nil
 }
 
-func (c *BFLClient) submit(ctx context.Context, req GenerateRequest) (bflSubmitResponse, error) {
+// effectiveModel returns the per-request model override when one is supplied
+// (trimmed of surrounding slashes/space, matching NewBFLClient's normalization),
+// otherwise the client's configured default.
+func (c *BFLClient) effectiveModel(override string) string {
+	if m := strings.Trim(strings.TrimSpace(override), "/"); m != "" {
+		return m
+	}
+	return c.model
+}
+
+func (c *BFLClient) submit(ctx context.Context, req GenerateRequest, model string) (bflSubmitResponse, error) {
 	payload := map[string]any{
 		"prompt":           req.Prompt,
 		"width":            req.Width,
@@ -129,7 +140,7 @@ func (c *BFLClient) submit(ctx context.Context, req GenerateRequest) (bflSubmitR
 	if err != nil {
 		return bflSubmitResponse{}, err
 	}
-	endpoint := c.baseURL + "/" + url.PathEscape(c.model)
+	endpoint := c.baseURL + "/" + url.PathEscape(model)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return bflSubmitResponse{}, err

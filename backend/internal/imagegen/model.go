@@ -32,6 +32,11 @@ type GenerateRequest struct {
 	Seed            *int64
 	OutputFormat    string
 	SafetyTolerance *int
+	// Model, when non-empty, overrides the provider's configured model for this
+	// one request (e.g. routing typography/logo work to FLUX.2 [flex]). Like
+	// InputImages it is injected by the dispatcher, never parsed from LLM tool
+	// arguments.
+	Model string
 	// InputImages carries raw source-image bytes to edit/transform directly
 	// (e.g. "render a LEGO set from this photo"). When present, the provider
 	// sends the pixels to the model alongside the prompt instead of relying on a
@@ -122,6 +127,31 @@ func align16(v int) int {
 		return v
 	}
 	return v + (16 - v%16)
+}
+
+// ClampMaxSide scales (w, h) down proportionally so the longest side is at most
+// max, preserving aspect ratio. Dimensions already within the bound — including
+// the 0×0 "unset" case that Normalized() later defaults to 1024×1024 — are
+// returned untouched. Used to keep typography-model output (FLUX.2 [flex], which
+// supports up to 4 MP) at the same ~1024 px ceiling as the klein default. The
+// caller still passes the result through Normalized(), which applies align16 and
+// the 4 MP guard.
+func ClampMaxSide(w, h, max int) (int, int) {
+	if max <= 0 || (w <= max && h <= max) {
+		return w, h
+	}
+	longest := w
+	if h > longest {
+		longest = h
+	}
+	scaled := func(v int) int {
+		out := v * max / longest
+		if out < 1 {
+			out = 1
+		}
+		return out
+	}
+	return scaled(w), scaled(h)
 }
 
 func normalizeFilename(input, prompt, format string) string {
