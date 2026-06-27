@@ -58,7 +58,7 @@ var catalog = []struct {
 	entry entry
 }{
 	{KnowledgeDiscovery, entry{
-		gloss: "explaining or learning about a general topic, concept, or person that fits no more specific category",
+		gloss: "explaining or learning about a broad topic, concept, or person that fits no more specific category",
 		block: "Answer in flowing prose, not bullet or numbered lists unless the content is a true enumeration (steps, parameters, a checklist). If the query is about a person, give a short comprehensive biography; if multiple people match, describe each individually and never mix their information. When the topic has real depth worth exploring, end with a section of 1-3 recent developments tailored to the angle revealed by the query — historical, practical, or theoretical. Skip it for simple factual lookups that a sentence or two fully answers.",
 	}},
 	{AcademicResearch, entry{
