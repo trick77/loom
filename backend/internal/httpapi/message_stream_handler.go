@@ -344,14 +344,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	turnMessages := make([]chat.Message, 0, len(priorMessages)+2)
-	turnMessages = append(turnMessages, priorMessages...)
-	turnMessages = append(turnMessages, userMessage, assistantMessage)
-	s.maybeAutoDescribeProject(r.Context(), persistCtx, stream, user, thread, turnMessages)
-
 	// Best-effort, debounced background refresh of the project's shared memory so
 	// sibling chats stay aware of this turn (at most once per memoryProjectDebounce).
-	// Detaches from the request context so it survives the handler returning. User
+	// Detaches from the request context so it survives the handler returning. This
+	// also one-shot fills an empty project description (see refreshMemory). User
 	// memory is intentionally NOT refreshed here — it is handled by the once-a-day
 	// MemoryWorker sweep so it does not fire on every turn.
 	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread)

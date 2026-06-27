@@ -54,6 +54,12 @@ type memoryScope struct {
 	upsert func(ctx context.Context, content string, sourceCount int) error
 	count  func(ctx context.Context) (int, error)
 	list   func(ctx context.Context, limit int) ([]chat.Message, error)
+
+	// describe, when set, one-shot fills the project description from the same
+	// bounded transcript this refresh already loads, when it is still empty. Project
+	// scope only; the user scope leaves it nil (zero value) so user memory never
+	// touches a description.
+	describe func(ctx context.Context, transcript string)
 }
 
 // refreshMemoryIfDue runs an incremental refresh when the gate is met. It is the
@@ -99,6 +105,13 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 	transcript := transcriptFromMessages(transcriptMessages)
 	if strings.TrimSpace(transcript) == "" {
 		return nil
+	}
+	// Fill the one-shot project description (project scope only) from this same
+	// transcript. Done BEFORE memory generation on purpose: memory returns early on
+	// empty/failed content below, so running this after would let a missing memory
+	// silently suppress the description — they must stay independent.
+	if scope.describe != nil {
+		scope.describe(ctx, transcript)
 	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
 	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, scope.systemPrompt)
