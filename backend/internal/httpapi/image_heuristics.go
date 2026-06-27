@@ -188,18 +188,19 @@ func isImageCreationRequest(tokens []string) bool {
 		"infographic": true, "infographics": true, "infografik": true, "infografiken": true,
 		// Concrete visual-artifact nouns whose output is inherently a picture, so
 		// "create a favicon", "make a sticker", "design a mascot" route to the image
-		// tool. Deliberately excludes words that double as code identifiers / UI
-		// component names ("icon", "avatar", "banner", "thumbnail", "sprite",
-		// "mockup", "button", "card") — in a coding assistant "create an icon
-		// component" must NOT force image generation. Favicon stays because it names
-		// a literal image file, never a code identifier.
+		// tool. Deliberately excludes words that double as code identifiers, UI
+		// component names, or layout/print terms — in a coding assistant these must
+		// NOT force image generation: "icon"/"avatar"/"banner"/"thumbnail"/
+		// "sprite"/"mockup"/"button"/"card" (components), "emoji" ("emoji picker
+		// component"), "portrait" ("portrait mode" / PDF orientation), "drawing"
+		// ("drawing app/canvas"). Favicon stays because it names a literal image
+		// file, never a code identifier.
 		"favicon": true, "favicons": true, "wallpaper": true, "wallpapers": true,
-		"emoji": true, "emojis": true, "sticker": true, "stickers": true,
-		"mascot": true, "mascots": true, "portrait": true, "portraits": true,
+		"sticker": true, "stickers": true, "mascot": true, "mascots": true,
 		"caricature": true, "caricatures": true, "illustration": true, "illustrations": true,
-		"painting": true, "paintings": true, "drawing": true, "drawings": true,
-		"meme": true, "memes": true,
-		// German (Swiss orthography: ss, no ß).
+		"painting": true, "paintings": true, "meme": true, "memes": true,
+		// German (Swiss orthography: ss, no ß). "porträt"/"zeichnung" lack the
+		// English orientation/app-compound collisions and stay.
 		"maskottchen": true, "aufkleber": true, "hintergrundbild": true,
 		"porträt": true, "portraet": true, "zeichnung": true, "zeichnungen": true,
 	}

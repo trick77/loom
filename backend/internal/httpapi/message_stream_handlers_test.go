@@ -893,13 +893,17 @@ func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
 		"imagine you are a senior engineer reviewing this code",
 		"design a REST API for the users service",
 		"design a database schema for orders",
-		// Words that double as code identifiers / UI components are deliberately NOT
-		// image-creation nouns, so these coding requests must not force the tool.
+		// Words that double as code identifiers / UI components / layout terms are
+		// deliberately NOT image-creation nouns, so these coding/layout requests must
+		// not force the tool.
 		"create a button component for the navbar",
 		"create an icon component for the navbar",
 		"make an avatar component",
 		"generate thumbnails for the video list",
 		"create a sprite sheet for the game",
+		"make an emoji picker component",
+		"render a PDF in portrait mode",
+		"create a drawing app with a canvas",
 	} {
 		t.Run(content, func(t *testing.T) {
 			if srv.imageArtifactRequired(content, false, priorMessages) {
