@@ -75,33 +75,6 @@ func (s *server) handleGetUserMemory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, memory)
 }
 
-// handleEditUserMemory applies a natural-language instruction to the user's
-// memory in place (add / modify / remove) and returns the updated memory.
-func (s *server) handleEditUserMemory(w http.ResponseWriter, r *http.Request) {
-	user, ok := currentUser(w, r)
-	if !ok || !requireThreadStore(w, s) {
-		return
-	}
-	if s.llm == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
-		return
-	}
-	instruction, ok := decodeMemoryInstruction(w, r)
-	if !ok {
-		return
-	}
-	if err := s.editMemory(r.Context(), user, s.userMemoryScope(user), instruction); err != nil {
-		writeJSONError(w, http.StatusBadGateway, "edit user memory failed")
-		return
-	}
-	memory, _, err := s.thread.GetUserMemory(r.Context(), user.ID)
-	if err != nil {
-		serverError(w, r, err, "get user memory failed")
-		return
-	}
-	writeJSON(w, memory)
-}
-
 // handleRefreshUserMemory forces a full rebuild from the user's most recent
 // messages across all threads (bounded by memoryRebuildLimit).
 func (s *server) handleRefreshUserMemory(w http.ResponseWriter, r *http.Request) {

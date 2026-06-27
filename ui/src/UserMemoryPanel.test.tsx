@@ -69,3 +69,17 @@ test("does not show a manual refresh action", async () => {
   await screen.findByText(/Memories will show here/);
   expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeInTheDocument();
 });
+
+test("does not show a manual edit composer", async () => {
+  getUserMemoryMock.mockResolvedValue({
+    content: "- Works at Acme",
+    updatedAt: "2026-06-11T00:00:00Z",
+  });
+
+  render(<UserMemoryPanel />);
+
+  await screen.findByText("Works at Acme");
+  // User memories are read-only — the prompt/edit affordance lives on project
+  // memories only.
+  expect(screen.queryByRole("button", { name: /edit memories/i })).not.toBeInTheDocument();
+});

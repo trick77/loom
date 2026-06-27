@@ -345,15 +345,6 @@ export async function getUserMemory(): Promise<UserMemory> {
   return expectJSON<UserMemory>(response, "failed to load user memory");
 }
 
-export async function editUserMemory(instruction: string): Promise<UserMemory> {
-  const response = await fetch(`/api/me/memory:edit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ instruction }),
-  });
-  return expectJSON<UserMemory>(response, "failed to edit user memory");
-}
-
 export type Usage = {
   promptTokens: number;
   completionTokens: number;
