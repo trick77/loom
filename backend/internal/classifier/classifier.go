@@ -172,15 +172,16 @@ func Block(s string) string {
 
 // Match extracts a category from a classifying model's free-form reply. It is more
 // tolerant than Normalize: it lowercases and scans the reply token by token (on
-// non [a-z_] boundaries) and returns the first token that is a known category, so
-// replies like `coding`, `"coding"`, `coding.`, or `The category is coding` all
-// resolve correctly. Anything with no recognizable category — including an empty
-// reply — yields General.
+// non [a-z_] boundaries) and returns the first token that is a known, non-hidden
+// category, so replies like `coding`, `"coding"`, `coding.`, or `The category is
+// coding` all resolve correctly. Hidden categories are skipped — they are never
+// offered to the model, so a token matching one is a hallucination, not a choice.
+// Anything with no recognizable category — including an empty reply — yields General.
 func Match(reply string) Category {
 	for _, tok := range strings.FieldsFunc(strings.ToLower(reply), func(r rune) bool {
 		return (r < 'a' || r > 'z') && r != '_'
 	}) {
-		if Valid(tok) {
+		if e, ok := byCategory[Category(tok)]; ok && !e.hidden {
 			return Category(tok)
 		}
 	}

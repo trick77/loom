@@ -90,6 +90,11 @@ func TestImageGenerationIsHiddenButValid(t *testing.T) {
 	if contains(PromptGuide(), string(ImageGeneration)) {
 		t.Errorf("PromptGuide() must not contain hidden category %q", ImageGeneration)
 	}
+	// Match never returns a hidden category, even if the reply names it: the model
+	// is never shown it, so such a token is a hallucination, not a choice.
+	if got := Match(string(ImageGeneration)); got != General {
+		t.Errorf("Match(%q) = %q, want General (hidden categories are not matchable)", ImageGeneration, got)
+	}
 }
 
 func contains(haystack, needle string) bool {
