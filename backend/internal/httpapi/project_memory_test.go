@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
@@ -86,63 +87,109 @@ func TestStreamMessageInjectsProjectMemory(t *testing.T) {
 	}
 }
 
-func TestStreamMessageAutoFillsEmptyProjectDescriptionAfterTwoTurns(t *testing.T) {
+// TestRefreshProjectMemoryIfDue_AutoFillsEmptyDescription proves the description
+// rides the gated memory-refresh path (the production trigger): when memory is due
+// and the description is still empty, it is generated and persisted.
+func TestRefreshProjectMemoryIfDue_AutoFillsEmptyDescription(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Planning"},
-		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
-		messages: []chat.Message{
-			{ID: "msg_1", ThreadID: "thr_1", Role: chat.RoleUser, Content: "Collect the papers."},
-			{ID: "msg_2", ThreadID: "thr_1", Role: chat.RoleAssistant, Content: "I will track the reading list."},
-		},
+		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
+		projectMessageCount: memoryRefreshThreshold,
+		messages:            []chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}},
 	}
-	srv := newAuthenticatedServer(t, Deps{
-		Thread: store,
-		LLM:    fakeChatClient{projectDescription: "Tracks paper research and reading priorities."},
-	})
-	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Add comparison notes."}`)
+	s := &server{thread: store, llm: fakeChatClient{
+		projectMemory:      "Reading list tracked.",
+		projectDescription: "Tracks paper research and reading priorities.",
+	}}
 
-	srv.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, "event: project") {
-		t.Fatalf("stream missing project event:\n%s", body)
-	}
-	if !strings.Contains(body, `"description":"Tracks paper research and reading priorities."`) {
-		t.Fatalf("stream missing generated description:\n%s", body)
+	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
+		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
 	}
 	if !store.projectDescriptionChanged {
 		t.Fatal("project description was not persisted")
 	}
+	if store.project.Description != "Tracks paper research and reading priorities." {
+		t.Fatalf("description = %q, want generated", store.project.Description)
+	}
 }
 
-func TestStreamMessageDoesNotAutoFillProjectDescriptionBeforeTwoTurns(t *testing.T) {
+// TestRefreshProjectMemory_AutoFillsDescriptionEvenWhenMemoryEmpty proves the
+// description is decoupled from memory generation: an empty memory result (which
+// short-circuits the memory upsert) must not suppress the description fill.
+func TestRefreshProjectMemory_AutoFillsDescriptionEvenWhenMemoryEmpty(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Planning"},
 		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
 	}
-	srv := newAuthenticatedServer(t, Deps{
-		Thread: store,
-		LLM:    fakeChatClient{projectDescription: "Must not be used."},
-	})
-	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Start notes."}`)
+	s := &server{thread: store, llm: fakeChatClient{
+		projectMemory:      "", // memory comes back empty → no memory upsert
+		projectDescription: "Tracks paper research.",
+	}}
 
-	srv.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	err := s.refreshProjectMemory(
+		context.Background(), testUser, projectID, "",
+		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, memoryRefreshThreshold,
+	)
+	if err != nil {
+		t.Fatalf("refreshProjectMemory() error: %v", err)
 	}
-	if strings.Contains(rec.Body.String(), "event: project") {
-		t.Fatalf("stream unexpectedly emitted project event:\n%s", rec.Body.String())
+	if store.project.Description != "Tracks paper research." {
+		t.Fatalf("description = %q, want filled despite empty memory", store.project.Description)
+	}
+	if store.projectMemory.Content != "" {
+		t.Fatalf("memory = %q, want no upsert for empty content", store.projectMemory.Content)
+	}
+}
+
+// TestRefreshProjectMemory_DoesNotOverwriteExistingDescription guards the
+// only-when-empty rule: a project that already has a description is never touched.
+func TestRefreshProjectMemory_DoesNotOverwriteExistingDescription(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeThreadStore{
+		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: "Hand-written summary."},
+	}
+	s := &server{thread: store, llm: fakeChatClient{
+		projectMemory:      "Reading list tracked.",
+		projectDescription: "Must not be used.",
+	}}
+
+	err := s.refreshProjectMemory(
+		context.Background(), testUser, projectID, "",
+		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, memoryRefreshThreshold,
+	)
+	if err != nil {
+		t.Fatalf("refreshProjectMemory() error: %v", err)
 	}
 	if store.projectDescriptionChanged {
-		t.Fatal("project description changed before threshold")
+		t.Fatal("existing description was overwritten")
+	}
+	if store.project.Description != "Hand-written summary." {
+		t.Fatalf("description = %q, want unchanged", store.project.Description)
+	}
+}
+
+// TestRefreshProjectMemory_SkipsDescriptionWhenAlreadyGenerated guards the
+// one-shot rule: once auto-generated, an emptied description is not regenerated.
+func TestRefreshProjectMemory_SkipsDescriptionWhenAlreadyGenerated(t *testing.T) {
+	projectID := "proj_1"
+	generatedAt := time.Now()
+	store := &fakeThreadStore{
+		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: "", AutoDescriptionGeneratedAt: &generatedAt},
+	}
+	s := &server{thread: store, llm: fakeChatClient{
+		projectMemory:      "Reading list tracked.",
+		projectDescription: "Must not be used.",
+	}}
+
+	err := s.refreshProjectMemory(
+		context.Background(), testUser, projectID, "",
+		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, memoryRefreshThreshold,
+	)
+	if err != nil {
+		t.Fatalf("refreshProjectMemory() error: %v", err)
+	}
+	if store.projectDescriptionChanged {
+		t.Fatal("description regenerated after it was already auto-generated once")
 	}
 }
 
