@@ -14,7 +14,7 @@ import (
 // for the conversation. It is deliberately separate from the title call so the
 // title prompt stays untouched and this prompt can be tuned purely for routing
 // accuracy. The reply is a single category value (a few tokens), not JSON.
-var threadClassifySystemPrompt = "You classify the first user message of a conversation into exactly one category. Reply with ONLY the category value (lowercase, no punctuation, nothing else). If none clearly fits, reply \"general\". Categories:\n" + classifier.PromptGuide()
+var threadClassifySystemPrompt = "You classify the first user message of a conversation into exactly one category. Pick the most specific category that fits. Use \"knowledge_discovery\" only for informational or educational queries that fit no more specialized category, and \"general\" only for chit-chat or queries that fit nothing else. Reply with ONLY the category value (lowercase, no punctuation, nothing else). Categories:\n" + classifier.PromptGuide()
 
 // ClassifyThread picks the prompt-classifier category for a conversation from its
 // first user message. It always returns a valid category — General on any request,
