@@ -29,16 +29,16 @@ test("buildMetricsString assembles model, duration, token counts and context %",
     assistant({ model: "mimo", durationMs: 5000, promptTokens: 49498, completionTokens: 1502, totalTokens: 249000, contextTokens: 51000, cachedTokens: 38208, reasoningTokens: 205 }),
   );
   // The % comes from contextTokens (final call's model-reported total), NOT the
-  // accumulated totalTokens (249000): 51000 / 1048576 = 4.86% -> "4.9%"
-  expect(line).toBe("mimo  ·  5s  ·  ↑ 49 498 (38 208/c)  ·  ↓ 1 502 (205/r)  ·  4.9%");
+  // accumulated totalTokens (249000): 51000 / 1048576 = 4.86% -> "5 %"
+  expect(line).toBe("mimo  ·  5s  ·  ↑ 49 498 (38 208/c)  ·  ↓ 1 502 (205/r)  ·  5 %");
 });
 
 test("buildMetricsString appends the reasoning effort level to the model", () => {
   const line = buildMetricsString(
     assistant({ model: "mimo-v2.5-pro", reasoningEffort: "high", durationMs: 5000, promptTokens: 100000, completionTokens: 4858, totalTokens: 104858, contextTokens: 104858 }),
   );
-  // 104858 / 1048576 = 10.0% -> "10.0%"
-  expect(line).toBe("mimo-v2.5-pro (high)  ·  5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10.0%");
+  // 104858 / 1048576 = 10.0% -> "10 %"
+  expect(line).toBe("mimo-v2.5-pro (high)  ·  5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10 %");
 });
 
 test("buildMetricsString renders completion-only token burn", () => {
@@ -48,7 +48,7 @@ test("buildMetricsString renders completion-only token burn", () => {
 
 test("buildMetricsString shows prompt-only token burn", () => {
   const line = buildMetricsString(assistant({ durationMs: 1200, promptTokens: 52429, totalTokens: 52429, contextTokens: 52429 }));
-  expect(line).toBe("1s  ·  ↑ 52 429  ·  5.0%");
+  expect(line).toBe("1s  ·  ↑ 52 429  ·  5 %");
 });
 
 test("buildMetricsString hides zero-valued token fields", () => {
@@ -68,8 +68,8 @@ test("buildMetricsString formats context usage above 100% without clamping", () 
   // A real single call cannot exceed the window, so this only documents the
   // formatting path: contextTokens drives the %, and it is never capped.
   const line = buildMetricsString(assistant({ durationMs: 1000, completionTokens: 100, contextTokens: 2_000_000 }));
-  // 2 000 000 / 1 048 576 = 190.7%
-  expect(line).toContain("190.7%");
+  // 2 000 000 / 1 048 576 = 190.7% -> "191 %"
+  expect(line).toContain("191 %");
 });
 
 test("buildMetricsString returns null without renderable metrics", () => {

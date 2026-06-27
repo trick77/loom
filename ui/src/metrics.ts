@@ -37,12 +37,13 @@ const DOT_SEPARATOR = " \u00A0\u00B7\u00A0 ";
 const CONTEXT_WINDOW_TOKENS = 1_048_576;
 
 /**
- * Format the context-window occupancy as a percentage (e.g. "4.9%"). contextTokens
+ * Format the context-window occupancy as a percentage (e.g. "5 %"), rounded to a
+ * whole number with a narrow no-break space before the percent sign. contextTokens
  * is the final answer call's model-reported total_tokens — the true size of that
  * single generation's context — so this is bounded by the window by construction.
  */
 function contextUsagePercent(contextTokens: number): string {
-  return `${((contextTokens / CONTEXT_WINDOW_TOKENS) * 100).toFixed(1)}%`;
+  return `${Math.round((contextTokens / CONTEXT_WINDOW_TOKENS) * 100)}${THIN_SPACE}%`;
 }
 
 function cachedSuffix(message: Message): string {
