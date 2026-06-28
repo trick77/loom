@@ -120,6 +120,12 @@ export function isImageAttachment(attachment: Pick<ComposerAttachment, "mimeType
   return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(attachment.filename);
 }
 
+// PDFs get an inline preview modal instead of a download-on-click; gate on either
+// the MIME type or a .pdf filename, mirroring isImageAttachment's dual signal.
+export function isPdfAttachment(attachment: Pick<ComposerAttachment, "mimeType" | "filename">): boolean {
+  return attachment.mimeType === "application/pdf" || /\.pdf$/i.test(attachment.filename);
+}
+
 type AttachmentStatusHandler = (id: string, patch: Partial<ComposerAttachment>) => void;
 
 // Shared "+" composer attachment flow: upload a picked file, add it to knowledge,
