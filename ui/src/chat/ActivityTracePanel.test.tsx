@@ -15,7 +15,7 @@ test("renders generated tools with a creation label and artifact glyph", () => {
           type: "tool",
           name: "create_pdf_file",
           status: "running",
-          summary: { kind: "generated", title: "Creating PDF file", label: "PDF file" },
+          summary: { kind: "generated", title: "Creating PDF file" },
         },
       ]}
     />,
@@ -27,11 +27,11 @@ test("renders generated tools with a creation label and artifact glyph", () => {
 
   const icon = trace.querySelector(".ui-activity-trace-icon-generated");
   expect(icon).not.toBeNull();
-  expect(icon).toHaveTextContent("\ue0d5");
+  expect(icon).toHaveTextContent("");
 });
 
-test("sweeps generated tool title text only while running", () => {
-  const { rerender } = render(
+test("tool titles never sweep, even while running", () => {
+  render(
     <ActivityTracePanel
       active
       initiallyExpanded
@@ -41,33 +41,13 @@ test("sweeps generated tool title text only while running", () => {
           type: "tool",
           name: "create_pdf_file",
           status: "running",
-          summary: { kind: "generated", title: "Creating PDF file", label: "PDF file" },
+          summary: { kind: "generated", title: "Creating PDF file" },
         },
       ]}
     />,
   );
 
-  expect(screen.getByText("Creating PDF file")).toHaveClass("ui-thinking-label-active");
-  expect(screen.getByText("Creating PDF file")).toHaveAttribute("data-text", "Creating PDF file");
-  expect(document.querySelector(".ui-activity-trace-icon-generated")).not.toHaveClass(
-    "ui-thinking-label-active",
-  );
-
-  rerender(
-    <ActivityTracePanel
-      active
-      initiallyExpanded
-      events={[
-        {
-          id: "call_pdf",
-          type: "tool",
-          name: "create_pdf_file",
-          status: "done",
-          summary: { kind: "generated", title: "Creating PDF file", label: "PDF file" },
-        },
-      ]}
-    />,
-  );
-
-  expect(screen.getByText("Creating PDF file")).not.toHaveClass("ui-thinking-label-active");
+  const title = screen.getByText("Creating PDF file");
+  expect(title).not.toHaveClass("ui-thinking-label-active");
+  expect(title).not.toHaveAttribute("data-text");
 });

@@ -20,7 +20,7 @@ const CODEPOINTS = {
   feather: 0xe0ed,
   trash: 0xe101,
   search: 0xe0d3,
-  generatedArtifact: 0xe0d5,
+  generatedArtifact: 0xe00b,
   settings: 0xe0d6,
   sliders: 0xe070,
   attach: 0xe019,
