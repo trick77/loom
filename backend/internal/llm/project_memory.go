@@ -14,20 +14,29 @@ import (
 // (well under 2000 characters ≈ ~500 tokens) is never clipped mid-output.
 const memoryMaxCompletionTokens = 768
 
-// ProjectMemorySystemPrompt drives project-memory generation: a compact,
-// topic-grouped digest shared across the project's chats. It prioritizes
-// still-relevant facts and actively prunes resolved ones (rather than keeping
-// everything forever) so the memory stays small and current.
-const ProjectMemorySystemPrompt = "You maintain a compact, durable memory for a chat project so separate chats share context. " +
-	"Given the project name, description, the existing memory, and recent conversation, output an UPDATED memory. " +
-	"Keep ONLY durable, project-wide facts, decisions, and open questions (dates, budgets, people, hard constraints, choices made). " +
-	"Drop chit-chat and one-off details. Replace outdated facts with their newest value instead of listing both. " +
-	"Prioritize what is still in force: hard constraints, decisions that still stand, and open questions come first. " +
-	"You are curating, not accumulating — actively drop items that are resolved, superseded, no longer relevant, or have not come up again. " +
-	"Use terse fragments in short markdown bullet lines, grouped under brief headings if helpful. " +
+// ProjectMemorySystemPrompt drives project-memory generation: a sectioned
+// profile shared across the project's chats, with five fixed markdown headings
+// (Purpose & context, Current state, Key learnings & principles, Approach &
+// patterns, Tools & resources). It prioritizes still-relevant facts and actively
+// prunes resolved ones — the "Current state" section churns — so the memory
+// stays structured, current, and bounded.
+const ProjectMemorySystemPrompt = "You maintain a compact, durable memory profile for a chat project so separate chats share full context. " +
+	"Given the project name, description, the existing memory, and recent conversation, output an UPDATED memory in exactly these five sections, each a markdown heading followed by terse '- ' fragment lines. " +
+	"Omit a heading entirely if it has no items.\n" +
+	"## Purpose & context — who the user is in this project and what they aim to accomplish: role/org, the goal, the domain, and the hard constraints they work under (regulatory, technical, organizational). " +
+	"Durable: keep once captured; only replace with newer values.\n" +
+	"## Current state — what is in progress now: active evaluations, decisions in flight, what stage things are at. " +
+	"This section CHURNS: drop items that are resolved, shipped, superseded, or have not come up again.\n" +
+	"## Key learnings & principles — durable insights, established facts, and principles that should guide future work; things the user decided, corrected, or insisted on. " +
+	"Keep what still stands; drop what's overturned.\n" +
+	"## Approach & patterns — how the user likes to work: preferred formats, what they value, how they reason and decide.\n" +
+	"## Tools & resources — concrete systems, libraries, platforms, datasets, and references in use.\n" +
+	"Prioritize what is still in force: hard constraints, standing decisions, open questions. " +
+	"You are curating, not accumulating — actively drop items that are resolved, superseded, or no longer relevant. " +
+	"Preserve specific names, numbers, dates, and terminology. Replace outdated facts with their newest value instead of listing both. " +
 	"Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. " +
-	"Write in a terse, telegraphic \"caveman\" style: keep only load-bearing words; drop articles (a/the), pronouns, and linking verbs (e.g. \"Deadline March 1; chose Postgres over Mongo\"). " +
-	"Stay well under 1000 characters. Output ONLY the memory content, no preamble."
+	"Write in a terse, telegraphic \"caveman\" style: keep only load-bearing words; drop articles (a/the), pronouns, and linking verbs (e.g. \"Chose Postgres over Mongo; deadline March 1\"). " +
+	"Keep the whole memory well under 2000 characters. Output ONLY the memory content, no preamble."
 
 // UserMemorySystemPrompt drives user-memory generation: a structured digest with
 // a protected identity Core, a capped churning "Current focus" section, and a
