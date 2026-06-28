@@ -69,6 +69,25 @@ func TestRefreshUserMemoryIfDue_NoNewMessagesIsNoOp(t *testing.T) {
 	}
 }
 
+// TestRefreshUserMemoryIfDue_NegativeDeltaIsNoOp guards the deletion case: when
+// messages were deleted since the last refresh (count < sourceCount), the gate
+// must no-op safely — never producing a negative fold window.
+func TestRefreshUserMemoryIfDue_NegativeDeltaIsNoOp(t *testing.T) {
+	store := &fakeThreadStore{
+		userMessageCount: 2,
+		userMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 5},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "Hi"}},
+	}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if store.userMemory.Content != "- prior" {
+		t.Fatalf("memory = %q, want unchanged prior with a negative delta", store.userMemory.Content)
+	}
+}
+
 // TestRefreshUserMemoryIfDue_AnyNewMessageRefreshes proves a single new message
 // fires the gate and the incremental refresh folds in the recent messages.
 func TestRefreshUserMemoryIfDue_AnyNewMessageRefreshes(t *testing.T) {
