@@ -784,6 +784,67 @@ func TestStore_ListThreadsSupportsRecentsAndStarred(t *testing.T) {
 	}
 }
 
+func TestStore_ListThreadsMarksSharedThreads(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	shared, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Shared"})
+	if err != nil {
+		t.Fatalf("CreateThread(shared) error: %v", err)
+	}
+	plain, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Plain"})
+	if err != nil {
+		t.Fatalf("CreateThread(plain) error: %v", err)
+	}
+	if _, err := store.CreateShare(ctx, userID, CreateShareInput{ShareID: NewShareID(), ThreadID: shared.ID, Title: "Shared"}); err != nil {
+		t.Fatalf("CreateShare() error: %v", err)
+	}
+
+	threads, err := store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads() error: %v", err)
+	}
+	byID := make(map[string]Thread, len(threads))
+	for _, thread := range threads {
+		byID[thread.ID] = thread
+	}
+	if !byID[shared.ID].Shared {
+		t.Errorf("shared thread Shared = false, want true")
+	}
+	if byID[plain.ID].Shared {
+		t.Errorf("plain thread Shared = true, want false")
+	}
+
+	// GetThread must carry the same flag: the frontend upserts single-thread
+	// results back into its lists, so a missing flag would clobber the badge.
+	if got, ok, err := store.GetThread(ctx, userID, shared.ID); err != nil || !ok {
+		t.Fatalf("GetThread(shared) = ok %v, err %v", ok, err)
+	} else if !got.Shared {
+		t.Errorf("GetThread(shared).Shared = false, want true")
+	}
+	if got, ok, err := store.GetThread(ctx, userID, plain.ID); err != nil || !ok {
+		t.Fatalf("GetThread(plain) = ok %v, err %v", ok, err)
+	} else if got.Shared {
+		t.Errorf("GetThread(plain).Shared = true, want false")
+	}
+
+	// A disabled share (shared=0) must no longer flag the thread.
+	if _, err := store.SetShareEnabled(ctx, userID, shared.ID, false); err != nil {
+		t.Fatalf("SetShareEnabled() error: %v", err)
+	}
+	threads, err = store.ListThreads(ctx, userID, ListThreadsOptions{})
+	if err != nil {
+		t.Fatalf("ListThreads(after disable) error: %v", err)
+	}
+	for _, thread := range threads {
+		if thread.ID == shared.ID && thread.Shared {
+			t.Errorf("disabled-share thread Shared = true, want false")
+		}
+	}
+}
+
 func TestStore_ListThreadsSearchFiltersByTitle(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

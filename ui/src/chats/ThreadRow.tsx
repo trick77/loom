@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import type { Thread } from "../api";
 import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
 import { Icon } from "../chat/Icon";
+import { SharedPill } from "../SharedPill";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { formatTimeAgo } from "../timeago";
 
@@ -128,6 +129,7 @@ export function ThreadRow({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
         onClick={() => (selectMode ? onToggleSelected() : onOpen())}
       >
+        {thread.shared && <SharedPill />}
         <span className="truncate text-[15px] text-[#ecece6]">{thread.title}</span>
         <span
           className={`ml-auto shrink-0 text-[13px] text-[#8a887f] group-hover:hidden ${

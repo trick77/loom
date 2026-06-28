@@ -3,7 +3,6 @@ import {
   AuthExpiredError,
   deleteThread,
   downloadArtifact,
-  getMcpStatus,
   listArtifacts,
   listProjects,
   listThreads,
@@ -11,7 +10,6 @@ import {
   uploadImageAttachment,
   updateThread,
 } from "./api";
-import type { McpStatusEvent } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -141,14 +139,6 @@ test("deleteThread deletes a thread", async () => {
   expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", { method: "DELETE" });
 });
 
-test("getMcpStatus loads current server counts", async () => {
-  const fetchMock = vi.fn().mockResolvedValue(Response.json({ active: 1, configured: 2 }));
-  vi.stubGlobal("fetch", fetchMock);
-
-  await expect(getMcpStatus()).resolves.toEqual({ active: 1, configured: 2 });
-  expect(fetchMock).toHaveBeenCalledWith("/api/mcp/status");
-});
-
 test("streamMessage parses server-sent events", async () => {
   const body = new ReadableStream({
     start(controller) {
@@ -222,43 +212,6 @@ test("streamMessage parses tool events", async () => {
   });
 
   expect(events).toEqual(["call:search__web", "result:result"]);
-});
-
-test("streamMessage parses mcp_status events", async () => {
-  const body = new ReadableStream({
-    start(controller) {
-      const encoder = new TextEncoder();
-      controller.enqueue(
-        encoder.encode(
-          'event: mcp_status\ndata: {"active":2,"configured":3,"servers":[{"name":"fetch","active":true},{"name":"obscura","active":false},{"name":"tavily","active":true}]}\n\n',
-        ),
-      );
-      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
-      controller.close();
-    },
-  });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
-  let received: McpStatusEvent | null = null;
-
-  await streamMessage("t1", "Hi", {
-    onUserMessage: () => undefined,
-    onDelta: () => undefined,
-    onAssistantMessage: () => undefined,
-    onThread: () => undefined,
-    onMcpStatus: (event) => {
-      received = event;
-    },
-  });
-
-  expect(received).toEqual({
-    active: 2,
-    configured: 3,
-    servers: [
-      { name: "fetch", active: true },
-      { name: "obscura", active: false },
-      { name: "tavily", active: true },
-    ],
-  });
 });
 
 test("streamMessage dispatches artifact events", async () => {

@@ -1,10 +1,8 @@
-import type { McpStatusEvent } from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
 import { greetingForNow } from "./threadUtils";
 import { PromptStarters } from "./PromptStarters";
-import { McpStatusIndicator } from "./SidebarItems";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
 import loomLogo from "../assets/loom-logo.svg";
@@ -14,7 +12,6 @@ export function StartPanel({
   draft,
   isSending,
   sendDisabled,
-  mcpStatus,
   sendError,
   attachments,
   attachNote,
@@ -30,7 +27,6 @@ export function StartPanel({
   draft: string;
   isSending: boolean;
   sendDisabled: boolean;
-  mcpStatus: McpStatusEvent | null;
   sendError: string;
   attachments: ComposerAttachment[];
   attachNote: string;
@@ -54,7 +50,6 @@ export function StartPanel({
         <div className="flex min-w-0 items-center gap-2">
           <SidebarOpenButton onClick={onOpenSidebar} />
         </div>
-        {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator compact status={mcpStatus} />}
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
         <h2 className="ui-greeting-text mb-8 flex items-center gap-1.5 font-serif">

@@ -294,40 +294,6 @@ test("shows a visible send control in the new chat composer", async () => {
   expect(sendButton).toBeEnabled();
 });
 
-test("shows MCP status on the new chat screen", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === "/api/me") {
-        return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
-      }
-      if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-      if (url === "/api/mcp/status") {
-        return Response.json({
-          active: 3,
-          configured: 4,
-          servers: [
-            { name: "fetch", active: true },
-            { name: "obscura", active: false },
-            { name: "tavily", active: true },
-            { name: "context7", active: true },
-          ],
-        });
-      }
-      throw new Error(`unexpected fetch ${url}`);
-    }),
-  );
-
-  render(<App />);
-
-  expect(await screen.findByPlaceholderText("How can I help you today?")).toBeInTheDocument();
-  const header = screen.getByRole("banner", { name: "Thread header" });
-  const indicator = await within(header).findByTitle("3 of 4 MCP servers active. Failed: obscura");
-  expect(indicator).toHaveTextContent("3");
-});
-
 test("renders admin user list for admin users", async () => {
   vi.stubGlobal(
     "fetch",
@@ -1375,32 +1341,6 @@ test("closes a chat modal when clicking the backdrop", async () => {
   fireEvent.click(dialog.parentElement!);
 
   expect(screen.queryByRole("dialog", { name: "Rename thread" })).not.toBeInTheDocument();
-});
-
-test("shows MCP status in the active chat header without the header star action", async () => {
-  const thread = () => ({
-    id: "t1",
-    title: "Existing chat",
-    starred: false,
-    createdAt: "2026-05-30T00:00:00Z",
-    updatedAt: "2026-05-30T00:00:00Z",
-  });
-  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [thread()], nextCursor: null });
-    if (url === "/api/threads/t1") return Response.json({ thread: thread(), messages: [] });
-    if (url === "/api/mcp/status") return Response.json({ active: 2, configured: 3 });
-    throw new Error(`unexpected fetch ${url}`);
-  }));
-
-  render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-
-  const header = await screen.findByRole("banner", { name: "Thread header" });
-  expect(within(header).getByTitle("2 of 3 MCP servers active")).toBeInTheDocument();
-  expect(within(header).queryByRole("button", { name: /star chat/i })).toBeNull();
 });
 
 test("starting chat exits the admin panel", async () => {
@@ -2666,9 +2606,6 @@ function persistedMarkdownChatFetch() {
   });
 }
 
-const assistantMessageEvent =
-  'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello","createdAt":"2026-05-30T00:00:01Z"}\n\n';
-
 function assistantEventForContent(content: string) {
   return `event: assistant_message\ndata: ${JSON.stringify({
     id: "m2",
@@ -2685,72 +2622,6 @@ async function sendMessageInExistingChat() {
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 }
-
-test("shows a red MCP indicator when not all servers are active", async () => {
-  vi.stubGlobal(
-    "fetch",
-    mcpStreamFetch(
-      assistantMessageEvent +
-        'event: mcp_status\ndata: {"active":2,"configured":3,"servers":[{"name":"fetch","active":true},{"name":"obscura","active":false},{"name":"tavily","active":true}]}\n\n' +
-        "event: done\ndata: {}\n\n",
-    ),
-  );
-
-  await sendMessageInExistingChat();
-
-  const indicator = await screen.findByTitle("2 of 3 MCP servers active. Failed: obscura");
-  expect(indicator).toHaveTextContent("2");
-  expect(indicator.querySelector(".border-danger")).not.toBeNull();
-});
-
-test("shows a green MCP indicator when all servers are active", async () => {
-  vi.stubGlobal(
-    "fetch",
-    mcpStreamFetch(
-      assistantMessageEvent +
-        'event: mcp_status\ndata: {"active":3,"configured":3}\n\n' +
-        "event: done\ndata: {}\n\n",
-    ),
-  );
-
-  await sendMessageInExistingChat();
-
-  const indicator = await screen.findByTitle("3 of 3 MCP servers active");
-  expect(indicator).toHaveTextContent("3");
-  expect(indicator.querySelector(".border-success")).not.toBeNull();
-});
-
-test("loads MCP status into the chat header", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-      if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [threadFixture()], nextCursor: null });
-      if (url === "/api/threads/t1") return Response.json({ thread: threadFixture(), messages: [] });
-      if (url === "/api/mcp/status") return Response.json({ active: 1, configured: 2 });
-      throw new Error(`unexpected fetch ${url}`);
-    }),
-  );
-
-  render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-
-  const header = await screen.findByRole("banner", { name: "Thread header" });
-  const indicator = within(header).getByTitle("1 of 2 MCP servers active");
-  expect(indicator).toHaveTextContent("1");
-  expect(indicator.querySelector(".border-danger")).not.toBeNull();
-});
-
-test("hides the MCP indicator when no mcp_status event arrives", async () => {
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantMessageEvent + "event: done\ndata: {}\n\n"));
-
-  await sendMessageInExistingChat();
-
-  expect(await screen.findByText("Hello")).toBeInTheDocument();
-  expect(screen.queryByTitle(/MCP servers active/)).toBeNull();
-});
 
 test("renders assistant markdown without rendering raw HTML", async () => {
   const content = "# Overview\\n\\nA **classic** film.\\n\\n- AI\\n- Control\\n\\n<div>raw html</div>";

@@ -12,7 +12,6 @@ import {
 } from "../activityTrace";
 import { Icon } from "./Icon";
 import { rehypeStreamFade } from "./streamFade";
-import { LoomMark } from "../LoomMark";
 
 export function ActivityTracePanel({
   events,
@@ -43,10 +42,6 @@ export function ActivityTracePanel({
   if (events.length === 0 && !active) return null;
   const generatedTitle = latestReasoningTitle(events);
   const label = generatedTitle ?? (active ? "Thinking" : summarizeTrace(events));
-  // Show the Loom mark only during the bare "Thinking" phase — before a generated
-  // reasoning title arrives. The moment the title lands, the label flips and the
-  // mark drops away with the "Thinking" word it accompanied.
-  const showThinkingLogo = active && generatedTitle === undefined;
   // Sweep the label for the whole turn: "Thinking" until a generated abstract
   // arrives, then keep that title shimmering until the answer finishes streaming.
   const sweeping = active || streaming;
@@ -78,7 +73,6 @@ export function ActivityTracePanel({
         }}
       >
         <span className="ui-activity-trace-label">
-          {showThinkingLogo && <LoomMark size={18} className="-mr-1 -translate-y-px shrink-0 text-[#c15f3c]" />}
           {sweeping ? (
             <span className="ui-thinking-label-active" data-text={label}>
               {label}
