@@ -21,6 +21,10 @@ const sample: api.Usage = {
   projectsCreated: 3,
   userMemoryLength: 1234,
   userMemoryMax: 2000,
+  userMemoryUpdatedAt: null,
+  userMemorySourceMessages: 184,
+  userMemoryTotalMessages: 210,
+  userMemoryRefreshWindowHours: 24,
 };
 
 describe("UsagePanel", () => {
@@ -35,7 +39,10 @@ describe("UsagePanel", () => {
     expect(screen.getByText("6")).toBeInTheDocument(); // embedding requests
     expect(screen.getByText("4")).toBeInTheDocument(); // web searches
     // getByText normalizes the thin space (U+202F) to a regular space.
-    expect(screen.getByText("1 234 / 2 000")).toBeInTheDocument(); // memory length (thin-space grouped)
+    expect(screen.getByText("1 234 / 2 000 (62%)")).toBeInTheDocument(); // length + capacity %
+    expect(screen.getByText("Never")).toBeInTheDocument(); // last updated (no memory yet)
+    expect(screen.getByText("184 of 210")).toBeInTheDocument(); // messages captured
+    expect(screen.getByText("Eligible now (26 pending)")).toBeInTheDocument(); // next refresh
   });
 
   it("shows an error message when loading fails", async () => {
