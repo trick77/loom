@@ -16,7 +16,6 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
-	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/store"
 )
 
@@ -113,39 +112,6 @@ func TestMeReturnsCurrentUser(t *testing.T) {
 	}
 	if body.Role != auth.RoleAdmin {
 		t.Fatalf("role = %q, want admin", body.Role)
-	}
-}
-
-func TestMCPStatusReturnsConfiguredServerCounts(t *testing.T) {
-	srv := newAuthenticatedServer(t, Deps{
-		MCP: fakeMCPService{statuses: []mcp.ServerStatus{
-			{Name: "alpha", Active: true},
-			{Name: "zeta", Active: false},
-		}},
-	})
-	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodGet, "/api/mcp/status", "")
-
-	srv.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
-	}
-	var body mcpStatusResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body.Active != 1 || body.Configured != 2 {
-		t.Fatalf("body = %#v, want active=1 configured=2", body)
-	}
-	if len(body.Servers) != 2 {
-		t.Fatalf("servers = %#v, want 2 entries", body.Servers)
-	}
-	if body.Servers[0].Name != "alpha" || !body.Servers[0].Active {
-		t.Fatalf("servers[0] = %#v, want active alpha", body.Servers[0])
-	}
-	if body.Servers[1].Name != "zeta" || body.Servers[1].Active {
-		t.Fatalf("servers[1] = %#v, want inactive zeta", body.Servers[1])
 	}
 }
 

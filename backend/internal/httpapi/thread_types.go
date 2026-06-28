@@ -126,17 +126,6 @@ type toolResultResponse struct {
 	Content string `json:"content"`
 }
 
-type mcpStatusResponse struct {
-	Active     int               `json:"active"`
-	Configured int               `json:"configured"`
-	Servers    []mcpServerStatus `json:"servers,omitempty"`
-}
-
-type mcpServerStatus struct {
-	Name   string `json:"name"`
-	Active bool   `json:"active"`
-}
-
 type renameArtifactRequest struct {
 	DisplayFilename string `json:"displayFilename"`
 }

@@ -94,7 +94,6 @@ test("opens the artifact library from the sidebar", async () => {
       }
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-      if (url === "/api/mcp/status") return Response.json({ active: 0, configured: 0 });
       if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
         return Response.json({
           items: [
@@ -858,7 +857,6 @@ test("\"Use in thread\" references an existing artifact without re-uploading it"
     if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/mcp/status") return Response.json({ active: 0, configured: 0 });
     if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
       return Response.json({
         items: [
@@ -1150,7 +1148,6 @@ test("project chat header prefixes the title with a clickable project name", asy
       if (url === "/api/projects/p1/memory") {
         return Response.json({ projectId: "p1", content: "", updatedAt: null });
       }
-      if (url === "/api/mcp/status") return Response.json({ active: 0, configured: 0 });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );

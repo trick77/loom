@@ -341,11 +341,11 @@ export function ThreadPanel({
           {thread !== null && (
             <button
               type="button"
-              aria-label="Share chat"
-              className="relative rounded-md px-2.5 py-0.5 text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
+              aria-label={share?.shared === true ? "Manage sharing" : "Share chat"}
+              className="relative rounded-md bg-[#46453f] px-2.5 py-0.5 text-[#d6d3ca] transition-colors hover:bg-[#52514a] hover:text-[#f3f0e8]"
               onClick={() => setShareDialogOpen(true)}
             >
-              Share
+              {share?.shared === true ? "Shared" : "Share"}
               {hasNewMessagesSinceShare && (
                 <span
                   aria-hidden

@@ -15,7 +15,6 @@ import (
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/usage"
 )
 
@@ -185,7 +184,6 @@ type ToolService interface {
 	Tools() []llm.Tool
 	CallTool(context.Context, string, map[string]any) (string, error)
 	HasTool(string) bool
-	ServerStatus(context.Context) []mcp.ServerStatus
 }
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.
@@ -255,7 +253,6 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/me/memory", s.requireAuth(http.HandlerFunc(s.handleGetUserMemory)))
 	mux.Handle("POST /api/me/memory:refresh", s.requireAuth(http.HandlerFunc(s.handleRefreshUserMemory)))
 	mux.Handle("GET /api/admin/users", s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdminUsers))))
-	mux.Handle("GET /api/mcp/status", s.requireAuth(http.HandlerFunc(s.handleMCPStatus)))
 	mux.Handle("GET /api/projects", s.requireAuth(http.HandlerFunc(s.handleListProjects)))
 	mux.Handle("POST /api/projects", s.requireAuth(http.HandlerFunc(s.handleCreateProject)))
 	mux.Handle("PATCH /api/projects/{projectID}", s.requireAuth(http.HandlerFunc(s.handleUpdateProject)))
