@@ -79,10 +79,6 @@ function sectionsFor(u: Usage): { group: string; rows: Row[] }[] {
         { label: "Projects created", value: fmt(u.projectsCreated) },
       ],
     },
-    {
-      group: "Memory",
-      rows: [{ label: "User memory length", value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)}` }],
-    },
   ];
 }
 

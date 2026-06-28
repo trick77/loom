@@ -43,6 +43,8 @@ describe("UsagePanel", () => {
     expect(screen.getByText("Never")).toBeInTheDocument(); // last updated (no memory yet)
     expect(screen.getByText("184 of 210")).toBeInTheDocument(); // messages captured
     expect(screen.getByText("Eligible now (26 pending)")).toBeInTheDocument(); // next refresh
+    // Exactly one Memory section (guards against a stale duplicate group).
+    expect(screen.getAllByText("Memory")).toHaveLength(1);
   });
 
   it("shows an error message when loading fails", async () => {
