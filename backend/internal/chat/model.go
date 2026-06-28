@@ -34,6 +34,7 @@ type Project struct {
 	AutoDescriptionGeneratedAt *time.Time `json:"-"`
 	CreatedAt                  time.Time  `json:"createdAt"`
 	UpdatedAt                  time.Time  `json:"updatedAt"`
+	LastActivityAt             time.Time  `json:"lastActivityAt"`
 }
 
 // ProjectMemory is a compact, auto-generated summary of a project's chats that

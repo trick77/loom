@@ -25,7 +25,10 @@ const projects: Project[] = [
     // projects; the badge predicate must treat null as "not archived".
     archivedAt: null,
     createdAt: "2026-06-10T00:00:00Z",
-    updatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    // updatedAt is the project-record edit time; deliberately distinct from
+    // lastActivityAt so the card's "Updated … ago" proves it reads activity.
+    updatedAt: "2026-06-10T00:00:00Z",
+    lastActivityAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   },
 ];
 
@@ -85,6 +88,7 @@ test("ProjectsPage shows archived projects only under the Archived tab", async (
     archivedAt: "2026-06-01T00:00:00Z",
     createdAt: "2026-05-01T00:00:00Z",
     updatedAt: "2026-06-01T00:00:00Z",
+    lastActivityAt: "2026-06-01T00:00:00Z",
   };
   vi.mocked(api.listProjects).mockResolvedValue([archivedProject]);
 
@@ -148,6 +152,71 @@ test("ProjectsPage opens the sort dropdown with project sort options", () => {
   );
   expect(within(menu).getByRole("menuitemradio", { name: "Last edited" })).toBeInTheDocument();
   expect(within(menu).getByRole("menuitemradio", { name: "Date created" })).toBeInTheDocument();
+});
+
+test("ProjectsPage sort options each produce a distinct ordering", () => {
+  // Three projects whose three timestamps disagree, so a correct mapping yields
+  // a different order per option (the regression: recent and edited were identical).
+  const ordering: Project[] = [
+    {
+      id: "a",
+      name: "Alpha",
+      description: "",
+      starred: false,
+      archivedAt: null,
+      createdAt: "2026-03-01T00:00:00Z", // newest created
+      updatedAt: "2026-01-01T00:00:00Z", // oldest edited
+      lastActivityAt: "2026-02-02T00:00:00Z",
+    },
+    {
+      id: "b",
+      name: "Bravo",
+      description: "",
+      starred: false,
+      archivedAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-03-01T00:00:00Z", // newest edited
+      lastActivityAt: "2026-02-01T00:00:00Z", // oldest activity
+    },
+    {
+      id: "c",
+      name: "Charlie",
+      description: "",
+      starred: false,
+      archivedAt: null,
+      createdAt: "2026-02-01T00:00:00Z",
+      updatedAt: "2026-02-02T00:00:00Z",
+      lastActivityAt: "2026-03-01T00:00:00Z", // newest activity
+    },
+  ];
+
+  render(
+    <ProjectsPage
+      projects={ordering}
+      loadError=""
+      onOpenSidebar={vi.fn()}
+      onCreateProject={vi.fn()}
+      onOpenProject={vi.fn()}
+      onEditProject={vi.fn()}
+      onArchiveProject={vi.fn()}
+      onUnarchiveProject={vi.fn()}
+      onDeleteProject={vi.fn()}
+    />,
+  );
+
+  const names = () =>
+    screen.getAllByRole("article").map((card) => within(card).getByText(/Alpha|Bravo|Charlie/).textContent);
+
+  // Default sort is Recent activity → by lastActivityAt desc.
+  expect(names()).toEqual(["Charlie", "Alpha", "Bravo"]);
+
+  fireEvent.click(screen.getByRole("button", { name: /^Sort by/ }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Last edited" }));
+  expect(names()).toEqual(["Bravo", "Charlie", "Alpha"]); // by updatedAt desc
+
+  fireEvent.click(screen.getByRole("button", { name: /^Sort by/ }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Date created" }));
+  expect(names()).toEqual(["Alpha", "Charlie", "Bravo"]); // by createdAt desc
 });
 
 test("ProjectsPage opens a project from anywhere on the card body", () => {
