@@ -32,9 +32,17 @@ type Project struct {
 	Starred                    bool       `json:"starred"`
 	ArchivedAt                 *time.Time `json:"archivedAt"`
 	AutoDescriptionGeneratedAt *time.Time `json:"-"`
-	CreatedAt                  time.Time  `json:"createdAt"`
-	UpdatedAt                  time.Time  `json:"updatedAt"`
-	LastActivityAt             time.Time  `json:"lastActivityAt"`
+	// DescriptionUserEdited is true once the user hand-edits a non-empty description;
+	// while set, auto-generation never overwrites it. Emptying the description clears
+	// this (re-arming auto-generation). Internal-only.
+	DescriptionUserEdited bool `json:"-"`
+	// DescriptionSourceThreadCount records the project's titled-thread count at the
+	// last auto-description generation; the refresh gate regenerates only when the
+	// current titled-thread count differs from it. Internal-only.
+	DescriptionSourceThreadCount int       `json:"-"`
+	CreatedAt                    time.Time `json:"createdAt"`
+	UpdatedAt                    time.Time `json:"updatedAt"`
+	LastActivityAt               time.Time `json:"lastActivityAt"`
 }
 
 // ProjectMemory is a compact, auto-generated summary of a project's chats that

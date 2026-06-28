@@ -34,9 +34,6 @@ func (s *server) projectMemoryScope(user auth.User, project chat.Project) memory
 		list: func(ctx context.Context, limit int) ([]chat.Message, error) {
 			return s.thread.ListProjectMessages(ctx, user.ID, project.ID, limit)
 		},
-		describe: func(ctx context.Context, transcript string) {
-			s.maybeAutoDescribeProject(ctx, user, project, transcript)
-		},
 	}
 }
 

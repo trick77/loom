@@ -123,9 +123,12 @@ func (w *MemoryWorker) refreshProjectMemory(ctx context.Context, user auth.User,
 	if err := w.s.refreshMemoryIfDue(rctx, user, w.s.projectMemoryScope(user, project), memoryProjectDebounce); err != nil {
 		slog.Warn("memory sweep: project memory refresh failed", "project_id", project.ID, "error", err)
 	}
-	// Backfill an empty description independently of the refresh gate above, which
-	// is skipped for a project with no new messages — so a project missing its
-	// description (e.g. one that was later cleared) self-heals on this sweep instead
-	// of waiting for fresh activity. Cheap no-op once a description exists.
-	w.s.maybeBackfillProjectDescription(rctx, user, project)
+	// Refresh the project's big-picture description (a summary of its thread titles)
+	// as the count-gated backstop to the per-title trigger: the gate is a cheap no-op
+	// when no new thread has been titled, and catches any thread titled during a
+	// debounce window that no later trigger swept up. Best-effort; errors are logged
+	// inside refreshProjectDescriptionIfDue.
+	if err := w.s.refreshProjectDescriptionIfDue(rctx, user, project.ID); err != nil {
+		slog.Warn("memory sweep: project description refresh failed", "project_id", project.ID, "error", err)
+	}
 }

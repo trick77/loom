@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
@@ -148,7 +149,10 @@ type fakeThreadStore struct {
 	projectMemory             chat.ProjectMemory
 	projectMessageCount       int
 	projectDescriptionChanged bool
-	userMemory                chat.UserMemory
+	// projectThreadTitles is returned by ListProjectThreadTitles; it is the source
+	// the auto-description summarizes and the count the refresh gate compares against.
+	projectThreadTitles []string
+	userMemory          chat.UserMemory
 	userMessageCount          int
 	// listLimit records the limit passed to the most recent ListUserMessages /
 	// ListProjectMessages call, so tests can assert the adaptive fold window.
@@ -158,7 +162,7 @@ type fakeThreadStore struct {
 }
 
 func (f *fakeThreadStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
-	f.project = chat.Project{ID: "proj_1", UserID: userID, Name: in.Name, Description: in.Description}
+	f.project = chat.Project{ID: "proj_1", UserID: userID, Name: in.Name, Description: in.Description, DescriptionUserEdited: in.Description != ""}
 	return f.project, nil
 }
 
@@ -183,16 +187,28 @@ func (f *fakeThreadStore) UpdateProject(_ context.Context, _ string, projectID s
 	return f.project, true, nil
 }
 
-func (f *fakeThreadStore) SetProjectDescriptionIfEmpty(_ context.Context, _ string, projectID, description string) (chat.Project, bool, error) {
+func (f *fakeThreadStore) SetAutoProjectDescription(_ context.Context, _ string, projectID, description string, sourceThreadCount int) (chat.Project, bool, error) {
 	if f.project.ID == "" || f.project.ID != projectID {
 		return chat.Project{}, false, nil
 	}
-	if f.project.Description != "" {
+	// Mirror the real store's atomic lock: a user-edited description is never
+	// overwritten by auto-generation.
+	if f.project.DescriptionUserEdited {
 		return f.project, false, nil
 	}
 	f.project.Description = description
+	f.project.DescriptionSourceThreadCount = sourceThreadCount
+	now := time.Now()
+	f.project.AutoDescriptionGeneratedAt = &now
 	f.projectDescriptionChanged = true
 	return f.project, true, nil
+}
+
+func (f *fakeThreadStore) ListProjectThreadTitles(_ context.Context, _ string, projectID string) ([]string, error) {
+	if f.project.ID == "" || f.project.ID != projectID {
+		return nil, nil
+	}
+	return f.projectThreadTitles, nil
 }
 
 func (f *fakeThreadStore) SetProjectStarred(_ context.Context, _ string, projectID string, starred bool) (chat.Project, bool, error) {
@@ -559,7 +575,7 @@ func (f fakeChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _ string) (s
 	return f.editedMemory, nil
 }
 
-func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _ string, _ []string) (string, error) {
 	if f.projectDescriptionCalls != nil {
 		*f.projectDescriptionCalls++
 	}
@@ -651,7 +667,7 @@ func (f *blockingChatClient) ApplyMemoryEdit(context.Context, string, string, st
 	return "", nil
 }
 
-func (f *blockingChatClient) GenerateProjectDescription(context.Context, string, string) (string, error) {
+func (f *blockingChatClient) GenerateProjectDescription(context.Context, string, []string) (string, error) {
 	return "", nil
 }
 
@@ -753,7 +769,7 @@ func (f *fakeToolChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _ strin
 	return "", nil
 }
 
-func (f *fakeToolChatClient) GenerateProjectDescription(context.Context, string, string) (string, error) {
+func (f *fakeToolChatClient) GenerateProjectDescription(context.Context, string, []string) (string, error) {
 	return "", nil
 }
 
