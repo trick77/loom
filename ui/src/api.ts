@@ -366,6 +366,10 @@ export type Usage = {
   projectsCreated: number;
   userMemoryLength: number;
   userMemoryMax: number;
+  userMemoryUpdatedAt: string | null;
+  userMemorySourceMessages: number;
+  userMemoryTotalMessages: number;
+  userMemoryRefreshWindowHours: number;
 };
 
 export async function getUsage(): Promise<Usage> {

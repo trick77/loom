@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getUsage, type Usage } from "../api";
+import { formatTimeAgo } from "../timeago";
 
 type Row = { label: string; value: string };
 
@@ -10,8 +11,41 @@ function fmt(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
 }
 
+// nextRefreshLabel describes when the user memory is next eligible to refresh,
+// derived client-side from the rolling refresh window. The background worker only
+// regenerates when there is new activity (messages pending) AND the memory is past
+// its window, so: no pending -> up to date; never generated -> eligible now;
+// otherwise count down the remaining window.
+function nextRefreshLabel(u: Usage, pending: number): string {
+  if (pending === 0) return "Up to date";
+  const pendingNote = `${fmt(pending)} pending`;
+  if (u.userMemoryUpdatedAt === null) return `Eligible now (${pendingNote})`;
+  const windowMs = u.userMemoryRefreshWindowHours * 3_600_000;
+  const remainingMs = windowMs - (Date.now() - new Date(u.userMemoryUpdatedAt).getTime());
+  if (remainingMs <= 0) return `Eligible now (${pendingNote})`;
+  return `~${Math.ceil(remainingMs / 3_600_000)}h (${pendingNote})`;
+}
+
+function memoryRows(u: Usage): Row[] {
+  const pct = u.userMemoryMax > 0 ? Math.round((u.userMemoryLength / u.userMemoryMax) * 100) : 0;
+  const pending = Math.max(u.userMemoryTotalMessages - u.userMemorySourceMessages, 0);
+  return [
+    { label: "User memory length", value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)} (${pct}%)` },
+    {
+      label: "Last updated",
+      value: u.userMemoryUpdatedAt === null ? "Never" : formatTimeAgo(u.userMemoryUpdatedAt),
+    },
+    { label: "Messages captured", value: `${fmt(u.userMemorySourceMessages)} of ${fmt(u.userMemoryTotalMessages)}` },
+    { label: "Next refresh", value: nextRefreshLabel(u, pending) },
+  ];
+}
+
 function sectionsFor(u: Usage): { group: string; rows: Row[] }[] {
   return [
+    {
+      group: "Memory",
+      rows: memoryRows(u),
+    },
     {
       group: "Tokens",
       rows: [
@@ -44,10 +78,6 @@ function sectionsFor(u: Usage): { group: string; rows: Row[] }[] {
         { label: "Threads created", value: fmt(u.threadsCreated) },
         { label: "Projects created", value: fmt(u.projectsCreated) },
       ],
-    },
-    {
-      group: "Memory",
-      rows: [{ label: "User memory length", value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)}` }],
     },
   ];
 }
