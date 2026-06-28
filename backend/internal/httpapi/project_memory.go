@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -73,7 +74,39 @@ func (s *server) projectContextForThread(ctx context.Context, userID string, thr
 		slog.Warn("load project memory failed", "error", err)
 		memory = chat.ProjectMemory{}
 	}
-	return renderProjectContext(*project, memory.Content)
+	block := renderProjectContext(*project, memory.Content)
+	// Steer the model to read the actual sibling threads instead of answering from
+	// the (lossy) project memory digest above when asked to summarize/compile across
+	// the project. The project memory is already in front of it, so without this it
+	// tends to shortcut to that digest and never call read_project_threads.
+	if n := s.countOtherProjectThreads(ctx, userID, thread); n > 0 {
+		block += fmt.Sprintf(
+			"\nThis project contains %d other thread(s). The project memory above is a lossy digest — to summarize, compile, or compare across the actual threads, call the %s tool to read their full content.",
+			n, projectThreadsToolName)
+	}
+	return block
+}
+
+// countOtherProjectThreads returns how many non-archived threads the project has
+// besides the active one. Best-effort: on error it returns 0 so the nudge is
+// simply omitted rather than blocking the chat. Uses the id-only listing to avoid
+// loading thread rows just to count them.
+func (s *server) countOtherProjectThreads(ctx context.Context, userID string, thread chat.Thread) int {
+	if thread.ProjectID == nil {
+		return 0
+	}
+	ids, err := s.thread.ListThreadIDs(ctx, userID, chat.ListThreadsOptions{ProjectID: thread.ProjectID})
+	if err != nil {
+		slog.Warn("count project threads failed", "error", err)
+		return 0
+	}
+	count := 0
+	for _, id := range ids {
+		if id != thread.ID {
+			count++
+		}
+	}
+	return count
 }
 
 // renderProjectContext builds the system-prompt block describing the project

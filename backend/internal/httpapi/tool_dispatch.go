@@ -106,9 +106,17 @@ func (s *server) fetchObscuraFallback(ctx context.Context, user auth.User, toolN
 	return capToolOutput(snapshot), true
 }
 
-func (s *server) availableTools() []llm.Tool {
+func (s *server) availableTools(thread chat.Thread) []llm.Tool {
 	tools := []llm.Tool(nil)
 	names := map[string]string{}
+	// The cross-thread summarizer is only meaningful inside a project (it reads the
+	// other threads in the same project), so it is exposed solely for project
+	// threads. A project-less thread never sees it and cannot call it.
+	if thread.ProjectID != nil {
+		tool := projectThreadsTool()
+		names[tool.Function.Name] = "built_in"
+		tools = append(tools, tool)
+	}
 	if s.artifacts != nil && strings.TrimSpace(s.usersDir) != "" {
 		for _, gen := range s.docTools {
 			schema := gen.Schema()
@@ -163,6 +171,9 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 }
 
 func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource) (string, *artifactResponse, bool) {
+	if call.Function.Name == projectThreadsToolName {
+		return s.projectThreadsDigest(ctx, user.ID, thread), nil, true
+	}
 	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call, editSource); handled {
 		return output, response, true
 	}

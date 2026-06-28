@@ -257,6 +257,7 @@ func run() error {
 		DevAuthClaims:              devAuthClaims,
 		PostLogoutRedirectURL:      cfg.OIDC.PostLogoutRedirectURL,
 		KnowledgeInlineTokenBudget: cfg.KnowledgeInlineTokenBudget,
+		ProjectSummaryTokenBudget:  cfg.ProjectSummaryTokenBudget,
 	}
 	handler := httpapi.New(deps)
 	memoryWorker := httpapi.NewMemoryWorker(deps)

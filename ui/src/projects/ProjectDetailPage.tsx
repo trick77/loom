@@ -16,6 +16,13 @@ import { ProjectActionsMenu } from "./ProjectActionsMenu";
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel";
 
+// Editable starter the summarize pill drops into the composer. It is a complete,
+// sendable prompt the user edits to steer the emphasis (e.g. add "where to stay,
+// food") — the backend's read_project_threads tool then reads the project's other
+// threads and the model synthesizes from them.
+const SUMMARIZE_PROJECT_PROMPT =
+  "Summarize the threads in this project, pulling out key facts and takeaways.";
+
 export function ProjectDetailPage({
   project,
   threads,
@@ -182,6 +189,23 @@ export function ProjectDetailPage({
                 onRemoveAttachment={removeAttachment}
               />
             </div>
+            {/* Discoverability hint for the cross-thread summary feature. Shown only
+                on the project composer (never inside a thread chat), and only when
+                there is something to summarize and the user hasn't started typing or
+                staged a file. Fills the composer with an editable prompt — the user
+                steers the emphasis, then sends. */}
+            {draft.trim() === "" && attachments.length === 0 && threads.length > 0 && (
+              <div className="mt-3 flex">
+                <button
+                  type="button"
+                  className="ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
+                  onClick={() => onDraftChange(SUMMARIZE_PROJECT_PROMPT)}
+                >
+                  <Icon className="text-[#97958c]" name="messages" size="1.3rem" />
+                  Summarize this project’s threads
+                </button>
+              </div>
+            )}
             {attachNote !== "" && (
               <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
             )}

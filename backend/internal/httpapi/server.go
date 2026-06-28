@@ -50,6 +50,9 @@ type Deps struct {
 	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
 	// turn (0 disables it, falling back to pure RAG retrieval).
 	KnowledgeInlineTokenBudget int
+	// ProjectSummaryTokenBudget bounds the cross-thread digest returned by the
+	// read_project_threads tool.
+	ProjectSummaryTokenBudget int
 }
 
 type server struct {
@@ -73,6 +76,7 @@ type server struct {
 	devAuthClaims              auth.Claims
 	postLogoutRedirectURL      string
 	knowledgeInlineTokenBudget int
+	projectSummaryTokenBudget  int
 	activeStreams              activeStreamRegistry
 }
 
@@ -219,6 +223,7 @@ func newServer(d Deps) *server {
 		devAuthClaims:              d.DevAuthClaims,
 		postLogoutRedirectURL:      d.PostLogoutRedirectURL,
 		knowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
+		projectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
 	}
 }
 

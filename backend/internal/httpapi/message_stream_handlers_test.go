@@ -1170,7 +1170,7 @@ func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 		}},
 	}
 
-	tools := srv.availableTools()
+	tools := srv.availableTools(chat.Thread{})
 
 	var builtInCount, searchCount int
 	for _, tool := range tools {

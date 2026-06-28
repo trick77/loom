@@ -27,8 +27,10 @@ const defaultMaxCompletionTokens = 2048
 // the model emits the whole file as a single tool-call argument, so once it runs
 // past the cap finish_reason=length truncates the argument JSON, which both fails
 // the document tool and (when the broken call is replayed) makes the upstream
-// reject the next round. 32k clears any realistic document while leaving ample
-// context-window headroom for the prompt; MiMo's hard ceiling is 131072.
+// reject the next round. 32k clears any realistic document while leaving
+// context-window headroom for the prompt. (MiMo 2.5 Pro's real input window is
+// materially smaller than the 131072 once noted here — do not size budgets
+// against that figure; it was never verified against the deployment.)
 const documentToolMaxCompletionTokens = 32768
 
 // documentToolTimeout gives model turns that are serializing complete document
