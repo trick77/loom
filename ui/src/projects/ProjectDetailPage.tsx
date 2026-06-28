@@ -219,7 +219,7 @@ export function ProjectDetailPage({
                   onClick={() => onDraftChange(OPEN_QUESTIONS_PROMPT)}
                 >
                   <Icon className="text-[#97958c]" name="openItems" size="1.3rem" />
-                  Open points
+                  Surface gaps
                 </button>
               </div>
             )}
