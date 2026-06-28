@@ -66,6 +66,16 @@ export function formatReceivedKB(bytes: number): string {
   return `${rounded} KB`;
 }
 
+// Short uppercase type label from a filename's extension ("a.pdf" -> "PDF").
+// Returns null when there is no usable extension, so callers fall back to a glyph.
+export function fileTypeLabel(filename: string): string | null {
+  const dot = filename.lastIndexOf(".");
+  if (dot <= 0 || dot === filename.length - 1) return null;
+  const ext = filename.slice(dot + 1);
+  if (!/^[a-z0-9]{1,5}$/i.test(ext)) return null; // guard against non-extensions
+  return ext.toUpperCase();
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;

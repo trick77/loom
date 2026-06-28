@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { downloadableResponse, pendingFencedArtifact } from "./artifacts";
+import { downloadableResponse, fileTypeLabel, pendingFencedArtifact } from "./artifacts";
 
 describe("streamed downloadable artifacts", () => {
   const largeContent = "a".repeat(64 * 1024 + 1);
@@ -134,6 +134,28 @@ describe("streamed downloadable artifacts", () => {
       extension: "html",
       label: "HTML",
     });
+  });
+});
+
+describe("fileTypeLabel", () => {
+  test.each([
+    ["warsaw-trip-summary.pdf", "PDF"],
+    ["data.csv", "CSV"],
+    ["notes.md", "MD"],
+    ["sheet.xlsx", "XLSX"],
+    ["photo.png", "PNG"], // deleted images fall into the non-image branch
+    ["archive.name.with.dots.json", "JSON"],
+  ])("derives the type label from %s", (filename, expected) => {
+    expect(fileTypeLabel(filename)).toBe(expected);
+  });
+
+  test.each([
+    ["README"], // no extension
+    [".gitignore"], // leading dot only
+    ["trailing."], // empty extension
+    ["weird.extension-too-long"], // not a plausible extension
+  ])("returns null for %s so callers fall back to the glyph", (filename) => {
+    expect(fileTypeLabel(filename)).toBeNull();
   });
 });
 

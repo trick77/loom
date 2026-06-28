@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { downloadArtifact, type Artifact } from "../api";
-import { buildImageStats, formatFileSize } from "./artifacts";
+import { buildImageStats, fileTypeLabel, formatFileSize } from "./artifacts";
 import { DownloadIcon } from "./icons";
 import { Icon } from "./Icon";
 import { ImageLightbox } from "./ImageLightbox";
@@ -15,6 +15,7 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const deleted = artifact.deleted === true;
   const isImage = artifact.mimeType.startsWith("image/") && !deleted;
   const imageStats = isImage ? buildImageStats(artifact) : null;
+  const typeLabel = fileTypeLabel(artifact.displayFilename);
 
   useEffect(() => {
     if (!isImage) {
@@ -110,7 +111,11 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
       <div className="flex items-center gap-3 px-4 py-3">
         {!isImage && (
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-            <Icon name="artifact" size="20px" />
+            {typeLabel ? (
+              <span className="text-[10px] font-semibold uppercase leading-none tracking-tight">{typeLabel}</span>
+            ) : (
+              <Icon name="artifact" size="20px" />
+            )}
           </div>
         )}
         <div className="min-w-0 flex-1">
