@@ -129,8 +129,8 @@ export function ThreadRow({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
         onClick={() => (selectMode ? onToggleSelected() : onOpen())}
       >
+        <span className="min-w-0 truncate text-[15px] text-[#ecece6]">{thread.title}</span>
         {thread.shared && <SharedPill />}
-        <span className="truncate text-[15px] text-[#ecece6]">{thread.title}</span>
         <span
           className={`ml-auto shrink-0 text-[13px] text-[#8a887f] group-hover:hidden ${
             activeSurface ? "hidden" : ""

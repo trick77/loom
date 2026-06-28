@@ -113,35 +113,6 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	return category, sendSSEJSON(stream, "thread", thread)
 }
 
-// startMCPStatus begins a live reachability probe of the configured MCP servers
-// in the background so its latency overlaps with assistant generation. It
-// returns nil when MCP is disabled. The channel is buffered, so the probe never
-// leaks even if the caller returns early without reading it.
-func (s *server) startMCPStatus(ctx context.Context) <-chan mcpStatusResponse {
-	if s.mcp == nil {
-		return nil
-	}
-	ch := make(chan mcpStatusResponse, 1)
-	go func() {
-		ch <- s.currentMCPStatus(ctx)
-	}()
-	return ch
-}
-
-// sendMCPStatus emits a best-effort mcp_status event from a probe started by
-// startMCPStatus. It is skipped when MCP is disabled or no servers are
-// configured, and never aborts the stream.
-func sendMCPStatus(stream *sse.Writer, ch <-chan mcpStatusResponse) {
-	if ch == nil {
-		return
-	}
-	status := <-ch
-	if status.Configured == 0 {
-		return
-	}
-	_ = sendSSEJSON(stream, "mcp_status", status)
-}
-
 func buildLLMHistory(user auth.User, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	systemContent := systemPromptForUser(user, time.Now())
 	if strings.TrimSpace(classifierContext) != "" {

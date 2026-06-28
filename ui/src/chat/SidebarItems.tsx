@@ -155,9 +155,15 @@ function SidebarThreadItem({
         }`}
       >
         <button className="relative flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left" onClick={() => onSelect(thread.id)} type="button">
-          {thread.shared && <SharedPill />}
-          <span className={`min-w-0 whitespace-nowrap ${active ? "flex-1 pr-7" : "truncate"}`}>{thread.title}</span>
-          {active && (
+          {thread.shared ? (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate whitespace-nowrap">{thread.title}</span>
+              <SharedPill />
+            </span>
+          ) : (
+            <span className={`min-w-0 whitespace-nowrap ${active ? "flex-1 pr-7" : "truncate"}`}>{thread.title}</span>
+          )}
+          {active && !thread.shared && (
             <span className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]" aria-hidden="true" />
           )}
         </button>

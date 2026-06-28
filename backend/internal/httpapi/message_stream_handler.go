@@ -105,10 +105,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Kick off the MCP reachability probe now so its latency overlaps with
-	// assistant generation instead of delaying the final events.
-	mcpStatusCh := s.startMCPStatus(streamCtx)
-
 	// Decide whether the image path will run before classifying: when it will, we
 	// stamp the thread's category deterministically as image_generation instead of
 	// letting the text classifier guess (it would mislabel and the image path
@@ -352,7 +348,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// MemoryWorker sweep so it does not fire on every turn.
 	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread)
 
-	sendMCPStatus(stream, mcpStatusCh)
 	_ = stream.Send("done", "{}")
 }
 
