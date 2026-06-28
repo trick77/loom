@@ -86,6 +86,8 @@ const CODEPOINTS = {
   sortUp: 0xe013,
   sortDown: 0xe009,
   allThreads: 0xe060,
+  projectSummary: 0xe09c,
+  openItems: 0xe0f1,
 } as const;
 
 export type IconName = keyof typeof CODEPOINTS;

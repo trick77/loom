@@ -16,12 +16,15 @@ import { ProjectActionsMenu } from "./ProjectActionsMenu";
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel";
 
-// Editable starter the summarize pill drops into the composer. It is a complete,
-// sendable prompt the user edits to steer the emphasis (e.g. add "where to stay,
-// food") — the backend's read_project_threads tool then reads the project's other
-// threads and the model synthesizes from them.
+// Editable starters the project pills drop into the composer. Each is a complete,
+// sendable prompt the user edits to steer the emphasis — both ride the same
+// read_project_threads tool, which reads the project's other threads so the model
+// can synthesize across them. SUMMARIZE produces a digest; OPEN_QUESTIONS produces
+// the actionable counterpart (what's unresolved / what to do next).
 const SUMMARIZE_PROJECT_PROMPT =
   "Summarize the threads in this project, pulling out key facts and takeaways.";
+const OPEN_QUESTIONS_PROMPT =
+  "What's still open in this project? List the open questions, unresolved decisions, and next steps across its threads.";
 
 export function ProjectDetailPage({
   project,
@@ -189,22 +192,34 @@ export function ProjectDetailPage({
                 onRemoveAttachment={removeAttachment}
               />
             </div>
-            {/* Discoverability hint for the cross-thread summary feature. Shown only
+            {/* Discoverability hints for the cross-thread project features. Shown only
                 on the project composer (never inside a thread chat), and only once
                 there are at least two threads to synthesize ACROSS — the tool excludes
                 the thread you ask from, so with a single thread there is nothing to
-                cross-reference and the affordance would mislead. Also hidden once the
-                user starts typing or stages a file. Fills the composer with an editable
-                prompt — the user steers the emphasis, then sends. */}
+                cross-reference and the affordance would mislead. Hidden once the user
+                starts typing or stages a file. Each fills the composer with an editable
+                prompt — the user steers the emphasis, then sends. The staggered
+                prompt-pop-in matches the /new prompt starters (and respects
+                prefers-reduced-motion). */}
             {draft.trim() === "" && attachments.length === 0 && threads.length >= 2 && (
-              <div className="mt-3 flex">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
+                  className="prompt-pop-in ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
+                  style={{ animationDelay: "0ms" }}
                   onClick={() => onDraftChange(SUMMARIZE_PROJECT_PROMPT)}
                 >
-                  <Icon className="text-[#97958c]" name="messages" size="1.3rem" />
-                  Summarize this project’s threads
+                  <Icon className="text-[#97958c]" name="projectSummary" size="1.3rem" />
+                  Summarize threads
+                </button>
+                <button
+                  type="button"
+                  className="prompt-pop-in ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
+                  style={{ animationDelay: "50ms" }}
+                  onClick={() => onDraftChange(OPEN_QUESTIONS_PROMPT)}
+                >
+                  <Icon className="text-[#97958c]" name="openItems" size="1.3rem" />
+                  Open points
                 </button>
               </div>
             )}
