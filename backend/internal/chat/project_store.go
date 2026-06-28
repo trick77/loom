@@ -102,11 +102,19 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 		}
 	}
 
+	// Clearing the description must also clear the auto-description marker, otherwise
+	// auto-generation (which guards on auto_description_generated_at IS NULL) stays
+	// permanently disabled and the project keeps a blank description forever. Setting
+	// a non-empty description leaves the marker untouched.
 	_, err = s.db.ExecContext(ctx, `
 UPDATE projects
-SET name = ?, description = ?, updated_at = datetime('now'), last_activity_at = datetime('now')
+SET name = ?,
+    description = ?,
+    auto_description_generated_at = CASE WHEN ? = '' THEN NULL ELSE auto_description_generated_at END,
+    updated_at = datetime('now'),
+    last_activity_at = datetime('now')
 WHERE user_id = ? AND id = ?`,
-		name, description, userID, projectID,
+		name, description, description, userID, projectID,
 	)
 	if err != nil {
 		return Project{}, false, fmt.Errorf("update project: %w", err)

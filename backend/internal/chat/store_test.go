@@ -136,6 +136,78 @@ func TestStore_SetProjectDescriptionIfEmptyIsOneShot(t *testing.T) {
 	}
 }
 
+func TestStore_UpdateProjectBlankingDescriptionReArmsAutoDescription(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+
+	// Auto-describe sets the description and the one-shot marker together.
+	described, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "Early research plan.")
+	if err != nil || !changed {
+		t.Fatalf("SetProjectDescriptionIfEmpty() = %v, changed=%v", err, changed)
+	}
+	if described.AutoDescriptionGeneratedAt == nil {
+		t.Fatal("AutoDescriptionGeneratedAt = nil after auto-describe, want set")
+	}
+
+	// Clearing the description must also clear the marker, otherwise auto-generation
+	// stays disabled forever and the project keeps a blank description.
+	blank := ""
+	cleared, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Description: &blank})
+	if err != nil {
+		t.Fatalf("UpdateProject() error: %v", err)
+	}
+	if cleared.Description != "" {
+		t.Fatalf("Description = %q, want empty after blanking", cleared.Description)
+	}
+	if cleared.AutoDescriptionGeneratedAt != nil {
+		t.Fatal("AutoDescriptionGeneratedAt still set after blanking, want nil so auto-describe re-engages")
+	}
+
+	// Auto-describe now works again.
+	again, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "Regenerated plan.")
+	if err != nil || !changed {
+		t.Fatalf("re-describe after blanking: err=%v changed=%v, want changed=true", err, changed)
+	}
+	if again.Description != "Regenerated plan." {
+		t.Fatalf("Description = %q, want regenerated", again.Description)
+	}
+}
+
+func TestStore_UpdateProjectSettingNonEmptyDescriptionKeepsMarker(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	if _, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "Auto plan."); err != nil || !changed {
+		t.Fatalf("SetProjectDescriptionIfEmpty() = %v, changed=%v", err, changed)
+	}
+
+	// A non-empty edit leaves the marker untouched (no spurious re-generation).
+	newDesc := "Hand-written description."
+	updated, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Description: &newDesc})
+	if err != nil {
+		t.Fatalf("UpdateProject() error: %v", err)
+	}
+	if updated.AutoDescriptionGeneratedAt == nil {
+		t.Fatal("AutoDescriptionGeneratedAt cleared on a non-empty edit, want preserved")
+	}
+	if updated.Description != newDesc {
+		t.Fatalf("Description = %q, want %q", updated.Description, newDesc)
+	}
+}
+
 func TestStore_SetThreadImageModelIfEmptyLocksOnce(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

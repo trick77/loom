@@ -41,9 +41,11 @@ func TestGenerateProjectDescription_usesItsOwnLargerTokenBudget(t *testing.T) {
 	}
 }
 
-// A reply truncated by the token cap (finish_reason=length) is still discarded rather
-// than stored as a clipped fragment — defensive behavior unchanged by the budget bump.
-func TestGenerateProjectDescription_discardsLengthTruncatedReply(t *testing.T) {
+// A reply truncated by the token cap (finish_reason=length) is salvaged into a usable
+// description — the dangling partial last word is dropped, the rest is kept. A clipped
+// one-liner beats a permanently empty description (and an empty return would make the
+// backfill retry forever).
+func TestGenerateProjectDescription_salvagesLengthTruncatedReply(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"A very long descrip"},"finish_reason":"length"}]}`))
@@ -55,8 +57,27 @@ func TestGenerateProjectDescription_discardsLengthTruncatedReply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateProjectDescription error = %v", err)
 	}
+	if got != "A very long." {
+		t.Errorf("description = %q, want salvaged partial %q on finish_reason=length", got, "A very long.")
+	}
+}
+
+// A truncation with no salvageable text (only a single partial word) returns empty
+// rather than a meaningless token.
+func TestGenerateProjectDescription_lengthTruncatedSingleWordIsKept(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"length"}]}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	got, err := c.GenerateProjectDescription(context.Background(), "Proj", "user: hi")
+	if err != nil {
+		t.Fatalf("GenerateProjectDescription error = %v", err)
+	}
 	if got != "" {
-		t.Errorf("description = %q, want empty string on finish_reason=length", got)
+		t.Errorf("description = %q, want empty when truncated reply has no text", got)
 	}
 }
 
