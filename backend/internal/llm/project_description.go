@@ -15,7 +15,8 @@ const projectDescriptionSystemPrompt = "You write concise project descriptions f
 // description is one ≤160-char sentence fragment (~40 tokens), but it now rides the
 // project-memory refresh and is generated from the same large project transcript memory
 // uses, so give it real output headroom (like memory's 768) — a tight title-sized cap
-// truncates the reply to finish_reason=length, which is discarded as empty below.
+// truncates the reply to finish_reason=length, which is then salvaged (not discarded)
+// below, but a generous cap avoids needing to salvage in the first place.
 const projectDescriptionMaxCompletionTokens = 256
 
 func (c *Client) GenerateProjectDescription(ctx context.Context, projectName, transcript string) (string, error) {
@@ -51,15 +52,29 @@ func (c *Client) GenerateProjectDescription(ctx context.Context, projectName, tr
 	choice := completion.Choices[0]
 	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
 	if choice.FinishReason == "length" {
-		// Truncated mid-fragment: discard rather than store a clipped description.
-		// Logged (the previously silent discard is why an empty-description bug could
-		// persist unnoticed) so a recurrence is visible in the logs.
-		slog.Warn("project description truncated; discarding",
+		// Truncated mid-fragment. Salvage the partial text (dropping a dangling last
+		// word) rather than discarding it: a clipped one-line description is far better
+		// than a permanently empty one, and silently discarding is exactly what let the
+		// empty-description bug persist unnoticed. Logged so a recurrence is visible.
+		salvaged := salvageTruncatedDescription(choice.Message.Content)
+		slog.Warn("project description truncated; salvaging partial",
 			"completion_tokens", completion.Usage.CompletionTokens,
-			"max_completion_tokens", projectDescriptionMaxCompletionTokens)
-		return "", nil
+			"max_completion_tokens", projectDescriptionMaxCompletionTokens,
+			"salvaged_empty", salvaged == "")
+		return salvaged, nil
 	}
 	return cleanProjectDescription(choice.Message.Content), nil
+}
+
+// salvageTruncatedDescription turns a length-truncated completion into a usable
+// description: drop the trailing (likely partial) word so it does not end mid-token,
+// then clean. Keeps a lone word whole. Returns "" only when nothing usable remains.
+func salvageTruncatedDescription(content string) string {
+	content = strings.TrimSpace(content)
+	if i := strings.LastIndexAny(content, " \t\n"); i > 0 {
+		content = content[:i]
+	}
+	return cleanProjectDescription(content)
 }
 
 func cleanProjectDescription(description string) string {

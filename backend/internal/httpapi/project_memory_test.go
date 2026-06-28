@@ -202,6 +202,83 @@ func TestRefreshProjectMemory_SkipsDescriptionWhenAlreadyGenerated(t *testing.T)
 	}
 }
 
+// TestMaybeBackfillProjectDescription_FillsWhenActivityGateSkipsRefresh guards the
+// self-heal path: a project with an empty description and no new messages (memory's
+// source count already equals the live count) never reaches the description
+// generator through the gated refresh, so the backfill must fill it directly.
+func TestMaybeBackfillProjectDescription_FillsWhenActivityGateSkipsRefresh(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeThreadStore{
+		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
+		projectMessageCount: 5,
+		projectMemory:       chat.ProjectMemory{ProjectID: projectID, Content: "Reading list tracked.", SourceMessageCount: 5},
+		messages:            []chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}},
+	}
+	descCalls := 0
+	s := &server{thread: store, llm: fakeChatClient{
+		projectMemory:           "Reading list tracked.",
+		projectDescription:      "Tracks a reading list of papers to collect.",
+		projectDescriptionCalls: &descCalls,
+	}}
+
+	// The gated refresh must skip (count 5 <= source_message_count 5): no description.
+	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
+		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
+	}
+	if store.projectDescriptionChanged {
+		t.Fatal("gated refresh generated a description despite the activity gate; test premise broken")
+	}
+
+	// The ungated backfill fills it.
+	s.maybeBackfillProjectDescription(context.Background(), testUser, store.project)
+	if !store.projectDescriptionChanged {
+		t.Fatal("backfill did not generate a description for an empty-description project")
+	}
+	if store.project.Description != "Tracks a reading list of papers to collect." {
+		t.Fatalf("description = %q, want backfilled value", store.project.Description)
+	}
+
+	// Idempotent: once filled, a second backfill is a no-op (no wasted inference).
+	callsBefore := descCalls
+	s.maybeBackfillProjectDescription(context.Background(), testUser, store.project)
+	if descCalls != callsBefore {
+		t.Fatalf("backfill re-invoked GenerateProjectDescription (%d -> %d) for an already-described project", callsBefore, descCalls)
+	}
+}
+
+// TestMaybeBackfillProjectDescription_EmptyGenerationLeavesMarkerUnsetForRetry pins the
+// retry policy: when generation returns empty, nothing is persisted and the one-shot
+// marker stays unset, so a later sweep retries rather than locking the project blank.
+func TestMaybeBackfillProjectDescription_EmptyGenerationLeavesMarkerUnsetForRetry(t *testing.T) {
+	projectID := "proj_1"
+	store := &fakeThreadStore{
+		project:  chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
+		messages: []chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}},
+	}
+	descCalls := 0
+	s := &server{thread: store, llm: fakeChatClient{
+		projectDescription:      "", // model returns nothing usable
+		projectDescriptionCalls: &descCalls,
+	}}
+
+	s.maybeBackfillProjectDescription(context.Background(), testUser, store.project)
+	if descCalls != 1 {
+		t.Fatalf("GenerateProjectDescription called %d times, want 1", descCalls)
+	}
+	if store.projectDescriptionChanged {
+		t.Fatal("empty generation persisted a description, want none")
+	}
+	if store.project.AutoDescriptionGeneratedAt != nil {
+		t.Fatal("marker set despite empty generation; a later sweep could no longer retry")
+	}
+
+	// A subsequent sweep tries again (not locked out).
+	s.maybeBackfillProjectDescription(context.Background(), testUser, store.project)
+	if descCalls != 2 {
+		t.Fatalf("GenerateProjectDescription called %d times after second sweep, want 2 (retry not locked out)", descCalls)
+	}
+}
+
 // TestStreamMessageOmitsProjectContextForProjectlessThread guards that chats
 // without a project get no injected context.
 func TestStreamMessageOmitsProjectContextForProjectlessThread(t *testing.T) {
