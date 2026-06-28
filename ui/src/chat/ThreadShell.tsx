@@ -698,9 +698,6 @@ export function ThreadShell({
             setProjectThreads((current) => upsertThreadById(current, updatedThread));
           }
         },
-        onProject: (updatedProject) => {
-          setProjects((current) => upsertProject(current, updatedProject));
-        },
         onMcpStatus: (event) => setMcpStatus(event),
       }, abortController.signal, { documentAttachmentIds, imageAttachmentIds });
       const fallbackThread = createdThreadForFallback;
@@ -1022,11 +1019,4 @@ export function ThreadShell({
 
 function upsertThread(current: Thread[], thread: Thread): Thread[] {
   return [thread, ...current.filter((item) => item.id !== thread.id)];
-}
-
-function upsertProject(current: Project[], project: Project): Project[] {
-  if (current.some((item) => item.id === project.id)) {
-    return current.map((item) => (item.id === project.id ? project : item));
-  }
-  return [project, ...current];
 }
