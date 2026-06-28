@@ -82,11 +82,11 @@ func TestRefreshMemoryIfDue_AdaptiveWindowSizesToBacklog(t *testing.T) {
 }
 
 // TestRefreshProjectMemoryIfDue_DebounceSkipsFreshMemory proves the project path
-// honors the 1h debounce: a project memory refreshed within the window is not
+// honors the debounce: a project memory refreshed within the window is not
 // regenerated even though the per-turn trigger fires every turn.
 func TestRefreshProjectMemoryIfDue_DebounceSkipsFreshMemory(t *testing.T) {
 	projectID := "proj_1"
-	fresh := time.Now().Add(-30 * time.Minute) // < memoryProjectDebounce (1h)
+	fresh := time.Now().Add(-5 * time.Minute) // < memoryProjectDebounce (15m)
 	store := &fakeThreadStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
 		projectMessageCount: 50,
@@ -99,15 +99,15 @@ func TestRefreshProjectMemoryIfDue_DebounceSkipsFreshMemory(t *testing.T) {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
 	}
 	if store.projectMemory.Content != "Travel month: May" {
-		t.Fatalf("memory = %q, want unchanged (within the 1h debounce)", store.projectMemory.Content)
+		t.Fatalf("memory = %q, want unchanged (within the 15m debounce)", store.projectMemory.Content)
 	}
 }
 
 // TestRefreshProjectMemoryIfDue_DebounceRefreshesStaleMemory proves a project
-// memory older than the 1h debounce regenerates.
+// memory older than the debounce regenerates.
 func TestRefreshProjectMemoryIfDue_DebounceRefreshesStaleMemory(t *testing.T) {
 	projectID := "proj_1"
-	stale := time.Now().Add(-2 * time.Hour) // > memoryProjectDebounce (1h)
+	stale := time.Now().Add(-2 * time.Hour) // > memoryProjectDebounce (15m)
 	store := &fakeThreadStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
 		projectMessageCount: 50,
@@ -120,7 +120,7 @@ func TestRefreshProjectMemoryIfDue_DebounceRefreshesStaleMemory(t *testing.T) {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
 	}
 	if store.projectMemory.Content != "Travel month: June" {
-		t.Fatalf("memory = %q, want regenerated (older than the 1h debounce)", store.projectMemory.Content)
+		t.Fatalf("memory = %q, want regenerated (older than the 15m debounce)", store.projectMemory.Content)
 	}
 }
 
