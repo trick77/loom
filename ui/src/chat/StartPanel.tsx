@@ -82,11 +82,10 @@ export function StartPanel({
             <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
           )}
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
-          {/* The prompt starters persist while the user types (picking one fills the
-              composer but the starters stay), and hide only once an attachment is
-              staged (e.g. "Use in thread" pre-attaches an artifact) — they don't apply
-              when the user is already working from a specific file. */}
-          {attachments.length === 0 && <PromptStarters onPick={onDraftChange} />}
+          {/* Hide the generic prompt starters once an attachment is staged (e.g.
+              "Use in thread" pre-attaches an artifact) — they don't apply when the
+              user is already working from a specific file. */}
+          {draft.trim() === "" && attachments.length === 0 && <PromptStarters onPick={onDraftChange} />}
         </div>
       </div>
     </section>

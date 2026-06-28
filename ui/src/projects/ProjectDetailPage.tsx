@@ -196,13 +196,12 @@ export function ProjectDetailPage({
                 on the project composer (never inside a thread chat), and only once
                 there are at least two threads to synthesize ACROSS — the tool excludes
                 the thread you ask from, so with a single thread there is nothing to
-                cross-reference and the affordance would mislead. They persist while the
-                user types (a clicked pill fills the composer but the pills stay), and
-                hide only when a file is staged. Each fills the composer with an editable
+                cross-reference and the affordance would mislead. Hidden once the user
+                starts typing or stages a file. Each fills the composer with an editable
                 prompt — the user steers the emphasis, then sends. The staggered
                 prompt-pop-in matches the /new prompt starters (and respects
                 prefers-reduced-motion). */}
-            {attachments.length === 0 && threads.length >= 2 && (
+            {draft.trim() === "" && attachments.length === 0 && threads.length >= 2 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -211,7 +210,7 @@ export function ProjectDetailPage({
                   onClick={() => onDraftChange(SUMMARIZE_PROJECT_PROMPT)}
                 >
                   <Icon className="text-[#97958c]" name="projectSummary" size="1.3rem" />
-                  Summarize this project’s threads
+                  Summarize threads
                 </button>
                 <button
                   type="button"
