@@ -3,7 +3,6 @@ import { type ReactNode, useEffect, useRef } from "react";
 import type { Project, Thread } from "../api";
 import { menuDeleteItemClass, menuIconClass, menuItemClass, ThreadActionsMenu, TrashMenuIcon } from "../ThreadActionsMenu";
 import { ArchiveIcon } from "../projects/ProjectActionsMenu";
-import { SharedPill } from "../SharedPill";
 import { Icon } from "./Icon";
 import type { SidebarIconName } from "./types";
 
@@ -154,16 +153,9 @@ function SidebarThreadItem({
           active ? "bg-[#10100f] text-white" : "hover:bg-[#2a2a28]"
         }`}
       >
-        <button className="relative flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left" onClick={() => onSelect(thread.id)} type="button">
-          {thread.shared ? (
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate whitespace-nowrap">{thread.title}</span>
-              <SharedPill />
-            </span>
-          ) : (
-            <span className={`min-w-0 whitespace-nowrap ${active ? "flex-1 pr-7" : "truncate"}`}>{thread.title}</span>
-          )}
-          {active && !thread.shared && (
+        <button className="relative min-w-0 flex-1 overflow-hidden text-left" onClick={() => onSelect(thread.id)} type="button">
+          <span className={`block whitespace-nowrap ${active ? "pr-7" : "truncate"}`}>{thread.title}</span>
+          {active && (
             <span className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]" aria-hidden="true" />
           )}
         </button>
