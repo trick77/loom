@@ -1,14 +1,23 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
-import { Icon } from "../chat/Icon";
+import { Icon, type IconName } from "../chat/Icon";
+import { SharedChatsPanel } from "./SharedChatsPanel";
 import { UsagePanel } from "./UsagePanel";
 
+type SettingsSection = "usage" | "shares";
+
+const SECTIONS: { id: SettingsSection; label: string; icon: IconName }[] = [
+  { id: "usage", label: "Usage", icon: "sliders" },
+  { id: "shares", label: "Shared chats", icon: "upload" },
+];
+
 /**
- * SettingsModal — centered overlay modal. The left nav currently has a single
- * entry (Usage); the structure leaves room for more later. There is deliberately
- * no search box (per design).
+ * SettingsModal — centered overlay modal with a left nav (Usage, Shared chats).
+ * There is deliberately no search box (per design).
  */
 export function SettingsModal({ onClose }: { onClose(): void }) {
+  const [section, setSection] = useState<SettingsSection>("usage");
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -33,14 +42,22 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
           <div className="px-2 pb-2 pt-1 text-xs font-medium uppercase tracking-wide text-[#807d74]">
             Settings
           </div>
-          <button
-            className="flex w-full items-center gap-2.5 rounded-md bg-[#343433] px-2.5 py-2 text-left text-sm text-[#f4f0e8]"
-            type="button"
-            aria-current="page"
-          >
-            <Icon name="sliders" size="18px" className="shrink-0" />
-            Usage
-          </button>
+          {SECTIONS.map((entry) => (
+            <button
+              key={entry.id}
+              className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
+                section === entry.id
+                  ? "bg-[#343433] text-[#f4f0e8]"
+                  : "text-[#cfcbc1] hover:bg-[#2a2a28]"
+              }`}
+              type="button"
+              aria-current={section === entry.id ? "page" : undefined}
+              onClick={() => setSection(entry.id)}
+            >
+              <Icon name={entry.icon} size="18px" className="shrink-0" />
+              {entry.label}
+            </button>
+          ))}
         </nav>
         <div className="relative flex-1 overflow-y-auto p-6">
           <button
@@ -51,7 +68,7 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
           >
             <Icon name="close" size="18px" />
           </button>
-          <UsagePanel />
+          {section === "usage" ? <UsagePanel /> : <SharedChatsPanel />}
         </div>
       </div>
     </div>

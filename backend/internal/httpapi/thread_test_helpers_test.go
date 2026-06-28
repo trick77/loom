@@ -154,6 +154,8 @@ type fakeThreadStore struct {
 	// listLimit records the limit passed to the most recent ListUserMessages /
 	// ListProjectMessages call, so tests can assert the adaptive fold window.
 	listLimit int
+	// shares maps threadID -> the thread's share row, for share handler tests.
+	shares map[string]chat.Share
 }
 
 func (f *fakeThreadStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
@@ -418,6 +420,69 @@ func (f *fakeThreadStore) CountUserMessages(context.Context, string) (int, error
 func (f *fakeThreadStore) ListUserMessages(_ context.Context, _ string, limit int) ([]chat.Message, error) {
 	f.listLimit = limit
 	return append([]chat.Message(nil), f.messages...), nil
+}
+
+func (f *fakeThreadStore) CreateShare(_ context.Context, userID string, in chat.CreateShareInput) (chat.Share, error) {
+	if f.shares == nil {
+		f.shares = map[string]chat.Share{}
+	}
+	share := chat.Share{
+		ID:          "share-" + in.ThreadID,
+		ShareID:     in.ShareID,
+		ThreadID:    in.ThreadID,
+		UserID:      userID,
+		Shared:      true,
+		Title:       in.Title,
+		Snapshot:    in.Snapshot,
+		ArtifactIDs: in.ArtifactIDs,
+	}
+	f.shares[in.ThreadID] = share
+	return share, nil
+}
+
+func (f *fakeThreadStore) GetShareByThreadID(_ context.Context, _ string, threadID string) (chat.Share, bool, error) {
+	share, ok := f.shares[threadID]
+	return share, ok, nil
+}
+
+func (f *fakeThreadStore) GetShareByShareID(_ context.Context, shareID string) (chat.Share, bool, error) {
+	for _, share := range f.shares {
+		if share.ShareID == shareID {
+			return share, true, nil
+		}
+	}
+	return chat.Share{}, false, nil
+}
+
+func (f *fakeThreadStore) UpdateShareSnapshot(_ context.Context, _ string, threadID string, in chat.UpdateShareInput) (chat.Share, bool, error) {
+	share, ok := f.shares[threadID]
+	if !ok {
+		return chat.Share{}, false, nil
+	}
+	share.Title = in.Title
+	share.Snapshot = in.Snapshot
+	share.ArtifactIDs = in.ArtifactIDs
+	share.Shared = true
+	f.shares[threadID] = share
+	return share, true, nil
+}
+
+func (f *fakeThreadStore) SetShareEnabled(_ context.Context, _ string, threadID string, enabled bool) (bool, error) {
+	share, ok := f.shares[threadID]
+	if !ok {
+		return false, nil
+	}
+	share.Shared = enabled
+	f.shares[threadID] = share
+	return true, nil
+}
+
+func (f *fakeThreadStore) ListSharesForUser(_ context.Context, _ string) ([]chat.Share, error) {
+	shares := make([]chat.Share, 0, len(f.shares))
+	for _, share := range f.shares {
+		shares = append(shares, share)
+	}
+	return shares, nil
 }
 
 type fakeChatClient struct {

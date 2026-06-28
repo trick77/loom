@@ -205,3 +205,36 @@ type ListThreadsOptions struct {
 	// first page. Ignored by ListThreadIDs.
 	Cursor string
 }
+
+// Share is a public, read-only snapshot of a thread. The row exists only once the
+// thread has been shared; Shared toggles the public link on/off without losing the
+// frozen snapshot or rotating ShareID. Snapshot is the sanitized JSON blob served
+// to anonymous viewers; ArtifactIDs is the allowlist of generated-artifact ids the
+// public artifact endpoints may serve for this share.
+type Share struct {
+	ID          string
+	ShareID     string
+	ThreadID    string
+	UserID      string
+	Shared      bool
+	Title       string
+	Snapshot    json.RawMessage
+	ArtifactIDs []string
+	SnapshotAt  time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type CreateShareInput struct {
+	ShareID     string
+	ThreadID    string
+	Title       string
+	Snapshot    json.RawMessage
+	ArtifactIDs []string
+}
+
+type UpdateShareInput struct {
+	Title       string
+	Snapshot    json.RawMessage
+	ArtifactIDs []string
+}

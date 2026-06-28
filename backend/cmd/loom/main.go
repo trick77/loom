@@ -256,6 +256,7 @@ func run() error {
 		OIDCAdminGroup:             cfg.OIDC.AdminGroup,
 		DevAuthClaims:              devAuthClaims,
 		PostLogoutRedirectURL:      cfg.OIDC.PostLogoutRedirectURL,
+		PublicURL:                  cfg.PublicURL,
 		KnowledgeInlineTokenBudget: cfg.KnowledgeInlineTokenBudget,
 		ProjectSummaryTokenBudget:  cfg.ProjectSummaryTokenBudget,
 	}

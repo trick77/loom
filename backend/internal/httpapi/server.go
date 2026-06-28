@@ -47,6 +47,10 @@ type Deps struct {
 	OIDCAdminGroup        string
 	DevAuthClaims         auth.Claims
 	PostLogoutRedirectURL string
+	// PublicURL is the externally reachable base URL (e.g. https://loom.example.com),
+	// used to build absolute share links. Empty in dev → callers fall back to a
+	// relative /share/<id> path.
+	PublicURL string
 	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
 	// turn (0 disables it, falling back to pure RAG retrieval).
 	KnowledgeInlineTokenBudget int
@@ -75,6 +79,7 @@ type server struct {
 	oidcAdminGroup             string
 	devAuthClaims              auth.Claims
 	postLogoutRedirectURL      string
+	publicURL                  string
 	knowledgeInlineTokenBudget int
 	projectSummaryTokenBudget  int
 	activeStreams              activeStreamRegistry
@@ -115,6 +120,12 @@ type ThreadStore interface {
 	UpsertUserMemory(context.Context, string, string, int) (chat.UserMemory, error)
 	CountUserMessages(context.Context, string) (int, error)
 	ListUserMessages(context.Context, string, int) ([]chat.Message, error)
+	CreateShare(context.Context, string, chat.CreateShareInput) (chat.Share, error)
+	GetShareByThreadID(context.Context, string, string) (chat.Share, bool, error)
+	GetShareByShareID(context.Context, string) (chat.Share, bool, error)
+	UpdateShareSnapshot(context.Context, string, string, chat.UpdateShareInput) (chat.Share, bool, error)
+	SetShareEnabled(context.Context, string, string, bool) (bool, error)
+	ListSharesForUser(context.Context, string) ([]chat.Share, error)
 }
 
 // UsageStore records per-user lifetime usage counters. All methods are
@@ -223,6 +234,7 @@ func newServer(d Deps) *server {
 		oidcAdminGroup:             d.OIDCAdminGroup,
 		devAuthClaims:              d.DevAuthClaims,
 		postLogoutRedirectURL:      d.PostLogoutRedirectURL,
+		publicURL:                  d.PublicURL,
 		knowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
 		projectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
 	}
@@ -268,6 +280,15 @@ func New(d Deps) http.Handler {
 	mux.Handle("DELETE /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleDeleteThread)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
+	mux.Handle("POST /api/threads/{threadID}/share", s.requireAuth(http.HandlerFunc(s.handleCreateShare)))
+	mux.Handle("POST /api/threads/{threadID}/share:update", s.requireAuth(http.HandlerFunc(s.handleUpdateShare)))
+	mux.Handle("DELETE /api/threads/{threadID}/share", s.requireAuth(http.HandlerFunc(s.handleDisableShare)))
+	mux.Handle("GET /api/shares", s.requireAuth(http.HandlerFunc(s.handleListMyShares)))
+	// Public, UNAUTHENTICATED share endpoints. The snapshot is pre-sanitized and the
+	// artifact endpoints serve only ids in the share's allowlist; see share_handlers.go.
+	mux.HandleFunc("GET /api/shares/{shareID}", s.handleGetPublicShare)
+	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/download", s.handlePublicShareArtifactDownload)
+	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/thumbnail", s.handlePublicShareArtifactThumbnail)
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
 	mux.Handle("POST /api/artifacts/images/upload", s.requireAuth(http.HandlerFunc(s.handleUploadImageAttachment)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))

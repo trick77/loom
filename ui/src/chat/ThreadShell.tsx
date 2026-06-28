@@ -154,6 +154,8 @@ export function ThreadShell({
   const {
     activeProject: activeProjectForRoute,
     activeThread,
+    activeShare,
+    setActiveShare,
     activeThreadProject,
     threadDataLoaded,
     loadError,
@@ -923,6 +925,8 @@ export function ThreadShell({
           <ThreadPanel
             thread={activeThread}
             threadProject={activeThreadProject}
+            share={activeShare}
+            onShareChange={setActiveShare}
             deferredAttachNote={deferredAttachNote}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             messages={messages}

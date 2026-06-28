@@ -90,6 +90,18 @@ type bulkDeleteThreadsResponse struct {
 type getThreadResponse struct {
 	Thread   chat.Thread    `json:"thread"`
 	Messages []chat.Message `json:"messages"`
+	// Share is the thread's share state (nil if never shared), used by the UI to show
+	// the Share button's "shared" state and the "new messages since snapshot" badge.
+	Share *shareSummary `json:"share,omitempty"`
+}
+
+// shareSummary is the owner-facing share state attached to a thread response and
+// returned by the create/update endpoints. It never carries the snapshot blob.
+type shareSummary struct {
+	ShareID    string `json:"shareId"`
+	ShareURL   string `json:"shareUrl"`
+	Shared     bool   `json:"shared"`
+	SnapshotAt string `json:"snapshotAt"`
 }
 
 type streamMessageRequest struct {

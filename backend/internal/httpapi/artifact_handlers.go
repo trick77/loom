@@ -69,11 +69,19 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	s.serveArtifactDownload(w, r, user.ID, r.PathValue("artifactID"))
+}
+
+// serveArtifactDownload streams an owner's artifact file with caching headers. It
+// is shared by the authed download handler and the public share-scoped handler
+// (which passes the share owner's id after checking the share allowlist), so the
+// file-serving logic lives in exactly one place.
+func (s *server) serveArtifactDownload(w http.ResponseWriter, r *http.Request, userID, artifactID string) {
 	if s.artifacts == nil {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
+	found, exists, err := s.artifacts.Get(r.Context(), userID, artifactID)
 	if err != nil {
 		serverError(w, r, err, "load artifact failed")
 		return
@@ -82,7 +90,7 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	abs, err := artifact.ResolveExisting(s.usersDir, user.ID, found.VolumeRelPath)
+	abs, err := artifact.ResolveExisting(s.usersDir, userID, found.VolumeRelPath)
 	if err != nil {
 		writeJSONError(w, http.StatusForbidden, "artifact path rejected")
 		return
@@ -129,11 +137,17 @@ func (s *server) handleThumbnailArtifact(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	s.serveArtifactThumbnail(w, r, user.ID, r.PathValue("artifactID"))
+}
+
+// serveArtifactThumbnail streams an owner's artifact thumbnail (lazily generating
+// it for older artifacts). Shared by the authed and public share-scoped handlers.
+func (s *server) serveArtifactThumbnail(w http.ResponseWriter, r *http.Request, userID, artifactID string) {
 	if s.artifacts == nil {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
+	found, exists, err := s.artifacts.Get(r.Context(), userID, artifactID)
 	if err != nil {
 		serverError(w, r, err, "load artifact failed")
 		return
@@ -142,7 +156,7 @@ func (s *server) handleThumbnailArtifact(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	abs, err := s.resolveOrCreateThumbnail(r.Context(), user.ID, found)
+	abs, err := s.resolveOrCreateThumbnail(r.Context(), userID, found)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
