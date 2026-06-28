@@ -22,6 +22,7 @@ export function ThreadActionsMenu({
   onSelect,
   onDelete,
   onRename,
+  onShare,
   onAddToProject,
   onRemoveFromProject,
   onStarChange,
@@ -32,6 +33,7 @@ export function ThreadActionsMenu({
   onSelect?(thread: Thread): void;
   onDelete(thread: Thread): void;
   onRename(thread: Thread): void;
+  onShare?(thread: Thread): void;
   onAddToProject?(thread: Thread): void;
   onRemoveFromProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
@@ -79,6 +81,19 @@ export function ThreadActionsMenu({
         </span>
         Rename
       </button>
+      {onShare !== undefined && (
+        <button
+          className={`${menuItemClass} text-[#f3f0e8]`}
+          role="menuitem"
+          type="button"
+          onClick={() => onShare(thread)}
+        >
+          <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+            <Icon name="upload" size="19px" />
+          </span>
+          Share
+        </button>
+      )}
       {hasProject ? (
         <button
           className={`${menuItemClass} text-[#f3f0e8] disabled:cursor-default disabled:opacity-100`}

@@ -37,12 +37,15 @@ export function MessageBubble({
   retryContent,
   onRetry,
   category,
+  publicView = false,
 }: {
-  message: Message & { attachments?: ComposerAttachment[] };
+  message: Message & { attachments?: ComposerAttachment[]; hadAttachment?: boolean };
   retryContent: string | null;
-  onRetry(content: string): void;
+  onRetry?(content: string): void;
   /** Thread-level prompt-classifier category, shown as a pill in the assistant metrics row. */
   category?: string;
+  /** Read-only public share viewer: hide actions, metrics and citations. */
+  publicView?: boolean;
 }) {
   if (message.role === "user") {
     return (
@@ -55,13 +58,16 @@ export function MessageBubble({
             {message.content}
           </div>
         )}
-        <MessageActions
-          copyLabel="Copy message"
-          copyText={message.content}
-          retryLabel="Retry message"
-          onRetry={() => onRetry(message.content)}
-          alignRight
-        />
+        {publicView && message.hadAttachment === true && <AttachmentNotShared />}
+        {!publicView && (
+          <MessageActions
+            copyLabel="Copy message"
+            copyText={message.content}
+            retryLabel="Retry message"
+            onRetry={() => onRetry?.(message.content)}
+            alignRight
+          />
+        )}
       </div>
     );
   }
@@ -80,16 +86,31 @@ export function MessageBubble({
       {blocks.map((block, index) => (
         <AssistantBlock key={`${message.id}-block-${index}`} block={block} />
       ))}
-      <MessageActions
-        copyLabel="Copy response"
-        copyText={markdownToPlainText(proseText)}
-        retryLabel="Retry response"
-        onRetry={retryContent === null ? undefined : () => onRetry(retryContent)}
-        metricsMessage={message}
-        category={category}
-        speakable
-      />
-      <MessageCitations citations={message.citations} />
+      {!publicView && (
+        <MessageActions
+          copyLabel="Copy response"
+          copyText={markdownToPlainText(proseText)}
+          retryLabel="Retry response"
+          onRetry={retryContent === null ? undefined : () => onRetry?.(retryContent)}
+          metricsMessage={message}
+          category={category}
+          speakable
+        />
+      )}
+      {!publicView && <MessageCitations citations={message.citations} />}
+    </div>
+  );
+}
+
+// AttachmentNotShared is the subtle marker shown in a public share on a message
+// that originally carried an uploaded file. The file itself is never shared (it
+// stays private); this keeps an assistant reply that references "the file you
+// sent" from reading as a non-sequitur.
+function AttachmentNotShared() {
+  return (
+    <div className="mt-2 flex items-center justify-end gap-1.5 text-xs italic text-[#8a857b]">
+      <Icon name="attach" size="14px" />
+      Attachment not shared
     </div>
   );
 }

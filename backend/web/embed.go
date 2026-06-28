@@ -5,6 +5,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"strings"
 )
 
 //go:embed all:dist
@@ -25,6 +26,16 @@ func SPAHandler() http.Handler {
 func spaHandler(fsys fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(fsys))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Keep public share pages out of search engines (a <meta> tag alone misses
+		// non-JS crawlers). Mirrors the X-Robots-Tag set by the share API handlers.
+		if r.URL.Path == "/robots.txt" {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte("User-agent: *\nDisallow: /share/\n"))
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/share/") {
+			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+		}
 		if info, err := fs.Stat(fsys, trimLeadingSlash(r.URL.Path)); err == nil && !info.IsDir() {
 			fileServer.ServeHTTP(w, r)
 			return

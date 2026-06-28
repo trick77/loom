@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { ActivityTraceEvent } from "../activityTrace";
-import type { ContentBlock, McpStatusEvent, Project, Thread } from "../api";
+import type { ContentBlock, McpStatusEvent, Project, ShareInfo, Thread } from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
+import { ShareDialog } from "../share/ShareDialog";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
@@ -19,6 +20,8 @@ import { WindowFileDrop } from "./WindowFileDrop";
 export function ThreadPanel({
   thread,
   threadProject,
+  share,
+  onShareChange,
   deferredAttachNote,
   messages,
   draft,
@@ -44,6 +47,8 @@ export function ThreadPanel({
 }: {
   thread: Thread | null;
   threadProject: Project | null;
+  share: ShareInfo | null;
+  onShareChange(next: ShareInfo | null): void;
   deferredAttachNote: string;
   messages: MessageWithActivityTrace[];
   draft: string;
@@ -72,6 +77,13 @@ export function ThreadPanel({
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  // The thread has unshared content when its latest message is newer than the
+  // share snapshot — this drives the dot badge and the "Update" affordance.
+  const hasNewMessagesSinceShare =
+    share?.shared === true &&
+    thread?.lastMessageAt !== undefined &&
+    new Date(thread.lastMessageAt).getTime() > new Date(share.snapshotAt).getTime();
   const headerMenuKey = thread === null ? null : `Header:${thread.id}`;
   const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   // The live turn is an ordered block list (text / trace / artifact). The
@@ -318,14 +330,45 @@ export function ThreadPanel({
                 className="right-0 top-full"
                 onDelete={onDeleteThread}
                 onRename={onRenameThread}
+                onShare={() => {
+                  onCloseThreadMenu();
+                  setShareDialogOpen(true);
+                }}
                 onAddToProject={onAddToProject}
                 onStarChange={onStarThread}
               />
             )}
           </div>
         </div>
-        {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator compact status={mcpStatus} />}
+        <div className="flex shrink-0 items-center gap-2">
+          {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator compact status={mcpStatus} />}
+          {thread !== null && (
+            <button
+              type="button"
+              aria-label="Share chat"
+              className="relative rounded-md border border-[#3a3a36] px-2.5 py-0.5 text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
+              onClick={() => setShareDialogOpen(true)}
+            >
+              Share
+              {hasNewMessagesSinceShare && (
+                <span
+                  aria-hidden
+                  className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[#c9a25f] ring-2 ring-[#1c1c19]"
+                />
+              )}
+            </button>
+          )}
+        </div>
       </header>
+      {thread !== null && shareDialogOpen && (
+        <ShareDialog
+          threadId={thread.id}
+          share={share}
+          hasNewMessages={hasNewMessagesSinceShare === true}
+          onShareChange={onShareChange}
+          onClose={() => setShareDialogOpen(false)}
+        />
+      )}
       <div className="relative min-h-0 flex-1">
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-bg to-transparent" />
         <div

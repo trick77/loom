@@ -9,6 +9,7 @@ import {
   type LoadedMessage,
   type McpStatusEvent,
   type Project,
+  type ShareInfo,
   type Thread,
 } from "../api";
 import { normalizeActivityTrace } from "../activityTrace";
@@ -36,6 +37,7 @@ export function useThreadData({
   const [projectThreads, setProjectThreads] = useState<Thread[]>([]);
   const [threadDataLoaded, setThreadDataLoaded] = useState(false);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
+  const [activeShare, setActiveShare] = useState<ShareInfo | null>(null);
   const [messages, setMessages] = useState<MessageWithActivityTrace[]>([]);
   const [loadError, setLoadError] = useState("");
   const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
@@ -87,6 +89,7 @@ export function useThreadData({
     if (route.view !== "thread") {
       activeThreadIDRef.current = null;
       setActiveThread(null);
+      setActiveShare(null);
       setMessages([]);
       if (streamingThreadIDRef.current === null) {
         clearStreamingBlocks();
@@ -99,6 +102,7 @@ export function useThreadData({
       .then((response) => {
         if (!active) return;
         setActiveThread(response.thread);
+        setActiveShare(response.share ?? null);
         activeThreadIDRef.current = response.thread.id;
         setMessages(response.messages.map(rehydrateLoadedMessage));
         if (streamingThreadIDRef.current === null) {
@@ -161,6 +165,8 @@ export function useThreadData({
   return {
     activeProject,
     activeThread,
+    activeShare,
+    setActiveShare,
     activeThreadProject,
     threadDataLoaded,
     loadError,

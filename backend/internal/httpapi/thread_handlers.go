@@ -102,7 +102,17 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "refresh message artifacts failed")
 		return
 	}
-	writeJSON(w, getThreadResponse{Thread: thread, Messages: messages})
+	share, hasShare, err := s.thread.GetShareByThreadID(r.Context(), user.ID, threadID)
+	if err != nil {
+		serverError(w, r, err, "get thread share failed")
+		return
+	}
+	resp := getThreadResponse{Thread: thread, Messages: messages}
+	if hasShare {
+		summary := s.shareSummaryOf(share)
+		resp.Share = &summary
+	}
+	writeJSON(w, resp)
 }
 
 // refreshMessageArtifacts overlays each message's embedded artifact snapshots with
