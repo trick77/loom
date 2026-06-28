@@ -190,6 +190,21 @@ WHERE user_id = ? AND id = ?`,
 	if err != nil {
 		return Message{}, fmt.Errorf("update thread message timestamp: %w", err)
 	}
+
+	// A new message is user activity in the owning project: bump its
+	// last_activity_at so the project card and "Recent activity" sort reflect it.
+	// No-op for project-less threads (the subquery yields no matching row).
+	_, err = tx.ExecContext(ctx, `
+UPDATE projects
+SET last_activity_at = datetime('now')
+WHERE user_id = ? AND id = (
+    SELECT project_id FROM threads
+    WHERE user_id = ? AND id = ? AND project_id IS NOT NULL)`,
+		userID, userID, threadID,
+	)
+	if err != nil {
+		return Message{}, fmt.Errorf("update project activity timestamp: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return Message{}, fmt.Errorf("commit message transaction: %w", err)
 	}

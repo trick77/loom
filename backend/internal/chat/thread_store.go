@@ -34,6 +34,13 @@ VALUES (?, ?, ?, ?)`,
 		return Thread{}, fmt.Errorf("insert thread: %w", err)
 	}
 
+	// Creating a thread inside a project is user activity in that project.
+	if projectID != nil {
+		if err := s.touchProjectActivity(ctx, userID, projectID); err != nil {
+			return Thread{}, err
+		}
+	}
+
 	thread, ok, err := s.GetThread(ctx, userID, threadID)
 	if err != nil {
 		return Thread{}, err
@@ -211,7 +218,30 @@ WHERE user_id = ? AND id = ?`,
 	if err != nil {
 		return Thread{}, false, fmt.Errorf("update thread: %w", err)
 	}
+
+	// Moving a thread into a project is user activity in that project.
+	if projectID != nil {
+		if err := s.touchProjectActivity(ctx, userID, projectID); err != nil {
+			return Thread{}, false, err
+		}
+	}
 	return s.GetThread(ctx, userID, threadID)
+}
+
+// touchProjectActivity bumps a project's last_activity_at to now. projectID is the
+// thread's project_id value (a string id; callers guard against the nil/no-project
+// case). Best-effort by design lives at the call site — here a DB error propagates.
+func (s *Store) touchProjectActivity(ctx context.Context, userID string, projectID any) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE projects
+SET last_activity_at = datetime('now')
+WHERE user_id = ? AND id = ?`,
+		userID, projectID,
+	)
+	if err != nil {
+		return fmt.Errorf("update project activity timestamp: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) SetThreadStarred(ctx context.Context, userID, threadID string, starred bool) (Thread, bool, error) {

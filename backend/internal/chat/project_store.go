@@ -23,8 +23,8 @@ func (s *Store) CreateProject(ctx context.Context, userID string, in CreateProje
 	projectID := newID()
 
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO projects (id, user_id, name, description)
-VALUES (?, ?, ?, ?)`,
+INSERT INTO projects (id, user_id, name, description, last_activity_at)
+VALUES (?, ?, ?, ?, datetime('now'))`,
 		projectID, userID, name, description,
 	)
 	if err != nil {
@@ -53,10 +53,10 @@ func (s *Store) ListProjects(ctx context.Context, userID string, archived bool) 
 		archiveFilter = "archived_at IS NOT NULL"
 	}
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-SELECT id, user_id, name, description, starred, archived_at, auto_description_generated_at, created_at, updated_at
+SELECT id, user_id, name, description, starred, archived_at, auto_description_generated_at, created_at, updated_at, last_activity_at
 FROM projects
 WHERE user_id = ? AND %s
-ORDER BY updated_at DESC, id DESC`, archiveFilter),
+ORDER BY last_activity_at DESC, id DESC`, archiveFilter),
 		userID,
 	)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 
 	_, err = s.db.ExecContext(ctx, `
 UPDATE projects
-SET name = ?, description = ?, updated_at = datetime('now')
+SET name = ?, description = ?, updated_at = datetime('now'), last_activity_at = datetime('now')
 WHERE user_id = ? AND id = ?`,
 		name, description, userID, projectID,
 	)
@@ -126,7 +126,7 @@ func (s *Store) SetProjectDescriptionIfEmpty(ctx context.Context, userID, projec
 
 	result, err := s.db.ExecContext(ctx, `
 UPDATE projects
-SET description = ?, auto_description_generated_at = datetime('now'), updated_at = datetime('now')
+SET description = ?, auto_description_generated_at = datetime('now')
 WHERE user_id = ? AND id = ? AND description = '' AND auto_description_generated_at IS NULL`,
 		description, userID, projectID,
 	)
@@ -151,7 +151,7 @@ func (s *Store) SetProjectStarred(ctx context.Context, userID, projectID string,
 	}
 	result, err := s.db.ExecContext(ctx, `
 UPDATE projects
-SET starred = ?, updated_at = datetime('now')
+SET starred = ?
 WHERE user_id = ? AND id = ?`,
 		starredInt, userID, projectID,
 	)
@@ -172,7 +172,7 @@ func (s *Store) SetProjectArchived(ctx context.Context, userID, projectID string
 	}
 	result, err := s.db.ExecContext(ctx, fmt.Sprintf(`
 UPDATE projects
-SET %s, updated_at = datetime('now')
+SET %s
 WHERE user_id = ? AND id = ?`, setArchivedAt),
 		userID, projectID,
 	)
@@ -196,7 +196,7 @@ WHERE user_id = ? AND id = ?`,
 
 func (s *Store) getProject(ctx context.Context, userID, projectID string) (Project, bool, error) {
 	project, err := scanProject(s.db.QueryRowContext(ctx, `
-SELECT id, user_id, name, description, starred, archived_at, auto_description_generated_at, created_at, updated_at
+SELECT id, user_id, name, description, starred, archived_at, auto_description_generated_at, created_at, updated_at, last_activity_at
 FROM projects
 WHERE user_id = ? AND id = ?`,
 		userID, projectID,

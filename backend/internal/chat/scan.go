@@ -15,8 +15,8 @@ type rowScanner interface {
 func scanProject(row rowScanner) (Project, error) {
 	var project Project
 	var archivedAt, autoDescriptionGeneratedAt sql.NullString
-	var createdAt, updatedAt string
-	if err := row.Scan(&project.ID, &project.UserID, &project.Name, &project.Description, &project.Starred, &archivedAt, &autoDescriptionGeneratedAt, &createdAt, &updatedAt); err != nil {
+	var createdAt, updatedAt, lastActivityAt string
+	if err := row.Scan(&project.ID, &project.UserID, &project.Name, &project.Description, &project.Starred, &archivedAt, &autoDescriptionGeneratedAt, &createdAt, &updatedAt, &lastActivityAt); err != nil {
 		return Project{}, err
 	}
 	var err error
@@ -35,6 +35,10 @@ func scanProject(row rowScanner) (Project, error) {
 	project.UpdatedAt, err = parseSQLiteTime(updatedAt)
 	if err != nil {
 		return Project{}, fmt.Errorf("parse updated_at: %w", err)
+	}
+	project.LastActivityAt, err = parseSQLiteTime(lastActivityAt)
+	if err != nil {
+		return Project{}, fmt.Errorf("parse last_activity_at: %w", err)
 	}
 	return project, nil
 }

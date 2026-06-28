@@ -21,6 +21,9 @@ export type Project = {
   archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  // Last *user* activity in the project (new message, new thread, name/description
+  // edit). Drives the card's "Updated X ago" label and the "Recent activity" sort.
+  lastActivityAt: string;
 };
 
 export type ProjectMemory = {

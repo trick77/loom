@@ -76,7 +76,8 @@ export function ProjectsPage({
     );
     return [...matches].sort((a, b) => {
       if (sort === "created") return compareDatesDesc(a.createdAt, b.createdAt);
-      return compareDatesDesc(a.updatedAt, b.updatedAt);
+      if (sort === "edited") return compareDatesDesc(a.updatedAt, b.updatedAt);
+      return compareDatesDesc(a.lastActivityAt, b.lastActivityAt);
     });
   }, [source, query, sort]);
 
@@ -224,7 +225,7 @@ export function ProjectsPage({
                 <p className="mt-5 line-clamp-3 text-sm leading-5 text-[#c7c5bd]">{project.description}</p>
               )}
               <p className="absolute bottom-4 left-4 text-sm text-[#8f8b82]">
-                Updated {formatTimeAgo(project.updatedAt)}
+                Updated {formatTimeAgo(project.lastActivityAt)}
               </p>
               <div
                 className="absolute right-3 top-3"
