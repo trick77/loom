@@ -206,9 +206,18 @@ func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Mes
 // channel format as literal text instead of a clean title — besides burning ~1k
 // reasoning tokens per call.
 func (c *Client) executeUtilityChatRequest(ctx context.Context, messages []Message) (*http.Response, error) {
+	return c.executeUtilityChatRequestWithBudget(ctx, messages, utilityMaxCompletionTokens)
+}
+
+// executeUtilityChatRequestWithBudget is executeUtilityChatRequest with a caller-chosen
+// completion-token cap. Titles/classifier fit the tiny utilityMaxCompletionTokens, but
+// the project description rides the project-memory refresh and is generated from the same
+// large transcript memory uses, so it needs real output headroom (see
+// projectDescriptionMaxCompletionTokens) to avoid a finish_reason=length truncation.
+func (c *Client) executeUtilityChatRequestWithBudget(ctx context.Context, messages []Message, maxCompletionTokens int) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
 		thinking:            &thinkingOption{Type: "disabled"},
-		maxCompletionTokens: utilityMaxCompletionTokens,
+		maxCompletionTokens: maxCompletionTokens,
 	})
 }
 
