@@ -2236,19 +2236,6 @@ test("keeps existing search activity icon glyph design", () => {
   expect(source).not.toContain("ui-activity-trace-chevron-icon");
 });
 
-test("keeps generated activity title sweep visually aligned with Thinking", () => {
-  const css = readFileSync("src/index.css", "utf8");
-  const thinkingRule = css.match(/\.ui-thinking-label-active\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const generatedTitleRule =
-    css.match(/\.ui-activity-tool-title\.ui-thinking-label-active\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-
-  expect(thinkingRule).toContain("color: #8f8a81");
-  expect(thinkingRule).toContain("font-weight: 500");
-  expect(generatedTitleRule).toContain("color: #8f8a81");
-  expect(generatedTitleRule).toContain("font-weight: 500");
-  expect(css).not.toContain("ui-activity-tool-title-sweeping");
-});
-
 test("keeps the reasoning clamp height in sync with REASONING_CAP_PX", () => {
   const source = readFileSync("src/chat/ActivityTracePanel.tsx", "utf8");
   const css = readFileSync("src/index.css", "utf8");

@@ -27,7 +27,7 @@ export type ToolSummary =
   | { kind: "search"; title: string }
   | { kind: "fetch"; title: string; url?: string }
   | { kind: "file"; title: string }
-  | { kind: "generated"; title: string; label: string }
+  | { kind: "generated"; title: string }
   | { kind: "generic"; title: string };
 
 export type ToolResultPreview =
@@ -154,6 +154,9 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   if (isDocsTool(name)) {
     return { kind: "search", title: "Searching the documentation" };
   }
+  if (/read_project_threads/i.test(name)) {
+    return { kind: "generated", title: "Reading project threads" };
+  }
   const url = stringValue(args, ["url", "uri", "href"]);
   if (url !== undefined) {
     return { kind: "fetch", title: domainFromURL(url) ?? url, url };
@@ -167,7 +170,7 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   const file = stringValue(args, ["filename", "file", "path", "displayFilename"]);
   const generated = generatedToolLabel(name, file);
   if (generated !== undefined) {
-    return { kind: "generated", title: `Creating ${generated.label}`, label: generated.label };
+    return { kind: "generated", title: `Creating ${generated}` };
   }
   if (file !== undefined) {
     return { kind: "file", title: file };
@@ -245,20 +248,18 @@ function isBrowserTool(name: string): boolean {
 }
 
 function isFetchTool(name: string): boolean {
-  return /fetch|crawl|read/i.test(name);
+  return /fetch|crawl/i.test(name);
 }
 
-function generatedToolLabel(name: string, file?: string): { title: string; label: string } | undefined {
+function generatedToolLabel(name: string, file?: string): string | undefined {
   const normalized = name.toLowerCase();
   const extension = file?.match(/\.([a-z0-9]+)\s*$/i)?.[1]?.toLowerCase();
-  if (normalized === "generate_image" || normalized.includes("image")) return { title: "image", label: "image" };
-  if (normalized.includes("pdf") || extension === "pdf") return { title: "PDF file", label: "PDF file" };
-  if (normalized.includes("docx") || extension === "docx") return { title: "document", label: "document" };
-  if (normalized.includes("xlsx") || extension === "xlsx") return { title: "spreadsheet", label: "spreadsheet" };
-  if (normalized.includes("pptx") || normalized.includes("presentation") || extension === "pptx") {
-    return { title: "presentation", label: "presentation" };
-  }
-  if (/^(create|generate|render|export)_/i.test(name)) return { title: readableToolName(name), label: "file" };
+  if (normalized === "generate_image" || normalized.includes("image")) return "image";
+  if (normalized.includes("pdf") || extension === "pdf") return "PDF file";
+  if (normalized.includes("docx") || extension === "docx") return "document";
+  if (normalized.includes("xlsx") || extension === "xlsx") return "spreadsheet";
+  if (normalized.includes("pptx") || normalized.includes("presentation") || extension === "pptx") return "presentation";
+  if (/^(create|generate|render|export)_/i.test(name)) return "file";
   return undefined;
 }
 

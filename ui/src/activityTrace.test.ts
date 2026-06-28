@@ -186,12 +186,10 @@ describe("activity trace model", () => {
     });
     expect(summarizeToolCall("generate_image", "{\"prompt\":\"a cabin\"}")).toMatchObject({
       kind: "generated",
-      label: "image",
       title: "Creating image",
     });
     expect(summarizeToolCall("create_pptx_presentation", "{\"filename\":\"deck.pptx\"}")).toMatchObject({
       kind: "generated",
-      label: "presentation",
       title: "Creating presentation",
     });
     expect(summarizeToolCall("custom__lookup", "not-json")).toMatchObject({
@@ -223,6 +221,10 @@ describe("activity trace model", () => {
     expect(summarizeToolCall("obscura__browser_snapshot", "{}")).toMatchObject({
       kind: "fetch",
       title: "Browsing the web",
+    });
+    expect(summarizeToolCall("read_project_threads", "{}")).toMatchObject({
+      kind: "generated",
+      title: "Reading project threads",
     });
   });
 

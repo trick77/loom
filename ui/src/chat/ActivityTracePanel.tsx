@@ -178,11 +178,9 @@ function ActivityTraceRow({
   const fetchUrl = event.summary.kind === "fetch" ? event.summary.url : undefined;
   const fetchFavicon = fetchUrl === undefined ? undefined : faviconURL(fetchUrl);
   const fetchHref = fetchUrl === undefined ? undefined : externalHTTPURL(fetchUrl);
-  const titleClassName =
-    event.summary.kind === "generated" && event.status === "running"
-      ? "ui-activity-tool-title ui-thinking-label-active"
-      : "ui-activity-tool-title";
-  const titleDataText = event.summary.kind === "generated" && event.status === "running" ? event.summary.title : undefined;
+  // Tool-call titles never sweep: the collapsed trace label above is always
+  // sweeping while the turn is active (a running tool implies active), so a
+  // second shimmer here would just be redundant.
   const toolIcon =
     event.summary.kind === "search" ? (
       <GlobeTraceIcon />
@@ -201,7 +199,7 @@ function ActivityTraceRow({
       <div className="min-w-0 flex-1">
         <div className="ui-activity-tool-header flex items-center justify-between gap-3">
           <span className="flex min-w-0 items-center gap-2">
-            <span className={titleClassName} data-text={titleDataText}>
+            <span className="ui-activity-tool-title">
               {event.summary.title}
             </span>
           </span>
