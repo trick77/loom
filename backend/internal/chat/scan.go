@@ -16,7 +16,7 @@ func scanProject(row rowScanner) (Project, error) {
 	var project Project
 	var archivedAt, autoDescriptionGeneratedAt sql.NullString
 	var createdAt, updatedAt, lastActivityAt string
-	if err := row.Scan(&project.ID, &project.UserID, &project.Name, &project.Description, &project.Starred, &archivedAt, &autoDescriptionGeneratedAt, &createdAt, &updatedAt, &lastActivityAt); err != nil {
+	if err := row.Scan(&project.ID, &project.UserID, &project.Name, &project.Description, &project.Starred, &archivedAt, &autoDescriptionGeneratedAt, &project.DescriptionUserEdited, &project.DescriptionSourceThreadCount, &createdAt, &updatedAt, &lastActivityAt); err != nil {
 		return Project{}, err
 	}
 	var err error

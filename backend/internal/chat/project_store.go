@@ -20,12 +20,19 @@ func (s *Store) CreateProject(ctx context.Context, userID string, in CreateProje
 	if len(description) > MaxProjectDescriptionLength {
 		return Project{}, errors.New("project description is too long")
 	}
+	// A description the user types at creation time is user-authored, so lock it
+	// (description_user_edited = 1) exactly as a manual edit would — otherwise the
+	// title-summary auto-generator would overwrite it on the first titled thread.
+	userEdited := 0
+	if description != "" {
+		userEdited = 1
+	}
 	projectID := newID()
 
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO projects (id, user_id, name, description, last_activity_at)
-VALUES (?, ?, ?, ?, datetime('now'))`,
-		projectID, userID, name, description,
+INSERT INTO projects (id, user_id, name, description, description_user_edited, last_activity_at)
+VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+		projectID, userID, name, description, userEdited,
 	)
 	if err != nil {
 		return Project{}, fmt.Errorf("insert project: %w", err)
@@ -53,7 +60,7 @@ func (s *Store) ListProjects(ctx context.Context, userID string, archived bool) 
 		archiveFilter = "archived_at IS NOT NULL"
 	}
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-SELECT id, user_id, name, description, starred, archived_at, auto_description_generated_at, created_at, updated_at, last_activity_at
+SELECT id, user_id, name, description, starred, archived_at, auto_description_generated_at, description_user_edited, description_source_thread_count, created_at, updated_at, last_activity_at
 FROM projects
 WHERE user_id = ? AND %s
 ORDER BY last_activity_at DESC, id DESC`, archiveFilter),
@@ -95,26 +102,41 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 		}
 	}
 	description := project.Description
-	if in.Description != nil {
+	descriptionTouched := in.Description != nil
+	if descriptionTouched {
 		description = strings.TrimSpace(*in.Description)
 		if len(description) > MaxProjectDescriptionLength {
 			return Project{}, false, errors.New("project description is too long")
 		}
 	}
 
-	// Clearing the description must also clear the auto-description marker, otherwise
-	// auto-generation (which guards on auto_description_generated_at IS NULL) stays
-	// permanently disabled and the project keeps a blank description forever. Setting
-	// a non-empty description leaves the marker untouched.
-	_, err = s.db.ExecContext(ctx, `
+	// A user editing the description changes its auto-generation state:
+	//   - non-empty → lock it (description_user_edited = 1) so the title-summary
+	//     auto-generator never overwrites the hand-written text.
+	//   - emptied → re-arm auto-generation: clear the user-edited lock, the debounce
+	//     marker, and the source thread count so the very next titled-thread refresh
+	//     regenerates immediately with nothing stale blocking it.
+	// A name-only edit (in.Description == nil) leaves all three untouched.
+	setDescriptionState := ""
+	if descriptionTouched {
+		if description == "" {
+			setDescriptionState = `,
+    auto_description_generated_at = NULL,
+    description_user_edited = 0,
+    description_source_thread_count = 0`
+		} else {
+			setDescriptionState = `,
+    description_user_edited = 1`
+		}
+	}
+	_, err = s.db.ExecContext(ctx, fmt.Sprintf(`
 UPDATE projects
 SET name = ?,
-    description = ?,
-    auto_description_generated_at = CASE WHEN ? = '' THEN NULL ELSE auto_description_generated_at END,
+    description = ?%s,
     updated_at = datetime('now'),
     last_activity_at = datetime('now')
-WHERE user_id = ? AND id = ?`,
-		name, description, description, userID, projectID,
+WHERE user_id = ? AND id = ?`, setDescriptionState),
+		name, description, userID, projectID,
 	)
 	if err != nil {
 		return Project{}, false, fmt.Errorf("update project: %w", err)
@@ -122,7 +144,15 @@ WHERE user_id = ? AND id = ?`,
 	return s.getProject(ctx, userID, projectID)
 }
 
-func (s *Store) SetProjectDescriptionIfEmpty(ctx context.Context, userID, projectID, generatedDescription string) (Project, bool, error) {
+// SetAutoProjectDescription stores an auto-generated description (the big-picture
+// summary of the project's thread titles) together with the titled-thread count it
+// was generated from. The WHERE clause re-checks description_user_edited = 0 under the
+// write, so a description the user hand-edited meanwhile is never clobbered (the same
+// atomic-guard pattern the one-shot fill used). sourceThreadCount is recorded so the
+// refresh gate regenerates only when the titled-thread count next changes. Unlike the
+// old SetProjectDescriptionIfEmpty this overwrites an existing auto description — the
+// description is now refreshed as the project grows, not filled once.
+func (s *Store) SetAutoProjectDescription(ctx context.Context, userID, projectID, generatedDescription string, sourceThreadCount int) (Project, bool, error) {
 	description := strings.TrimSpace(generatedDescription)
 	if description == "" {
 		project, _, err := s.getProject(ctx, userID, projectID)
@@ -134,9 +164,9 @@ func (s *Store) SetProjectDescriptionIfEmpty(ctx context.Context, userID, projec
 
 	result, err := s.db.ExecContext(ctx, `
 UPDATE projects
-SET description = ?, auto_description_generated_at = datetime('now')
-WHERE user_id = ? AND id = ? AND description = '' AND auto_description_generated_at IS NULL`,
-		description, userID, projectID,
+SET description = ?, auto_description_generated_at = datetime('now'), description_source_thread_count = ?
+WHERE user_id = ? AND id = ? AND description_user_edited = 0`,
+		description, sourceThreadCount, userID, projectID,
 	)
 	if err != nil {
 		return Project{}, false, fmt.Errorf("auto-describe project: %w", err)
@@ -204,7 +234,7 @@ WHERE user_id = ? AND id = ?`,
 
 func (s *Store) getProject(ctx context.Context, userID, projectID string) (Project, bool, error) {
 	project, err := scanProject(s.db.QueryRowContext(ctx, `
-SELECT id, user_id, name, description, starred, archived_at, auto_description_generated_at, created_at, updated_at, last_activity_at
+SELECT id, user_id, name, description, starred, archived_at, auto_description_generated_at, description_user_edited, description_source_thread_count, created_at, updated_at, last_activity_at
 FROM projects
 WHERE user_id = ? AND id = ?`,
 		userID, projectID,

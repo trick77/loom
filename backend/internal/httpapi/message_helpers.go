@@ -110,6 +110,12 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	if !found {
 		return category, nil
 	}
+	// A newly-titled thread in a project changes the project's titled-thread set, so
+	// refresh its big-picture description (debounced/count-gated, so this is cheap and
+	// fires real work only when the set actually changed). Best-effort, off the hot path.
+	if thread.ProjectID != nil {
+		s.maybeRefreshProjectDescriptionAsync(persistCtx, user, *thread.ProjectID)
+	}
 	return category, sendSSEJSON(stream, "thread", thread)
 }
 

@@ -90,7 +90,7 @@ type ThreadStore interface {
 	GetProject(context.Context, string, string) (chat.Project, bool, error)
 	ListProjects(context.Context, string, bool) ([]chat.Project, error)
 	UpdateProject(context.Context, string, string, chat.UpdateProjectInput) (chat.Project, bool, error)
-	SetProjectDescriptionIfEmpty(context.Context, string, string, string) (chat.Project, bool, error)
+	SetAutoProjectDescription(context.Context, string, string, string, int) (chat.Project, bool, error)
 	SetProjectStarred(context.Context, string, string, bool) (chat.Project, bool, error)
 	SetProjectArchived(context.Context, string, string, bool) (bool, error)
 	DeleteProject(context.Context, string, string) (bool, error)
@@ -98,6 +98,7 @@ type ThreadStore interface {
 	GetThread(context.Context, string, string) (chat.Thread, bool, error)
 	ListThreads(context.Context, string, chat.ListThreadsOptions) ([]chat.Thread, error)
 	ListThreadIDs(context.Context, string, chat.ListThreadsOptions) ([]string, error)
+	ListProjectThreadTitles(context.Context, string, string) ([]string, error)
 	UpdateThread(context.Context, string, string, chat.UpdateThreadInput) (chat.Thread, bool, error)
 	SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error)
 	SetThreadImageModelIfEmpty(context.Context, string, string, string) (chat.Thread, bool, error)
@@ -176,7 +177,7 @@ type ChatClient interface {
 	GenerateReasoningTitle(context.Context, string) (string, error)
 	GenerateMemory(context.Context, string, string, string, string) (string, error)
 	ApplyMemoryEdit(context.Context, string, string, string, string) (string, error)
-	GenerateProjectDescription(context.Context, string, string) (string, error)
+	GenerateProjectDescription(context.Context, string, []string) (string, error)
 }
 
 // ToolService exposes configured MCP tools to chat handlers.

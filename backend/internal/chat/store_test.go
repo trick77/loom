@@ -102,7 +102,7 @@ func TestStore_CreateProjectAndThreadScopesByUser(t *testing.T) {
 	}
 }
 
-func TestStore_SetProjectDescriptionIfEmptyIsOneShot(t *testing.T) {
+func TestStore_SetAutoProjectDescriptionOverwritesAndRecordsCount(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	userID := insertTestUser(t, db, "alice")
@@ -113,9 +113,9 @@ func TestStore_SetProjectDescriptionIfEmptyIsOneShot(t *testing.T) {
 		t.Fatalf("CreateProject() error: %v", err)
 	}
 
-	updated, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "  Early research plan.  ")
+	updated, changed, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "  Early research plan.  ", 2)
 	if err != nil {
-		t.Fatalf("SetProjectDescriptionIfEmpty() error: %v", err)
+		t.Fatalf("SetAutoProjectDescription() error: %v", err)
 	}
 	if !changed {
 		t.Fatal("changed = false, want true for initially empty description")
@@ -123,16 +123,95 @@ func TestStore_SetProjectDescriptionIfEmptyIsOneShot(t *testing.T) {
 	if updated.Description != "Early research plan." {
 		t.Fatalf("Description = %q, want trimmed generated description", updated.Description)
 	}
+	if updated.DescriptionSourceThreadCount != 2 {
+		t.Fatalf("DescriptionSourceThreadCount = %d, want 2", updated.DescriptionSourceThreadCount)
+	}
+	if updated.AutoDescriptionGeneratedAt == nil {
+		t.Fatal("AutoDescriptionGeneratedAt = nil after auto-describe, want set")
+	}
 
-	again, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "Replacement")
+	// Unlike the old one-shot fill, a second call overwrites the auto description as the
+	// project grows and records the new source count.
+	again, changed, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "Broader research program.", 5)
 	if err != nil {
-		t.Fatalf("second SetProjectDescriptionIfEmpty() error: %v", err)
+		t.Fatalf("second SetAutoProjectDescription() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("changed = false, want true when overwriting an auto description")
+	}
+	if again.Description != "Broader research program." {
+		t.Fatalf("Description = %q, want overwritten", again.Description)
+	}
+	if again.DescriptionSourceThreadCount != 5 {
+		t.Fatalf("DescriptionSourceThreadCount = %d, want 5", again.DescriptionSourceThreadCount)
+	}
+}
+
+func TestStore_CreateProjectWithDescriptionLocksAutoGeneration(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	// A description typed at creation is user-authored and must be protected from the
+	// title-summary auto-generator (regression guard: the empty-gate used to protect it).
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research", Description: "My own words."})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	if !project.DescriptionUserEdited {
+		t.Fatal("DescriptionUserEdited = false after creating with a description, want true (locked)")
+	}
+
+	after, changed, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "Auto summary.", 3)
+	if err != nil {
+		t.Fatalf("SetAutoProjectDescription() error: %v", err)
+	}
+	if changed || after.Description != "My own words." {
+		t.Fatalf("create-time description was overwritten by auto-generation: %q (changed=%v)", after.Description, changed)
+	}
+
+	// Sanity: a project created without a description stays auto-managed.
+	auto, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Other"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	if auto.DescriptionUserEdited {
+		t.Fatal("DescriptionUserEdited = true for a project created without a description, want false")
+	}
+}
+
+func TestStore_SetAutoProjectDescriptionRespectsUserEditLock(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+
+	// A hand-edited (non-empty) description locks auto-generation.
+	hand := "Hand-written description."
+	edited, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Description: &hand})
+	if err != nil {
+		t.Fatalf("UpdateProject() error: %v", err)
+	}
+	if !edited.DescriptionUserEdited {
+		t.Fatal("DescriptionUserEdited = false after a non-empty manual edit, want true (locked)")
+	}
+
+	// Auto-generation must not overwrite the locked description.
+	after, changed, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "Auto summary.", 3)
+	if err != nil {
+		t.Fatalf("SetAutoProjectDescription() error: %v", err)
 	}
 	if changed {
-		t.Fatal("changed = true, want false after auto-description marker is set")
+		t.Fatal("changed = true, want false: a user-edited description must never be overwritten")
 	}
-	if again.Description != "Early research plan." {
-		t.Fatalf("Description after second attempt = %q, want original", again.Description)
+	if after.Description != hand {
+		t.Fatalf("Description = %q, want the hand-written text preserved", after.Description)
 	}
 }
 
@@ -147,17 +226,18 @@ func TestStore_UpdateProjectBlankingDescriptionReArmsAutoDescription(t *testing.
 		t.Fatalf("CreateProject() error: %v", err)
 	}
 
-	// Auto-describe sets the description and the one-shot marker together.
-	described, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "Early research plan.")
-	if err != nil || !changed {
-		t.Fatalf("SetProjectDescriptionIfEmpty() = %v, changed=%v", err, changed)
+	// Lock it via a manual edit, with an auto baseline already recorded.
+	if _, _, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "Auto plan.", 1); err != nil {
+		t.Fatalf("SetAutoProjectDescription() error: %v", err)
 	}
-	if described.AutoDescriptionGeneratedAt == nil {
-		t.Fatal("AutoDescriptionGeneratedAt = nil after auto-describe, want set")
+	hand := "Hand-written plan."
+	if _, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Description: &hand}); err != nil {
+		t.Fatalf("UpdateProject() error: %v", err)
 	}
 
-	// Clearing the description must also clear the marker, otherwise auto-generation
-	// stays disabled forever and the project keeps a blank description.
+	// Clearing the description re-arms auto-generation: the user-edit lock, the debounce
+	// marker, and the source-thread count are all reset so the next refresh regenerates
+	// immediately with nothing stale blocking it.
 	blank := ""
 	cleared, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Description: &blank})
 	if err != nil {
@@ -166,12 +246,18 @@ func TestStore_UpdateProjectBlankingDescriptionReArmsAutoDescription(t *testing.
 	if cleared.Description != "" {
 		t.Fatalf("Description = %q, want empty after blanking", cleared.Description)
 	}
+	if cleared.DescriptionUserEdited {
+		t.Fatal("DescriptionUserEdited still true after blanking, want false so auto-describe re-engages")
+	}
 	if cleared.AutoDescriptionGeneratedAt != nil {
-		t.Fatal("AutoDescriptionGeneratedAt still set after blanking, want nil so auto-describe re-engages")
+		t.Fatal("AutoDescriptionGeneratedAt still set after blanking, want nil (immediate re-gen)")
+	}
+	if cleared.DescriptionSourceThreadCount != 0 {
+		t.Fatalf("DescriptionSourceThreadCount = %d after blanking, want 0", cleared.DescriptionSourceThreadCount)
 	}
 
 	// Auto-describe now works again.
-	again, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "Regenerated plan.")
+	again, changed, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "Regenerated plan.", 2)
 	if err != nil || !changed {
 		t.Fatalf("re-describe after blanking: err=%v changed=%v, want changed=true", err, changed)
 	}
@@ -180,7 +266,7 @@ func TestStore_UpdateProjectBlankingDescriptionReArmsAutoDescription(t *testing.
 	}
 }
 
-func TestStore_UpdateProjectSettingNonEmptyDescriptionKeepsMarker(t *testing.T) {
+func TestStore_UpdateProjectNameOnlyEditPreservesDescriptionState(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	userID := insertTestUser(t, db, "alice")
@@ -190,21 +276,28 @@ func TestStore_UpdateProjectSettingNonEmptyDescriptionKeepsMarker(t *testing.T) 
 	if err != nil {
 		t.Fatalf("CreateProject() error: %v", err)
 	}
-	if _, changed, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "Auto plan."); err != nil || !changed {
-		t.Fatalf("SetProjectDescriptionIfEmpty() = %v, changed=%v", err, changed)
+	if _, _, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "Auto plan.", 4); err != nil {
+		t.Fatalf("SetAutoProjectDescription() error: %v", err)
 	}
 
-	// A non-empty edit leaves the marker untouched (no spurious re-generation).
-	newDesc := "Hand-written description."
-	updated, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Description: &newDesc})
+	// A name-only edit (Description == nil) must leave the auto-description state intact:
+	// still auto-managed, marker preserved, source count preserved.
+	newName := "Research v2"
+	updated, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Name: &newName})
 	if err != nil {
 		t.Fatalf("UpdateProject() error: %v", err)
 	}
-	if updated.AutoDescriptionGeneratedAt == nil {
-		t.Fatal("AutoDescriptionGeneratedAt cleared on a non-empty edit, want preserved")
+	if updated.DescriptionUserEdited {
+		t.Fatal("DescriptionUserEdited = true after a name-only edit, want false")
 	}
-	if updated.Description != newDesc {
-		t.Fatalf("Description = %q, want %q", updated.Description, newDesc)
+	if updated.AutoDescriptionGeneratedAt == nil {
+		t.Fatal("AutoDescriptionGeneratedAt cleared on a name-only edit, want preserved")
+	}
+	if updated.DescriptionSourceThreadCount != 4 {
+		t.Fatalf("DescriptionSourceThreadCount = %d after name-only edit, want 4 preserved", updated.DescriptionSourceThreadCount)
+	}
+	if updated.Description != "Auto plan." {
+		t.Fatalf("Description = %q, want preserved", updated.Description)
 	}
 }
 

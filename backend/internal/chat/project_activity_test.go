@@ -152,8 +152,8 @@ func TestStore_LastActivityAt_NotMovedByIncidentalEvents(t *testing.T) {
 			t.Fatalf("CreateProject() error: %v", err)
 		}
 		setLastActivity(t, db, project.ID, oldActivity)
-		if _, _, err := store.SetProjectDescriptionIfEmpty(ctx, userID, project.ID, "auto generated summary"); err != nil {
-			t.Fatalf("SetProjectDescriptionIfEmpty() error: %v", err)
+		if _, _, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "auto generated summary", 1); err != nil {
+			t.Fatalf("SetAutoProjectDescription() error: %v", err)
 		}
 		if got := lastActivityRaw(t, db, project.ID); got != oldActivity {
 			t.Fatalf("auto-description moved last_activity_at to %q, want %q", got, oldActivity)

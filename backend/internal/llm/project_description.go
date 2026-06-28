@@ -9,24 +9,41 @@ import (
 	"time"
 )
 
-const projectDescriptionSystemPrompt = "You write concise project descriptions for a chat app. Given the project name and early conversation, reply with ONLY one neutral sentence fragment describing what the project is about. No markdown, no title, no quotes, no preamble. Keep it under 160 characters."
+const projectDescriptionSystemPrompt = "You write one concise big-picture description of a project for a chat app. You are given the project name and the titles of every conversation thread in the project. Reply with ONLY one neutral sentence fragment that captures the overall theme tying the threads together — describe the project as a whole, do not list or enumerate the threads. No markdown, no title, no quotes, no preamble. Hard limit: one sentence, at most 160 characters."
 
 // projectDescriptionMaxCompletionTokens caps the description completion. A
-// description is one ≤160-char sentence fragment (~40 tokens), but it now rides the
-// project-memory refresh and is generated from the same large project transcript memory
-// uses, so give it real output headroom (like memory's 768) — a tight title-sized cap
-// truncates the reply to finish_reason=length, which is then salvaged (not discarded)
-// below, but a generous cap avoids needing to salvage in the first place.
+// description is one ≤160-char sentence fragment (~40 tokens); give it some output
+// headroom so a slightly verbose reply finishes cleanly rather than hitting
+// finish_reason=length and needing salvage. The final text is hard-capped to
+// projectDescriptionMaxChars below regardless.
 const projectDescriptionMaxCompletionTokens = 256
 
-func (c *Client) GenerateProjectDescription(ctx context.Context, projectName, transcript string) (string, error) {
+// projectDescriptionMaxChars hard-caps the final description length (runes). The
+// prompt already asks for ≤160 chars, but this is enforced in code on a word boundary
+// so a model that ignores the instruction (or a length-truncated salvage) can never
+// produce an oversized description. One rune is reserved for the trailing period.
+const projectDescriptionMaxChars = 160
+
+// GenerateProjectDescription summarizes the project's thread titles into a single
+// big-picture sentence fragment describing the project as a whole. titles are the
+// meaningfully-titled, non-archived threads in the project (placeholder "New thread"
+// titles excluded by the caller).
+func (c *Client) GenerateProjectDescription(ctx context.Context, projectName string, titles []string) (string, error) {
 	start := time.Now()
 	var b strings.Builder
 	b.WriteString("Project name:\n\"\"\"\n")
 	b.WriteString(strings.TrimSpace(projectName))
-	b.WriteString("\n\"\"\"\n\nEarly conversation:\n\"\"\"\n")
-	b.WriteString(strings.TrimSpace(transcript))
-	b.WriteString("\n\"\"\"\n\nProject description:")
+	b.WriteString("\n\"\"\"\n\nThread titles in this project:\n\"\"\"\n")
+	for _, title := range titles {
+		title = strings.TrimSpace(title)
+		if title == "" {
+			continue
+		}
+		b.WriteString("- ")
+		b.WriteString(title)
+		b.WriteString("\n")
+	}
+	b.WriteString("\"\"\"\n\nProject description:")
 
 	messages := []Message{
 		{Role: "system", Content: projectDescriptionSystemPrompt},
@@ -83,8 +100,27 @@ func cleanProjectDescription(description string) string {
 	description = strings.TrimSpace(description)
 	description = strings.TrimRight(description, ".")
 	description = strings.TrimSpace(description)
+	// Enforce the hard length cap on a word boundary. Reserve one rune for the
+	// trailing period appended below so the final string never exceeds the cap.
+	description = truncateToMaxChars(description, projectDescriptionMaxChars-1)
 	if description != "" && !strings.HasSuffix(description, "!") && !strings.HasSuffix(description, "?") {
 		description += "."
 	}
 	return description
+}
+
+// truncateToMaxChars caps content to max runes, cutting at the last whitespace before
+// the limit so it never ends mid-word (falling back to a hard rune cut when a single
+// word already exceeds max). Trailing punctuation/space is trimmed.
+func truncateToMaxChars(content string, max int) string {
+	runes := []rune(content)
+	if len(runes) <= max {
+		return content
+	}
+	truncated := string(runes[:max])
+	if i := strings.LastIndexAny(truncated, " \t\n"); i > 0 {
+		truncated = truncated[:i]
+	}
+	truncated = strings.TrimRight(truncated, " \t\n,;:-")
+	return strings.TrimSpace(truncated)
 }

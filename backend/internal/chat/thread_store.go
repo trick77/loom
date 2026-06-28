@@ -209,6 +209,39 @@ ORDER BY COALESCE(last_message_at, updated_at) DESC, updated_at DESC, id DESC`, 
 	return ids, nil
 }
 
+// ListProjectThreadTitles returns the titles of the project's non-archived,
+// meaningfully-titled threads in creation order. Threads still carrying the
+// DefaultThreadTitle placeholder ("New thread") are excluded: a thread joins this
+// list exactly when its real title is generated, so it doubles as the gate signal
+// (a change in len() means a thread was titled, moved, or archived) and as the
+// source for the project's big-picture description summary.
+func (s *Store) ListProjectThreadTitles(ctx context.Context, userID, projectID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT title
+FROM threads
+WHERE user_id = ? AND project_id = ? AND archived_at IS NULL AND title != ?
+ORDER BY created_at ASC, id ASC`,
+		userID, projectID, DefaultThreadTitle,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list project thread titles: %w", err)
+	}
+	defer rows.Close()
+
+	titles := make([]string, 0)
+	for rows.Next() {
+		var title string
+		if err := rows.Scan(&title); err != nil {
+			return nil, fmt.Errorf("scan project thread title: %w", err)
+		}
+		titles = append(titles, title)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate project thread titles: %w", err)
+	}
+	return titles, nil
+}
+
 func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in UpdateThreadInput) (Thread, bool, error) {
 	thread, ok, err := s.GetThread(ctx, userID, threadID)
 	if err != nil || !ok {

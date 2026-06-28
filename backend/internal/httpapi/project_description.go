@@ -4,70 +4,77 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/auth"
-	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 )
 
-// maybeAutoDescribeProject one-shot fills an empty project description from the
-// given transcript. It rides the project-memory refresh (see refreshMemory), so
-// it runs whenever the project's memory is (re)calculated — asynchronously, off
-// the request hot path — rather than on its own per-turn trigger. Best-effort:
-// errors are logged, never surfaced. The empty/one-shot guard here mirrors the
-// atomic guard in SetProjectDescriptionIfEmpty (which re-checks under the write,
-// so a stale in-memory project can never overwrite a description set meanwhile).
-func (s *server) maybeAutoDescribeProject(ctx context.Context, user auth.User, project chat.Project, transcript string) {
-	if strings.TrimSpace(project.Description) != "" || project.AutoDescriptionGeneratedAt != nil {
-		return
-	}
-	if strings.TrimSpace(transcript) == "" {
-		return
-	}
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "project_description", Round: 1}
-	description, err := s.llm.GenerateProjectDescription(llm.WithInferenceMetadata(ctx, inference), project.Name, transcript)
-	if err != nil {
-		slog.Warn("generate project description failed", "project_id", project.ID, "error", err)
-		return
-	}
-	if strings.TrimSpace(description) == "" {
-		return
-	}
-	if _, _, err := s.thread.SetProjectDescriptionIfEmpty(ctx, user.ID, project.ID, description); err != nil {
-		slog.Warn("persist project description failed", "project_id", project.ID, "error", err)
-	}
+// maybeRefreshProjectDescriptionAsync refreshes a project's auto-generated
+// description in the background. The description is a one-sentence big-picture summary
+// of the project's thread titles, so it is refreshed when a new thread is titled (the
+// caller fires this from the thread-title finalization path) and as a backstop from
+// the memory sweep. It detaches from the request context so it survives the handler
+// returning, and is best-effort (errors are logged, never surfaced). The actual work
+// is gated/debounced in refreshProjectDescriptionIfDue, so a no-op call is cheap.
+func (s *server) maybeRefreshProjectDescriptionAsync(parent context.Context, user auth.User, projectID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), memoryBackgroundTimeout)
+		defer cancel()
+		if err := s.refreshProjectDescriptionIfDue(ctx, user, projectID); err != nil {
+			slog.Warn("background project description refresh failed", "project_id", projectID, "error", err)
+		}
+	}()
 }
 
-// maybeBackfillProjectDescription fills an empty project description independently
-// of the memory-refresh activity gate. maybeAutoDescribeProject rides
-// refreshMemory, which the activity gate (count <= source_message_count) skips for
-// a project that has no new messages since its last refresh — so a project that is
-// missing its description (e.g. one whose description was later cleared, re-arming
-// the marker) would otherwise never regenerate it without fresh activity. The
-// background MemoryWorker calls this every sweep; the empty/one-shot guard plus the
-// atomic SetProjectDescriptionIfEmpty make it a cheap no-op once a description
-// exists. It re-reads the project so a description just set by the gated refresh in
-// the same sweep is seen, avoiding a redundant generation.
+// refreshProjectDescriptionIfDue regenerates a project's auto-description from its
+// thread titles when the gate is met, mirroring the project-memory refresh gate:
 //
-// Retry policy: if generation returns empty (e.g. the model produced no salvageable
-// text), no description is stored and the marker is left unset, so the next sweep
-// retries. This is deliberate — a missing description should self-heal — and the cost
-// is bounded by the sweep cadence (one attempt per project per sweep), not per turn.
-// GenerateProjectDescription salvages truncated replies, so a genuinely empty result
-// means a real upstream outage, where retrying on the next sweep is the right behavior.
-func (s *server) maybeBackfillProjectDescription(ctx context.Context, user auth.User, project chat.Project) {
-	fresh, ok, err := s.thread.GetProject(ctx, user.ID, project.ID)
+//   - skip if the user hand-edited the description (DescriptionUserEdited) — manual
+//     descriptions are locked and never overwritten;
+//   - skip when the titled-thread count is unchanged since the last generation
+//     (DescriptionSourceThreadCount) — nothing new to summarize;
+//   - debounce: skip when the description was regenerated within memoryProjectDebounce
+//     (a never-generated description has no marker and is always due).
+//
+// The count gate (rather than firing once on creation) is what guarantees "big picture
+// always": a thread titled inside a debounce window is caught on the next trigger or
+// sweep because the count still differs, instead of being stranded.
+func (s *server) refreshProjectDescriptionIfDue(ctx context.Context, user auth.User, projectID string) error {
+	project, err := s.findProject(ctx, user.ID, projectID)
+	if err != nil || project == nil {
+		return err
+	}
+	if project.DescriptionUserEdited {
+		return nil
+	}
+	titles, err := s.thread.ListProjectThreadTitles(ctx, user.ID, projectID)
 	if err != nil {
-		slog.Warn("backfill project description: load project failed", "project_id", project.ID, "error", err)
-		return
+		return err
 	}
-	if !ok || strings.TrimSpace(fresh.Description) != "" || fresh.AutoDescriptionGeneratedAt != nil {
-		return
+	if len(titles) == 0 {
+		return nil
 	}
-	messages, err := s.thread.ListProjectMessages(ctx, user.ID, project.ID, memoryRebuildLimit)
+	if len(titles) == project.DescriptionSourceThreadCount {
+		return nil
+	}
+	if project.AutoDescriptionGeneratedAt != nil && time.Since(*project.AutoDescriptionGeneratedAt) < memoryProjectDebounce {
+		return nil
+	}
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "project_description", Round: 1}
+	description, err := s.llm.GenerateProjectDescription(llm.WithInferenceMetadata(ctx, inference), project.Name, titles)
 	if err != nil {
-		slog.Warn("backfill project description: list messages failed", "project_id", project.ID, "error", err)
-		return
+		slog.Warn("generate project description failed", "project_id", projectID, "error", err)
+		return nil
 	}
-	s.maybeAutoDescribeProject(ctx, user, fresh, transcriptFromMessages(messages))
+	if strings.TrimSpace(description) == "" {
+		return nil
+	}
+	// SetAutoProjectDescription re-checks the user-edited lock under the write, so a
+	// description the user hand-edited between the load above and here is never
+	// clobbered. The current titled-thread count is recorded as the new gate baseline.
+	if _, _, err := s.thread.SetAutoProjectDescription(ctx, user.ID, projectID, description, len(titles)); err != nil {
+		slog.Warn("persist project description failed", "project_id", projectID, "error", err)
+	}
+	return nil
 }
