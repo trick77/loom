@@ -459,7 +459,9 @@ function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string
     <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
       <div className="flex items-center gap-3">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-          <span className="text-[10px] font-semibold uppercase leading-none tracking-tight">{label}</span>
+          <span aria-hidden="true" className="text-[10px] font-semibold uppercase leading-none tracking-tight">
+            {label}
+          </span>
         </div>
         <div className="min-w-0 flex-1">
           <div className="ui-message-text truncate">{label} response</div>
@@ -475,7 +477,9 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
     <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
       <div className="flex items-center gap-3">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-          <span className="text-[10px] font-semibold uppercase leading-none tracking-tight">{artifact.label}</span>
+          <span aria-hidden="true" className="text-[10px] font-semibold uppercase leading-none tracking-tight">
+            {artifact.label}
+          </span>
         </div>
         <div className="min-w-0 flex-1">
           <div className="ui-message-text truncate">{artifact.label} response</div>

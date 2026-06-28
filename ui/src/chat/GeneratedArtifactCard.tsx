@@ -112,7 +112,9 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
         {!isImage && (
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
             {typeLabel ? (
-              <span className="text-[10px] font-semibold uppercase leading-none tracking-tight">{typeLabel}</span>
+              <span aria-hidden="true" className="text-[10px] font-semibold uppercase leading-none tracking-tight">
+                {typeLabel}
+              </span>
             ) : (
               <Icon name="artifact" size="20px" />
             )}
