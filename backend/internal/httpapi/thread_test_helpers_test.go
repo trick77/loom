@@ -370,6 +370,14 @@ func (f *fakeThreadStore) ListMessages(context.Context, string, string) ([]chat.
 	return append([]chat.Message(nil), f.messages...), true, nil
 }
 
+func (f *fakeThreadStore) ListRecentMessages(_ context.Context, _ string, _ string, limit int) ([]chat.Message, error) {
+	msgs := append([]chat.Message(nil), f.messages...)
+	if limit > 0 && len(msgs) > limit {
+		msgs = msgs[len(msgs)-limit:]
+	}
+	return msgs, nil
+}
+
 func (f *fakeThreadStore) GetProjectMemory(_ context.Context, _ string, projectID string) (chat.ProjectMemory, bool, error) {
 	if f.projectMemory.ProjectID == "" {
 		return chat.ProjectMemory{ProjectID: projectID}, false, nil

@@ -36,7 +36,7 @@ type assistantLoopResult struct {
 }
 
 func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageArtifactRequired bool, editSource *editImageSource) (assistantLoopResult, error) {
-	tools := s.availableTools()
+	tools := s.availableTools(thread)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)

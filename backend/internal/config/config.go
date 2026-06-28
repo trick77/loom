@@ -23,6 +23,17 @@ const defaultChatTimeout = 2 * time.Minute
 // full-document injection and always use RAG.
 const defaultKnowledgeInlineTokenBudget = 24000
 
+// defaultProjectSummaryTokenBudget bounds the total size of the cross-thread
+// digest the read_project_threads tool returns (the source material the model
+// summarizes when asked to "summarize the threads in this project"). Kept
+// deliberately conservative: MiMo 2.5 Pro's context window is small, and the
+// digest has to coexist with the knowledge/memory/history context already in the
+// prompt — so this budget intentionally does not try to fill the window. The
+// per-thread share is this budget divided by the number of sibling threads, so
+// every thread is represented rather than the tail being dropped. Tune via
+// BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET once the real window is pinned.
+const defaultProjectSummaryTokenBudget = 6000
+
 // defaultChatIdleTimeout aborts a chat stream that goes silent mid-turn. Sized
 // conservatively: MiMo can stay quiet for tens of seconds inside a long reasoning
 // block, so the window must clear that to avoid killing legitimate turns, while
@@ -60,9 +71,12 @@ type Config struct {
 	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
 	// turn (0 disables it, falling back to pure RAG retrieval).
 	KnowledgeInlineTokenBudget int
-	BFLBaseURL                 string
-	BFLAPIKey                  string
-	BFLModel                   string
+	// ProjectSummaryTokenBudget bounds the cross-thread digest the
+	// read_project_threads tool returns when summarizing a project's threads.
+	ProjectSummaryTokenBudget int
+	BFLBaseURL                string
+	BFLAPIKey                 string
+	BFLModel                  string
 	// BFLTypographyModel is used instead of BFLModel for the first image of a
 	// thread when the request reads as typography/logo/text work (FLUX.2 [flex]
 	// renders legible text far better than the klein default). Empty disables
@@ -180,6 +194,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("BACKEND_KNOWLEDGE_INLINE_TOKEN_BUDGET must be a non-negative integer (0 disables full-document knowledge injection)")
 	}
 	cfg.KnowledgeInlineTokenBudget = knowledgeInlineTokenBudget
+	projectSummaryTokenBudget, err := strconv.Atoi(env("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET", strconv.Itoa(defaultProjectSummaryTokenBudget)))
+	if err != nil || projectSummaryTokenBudget <= 0 {
+		return Config{}, fmt.Errorf("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET must be an integer greater than 0")
+	}
+	cfg.ProjectSummaryTokenBudget = projectSummaryTokenBudget
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
 	}
