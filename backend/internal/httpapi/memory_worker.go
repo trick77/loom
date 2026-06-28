@@ -11,8 +11,8 @@ import (
 
 // MemoryWorker runs the periodic, activity-gated memory refresh so generation no
 // longer fires on every assistant turn. It sweeps every memoryBatchInterval and,
-// for each user/project, only regenerates a memory that is both due (enough new
-// messages) and stale (older than its debounce window): once a day for user
+// for each user/project, only regenerates a memory that has new activity (a
+// created or updated thread) and is past its debounce window: once a day for user
 // memory, once an hour for project memory. Project memory is also refreshed
 // responsively after a turn (see maybeRefreshProjectMemoryAsync); this sweep is
 // the backstop that catches scopes whose last activity did not re-trigger that
