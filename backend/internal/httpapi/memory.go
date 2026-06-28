@@ -34,7 +34,7 @@ const (
 	// per this window per project. Project memory is the cross-thread shared
 	// context, so it stays responsive (refreshed within a turn of crossing the
 	// window) while never firing on every turn.
-	memoryProjectDebounce = 1 * time.Hour
+	memoryProjectDebounce = 15 * time.Minute
 )
 
 // memoryScope describes one memory's storage and generation so the project and
@@ -63,8 +63,8 @@ type memoryScope struct {
 // synchronous core of the background refresh (split out so it is testable without
 // a goroutine). minAge debounces regeneration: when the memory was refreshed more
 // recently than minAge ago, the refresh is skipped (pass 0 to disable). This is
-// what keeps the daily user sweep and the hourly project refresh from firing on
-// every turn.
+// what keeps the daily user sweep and the debounced project refresh from firing
+// on every turn.
 func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope memoryScope, minAge time.Duration) error {
 	count, err := scope.count(ctx)
 	if err != nil {
