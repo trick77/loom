@@ -52,11 +52,11 @@ func TestStreamMessageInjectsUserMemory(t *testing.T) {
 	}
 }
 
-// TestRefreshUserMemoryIfDue_BelowThresholdIsNoOp guards the gate: too few new
-// messages must not trigger a refresh.
-func TestRefreshUserMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
+// TestRefreshUserMemoryIfDue_NoNewMessagesIsNoOp guards the gate: with no new
+// messages since the last refresh (zero delta), nothing regenerates.
+func TestRefreshUserMemoryIfDue_NoNewMessagesIsNoOp(t *testing.T) {
 	store := &fakeThreadStore{
-		userMessageCount: memoryRefreshThreshold - 1,
+		userMessageCount: 0,
 		messages:         []chat.Message{{Role: chat.RoleUser, Content: "Hi"}},
 	}
 	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
@@ -65,15 +65,15 @@ func TestRefreshUserMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
 	if store.userMemory.Content != "" {
-		t.Fatalf("memory = %q, want no refresh below the gate", store.userMemory.Content)
+		t.Fatalf("memory = %q, want no refresh with zero new messages", store.userMemory.Content)
 	}
 }
 
-// TestRefreshUserMemoryIfDue_AtThresholdRefreshes proves the gate fires and the
-// incremental refresh folds in the recent messages across all threads.
-func TestRefreshUserMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
+// TestRefreshUserMemoryIfDue_AnyNewMessageRefreshes proves a single new message
+// fires the gate and the incremental refresh folds in the recent messages.
+func TestRefreshUserMemoryIfDue_AnyNewMessageRefreshes(t *testing.T) {
 	store := &fakeThreadStore{
-		userMessageCount: memoryRefreshThreshold,
+		userMessageCount: 1,
 		messages:         []chat.Message{{Role: chat.RoleUser, Content: "I moved to Zurich"}},
 	}
 	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- Lives in Zurich"}}
@@ -84,7 +84,7 @@ func TestRefreshUserMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
 	if store.userMemory.Content != "- Lives in Zurich" {
 		t.Fatalf("memory = %q, want refreshed content", store.userMemory.Content)
 	}
-	if store.userMemory.SourceMessageCount != memoryRefreshThreshold {
-		t.Fatalf("source count = %d, want %d", store.userMemory.SourceMessageCount, memoryRefreshThreshold)
+	if store.userMemory.SourceMessageCount != 1 {
+		t.Fatalf("source count = %d, want 1", store.userMemory.SourceMessageCount)
 	}
 }

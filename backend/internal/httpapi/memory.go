@@ -14,9 +14,6 @@ import (
 
 // Memory tuning, shared by the project and user memories.
 const (
-	// memoryRefreshThreshold is how many new messages must accumulate (since the
-	// last refresh) before a refresh is eligible — the "got updated" gate.
-	memoryRefreshThreshold = 4
 	// memoryRebuildLimit caps how many recent messages a refresh reads, so it never
 	// loads the entire history. It also caps the incremental fold window.
 	memoryRebuildLimit = 200
@@ -77,7 +74,11 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	if err != nil {
 		return err
 	}
-	if count-sourceCount < memoryRefreshThreshold {
+	// Refresh on any new activity since the last refresh — a created or updated
+	// thread raises count. Zero delta is a no-op, and must short-circuit here: the
+	// window would be 0 and scope.list's limit<=0 path defaults to 200, which would
+	// rebuild from nothing.
+	if count <= sourceCount {
 		return nil
 	}
 	// Debounce: skip when the memory was refreshed within minAge. A never-generated

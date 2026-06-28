@@ -94,7 +94,7 @@ func TestRefreshProjectMemoryIfDue_AutoFillsEmptyDescription(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Research", Description: ""},
-		projectMessageCount: memoryRefreshThreshold,
+		projectMessageCount: 1,
 		messages:            []chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}},
 	}
 	s := &server{thread: store, llm: fakeChatClient{
@@ -128,7 +128,7 @@ func TestRefreshProjectMemory_AutoFillsDescriptionEvenWhenMemoryEmpty(t *testing
 
 	err := s.refreshProjectMemory(
 		context.Background(), testUser, projectID, "",
-		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, memoryRefreshThreshold,
+		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, 1,
 	)
 	if err != nil {
 		t.Fatalf("refreshProjectMemory() error: %v", err)
@@ -157,7 +157,7 @@ func TestRefreshProjectMemory_DoesNotOverwriteExistingDescription(t *testing.T) 
 
 	err := s.refreshProjectMemory(
 		context.Background(), testUser, projectID, "",
-		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, memoryRefreshThreshold,
+		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, 1,
 	)
 	if err != nil {
 		t.Fatalf("refreshProjectMemory() error: %v", err)
@@ -192,7 +192,7 @@ func TestRefreshProjectMemory_SkipsDescriptionWhenAlreadyGenerated(t *testing.T)
 
 	err := s.refreshProjectMemory(
 		context.Background(), testUser, projectID, "",
-		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, memoryRefreshThreshold,
+		[]chat.Message{{Role: chat.RoleUser, Content: "Collect the papers."}}, 1,
 	)
 	if err != nil {
 		t.Fatalf("refreshProjectMemory() error: %v", err)
@@ -254,13 +254,13 @@ func TestRefreshProjectMemory_GeneratesAndStores(t *testing.T) {
 	}
 }
 
-// TestRefreshProjectMemoryIfDue_BelowThresholdIsNoOp guards the gate: too few
-// new messages must not trigger a refresh.
-func TestRefreshProjectMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
+// TestRefreshProjectMemoryIfDue_NoNewMessagesIsNoOp guards the gate: with no new
+// messages since the last refresh (zero delta), nothing regenerates.
+func TestRefreshProjectMemoryIfDue_NoNewMessagesIsNoOp(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		projectMessageCount: memoryRefreshThreshold - 1,
+		projectMessageCount: 0,
 		messages:            []chat.Message{{Role: chat.RoleUser, Content: "When?"}},
 	}
 	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
@@ -269,17 +269,18 @@ func TestRefreshProjectMemoryIfDue_BelowThresholdIsNoOp(t *testing.T) {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
 	}
 	if store.projectMemory.Content != "" {
-		t.Fatalf("memory = %q, want no refresh below the gate", store.projectMemory.Content)
+		t.Fatalf("memory = %q, want no refresh with zero new messages", store.projectMemory.Content)
 	}
 }
 
-// TestRefreshProjectMemoryIfDue_AtThresholdRefreshes proves the gate fires and
-// the incremental refresh folds in the recent (cross-thread) project messages.
-func TestRefreshProjectMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
+// TestRefreshProjectMemoryIfDue_AnyNewMessageRefreshes proves a single new message
+// fires the gate and the incremental refresh folds in the recent (cross-thread)
+// project messages.
+func TestRefreshProjectMemoryIfDue_AnyNewMessageRefreshes(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
 		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		projectMessageCount: memoryRefreshThreshold,
+		projectMessageCount: 1,
 		messages:            []chat.Message{{Role: chat.RoleUser, Content: "Traveling in May"}},
 	}
 	s := &server{thread: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
@@ -290,8 +291,8 @@ func TestRefreshProjectMemoryIfDue_AtThresholdRefreshes(t *testing.T) {
 	if store.projectMemory.Content != "Travel month: May" {
 		t.Fatalf("memory = %q, want refreshed content", store.projectMemory.Content)
 	}
-	if store.projectMemory.SourceMessageCount != memoryRefreshThreshold {
-		t.Fatalf("source count = %d, want %d", store.projectMemory.SourceMessageCount, memoryRefreshThreshold)
+	if store.projectMemory.SourceMessageCount != 1 {
+		t.Fatalf("source count = %d, want 1", store.projectMemory.SourceMessageCount)
 	}
 }
 

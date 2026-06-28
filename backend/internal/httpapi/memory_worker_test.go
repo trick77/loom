@@ -59,7 +59,7 @@ func TestRefreshMemoryIfDue_AdaptiveWindowSizesToBacklog(t *testing.T) {
 	}{
 		{name: "backlog under cap", count: 100, sourceCount: 0, wantLimit: 100},
 		{name: "backlog over cap is capped", count: 500, sourceCount: 0, wantLimit: memoryRebuildLimit},
-		{name: "small backlog", count: memoryRefreshThreshold, sourceCount: 0, wantLimit: memoryRefreshThreshold},
+		{name: "small backlog", count: 2, sourceCount: 0, wantLimit: 2},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
