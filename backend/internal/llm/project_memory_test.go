@@ -62,13 +62,30 @@ func TestUserMemorySystemPromptCapturesResponsePreferences(t *testing.T) {
 
 func TestProjectMemorySystemPromptRequiresTerseFragments(t *testing.T) {
 	for _, want := range []string{
-		"terse fragments",
+		"terse '- ' fragment lines",
 		"Do NOT start facts with \"The user\"",
 		"drop filler words",
 		"caveman",
 	} {
 		if !strings.Contains(ProjectMemorySystemPrompt, want) {
 			t.Fatalf("project memory prompt missing %q:\n%s", want, ProjectMemorySystemPrompt)
+		}
+	}
+}
+
+// TestProjectMemorySystemPromptDefinesFixedSections guards the sectioned-profile
+// structure: project memory must request the five fixed markdown headings so the
+// output stays a consistent profile shared across the project's chats.
+func TestProjectMemorySystemPromptDefinesFixedSections(t *testing.T) {
+	for _, want := range []string{
+		"## Purpose & context",
+		"## Current state",
+		"## Key learnings & principles",
+		"## Approach & patterns",
+		"## Tools & resources",
+	} {
+		if !strings.Contains(ProjectMemorySystemPrompt, want) {
+			t.Fatalf("project memory prompt missing section heading %q:\n%s", want, ProjectMemorySystemPrompt)
 		}
 	}
 }
