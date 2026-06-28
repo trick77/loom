@@ -121,11 +121,33 @@ func (s *server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
+	// If a share row already exists (active or previously disabled), re-sharing
+	// re-enables it and re-freezes the snapshot, keeping the same public link. Only
+	// an active, unchanged share would be a true no-op; re-snapshotting is harmless
+	// and matches the "Create public link" intent after a Keep-private toggle.
 	if existing, has, err := s.thread.GetShareByThreadID(r.Context(), user.ID, threadID); err != nil {
 		serverError(w, r, err, "get share failed")
 		return
 	} else if has {
-		writeJSON(w, s.shareSummaryOf(existing))
+		snapshot, artifactIDs, err := s.buildThreadSnapshot(r.Context(), user, threadID, thread.Title, existing.ShareID)
+		if err != nil {
+			serverError(w, r, err, "build share snapshot failed")
+			return
+		}
+		share, updated, err := s.thread.UpdateShareSnapshot(r.Context(), user.ID, threadID, chat.UpdateShareInput{
+			Title:       thread.Title,
+			Snapshot:    snapshot,
+			ArtifactIDs: artifactIDs,
+		})
+		if err != nil {
+			serverError(w, r, err, "update share failed")
+			return
+		}
+		if !updated {
+			writeJSONError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeJSON(w, s.shareSummaryOf(share))
 		return
 	}
 
