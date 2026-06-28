@@ -44,6 +44,8 @@ export type Thread = {
   /** Prompt-classifier category chosen on the first message; "" until classified. */
   category?: string;
   starred: boolean;
+  /** True when an active public share link exists; set on list payloads to badge shared threads. */
+  shared?: boolean;
   archivedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -188,12 +190,6 @@ export type ToolResultEvent = {
   content: string;
 };
 
-export type McpStatusEvent = {
-  active: number;
-  configured: number;
-  servers?: { name: string; active: boolean }[];
-};
-
 type ThreadResponse = {
   thread: Thread;
   messages: LoadedMessage[];
@@ -255,7 +251,6 @@ type StreamHandlers = {
   onToolPending?(): void;
   onToolCall?(event: ToolCallEvent): void;
   onToolResult?(event: ToolResultEvent): void;
-  onMcpStatus?(event: McpStatusEvent): void;
   onArtifact?(artifact: Artifact): void;
   onKnowledgeSources?(sources: Citation[]): void;
 };
@@ -300,10 +295,6 @@ export async function listProjects(archived?: boolean): Promise<Project[]> {
   return expectJSON<Project[]>(response, "failed to load projects");
 }
 
-export async function getMcpStatus(): Promise<McpStatusEvent> {
-  const response = await fetch("/api/mcp/status");
-  return expectJSON<McpStatusEvent>(response, "failed to load MCP status");
-}
 
 export async function createProject(input: { name: string; description?: string }): Promise<Project> {
   const response = await fetch("/api/projects", {
@@ -889,9 +880,6 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "tool_result":
       handlers.onToolResult?.(payload as ToolResultEvent);
-      break;
-    case "mcp_status":
-      handlers.onMcpStatus?.(payload as McpStatusEvent);
       break;
     case "artifact":
       handlers.onArtifact?.(payload as Artifact);

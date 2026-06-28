@@ -88,6 +88,11 @@ type Thread struct {
 	CreatedAt     time.Time  `json:"createdAt"`
 	UpdatedAt     time.Time  `json:"updatedAt"`
 	LastMessageAt *time.Time `json:"lastMessageAt"`
+	// Shared is true when an active public share link exists for this thread
+	// (a shared_threads row with shared=1). Populated by ListThreads so chat
+	// lists can badge shared threads; left false on single-thread fetches,
+	// which expose share state separately via the Share summary.
+	Shared bool `json:"shared"`
 }
 
 // Message is one item in a thread transcript.

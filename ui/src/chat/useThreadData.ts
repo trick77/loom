@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   AuthExpiredError,
-  getMcpStatus,
   getThread,
   listProjects,
   listThreads,
   type LoadedMessage,
-  type McpStatusEvent,
   type Project,
   type ShareInfo,
   type Thread,
@@ -40,7 +38,6 @@ export function useThreadData({
   const [activeShare, setActiveShare] = useState<ShareInfo | null>(null);
   const [messages, setMessages] = useState<MessageWithActivityTrace[]>([]);
   const [loadError, setLoadError] = useState("");
-  const [mcpStatus, setMcpStatus] = useState<McpStatusEvent | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -66,24 +63,6 @@ export function useThreadData({
       streamAbortRef.current?.abort();
     };
   }, [onSessionExpired, streamAbortRef]);
-
-  useEffect(() => {
-    let active = true;
-    getMcpStatus()
-      .then((status) => {
-        if (!active) return;
-        setMcpStatus(status);
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        if (error instanceof AuthExpiredError) {
-          onSessionExpired();
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [onSessionExpired]);
 
   const loadRoute = useCallback((route: RouteState) => {
     if (route.view !== "thread") {
@@ -172,14 +151,12 @@ export function useThreadData({
     loadError,
     loadProjectThreads,
     loadRoute,
-    mcpStatus,
     messages,
     projectThreads,
     projects,
     recentThreads,
     setActiveThread,
     setMessages,
-    setMcpStatus,
     setProjectThreads,
     setProjects,
     setThreads,

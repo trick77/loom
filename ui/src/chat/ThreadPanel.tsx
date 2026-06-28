@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { ActivityTraceEvent } from "../activityTrace";
-import type { ContentBlock, McpStatusEvent, Project, ShareInfo, Thread } from "../api";
+import type { ContentBlock, Project, ShareInfo, Thread } from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ShareDialog } from "../share/ShareDialog";
@@ -14,7 +14,6 @@ import { AssistantProse, MessageBubble } from "./messages";
 import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
-import { McpStatusIndicator } from "./SidebarItems";
 import { WindowFileDrop } from "./WindowFileDrop";
 
 export function ThreadPanel({
@@ -30,7 +29,6 @@ export function ThreadPanel({
   sendError,
   isSending,
   sendDisabled,
-  mcpStatus,
   openThreadMenuID,
   onOpenSidebar,
   onDraftChange,
@@ -57,7 +55,6 @@ export function ThreadPanel({
   sendError: string;
   isSending: boolean;
   sendDisabled: boolean;
-  mcpStatus: McpStatusEvent | null;
   openThreadMenuID: string | null;
   onDraftChange(value: string): void;
   onSend(attachments?: ComposerAttachment[]): void;
@@ -341,12 +338,11 @@ export function ThreadPanel({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {mcpStatus !== null && mcpStatus.configured > 0 && <McpStatusIndicator compact status={mcpStatus} />}
           {thread !== null && (
             <button
               type="button"
               aria-label="Share chat"
-              className="relative rounded-md border border-[#3a3a36] px-2.5 py-0.5 text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
+              className="relative rounded-md px-2.5 py-0.5 text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
               onClick={() => setShareDialogOpen(true)}
             >
               Share

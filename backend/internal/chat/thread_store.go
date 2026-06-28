@@ -138,7 +138,42 @@ LIMIT ?`, strings.Join(filters, " AND "))
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate threads: %w", err)
 	}
+	if err := s.markSharedThreads(ctx, userID, threads); err != nil {
+		return nil, err
+	}
 	return threads, nil
+}
+
+// markSharedThreads sets Shared=true on every thread in the page that has an
+// active public share link. Share rows per user are few, so a single
+// user-scoped lookup (covered by idx_shared_threads_user) is cheaper than a
+// per-row join and keeps the keyset pagination query untouched.
+func (s *Store) markSharedThreads(ctx context.Context, userID string, threads []Thread) error {
+	if len(threads) == 0 {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT thread_id FROM shared_threads WHERE user_id = ? AND shared = 1`, userID)
+	if err != nil {
+		return fmt.Errorf("list shared thread ids: %w", err)
+	}
+	defer rows.Close()
+	shared := make(map[string]struct{})
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan shared thread id: %w", err)
+		}
+		shared[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate shared thread ids: %w", err)
+	}
+	for i := range threads {
+		if _, ok := shared[threads[i].ID]; ok {
+			threads[i].Shared = true
+		}
+	}
+	return nil
 }
 
 // ListThreadIDs returns the ids of every thread matching the same filters as
@@ -341,7 +376,15 @@ WHERE user_id = ? AND id = ?`,
 		userID, threadID,
 	))
 	if err == nil {
-		return thread, true, nil
+		// Carry the share flag on single-thread fetches too: the frontend upserts
+		// the returned thread back into its lists (on rename, star, title
+		// generation, and the post-message "thread" SSE event), so a missing flag
+		// here would clobber the SharedPill on the next mutation.
+		threads := []Thread{thread}
+		if err := s.markSharedThreads(ctx, userID, threads); err != nil {
+			return Thread{}, false, err
+		}
+		return threads[0], true, nil
 	}
 	if err == sql.ErrNoRows {
 		return Thread{}, false, nil

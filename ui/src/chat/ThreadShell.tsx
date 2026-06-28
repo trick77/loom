@@ -10,8 +10,8 @@ import {
   streamMessage,
   type Artifact,
   type ContentBlock,
-  type McpStatusEvent,
   type Project,
+  type ShareInfo,
   type Thread,
   type User,
 } from "../api";
@@ -161,14 +161,12 @@ export function ThreadShell({
     loadError,
     loadProjectThreads,
     loadRoute,
-    mcpStatus,
     messages,
     projectThreads,
     projects,
     recentThreads,
     setActiveThread,
     setMessages,
-    setMcpStatus,
     setProjectThreads,
     setProjects,
     setThreads,
@@ -446,6 +444,26 @@ export function ThreadShell({
     }
   }
 
+  // Sharing/unsharing from the dialog updates activeShare, but the SharedPill in
+  // the chat lists reads thread.shared — so mirror the new share state onto the
+  // active thread in every list it appears in, otherwise the pill only updates
+  // after a full reload.
+  const handleShareChange = useCallback(
+    (share: ShareInfo | null) => {
+      setActiveShare(share);
+      const id = activeThreadIDRef.current;
+      if (id === null) return;
+      const shared = share !== null && share.shared;
+      setThreads((current) =>
+        current.map((item) => (item.id === id ? { ...item, shared } : item)),
+      );
+      setProjectThreads((current) =>
+        current.map((item) => (item.id === id ? { ...item, shared } : item)),
+      );
+    },
+    [setActiveShare, setThreads, setProjectThreads],
+  );
+
   async function handleSetProjectStarred(project: Project, starred: boolean, menuKey?: string) {
     if (isUpdatingStar) return;
     setIsUpdatingStar(true);
@@ -700,7 +718,6 @@ export function ThreadShell({
             setProjectThreads((current) => upsertThreadById(current, updatedThread));
           }
         },
-        onMcpStatus: (event) => setMcpStatus(event),
       }, abortController.signal, { documentAttachmentIds, imageAttachmentIds });
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
@@ -909,7 +926,6 @@ export function ThreadShell({
             draft={draft}
             isSending={false}
             sendDisabled={isSending}
-            mcpStatus={mcpStatus}
             sendError={sendError}
             attachments={pendingAttachments}
             attachNote={pendingAttachNote}
@@ -926,7 +942,7 @@ export function ThreadShell({
             thread={activeThread}
             threadProject={activeThreadProject}
             share={activeShare}
-            onShareChange={setActiveShare}
+            onShareChange={handleShareChange}
             deferredAttachNote={deferredAttachNote}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             messages={messages}
@@ -936,7 +952,6 @@ export function ThreadShell({
             sendError={visibleSendError}
             isSending={activeThreadIsStreaming}
             sendDisabled={isSending && !activeThreadIsStreaming}
-            mcpStatus={mcpStatus}
             openThreadMenuID={openThreadMenuID}
             onDraftChange={setDraft}
             onSend={handleSend}

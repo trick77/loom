@@ -1,32 +1,11 @@
 import { type ReactNode, useEffect, useRef } from "react";
 
-import type { McpStatusEvent, Project, Thread } from "../api";
+import type { Project, Thread } from "../api";
 import { menuDeleteItemClass, menuIconClass, menuItemClass, ThreadActionsMenu, TrashMenuIcon } from "../ThreadActionsMenu";
 import { ArchiveIcon } from "../projects/ProjectActionsMenu";
+import { SharedPill } from "../SharedPill";
 import { Icon } from "./Icon";
 import type { SidebarIconName } from "./types";
-
-export function McpStatusIndicator({ compact = false, status }: { compact?: boolean; status: McpStatusEvent }) {
-  const allActive = status.active === status.configured;
-  const ringClass = allActive ? "border-success" : "border-danger";
-  const dotClass = allActive ? "bg-success" : "bg-danger";
-  const inactiveServers = status.servers?.filter((server) => !server.active).map((server) => server.name) ?? [];
-  const tooltip =
-    !allActive && inactiveServers.length > 0
-      ? `${status.active} of ${status.configured} MCP servers active. Failed: ${inactiveServers.join(", ")}`
-      : `${status.active} of ${status.configured} MCP servers active`;
-  return (
-    <div
-      className={`ui-meta-text flex items-center gap-1.5 text-muted ${compact ? "" : "mt-2"}`}
-      title={tooltip}
-    >
-      <span className={`inline-flex h-3 w-3 items-center justify-center rounded-full border ${ringClass}`}>
-        <span className={`h-1 w-1 rounded-full ${dotClass}`} />
-      </span>
-      <span>{status.active}</span>
-    </div>
-  );
-}
 
 export function SidebarPrimaryItem({
   icon,
@@ -175,8 +154,9 @@ function SidebarThreadItem({
           active ? "bg-[#10100f] text-white" : "hover:bg-[#2a2a28]"
         }`}
       >
-        <button className="relative min-w-0 flex-1 overflow-hidden text-left" onClick={() => onSelect(thread.id)} type="button">
-          <span className={`block whitespace-nowrap ${active ? "pr-7" : "truncate"}`}>{thread.title}</span>
+        <button className="relative flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left" onClick={() => onSelect(thread.id)} type="button">
+          {thread.shared && <SharedPill />}
+          <span className={`min-w-0 whitespace-nowrap ${active ? "flex-1 pr-7" : "truncate"}`}>{thread.title}</span>
           {active && (
             <span className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]" aria-hidden="true" />
           )}
