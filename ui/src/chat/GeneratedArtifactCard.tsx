@@ -5,15 +5,23 @@ import { buildImageStats, fileTypeLabel, formatFileSize } from "./artifacts";
 import { DownloadIcon } from "./icons";
 import { Icon } from "./Icon";
 import { ImageLightbox } from "./ImageLightbox";
+import { PdfLightbox } from "./PdfLightbox";
+import { isPdfAttachment } from "./useDocumentAttachments";
 
 export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const [error, setError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   // A deleted artifact has no bytes on disk: render a tombstone (disabled
   // download + notice) and skip every fetch/preview path below.
   const deleted = artifact.deleted === true;
   const isImage = artifact.mimeType.startsWith("image/") && !deleted;
+  // Non-deleted PDFs render a clickable card body that opens an inline preview.
+  const isPdf =
+    !deleted &&
+    !isImage &&
+    isPdfAttachment({ mimeType: artifact.mimeType, filename: artifact.displayFilename });
   const imageStats = isImage ? buildImageStats(artifact) : null;
   const typeLabel = fileTypeLabel(artifact.displayFilename);
 
@@ -109,28 +117,37 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           </button>
         ))}
       <div className="flex items-center gap-3 px-4 py-3">
-        {!isImage && (
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-            {typeLabel ? (
-              <span aria-hidden="true" className="text-[10px] font-semibold uppercase leading-none tracking-tight">
-                {typeLabel}
-              </span>
-            ) : (
-              <Icon name="artifact" size="20px" />
-            )}
-          </div>
+        {/* For a PDF the icon+filename form a single button that opens the inline
+            preview; the download button stays a separate sibling so keyboard
+            activation of one never triggers the other. Other files render the
+            same content as a plain (non-interactive) block. */}
+        {isPdf ? (
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+            onClick={() => setPdfPreviewOpen(true)}
+            title={`Preview ${artifact.displayFilename}`}
+            aria-label={`Preview ${artifact.displayFilename}`}
+          >
+            <ArtifactCardIcon typeLabel={typeLabel} />
+            <ArtifactCardInfo
+              artifact={artifact}
+              deleted={deleted}
+              imageStats={imageStats}
+              error={error}
+            />
+          </button>
+        ) : (
+          <>
+            {!isImage && <ArtifactCardIcon typeLabel={typeLabel} />}
+            <ArtifactCardInfo
+              artifact={artifact}
+              deleted={deleted}
+              imageStats={imageStats}
+              error={error}
+            />
+          </>
         )}
-        <div className="min-w-0 flex-1">
-          <div className={`ui-message-text truncate ${deleted ? "text-[#aaa79e] line-through" : ""}`}>
-            {artifact.displayFilename}
-          </div>
-          <div className="ui-meta-text text-[#aaa79e]">
-            {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
-          </div>
-          {imageStats !== null && <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>}
-          {deleted && <div className="ui-meta-text text-[#d09a73]">This file was deleted</div>}
-          {error !== "" && <div className="ui-meta-text text-[#d36f67]">{error}</div>}
-        </div>
         {deleted ? (
           <span
             className="grid h-8 w-8 shrink-0 cursor-not-allowed place-items-center rounded-md bg-[#33332f] text-[#6f6d66]"
@@ -159,6 +176,57 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           onClose={() => setLightboxOpen(false)}
         />
       )}
+      {pdfPreviewOpen && (
+        <PdfLightbox
+          downloadUrl={artifact.downloadUrl}
+          filename={artifact.displayFilename}
+          onClose={() => setPdfPreviewOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// The square type badge shown left of the filename for non-image artifacts:
+// a short uppercase extension label (e.g. "PDF") or a generic glyph fallback.
+function ArtifactCardIcon({ typeLabel }: { typeLabel: string | null }) {
+  return (
+    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
+      {typeLabel ? (
+        <span aria-hidden="true" className="text-[10px] font-semibold uppercase leading-none tracking-tight">
+          {typeLabel}
+        </span>
+      ) : (
+        <Icon name="artifact" size="20px" />
+      )}
+    </div>
+  );
+}
+
+// The filename + metadata column shared by the clickable (PDF) and plain card
+// layouts, so the two paths can't drift.
+function ArtifactCardInfo({
+  artifact,
+  deleted,
+  imageStats,
+  error,
+}: {
+  artifact: Artifact;
+  deleted: boolean;
+  imageStats: string | null;
+  error: string;
+}) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className={`ui-message-text truncate ${deleted ? "text-[#aaa79e] line-through" : ""}`}>
+        {artifact.displayFilename}
+      </div>
+      <div className="ui-meta-text text-[#aaa79e]">
+        {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
+      </div>
+      {imageStats !== null && <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>}
+      {deleted && <div className="ui-meta-text text-[#d09a73]">This file was deleted</div>}
+      {error !== "" && <div className="ui-meta-text text-[#d36f67]">{error}</div>}
     </div>
   );
 }

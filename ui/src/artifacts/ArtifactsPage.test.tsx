@@ -82,9 +82,22 @@ function renderPage() {
   return props;
 }
 
+// A non-PDF, non-image file: it still downloads on click (the preview modal is
+// reserved for images and PDFs).
+const textFile = artifact({
+  id: "art_text",
+  displayFilename: "notes.txt",
+  mimeType: "text/plain",
+  downloadUrl: "/api/artifacts/art_text/download",
+});
+
 beforeEach(() => {
   intersectionCallbacks = [];
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  // PdfLightbox turns the fetched blob into a `blob:` object URL; jsdom doesn't
+  // implement these, so provide no-op stubs.
+  URL.createObjectURL = vi.fn(() => "blob:mock");
+  URL.revokeObjectURL = vi.fn();
   listArtifactsMock.mockResolvedValue(page([robot, artifact({})]));
   downloadArtifactMock.mockResolvedValue(new Blob(["image-bytes"], { type: "image/png" }));
 });
@@ -194,22 +207,19 @@ test("reflects server-side type filtering", async () => {
 });
 
 test("keeps row metadata on the filename line", async () => {
+  listArtifactsMock.mockResolvedValue(page([robot, textFile]));
   renderPage();
   await screen.findByText("robot.png");
 
-  const row = screen.getByText("quarterly-board-update.pdf").closest("li");
+  const row = screen.getByText("notes.txt").closest("li");
   expect(row).not.toBeNull();
-  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(
-    "quarterly-board-update.pdf",
-  );
+  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent("notes.txt");
   // Relative timestamps are clock-dependent; assert a relative label is present.
   expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(/ago/);
   expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent("1.3 MB");
-  expect(row?.querySelector(".ui-artifacts-row-secondary")).toHaveTextContent("application/pdf");
+  expect(row?.querySelector(".ui-artifacts-row-secondary")).toHaveTextContent("text/plain");
   expect(row?.querySelector(".ui-artifacts-row-secondary")).not.toHaveClass("mt-0.5");
-  expect(within(row!).getByRole("button", { name: "Download quarterly-board-update.pdf" })).toHaveClass(
-    "items-start",
-  );
+  expect(within(row!).getByRole("button", { name: "Download notes.txt" })).toHaveClass("items-start");
 });
 
 test("artifact rows fade dividers behind the rounded hover surface", async () => {
@@ -273,6 +283,7 @@ test("loads further pages via the infinite-scroll sentinel", async () => {
 });
 
 test("opens image previews and downloads file rows", async () => {
+  listArtifactsMock.mockResolvedValue(page([robot, textFile]));
   renderPage();
 
   // The grid thumbnail uses the small thumbnail endpoint...
@@ -289,7 +300,38 @@ test("opens image previews and downloads file rows", async () => {
     "/api/artifacts/art_image/download",
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Download quarterly-board-update.pdf" }));
+  // A plain file (not an image or PDF) downloads on click.
+  fireEvent.click(screen.getByRole("button", { name: "Download notes.txt" }));
+  await waitFor(() => {
+    expect(downloadArtifactMock).toHaveBeenCalledWith("/api/artifacts/art_text/download");
+  });
+});
+
+test("opens an inline preview when clicking a PDF row", async () => {
+  renderPage();
+  await screen.findByText("quarterly-board-update.pdf");
+
+  // The PDF row previews on click instead of downloading.
+  fireEvent.click(screen.getByRole("button", { name: "Preview quarterly-board-update.pdf" }));
+  expect(
+    await screen.findByRole("dialog", { name: "Preview quarterly-board-update.pdf" }),
+  ).toBeInTheDocument();
+  // The preview is rendered from the fetched blob, not the attachment-disposition URL.
+  await waitFor(() => {
+    expect(downloadArtifactMock).toHaveBeenCalledWith("/api/artifacts/art_file/download");
+  });
+});
+
+test("downloads an artifact from the row actions menu", async () => {
+  renderPage();
+  await screen.findByText("quarterly-board-update.pdf");
+
+  fireEvent.click(screen.getByRole("button", { name: "Actions for quarterly-board-update.pdf" }));
+  const items = screen.getAllByRole("menuitem");
+  // "Download" is the first menu entry.
+  expect(items[0]).toHaveTextContent("Download");
+
+  fireEvent.click(items[0]);
   await waitFor(() => {
     expect(downloadArtifactMock).toHaveBeenCalledWith("/api/artifacts/art_file/download");
   });

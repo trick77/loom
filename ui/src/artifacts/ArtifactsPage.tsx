@@ -14,7 +14,8 @@ import {
 import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
 import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
-import { isImageAttachment } from "../chat/useDocumentAttachments";
+import { PdfLightbox } from "../chat/PdfLightbox";
+import { isImageAttachment, isPdfAttachment } from "../chat/useDocumentAttachments";
 import { AttachmentPreview } from "../components/AttachmentPreview";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
@@ -332,6 +333,22 @@ function ArtifactRow({
       />
     );
   }
+  // A deleted PDF has no bytes to preview; fall through to the file row (which
+  // downloads / surfaces the gone state) rather than opening a doomed preview.
+  if (
+    artifact.deleted !== true &&
+    isPdfAttachment({ mimeType: artifact.mimeType, filename: artifact.displayFilename })
+  ) {
+    return (
+      <PdfArtifactRow
+        artifact={artifact}
+        hideDivider={hideDivider}
+        hovered={hovered}
+        onHoverChange={onHoverChange}
+        {...menu}
+      />
+    );
+  }
   return (
     <ArtifactRowFrame
       artifact={artifact}
@@ -398,6 +415,10 @@ function ArtifactRowFrame({
       after={
         menuOpen ? (
           <ArtifactActionsMenu
+            onDownload={() => {
+              onCloseMenu();
+              void downloadToBrowser(artifact);
+            }}
             onUseInThread={
               onUseInThread === undefined
                 ? undefined
@@ -481,6 +502,62 @@ function FileArtifactButton({ artifact }: { artifact: Artifact }) {
         </span>
       </span>
     </button>
+  );
+}
+
+// A PDF row mirrors the file row's icon + filename, but clicking it opens an
+// inline preview (PdfLightbox) instead of downloading — the "Download" action
+// lives in the row's context menu.
+function PdfArtifactRow({
+  artifact,
+  hideDivider,
+  hovered,
+  onHoverChange,
+  ...menu
+}: {
+  artifact: Artifact;
+  hideDivider: boolean;
+  hovered: boolean;
+  onHoverChange(hovered: boolean): void;
+} & ArtifactRowMenuProps) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  return (
+    <>
+      <ArtifactRowFrame
+        ariaLabel={`Preview ${artifact.displayFilename}`}
+        artifact={artifact}
+        hideDivider={hideDivider}
+        hovered={hovered}
+        onHoverChange={onHoverChange}
+        onClick={() => setPreviewOpen(true)}
+        {...menu}
+        action={
+          <div
+            className="flex w-full min-w-0 items-start gap-3 text-left"
+            title={`Preview ${artifact.displayFilename}`}
+          >
+            <AttachmentPreview
+              mimeType={artifact.mimeType}
+              filename={artifact.displayFilename}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]"
+            />
+            <span className="block min-w-0">
+              <span className="block truncate text-[15px] leading-5 text-[#ecece6]">{artifact.displayFilename}</span>
+              <span className="ui-artifacts-row-secondary block truncate text-xs leading-4 text-[#8a887f]">
+                {artifact.mimeType}
+              </span>
+            </span>
+          </div>
+        }
+      />
+      {previewOpen && (
+        <PdfLightbox
+          downloadUrl={artifact.downloadUrl}
+          filename={artifact.displayFilename}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
