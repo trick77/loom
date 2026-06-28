@@ -7,14 +7,14 @@ import (
 
 func TestSolidRectEmitsAccentFill(t *testing.T) {
 	xml := solidRect(9, "Band", 0, 0, 12192000, 200000, Theme.AccentHex)
-	if !strings.Contains(xml, `<a:srgbClr val="9A6B4F"/>`) || !strings.Contains(xml, `<a:off x="0" y="0"/>`) {
+	if !strings.Contains(xml, `<a:srgbClr val="C15F3C"/>`) || !strings.Contains(xml, `<a:off x="0" y="0"/>`) {
 		t.Fatalf("solidRect = %s", xml)
 	}
 }
 
 func TestStyledRunSetsColorAndBold(t *testing.T) {
 	xml := styledRun("Hi", 4000, Theme.AccentHex, true, "ctr")
-	if !strings.Contains(xml, `b="1"`) || !strings.Contains(xml, `algn="ctr"`) || !strings.Contains(xml, `<a:srgbClr val="9A6B4F"/>`) {
+	if !strings.Contains(xml, `b="1"`) || !strings.Contains(xml, `algn="ctr"`) || !strings.Contains(xml, `<a:srgbClr val="C15F3C"/>`) {
 		t.Fatalf("styledRun = %s", xml)
 	}
 }
@@ -32,7 +32,7 @@ func TestRenderSlideBulletsHasBackgroundAndAccentTitle(t *testing.T) {
 	if !strings.Contains(xml, `<p:bg>`) {
 		t.Fatalf("missing background: %s", xml)
 	}
-	if !strings.Contains(xml, `<a:srgbClr val="9A6B4F"/>`) { // accent title color
+	if !strings.Contains(xml, `<a:srgbClr val="C15F3C"/>`) { // accent title color
 		t.Fatalf("missing accent title: %s", xml)
 	}
 	if !strings.Contains(xml, "Plan") || !strings.Contains(xml, "Build") {
@@ -57,7 +57,7 @@ func TestTitleLayoutCentersTitleAndSubtitle(t *testing.T) {
 
 func TestSectionLayoutUsesAccentBackground(t *testing.T) {
 	xml := sectionLayout(pptxSlide{Layout: "section", Title: "Part II"})
-	if !strings.Contains(xml, `<a:srgbClr val="9A6B4F"/>`) || !strings.Contains(xml, "Part II") {
+	if !strings.Contains(xml, `<a:srgbClr val="C15F3C"/>`) || !strings.Contains(xml, "Part II") {
 		t.Fatalf("sectionLayout = %s", xml)
 	}
 }
@@ -88,7 +88,7 @@ func TestTableLayoutEmitsTableWithAccentHeader(t *testing.T) {
 	if !strings.Contains(xml, "<a:tbl>") || !strings.Contains(xml, "Name") || !strings.Contains(xml, "A") {
 		t.Fatalf("tableLayout = %s", xml)
 	}
-	if !strings.Contains(xml, `<a:srgbClr val="9A6B4F"/>`) { // accent header fill
+	if !strings.Contains(xml, `<a:srgbClr val="C15F3C"/>`) { // accent header fill
 		t.Fatalf("missing accent header fill: %s", xml)
 	}
 }
