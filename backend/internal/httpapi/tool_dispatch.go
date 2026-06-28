@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
@@ -436,7 +437,17 @@ func capToolOutput(output string) string {
 	if len(output) <= maxToolResultContentBytes {
 		return output
 	}
-	return output[:maxToolResultContentBytes]
+	truncated := output[:maxToolResultContentBytes]
+	// Back off any partial trailing rune so truncation never emits invalid UTF-8
+	// (a byte slice can land in the middle of a multibyte character).
+	for len(truncated) > 0 {
+		if r, size := utf8.DecodeLastRuneInString(truncated); r == utf8.RuneError && size <= 1 {
+			truncated = truncated[:len(truncated)-1]
+			continue
+		}
+		break
+	}
+	return truncated
 }
 
 // summarizeForLog trims a value (e.g. tool arguments) to a length that is safe

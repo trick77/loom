@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/store"
@@ -132,6 +134,51 @@ func TestBuildThreadDigestSectionKeepsConclusion(t *testing.T) {
 	}
 	if strings.Contains(section, "question words here question words") {
 		t.Errorf("section kept the bulky opening question instead of the conclusion:\n%s", section)
+	}
+}
+
+// TestProjectThreadsDigestBoundedBytes guards the byte ceiling: even with many
+// threads of large multibyte (CJK) content, the digest stays within the tool
+// envelope and remains valid UTF-8 (the digest deliberately skips the generic cap
+// at the call site, so its own bound must hold).
+func TestProjectThreadsDigestBoundedBytes(t *testing.T) {
+	st, userID := openProjectDigestStore(t)
+	ctx := context.Background()
+	project, err := st.CreateProject(ctx, userID, chat.CreateProjectInput{Name: "Big"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	bigCJK := strings.Repeat("结论：留在中心城区。", 400) // multibyte, well over any per-thread share
+	for i := 0; i < 60; i++ {
+		seedThread(t, st, userID, project.ID, fmt.Sprintf("thread %d", i), [][2]string{
+			{"user", "问题"},
+			{"assistant", bigCJK},
+		})
+	}
+	current := seedThread(t, st, userID, project.ID, "current", [][2]string{{"user", "summarize"}})
+
+	digest := (&server{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current)
+	if len(digest) > maxToolResultContentBytes {
+		t.Errorf("digest is %d bytes, exceeds the %d-byte tool envelope", len(digest), maxToolResultContentBytes)
+	}
+	if !utf8.ValidString(digest) {
+		t.Errorf("digest is not valid UTF-8 (a multibyte rune was split)")
+	}
+	if !strings.Contains(digest, "omitted") {
+		t.Errorf("expected an omission note when threads exceed the floor-based cap")
+	}
+}
+
+// TestCapToolOutputRuneSafe confirms the shared cap never splits a multibyte rune.
+func TestCapToolOutputRuneSafe(t *testing.T) {
+	// Length chosen so the byte cap lands in the middle of a 3-byte rune.
+	s := strings.Repeat("世", maxToolResultContentBytes) // 3 bytes each, far over the cap
+	got := capToolOutput(s)
+	if len(got) > maxToolResultContentBytes {
+		t.Errorf("capped output %d bytes exceeds %d", len(got), maxToolResultContentBytes)
+	}
+	if !utf8.ValidString(got) {
+		t.Errorf("capped output is not valid UTF-8")
 	}
 }
 

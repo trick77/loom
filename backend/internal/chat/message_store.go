@@ -204,6 +204,47 @@ WHERE user_id = ? AND id = ?`,
 	return message, nil
 }
 
+// ListRecentMessages returns at most limit of a thread's most recent messages,
+// in chronological (ascending) order. Unlike ListMessages it never loads the
+// whole transcript, so callers that only need the tail (e.g. the cross-thread
+// summary digest, which keeps each thread's final turns) don't pull hundreds of
+// messages — including large tool-result blobs — just to discard them.
+func (s *Store) ListRecentMessages(ctx context.Context, userID, threadID string, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, duration_ms, model, reasoning_effort, created_at
+FROM messages
+WHERE user_id = ? AND thread_id = ?
+ORDER BY created_at DESC, id DESC
+LIMIT ?`,
+		userID, threadID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list recent messages: %w", err)
+	}
+	defer rows.Close()
+
+	messages := make([]Message, 0)
+	for rows.Next() {
+		message, err := scanMessage(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan recent message: %w", err)
+		}
+		messages = append(messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent messages: %w", err)
+	}
+	// Fetched newest-first to apply the cap; reverse to chronological so the tail
+	// reads in conversation order.
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+	return messages, nil
+}
+
 func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Message, bool, error) {
 	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
 		return nil, false, err

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
@@ -21,12 +22,23 @@ const projectThreadsToolName = "read_project_threads"
 // digest rather than silently dropped.
 const maxProjectSummaryThreads = 50
 
-// minPerThreadDigestTokens floors the per-thread share so that, with many sibling
-// threads, each one still contributes enough to carry its conclusion. The total
-// digest may then exceed projectSummaryTokenBudget on very large projects; that
-// is an accepted trade (coverage over a hard cap) and stays bounded by the thread
-// cap above.
-const minPerThreadDigestTokens = 150
+// maxRecentMessagesPerThread bounds how many of each sibling thread's most recent
+// messages are loaded. buildThreadDigestSection only ever keeps the tail that fits
+// the per-thread budget, so loading the whole transcript (potentially hundreds of
+// messages with large tool-result blobs) would be wasted work — this ceiling keeps
+// the read cheap while still covering the final turns the digest needs.
+const maxRecentMessagesPerThread = 50
+
+// bytesPerToken converts the configured token budget into a byte budget. The
+// digest's size is bounded in BYTES (not runes) because the thing it bypasses —
+// capToolOutput — and the model's context envelope are measured in bytes; a
+// rune-based bound would under-count multibyte (CJK/emoji) content by up to ~4x.
+const bytesPerToken = 4
+
+// minPerThreadDigestBytes floors the per-thread share so each thread still carries
+// its conclusion. To keep the TOTAL bounded, the thread count is capped so that
+// floor × threads cannot exceed the byte budget (see projectThreadsDigest).
+const minPerThreadDigestBytes = 600
 
 // projectThreadsTool is the schema advertised to the model. The description is
 // written so MiMo's inline tool-caller reliably fires on the natural phrasings a
@@ -54,9 +66,9 @@ func projectThreadsTool() llm.Tool {
 // projectThreadsDigest reads the active thread's sibling threads (non-archived,
 // excluding the current thread) and renders a budgeted, model-readable digest of
 // their content. Pure DB read — no inference — so it comfortably fits the tool
-// execution window. The output is returned verbatim (not run through
-// capToolOutput): its size is bounded by the per-thread token budget instead, so
-// the generic 32KB cap can't re-truncate the tail.
+// execution window. The output is bounded in BYTES (per-thread share, plus a hard
+// overall ceiling via capToolOutput as a final guard), so returning it without the
+// generic byte cap re-truncating the tail is safe even for multibyte content.
 func (s *server) projectThreadsDigest(ctx context.Context, userID string, thread chat.Thread) string {
 	if thread.ProjectID == nil {
 		return "This thread does not belong to a project, so there are no other project threads to read."
@@ -90,9 +102,18 @@ func (s *server) projectThreadsDigest(ctx context.Context, userID string, thread
 		others = others[:maxProjectSummaryThreads]
 	}
 
-	perThreadBudget := s.projectSummaryTokenBudget / len(others)
-	if perThreadBudget < minPerThreadDigestTokens {
-		perThreadBudget = minPerThreadDigestTokens
+	// Byte budget for the whole digest, divided evenly across threads. When the even
+	// share would fall below the floor, raise it to the floor but cap the thread
+	// count so floor × threads can't blow the total budget — bounding the output
+	// regardless of how many threads the project has.
+	byteBudget := s.projectSummaryTokenBudget * bytesPerToken
+	perThreadBytes := byteBudget / len(others)
+	if perThreadBytes < minPerThreadDigestBytes {
+		perThreadBytes = minPerThreadDigestBytes
+		if maxByFloor := byteBudget / minPerThreadDigestBytes; maxByFloor >= 1 && len(others) > maxByFloor {
+			omitted += len(others) - maxByFloor
+			others = others[:maxByFloor]
+		}
 	}
 
 	var b strings.Builder
@@ -107,13 +128,13 @@ func (s *server) projectThreadsDigest(ctx context.Context, userID string, thread
 		if t.LastMessageAt != nil {
 			fmt.Fprintf(&b, "Last activity: %s\n", t.LastMessageAt.Format("2006-01-02"))
 		}
-		messages, _, err := s.thread.ListMessages(ctx, userID, t.ID)
+		messages, err := s.thread.ListRecentMessages(ctx, userID, t.ID, maxRecentMessagesPerThread)
 		if err != nil {
 			slog.Warn("read_project_threads: list messages failed", "thread_id", t.ID, "error", err)
 			b.WriteString("(could not load this thread's messages)\n")
 			continue
 		}
-		section := buildThreadDigestSection(messages, perThreadBudget)
+		section := buildThreadDigestSection(messages, perThreadBytes)
 		if section == "" {
 			b.WriteString("(no readable messages in this thread)\n")
 			continue
@@ -121,7 +142,10 @@ func (s *server) projectThreadsDigest(ctx context.Context, userID string, thread
 		b.WriteString(section)
 	}
 
-	return b.String()
+	// Final hard guard: even though the per-thread byte shares bound the total by
+	// construction, pass through the shared byte cap so the result can never exceed
+	// the tool-result envelope. capToolOutput is byte-safe via truncateUTF8.
+	return capToolOutput(b.String())
 }
 
 // displayThreadTitle returns a non-empty label for a thread.
@@ -133,12 +157,12 @@ func displayThreadTitle(t chat.Thread) string {
 }
 
 // buildThreadDigestSection renders one thread's user/assistant turns within a
-// per-thread token budget, last-message-first: research threads put the answer at
+// per-thread BYTE budget, last-message-first: research threads put the answer at
 // the END, so we always keep the final turn and backfill earlier turns until the
 // budget is hit. This guarantees each thread's conclusion survives even a tight
 // budget, instead of front-truncating and keeping only the opening question. The
 // kept turns are rendered back in chronological order for readability.
-func buildThreadDigestSection(messages []chat.Message, tokenBudget int) string {
+func buildThreadDigestSection(messages []chat.Message, byteBudget int) string {
 	type turn struct {
 		role string
 		text string
@@ -155,12 +179,12 @@ func buildThreadDigestSection(messages []chat.Message, tokenBudget int) string {
 			continue
 		}
 		label := roleLabel(m.Role)
-		cost := estimateDigestTokens(label) + estimateDigestTokens(text)
-		if used+cost > tokenBudget {
+		cost := len(label) + len(text) + len(": \n")
+		if used+cost > byteBudget {
 			if len(kept) == 0 {
 				// The final substantive turn alone exceeds the budget. Keep its
 				// tail (the conclusion) rather than dropping the whole thread.
-				kept = append(kept, turn{role: label, text: truncateTailToTokens(text, tokenBudget)})
+				kept = append(kept, turn{role: label, text: truncateTailToBytes(text, byteBudget)})
 			}
 			break
 		}
@@ -177,21 +201,28 @@ func buildThreadDigestSection(messages []chat.Message, tokenBudget int) string {
 	return b.String()
 }
 
-// estimateDigestTokens approximates a token count with the same rune/4 heuristic
-// the RAG package uses (its estimateTokens is unexported), avoiding a runtime
-// tokenizer dependency.
-func estimateDigestTokens(s string) int {
-	n := len([]rune(s))
-	return (n + 3) / 4
-}
-
-// truncateTailToTokens keeps roughly the last tokenBudget tokens of s (the
-// conclusion of an answer), prefixing an ellipsis when content was dropped.
-func truncateTailToTokens(s string, tokenBudget int) string {
-	runes := []rune(s)
-	maxRunes := tokenBudget * 4
-	if len(runes) <= maxRunes {
+// truncateTailToBytes keeps the last whole runes of s that fit in byteBudget bytes
+// (the conclusion of an answer), prefixing an ellipsis when content was dropped.
+// Rune-safe: it never splits a multibyte character.
+func truncateTailToBytes(s string, byteBudget int) string {
+	if len(s) <= byteBudget {
 		return s
 	}
-	return "…" + string(runes[len(runes)-maxRunes:])
+	const ellipsis = "…"
+	avail := byteBudget - len(ellipsis)
+	if avail < 0 {
+		avail = 0
+	}
+	runes := []rune(s)
+	bytes := 0
+	start := len(runes)
+	for i := len(runes) - 1; i >= 0; i-- {
+		rb := utf8.RuneLen(runes[i])
+		if bytes+rb > avail {
+			break
+		}
+		bytes += rb
+		start = i
+	}
+	return ellipsis + string(runes[start:])
 }
