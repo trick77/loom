@@ -3,14 +3,14 @@ package docgen
 import "testing"
 
 func TestThemePaletteHexValues(t *testing.T) {
-	if Theme.InkHex != "1D1D1B" || Theme.CreamHex != "F3F0E8" || Theme.AccentHex != "9A6B4F" {
+	if Theme.InkHex != "1D1D1B" || Theme.CreamHex != "F4F3EE" || Theme.AccentHex != "C15F3C" {
 		t.Fatalf("unexpected palette: %#v", Theme)
 	}
 }
 
 func TestThemeRGBParsesHex(t *testing.T) {
 	got := Theme.Accent
-	if got.R != 0x9A || got.G != 0x6B || got.B != 0x4F {
+	if got.R != 0xC1 || got.G != 0x5F || got.B != 0x3C {
 		t.Fatalf("Accent RGB = %#v", got)
 	}
 }

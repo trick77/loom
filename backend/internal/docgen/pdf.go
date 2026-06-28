@@ -18,10 +18,19 @@ import (
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gobolditalic"
 	"golang.org/x/image/font/gofont/goitalic"
+	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/goregular"
 )
 
-const pdfFontFamily = "loom"
+// PDF font families: the bundled Go typeface for text, Go Mono for code.
+const (
+	pdfFontFamily = "loom"
+	pdfMonoFamily = "loom-mono"
+)
+
+// pdfGrid is maroto's column grid sum. 24 (vs the default 12) gives finer
+// control — notably a tight one-unit bullet column for hanging-indented lists.
+const pdfGrid = 24
 
 type PDFGenerator struct{}
 
@@ -30,29 +39,34 @@ func (g PDFGenerator) ToolName() string { return "create_pdf_file" }
 func rgbColor(c RGB) *props.Color { return &props.Color{Red: c.R, Green: c.G, Blue: c.B} }
 
 // newMaroto builds a maroto instance with the Loom fonts and an accent header band.
+// Two families are registered — the Go typeface (default, all text) and Go Mono
+// (code). gofpdf errors on any (family, style) combo it is asked to render without
+// first registering it, so every style each family uses is loaded here.
 func newMaroto(title, subtitle string) (core.Maroto, error) {
 	fonts, err := repository.New().
 		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Normal, goregular.TTF).
 		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Bold, gobold.TTF).
 		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Italic, goitalic.TTF).
 		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.BoldItalic, gobolditalic.TTF).
+		AddUTF8FontFromBytes(pdfMonoFamily, fontstyle.Normal, gomono.TTF).
 		Load()
 	if err != nil {
 		return nil, err
 	}
 	cfg := config.NewBuilder().
 		WithCustomFonts(fonts).
+		WithMaxGridSize(pdfGrid).
 		WithDefaultFont(&props.Font{Family: pdfFontFamily}).
 		Build()
 	m := maroto.New(cfg)
 
-	band := col.New(12).WithStyle(&props.Cell{BackgroundColor: rgbColor(Theme.Accent)})
+	band := col.New(pdfGrid).WithStyle(&props.Cell{BackgroundColor: rgbColor(Theme.Accent)})
 	band.Add(text.New(title, props.Text{Size: 22, Style: fontstyle.Bold, Color: rgbColor(TextOn(Theme.Accent)), Align: align.Left, Top: 4, Bottom: 6, Left: 4, Right: 4, VerticalPadding: 1}))
 	m.AddAutoRow(band)
 	if strings.TrimSpace(subtitle) != "" {
-		m.AddAutoRow(text.NewCol(12, subtitle, props.Text{Size: 11, Color: rgbColor(Theme.Muted), Top: 1, Bottom: 3, VerticalPadding: 0.5}))
+		m.AddAutoRow(text.NewCol(pdfGrid, subtitle, props.Text{Size: 11, Color: rgbColor(Theme.Muted), Top: 1, Bottom: 3, VerticalPadding: 0.5}))
 	}
-	m.AddRow(6, text.NewCol(12, "")) // spacer
+	m.AddRow(6, text.NewCol(pdfGrid, "")) // spacer
 	return m, nil
 }
 
@@ -83,7 +97,12 @@ func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta,
 	if err != nil {
 		return GeneratedMeta{}, err
 	}
-	for _, b := range blocks {
+	for i, b := range blocks {
+		// Bullet rows are spaced tightly, so a callout immediately after a list would
+		// otherwise crowd it — add a little breathing room above the box in that case.
+		if b.Type == "callout" && i > 0 && blocks[i-1].Type == "bullets" {
+			m.AddRow(3, text.NewCol(pdfGrid, ""))
+		}
 		renderBlock(m, b)
 	}
 	doc, err := m.Generate()
@@ -100,8 +119,9 @@ func (g PDFGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name: g.ToolName(),
 		Description: "Create a styled PDF report. Prefer the structured 'blocks' array (heading, " +
-			"paragraph, bullets, table, columns, callout) over a flat text string: use headings to " +
-			"structure sections, tables for tabular data, and callouts to emphasize key points. " +
+			"paragraph, bullets, table, columns, callout, code) over a flat text string: use headings to " +
+			"structure sections, tables for tabular data, callouts to emphasize key points, and code " +
+			"blocks (rendered monospaced) for code samples or terminal output — put the code in 'text'. " +
 			"'content' is accepted as a simple Markdown fallback." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
@@ -115,7 +135,7 @@ func (g PDFGenerator) Schema() ToolSchema {
 					"items": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"type":  map[string]any{"type": "string", "enum": []string{"heading", "paragraph", "bullets", "table", "columns", "callout"}},
+							"type":  map[string]any{"type": "string", "enum": []string{"heading", "paragraph", "bullets", "table", "columns", "callout", "code"}},
 							"level": map[string]any{"type": "integer"},
 							"text":  map[string]any{"type": "string"},
 							"items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
