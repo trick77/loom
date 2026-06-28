@@ -190,11 +190,13 @@ export function ProjectDetailPage({
               />
             </div>
             {/* Discoverability hint for the cross-thread summary feature. Shown only
-                on the project composer (never inside a thread chat), and only when
-                there is something to summarize and the user hasn't started typing or
-                staged a file. Fills the composer with an editable prompt — the user
-                steers the emphasis, then sends. */}
-            {draft.trim() === "" && attachments.length === 0 && threads.length > 0 && (
+                on the project composer (never inside a thread chat), and only once
+                there are at least two threads to synthesize ACROSS — the tool excludes
+                the thread you ask from, so with a single thread there is nothing to
+                cross-reference and the affordance would mislead. Also hidden once the
+                user starts typing or stages a file. Fills the composer with an editable
+                prompt — the user steers the emphasis, then sends. */}
+            {draft.trim() === "" && attachments.length === 0 && threads.length >= 2 && (
               <div className="mt-3 flex">
                 <button
                   type="button"
