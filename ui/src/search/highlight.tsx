@@ -1,11 +1,15 @@
 import { Fragment, type ReactNode } from "react";
 
 // cleanResultText strips markdown formatting and emoji from rendered search
-// results without corrupting the message content itself. It removes only
-// *paired* emphasis/code/strike delimiters and *line-start* block markers, so
-// lone operators, globs, and identifiers survive: `2 * 3`, `*.tsx`, `char *p`,
-// `a > b`, `1 + 2`, `**kwargs`, `__init__`. Emoji are removed, but text symbols
-// (™ © ® ✔ →) keep their text presentation and are left alone. Applied only
+// results while protecting the most jarring technical content. Emphasis markers
+// (`*`/`** `/`` ` ``) are removed when they touch text — covering both `**bold**`
+// and the truncated openers FTS snippet windows leave behind — but a run
+// isolated by spaces is treated as an operator and kept: `2 * 3`, `2 ** 3`,
+// `~30h`. Block markers (`#`, `>`, `-`/`+`/`* `) are stripped only at a line
+// start, so inline `a > b`, `1 + 2`, `rust - lang` keep their operators. Snake
+// _case and __dunder__ are untouched (`_` is never stripped). Emoji are removed
+// but text symbols (™ © ® ✔ →) stay. Known tradeoff: a leading-star token like
+// `*.tsx`, `char *p`, or `**kwargs` loses its star in the preview. Applied only
 // when rendering search titles/snippets — stored titles and the normal
 // (non-search) thread list keep their original text. The « » FTS match markers
 // always survive cleaning, so renderSnippet can still split on them.
@@ -22,11 +26,22 @@ export function cleanResultText(text: string): string {
     // [label](url) / ![alt](url) → keep the label; « » excluded so a match
     // marker sitting inside a URL is never swallowed along with the link.
     .replace(/!?\[([^\]«»]*)\]\([^)«»]*\)/g, "$1")
-    // paired bold / inline-code / strikethrough delimiters only — lone * ` ~
-    // (operators, globs, Python **kwargs / __dunder__) are left untouched.
-    .replace(/\*\*([^*]+?)\*\*/g, "$1")
-    .replace(/`([^`]+?)`/g, "$1")
+    // strikethrough (paired) — leftover single `~` is kept (e.g. "~30h" approx)
     .replace(/~~([^~]+?)~~/g, "$1")
+    // bold / italic / inline-code markers that TOUCH text. FTS snippets are
+    // truncated windows, so an opening `**`/`` ` `` often has no closing pair in
+    // view — pairing alone would leave it visible. A `*`/`` ` `` run is treated as
+    // markdown when a non-space sits on either side; a run isolated by spaces is
+    // an operator (`2 * 3`, `2 ** 3`) and is kept. (Tradeoff: a leading-star token
+    // like `*.tsx`, `char *p`, or `**kwargs` loses its star in the preview.)
+    .replace(/[*`]+/g, (run: string, offset: number, src: string) => {
+      const before = src[offset - 1];
+      const after = src[offset + run.length];
+      const touchesText =
+        (before !== undefined && !/\s/.test(before)) ||
+        (after !== undefined && !/\s/.test(after));
+      return touchesText ? "" : run;
+    })
     // heading / blockquote / unordered-list markers, only at a line start so
     // inline `a > b`, `1 + 2`, `rust - lang` keep their operators
     .replace(/(^|\n)[ \t]{0,3}#{1,6}[ \t]+/g, "$1")
