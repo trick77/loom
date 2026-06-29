@@ -226,6 +226,18 @@ describe("activity trace model", () => {
       kind: "generated",
       title: "Reading project threads",
     });
+    expect(summarizeToolCall("conversation_search", '{"query":"frozen snapshots"}')).toMatchObject({
+      kind: "search",
+      title: "frozen snapshots",
+    });
+    expect(summarizeToolCall("conversation_search", "{}")).toMatchObject({
+      kind: "search",
+      title: "Searching past conversations",
+    });
+    expect(summarizeToolCall("read_thread", '{"thread_id":"t1"}')).toMatchObject({
+      kind: "generated",
+      title: "Reading a conversation",
+    });
   });
 
   test("normalizes schemeless source URLs without accepting app-relative routes", () => {

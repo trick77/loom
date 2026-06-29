@@ -118,6 +118,14 @@ func (s *server) availableTools(thread chat.Thread) []llm.Tool {
 		names[tool.Function.Name] = "built_in"
 		tools = append(tools, tool)
 	}
+	// Cross-thread memory: conversation_search (find anything across the user's
+	// whole history) and read_thread (load one matched thread in full) are always
+	// available — their value is whole-history reach, not project-scoped, so they
+	// are exposed regardless of whether the active thread belongs to a project.
+	for _, tool := range []llm.Tool{conversationSearchTool(), readThreadTool()} {
+		names[tool.Function.Name] = "built_in"
+		tools = append(tools, tool)
+	}
 	if s.artifacts != nil && strings.TrimSpace(s.usersDir) != "" {
 		for _, gen := range s.docTools {
 			schema := gen.Schema()
@@ -174,6 +182,21 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource) (string, *artifactResponse, bool) {
 	if call.Function.Name == projectThreadsToolName {
 		return s.projectThreadsDigest(ctx, user.ID, thread), nil, true
+	}
+	if call.Function.Name == conversationSearchToolName {
+		args, err := parseToolArguments(call.Function.Arguments)
+		if err != nil {
+			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
+		}
+		return s.conversationSearchDigest(ctx, user.ID, thread, args), nil, true
+	}
+	if call.Function.Name == readThreadToolName {
+		args, err := parseToolArguments(call.Function.Arguments)
+		if err != nil {
+			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
+		}
+		threadID, _ := args["thread_id"].(string)
+		return s.readThreadDigest(ctx, user.ID, threadID), nil, true
 	}
 	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call, editSource); handled {
 		return output, response, true
