@@ -1,11 +1,58 @@
 import { Fragment, type ReactNode } from "react";
 
+// cleanResultText strips markdown formatting and emoji from rendered search
+// results without corrupting the message content itself. It removes only
+// *paired* emphasis/code/strike delimiters and *line-start* block markers, so
+// lone operators, globs, and identifiers survive: `2 * 3`, `*.tsx`, `char *p`,
+// `a > b`, `1 + 2`, `**kwargs`, `__init__`. Emoji are removed, but text symbols
+// (™ © ® ✔ →) keep their text presentation and are left alone. Applied only
+// when rendering search titles/snippets — stored titles and the normal
+// (non-search) thread list keep their original text. The « » FTS match markers
+// always survive cleaning, so renderSnippet can still split on them.
+//
+// Memoized: a search list re-renders every row on each keystroke and each
+// arrow-key selection change, so each distinct string is cleaned once and the
+// result reused. The cache is bounded to keep a long session from growing it.
+const cleanCache = new Map<string, string>();
+
+export function cleanResultText(text: string): string {
+  const cached = cleanCache.get(text);
+  if (cached !== undefined) return cached;
+  const cleaned = text
+    // [label](url) / ![alt](url) → keep the label; « » excluded so a match
+    // marker sitting inside a URL is never swallowed along with the link.
+    .replace(/!?\[([^\]«»]*)\]\([^)«»]*\)/g, "$1")
+    // paired bold / inline-code / strikethrough delimiters only — lone * ` ~
+    // (operators, globs, Python **kwargs / __dunder__) are left untouched.
+    .replace(/\*\*([^*]+?)\*\*/g, "$1")
+    .replace(/`([^`]+?)`/g, "$1")
+    .replace(/~~([^~]+?)~~/g, "$1")
+    // heading / blockquote / unordered-list markers, only at a line start so
+    // inline `a > b`, `1 + 2`, `rust - lang` keep their operators
+    .replace(/(^|\n)[ \t]{0,3}#{1,6}[ \t]+/g, "$1")
+    .replace(/(^|\n)[ \t]{0,3}>+[ \t]?/g, "$1")
+    .replace(/(^|\n)[ \t]{0,3}[-+*][ \t]+/g, "$1")
+    // emoji: default-presentation pictographs, text-default ones forced to emoji
+    // with VS16 (U+FE0F), and leftover skin-tone modifiers / ZWJ / VS16. Text-
+    // presentation symbols (™ © ® ✔ ‼ →) are not pictographic emoji and stay.
+    .replace(/\p{Extended_Pictographic}️|\p{Emoji_Presentation}|[\p{Emoji_Modifier}‍️]/gu, "")
+    // collapse the whitespace the removals leave behind (incl. folded newlines)
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleanCache.size >= 1000) cleanCache.clear();
+  cleanCache.set(text, cleaned);
+  return cleaned;
+}
+
 // highlightTerms bolds every case-insensitive occurrence of the query's terms
 // inside `text` (used for thread titles, where the backend has no snippet to
 // mark up). Each whitespace-separated term is matched independently as a
-// substring, mirroring the title LIKE search. Returns the text unchanged when
-// there is nothing to highlight.
-export function highlightTerms(text: string, query: string): ReactNode {
+// substring, mirroring the title LIKE search. Callers only invoke this for an
+// active search; with an empty query it returns the cleaned text unhighlighted.
+export function highlightTerms(rawText: string, query: string): ReactNode {
+  // Fall back to the raw text if cleaning empties it (e.g. an all-emoji title),
+  // so a row never renders a blank title.
+  const text = cleanResultText(rawText) || rawText;
   const terms = query
     .trim()
     .split(/\s+/)
@@ -32,8 +79,10 @@ export function highlightTerms(text: string, query: string): ReactNode {
 // « » — into React nodes with the matches bolded. Never uses
 // dangerouslySetInnerHTML: the snippet is raw user/assistant content.
 export function renderSnippet(snippet: string): ReactNode {
-  // Split on the « match » delimiters, keeping the captured match text.
-  const parts = snippet.split(/«(.*?)»/g);
+  // Strip markdown/emoji noise first; the « » match markers survive cleaning, so
+  // the split below still finds them. Then split on the « match » delimiters,
+  // keeping the captured match text.
+  const parts = cleanResultText(snippet).split(/«(.*?)»/g);
   return parts.map((part, i) =>
     i % 2 === 1 ? (
       <strong key={i} className="font-semibold text-ink">
