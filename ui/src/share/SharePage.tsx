@@ -74,7 +74,7 @@ export function SharePage({ shareId }: { shareId: string }) {
           </h1>
         </div>
         {share.author !== "" && (
-          <span className="shrink-0 rounded-md bg-[#46453f] px-2.5 py-0.5 text-sm text-[#d6d3ca]">
+          <span className="shrink-0 rounded-md bg-[#363632] px-2.5 py-0.5 text-sm text-[#d6d3ca]">
             Shared by {share.author}
           </span>
         )}

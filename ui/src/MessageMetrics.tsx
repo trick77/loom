@@ -11,7 +11,7 @@ export function MessageMetrics({ message, category }: { message: Message; catego
   const line = buildMetricsString(message);
   const pill =
     category !== undefined && category !== "" ? (
-      <span className="inline-flex items-center rounded-full bg-[#46453f] px-2 py-0.5 font-sans text-[0.75rem] leading-[1.45rem] text-[#d6d3ca]">
+      <span className="inline-flex items-center rounded-full bg-[#363632] px-2 py-0.5 font-sans text-[0.75rem] leading-[1.45rem] text-[#d6d3ca]">
         {humanizeCategory(category)}
       </span>
     ) : null;

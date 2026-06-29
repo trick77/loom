@@ -227,11 +227,11 @@ describe("activity trace model", () => {
       title: "Reading project threads",
     });
     expect(summarizeToolCall("conversation_search", '{"query":"frozen snapshots"}')).toMatchObject({
-      kind: "search",
+      kind: "conversationSearch",
       title: "frozen snapshots",
     });
     expect(summarizeToolCall("conversation_search", "{}")).toMatchObject({
-      kind: "search",
+      kind: "conversationSearch",
       title: "Searching past conversations",
     });
     expect(summarizeToolCall("read_thread", '{"thread_id":"t1"}')).toMatchObject({
