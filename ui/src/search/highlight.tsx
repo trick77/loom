@@ -95,9 +95,19 @@ export function highlightTerms(rawText: string, query: string): ReactNode {
 // dangerouslySetInnerHTML: the snippet is raw user/assistant content.
 export function renderSnippet(snippet: string): ReactNode {
   // Strip markdown/emoji noise first; the « » match markers survive cleaning, so
-  // the split below still finds them. Then split on the « match » delimiters,
-  // keeping the captured match text.
-  const parts = cleanResultText(snippet).split(/«(.*?)»/g);
+  // the split below still finds them.
+  let text = cleanResultText(snippet);
+  // The backend FTS snippet() centres the match (long leading context, then the
+  // «match»), but this subline is a single-line truncated span — a match deep in
+  // a long message gets clipped off the right edge, so the row looks like it has
+  // no highlight at all. Drop the leading context so the match leads the line
+  // (claude.ai does the same), keeping the highlight visible.
+  const firstMark = text.indexOf("«");
+  if (firstMark > 0) {
+    text = "…" + text.slice(firstMark);
+  }
+  // Split on the « match » delimiters, keeping the captured match text.
+  const parts = text.split(/«(.*?)»/g);
   return parts.map((part, i) =>
     i % 2 === 1 ? (
       <strong key={i} className="font-semibold text-ink">
