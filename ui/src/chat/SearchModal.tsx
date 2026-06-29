@@ -159,7 +159,10 @@ export function SearchModal({
                     >
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate text-[15px] text-[#ecece6]">
-                          {highlightTerms(result.thread.title, query)}
+                          {/* Clean + highlight only while searching; empty-state
+                              recents show the raw title, matching the sidebar and
+                              Threads list (which clean only during search). */}
+                          {hasQuery ? highlightTerms(result.thread.title, query) : result.thread.title}
                         </span>
                         {result.snippet !== undefined && result.snippet !== "" && (
                           <span className="truncate text-[13px] text-[#908e85]">
