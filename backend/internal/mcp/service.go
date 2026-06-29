@@ -192,6 +192,65 @@ func listToolsRequired(ctx context.Context, client Client) ([]Tool, error) {
 	}
 }
 
+// NewServiceFromConfigs discovers two sets of servers into one Service: required
+// servers fail the whole construction if any of them fails discovery (used for
+// the built-in sidecars/remotes loom's boot depends on), while best-effort
+// servers are merely logged and dropped on discovery failure (used for
+// file-defined third-party servers, so an unreachable/expired/quota-exhausted
+// one degrades gracefully instead of blocking startup). On a tool-name collision
+// the already-registered route wins and the duplicate is skipped — required
+// servers are processed first, so a file server cannot shadow a built-in tool.
+func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, httpClient *http.Client, logger *slog.Logger) (*Service, error) {
+	service, err := NewRequiredServiceFromConfig(ctx, required, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(bestEffort.Servers))
+	for name := range bestEffort.Servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, serverName := range names {
+		client := clientForServer(serverName, bestEffort.Servers[serverName], httpClient)
+		tools, err := client.ListTools(ctx)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("MCP server discovery failed", "server", serverName, "err", err)
+			}
+			_ = client.Close()
+			continue
+		}
+		for _, tool := range tools {
+			if _, exists := service.routes[tool.Name]; exists {
+				if logger != nil {
+					logger.Warn("skipping duplicate MCP tool name", "tool", tool.Name, "server", serverName)
+				}
+				continue
+			}
+			service.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName}
+			service.tools = append(service.tools, llm.Tool{
+				Type: "function",
+				Function: llm.ToolFunction{
+					Name:        tool.Name,
+					Description: tool.Description,
+					Parameters:  tool.InputSchema,
+				},
+			})
+		}
+	}
+	// Union the configs so ServerStatus live-probes best-effort servers too.
+	merged := Config{Servers: make(map[string]ServerConfig, len(required.Servers)+len(bestEffort.Servers))}
+	for name, sc := range required.Servers {
+		merged.Servers[name] = sc
+	}
+	for name, sc := range bestEffort.Servers {
+		merged.Servers[name] = sc
+	}
+	service.cfg = merged
+	service.httpClient = httpClient
+	return service, nil
+}
+
 func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client, logger *slog.Logger) (*Service, error) {
 	service := &Service{routes: map[string]toolRoute{}, cfg: cfg, httpClient: httpClient}
 	names := make([]string, 0, len(cfg.Servers))

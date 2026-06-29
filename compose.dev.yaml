@@ -39,6 +39,9 @@ services:
       BACKEND_CHAT_API_KEY: "${BACKEND_CHAT_API_KEY:-}"
       BACKEND_CONTEXT7_API_KEY: "${BACKEND_CONTEXT7_API_KEY:-}"
       BACKEND_CONTEXT7_MCP_URL: "${BACKEND_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
+      # Extra MCP servers from a JSON file (standard mcpServers format; merged on top of built-ins).
+      BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/data/mcp.json}"
+      IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"
       BACKEND_BFL_BASE_URL: "${BACKEND_BFL_BASE_URL:-https://api.bfl.ai/v1}"
       BACKEND_BFL_API_KEY: "${BACKEND_BFL_API_KEY:-}"
       BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"

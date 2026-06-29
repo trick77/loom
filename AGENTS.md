@@ -28,8 +28,10 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - One OpenAI-compatible client for chat (MiMo) + embeddings (OpenAI). Extraction: Apache **Tika** sidecar.
 - Tools/agents are **first-class MCP-backed integrations**. Tavily web search is enabled with
   `BACKEND_TAVILY_API_KEY`; Context7 docs with `BACKEND_CONTEXT7_API_KEY`; the Compose sidecars use
-  `BACKEND_FETCH_MCP_URL` and `BACKEND_OBSCURA_MCP_URL`. Do not add a generic `mcp.json` runtime config
-  surface without explicit agreement.
+  `BACKEND_FETCH_MCP_URL` and `BACKEND_OBSCURA_MCP_URL`. Additional servers may be declared in a JSON
+  file (standard `mcpServers` format) at `BACKEND_MCP_SERVERS_FILE` (default `/data/mcp.json`); its
+  entries merge on top of — and override, by name — the built-ins. Keep secrets out of the file: use
+  `${VAR}` interpolation so tokens stay in env.
 
 ## Config
 - All runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and

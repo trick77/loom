@@ -1,0 +1,12 @@
+{
+  "_comment": "Extra MCP servers in the standard mcpServers format. Copy to the path in BACKEND_MCP_SERVERS_FILE (default /data/mcp.json). Servers here merge on top of the built-ins and override any built-in of the same name. Keep secrets out of this file: ${VAR} is interpolated from the backend process environment at startup. 'type' is 'http' (Streamable HTTP, default) or 'stdio'.",
+  "mcpServers": {
+    "ipverse": {
+      "type": "http",
+      "url": "https://gateway.ipverse.net/mcp",
+      "headers": {
+        "Authorization": "Bearer ${IPVERSE_API_KEY}"
+      }
+    }
+  }
+}

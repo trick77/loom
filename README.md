@@ -193,6 +193,29 @@ The default Compose setup also includes two MCP sidecars configured with first-c
   official Obscura image with native MCP HTTP bound to `0.0.0.0:8090`. Configure its endpoint with
   `BACKEND_OBSCURA_MCP_URL`.
 
+Beyond these first-class integrations, you can register **additional MCP servers from a JSON file**
+without rebuilding. Point `BACKEND_MCP_SERVERS_FILE` at a file in the standard `mcpServers` format
+(default `/data/mcp.json`); its servers are discovered at startup and merged on top of the built-ins,
+overriding any built-in of the same name. Keep secrets out of the file — every string value supports
+`${VAR}` interpolation resolved from the backend environment, so tokens stay in env vars. A missing
+referenced variable, an unknown `type`, or malformed JSON fails fast at startup; an absent file is a
+no-op. For example, to add ipverse-lens whois search:
+
+```json
+{
+  "mcpServers": {
+    "ipverse": {
+      "type": "http",
+      "url": "https://gateway.ipverse.net/mcp",
+      "headers": { "Authorization": "Bearer ${IPVERSE_API_KEY}" }
+    }
+  }
+}
+```
+
+with `IPVERSE_API_KEY` set in the loom container's environment. See `mcp.json.example`. `type` accepts
+`http` (Streamable HTTP, the default) or `stdio`.
+
 Configured MCP tools are exposed to the chat model as OpenAI-compatible function tools
 named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Loom pauses
 when the model emits `tool_calls`, runs the requested tools, streams tool status events to the UI,
