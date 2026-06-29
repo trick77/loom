@@ -79,6 +79,18 @@ type listThreadsResponse struct {
 	NextCursor *string       `json:"nextCursor"`
 }
 
+// threadSearchResult is a full-text content hit: a thread serialized exactly
+// like a list item (embedded), plus the match-centered «…» snippet. The UI
+// renders it like a title match with the snippet as a second line.
+type threadSearchResult struct {
+	chat.Thread
+	Snippet string `json:"snippet"`
+}
+
+type threadSearchResponse struct {
+	Items []threadSearchResult `json:"items"`
+}
+
 type bulkDeleteThreadsRequest struct {
 	ThreadIDs []string `json:"threadIds"`
 }

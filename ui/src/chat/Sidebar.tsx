@@ -34,6 +34,7 @@ export function Sidebar({
   onArtifacts,
   onProjects,
   onMemory,
+  onOpenSearch,
   onSelectThread,
   onDeleteThread,
   onRenameThread,
@@ -76,6 +77,7 @@ export function Sidebar({
   onArtifacts(): void;
   onProjects(): void;
   onMemory(): void;
+  onOpenSearch(): void;
   onSelectThread(threadID: string): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
@@ -104,6 +106,7 @@ export function Sidebar({
               <button
                 type="button"
                 aria-label="Search"
+                onClick={onOpenSearch}
                 className="grid place-items-center rounded transition-colors hover:text-white"
               >
                 <Icon name="search" size="18px" />

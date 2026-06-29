@@ -47,6 +47,7 @@ import { StartPanel } from "./StartPanel";
 import { Sidebar } from "./Sidebar";
 import { tabTitle } from "./tabTitle";
 import { DeleteThreadModal, RenameThreadModal } from "./threadModals";
+import { SearchModal } from "./SearchModal";
 import { ArchiveProjectModal } from "../projects/ArchiveProjectModal";
 import { DeleteProjectModal } from "../projects/DeleteProjectModal";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage";
@@ -90,6 +91,7 @@ export function ThreadShell({
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [modalError, setModalError] = useState("");
   // Each assistant turn is reconstructed live as a single ordered ContentBlock[]
   // (text / trace / artifact) mirroring the order the SSE events arrive, so the
@@ -232,6 +234,20 @@ export function ThreadShell({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [handleStopResponse, isSending]);
+
+  // ⌘K / Ctrl-K opens the search palette from anywhere in the app.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && (event.key === "k" || event.key === "K")) {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     const cleanup = loadRoute(route);
@@ -799,6 +815,7 @@ export function ThreadShell({
         onArtifacts={navigateToArtifacts}
         onProjects={navigateToProjects}
         onMemory={navigateToMemory}
+        onOpenSearch={() => setSearchOpen(true)}
         onSelectThread={selectThread}
         onDeleteThread={openDeleteModal}
         onRenameThread={openRenameModal}
@@ -1032,6 +1049,12 @@ export function ThreadShell({
         />
       )}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {searchOpen && (
+        <SearchModal
+          onClose={() => setSearchOpen(false)}
+          onSelectThread={(threadID) => void selectThread(threadID)}
+        />
+      )}
     </div>
   );
 }

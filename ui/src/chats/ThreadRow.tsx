@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import type { Thread } from "../api";
 import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
 import { Icon } from "../chat/Icon";
+import { highlightTerms, renderSnippet } from "../search/highlight";
 import { SharedPill } from "../SharedPill";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { formatTimeAgo } from "../timeago";
@@ -25,6 +26,8 @@ export function ThreadRow({
   onRemoveFromProject,
   onStarChange,
   hideDivider = false,
+  snippet,
+  searchQuery,
 }: {
   thread: Thread;
   selectMode: boolean;
@@ -43,6 +46,11 @@ export function ThreadRow({
   onRemoveFromProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
   hideDivider?: boolean;
+  // snippet: a full-text content match excerpt («…» highlighted) shown on a
+  // second line during search. searchQuery: the active query, used to bold the
+  // matched terms in the title. Both undefined outside of search.
+  snippet?: string;
+  searchQuery?: string;
 }) {
   const rowRef = useRef<HTMLLIElement | null>(null);
 
@@ -58,6 +66,9 @@ export function ThreadRow({
   }, [menuOpen, onCloseMenu]);
 
   const timeLabel = formatTimeAgo(thread.lastMessageAt ?? thread.updatedAt);
+  const hasSnippet = snippet !== undefined && snippet !== "";
+  const titleNode =
+    searchQuery !== undefined && searchQuery !== "" ? highlightTerms(thread.title, searchQuery) : thread.title;
   const showMenuButton = hovered || menuOpen;
   const activeSurface = hovered || selected || menuOpen;
   const actionsMenu =
@@ -104,7 +115,9 @@ export function ThreadRow({
       active={activeSurface}
       after={actionsMenu}
       hideDivider={hideDivider}
-      surfaceClassName="group relative flex h-[49px] items-center gap-3 rounded-xl px-3 transition-colors hover:bg-[#2a2a28]"
+      surfaceClassName={`group relative flex items-center gap-3 rounded-xl px-3 transition-colors hover:bg-[#2a2a28] ${
+        hasSnippet ? "min-h-[60px] py-2" : "h-[49px]"
+      }`}
       onPointerEnter={() => onHoverChange(true)}
       onPointerLeave={() => onHoverChange(false)}
     >
@@ -129,8 +142,17 @@ export function ThreadRow({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
         onClick={() => (selectMode ? onToggleSelected() : onOpen())}
       >
-        <span className="min-w-0 truncate text-[15px] text-[#ecece6]">{thread.title}</span>
-        {thread.shared && <SharedPill />}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="min-w-0 truncate text-[15px] text-[#ecece6]">{titleNode}</span>
+            {thread.shared && <SharedPill />}
+          </span>
+          {snippet !== undefined && snippet !== "" && (
+            <span className="mt-0.5 min-w-0 truncate text-[13px] text-[#908e85]">
+              {renderSnippet(snippet)}
+            </span>
+          )}
+        </span>
         <span
           className={`ml-auto shrink-0 text-[13px] text-[#8a887f] group-hover:hidden ${
             activeSurface ? "hidden" : ""

@@ -8,6 +8,7 @@ import {
   type Thread,
 } from "../api";
 import { useInfiniteList } from "../useInfiniteList";
+import { useThreadSearch } from "../search/useThreadSearch";
 import { BulkDeleteModal } from "./BulkDeleteModal";
 import { ThreadRow } from "./ThreadRow";
 import { Icon } from "../chat/Icon";
@@ -16,6 +17,10 @@ import { SidebarOpenButton } from "../SidebarOpenButton";
 
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
+// Unlike the sidebar modal (capped at 20), the Threads page shows search matches
+// uncapped-in-practice so "Select all" can't silently miss matches beyond a small
+// cap. Bounded only to keep one render cheap; matches the backend search ceiling.
+const THREADS_SEARCH_LIMIT = 200;
 
 export function ThreadsPage({
   mutationVersion,
@@ -78,6 +83,25 @@ export function ThreadsPage({
     sentinelRef,
   } = useInfiniteList(fetchPage, [searchTerm, mutationVersion, reloadToken]);
 
+  // While a search is active, mirror the sidebar modal: a merged list of title +
+  // full-text matches with snippets (no infinite scroll). With an empty box, fall
+  // back to the full paginated management list above. `search` runs an extra
+  // recents fetch when not searching, which is ignored. A mutation (single-row
+  // star/rename/delete via `mutationVersion`, or a bulk delete via `reloadToken`)
+  // refetches the search so deleted/changed rows drop out.
+  const showingSearch = searchTerm !== "";
+  const search = useThreadSearch(searchTerm, {
+    limit: THREADS_SEARCH_LIMIT,
+    reloadToken: mutationVersion + reloadToken,
+  });
+  const rows: { thread: Thread; snippet?: string }[] = showingSearch
+    ? search.results
+    : threads.map((thread) => ({ thread }));
+  const listLoaded = showingSearch ? !search.titleLoading : loaded;
+  // The set the bulk actions operate on: the merged search results while
+  // searching (so content-only matches are included), else the paginated list.
+  const visibleThreads = showingSearch ? rows.map((row) => row.thread) : threads;
+
   useEffect(() => {
     if (error instanceof AuthExpiredError) {
       onSessionExpired();
@@ -111,17 +135,26 @@ export function ThreadsPage({
     });
   }, []);
 
-  // "Select all" acts on every thread matching the current search — including
-  // ones not yet loaded into the list — by fetching the full id set. Clicking
-  // again, when everything is already selected, clears the selection.
+  // "Select all" acts on every thread the user can currently see. While
+  // searching that's the merged title + full-text result set (content-only
+  // matches included), which lives client-side — so select their ids directly
+  // rather than refetching a title-only id set from the server. With an empty
+  // box it's the full management list, whose later pages aren't loaded yet, so
+  // fetch the complete id set. Clicking again, when everything is already
+  // selected, clears the selection.
   const toggleSelectAll = useCallback(() => {
+    const applyToggle = (ids: string[]) =>
+      setSelectedIds((current) => {
+        const allSelected = ids.length > 0 && ids.every((id) => current.has(id));
+        return allSelected ? new Set() : new Set(ids);
+      });
+    if (showingSearch) {
+      applyToggle(visibleThreads.map((thread) => thread.id));
+      return;
+    }
     void (async () => {
       try {
-        const ids = await listThreadIds({ search: searchTerm });
-        setSelectedIds((current) => {
-          const allSelected = ids.length > 0 && ids.every((id) => current.has(id));
-          return allSelected ? new Set() : new Set(ids);
-        });
+        applyToggle(await listThreadIds({ search: searchTerm }));
       } catch (error) {
         if (error instanceof AuthExpiredError) {
           onSessionExpired();
@@ -130,7 +163,7 @@ export function ThreadsPage({
         setLoadError("Threads failed to load.");
       }
     })();
-  }, [searchTerm, onSessionExpired]);
+  }, [showingSearch, visibleThreads, searchTerm, onSessionExpired]);
 
   const startSelectModeWith = useCallback((thread: Thread) => {
     setOpenMenuID(null);
@@ -185,7 +218,7 @@ export function ThreadsPage({
                 title={projectsAvailable ? undefined : "Create a project before moving threads"}
                 onClick={() => {
                   if (!hasSelection || !projectsAvailable || onMoveSelectedToProject === undefined) return;
-                  onMoveSelectedToProject(threads.filter((thread) => selectedIds.has(thread.id)));
+                  onMoveSelectedToProject(visibleThreads.filter((thread) => selectedIds.has(thread.id)));
                 }}
               >
                 Move to project
@@ -241,15 +274,15 @@ export function ThreadsPage({
         )}
 
         <ul className="mt-3">
-          {threads.length === 0 && loadError === "" ? (
-            loaded && (
+          {rows.length === 0 && loadError === "" ? (
+            listLoaded && (
               <li className="py-10 text-center text-[#807d74]">
                 {searchTerm === "" ? "No threads yet." : "No threads match your search."}
               </li>
             )
           ) : (
-            threads.map((thread, index) => {
-              const nextThread = threads[index + 1];
+            rows.map(({ thread, snippet }, index) => {
+              const nextThread = rows[index + 1]?.thread;
               const nextActive =
                 nextThread !== undefined &&
                 (hoveredID === nextThread.id || openMenuID === nextThread.id || selectedIds.has(nextThread.id));
@@ -257,6 +290,8 @@ export function ThreadsPage({
                 <ThreadRow
                   key={thread.id}
                   thread={thread}
+                  snippet={snippet}
+                  searchQuery={showingSearch ? searchTerm : undefined}
                   selectMode={selectMode}
                   selected={selectedIds.has(thread.id)}
                   menuOpen={openMenuID === thread.id}
@@ -279,9 +314,10 @@ export function ThreadsPage({
             })
           )}
         </ul>
-        {/* Sentinel observed for infinite scroll; loads the next page when in view. */}
-        <div ref={sentinelRef} aria-hidden="true" className="h-px" />
-        {loadingMore && hasMore && (
+        {/* Sentinel observed for infinite scroll; loads the next page when in view.
+            Disabled during a search, which shows a capped, non-paginated list. */}
+        {!showingSearch && <div ref={sentinelRef} aria-hidden="true" className="h-px" />}
+        {!showingSearch && loadingMore && hasMore && (
           <div className="ui-meta-text mt-3 px-1.5 text-[#8a887f]">Loading more…</div>
         )}
       </div>

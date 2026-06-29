@@ -74,6 +74,41 @@ func scanThread(row rowScanner) (Thread, error) {
 	return thread, nil
 }
 
+// scanThreadWithSnippet scans a thread row followed by a trailing snippet
+// column (the SELECT order used by SearchThreadsByContent). It mirrors
+// scanThread's column parsing and adds the FTS5 snippet as a separate return.
+func scanThreadWithSnippet(row rowScanner) (Thread, string, error) {
+	var thread Thread
+	var projectID sql.NullString
+	var archivedAt, lastMessageAt sql.NullString
+	var createdAt, updatedAt string
+	var snippet string
+	if err := row.Scan(&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt, &snippet); err != nil {
+		return Thread{}, "", err
+	}
+	if projectID.Valid {
+		thread.ProjectID = &projectID.String
+	}
+	var err error
+	thread.ArchivedAt, err = nullableTime(archivedAt)
+	if err != nil {
+		return Thread{}, "", fmt.Errorf("parse archived_at: %w", err)
+	}
+	thread.CreatedAt, err = parseSQLiteTime(createdAt)
+	if err != nil {
+		return Thread{}, "", fmt.Errorf("parse created_at: %w", err)
+	}
+	thread.UpdatedAt, err = parseSQLiteTime(updatedAt)
+	if err != nil {
+		return Thread{}, "", fmt.Errorf("parse updated_at: %w", err)
+	}
+	thread.LastMessageAt, err = nullableTime(lastMessageAt)
+	if err != nil {
+		return Thread{}, "", fmt.Errorf("parse last_message_at: %w", err)
+	}
+	return thread, snippet, nil
+}
+
 func scanMessage(row rowScanner) (Message, error) {
 	var message Message
 	var role string
