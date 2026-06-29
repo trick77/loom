@@ -92,8 +92,9 @@ type Config struct {
 	Context7MCPURL string
 	Context7APIKey string
 	// MCPServersFile points at an optional JSON file (standard `mcpServers`
-	// format) whose servers are merged on top of the built-in MCP servers. An
-	// absent file is a no-op; see mcp.LoadServersFromFile.
+	// format) whose servers are merged on top of the built-in MCP servers.
+	// Defaults to /config/mcp.json (the mounted config dir); an absent file is a
+	// no-op. See mcp.LoadServersFromFile.
 	MCPServersFile string
 
 	AdminInitialPassword string // legacy; authentik owns credentials in Phase 2
@@ -154,7 +155,7 @@ func Load() (Config, error) {
 		ObscuraMCPURL:           env("BACKEND_OBSCURA_MCP_URL", ""),
 		Context7MCPURL:          env("BACKEND_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
 		Context7APIKey:          env("BACKEND_CONTEXT7_API_KEY", ""),
-		MCPServersFile:          env("BACKEND_MCP_SERVERS_FILE", "/data/mcp.json"),
+		MCPServersFile:          env("BACKEND_MCP_SERVERS_FILE", "/config/mcp.json"),
 		AdminInitialPassword:    env("BACKEND_ADMIN_INITIAL_PASSWORD", ""),
 		SessionSecret:           env("BACKEND_SESSION_SECRET", ""),
 		AuthMode:                AuthMode(env("BACKEND_AUTH_MODE", "")),

@@ -47,3 +47,6 @@ logs/
 backend/web/dist/*
 !backend/web/dist/.gitkeep
 !backend/web/dist/index.html
+
+# Local MCP server overrides (real file; example is tracked)
+config/mcp.json
