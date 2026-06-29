@@ -82,8 +82,25 @@ describe("renderSnippet", () => {
     const { container } = render(<>{renderSnippet("…use **«VPC»** endpoints…")}</>);
     const strong = container.querySelector("strong");
     expect(strong).toHaveTextContent("VPC");
-    // The ** markers around the match are gone.
-    expect(container.textContent).toBe("…use VPC endpoints…");
+    // The ** markers around the match are gone; the match also leads the line.
+    expect(container.textContent).toBe("…VPC endpoints…");
+  });
+
+  test("drops centred leading context so the match leads the visible line", () => {
+    // FTS centres the match; the long lead would otherwise clip the highlight off
+    // the truncated single-line subline.
+    const centred =
+      "…and only after all of that is in place do we finally configure the «ingress» controller for traffic…";
+    const { container } = render(<>{renderSnippet(centred)}</>);
+    const strong = container.querySelector("strong");
+    expect(strong).toHaveTextContent("ingress");
+    // Leading context is dropped; the line now starts at the match.
+    expect(container.textContent).toBe("…ingress controller for traffic…");
+  });
+
+  test("leaves a match that already leads the snippet untouched", () => {
+    const { container } = render(<>{renderSnippet("«VPS»; it provisions workspaces…")}</>);
+    expect(container.textContent).toBe("VPS; it provisions workspaces…");
   });
 });
 
