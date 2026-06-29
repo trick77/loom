@@ -255,3 +255,98 @@ func TestBuildFTSMatchQuery(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildFTSPrefixMatchQuery(t *testing.T) {
+	cases := map[string]string{
+		"vp":         `"vp"*`,
+		"open shift": `"open"* "shift"*`,
+		`a"b`:        `"a""b"*`,
+		"":           "",
+		"   ":        "",
+	}
+	for in, want := range cases {
+		if got := buildFTSPrefixMatchQuery(in); got != want {
+			t.Fatalf("buildFTSPrefixMatchQuery(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSearchThreadsByContent_PrefixMatchesPartialTokens(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	alice := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	vps := seedThread(t, store, alice, nil, "Always-on coding box",
+		msg{RoleAssistant, "It provisions a VPS with a browser IDE."})
+	vpn := seedThread(t, store, alice, nil, "Tailscale notes",
+		msg{RoleAssistant, "A VPN built on WireGuard between your devices."})
+	vpc := seedThread(t, store, alice, nil, "Bedrock networking",
+		msg{RoleAssistant, "Reach Bedrock over VPC endpoints via PrivateLink."})
+	seedThread(t, store, alice, nil, "Off-topic",
+		msg{RoleAssistant, "Nothing relevant about cats here."})
+
+	hits, err := store.SearchThreadsByContent(ctx, alice, "vp", nil, 20)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	got := map[string]bool{}
+	for _, h := range hits {
+		got[h.Thread.ID] = true
+		if !strings.Contains(h.Snippet, "«") {
+			t.Fatalf("hit %q missing «» highlight in snippet %q", h.Thread.Title, h.Snippet)
+		}
+	}
+	for _, id := range []string{vps, vpn, vpc} {
+		if !got[id] {
+			t.Fatalf("prefix 'vp' should surface thread %s; hits=%v", id, got)
+		}
+	}
+	if len(hits) != 3 {
+		t.Fatalf("expected exactly 3 content hits (VPS/VPN/VPC), got %d", len(hits))
+	}
+}
+
+func TestSearchThreadsByContent_DedupesMultiMatchThreadToOneRow(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	alice := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	// One thread, several messages each matching — must collapse to a single hit.
+	threadID := seedThread(t, store, alice, nil, "VPN heavy thread",
+		msg{RoleUser, "How do I set up a VPN?"},
+		msg{RoleAssistant, "A VPN tunnels your traffic."},
+		msg{RoleUser, "Is the VPN always on?"},
+	)
+
+	hits, err := store.SearchThreadsByContent(ctx, alice, "vpn", nil, 20)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 deduped hit, got %d", len(hits))
+	}
+	if hits[0].Thread.ID != threadID {
+		t.Fatalf("hit from unexpected thread %s", hits[0].Thread.ID)
+	}
+}
+
+func TestSearchThreadsByContent_IsUserScoped(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	alice := insertTestUser(t, db, "alice")
+	bob := insertTestUser(t, db, "bob")
+	store := NewStore(db)
+
+	seedThread(t, store, alice, nil, "Alice secret",
+		msg{RoleUser, "The codeword is sphinx."})
+
+	hits, err := store.SearchThreadsByContent(ctx, bob, "sphinx", nil, 20)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("bob must not see alice's threads, got %d hits", len(hits))
+	}
+}

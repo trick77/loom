@@ -13,12 +13,14 @@ vi.mock("./api", async () => {
     listThreads: vi.fn(),
     listThreadIds: vi.fn(),
     bulkDeleteThreads: vi.fn(),
+    searchThreadContent: vi.fn(),
   };
 });
 
 const listThreadsMock = vi.mocked(api.listThreads);
 const listThreadIdsMock = vi.mocked(api.listThreadIds);
 const bulkDeleteThreadsMock = vi.mocked(api.bulkDeleteThreads);
+const searchThreadContentMock = vi.mocked(api.searchThreadContent);
 
 function thread(id: string, title: string): Thread {
   return {
@@ -66,6 +68,8 @@ beforeEach(() => {
     matching(params?.search ?? "").map((item) => item.id),
   );
   bulkDeleteThreadsMock.mockResolvedValue({ deleted: 0 });
+  // No full-text matches by default; individual tests opt in.
+  searchThreadContentMock.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -136,9 +140,50 @@ test("search filters by title (debounced)", async () => {
   await waitFor(() => {
     expect(screen.queryByText("Apps and websites")).not.toBeInTheDocument();
   });
-  expect(screen.getByText("Greeting")).toBeInTheDocument();
-  expect(screen.getByText("Morning greeting")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(titleSpan("Greeting")).toBeInTheDocument();
+  });
+  expect(titleSpan("Morning greeting")).toBeInTheDocument();
   expect(listThreadsMock).toHaveBeenCalledWith(expect.objectContaining({ search: "greet" }));
+});
+
+// Matches the title span by its full textContent, since an active search bolds
+// the matched term and splits the title across <strong> and text nodes.
+const titleSpan = (title: string) =>
+  screen.getByText(
+    (_, element) =>
+      element?.classList.contains("truncate") === true &&
+      element.classList.contains("text-[15px]") &&
+      element.textContent === title,
+  );
+
+test("search surfaces full-text matches and Select all includes them", async () => {
+  // A thread whose title does NOT match the query — it only matches on content,
+  // so it arrives via searchThreadContent, not the title list.
+  searchThreadContentMock.mockResolvedValue([
+    { thread: thread("t4", "Deployment notes"), snippet: "…we «greet» the operator…" },
+  ]);
+
+  renderPage();
+  await screen.findByText("Apps and websites");
+
+  fireEvent.change(screen.getByLabelText("Search threads"), { target: { value: "greet" } });
+
+  // The content-only row renders once the full-text search resolves.
+  await waitFor(() => {
+    expect(titleSpan("Deployment notes")).toBeInTheDocument();
+  });
+  expect(searchThreadContentMock).toHaveBeenCalledWith(
+    expect.objectContaining({ query: "greet" }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Select threads" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+
+  // Two title matches (Greeting, Morning greeting) + the content-only match.
+  expect(await screen.findByText("3 selected")).toBeInTheDocument();
+  // Select all over a search must NOT fall back to the title-only id endpoint.
+  expect(listThreadIdsMock).not.toHaveBeenCalled();
 });
 
 test("Select all selects the filtered set and toggles button states", async () => {

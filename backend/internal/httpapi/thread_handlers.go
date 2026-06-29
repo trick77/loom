@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/trick77/loom/internal/chat"
 )
@@ -29,6 +30,44 @@ func (s *server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 		nextCursor = &cursor
 	}
 	writeJSON(w, listThreadsResponse{Items: threads, NextCursor: nextCursor})
+}
+
+// maxThreadContentSearchResults caps the interactive content search. The sidebar
+// modal asks for 20; the Threads page asks for more so "Select all" over an
+// active search covers essentially every match (claude.ai shows them uncapped).
+const maxThreadContentSearchResults = 200
+
+func (s *server) handleSearchThreadContent(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireThreadStore(w, s) {
+		return
+	}
+	query := r.URL.Query()
+	var projectID *string
+	if id := query.Get("projectId"); id != "" && id != "null" {
+		projectID = &id
+	}
+	limit := maxThreadContentSearchResults
+	if raw := query.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeJSONError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		if parsed < limit {
+			limit = parsed
+		}
+	}
+	hits, err := s.thread.SearchThreadsByContent(r.Context(), user.ID, query.Get("q"), projectID, limit)
+	if err != nil {
+		serverError(w, r, err, "search thread content failed")
+		return
+	}
+	items := make([]threadSearchResult, len(hits))
+	for i, hit := range hits {
+		items[i] = threadSearchResult{Thread: hit.Thread, Snippet: hit.Snippet}
+	}
+	writeJSON(w, threadSearchResponse{Items: items})
 }
 
 func (s *server) handleListThreadIDs(w http.ResponseWriter, r *http.Request) {

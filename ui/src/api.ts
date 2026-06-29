@@ -469,6 +469,35 @@ export async function listThreadIds(params: { search?: string } = {}): Promise<s
   return expectJSON<string[]>(response, "failed to load thread ids");
 }
 
+// ThreadContentHit is one full-text content match: the matching thread plus a
+// match-centered snippet with the hits wrapped in « » (see renderSnippet).
+export type ThreadContentHit = { thread: Thread; snippet: string };
+
+// searchThreadContent runs the slower full-text search over message content
+// (prefix-matched, so "vp" finds "vpn"). Returns at most `limit` threads, most
+// relevant first, one per thread. Complements the fast title search
+// (listThreads with `search`); the sidebar/threads search merges the two.
+export async function searchThreadContent(params: {
+  query: string;
+  limit?: number;
+  projectId?: string | null;
+}): Promise<ThreadContentHit[]> {
+  const query = new URLSearchParams();
+  query.set("q", params.query);
+  if (params.limit !== undefined) {
+    query.set("limit", String(params.limit));
+  }
+  if (params.projectId !== undefined && params.projectId !== null && params.projectId !== "") {
+    query.set("projectId", params.projectId);
+  }
+  const response = await fetch(`/api/threads/search?${query.toString()}`);
+  const body = await expectJSON<{ items: Array<Thread & { snippet: string }> }>(
+    response,
+    "failed to search threads",
+  );
+  return body.items.map(({ snippet, ...thread }) => ({ thread, snippet }));
+}
+
 export async function listArtifacts(params: {
   type?: ArtifactListType;
   sort?: ArtifactSort;

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -89,6 +90,46 @@ func TestListThreadsParsesQueryOptions(t *testing.T) {
 	}
 	if store.listThreadsOptions.Limit != 12 {
 		t.Fatalf("Limit = %d, want 12", store.listThreadsOptions.Limit)
+	}
+}
+
+func TestSearchThreadContentReturnsSnippetsAndClampsLimit(t *testing.T) {
+	hits := make([]chat.ThreadContentHit, 0, 250)
+	for i := 0; i < 250; i++ {
+		hits = append(hits, chat.ThreadContentHit{
+			Thread:  chat.Thread{ID: "thr_" + strconv.Itoa(i), UserID: testUser.ID, Title: "Match"},
+			Snippet: "…a «vpn» snippet…",
+		})
+	}
+	store := &fakeThreadStore{contentHits: hits}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
+	rec := httptest.NewRecorder()
+	// A limit above the ceiling must be clamped to the 200-result maximum.
+	req := authenticatedRequest(http.MethodGet, "/api/threads/search?q=vp&limit=9999", "")
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			ID      string `json:"id"`
+			Title   string `json:"title"`
+			Snippet string `json:"snippet"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.Items) != 200 {
+		t.Fatalf("len(items) = %d, want 200 (clamped)", len(body.Items))
+	}
+	if body.Items[0].Snippet != "…a «vpn» snippet…" {
+		t.Fatalf("snippet not serialized, got %q", body.Items[0].Snippet)
+	}
+	if body.Items[0].Title != "Match" {
+		t.Fatalf("thread fields not serialized, got title %q", body.Items[0].Title)
 	}
 }
 
