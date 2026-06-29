@@ -159,6 +159,8 @@ type fakeThreadStore struct {
 	listLimit int
 	// shares maps threadID -> the thread's share row, for share handler tests.
 	shares map[string]chat.Share
+	// searchHits is returned verbatim by SearchMessages, for conversation_search tests.
+	searchHits []chat.MessageSearchHit
 }
 
 func (f *fakeThreadStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
@@ -393,6 +395,10 @@ func (f *fakeThreadStore) ListRecentMessages(_ context.Context, _ string, _ stri
 		msgs = msgs[len(msgs)-limit:]
 	}
 	return msgs, nil
+}
+
+func (f *fakeThreadStore) SearchMessages(_ context.Context, _ string, _ string, _ *string, _ string, _ int) ([]chat.MessageSearchHit, error) {
+	return append([]chat.MessageSearchHit(nil), f.searchHits...), nil
 }
 
 func (f *fakeThreadStore) GetProjectMemory(_ context.Context, _ string, projectID string) (chat.ProjectMemory, bool, error) {

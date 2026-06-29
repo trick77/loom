@@ -148,6 +148,12 @@ export function applyReasoningTitle(events: ActivityTraceEvent[], id: string, ti
 export function summarizeToolCall(name: string, rawArguments: string): ToolSummary {
   const args = parseJSONRecord(rawArguments);
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
+  if (/conversation_search/i.test(name)) {
+    return { kind: "search", title: query ?? "Searching past conversations" };
+  }
+  if (/read_thread/i.test(name)) {
+    return { kind: "generated", title: "Reading a conversation" };
+  }
   if (isSearchTool(name) || query !== undefined) {
     return { kind: "search", title: query ?? "Searching the web" };
   }

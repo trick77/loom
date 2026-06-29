@@ -112,6 +112,7 @@ type ThreadStore interface {
 	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 	ListRecentMessages(context.Context, string, string, int) ([]chat.Message, error)
+	SearchMessages(context.Context, string, string, *string, string, int) ([]chat.MessageSearchHit, error)
 	GetProjectMemory(context.Context, string, string) (chat.ProjectMemory, bool, error)
 	UpsertProjectMemory(context.Context, string, string, string, int) (chat.ProjectMemory, error)
 	CountProjectMessages(context.Context, string, string) (int, error)
