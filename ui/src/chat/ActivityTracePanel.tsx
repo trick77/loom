@@ -184,6 +184,8 @@ function ActivityTraceRow({
   const toolIcon =
     event.summary.kind === "search" ? (
       <GlobeTraceIcon />
+    ) : event.summary.kind === "conversationSearch" ? (
+      <ConversationSearchTraceIcon />
     ) : event.summary.kind === "generated" ? (
       <GeneratedTraceIcon />
     ) : fetchFavicon !== undefined ? (
@@ -293,6 +295,12 @@ function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string;
 
 function GlobeTraceIcon() {
   return <Icon name="globe" size="1.125rem" className="ui-activity-globe-icon" />;
+}
+
+function ConversationSearchTraceIcon() {
+  // Loupe (own-history search), distinct from the globe used for web search.
+  // No globe-icon class — that one applies a tilt that would skew the loupe.
+  return <Icon name="search" size="1.125rem" />;
 }
 
 function ClockTraceIcon() {

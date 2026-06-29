@@ -25,6 +25,7 @@ export type ActivityTraceToolEvent = {
 
 export type ToolSummary =
   | { kind: "search"; title: string }
+  | { kind: "conversationSearch"; title: string }
   | { kind: "fetch"; title: string; url?: string }
   | { kind: "file"; title: string }
   | { kind: "generated"; title: string }
@@ -149,7 +150,9 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   const args = parseJSONRecord(rawArguments);
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
   if (/conversation_search/i.test(name)) {
-    return { kind: "search", title: query ?? "Searching past conversations" };
+    // Distinct kind so the trace renders a loupe (own-history search) rather than
+    // the globe used for web search — see ActivityTracePanel.
+    return { kind: "conversationSearch", title: query ?? "Searching past conversations" };
   }
   if (/read_thread/i.test(name)) {
     return { kind: "generated", title: "Reading a conversation" };
