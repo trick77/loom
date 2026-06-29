@@ -54,6 +54,10 @@ services:
       BACKEND_EMBED_MODEL: "${BACKEND_EMBED_MODEL:-text-embedding-3-small}"
       BACKEND_CONTEXT7_API_KEY: "${BACKEND_CONTEXT7_API_KEY:-}"
       BACKEND_CONTEXT7_MCP_URL: "${BACKEND_CONTEXT7_MCP_URL:-https://mcp.context7.com/mcp}"
+      # Extra MCP servers from ./data/mcp.json (standard mcpServers format; merged on top of built-ins).
+      BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/data/mcp.json}"
+      # Token referenced by mcp.json's ${IPVERSE_API_KEY} (ipverse-lens whois).
+      IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"
       BACKEND_BFL_BASE_URL: "${BACKEND_BFL_BASE_URL:-https://api.bfl.ai/v1}"
       BACKEND_BFL_API_KEY: "${BACKEND_BFL_API_KEY:-}"
       BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"

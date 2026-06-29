@@ -185,14 +185,21 @@ func run() error {
 		chatClient = llmClient
 	}
 	var toolService httpapi.ToolService
-	mcpConfig := toolConfigForConfig(cfg)
+	toolCfg, err := toolConfigForConfig(cfg)
+	if err != nil {
+		return err
+	}
+	mcpConfig := toolCfg.union()
 	if len(mcpConfig.Servers) > 0 {
 		// Give discovery room for cold MCP sidecars: the fetch bridge boots a
 		// Python interpreter on its first tools/list, and browser sidecars can be
 		// slow on cold starts. The per-request and overall budgets are aligned so
-		// a single slow server can actually use its window.
+		// a single slow server can actually use its window. Built-in servers are
+		// required (boot fails if any fail); file-defined servers are best-effort
+		// (a failure is logged and the server dropped) so a third-party outage or
+		// exhausted quota cannot block startup.
 		discoveryCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		discovered, err := mcp.NewRequiredServiceFromConfig(discoveryCtx, mcpConfig, &http.Client{Timeout: 30 * time.Second})
+		discovered, err := mcp.NewServiceFromConfigs(discoveryCtx, toolCfg.Required, toolCfg.FileServers, &http.Client{Timeout: 30 * time.Second}, slog.Default())
 		cancel()
 		if err != nil {
 			return err
@@ -301,21 +308,57 @@ func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 	}
 }
 
-func toolConfigForConfig(cfg config.Config) mcp.Config {
-	out := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
-	if strings.TrimSpace(cfg.FetchMCPURL) != "" {
-		out.Servers["fetch"] = mcp.FetchServerConfig(cfg.FetchMCPURL)
+// toolServerConfig splits MCP servers by discovery policy: Required servers are
+// the curated built-ins loom's boot depends on (discovery failure is fatal);
+// FileServers come from the optional JSON file and are discovered best-effort.
+type toolServerConfig struct {
+	Required    mcp.Config
+	FileServers mcp.Config
+}
+
+// union merges both sets (file entries win on a name collision) for the startup
+// summary and the "any servers configured?" guard.
+func (t toolServerConfig) union() mcp.Config {
+	out := mcp.Config{Servers: make(map[string]mcp.ServerConfig, len(t.Required.Servers)+len(t.FileServers.Servers))}
+	for name, sc := range t.Required.Servers {
+		out.Servers[name] = sc
 	}
-	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
-		out.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL)
-	}
-	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
-		out.Servers["tavily"] = mcp.TavilyServerConfig(cfg.TavilyURL, cfg.TavilyAPIKey)
-	}
-	if strings.TrimSpace(cfg.Context7APIKey) != "" {
-		out.Servers["context7"] = mcp.Context7ServerConfig(cfg.Context7MCPURL, cfg.Context7APIKey)
+	for name, sc := range t.FileServers.Servers {
+		out.Servers[name] = sc
 	}
 	return out
+}
+
+func toolConfigForConfig(cfg config.Config) (toolServerConfig, error) {
+	required := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
+	if strings.TrimSpace(cfg.FetchMCPURL) != "" {
+		required.Servers["fetch"] = mcp.FetchServerConfig(cfg.FetchMCPURL)
+	}
+	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
+		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL)
+	}
+	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
+		required.Servers["tavily"] = mcp.TavilyServerConfig(cfg.TavilyURL, cfg.TavilyAPIKey)
+	}
+	if strings.TrimSpace(cfg.Context7APIKey) != "" {
+		required.Servers["context7"] = mcp.Context7ServerConfig(cfg.Context7MCPURL, cfg.Context7APIKey)
+	}
+	// Servers from the optional JSON file are best-effort and override a built-in
+	// of the same name (the built-in is dropped from the required set so user
+	// configuration always wins, and a flaky override can't fail boot).
+	fileServers, err := mcp.LoadServersFromFile(cfg.MCPServersFile, os.LookupEnv)
+	if err != nil {
+		return toolServerConfig{}, err
+	}
+	out := toolServerConfig{Required: required, FileServers: mcp.Config{Servers: map[string]mcp.ServerConfig{}}}
+	for name, server := range fileServers {
+		if _, exists := required.Servers[name]; exists {
+			slog.Warn("MCP servers file overrides built-in server", "server", name)
+			delete(required.Servers, name)
+		}
+		out.FileServers.Servers[name] = server
+	}
+	return out, nil
 }
 
 func context7Configured(cfg config.Config) bool {

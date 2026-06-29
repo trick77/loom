@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/trick77/loom/internal/config"
@@ -37,6 +38,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		artifactCapability(cfg),
 		docgenCapability(runtime),
 		mcpCapability(mcpConfig, runtime),
+		mcpFileCapability(cfg),
 		tavilyCapability(cfg),
 		context7Capability(cfg),
 		bflImageCapability(cfg, runtime),
@@ -95,6 +97,17 @@ func mcpCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapabili
 		return startupCapability{Name: "MCP tools", Status: "disabled", Detail: "no configured MCP servers"}
 	}
 	return startupCapability{Name: "MCP tools", Status: "enabled", Detail: fmt.Sprintf("servers=%d discovered_tools=%d", len(mcpConfig.Servers), runtime.DiscoveredToolCount)}
+}
+
+func mcpFileCapability(cfg config.Config) startupCapability {
+	path := strings.TrimSpace(cfg.MCPServersFile)
+	if path == "" {
+		return startupCapability{Name: "MCP servers file", Status: "disabled", Detail: "set BACKEND_MCP_SERVERS_FILE"}
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return startupCapability{Name: "MCP servers file", Status: "disabled", Detail: "no file at " + path}
+	}
+	return startupCapability{Name: "MCP servers file", Status: "enabled", Detail: "file=" + path}
 }
 
 func tavilyCapability(cfg config.Config) startupCapability {

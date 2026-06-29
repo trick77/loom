@@ -235,6 +235,72 @@ func TestBestEffortServiceIncludesSyntheticTavilyAndExternalTools(t *testing.T) 
 	}
 }
 
+// toolServer is a mock MCP server advertising a single named tool.
+func toolServer(t *testing.T, toolName string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		switch req.Method {
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{{
+				"name": toolName, "description": "x", "inputSchema": map[string]any{"type": "object"},
+			}}})
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+}
+
+func TestNewServiceFromConfigsDropsFailedBestEffortServer(t *testing.T) {
+	builtin := toolServer(t, "search")
+	t.Cleanup(builtin.Close)
+	// A best-effort server pointing at a closed listener fails discovery.
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+
+	required := Config{Servers: map[string]ServerConfig{"tavily": {Transport: TransportStreamableHTTP, URL: builtin.URL}}}
+	best := Config{Servers: map[string]ServerConfig{"ipverse": {Transport: TransportStreamableHTTP, URL: deadURL}}}
+
+	service, err := NewServiceFromConfigs(context.Background(), required, best, builtin.Client(), nil)
+	if err != nil {
+		t.Fatalf("NewServiceFromConfigs() error = %v, want best-effort failure swallowed", err)
+	}
+	names := []string{}
+	for _, tool := range service.Tools() {
+		names = append(names, tool.Function.Name)
+	}
+	if !reflect.DeepEqual(names, []string{"tavily__search"}) {
+		t.Fatalf("tool names = %#v, want only the required server's tool", names)
+	}
+	// ServerStatus still tracks the dropped best-effort server (so it recovers on
+	// a later probe) even though its tools are absent.
+	statuses := service.ServerStatus(context.Background())
+	if len(statuses) != 2 {
+		t.Fatalf("ServerStatus() = %#v, want both servers tracked", statuses)
+	}
+}
+
+func TestNewServiceFromConfigsRequiredFailureIsFatal(t *testing.T) {
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+
+	required := Config{Servers: map[string]ServerConfig{"fetch": {Transport: TransportStreamableHTTP, URL: deadURL}}}
+	if _, err := NewServiceFromConfigs(context.Background(), required, Config{}, http.DefaultClient, nil); err == nil {
+		t.Fatal("NewServiceFromConfigs() error = nil, want fatal required-server failure")
+	}
+}
+
 func TestServiceServerStatusProbesSyntheticTavilyConfig(t *testing.T) {
 	tavily := tavilyMockServer(t)
 	t.Cleanup(tavily.Close)
