@@ -110,6 +110,9 @@ export function renderSnippet(snippet: string): ReactNode {
     let cut = firstMark - leadBudget;
     const space = text.indexOf(" ", cut);
     if (space !== -1 && space < firstMark) cut = space + 1;
+    // A no-space lead leaves `cut` on a raw code-unit offset; nudge off an
+    // orphaned low surrogate so we never slice an astral char into a U+FFFD.
+    if ((text.charCodeAt(cut) & 0xfc00) === 0xdc00) cut++;
     text = "…" + text.slice(cut);
   }
   // Split on the « match » delimiters, keeping the captured match text.

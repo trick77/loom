@@ -102,6 +102,20 @@ describe("renderSnippet", () => {
     );
   });
 
+  test("caps a spaceless lead without splitting an astral char at the cut", () => {
+    // No space in the lead → the word-snap can't fire, so the cut stays on a raw
+    // code-unit offset. A 2-unit astral char (𝕏) is placed so its low surrogate
+    // lands exactly on the cut; the guard must skip it rather than emit U+FFFD.
+    const tail = "x".repeat(31); // 31 single-unit chars between the astral char and «
+    // firstMark = 2 (astral) + 31 = 33; cut = 33 − 32 = 1 = the low surrogate.
+    const { container } = render(<>{renderSnippet(`𝕏${tail}«match» trailing context here`)}</>);
+    expect(container.querySelector("strong")).toHaveTextContent("match");
+    expect(container.textContent).not.toContain("�");
+    // The astral char straddling the cut is dropped cleanly; the kept lead is the
+    // 31 single-unit chars between it and the match.
+    expect(container.textContent).toBe(`…${tail}match trailing context here`);
+  });
+
   test("leaves a match that already leads the snippet untouched", () => {
     const { container } = render(<>{renderSnippet("«VPS»; it provisions workspaces…")}</>);
     expect(container.textContent).toBe("VPS; it provisions workspaces…");
