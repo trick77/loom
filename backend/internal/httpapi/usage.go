@@ -21,6 +21,10 @@ type usageResponse struct {
 	UserMemorySourceMessages     int     `json:"userMemorySourceMessages"`
 	UserMemoryTotalMessages      int     `json:"userMemoryTotalMessages"`
 	UserMemoryRefreshWindowHours int     `json:"userMemoryRefreshWindowHours"`
+	// Other instructions (user-steered directives) budget usage.
+	UserDirectivesCount  int `json:"userDirectivesCount"`
+	UserDirectivesLength int `json:"userDirectivesLength"`
+	UserDirectivesMax    int `json:"userDirectivesMax"`
 }
 
 func (s *server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +46,7 @@ func (s *server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 		Totals:                       totals,
 		UserMemoryMax:                chat.MaxUserMemoryLength,
 		UserMemoryRefreshWindowHours: int(memoryUserRefreshAge.Hours()),
+		UserDirectivesMax:            chat.MaxUserDirectivesTotalLength,
 	}
 	// Live values, not counters: the current memory's length (runes), how many
 	// messages it was last folded from, when it was last refreshed, and the user's
@@ -57,6 +62,12 @@ func (s *server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 		}
 		if total, err := s.thread.CountUserMessages(r.Context(), user.ID); err == nil {
 			resp.UserMemoryTotalMessages = total
+		}
+		if directives, err := s.thread.ListUserDirectives(r.Context(), user.ID); err == nil {
+			resp.UserDirectivesCount = len(directives)
+			for _, d := range directives {
+				resp.UserDirectivesLength += len([]rune(d.Content))
+			}
 		}
 	}
 	writeJSON(w, resp)

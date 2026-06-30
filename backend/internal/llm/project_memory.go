@@ -8,11 +8,18 @@ import (
 	"time"
 )
 
-// memoryMaxCompletionTokens caps memory generation. A memory is a short markdown
-// digest (a handful of lines), so this is far above a title's 32-token cap but
-// still small enough to keep the helper call cheap. Sized so a full user memory
-// (well under 2000 characters ≈ ~500 tokens) is never clipped mid-output.
-const memoryMaxCompletionTokens = 768
+// memoryMaxCompletionTokens caps memory generation. A full user memory runs up to
+// userMemoryBudgetChars (~6000 chars ≈ ~1500 tokens), so this is sized above that
+// to never clip the output mid-section. It is a ceiling shared with project memory
+// (bounded separately by its own prompt + MaxProjectMemoryLength), so the larger
+// value does not enlarge project memory.
+const memoryMaxCompletionTokens = 1900
+
+// userMemoryBudgetChars is the total character budget the user-memory generation
+// prompt divides across its sections. It is kept in lockstep with
+// chat.MaxUserMemoryLength (asserted in a test) — llm deliberately does not import
+// chat, so the value is mirrored here rather than referenced.
+const userMemoryBudgetChars = 6000
 
 // ProjectMemorySystemPrompt drives project-memory generation: a sectioned
 // profile shared across the project's chats, with five fixed markdown headings
@@ -38,33 +45,71 @@ const ProjectMemorySystemPrompt = "You maintain a compact, durable memory profil
 	"Write in a terse, telegraphic \"caveman\" style: keep only load-bearing words; drop articles (a/the), pronouns, and linking verbs (e.g. \"Chose Postgres over Mongo; deadline March 1\"). " +
 	"Keep the whole memory well under 2000 characters. Output ONLY the memory content, no preamble."
 
-// UserMemorySystemPrompt drives user-memory generation: a structured digest with
-// a protected identity Core, a capped churning "Current focus" section, and a
-// "Style" section capturing how the user wants to be answered — so durable
-// identity facts are never lost, transient work ages out instead of piling up,
-// and learned response preferences steer future replies.
-const UserMemorySystemPrompt = "You maintain a compact, durable memory about the user so the assistant can stay personalized across all of their chats. " +
-	"Given the existing memory and recent conversation, output an UPDATED memory in exactly these three sections, each a markdown heading followed by terse '- ' fragment lines:\n" +
-	"## Core — durable identity facts the user revealed about THEMSELVES: where they live, employer/role, languages, hobbies and favourite things (places, games, food, media, and the like), strong dislikes (things they hate or loathe), and lasting preferences. " +
-	"These are high priority: once captured, KEEP them — only replace a Core fact with its newer value; never drop one to save space.\n" +
-	"## Current focus — at most 10 items: the user's active projects, ongoing goals, and current work. " +
-	"This section CHURNS: when it is full and a new item appears, drop the oldest or least-active one; also drop items that look finished, superseded, or have not come up in recent conversation. Never let it grow past the 10-item cap.\n" +
-	"## Style — how the user wants the assistant to respond, inferred from their feedback and reactions: preferred answer length, level of detail, tone, format, and language. " +
-	"Capture a preference only when the user signals it — an explicit request or a repeated reaction (e.g. complaining answers are too long → \"prefers concise answers\"; switching to another language → records that language). Replace a preference with its newer value when the signals change.\n" +
-	"Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. " +
-	"Write in a terse, telegraphic \"caveman\" style: keep only load-bearing words; drop articles (a/the), pronouns, and linking verbs (e.g. \"Lives Zurich; backend dev at Acme\"). " +
-	"Drop chit-chat, one-off task details, and anything about other people. Replace outdated facts with their newest value instead of listing both. " +
-	"Omit a heading entirely if it has no items. " +
-	"NEVER store passwords, API keys, secrets, payment details, or other sensitive credentials. " +
-	"Keep the whole memory well under 2000 characters. Output ONLY the memory content, no preamble."
+// userMemorySection is one heading in the derived user memory. pct is the
+// section's share of the total budget; the per-section character target is
+// computed from it (budget*pct/100) so there are no hardcoded magic char counts —
+// change userMemoryBudgetChars and every target rescales. The pct values sum to
+// 100 (verified in a test).
+type userMemorySection struct {
+	heading string
+	pct     int
+	note    string
+}
+
+// userMemorySections defines the derived-memory structure and its proportional
+// emphasis. The three "###" entries are the sub-sections of "## Brief history"
+// (its umbrella heading is rendered separately). Time-layered: items demote from
+// Top of mind → Recent months → Earlier context → Long-term background as they
+// stop recurring.
+var userMemorySections = []userMemorySection{
+	{"## Work context", 12, "the user's professional life: employer/org, role, field, what they build or work on, tools and stack, and hard work constraints"},
+	{"## Personal context", 11, "durable personal identity and TASTE facts: where they live, languages, family/relationships mentioned in passing, hobbies, and likes/dislikes as personal taste (food, media, places, activities) — NOT preferences about how the assistant should respond, which are the user's separate standing instructions"},
+	{"## Top of mind", 13, "what the user is actively focused on right now: current projects, open goals, decisions in flight, recurring recent themes. CHURNS: drop items once they look finished, superseded, or stop coming up"},
+	{"### Recent months", 36, "the richest, most detailed section: notable threads of work and life from roughly the last few months"},
+	{"### Earlier context", 18, "older but still relevant background that has faded from active focus"},
+	{"### Long-term background", 10, "durable, long-settled facts and milestones worth keeping indefinitely, compressed to essentials"},
+}
+
+// UserMemorySystemPrompt drives derived user-memory generation: a read-only,
+// daily-regenerated digest organized into work/personal context, what's top of
+// mind, and a time-layered brief history that ages items downward as they stop
+// recurring. It is built from userMemorySections so the per-section char targets
+// are computed from the budget, not hardcoded. The user steers behavior through
+// the separate standing-instructions (directive) layer, not by editing this memory.
+var UserMemorySystemPrompt = buildUserMemorySystemPrompt(userMemoryBudgetChars)
+
+func buildUserMemorySystemPrompt(budget int) string {
+	var b strings.Builder
+	b.WriteString("You maintain a compact, durable memory about the user so the assistant can stay personalized across all of their chats. ")
+	b.WriteString("Given the existing memory and recent conversation, output an UPDATED memory using exactly these markdown headings, each followed by terse '- ' fragment lines. Use these headings and no others, and omit any heading that would have no items:\n")
+	briefHistoryWritten := false
+	for _, s := range userMemorySections {
+		if strings.HasPrefix(s.heading, "### ") && !briefHistoryWritten {
+			b.WriteString("## Brief history — the user's story over time, most recent first, split into the three sub-sections below. As items age and stop recurring, DEMOTE them one level on each regeneration: Top of mind → Recent months → Earlier context → Long-term background (or drop when no longer worth keeping); promote back up only when an item becomes active again. You are given no real dates — judge recency by how prominently and recently each item appears in the conversation and prior memory, not by calendar math. Brief history as a whole should be the largest part of the memory.\n")
+			briefHistoryWritten = true
+		}
+		fmt.Fprintf(&b, "%s — %s. Aim for roughly %d characters.\n", s.heading, s.note, budget*s.pct/100)
+	}
+	fmt.Fprintf(&b, "The character targets are SOFT proportions of the memory's budget, not hard limits: let stronger sections run longer and weaker ones shorter, but keep the WHOLE memory under %d characters.\n", budget)
+	b.WriteString("If the existing memory uses OLD headings (## Core, ## Current focus, ## Style), re-bucket their content into the new sections: identity/employer/location/taste facts go to ## Work context or ## Personal context; active work goes to ## Top of mind or ### Recent months; long-settled facts go to ### Long-term background. Any ## Style response-behavior preferences belong to the user's separate standing instructions, NOT this memory — drop them here. Never carry an old heading forward.\n")
+	b.WriteString("Record likes and dislikes only as personal taste under ## Personal context; never record instructions about how to respond (answer length, detail, tone, format, language, forms of address) — those are the user's standing instructions, a separate layer.\n")
+	b.WriteString("Do NOT start facts with \"The user\" or similar filler subjects; drop filler words when meaning stays clear. ")
+	b.WriteString("Write in a terse, telegraphic \"caveman\" style: keep only load-bearing words; drop articles (a/the), pronouns, and linking verbs (e.g. \"Lives Zurich; backend dev at Acme\"). ")
+	b.WriteString("Drop chit-chat, one-off task details, and anything about other people except as it bears on the user. Replace outdated facts with their newest value instead of listing both. ")
+	b.WriteString("NEVER store passwords, API keys, secrets, payment details, or other sensitive credentials. ")
+	b.WriteString("Output ONLY the memory content, no preamble.")
+	return b.String()
+}
 
 // GenerateMemory re-summarizes a memory. It is given a scope-specific header
 // block (for example a project's name/description, or empty for user memory),
-// the prior memory, and a transcript of recent messages, and returns a fresh,
-// compact memory (re-summarize, not append) so the result stays bounded. The
-// systemPrompt selects the memory's style (project vs. user). It takes plain
+// the prior memory, a transcript of recent messages, and an optional
+// excludedDirectives block (the user's explicit standing instructions that must
+// NOT be duplicated into derived memory — empty for project memory), and returns
+// a fresh, compact memory (re-summarize, not append) so the result stays bounded.
+// The systemPrompt selects the memory's style (project vs. user). It takes plain
 // strings to avoid a dependency on the chat package.
-func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transcript, systemPrompt string) (string, error) {
+func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transcript, excludedDirectives, systemPrompt string) (string, error) {
 	start := time.Now()
 
 	var b strings.Builder
@@ -77,7 +122,13 @@ func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transc
 	b.WriteString("\n\"\"\"\n")
 	b.WriteString("\nRecent conversation:\n\"\"\"\n")
 	b.WriteString(strings.TrimSpace(transcript))
-	b.WriteString("\n\"\"\"\n\nUpdated memory:")
+	b.WriteString("\n\"\"\"\n")
+	if ex := strings.TrimSpace(excludedDirectives); ex != "" {
+		b.WriteString("\nAlready saved as the user's explicit standing instructions — do NOT restate or duplicate any of these in the memory:\n\"\"\"\n")
+		b.WriteString(ex)
+		b.WriteString("\n\"\"\"\n")
+	}
+	b.WriteString("\nUpdated memory:")
 
 	messages := []Message{
 		{Role: "system", Content: systemPrompt},

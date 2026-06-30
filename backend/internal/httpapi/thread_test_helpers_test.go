@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -154,6 +155,11 @@ type fakeThreadStore struct {
 	projectThreadTitles []string
 	userMemory          chat.UserMemory
 	userMessageCount          int
+	// userDirectives backs the directive store stubs; ordered as inserted.
+	userDirectives []chat.UserDirective
+	// directiveWriteErr, when set, is returned by AddUserDirective /
+	// ReplaceUserDirective so tests can exercise the budget-full path.
+	directiveWriteErr error
 	// listLimit records the limit passed to the most recent ListUserMessages /
 	// ListProjectMessages call, so tests can assert the adaptive fold window.
 	listLimit int
@@ -454,6 +460,42 @@ func (f *fakeThreadStore) ListUserMessages(_ context.Context, _ string, limit in
 	return append([]chat.Message(nil), f.messages...), nil
 }
 
+func (f *fakeThreadStore) ListUserDirectives(context.Context, string) ([]chat.UserDirective, error) {
+	return append([]chat.UserDirective(nil), f.userDirectives...), nil
+}
+
+func (f *fakeThreadStore) AddUserDirective(_ context.Context, userID, content string) (chat.UserDirective, error) {
+	if f.directiveWriteErr != nil {
+		return chat.UserDirective{}, f.directiveWriteErr
+	}
+	directive := chat.UserDirective{ID: "dir_" + strconv.Itoa(len(f.userDirectives)), UserID: userID, Content: content, Position: len(f.userDirectives)}
+	f.userDirectives = append(f.userDirectives, directive)
+	return directive, nil
+}
+
+func (f *fakeThreadStore) RemoveUserDirective(_ context.Context, _, id string) (bool, error) {
+	for i, d := range f.userDirectives {
+		if d.ID == id {
+			f.userDirectives = append(f.userDirectives[:i], f.userDirectives[i+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeThreadStore) ReplaceUserDirective(_ context.Context, _, id, content string) (chat.UserDirective, bool, error) {
+	if f.directiveWriteErr != nil {
+		return chat.UserDirective{}, false, f.directiveWriteErr
+	}
+	for i, d := range f.userDirectives {
+		if d.ID == id {
+			f.userDirectives[i].Content = content
+			return f.userDirectives[i], true, nil
+		}
+	}
+	return chat.UserDirective{}, false, nil
+}
+
 func (f *fakeThreadStore) CreateShare(_ context.Context, userID string, in chat.CreateShareInput) (chat.Share, error) {
 	if f.shares == nil {
 		f.shares = map[string]chat.Share{}
@@ -584,7 +626,7 @@ func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _ string) (s
 	return f.reasoningTitle, nil
 }
 
-func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return f.projectMemory, nil
 }
 
@@ -676,7 +718,7 @@ func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string) (st
 	return "", nil
 }
 
-func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string) (string, error) {
+func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string, string) (string, error) {
 	return "", nil
 }
 
@@ -778,7 +820,7 @@ func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning
 	return "", nil
 }
 
-func (f *fakeToolChatClient) GenerateMemory(_ context.Context, _, _, _, _ string) (string, error) {
+func (f *fakeToolChatClient) GenerateMemory(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 

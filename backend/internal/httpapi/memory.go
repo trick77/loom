@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -51,6 +52,10 @@ type memoryScope struct {
 	upsert func(ctx context.Context, content string, sourceCount int) error
 	count  func(ctx context.Context) (int, error)
 	list   func(ctx context.Context, limit int) ([]chat.Message, error)
+	// exclusions optionally returns content the generator must NOT duplicate into
+	// the memory (the user's explicit standing instructions, for the user scope).
+	// nil — or a "" result — means no exclusions (e.g. project memory).
+	exclusions func(ctx context.Context) (string, error)
 }
 
 // refreshMemoryIfDue runs an incremental refresh when the gate is met. It is the
@@ -101,8 +106,18 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 	if strings.TrimSpace(transcript) == "" {
 		return nil
 	}
+	var excluded string
+	if scope.exclusions != nil {
+		// Best-effort: dedup against the user's standing instructions, but never
+		// fail the refresh just because the exclusion list couldn't be loaded.
+		if ex, err := scope.exclusions(ctx); err != nil {
+			slog.Warn("load memory exclusions failed", "scope", scope.name, "error", err)
+		} else {
+			excluded = ex
+		}
+	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
-	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, scope.systemPrompt)
+	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt)
 	if err != nil {
 		return err
 	}

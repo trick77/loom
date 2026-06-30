@@ -61,10 +61,13 @@ type ProjectMemory struct {
 // never blow up the prompt; generation is asked to stay well under this.
 const MaxProjectMemoryLength = 3000
 
-// UserMemory is a compact, auto-generated set of durable facts about the user
-// (employer, location, lasting preferences) that is injected into every chat the
-// user has — project-bound or not — so the assistant stays personalized. Like
-// ProjectMemory it is re-summarized (not appended) so it stays small and bounded.
+// UserMemory is a compact, auto-generated digest about the user that is injected
+// into every chat the user has — project-bound or not — so the assistant stays
+// personalized. It is organized into work/personal context, what's top of mind,
+// and a time-layered brief history (recent months, earlier context, long-term
+// background). Like ProjectMemory it is re-summarized (not appended) so it stays
+// small and bounded, and it is read-only: the user steers behavior through the
+// separate UserDirective layer, not by editing this blob.
 type UserMemory struct {
 	Content string `json:"content"`
 	// SourceMessageCount records the total user message count at the last
@@ -73,8 +76,33 @@ type UserMemory struct {
 	UpdatedAt          *time.Time `json:"updatedAt"`
 }
 
-// MaxUserMemoryLength hard-caps the stored user memory.
-const MaxUserMemoryLength = 3000
+// MaxUserMemoryLength hard-caps the stored user memory. It is also the budget the
+// generation prompt divides across the memory's sections (see UserMemorySystemPrompt).
+const MaxUserMemoryLength = 6000
+
+// MaxUserDirectivesTotalLength caps the combined length (in runes) of all of a
+// user's directives. Unlike derived memory this is enforced as a hard reject in
+// the store (not silent truncation) so the editing tool can tell the model the
+// add/replace was refused.
+const MaxUserDirectivesTotalLength = 1000
+
+// MaxUserDirectiveLength bounds a single directive so one entry can't consume the
+// whole budget.
+const MaxUserDirectiveLength = 1000
+
+// UserDirective is one explicit, user-steered standing instruction ("always
+// answer in metric units", "call me Jan"). Unlike UserMemory (auto-derived
+// observations) directives are authoritative commands the user dictates in chat,
+// managed by the assistant via tools, stored row-per-entry, and shown read-only
+// in the UI.
+type UserDirective struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"-"`
+	Content   string    `json:"content"`
+	Position  int       `json:"-"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
 
 // Thread is a single chat conversation.
 type Thread struct {

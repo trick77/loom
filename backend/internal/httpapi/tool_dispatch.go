@@ -126,6 +126,12 @@ func (s *server) availableTools(thread chat.Thread) []llm.Tool {
 		names[tool.Function.Name] = "built_in"
 		tools = append(tools, tool)
 	}
+	// Directive tools manage the user's standing instructions ("other instructions"
+	// memory). They are whole-account, not project-scoped, so always available.
+	for _, tool := range []llm.Tool{addUserDirectiveTool(), removeUserDirectiveTool(), replaceUserDirectiveTool()} {
+		names[tool.Function.Name] = "built_in"
+		tools = append(tools, tool)
+	}
 	if s.artifacts != nil && strings.TrimSpace(s.usersDir) != "" {
 		for _, gen := range s.docTools {
 			schema := gen.Schema()
@@ -197,6 +203,27 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 		}
 		threadID, _ := args["thread_id"].(string)
 		return s.readThreadDigest(ctx, user.ID, threadID), nil, true
+	}
+	if call.Function.Name == addUserDirectiveToolName {
+		args, err := parseToolArguments(call.Function.Arguments)
+		if err != nil {
+			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
+		}
+		return capToolOutput(s.addUserDirectiveDigest(ctx, user.ID, args)), nil, true
+	}
+	if call.Function.Name == removeUserDirectiveToolName {
+		args, err := parseToolArguments(call.Function.Arguments)
+		if err != nil {
+			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
+		}
+		return capToolOutput(s.removeUserDirectiveDigest(ctx, user.ID, args)), nil, true
+	}
+	if call.Function.Name == replaceUserDirectiveToolName {
+		args, err := parseToolArguments(call.Function.Arguments)
+		if err != nil {
+			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
+		}
+		return capToolOutput(s.replaceUserDirectiveDigest(ctx, user.ID, args)), nil, true
 	}
 	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call, editSource); handled {
 		return output, response, true

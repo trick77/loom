@@ -25,6 +25,9 @@ const sample: api.Usage = {
   userMemorySourceMessages: 184,
   userMemoryTotalMessages: 210,
   userMemoryRefreshWindowHours: 24,
+  userDirectivesCount: 2,
+  userDirectivesLength: 48,
+  userDirectivesMax: 1000,
 };
 
 describe("UsagePanel", () => {

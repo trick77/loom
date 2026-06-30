@@ -37,6 +37,18 @@ export type UserMemory = {
   updatedAt: string | null;
 };
 
+/**
+ * UserDirective is one explicit, user-steered standing instruction ("always
+ * answer in metric units"). It is managed by the assistant via chat tools and
+ * shown read-only in the UI.
+ */
+export type UserDirective = {
+  id: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Thread = {
   id: string;
   projectId?: string;
@@ -390,6 +402,11 @@ export async function getUserMemory(): Promise<UserMemory> {
   return expectJSON<UserMemory>(response, "failed to load user memory");
 }
 
+export async function getUserDirectives(): Promise<UserDirective[]> {
+  const response = await fetch(`/api/me/directives`);
+  return expectJSON<UserDirective[]>(response, "failed to load user directives");
+}
+
 export type Usage = {
   promptTokens: number;
   completionTokens: number;
@@ -410,6 +427,9 @@ export type Usage = {
   userMemorySourceMessages: number;
   userMemoryTotalMessages: number;
   userMemoryRefreshWindowHours: number;
+  userDirectivesCount: number;
+  userDirectivesLength: number;
+  userDirectivesMax: number;
 };
 
 export async function getUsage(): Promise<Usage> {
