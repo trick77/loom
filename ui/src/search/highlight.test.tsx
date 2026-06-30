@@ -82,20 +82,24 @@ describe("renderSnippet", () => {
     const { container } = render(<>{renderSnippet("…use **«VPC»** endpoints…")}</>);
     const strong = container.querySelector("strong");
     expect(strong).toHaveTextContent("VPC");
-    // The ** markers around the match are gone; the match also leads the line.
-    expect(container.textContent).toBe("…VPC endpoints…");
+    // The ** markers around the match are gone; a short lead (under budget) is kept.
+    expect(container.textContent).toBe("…use VPC endpoints…");
   });
 
-  test("drops centred leading context so the match leads the visible line", () => {
-    // FTS centres the match; the long lead would otherwise clip the highlight off
-    // the truncated single-line subline.
+  test("trims a long centred lead to a bounded amount, keeping the match mid-line", () => {
+    // FTS centres the match; an over-long lead would clip the highlight off the
+    // truncated single-line subline, so the lead is capped (not dropped) — the
+    // match still reads mid-sentence with context, like claude.ai.
     const centred =
       "…and only after all of that is in place do we finally configure the «ingress» controller for traffic…";
     const { container } = render(<>{renderSnippet(centred)}</>);
     const strong = container.querySelector("strong");
     expect(strong).toHaveTextContent("ingress");
-    // Leading context is dropped; the line now starts at the match.
-    expect(container.textContent).toBe("…ingress controller for traffic…");
+    // Bounded leading context is retained (word-snapped); the match is no longer
+    // jammed against the left edge.
+    expect(container.textContent).toBe(
+      "…do we finally configure the ingress controller for traffic…",
+    );
   });
 
   test("leaves a match that already leads the snippet untouched", () => {
