@@ -240,6 +240,25 @@ describe("activity trace model", () => {
     });
   });
 
+  test("renders ipverse IP lookups with a loupe and explanatory title", () => {
+    expect(summarizeToolCall("ipverse__lookup", '{"ip":"3.18.101.236"}')).toMatchObject({
+      kind: "lookup",
+      title: "Looking up 3.18.101.236",
+    });
+    expect(summarizeToolCall("ipverse__whois", '{"query":"2607:ff10:c8:594::a"}')).toMatchObject({
+      kind: "lookup",
+      title: "Looking up 2607:ff10:c8:594::a",
+    });
+    expect(summarizeToolCall("ipverse__lookup", "{}")).toMatchObject({
+      kind: "lookup",
+      title: "Looking up an IP address",
+    });
+    expect(summarizeToolCall("ipverse__lookup", "not-json")).toMatchObject({
+      kind: "lookup",
+      title: "Looking up an IP address",
+    });
+  });
+
   test("normalizes schemeless source URLs without accepting app-relative routes", () => {
     expect(externalHTTPURL("www.example.com/docs")).toBe("https://www.example.com/docs");
     expect(externalHTTPURL("example.com:8080/docs")).toBe("https://example.com:8080/docs");

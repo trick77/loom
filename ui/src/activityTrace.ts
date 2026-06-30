@@ -26,6 +26,7 @@ export type ActivityTraceToolEvent = {
 export type ToolSummary =
   | { kind: "search"; title: string }
   | { kind: "conversationSearch"; title: string }
+  | { kind: "lookup"; title: string }
   | { kind: "fetch"; title: string; url?: string }
   | { kind: "file"; title: string }
   | { kind: "generated"; title: string }
@@ -156,6 +157,13 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   }
   if (/read_thread/i.test(name)) {
     return { kind: "generated", title: "Reading a conversation" };
+  }
+  if (/ipverse/i.test(name)) {
+    // IP-reputation lookups: render a loupe with explanatory text rather than a
+    // bare IP under the generic external-link glyph — check before the web-search
+    // branch since an IP arg may be named "query".
+    const ip = ipAddressValue(args);
+    return { kind: "lookup", title: ip !== undefined ? `Looking up ${ip}` : "Looking up an IP address" };
   }
   if (isSearchTool(name) || query !== undefined) {
     return { kind: "search", title: query ?? "Searching the web" };
@@ -310,6 +318,19 @@ function stringValue(record: Record<string, unknown>, keys: string[]): string | 
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string" && value.trim() !== "") return value;
+  }
+  return undefined;
+}
+
+// Lenient — we are labeling a tool call, not validating input. Matches dotted
+// IPv4 and colon-grouped IPv6 (including "::" shorthand).
+const IP_PATTERN = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7})$/i;
+
+function ipAddressValue(record: Record<string, unknown>): string | undefined {
+  const preferred = stringValue(record, ["ip", "address", "query", "q"]);
+  if (preferred !== undefined && IP_PATTERN.test(preferred.trim())) return preferred.trim();
+  for (const value of Object.values(record)) {
+    if (typeof value === "string" && IP_PATTERN.test(value.trim())) return value.trim();
   }
   return undefined;
 }
