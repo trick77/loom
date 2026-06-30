@@ -98,13 +98,22 @@ export function renderSnippet(snippet: string): ReactNode {
   // the split below still finds them.
   let text = cleanResultText(snippet);
   // The backend FTS snippet() centres the match (long leading context, then the
-  // «match»), but this subline is a single-line truncated span — a match deep in
-  // a long message gets clipped off the right edge, so the row looks like it has
-  // no highlight at all. Drop the leading context so the match leads the line
-  // (claude.ai does the same), keeping the highlight visible.
+  // «match»), but this subline is a single-line truncated span — too much lead
+  // pushes the «match» off the right edge (invisible highlight), while zero lead
+  // loses the context that makes a result readable. Keep a bounded amount of
+  // leading context so the match reads mid-sentence (claude.ai does the same)
+  // yet stays visible. Cut strictly before the first «, snapped to a word
+  // boundary so we never slice mid-word or past the marker.
   const firstMark = text.indexOf("«");
-  if (firstMark > 0) {
-    text = "…" + text.slice(firstMark);
+  const leadBudget = 32; // chars of leading context to keep before the match
+  if (firstMark > leadBudget) {
+    let cut = firstMark - leadBudget;
+    const space = text.indexOf(" ", cut);
+    if (space !== -1 && space < firstMark) cut = space + 1;
+    // A no-space lead leaves `cut` on a raw code-unit offset; nudge off an
+    // orphaned low surrogate so we never slice an astral char into a U+FFFD.
+    if ((text.charCodeAt(cut) & 0xfc00) === 0xdc00) cut++;
+    text = "…" + text.slice(cut);
   }
   // Split on the « match » delimiters, keeping the captured match text.
   const parts = text.split(/«(.*?)»/g);
