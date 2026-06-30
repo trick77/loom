@@ -29,6 +29,8 @@ function nextRefreshLabel(u: Usage, pending: number): string {
 function memoryRows(u: Usage): Row[] {
   const pct = u.userMemoryMax > 0 ? Math.round((u.userMemoryLength / u.userMemoryMax) * 100) : 0;
   const pending = Math.max(u.userMemoryTotalMessages - u.userMemorySourceMessages, 0);
+  const directivesPct =
+    u.userDirectivesMax > 0 ? Math.round((u.userDirectivesLength / u.userDirectivesMax) * 100) : 0;
   return [
     { label: "User memory length", value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)} (${pct}%)` },
     {
@@ -37,6 +39,10 @@ function memoryRows(u: Usage): Row[] {
     },
     { label: "Messages captured", value: `${fmt(u.userMemorySourceMessages)} of ${fmt(u.userMemoryTotalMessages)}` },
     { label: "Next refresh", value: nextRefreshLabel(u, pending) },
+    {
+      label: "Other instructions",
+      value: `${fmt(u.userDirectivesCount)} (${fmt(u.userDirectivesLength)} / ${fmt(u.userDirectivesMax)} chars, ${directivesPct}%)`,
+    },
   ];
 }
 

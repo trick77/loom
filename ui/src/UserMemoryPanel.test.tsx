@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
 import { UserMemoryPanel } from "./UserMemoryPanel";
 import * as api from "./api";
@@ -11,10 +11,16 @@ vi.mock("./api", async () => {
   return {
     ...actual,
     getUserMemory: vi.fn(),
+    getUserDirectives: vi.fn(),
   };
 });
 
 const getUserMemoryMock = vi.mocked(api.getUserMemory);
+const getUserDirectivesMock = vi.mocked(api.getUserDirectives);
+
+beforeEach(() => {
+  getUserDirectivesMock.mockResolvedValue([]);
+});
 
 test("shows the empty state when there is no memory yet", async () => {
   getUserMemoryMock.mockResolvedValue({ content: "", updatedAt: null });
@@ -45,20 +51,47 @@ test("renders a flat bullet memory as a markdown list", async () => {
   expect(items[0]).not.toHaveTextContent("- Works");
 });
 
-test("renders the Core and Current focus sections as distinct headings", async () => {
+test("renders the Work context and Top of mind sections as distinct headings", async () => {
   getUserMemoryMock.mockResolvedValue({
-    content: "## Core\n- Lives in Zurich\n\n## Current focus\n- Building Loom",
+    content: "## Work context\n- Lives in Zurich\n\n## Top of mind\n- Building Loom",
     updatedAt: "2026-06-11T00:00:00Z",
   });
 
   render(<UserMemoryPanel />);
 
   // The structured markdown headings render as real headings, not literal "##".
-  expect(await screen.findByRole("heading", { name: "Core" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Current focus" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Work context" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Top of mind" })).toBeInTheDocument();
   expect(screen.getByText("Lives in Zurich")).toBeInTheDocument();
   expect(screen.getByText("Building Loom")).toBeInTheDocument();
-  expect(screen.queryByText(/## Core/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/## Work context/)).not.toBeInTheDocument();
+});
+
+test("shows the user's standing instructions read-only, with no edit controls", async () => {
+  getUserMemoryMock.mockResolvedValue({ content: "", updatedAt: null });
+  getUserDirectivesMock.mockResolvedValue([
+    { id: "d1", content: "Always answer in metric units", createdAt: "", updatedAt: "" },
+    { id: "d2", content: "Call me Jan", createdAt: "", updatedAt: "" },
+  ]);
+
+  render(<UserMemoryPanel />);
+
+  expect(
+    await screen.findByRole("region", { name: "Other instructions" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Always answer in metric units")).toBeInTheDocument();
+  expect(screen.getByText("Call me Jan")).toBeInTheDocument();
+  // View-only: the directives are steered via chat, so no add/edit/delete buttons.
+  expect(screen.queryByRole("button", { name: /add|edit|remove|delete/i })).not.toBeInTheDocument();
+});
+
+test("shows the directives empty state when there are none", async () => {
+  getUserMemoryMock.mockResolvedValue({ content: "", updatedAt: null });
+  getUserDirectivesMock.mockResolvedValue([]);
+
+  render(<UserMemoryPanel />);
+
+  expect(await screen.findByText(/No saved instructions yet/)).toBeInTheDocument();
 });
 
 test("does not show a manual refresh action", async () => {
