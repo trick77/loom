@@ -256,7 +256,7 @@ func (c *Client) executeChatRequestImpl(ctx context.Context, messages []Message,
 	if err != nil {
 		return nil, fmt.Errorf("chat completion request: %w", err)
 	}
-	c.wrapResponseLogger(resp)
+	c.wrapResponseLogger(ctx, resp)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
@@ -322,8 +322,13 @@ func hasDocumentGenerationTool(tools []Tool) bool {
 	return false
 }
 
-func (c *Client) wrapResponseLogger(resp *http.Response) {
+func (c *Client) wrapResponseLogger(ctx context.Context, resp *http.Response) {
 	if c.responseLogDir == "" || resp == nil || resp.Body == nil {
+		return
+	}
+	// Incognito turns are ephemeral by contract — never spool their response body
+	// to the dev response log.
+	if inferenceMetadataFromContext(ctx).Incognito {
 		return
 	}
 	resp.Body = &responseLoggingBody{

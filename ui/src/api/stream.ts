@@ -75,6 +75,50 @@ export async function streamMessage(
   }
 }
 
+// streamIncognitoMessage runs an ephemeral turn against the stateless incognito
+// endpoint. The server persists nothing, so the whole prior transcript is replayed
+// as `history` on every turn. Shares streamMessage's SSE plumbing.
+export async function streamIncognitoMessage(
+  content: string,
+  history: { role: "user" | "assistant"; content: string }[],
+  handlers: StreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`/api/incognito/messages:stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content, history }),
+    signal,
+  });
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok) {
+    throw new Error(await readStreamError(response));
+  }
+  if (!response.body) {
+    throw new Error("stream response has no body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      buffer = drainSSEBuffer(buffer, handlers);
+    }
+    buffer += decoder.decode();
+    drainSSEBuffer(buffer, handlers);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 async function readStreamError(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { error?: unknown };

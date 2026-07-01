@@ -122,6 +122,19 @@ type streamMessageRequest struct {
 	ImageAttachmentIDs    []string `json:"imageAttachmentIds"`
 }
 
+// incognitoStreamRequest carries the whole ephemeral transcript from the client:
+// the new user Content plus the prior turns as History (the server persists
+// nothing, so it cannot reload them). Only user/assistant roles are honored.
+type incognitoStreamRequest struct {
+	Content string                  `json:"content"`
+	History []incognitoHistoryEntry `json:"history"`
+}
+
+type incognitoHistoryEntry struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type streamDeltaResponse struct {
 	Content string `json:"content"`
 }

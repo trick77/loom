@@ -285,6 +285,21 @@ func persistInterruptedPartial(result llm.StreamResult, err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, llm.ErrStreamStalled)
 }
 
+// runIncognitoAssistantTurn runs a single, tool-free assistant turn for an
+// ephemeral incognito thread. It mirrors runAssistantLoop's len(tools)==0 fast
+// path exactly: with no tools there are no persistence-capable side effects (no
+// artifacts, no directive/memory writes), which is what lets an incognito turn
+// answer while writing nothing.
+func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata) (assistantLoopResult, error) {
+	b := &blockBuilder{}
+	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
+	b.addResult(titles, result)
+	if persistInterruptedPartial(result, err) {
+		return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+	}
+	return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
+}
+
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
 // tool-call events to the SSE stream. titles/reasoningID let it spawn the
 // reasoning abstract the instant the model stops reasoning and starts answering

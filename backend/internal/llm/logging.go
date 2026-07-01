@@ -14,6 +14,10 @@ type InferenceMetadata struct {
 	ThreadID string
 	Purpose  string
 	Round    int
+	// Incognito marks an ephemeral turn whose content must never be written to
+	// disk. It suppresses the dev-only response-body log (see wrapResponseLogger)
+	// so an incognito transcript leaves no trace even when response logging is on.
+	Incognito bool
 }
 
 func WithInferenceMetadata(ctx context.Context, metadata InferenceMetadata) context.Context {
