@@ -126,9 +126,21 @@ export async function bulkDeleteThreads(threadIds: string[]): Promise<{ deleted:
   return expectJSON<{ deleted: number }>(response, "failed to delete threads");
 }
 
-export async function stopMessage(threadId: string): Promise<void> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stop`, {
+// Bound on the stop round-trip. Callers await this before aborting the stream
+// fetch so the attributed stop cause wins the server-side cancel race; the timeout
+// caps how long a hung stop endpoint can defer that abort. On timeout the request
+// rejects and the caller falls through to a plain abort (logged as request_context).
+const stopMessageTimeoutMs = 4000;
+
+// source labels which UI action triggered the stop ("stop_button", "escape") so the
+// backend can attribute the cancellation in its logs. Callers should await this
+// before aborting the stream fetch so the stop cause wins the server-side cancel
+// race over the raw request-context drop.
+export async function stopMessage(threadId: string, source?: string): Promise<void> {
+  const query = source ? `?source=${encodeURIComponent(source)}` : "";
+  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stop${query}`, {
     method: "POST",
+    signal: AbortSignal.timeout(stopMessageTimeoutMs),
   });
   if (response.status === 401) {
     throw new AuthExpiredError();

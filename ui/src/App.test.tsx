@@ -1471,7 +1471,7 @@ test("turns the send button into a stop button while the assistant is running", 
 
   await waitFor(() => {
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/threads/t1/messages:stop",
+      "/api/threads/t1/messages:stop?source=stop_button",
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -1494,7 +1494,7 @@ test("Escape stops the active assistant response", async () => {
 
   await waitFor(() => {
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/threads/t1/messages:stop",
+      "/api/threads/t1/messages:stop?source=escape",
       expect.objectContaining({ method: "POST" }),
     );
   });

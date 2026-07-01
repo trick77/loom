@@ -1586,6 +1586,33 @@ func TestStreamCancelDetailsClassifiesCancellationSource(t *testing.T) {
 			t.Fatalf("details = %q %q, want deadline", source, reason)
 		}
 	})
+
+	t.Run("stop endpoint keeps source in reason", func(t *testing.T) {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cancel(stopCause("escape"))
+		source, reason := streamCancelDetails(ctx)
+		if source != "stop_endpoint" || reason != "stream stop requested (escape)" {
+			t.Fatalf("details = %q %q, want stop endpoint with escape source", source, reason)
+		}
+	})
+}
+
+func TestStopCauseSanitizesAndWrapsSource(t *testing.T) {
+	t.Run("wraps sanitized source but stays a stop cause", func(t *testing.T) {
+		cause := stopCause("Escape KEY!\n")
+		if !errors.Is(cause, errStreamStopRequested) {
+			t.Fatalf("cause = %v, want errors.Is errStreamStopRequested", cause)
+		}
+		if cause.Error() != "stream stop requested (escapekey)" {
+			t.Fatalf("cause = %q, want sanitized escapekey", cause.Error())
+		}
+	})
+
+	t.Run("empty source yields the bare stop cause", func(t *testing.T) {
+		if cause := stopCause("   "); cause != errStreamStopRequested {
+			t.Fatalf("cause = %v, want bare errStreamStopRequested", cause)
+		}
+	})
 }
 
 func TestStopStreamMessagePersistsPartialAssistantContent(t *testing.T) {

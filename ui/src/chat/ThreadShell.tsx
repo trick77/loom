@@ -185,16 +185,27 @@ export function ThreadShell({
     streamingThreadIDRef,
   });
 
-  const handleStopResponse = useCallback(() => {
-    if (!isSending) return;
-    const threadID = streamingThreadIDRef.current;
-    if (threadID !== null) {
-      void stopMessage(threadID).catch((error: unknown) => {
-        handleActionError(error, "Message failed to stop.", setSendError);
-      });
-    }
-    streamAbortRef.current?.abort();
-  }, [handleActionError, isSending]);
+  const handleStopResponse = useCallback(
+    (source = "stop_button") => {
+      if (!isSending) return;
+      const threadID = streamingThreadIDRef.current;
+      const abort = () => streamAbortRef.current?.abort();
+      if (threadID === null) {
+        abort();
+        return;
+      }
+      // Tell the server which UI action stopped the stream, and only abort the
+      // fetch once that stop request has been sent. Aborting first would drop the
+      // connection and make the server log the generic request-context cancel
+      // instead of this attributed one (the cancel cause is first-writer-wins).
+      void stopMessage(threadID, source)
+        .catch((error: unknown) => {
+          handleActionError(error, "Message failed to stop.", setSendError);
+        })
+        .finally(abort);
+    },
+    [handleActionError, isSending],
+  );
 
   useEffect(() => {
     if (window.location.pathname === "/") {
@@ -227,7 +238,7 @@ export function ThreadShell({
       if (event.key !== "Escape") return;
       if (activeThreadIDRef.current !== streamingThreadIDRef.current) return;
       event.preventDefault();
-      handleStopResponse();
+      handleStopResponse("escape");
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -607,6 +618,11 @@ export function ThreadShell({
       const targetThreadID = targetThread.id;
       activeThreadIDRef.current = targetThreadID;
       abortController = new AbortController();
+      // A new turn can only start once the previous one settled (send gates on
+      // isSending, which clears streamAbortRef in the same tick), so there is
+      // normally nothing to abort here. Should two streams ever overlap via a
+      // race, the server attributes the older one as superseded_stream when the
+      // new request registers — no client-side stop call is needed.
       streamAbortRef.current?.abort();
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
