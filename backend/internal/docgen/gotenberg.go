@@ -126,9 +126,14 @@ func (c *GotenbergClient) Convert(ctx context.Context, html string, assets []got
 
 	switch {
 	case resp.StatusCode == http.StatusOK:
-		pdf, err := io.ReadAll(io.LimitReader(resp.Body, maxPDFBytes))
+		// Read one byte past the cap so an over-size render is a clear error rather
+		// than a silently truncated (corrupt) PDF.
+		pdf, err := io.ReadAll(io.LimitReader(resp.Body, maxPDFBytes+1))
 		if err != nil {
 			return nil, fmt.Errorf("read gotenberg response: %w", err)
+		}
+		if len(pdf) > maxPDFBytes {
+			return nil, fmt.Errorf("gotenberg response exceeds %d bytes", maxPDFBytes)
 		}
 		return pdf, nil
 	case resp.StatusCode == http.StatusBadRequest:

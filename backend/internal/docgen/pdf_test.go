@@ -93,17 +93,37 @@ func TestRenderHTMLTableRaggedRows(t *testing.T) {
 }
 
 func TestRenderHTMLEscapes(t *testing.T) {
-	html := renderHTML("<script>t", "", []pdfBlock{
-		{Type: "paragraph", Text: `<script>alert(1)</script> & "x"`},
-		{Type: "table", Rows: [][]string{{"<b>h</b>"}}},
+	// Cover every block type that carries model text, so no branch reaches HTML raw.
+	inj := `<script>alert(1)</script>`
+	html := renderHTML("<t>"+inj, "sub "+inj, []pdfBlock{
+		{Type: "heading", Level: 1, Text: "h " + inj},
+		{Type: "paragraph", Text: inj + ` & "x"`},
+		{Type: "bullets", Items: []string{"b " + inj}},
+		{Type: "table", Rows: [][]string{{"<b>h</b>"}, {"cell " + inj}}},
+		{Type: "columns", Left: []string{"L " + inj}, Right: []string{"R " + inj}},
+		{Type: "callout", Text: "c " + inj},
 	})
 	if strings.Contains(html, "<script>alert(1)") {
 		t.Fatalf("unescaped script survived:\n%s", html)
 	}
-	for _, want := range []string{"&lt;script&gt;alert(1)&lt;/script&gt;", "&amp;", "&lt;b&gt;h&lt;/b&gt;", "&lt;script&gt;t"} {
+	for _, want := range []string{"&lt;script&gt;alert(1)&lt;/script&gt;", "&amp;", "&lt;b&gt;h&lt;/b&gt;"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing escaped %q", want)
 		}
+	}
+}
+
+func TestHighlightCodeEscapesInjection(t *testing.T) {
+	// The language-tagged code path emits chroma's raw HTML; confirm chroma escapes
+	// HTML specials in the source rather than passing them through.
+	html := renderHTML("T", "", []pdfBlock{
+		{Type: "code", Language: "go", Text: `x := "<script>alert(1)</script>"`},
+	})
+	if strings.Contains(html, "<script>alert(1)") {
+		t.Fatalf("chroma path leaked unescaped HTML:\n%s", html)
+	}
+	if !strings.Contains(html, "&lt;script&gt;") {
+		t.Errorf("expected escaped script in highlighted code:\n%s", html)
 	}
 }
 
