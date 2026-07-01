@@ -6,6 +6,8 @@ import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
 import { GeneratedArtifactCard } from "./ThreadShell";
 import { ICONS } from "./chat/Icon";
+import { possibleGreetings } from "./chat/threadUtils";
+import { escapeRegExp } from "./search/highlight";
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
@@ -185,7 +187,7 @@ test("inactive sidebar project actions stay hidden until hover or keyboard focus
   expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
 });
 
-test("greets signed-in users with up late after 23:00", async () => {
+test("greets signed-in users with a night-appropriate greeting after 23:00", async () => {
   const realDate = Date;
   type DateArgs = [] | [string | number | Date] | [number, number, number?, number?, number?, number?, number?];
   class LateDate extends realDate {
@@ -210,7 +212,9 @@ test("greets signed-in users with up late after 23:00", async () => {
 
   render(<App />);
 
-  expect(await screen.findByText("Up late, Jan?")).toBeInTheDocument();
+  // The exact line is random, but at 23:00 only night + generic + weekday
+  // greetings are eligible — a daytime-only greeting here would fail the match.
+  expect(await screen.findByText(greetingPattern("Jan"))).toBeInTheDocument();
 });
 
 test("uses Loom as the HTML title", () => {
@@ -3703,6 +3707,10 @@ function projectFixture() {
   };
 }
 
+// greetingForNow now picks at random from a time/day-aware pool. Match any string
+// it could render right now for `name` — built from possibleGreetings so the two
+// stay in lockstep. Evaluated at call time, so it honours a stubbed Date.
 function greetingPattern(name: string) {
-  return new RegExp(`^((Morning|Afternoon|Evening), ${name}|Up late, ${name}\\?|${name} returns!)$`);
+  const options = possibleGreetings(name).map(escapeRegExp).join("|");
+  return new RegExp(`^(${options})$`);
 }

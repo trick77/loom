@@ -128,6 +128,6 @@ export function renderSnippet(snippet: string): ReactNode {
   );
 }
 
-function escapeRegExp(value: string): string {
+export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
