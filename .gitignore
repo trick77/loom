@@ -49,4 +49,4 @@ backend/web/dist/*
 !backend/web/dist/index.html
 
 # Local MCP server overrides (real file; example is tracked)
-config/mcp.json
+conf/mcp.json

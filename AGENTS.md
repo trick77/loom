@@ -29,7 +29,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - Tools/agents are **first-class MCP-backed integrations**. Tavily web search is enabled with
   `BACKEND_TAVILY_API_KEY`; Context7 docs with `BACKEND_CONTEXT7_API_KEY`; the Compose sidecars use
   `BACKEND_FETCH_MCP_URL` and `BACKEND_OBSCURA_MCP_URL`. Additional servers may be declared in a JSON
-  file (standard `mcpServers` format) at `BACKEND_MCP_SERVERS_FILE` (default `/config/mcp.json`); its
+  file (standard `mcpServers` format) at `BACKEND_MCP_SERVERS_FILE` (default `/conf/mcp.json`); its
   entries merge on top of — and override, by name — the built-ins. Keep secrets out of the file: use
   `${VAR}` interpolation so tokens stay in env.
 
