@@ -91,7 +91,7 @@ services:
 
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
-    image: apache/tika:2.9.2.1-full
+    image: apache/tika:3.3.1.0-full
     restart: unless-stopped
     networks:
       - loom
