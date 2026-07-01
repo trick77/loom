@@ -8,6 +8,7 @@ import {
   setThreadStarred,
   stopMessage,
   streamMessage,
+  streamIncognitoMessage,
   type Artifact,
   type ContentBlock,
   type Project,
@@ -44,6 +45,7 @@ import { useProjectActions } from "./useProjectActions";
 import { useThreadActions } from "./useThreadActions";
 import { ThreadPanel } from "./ThreadPanel";
 import { StartPanel } from "./StartPanel";
+import { IncognitoPanel } from "./IncognitoPanel";
 import { Sidebar } from "./Sidebar";
 import { tabTitle } from "./tabTitle";
 import { DeleteThreadModal, RenameThreadModal } from "./threadModals";
@@ -103,6 +105,12 @@ export function ThreadShell({
   const [streamingBlocks, setStreamingBlocks] = useState<ContentBlock[]>([]);
   const streamingBlocksRef = useRef<ContentBlock[]>([]);
   const [toolPending, setToolPending] = useState(false);
+  // Incognito mode is a standalone, ephemeral chat reachable only from /new. Its
+  // transcript lives entirely here and is never persisted or added to the thread
+  // lists; exiting or leaving discards it. It reuses the shared streaming state
+  // (only one conversation is active at a time).
+  const [incognito, setIncognito] = useState(false);
+  const [incognitoMessages, setIncognitoMessages] = useState<MessageWithActivityTrace[]>([]);
   const clearStreamingBlocks = useCallback(() => {
     streamingBlocksRef.current = [];
     setStreamingBlocks([]);
@@ -788,12 +796,152 @@ export function ThreadShell({
     }
   }
 
+  const enterIncognito = useCallback(() => {
+    // Leaving the /new draft behind: incognito starts clean. Abort any in-flight
+    // stream from the (now hidden) normal view first, and fully reset the shared
+    // stream state — including streamingThreadIDRef and isSending — so a stale ref
+    // from a prior (e.g. failed) normal turn can't misdirect the incognito Stop
+    // button at an unrelated thread.
+    streamAbortRef.current?.abort();
+    setDraft("");
+    setSendError("");
+    clearStreamingBlocks();
+    setIsSending(false);
+    setActiveStreamingThreadID(null);
+    setIncognitoMessages([]);
+    setIncognito(true);
+  }, [clearStreamingBlocks, setActiveStreamingThreadID]);
+
+  const exitIncognito = useCallback(() => {
+    // Discard the ephemeral transcript — nothing was ever written, so there is
+    // nothing to clean up server-side.
+    streamAbortRef.current?.abort();
+    setIncognito(false);
+    setIncognitoMessages([]);
+    setDraft("");
+    setSendError("");
+    clearStreamingBlocks();
+    setIsSending(false);
+    setActiveStreamingThreadID(null);
+  }, [clearStreamingBlocks, setActiveStreamingThreadID]);
+
+  // sendIncognitoContent mirrors sendContent's live-block accumulation but routes
+  // to the stateless endpoint: no thread is created, no navigation happens, and the
+  // whole prior transcript is replayed as history (the server keeps none). The
+  // assistant message is appended to the in-memory transcript only.
+  async function sendIncognitoContent(content: string, restoreDraftOnError: boolean) {
+    setDraft("");
+    setIsSending(true);
+    clearStreamingBlocks();
+    setSendError("");
+    const history = incognitoMessages
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .map((message) => ({ role: message.role as "user" | "assistant", content: message.content }));
+    const tempID = `incognito-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticMessage: MessageWithActivityTrace = {
+      id: tempID,
+      clientKey: tempID,
+      threadId: "incognito",
+      role: "user",
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    setIncognitoMessages((current) => [...current, optimisticMessage]);
+    const abortController = new AbortController();
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = abortController;
+    // Keep streamingThreadIDRef null so handleStopResponse just aborts (there is no
+    // server-side stop endpoint for incognito), while still driving the live blocks.
+    let liveBlocks: ContentBlock[] = [];
+    const applyBlocks = (updater: (current: ContentBlock[]) => ContentBlock[]) => {
+      liveBlocks = updater(liveBlocks);
+      streamingBlocksRef.current = liveBlocks;
+      setStreamingBlocks(liveBlocks);
+    };
+    let keepFailedTurnVisible = false;
+    try {
+      await streamIncognitoMessage(
+        content,
+        history,
+        {
+          onUserMessage: () => {
+            // The incognito endpoint does not echo the user message; the optimistic
+            // bubble is the permanent one.
+          },
+          onDelta: (delta) => applyBlocks((current) => appendTextDelta(current, delta)),
+          onReasoningDelta: (delta) => applyBlocks((current) => appendReasoningDeltaBlock(current, delta)),
+          onReasoningTitle: (event) =>
+            applyBlocks((current) => applyReasoningTitleBlock(current, event.id, event.title)),
+          onAssistantMessage: (message) => {
+            // Give each turn a unique id so React keys and per-message actions never
+            // collide (the server returns a constant synthetic id).
+            const uniqueID = `incognito-assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            const grafted = graftStreamedBlocks({ ...message, id: uniqueID }, liveBlocks);
+            setIncognitoMessages((current) => [...current, { ...grafted, clientKey: uniqueID }]);
+            clearStreamingBlocks();
+          },
+          onThread: () => {
+            // Incognito never emits a thread event; nothing to reconcile.
+          },
+        },
+        abortController.signal,
+      );
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      keepFailedTurnVisible = true;
+      // Drop the optimistic user bubble that never got a reply so the user can retry.
+      setIncognitoMessages((current) => current.filter((message) => message.id !== tempID));
+      if (restoreDraftOnError) setDraft(content);
+      handleActionError(error, "Message failed to send.", setSendError);
+    } finally {
+      setIsSending(false);
+      if (!keepFailedTurnVisible) clearStreamingBlocks();
+      if (streamAbortRef.current === abortController) {
+        streamAbortRef.current = null;
+      }
+    }
+  }
+
+  async function handleIncognitoSend() {
+    const content = draft.trim();
+    if (content === "" || isSending) return;
+    await sendIncognitoContent(content, true);
+  }
+
+  async function handleIncognitoRetry(content: string) {
+    if (content.trim() === "" || isSending) return;
+    await sendIncognitoContent(content, false);
+  }
+
   const activeThreadOwnsStreamState = activeThread !== null && streamingThreadID === activeThread.id;
   const activeThreadIsStreaming = isSending && activeThreadOwnsStreamState;
   const visibleStreamingBlocks = activeThreadOwnsStreamState ? streamingBlocks : [];
   const visibleToolPending = activeThreadOwnsStreamState ? toolPending : false;
   // Keep errors with the thread that owns the active or failed stream state.
   const visibleSendError = streamingThreadID === null || activeThreadOwnsStreamState ? sendError : "";
+
+  // Incognito takes over the whole surface with no sidebar or modals — it is a
+  // self-contained, ephemeral view reachable only from the /new start screen.
+  if (incognito) {
+    return (
+      <div className="grid h-svh grid-rows-[minmax(0,1fr)] grid-cols-[1fr] bg-bg font-sans text-ink">
+        <main className="min-h-0 min-w-0 overflow-hidden bg-bg">
+          <IncognitoPanel
+            messages={incognitoMessages}
+            draft={draft}
+            streamingBlocks={streamingBlocks}
+            isSending={isSending}
+            sendError={sendError}
+            onDraftChange={setDraft}
+            onSend={() => void handleIncognitoSend()}
+            onStop={() => handleStopResponse("incognito")}
+            onRetry={(content) => void handleIncognitoRetry(content)}
+            onExit={exitIncognito}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -969,6 +1117,7 @@ export function ThreadShell({
             onAttachFiles={handleAttachPendingFiles}
             onAttachError={setPendingAttachNote}
             onRemoveAttachment={handleRemovePendingAttachment}
+            onEnterIncognito={enterIncognito}
           />
         ) : (
           <ThreadPanel

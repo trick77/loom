@@ -13,6 +13,7 @@ export function Composer({
   sendDisabled = false,
   placeholder,
   autoFocus = false,
+  incognito = false,
   onDraftChange,
   onSend,
   onStop,
@@ -27,6 +28,9 @@ export function Composer({
   sendDisabled?: boolean;
   placeholder: string;
   autoFocus?: boolean;
+  // Incognito mode: dashed outline and no attachment affordance (uploads persist,
+  // so they are unavailable in an ephemeral thread).
+  incognito?: boolean;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
@@ -87,7 +91,7 @@ export function Composer({
   );
   return (
     <form
-      className="ui-composer relative flex flex-col rounded-[20px] border border-[#4b4a46] bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]"
+      className={`ui-composer relative flex flex-col rounded-[20px] border ${incognito ? "border-dashed border-[#5a5852]" : "border-[#4b4a46]"} bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
       onSubmit={(event) => {
         event.preventDefault();
         if (isSending) {
@@ -129,15 +133,22 @@ export function Composer({
         }}
       />
       <div className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}>
-        <button
-          className="leading-none disabled:opacity-40"
-          type="button"
-          aria-label="Add attachment"
-          disabled={onAttachFiles === undefined}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Icon name="plus" size="24px" />
-        </button>
+        {incognito ? (
+          // Uploads persist (indexing / artifact rows), so they are unavailable in an
+          // ephemeral incognito thread — the attach affordance is omitted entirely. The
+          // empty span preserves the send button's right-alignment.
+          <span aria-hidden />
+        ) : (
+          <button
+            className="leading-none disabled:opacity-40"
+            type="button"
+            aria-label="Add attachment"
+            disabled={onAttachFiles === undefined}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Icon name="plus" size="24px" />
+          </button>
+        )}
         <input
           ref={fileInputRef}
           type="file"

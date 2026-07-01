@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
+import { Icon } from "./Icon";
 import { greetingForNow } from "./threadUtils";
 import { PromptStarters } from "./PromptStarters";
 import type { ComposerAttachment } from "./useDocumentAttachments";
@@ -23,6 +24,7 @@ export function StartPanel({
   onAttachFiles,
   onAttachError,
   onRemoveAttachment,
+  onEnterIncognito,
 }: {
   displayName: string;
   draft: string;
@@ -38,6 +40,7 @@ export function StartPanel({
   onAttachFiles(files: File[]): void;
   onAttachError(message: string): void;
   onRemoveAttachment(id: string): void;
+  onEnterIncognito(): void;
 }) {
   // No thread exists yet, so uploads are deferred: files are held (see
   // pendingAttachmentNames) and bound to the thread once the first send creates it.
@@ -55,6 +58,15 @@ export function StartPanel({
         <div className="flex min-w-0 items-center gap-2">
           <SidebarOpenButton onClick={onOpenSidebar} />
         </div>
+        <button
+          aria-label="Use incognito"
+          className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
+          onClick={onEnterIncognito}
+          title="Use incognito"
+          type="button"
+        >
+          <Icon name="ghost" size="18px" />
+        </button>
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
         <h2 className="ui-greeting-text mb-8 flex items-center gap-1.5 font-serif">

@@ -334,6 +334,9 @@ func New(d Deps) http.Handler {
 	mux.Handle("DELETE /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleDeleteThread)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
+	// Incognito: a fully ephemeral, stateless turn — no thread/messages/artifacts
+	// rows, no memory reads or writes. History is supplied by the client per request.
+	mux.Handle("POST /api/incognito/messages:stream", s.requireAuth(http.HandlerFunc(s.handleIncognitoStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/share", s.requireAuth(http.HandlerFunc(s.handleCreateShare)))
 	mux.Handle("POST /api/threads/{threadID}/share:update", s.requireAuth(http.HandlerFunc(s.handleUpdateShare)))
 	mux.Handle("DELETE /api/threads/{threadID}/share", s.requireAuth(http.HandlerFunc(s.handleDisableShare)))
