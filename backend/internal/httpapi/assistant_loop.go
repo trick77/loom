@@ -293,6 +293,19 @@ func persistInterruptedPartial(result llm.StreamResult, err error) bool {
 func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata) (assistantLoopResult, error) {
 	b := &blockBuilder{}
 	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
+	// Safety net: a tool-eager model (MiMo) may still emit an inline tool call
+	// despite the no-tool prompt. The parser strips that markup — whether it
+	// recovers a call or the markup is truncated/malformed and none is recovered —
+	// leaving empty content. Since there are no tools to run, nudge it once to answer
+	// directly rather than returning the empty (and therefore discarded) reply. Gated
+	// on empty content alone, matching runAssistantLoop's forced-final-answer.
+	if err == nil && strings.TrimSpace(result.Content) == "" {
+		slog.Info("incognito turn produced no answer text; retrying tool-free", "recovered_tool_calls", len(result.ToolCalls))
+		retryHistory := append(append([]llm.Message(nil), history...), llm.Message{Role: "user", Content: incognitoDirectAnswerNudge})
+		if retryResult, retryErr := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, inferenceWithPurpose(inference, "chat", 2), nil); retryErr == nil && strings.TrimSpace(retryResult.Content) != "" {
+			result = retryResult
+		}
+	}
 	b.addResult(titles, result)
 	if persistInterruptedPartial(result, err) {
 		return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil

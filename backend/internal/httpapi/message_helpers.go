@@ -150,6 +150,42 @@ func buildLLMHistory(user auth.User, classifierContext, userContext, projectCont
 	return history
 }
 
+// incognitoSystemPrompt is the system prompt for a tool-free incognito turn. Unlike
+// loomSystemPrompt it grants NO tools and explicitly forbids tool/search/file calls,
+// so a tool-eager model (notably MiMo, whose inline tool-call markup is stripped from
+// the content) answers directly instead of emitting a call that would be recovered
+// and stripped — leaving an empty reply on the no-tool incognito path.
+const incognitoSystemPrompt = "You are Loom in an incognito conversation. Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Reach for markdown structure only when it genuinely helps the reader: a list for a true enumeration, a table to compare items across the same dimensions, and headings only for long, multi-section answers. Keep short or simple answers as plain prose. Use **bold** sparingly for key terms, and put code in fenced markdown blocks. You have NO tools available in this conversation: do not search the web, browse or fetch URLs, look up past conversations, generate images, or create files, and never emit a tool call of any kind. Answer directly from your own knowledge. If you do not know something, or it may be out of date or beyond your knowledge, say so plainly instead of claiming to look it up or guessing."
+
+// incognitoDirectAnswerNudge is appended as a final user turn when the first
+// incognito attempt comes back empty because the model tried to call a tool anyway
+// (its inline markup was stripped). It forces a direct, tool-free answer.
+const incognitoDirectAnswerNudge = "Answer my previous message directly now, in prose, using only your own knowledge. Do not call, attempt, or describe any tool, search, browse, or file operation."
+
+func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
+	dateLine := "\nThe current date is " + now.Format("2006-01-02") + ". Treat this as today when interpreting time-relative requests; do not assume an earlier year."
+	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
+		return incognitoSystemPrompt + "\nAlways answer in English." + dateLine
+	}
+	return incognitoSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "." + dateLine
+}
+
+// buildIncognitoHistory assembles the model history for an incognito turn: the
+// tool-free incognito system prompt, the client-supplied prior turns, then the new
+// user message. It reads no persisted memory or context (mirroring the "not added to
+// memory" promise on the read side too).
+func buildIncognitoHistory(user auth.User, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+	history := []llm.Message{{Role: "system", Content: incognitoSystemPromptForUser(user, time.Now())}}
+	for _, message := range messages {
+		switch message.Role {
+		case chat.RoleUser, chat.RoleAssistant:
+			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
+		}
+	}
+	history = append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
+	return history
+}
+
 func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 	if currentTitle == chat.DefaultThreadTitle {
 		return true

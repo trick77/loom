@@ -58,13 +58,12 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Empty classifier/user/project/knowledge/document contexts — incognito reads
-	// no saved memory, matching its "not added to memory" promise on the read side
-	// too. buildLLMHistory still supplies the base system prompt so the model
-	// behaves normally.
+	// Incognito reads no saved memory or context (matching "not added to memory" on
+	// the read side too) and uses a tool-free system prompt so a tool-eager model
+	// answers directly instead of emitting a stripped-to-empty inline tool call.
 	priorMessages := incognitoPriorMessages(body.History)
 	userMessage := chat.Message{Role: chat.RoleUser, Content: body.Content}
-	history := buildLLMHistory(user, "", "", "", "", "", priorMessages, userMessage)
+	history := buildIncognitoHistory(user, priorMessages, userMessage)
 
 	streamCtx, cancelStream := context.WithCancelCause(r.Context())
 	defer cancelStream(nil)
