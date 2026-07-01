@@ -1,25 +1,18 @@
 # Third-party assets bundled in the PDF generator
 
-## Fonts — `fonts/GoPlus-*.ttf` ("Loom Sans")
+## Fonts — `fonts/Go-*.ttf`
 
-Derived fonts embedded into the binary and used for all PDF body text.
-
-Loom Sans is the **Go** typeface with a small set of symbol glyphs (checkmarks,
-crosses, ballot boxes, arrows, stars) grafted in from **DejaVu Sans**. The Go
-fonts carry no dingbats, so symbols like ✓/✗ would otherwise render as empty
-`.notdef` boxes. Regenerate with `fonts/generate.py`.
+The **Go** typeface (Go Regular/Bold/Italic) for body text and **JetBrains Mono**
+(Regular/Bold) for code, embedded into the binary and uploaded to the Gotenberg
+renderer as `@font-face` assets so exported PDFs use the brand fonts regardless of
+the sidecar's system fonts.
 
 - **Go fonts** © Bigelow & Holmes — BSD 3-Clause. See `fonts/LICENSE-Go.txt`.
-- **DejaVu Sans** — Bitstream Vera / Arev license (permissive). See
-  `fonts/LICENSE-DejaVu.txt`. The Bitstream Vera license forbids reusing the
-  "Bitstream" / "Vera" names for modified fonts; the derived font is named
-  "Loom Sans", so this is satisfied.
+- **JetBrains Mono** © The JetBrains Mono Project Authors — SIL Open Font License
+  1.1. See `fonts/LICENSE-JetBrainsMono.txt`.
 
-## Emoji — `emoji/check.png`, `emoji/cross.png`
+## Emoji & symbols
 
-Twemoji ✅ (U+2705) and ❌ (U+274C), drawn inline as the green-check / red-cross
-status markers in tables and bullet lists.
-
-- **Twemoji** © 2020 Twitter, Inc and other contributors — graphics licensed
-  **CC-BY 4.0** (https://creativecommons.org/licenses/by/4.0/). See
-  `emoji/LICENSE-Twemoji.txt`.
+Rendered by the Gotenberg sidecar's Chromium (bundled **Noto Color Emoji**) — no
+emoji assets are bundled here. Status markers (✓/✗) are drawn as brand-coloured
+HTML, not images.

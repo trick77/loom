@@ -242,6 +242,7 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 		Format:   generator.ToolName(),
 		Filename: filename,
 		Payload:  args,
+		Context:  ctx,
 	}, &buffer)
 	if err != nil {
 		return capToolOutput("tool failed: " + err.Error()), nil, true

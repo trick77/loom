@@ -85,6 +85,7 @@ type Config struct {
 	BFLPollTimeout     time.Duration
 
 	TikaURL        string
+	GotenbergURL   string // Gotenberg (Chromium) sidecar for HTML→PDF rendering
 	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
 	TavilyAPIKey   string // enables built-in Tavily web search when set
 	FetchMCPURL    string
@@ -149,6 +150,7 @@ func Load() (Config, error) {
 		BFLModel:                env("BACKEND_BFL_MODEL", "flux-2-klein-4b"),
 		BFLTypographyModel:      env("BACKEND_BFL_TYPOGRAPHY_MODEL", "flux-2-flex"),
 		TikaURL:                 env("BACKEND_TIKA_URL", "http://tika:9998"),
+		GotenbergURL:            env("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
 		TavilyURL:               env("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
 		TavilyAPIKey:            env("BACKEND_TAVILY_API_KEY", ""),
 		FetchMCPURL:             env("BACKEND_FETCH_MCP_URL", ""),

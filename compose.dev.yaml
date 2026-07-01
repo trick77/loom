@@ -34,6 +34,8 @@ services:
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:-}"
       BACKEND_FETCH_MCP_URL: "http://localhost:8091/mcp"
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
+      # HTML→PDF renderer, published on a localhost port (loom is host-networked here).
+      BACKEND_GOTENBERG_URL: "http://localhost:3000"
       # Optional: point at a real OpenAI-compatible endpoint to actually chat.
       BACKEND_CHAT_BASE_URL: "${BACKEND_CHAT_BASE_URL:-}"
       BACKEND_CHAT_API_KEY: "${BACKEND_CHAT_API_KEY:-}"
@@ -51,12 +53,28 @@ services:
     depends_on:
       loom-init:
         condition: service_completed_successfully
+      gotenberg:
+        condition: service_healthy
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
         condition: service_healthy
       fetch:
         # one-shot MCP discovery at startup → wait for the bridge to be ready
         condition: service_healthy
+
+  gotenberg:
+    # Chromium-based HTML→PDF renderer. Loom is host-networked here, so it is
+    # published on a localhost port and reached via BACKEND_GOTENBERG_URL.
+    image: gotenberg/gotenberg:8
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
 
   fetch:
     # Lightweight URL/document fetch MCP. Loom is host-networked here, so the
