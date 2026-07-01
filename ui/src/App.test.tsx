@@ -1822,7 +1822,7 @@ test("toggles a past activity trace without persisting the choice to localStorag
   expect(window.localStorage.getItem("lume:activity-trace-expanded")).toBeNull();
 });
 
-test("keeps active activity trace while assistant output streams without explicit trace events", async () => {
+test("shows only the tail dots (no activity panel) for a turn with no reasoning", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1841,17 +1841,18 @@ test("keeps active activity trace while assistant output streams without explici
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  const trace = await screen.findByRole("status", { name: /loom activity trace/i });
-  expect(within(trace).getByText("Thinking")).toBeInTheDocument();
-  // No reasoning has streamed yet: just the sweeping label, no chevron to expand.
-  expect(trace.querySelector(".ui-thinking-chevron")).toBeNull();
-  expect(trace.querySelector(".ui-thinking-chevron-expanded")).toBeNull();
+  // Bare start of a reasoning-free turn: the tail dots are the only cue — no
+  // activity panel, no "Thinking" text.
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  expect(screen.queryByText("Thinking")).toBeNull();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  expect(screen.getByRole("status", { name: /loom activity trace/i })).toBeInTheDocument();
-  expect(screen.getByText("Thinking")).toBeInTheDocument();
+  // The answer is streaming: the dots clear and there is still no activity panel.
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
 });
 
 test("shows the reasoning abstract once its background title arrives", async () => {
@@ -1873,28 +1874,27 @@ test("shows the reasoning abstract once its background title arrives", async () 
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  // While reasoning streams (no answer text yet) the label shows "Thinking".
+  // Reasoning streams but has no background title yet: the tail dots are the only
+  // cue. There is no "Thinking" label, no activity panel, and the reasoning text
+  // is withheld — nothing flashes before the real abstract.
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
   );
-  expect(await screen.findByText("Thinking")).toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
+  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
 
-  // The answer starts streaming, but the round has no background title yet: the
-  // label must stay "Thinking" rather than flashing the raw-first-sentence
-  // fallback. The assistant_message/done events are withheld so the trace stays.
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
-  expect(await screen.findByText("Here is")).toBeInTheDocument();
-  expect(screen.getByText("Thinking")).toBeInTheDocument();
-  expect(screen.queryByText("Search current sources")).not.toBeInTheDocument();
-
-  // The background title lands: the collapsed label flips to the abstract and the
-  // live "Thinking" status is gone.
+  // The background title lands: the panel appears with the abstract, the reasoning
+  // text is revealed, and — still working — the abstract shimmers while the dots
+  // stay at the tail.
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
   );
   expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
-  expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
+  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
+  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe("Searching current sources");
+  expect(document.querySelector(".ui-working-dots")).not.toBeNull();
 });
 
 test("auto-opens the live thinking window once, then collapses it when the answer starts", async () => {
@@ -1916,26 +1916,27 @@ test("auto-opens the live thinking window once, then collapses it when the answe
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  // Reasoning streams: the window opens itself once, no click needed.
+  // Reasoning streams and its title lands: the panel appears already open (auto-
+  // opened once, no click needed) with the reasoning body shown.
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
   );
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
 
   // The answer starts streaming: the window collapses on its own — it does not wait
-  // for the whole answer to finish — while the headline label flips to the generated
-  // abstract. The reasoning body is now hidden behind the collapsed toggle.
+  // for the whole answer to finish — leaving the abstract as the (now static)
+  // headline. The reasoning body is hidden behind the collapsed toggle.
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
-  streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
-  );
-  expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
+  expect(await screen.findByText("Here is")).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
 });
 
-test("does not auto-open the live thinking window at the bare start of a turn", async () => {
+test("keeps the activity panel hidden until the first reasoning title (dots only)", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1954,16 +1955,30 @@ test("does not auto-open the live thinking window at the bare start of a turn", 
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  // The turn has begun but nothing has streamed yet: the window must stay closed —
-  // no expanded chevron, no "Hide activity" affordance.
-  const trace = await screen.findByRole("status", { name: /loom activity trace/i });
-  expect(within(trace).getByText("Thinking")).toBeInTheDocument();
-  expect(trace.querySelector(".ui-thinking-chevron-expanded")).toBeNull();
-  expect(within(trace).queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
+  // The turn has begun but nothing has streamed: dots only, no panel.
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  // Accessibility: with no activity panel mounted yet, the dots carry a polite
+  // live-region announcement so the working phase is not silent to screen readers.
+  const srStatus = screen.getByText("Working");
+  expect(srStatus).toHaveClass("sr-only");
+  expect(srStatus.closest('[role="status"]')).not.toBeNull();
 
-  // It opens the first moment there is something to show — here, the answer text.
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hello"}\n\n'));
-  expect(await screen.findByText("Hello")).toBeInTheDocument();
+  // Reasoning content alone (no title yet) still shows no panel — dots only, and
+  // the reasoning text stays withheld.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+
+  // The first title opens the panel — expanded, with the reasoning body revealed.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+  );
+  expect(await screen.findByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
 });
 
 test("keeps the live thinking window collapsed once the user closes it mid-turn", async () => {
@@ -1985,20 +2000,21 @@ test("keeps the live thinking window collapsed once the user closes it mid-turn"
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  // Reasoning streams and the window auto-opens; the user then closes it.
+  // Reasoning streams and its title lands, so the window auto-opens; the user then
+  // closes it.
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+  );
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
   );
   fireEvent.click(await screen.findByRole("button", { name: /hide activity/i }));
   expect(await screen.findByRole("button", { name: /show activity/i })).toBeInTheDocument();
 
-  // A later phase change (answer text + background title) must NOT re-open it: the
-  // auto-open fires at most once per turn, so the manual collapse sticks.
+  // A later phase change (answer text) must NOT re-open it: the auto-open fires at
+  // most once per turn, so the manual collapse sticks.
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
-  streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
-  );
-  expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
+  expect(await screen.findByText("Here is")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
 });
@@ -2025,7 +2041,10 @@ test("keeps the generated reasoning title during later active trace updates", as
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
   );
-  expect(await screen.findByText("Thinking")).toBeInTheDocument();
+  // No title yet: dots only, no panel, no "Thinking".
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
 
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
@@ -2044,7 +2063,7 @@ test("keeps the generated reasoning title during later active trace updates", as
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
 });
 
-test("keeps Thinking when pre-tool preamble streams before a pending tool call", async () => {
+test("keeps the tail dots (still working) when pre-tool preamble streams before a pending tool call", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -2066,15 +2085,15 @@ test("keeps Thinking when pre-tool preamble streams before a pending tool call",
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
   );
-  // The model emits preamble text and then signals a pending tool call. Despite
-  // the streamed text, the label must stay "Thinking" — the answer phase has not
-  // begun, a tool is about to run.
+  // The model emits preamble text and then signals a pending tool call. Despite the
+  // streamed text, this is not the answer phase — a tool is about to run — so the
+  // tail dots must stay (still working). No "Thinking", no panel (no title yet).
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Let me search."}\n\n'));
   streamController.current?.enqueue(new TextEncoder().encode("event: tool_pending\ndata: {}\n\n"));
 
   expect(await screen.findByText("Let me search.")).toBeInTheDocument();
-  expect(screen.getByText("Thinking")).toBeInTheDocument();
-  expect(screen.queryByText("Search current sources")).not.toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
 });
 
 test("keeps active activity trace visible while assistant text is streaming", async () => {
@@ -2099,20 +2118,26 @@ test("keeps active activity trace visible while assistant text is streaming", as
   streamController.current?.enqueue(
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
   );
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Checking the source"}\n\n'),
+  );
   const trace = await screen.findByRole("status", { name: /loom activity trace/i });
-  // The window auto-opens while reasoning streams — the body is shown without a click.
+  // The title opens the window; the body is shown without a click and the abstract
+  // shimmers while still working.
   expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe("Checking the source");
 
   streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  // The answer has started: the window collapses on its own without waiting for a
-  // reasoning title to arrive. Only the (still "Thinking") headline label remains,
-  // and the reasoning body is hidden behind the collapsed toggle.
+  // The answer has started: the window collapses on its own, the abstract stops
+  // shimmering, the tail dots clear, and the reasoning body hides behind the toggle.
   expect(await within(trace).findByRole("button", { name: /show activity/i })).toBeInTheDocument();
   expect(within(trace).queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
   await waitFor(() => expect(within(trace).queryByText("I checked the source first.")).not.toBeInTheDocument());
+  await waitFor(() => expect(document.querySelector(".ui-thinking-label-active")).toBeNull());
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
   // Reasoning rows use the clock node — no per-row completion checkmark mid-stream.
   expect(document.querySelector(".ui-activity-trace-icon-reasoning-complete")).toBeNull();
 
@@ -2133,6 +2158,74 @@ test("keeps active activity trace visible while assistant text is streaming", as
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
   expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
   expect(screen.getByText("Done")).toBeInTheDocument();
+});
+
+test("keeps the tail dots pinned at the bottom through the working phase, hidden while the answer streams", async () => {
+  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController.current = controller;
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal("fetch", chatThreadFetch(stream));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  // Working gap begins immediately on send: the dots show as the "still working"
+  // cue, and they are the LAST element of the live rail (always at the bottom).
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  const rail = document.querySelector(".ui-thread-rail");
+  expect(rail?.lastElementChild?.classList.contains("ui-working-dots")).toBe(true);
+
+  // Reasoning streams and its title lands: the panel appears with the sweeping
+  // title, and the dots stay pinned at the very bottom, below the panel.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"Checking the source."}\n\n'),
+  );
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Checking the source"}\n\n'),
+  );
+  expect(await screen.findByText("Checking the source")).toBeInTheDocument();
+  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe("Checking the source");
+  expect(document.querySelector(".ui-thread-rail")?.lastElementChild?.classList.contains("ui-working-dots")).toBe(true);
+
+  // Answer prose begins: the per-segment fade-in becomes the cue, so the dots
+  // vanish and nothing sweeps (no double signal).
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
+  expect(await screen.findByText("Hel")).toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
+  expect(document.querySelector(".ui-thinking-label-active")).toBeNull();
+
+  // A second reasoning round resumes after the partial answer: a fresh trace block
+  // means the earlier text is no longer the tail answer, so the dots return.
+  streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"Double-checking."}\n\n'),
+  );
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+
+  // The answer resumes streaming after that round: the dots hide again.
+  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"lo."}\n\n'));
+  expect(await screen.findByText("lo.")).toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
+
+  // Turn completes: the dots stay gone.
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello.","reasoningContent":"Checking the source.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+    ),
+  );
+  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.close();
+  expect(await screen.findByText("Hello.")).toBeInTheDocument();
+  expect(document.querySelector(".ui-working-dots")).toBeNull();
 });
 
 test("hides the copy action until the assistant answer finishes streaming", async () => {
@@ -2272,11 +2365,16 @@ test("shows active activity trace with reasoning and tool activity before assist
     new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
   );
   streamController.current?.enqueue(
+    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching sources"}\n\n'),
+  );
+  streamController.current?.enqueue(
     new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'),
   );
 
   const trace = await screen.findByRole("status", { name: /loom activity trace/i });
-  expect(within(trace).getByText("Thinking")).toBeInTheDocument();
+  // The title is the only thing that shimmers — never "Thinking", never the tool.
+  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe("Searching sources");
+  expect(within(trace).queryByText("Thinking")).toBeNull();
   // The window auto-opens while inference runs — no click needed.
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
@@ -2284,9 +2382,11 @@ test("shows active activity trace with reasoning and tool activity before assist
   expect(within(trace).getByText("Running")).toBeInTheDocument();
   // While the turn is still active, the timeline is not yet capped with a "Done" node.
   expect(within(trace).queryByText("Done")).toBeNull();
+  // The dots stay at the tail while the tool runs.
+  expect(document.querySelector(".ui-working-dots")).not.toBeNull();
 });
 
-test("hides empty activity trace when the stream fails", async () => {
+test("shows no activity panel and clears the dots when the stream fails", async () => {
   const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -2305,13 +2405,17 @@ test("hides empty activity trace when the stream fails", async () => {
   fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  expect(await screen.findByRole("status", { name: /loom activity trace/i })).toBeInTheDocument();
+  // Bare start: dots only, no activity panel.
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
 
   streamController.current?.enqueue(new TextEncoder().encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
   streamController.current?.close();
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
   expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
+  // The dots clear on failure.
+  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
 });
 
 test("keeps the transcript pinned while an assistant response streams at the bottom", async () => {
