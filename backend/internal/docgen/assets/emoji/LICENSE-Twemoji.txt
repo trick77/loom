@@ -1,0 +1,12 @@
+Twemoji
+
+Copyright 2020 Twitter, Inc and other contributors
+
+The graphics (check.png = U+2705, cross.png = U+274C) are from the Twemoji
+project and are licensed under CC-BY 4.0:
+
+    https://creativecommons.org/licenses/by/4.0/
+
+Source: https://github.com/twitter/twemoji
+
+Attribution: "Emoji graphics © Twitter, Inc. and other contributors, CC-BY 4.0."
