@@ -14,10 +14,11 @@ import (
 // Font asset filenames, referenced by @font-face in the CSS and uploaded to
 // Gotenberg as multipart assets (see assets.go / fontAssets).
 const (
-	fontRegularFile = "Go-Regular.ttf"
-	fontBoldFile    = "Go-Bold.ttf"
-	fontItalicFile  = "Go-Italic.ttf"
-	fontMonoFile    = "Go-Mono.ttf"
+	fontRegularFile  = "Go-Regular.ttf"
+	fontBoldFile     = "Go-Bold.ttf"
+	fontItalicFile   = "Go-Italic.ttf"
+	fontMonoFile     = "JetBrainsMono-Regular.ttf" // sans monospace for code (Go Mono is slab-serif)
+	fontMonoBoldFile = "JetBrainsMono-Bold.ttf"
 )
 
 // markerDangerHex is the red used for ✗ markers. The Theme has no danger colour,
@@ -181,18 +182,19 @@ func pdfCSS() string {
 @font-face{font-family:"Loom Sans";font-weight:normal;font-style:normal;src:url(%q)}
 @font-face{font-family:"Loom Sans";font-weight:bold;font-style:normal;src:url(%q)}
 @font-face{font-family:"Loom Sans";font-weight:normal;font-style:italic;src:url(%q)}
-@font-face{font-family:"Loom Mono";src:url(%q)}
+@font-face{font-family:"Loom Mono";font-weight:normal;src:url(%q)}
+@font-face{font-family:"Loom Mono";font-weight:bold;src:url(%q)}
 :root{
  --ink:#%s; --cream:#%s; --cream-alt:#%s; --accent:#%s;
  --sage:#%s; --muted:#%s; --callout:#%s; --on-accent:#%s; --danger:#%s;
 }
 *{box-sizing:border-box}
-body{font-family:"Loom Sans",system-ui,sans-serif;color:var(--ink);background:#fff;font-size:11px;line-height:1.4;margin:0}
+body{font-family:"Loom Sans",system-ui,sans-serif;color:var(--ink);background:#fff;font-size:13px;line-height:1.45;margin:0}
 .band{background:var(--accent);color:var(--on-accent);padding:10px 12px;border-radius:2px}
-.band h1{margin:0;font-size:22px;font-weight:bold}
+.band h1{margin:0;font-size:25px;font-weight:bold}
 .subtitle{color:var(--muted);margin:6px 2px 2px}
-h2{color:var(--accent);font-size:16px;margin:14px 0 4px;break-after:avoid}
-h3{color:var(--accent);font-size:13px;margin:10px 0 3px;break-after:avoid}
+h2{color:var(--accent);font-size:19px;margin:14px 0 4px;break-after:avoid}
+h3{color:var(--accent);font-size:15px;margin:10px 0 3px;break-after:avoid}
 p.body{margin:3px 0}
 ul{margin:4px 0;padding-left:1.2em}
 li{margin:2px 0}
@@ -206,12 +208,12 @@ tbody tr:nth-child(even) td{background:var(--cream-alt)}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0}
 .cols p{margin:2px 0}
 .callout{background:var(--callout);color:var(--accent);font-style:italic;padding:8px 12px;margin:8px 0;border-radius:2px;break-inside:avoid}
-pre.code{font-family:"Loom Mono",ui-monospace,monospace;font-size:9px;line-height:1.35;background:var(--cream-alt);color:var(--ink);padding:8px 10px;margin:6px 0;white-space:pre;overflow:hidden;border-radius:2px;break-inside:avoid}
+pre.code{font-family:"Loom Mono",ui-monospace,monospace;font-size:11px;line-height:1.4;background:var(--cream-alt);color:var(--ink);padding:8px 10px;margin:6px 0;white-space:pre;overflow:hidden;border-radius:2px;break-inside:avoid}
 pre.code code{font-family:inherit;background:none}
 .mark-ok{color:var(--sage);font-weight:600}
 .mark-no{color:var(--danger);font-weight:600}
 `,
-		fontRegularFile, fontBoldFile, fontItalicFile, fontMonoFile,
+		fontRegularFile, fontBoldFile, fontItalicFile, fontMonoFile, fontMonoBoldFile,
 		Theme.InkHex, Theme.CreamHex, Theme.CreamAltHex, Theme.AccentHex,
 		Theme.SageHex, Theme.MutedHex, Theme.CalloutHex, onAccent, markerDangerHex,
 	)

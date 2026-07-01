@@ -17,8 +17,14 @@ var fontGoBold []byte
 //go:embed assets/fonts/Go-Italic.ttf
 var fontGoItalic []byte
 
-//go:embed assets/fonts/Go-Mono.ttf
-var fontGoMono []byte
+// JetBrains Mono (OFL) is the code face — a clean sans monospace, unlike Go Mono
+// which is slab-serif. See assets/fonts/LICENSE-JetBrainsMono.txt.
+//
+//go:embed assets/fonts/JetBrainsMono-Regular.ttf
+var fontMonoRegular []byte
+
+//go:embed assets/fonts/JetBrainsMono-Bold.ttf
+var fontMonoBold []byte
 
 // fontAssets returns the font files to upload alongside index.html, keyed by the
 // filenames the CSS @font-face rules reference.
@@ -27,6 +33,7 @@ func fontAssets() []gotenbergAsset {
 		{Filename: fontRegularFile, Data: fontGoRegular},
 		{Filename: fontBoldFile, Data: fontGoBold},
 		{Filename: fontItalicFile, Data: fontGoItalic},
-		{Filename: fontMonoFile, Data: fontGoMono},
+		{Filename: fontMonoFile, Data: fontMonoRegular},
+		{Filename: fontMonoBoldFile, Data: fontMonoBold},
 	}
 }
