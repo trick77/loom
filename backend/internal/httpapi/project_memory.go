@@ -20,7 +20,6 @@ func (s *server) projectMemoryScope(user auth.User, project chat.Project) memory
 		purpose:      "project_memory",
 		header:       projectMemoryHeader(project),
 		systemPrompt: llm.ProjectMemorySystemPrompt,
-		localize:     true, // shown to the user in the project context panel
 		get: func(ctx context.Context) (string, int, *time.Time, error) {
 			memory, _, err := s.thread.GetProjectMemory(ctx, user.ID, project.ID)
 			return memory.Content, memory.SourceMessageCount, memory.UpdatedAt, err
