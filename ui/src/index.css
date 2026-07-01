@@ -325,6 +325,68 @@ body {
   transform: rotate(45deg);
 }
 
+/* Tail "working" dots (see WorkingDot.tsx): three clay dots bouncing in sequence
+   at the bottom of a live turn during the thinking/tool gap. 6px dots, 5px gap,
+   ~4px bounce, in the clay accent. */
+.ui-working-dots {
+  display: flex;
+  gap: 5px;
+  align-items: flex-end;
+  height: 10px;
+  padding: 3px 0;
+}
+
+/* The dots are the empty spans; the trailing .sr-only span carries the
+   screen-reader announcement and must not be styled/animated as a dot. */
+.ui-working-dots span:not(.sr-only) {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent-strong);
+  animation: ui-working-bounce 1.2s ease-in-out infinite;
+}
+
+.ui-working-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.ui-working-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes ui-working-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.3;
+  }
+
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* Reduced motion: drop the vertical bounce, keep a gentle opacity pulse so the
+   "still working" cue survives without movement. */
+@keyframes ui-working-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-working-dots span:not(.sr-only) {
+    animation-name: ui-working-pulse;
+  }
+}
+
 .ui-activity-trace {
   /* Vertical nudge that optically centers the (centered-in-its-box) trace icon on
      the first line of its label. Calibrated against the 0.8125rem/1.45rem label:

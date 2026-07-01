@@ -17,6 +17,7 @@ export function ActivityTracePanel({
   events,
   active,
   streaming = false,
+  sweep = false,
   expanded: controlledExpanded,
   initiallyExpanded = false,
   onExpandedChange,
@@ -24,6 +25,11 @@ export function ActivityTracePanel({
   events: ActivityTraceEvent[];
   active: boolean;
   streaming?: boolean;
+  // Whether the reasoning-title label should shimmer. Passed true only for the
+  // live active panel while the turn is still working (thinking / running tools,
+  // no answer prose yet). The bouncing tail dots carry the generic "still
+  // working" cue; the sweep is reserved for a real reasoning title.
+  sweep?: boolean;
   expanded?: boolean;
   initiallyExpanded?: boolean;
   onExpandedChange?(expanded: boolean): void;
@@ -41,10 +47,15 @@ export function ActivityTracePanel({
   }, [expanded]);
   if (events.length === 0 && !active) return null;
   const generatedTitle = latestReasoningTitle(events);
-  const label = generatedTitle ?? (active ? "Thinking" : summarizeTrace(events));
-  // Sweep the label for the whole turn: "Thinking" until a generated abstract
-  // arrives, then keep that title shimmering until the answer finishes streaming.
-  const sweeping = active || streaming;
+  // No "Thinking" fallback: the live active panel is only rendered once a real
+  // reasoning title exists (before that, the tail dots are the sole cue), so the
+  // live label is always a title. `summarizeTrace` covers past/completed panels
+  // (and the rare tool-first case), shown statically.
+  const label = generatedTitle ?? summarizeTrace(events);
+  // Only a reasoning title ever shimmers, and only while the turn is working
+  // (sweep). It stops the moment answer prose streams and at done — the tail dots
+  // likewise vanish then. Tool titles and the status pill never sweep.
+  const sweeping = sweep && generatedTitle !== undefined;
   // The trace is always a timeline: reasoning rows get a clock node, the line
   // connects them, and a terminal "Done" node caps the turn once it has settled
   // (no longer thinking and no longer streaming the answer).

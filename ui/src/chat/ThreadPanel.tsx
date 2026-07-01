@@ -15,6 +15,7 @@ import { isImageAttachment, toSentAttachment, useDocumentAttachments, type Compo
 import { isNearBottom, previousUserContent } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { WindowFileDrop } from "./WindowFileDrop";
+import { WorkingDot } from "./WorkingDot";
 
 export function ThreadPanel({
   thread,
@@ -105,23 +106,30 @@ export function ThreadPanel({
   const answerTextStreaming = streamingBlocks.some(
     (block, index) => block.type === "text" && block.content !== "" && index > lastTraceBlockIndex,
   );
-  // A live activity panel shows for the whole turn: either the active trace block,
-  // or — when no trace has streamed yet — a standalone "Thinking" panel.
-  const showStandaloneActiveTrace = lastTraceBlockIndex === -1 && isSending && sendError === "";
-  const showActiveActivityTrace = hasActiveActivityTrace || showStandaloneActiveTrace;
+  // While the turn is live, the activity panel is shown only once a real reasoning
+  // title exists — before that the tail dots are the sole cue (no "Thinking"
+  // placeholder, and never the raw-first-sentence summary fallback, which would
+  // flash a half-formed heading). Once the turn ends (`!isSending`, e.g. a failed
+  // or reasoning-free turn) the trace renders unconditionally with its static
+  // summary so a completed/failed timeline is never swallowed. Because the live
+  // panel only appears with a title, its label is always a title and always sweeps.
+  const hasReasoningTitle = activeTraceEvents.some(
+    (event) => event.type === "reasoning" && (event.title?.trim() ?? "") !== "",
+  );
+  const activeTraceVisible = hasActiveActivityTrace && (hasReasoningTitle || !isSending);
   // The live thinking window manages its own open/closed state: it opens once per
   // turn when there is something to show and stays open through the answer, then
   // collapses when the turn ends. There is no persisted preference; past traces
   // simply start collapsed (uncontrolled).
   const [liveTraceExpanded, setLiveTraceExpanded] = useState(false);
   // Once the final answer streams (and no tool is running or pending), the
-  // reasoning phase is over: show its abstract instead of "Thinking". Only
-  // applies to traces that actually have reasoning, so reasoning-free turns keep
-  // the "Thinking" affordance until they complete. `toolPending` bridges the gap
-  // until a tool call the model has already started surfaces as a running event,
-  // so streamed pre-tool preamble text never settles the label early. The label
-  // also stays on "Thinking" until the latest reasoning round's background title
-  // has arrived, so the raw-first-sentence fallback never flashes mid-stream.
+  // reasoning phase is over. Only applies to traces that actually have reasoning,
+  // so a reasoning-free turn stays "working" until it completes. `toolPending`
+  // bridges the gap until a tool call the model has already started surfaces as a
+  // running event, so streamed pre-tool preamble text never settles the phase
+  // early. The active state also holds until the latest reasoning round's
+  // background title has arrived, so the sweeping title never flips to a
+  // raw-first-sentence fallback mid-stream.
   const hasReasoning = activeTraceEvents.some((event) => event.type === "reasoning");
   const toolRunning = activeTraceEvents.some((event) => event.type === "tool" && event.status === "running");
   const latestReasoning = activeTraceEvents.reduce<ActivityTraceEvent | undefined>(
@@ -130,21 +138,34 @@ export function ThreadPanel({
   );
   const latestReasoningTitled =
     latestReasoning?.type === "reasoning" && (latestReasoning.title?.trim() ?? "") !== "";
-  // The answer phase has begun: reasoning produced content and prose is now
-  // streaming, with no tool running or pending (the `toolPending` bridge keeps
-  // pre-tool preamble text from triggering this early).
-  const answerStarted = hasReasoning && answerTextStreaming && !toolRunning && !toolPending;
+  // The final answer is streaming: prose is going into the tail with no tool
+  // running or pending. Pre-tool preamble text followed by a tool call is NOT the
+  // answer — the `toolPending` bridge covers the beat before the call surfaces.
+  const answerPhase = answerTextStreaming && !toolRunning && !toolPending;
+  // The answer phase has begun for a reasoning turn (adds the reasoning gate to
+  // `answerPhase`); reasoning-free turns settle on `answerPhase` alone below.
+  const answerStarted = hasReasoning && answerPhase;
   // `reasoningSettled` is `answerStarted` plus the background reasoning title: it
   // gates the "Thinking" → abstract label flip, which must wait for the title so
   // the raw-first-sentence fallback never flashes mid-stream. The auto-collapse
   // below uses bare `answerStarted` instead, so the window collapses the instant
   // the answer starts rather than when the abstract happens to arrive.
   const reasoningSettled = answerStarted && latestReasoningTitled;
-  // `liveTraceThinking` drives the "Thinking" affordance (active spinner), not the
-  // open/closed state: the window stays open through the answer even after the
-  // reasoning phase settles.
+  // `liveTraceThinking` drives the panel's active state (the timeline "Done" cap
+  // and the aria live-region), not the open/closed state: the panel stays open
+  // through the answer even after the reasoning phase settles.
   const liveTraceThinking = isSending && !reasoningSettled;
   const liveTraceHasSomethingToShow = isSending && (hasActiveActivityTrace || answerTextStreaming);
+  // `working` = the turn is live and no answer prose is streaming into the tail
+  // yet (thinking / running tools / between steps). It drives both the tail dots
+  // and whether the reasoning-title label shimmers. The dots sit at the very
+  // bottom of the live turn (below all trace/text blocks), where auto-scroll keeps
+  // them on screen — the "still working" cue the panel's top-anchored title loses
+  // as the trace grows and scrolls off the top. Once answer text streams,
+  // `answerTextStreaming` flips and the per-segment fade-in becomes the cue, so the
+  // dots hide and the title stops sweeping; a later reasoning round drops it again
+  // and they return.
+  const working = isSending && sendError === "" && !answerPhase;
   // Auto-open/collapse the live thinking window by tracking which phase the turn is
   // in: open while there is reasoning/tool activity to show and the answer has not
   // begun, collapse once the answer starts. This is applied only on the transition
@@ -262,7 +283,8 @@ export function ThreadPanel({
     refreshScrollState,
     scrollToLatest,
     sendError,
-    showActiveActivityTrace,
+    activeTraceVisible,
+    working,
     streamingBlocks,
     liveTraceExpanded,
   ]);
@@ -390,29 +412,13 @@ export function ThreadPanel({
               </div>
             ))}
             {/* The live streaming region is built as ONE keyed array so React's
-                keyed reconciliation preserves DOM nodes across the turn. In
-                particular the active trace panel keeps the stable key
-                "live-active-trace" whether it is the pre-content placeholder (no
-                trace block streamed yet) or the inline active trace block — so the
-                first reasoning/tool event reuses the SAME node instead of
-                unmounting the placeholder and mounting a fresh panel. React only
-                preserves a keyed node across position changes within a single
-                array, which is why both live in this one expression. */}
+                keyed reconciliation preserves DOM nodes across the turn. The active
+                trace panel keeps the stable key "live-active-trace" so it reuses the
+                SAME node as it grows across the turn. There is no pre-content
+                placeholder: before the first reasoning title (or a tool) the tail
+                dots are the only cue. */}
             {(() => {
               const elements: React.ReactNode[] = [];
-              const hasTraceBlock = lastTraceBlockIndex !== -1;
-              if (!hasTraceBlock && showStandaloneActiveTrace) {
-                elements.push(
-                  <ActivityTracePanel
-                    key="live-active-trace"
-                    events={[]}
-                    active={liveTraceThinking}
-                    streaming={isSending}
-                    expanded={liveTraceExpanded}
-                    onExpandedChange={setLiveTraceExpanded}
-                  />,
-                );
-              }
               streamingBlocks.forEach((block, index) => {
                 if (block.type === "text") {
                   if (block.content === "") return;
@@ -429,17 +435,22 @@ export function ThreadPanel({
                   );
                   return;
                 }
-                // Trace block: the active (last) one drives the live "Thinking"
-                // affordance and stays expanded through the answer; earlier
-                // completed trace blocks render collapsed and inactive. The active
-                // one keeps the stable key shared with the placeholder above.
+                // Trace block: the active (last) one carries the live sweeping
+                // reasoning title and stays expanded through the answer; earlier
+                // completed trace blocks render collapsed and inactive. While the
+                // turn is live the active panel is withheld until a real reasoning
+                // title exists (so a tool that fires before that first title also
+                // stays behind the dots); once the turn ends it renders regardless
+                // (see `activeTraceVisible`) so a failed/completed trace still shows.
                 const isActiveTrace = index === lastTraceBlockIndex;
+                if (isActiveTrace && !activeTraceVisible) return;
                 elements.push(
                   <ActivityTracePanel
                     key={isActiveTrace ? "live-active-trace" : `stream-trace-${index}`}
                     events={block.events}
                     active={isActiveTrace ? liveTraceThinking : false}
                     streaming={isActiveTrace ? isSending : false}
+                    sweep={isActiveTrace ? working : false}
                     expanded={isActiveTrace ? liveTraceExpanded : undefined}
                     onExpandedChange={isActiveTrace ? setLiveTraceExpanded : undefined}
                   />,
@@ -447,6 +458,7 @@ export function ThreadPanel({
               });
               return elements;
             })()}
+            {working && <WorkingDot />}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
           <div
