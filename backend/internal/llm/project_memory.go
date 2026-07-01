@@ -109,7 +109,7 @@ func buildUserMemorySystemPrompt(budget int) string {
 // a fresh, compact memory (re-summarize, not append) so the result stays bounded.
 // The systemPrompt selects the memory's style (project vs. user). It takes plain
 // strings to avoid a dependency on the chat package.
-func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transcript, excludedDirectives, systemPrompt string) (string, error) {
+func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transcript, excludedDirectives, systemPrompt, responseLanguage string) (string, error) {
 	start := time.Now()
 
 	var b strings.Builder
@@ -131,7 +131,7 @@ func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transc
 	b.WriteString("\nUpdated memory:")
 
 	messages := []Message{
-		{Role: "system", Content: systemPrompt},
+		{Role: "system", Content: appendLanguageDirective(systemPrompt, responseLanguage)},
 		{Role: "user", Content: b.String()},
 	}
 	return c.runMemoryCompletion(ctx, start, messages)
@@ -145,7 +145,7 @@ func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transc
 // normally be a protected, durable one. The styleSystemPrompt (the scope's
 // project/user prompt) keeps the output's format consistent. An empty result is
 // valid (the user emptied the memory).
-func (c *Client) ApplyMemoryEdit(ctx context.Context, header, currentMemory, instruction, styleSystemPrompt string) (string, error) {
+func (c *Client) ApplyMemoryEdit(ctx context.Context, header, currentMemory, instruction, styleSystemPrompt, responseLanguage string) (string, error) {
 	start := time.Now()
 
 	var b strings.Builder
@@ -164,7 +164,7 @@ func (c *Client) ApplyMemoryEdit(ctx context.Context, header, currentMemory, ins
 	b.WriteString("\n\"\"\"\n\nUpdated memory:")
 
 	messages := []Message{
-		{Role: "system", Content: styleSystemPrompt},
+		{Role: "system", Content: appendLanguageDirective(styleSystemPrompt, responseLanguage)},
 		{Role: "user", Content: b.String()},
 	}
 	return c.runMemoryCompletion(ctx, start, messages)

@@ -607,7 +607,7 @@ func (f fakeChatClient) StreamChatResult(_ context.Context, history []llm.Messag
 	return llm.StreamResult{Content: "Hello", Usage: f.usage}, nil
 }
 
-func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, _, _ string) (string, error) {
 	if f.titleErr != nil {
 		return "", f.titleErr
 	}
@@ -621,20 +621,20 @@ func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, e
 	return f.category, nil
 }
 
-func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _ string) (string, error) {
+func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string) (string, error) {
 	llm.RecordUsage(ctx, f.reasoningTitleUsage)
 	return f.reasoningTitle, nil
 }
 
-func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _, _, _ string) (string, error) {
 	return f.projectMemory, nil
 }
 
-func (f fakeChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _ string) (string, error) {
+func (f fakeChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return f.editedMemory, nil
 }
 
-func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _ string, _ []string) (string, error) {
+func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _ string, _ []string, _ string) (string, error) {
 	if f.projectDescriptionCalls != nil {
 		*f.projectDescriptionCalls++
 	}
@@ -706,7 +706,7 @@ func (f *blockingChatClient) StreamChatWithTools(ctx context.Context, _ []llm.Me
 	return f.StreamChatResult(ctx, nil, nil)
 }
 
-func (f *blockingChatClient) GenerateThreadTitle(context.Context, string, string) (string, error) {
+func (f *blockingChatClient) GenerateThreadTitle(context.Context, string, string, string) (string, error) {
 	return "", nil
 }
 
@@ -714,19 +714,19 @@ func (f *blockingChatClient) ClassifyThread(context.Context, string) (string, er
 	return "", nil
 }
 
-func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string) (string, error) {
+func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
 
-func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string, string) (string, error) {
+func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string, string, string) (string, error) {
 	return "", nil
 }
 
-func (f *blockingChatClient) ApplyMemoryEdit(context.Context, string, string, string, string) (string, error) {
+func (f *blockingChatClient) ApplyMemoryEdit(context.Context, string, string, string, string, string) (string, error) {
 	return "", nil
 }
 
-func (f *blockingChatClient) GenerateProjectDescription(context.Context, string, []string) (string, error) {
+func (f *blockingChatClient) GenerateProjectDescription(context.Context, string, []string, string) (string, error) {
 	return "", nil
 }
 
@@ -805,7 +805,7 @@ func (f *fakeToolChatClient) StreamChatWithTools(ctx context.Context, history []
 	return result, nil
 }
 
-func (f *fakeToolChatClient) GenerateThreadTitle(context.Context, string, string) (string, error) {
+func (f *fakeToolChatClient) GenerateThreadTitle(context.Context, string, string, string) (string, error) {
 	return f.titleResult, nil
 }
 
@@ -813,22 +813,22 @@ func (f *fakeToolChatClient) ClassifyThread(context.Context, string) (string, er
 	return f.classifyResult, nil
 }
 
-func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning string) (string, error) {
+func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning, _ string) (string, error) {
 	if f.titleFor != nil {
 		return f.titleFor(reasoning), nil
 	}
 	return "", nil
 }
 
-func (f *fakeToolChatClient) GenerateMemory(_ context.Context, _, _, _, _, _ string) (string, error) {
+func (f *fakeToolChatClient) GenerateMemory(_ context.Context, _, _, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 
-func (f *fakeToolChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _ string) (string, error) {
+func (f *fakeToolChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 
-func (f *fakeToolChatClient) GenerateProjectDescription(context.Context, string, []string) (string, error) {
+func (f *fakeToolChatClient) GenerateProjectDescription(context.Context, string, []string, string) (string, error) {
 	return "", nil
 }
 

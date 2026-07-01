@@ -17,13 +17,13 @@ const reasoningTitleSystemPrompt = "Summarize the assistant's private reasoning 
 // model reasoning. It is a secondary, non-streaming call meant to run in the
 // background. On any failure or an unusable result it returns an empty string so
 // the caller simply skips the title rather than surfacing an error.
-func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning string) (string, error) {
+func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning, responseLanguage string) (string, error) {
 	if strings.TrimSpace(reasoning) == "" {
 		return "", nil
 	}
 	start := time.Now()
 	messages := []Message{
-		{Role: "system", Content: reasoningTitleSystemPrompt},
+		{Role: "system", Content: appendLanguageDirective(reasoningTitleSystemPrompt, responseLanguage)},
 		{Role: "user", Content: reasoning},
 	}
 	resp, err := c.executeUtilityChatRequest(ctx, messages)

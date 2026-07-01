@@ -28,7 +28,7 @@ const projectDescriptionMaxChars = 160
 // big-picture sentence fragment describing the project as a whole. titles are the
 // meaningfully-titled, non-archived threads in the project (placeholder "New thread"
 // titles excluded by the caller).
-func (c *Client) GenerateProjectDescription(ctx context.Context, projectName string, titles []string) (string, error) {
+func (c *Client) GenerateProjectDescription(ctx context.Context, projectName string, titles []string, responseLanguage string) (string, error) {
 	start := time.Now()
 	var b strings.Builder
 	b.WriteString("Project name:\n\"\"\"\n")
@@ -46,7 +46,7 @@ func (c *Client) GenerateProjectDescription(ctx context.Context, projectName str
 	b.WriteString("\"\"\"\n\nProject description:")
 
 	messages := []Message{
-		{Role: "system", Content: projectDescriptionSystemPrompt},
+		{Role: "system", Content: appendLanguageDirective(projectDescriptionSystemPrompt, responseLanguage)},
 		{Role: "user", Content: b.String()},
 	}
 	resp, err := c.executeUtilityChatRequestWithBudget(ctx, messages, projectDescriptionMaxCompletionTokens)
