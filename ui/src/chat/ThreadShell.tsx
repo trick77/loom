@@ -618,14 +618,11 @@ export function ThreadShell({
       const targetThreadID = targetThread.id;
       activeThreadIDRef.current = targetThreadID;
       abortController = new AbortController();
-      // A prior stream is still live (a new turn started before it finished, e.g.
-      // sending on another thread). Attribute its cancellation as new_send before
-      // aborting so the server logs the intent rather than a bare request-context
-      // drop; awaiting lets the stop cause win the server-side cancel race.
-      const supersededThreadID = streamingThreadIDRef.current;
-      if (supersededThreadID !== null && streamAbortRef.current !== null) {
-        await stopMessage(supersededThreadID, "new_send").catch(() => undefined);
-      }
+      // A new turn can only start once the previous one settled (send gates on
+      // isSending, which clears streamAbortRef in the same tick), so there is
+      // normally nothing to abort here. Should two streams ever overlap via a
+      // race, the server attributes the older one as superseded_stream when the
+      // new request registers — no client-side stop call is needed.
       streamAbortRef.current?.abort();
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
