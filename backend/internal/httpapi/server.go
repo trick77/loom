@@ -84,8 +84,14 @@ type server struct {
 	activeStreams              activeStreamRegistry
 }
 
-// ThreadStore is the thread persistence dependency used by thread handlers.
-type ThreadStore interface {
+// The persistence dependency used by the HTTP handlers is split into narrow,
+// role-based interfaces below (one per chat/*_store.go concern) so that
+// individual handlers and their test fakes can depend on just the slice they
+// need. ThreadStore is the composite that embeds all of them; chat.Store
+// implements every role interface, so wiring in Deps/server is unchanged.
+
+// ProjectStore persists projects and their thread listing.
+type ProjectStore interface {
 	CreateProject(context.Context, string, chat.CreateProjectInput) (chat.Project, error)
 	GetProject(context.Context, string, string) (chat.Project, bool, error)
 	ListProjects(context.Context, string, bool) ([]chat.Project, error)
@@ -94,16 +100,24 @@ type ThreadStore interface {
 	SetProjectStarred(context.Context, string, string, bool) (chat.Project, bool, error)
 	SetProjectArchived(context.Context, string, string, bool) (bool, error)
 	DeleteProject(context.Context, string, string) (bool, error)
+	ListProjectThreadTitles(context.Context, string, string) ([]string, error)
+}
+
+// ThreadCRUDStore persists threads.
+type ThreadCRUDStore interface {
 	CreateThread(context.Context, string, chat.CreateThreadInput) (chat.Thread, error)
 	GetThread(context.Context, string, string) (chat.Thread, bool, error)
 	ListThreads(context.Context, string, chat.ListThreadsOptions) ([]chat.Thread, error)
 	ListThreadIDs(context.Context, string, chat.ListThreadsOptions) ([]string, error)
-	ListProjectThreadTitles(context.Context, string, string) ([]string, error)
 	UpdateThread(context.Context, string, string, chat.UpdateThreadInput) (chat.Thread, bool, error)
 	SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error)
 	SetThreadImageModelIfEmpty(context.Context, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
+}
+
+// MessageStore appends messages and reads them back.
+type MessageStore interface {
 	AddMessage(context.Context, string, string, chat.Role, string) (chat.Message, error)
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage) (chat.Message, error)
 	AddMessageWithUsage(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage) (chat.Message, error)
@@ -112,26 +126,61 @@ type ThreadStore interface {
 	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 	ListRecentMessages(context.Context, string, string, int) ([]chat.Message, error)
+}
+
+// MessageSearchStore runs full-text search over messages and threads.
+type MessageSearchStore interface {
 	SearchMessages(context.Context, string, string, *string, string, int) ([]chat.MessageSearchHit, error)
 	SearchThreadsByContent(context.Context, string, string, *string, int) ([]chat.ThreadContentHit, error)
+}
+
+// ProjectMemoryStore persists project-scoped memory and message roll-ups.
+type ProjectMemoryStore interface {
 	GetProjectMemory(context.Context, string, string) (chat.ProjectMemory, bool, error)
 	UpsertProjectMemory(context.Context, string, string, string, int) (chat.ProjectMemory, error)
 	CountProjectMessages(context.Context, string, string) (int, error)
 	ListProjectMessages(context.Context, string, string, int) ([]chat.Message, error)
+}
+
+// UserMemoryStore persists user-scoped memory and message roll-ups.
+type UserMemoryStore interface {
 	GetUserMemory(context.Context, string) (chat.UserMemory, bool, error)
 	UpsertUserMemory(context.Context, string, string, int) (chat.UserMemory, error)
 	CountUserMessages(context.Context, string) (int, error)
 	ListUserMessages(context.Context, string, int) ([]chat.Message, error)
+}
+
+// UserDirectiveStore persists a user's standing instructions.
+type UserDirectiveStore interface {
 	ListUserDirectives(context.Context, string) ([]chat.UserDirective, error)
 	AddUserDirective(context.Context, string, string) (chat.UserDirective, error)
 	RemoveUserDirective(context.Context, string, string) (bool, error)
 	ReplaceUserDirective(context.Context, string, string, string) (chat.UserDirective, bool, error)
+}
+
+// ShareStore persists public share snapshots.
+type ShareStore interface {
 	CreateShare(context.Context, string, chat.CreateShareInput) (chat.Share, error)
 	GetShareByThreadID(context.Context, string, string) (chat.Share, bool, error)
 	GetShareByShareID(context.Context, string) (chat.Share, bool, error)
 	UpdateShareSnapshot(context.Context, string, string, chat.UpdateShareInput) (chat.Share, bool, error)
 	SetShareEnabled(context.Context, string, string, bool) (bool, error)
 	ListSharesForUser(context.Context, string) ([]chat.Share, error)
+}
+
+// ThreadStore is the full thread persistence dependency used by the HTTP
+// handlers. It is a composite of the role interfaces above; chat.Store
+// satisfies it. Prefer depending on a narrower role interface where a handler
+// or test only needs one concern.
+type ThreadStore interface {
+	ProjectStore
+	ThreadCRUDStore
+	MessageStore
+	MessageSearchStore
+	ProjectMemoryStore
+	UserMemoryStore
+	UserDirectiveStore
+	ShareStore
 }
 
 // UsageStore records per-user lifetime usage counters. All methods are
