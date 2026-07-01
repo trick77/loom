@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/johnfercher/go-tree/node"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
+	"github.com/johnfercher/maroto/v2/pkg/consts/breakline"
+	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/core"
+	"github.com/johnfercher/maroto/v2/pkg/core/entity"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 )
 
@@ -80,33 +84,118 @@ func blocksFromMarkdown(content string) []pdfBlock {
 	return out
 }
 
-// sanitizeForPDF replaces every code point outside the Basic Multilingual Plane
-// (rune > 0xFFFF) with the Unicode replacement character. gofpdf — which maroto
-// uses to render PDFs — looks up glyph widths in a 65536-entry table indexed by
-// rune, so a non-BMP rune (an emoji, or a U+10000+ character the model may emit
-// via a JSON surrogate pair) panics with "index out of range". The bundled Go
-// fonts have no glyphs for those runes anyway, so nothing renderable is lost.
+// Canonical status-marker runes. Every check/cross variant the model emits is
+// normalized to one of these by sanitizeForPDF, so the marker matcher and the
+// grafted font only ever deal with two code points.
+const (
+	checkRune = '✓' // U+2713
+	crossRune = '✗' // U+2717
+)
+
+// markerNormalize maps the many checkmark/cross glyphs a model may emit — plain,
+// heavy, emoji-presentation, ballot — to the canonical checkRune/crossRune.
+var markerNormalize = map[rune]rune{
+	'✓': checkRune, '✔': checkRune, '✅': checkRune, '☑': checkRune, '🗸': checkRune, '🗹': checkRune,
+	'✗': crossRune, '✘': crossRune, '❌': crossRune, '❎': crossRune, '✕': crossRune, '✖': crossRune, '☒': crossRune, '🗴': crossRune,
+}
+
+// sanitizeForPDF prepares a string for gofpdf, which maroto uses to render PDFs.
+// It (1) drops emoji/text variation selectors (U+FE0F/U+FE0E) that models append
+// to symbols, (2) normalizes every checkmark/cross variant to the canonical
+// checkRune/crossRune the grafted font and marker matcher understand, and (3)
+// replaces every code point outside the Basic Multilingual Plane (rune > 0xFFFF)
+// with the Unicode replacement character — gofpdf indexes a 65536-entry
+// glyph-width table by rune and panics ("index out of range") on non-BMP runes,
+// and the bundled fonts carry no glyphs for them anyway.
 func sanitizeForPDF(s string) string {
 	if s == "" {
 		return s
 	}
-	hasNonBMP := false
+	var b strings.Builder
+	b.Grow(len(s))
 	for _, r := range s {
-		if r > 0xFFFF {
-			hasNonBMP = true
-			break
+		switch {
+		case r == 0xFE0F || r == 0xFE0E:
+			continue // emoji/text variation selector — carries no glyph
+		case markerNormalize[r] != 0:
+			b.WriteRune(markerNormalize[r])
+		case r > 0xFFFF:
+			b.WriteRune('�')
+		default:
+			b.WriteRune(r)
 		}
 	}
-	if !hasNonBMP {
-		return s
+	return b.String()
+}
+
+// splitMarker pulls a leading ✓/✗ status marker off a string (assumed already
+// normalized by sanitizeForPDF). Returns whether a marker was found, whether it
+// was a check (vs cross), and the remaining text.
+func splitMarker(s string) (found, isCheck bool, rest string) {
+	t := strings.TrimLeft(s, " ")
+	r := []rune(t)
+	if len(r) == 0 {
+		return false, false, s
 	}
-	runes := []rune(s)
-	for i, r := range runes {
-		if r > 0xFFFF {
-			runes[i] = '�'
-		}
+	switch r[0] {
+	case checkRune:
+		return true, true, strings.TrimLeft(string(r[1:]), " ")
+	case crossRune:
+		return true, false, strings.TrimLeft(string(r[1:]), " ")
 	}
-	return string(runes)
+	return false, false, s
+}
+
+// markerEmoji returns the emoji PNG for a check/cross marker.
+func markerEmoji(isCheck bool) []byte {
+	if isCheck {
+		return emojiCheck
+	}
+	return emojiCross
+}
+
+// inlineMarker draws a colour emoji status marker (green ✓ / red ✗) at the left
+// of a cell and the text in a rectangle offset to its right — all within one
+// cell, so there is no separate gutter column and wrapped lines hang under the
+// text, not the marker. maroto draws each text run in a single colour and exposes
+// no inline colour spans, and its rendering provider is internal; a custom
+// Component is the only place with access to the provider's positioned draw
+// calls, so a coloured marker inside otherwise-dark text must be its own draw.
+type inlineMarker struct {
+	img  []byte // emoji PNG (check or cross)
+	text string
+	prop props.Text
+}
+
+func (im *inlineMarker) markerBox() float64 { return im.prop.Size * 0.40 } // emoji square, mm
+func (im *inlineMarker) gap() float64       { return im.prop.Size * 0.16 } // space before text
+func (im *inlineMarker) offset() float64    { return im.prop.Left + im.markerBox() + im.gap() }
+
+func (im *inlineMarker) GetStructure() *node.Node[core.Structure] {
+	return node.New(core.Structure{Type: "inlineMarker", Value: im.text})
+}
+
+func (im *inlineMarker) SetConfig(*entity.Config) {}
+
+func (im *inlineMarker) GetHeight(provider core.Provider, cell *entity.Cell) float64 {
+	n := provider.GetLinesQuantity(im.text, &im.prop, cell.Width-im.offset()-im.prop.Right)
+	if n < 1 {
+		n = 1
+	}
+	fh := provider.GetFontHeight(&props.Font{Family: im.prop.Family, Style: im.prop.Style, Size: im.prop.Size, Color: im.prop.Color})
+	return float64(n)*fh + float64(n-1)*im.prop.VerticalPadding + im.prop.Top + im.prop.Bottom
+}
+
+func (im *inlineMarker) Render(provider core.Provider, cell *entity.Cell) {
+	box := im.markerBox()
+	provider.AddImageFromBytes(im.img,
+		&entity.Cell{X: cell.X + im.prop.Left, Y: cell.Y + im.prop.Top, Width: box, Height: box},
+		&props.Rect{Percent: 100}, extension.Png)
+	tp := im.prop
+	tp.Left = 0
+	provider.AddText(im.text,
+		&entity.Cell{X: cell.X + im.offset(), Y: cell.Y, Width: cell.Width - im.offset(), Height: cell.Height},
+		&tp)
 }
 
 // sanitizeBlock applies sanitizeForPDF to every text field of a block. maroto
@@ -170,6 +259,13 @@ func renderBlock(m core.Maroto, b pdfBlock) {
 		// lines align under the text. Bullet is full-size and top-matched to the text
 		// so it sits on the same line; Bottom is tight to keep items close together.
 		for _, it := range b.Items {
+			// A ✓/✗-led item becomes a green-check / red-cross emoji bullet, drawn
+			// inline so wrapped lines hang under the text (like the • layout below).
+			if found, isCheck, rest := splitMarker(it); found {
+				p := props.Text{Size: 11, Color: rgbColor(Theme.Ink), Align: align.Left, BreakLineStrategy: breakline.EmptySpaceStrategy, Top: 1, Bottom: 1, Left: 2, Right: 1.5, VerticalPadding: 0.5}
+				m.AddAutoRow(col.New(pdfGrid).Add(&inlineMarker{img: markerEmoji(isCheck), text: rest, prop: p}))
+				continue
+			}
 			m.AddAutoRow(
 				text.NewCol(1, "•", props.Text{Size: 11, Align: align.Right, Color: rgbColor(Theme.Ink), Top: 1, Bottom: 1, Right: 1.5, VerticalPadding: 0.5}),
 				text.NewCol(pdfGrid-1, it, props.Text{Size: 11, Color: rgbColor(Theme.Ink), Top: 1, Bottom: 1, Left: 1.5, VerticalPadding: 0.5}),
@@ -209,7 +305,16 @@ func renderBlock(m core.Maroto, b pdfBlock) {
 				if ci < len(r) {
 					cell = r[ci]
 				}
-				cells = append(cells, text.NewCol(span, cell, props.Text{Size: 10, Style: style, Color: textColor, Top: 1, Bottom: 2, Left: 2, Right: 2, VerticalPadding: 0.5}).WithStyle(cellStyle))
+				base := props.Text{Size: 10, Style: style, Color: textColor, Top: 1, Bottom: 2, Left: 2, Right: 2, VerticalPadding: 0.5}
+				// A ✓/✗-led body cell renders the marker as a colour emoji inline
+				// (green check / red cross), keeping the cell text ink-coloured.
+				if found, isCheck, rest := splitMarker(cell); found && !header {
+					base.Align = align.Left
+					base.BreakLineStrategy = breakline.EmptySpaceStrategy
+					cells = append(cells, col.New(span).Add(&inlineMarker{img: markerEmoji(isCheck), text: rest, prop: base}).WithStyle(cellStyle))
+					continue
+				}
+				cells = append(cells, text.NewCol(span, cell, base).WithStyle(cellStyle))
 			}
 			m.AddAutoRow(cells...)
 		}

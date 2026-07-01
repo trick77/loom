@@ -15,14 +15,11 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/props"
 	"github.com/johnfercher/maroto/v2/pkg/repository"
 	"github.com/trick77/loom/internal/artifact"
-	"golang.org/x/image/font/gofont/gobold"
-	"golang.org/x/image/font/gofont/gobolditalic"
-	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/gofont/gomono"
-	"golang.org/x/image/font/gofont/goregular"
 )
 
-// PDF font families: the bundled Go typeface for text, Go Mono for code.
+// PDF font families: the bundled "Loom Sans" typeface for text (the Go typeface
+// with symbol glyphs grafted in — see assets.go), Go Mono for code.
 const (
 	pdfFontFamily = "loom"
 	pdfMonoFamily = "loom-mono"
@@ -44,10 +41,10 @@ func rgbColor(c RGB) *props.Color { return &props.Color{Red: c.R, Green: c.G, Bl
 // first registering it, so every style each family uses is loaded here.
 func newMaroto(title, subtitle string) (core.Maroto, error) {
 	fonts, err := repository.New().
-		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Normal, goregular.TTF).
-		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Bold, gobold.TTF).
-		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Italic, goitalic.TTF).
-		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.BoldItalic, gobolditalic.TTF).
+		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Normal, fontRegular).
+		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Bold, fontBold).
+		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.Italic, fontItalic).
+		AddUTF8FontFromBytes(pdfFontFamily, fontstyle.BoldItalic, fontBoldItalic).
 		AddUTF8FontFromBytes(pdfMonoFamily, fontstyle.Normal, gomono.TTF).
 		Load()
 	if err != nil {
@@ -122,6 +119,8 @@ func (g PDFGenerator) Schema() ToolSchema {
 			"paragraph, bullets, table, columns, callout, code) over a flat text string: use headings to " +
 			"structure sections, tables for tabular data, callouts to emphasize key points, and code " +
 			"blocks (rendered monospaced) for code samples or terminal output — put the code in 'text'. " +
+			"Start a table cell or bullet with ✓ or ✗ to show a green-check / red-cross status marker " +
+			"(handy for feature-comparison tables). " +
 			"'content' is accepted as a simple Markdown fallback." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
