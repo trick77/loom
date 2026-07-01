@@ -114,11 +114,13 @@ func sanitizeForPDF(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
+		if norm, ok := markerNormalize[r]; ok { // before the non-BMP branch: some keys are non-BMP
+			b.WriteRune(norm)
+			continue
+		}
 		switch {
 		case r == 0xFE0F || r == 0xFE0E:
 			continue // emoji/text variation selector — carries no glyph
-		case markerNormalize[r] != 0:
-			b.WriteRune(markerNormalize[r])
 		case r > 0xFFFF:
 			b.WriteRune('�')
 		default:
@@ -178,7 +180,11 @@ func (im *inlineMarker) GetStructure() *node.Node[core.Structure] {
 func (im *inlineMarker) SetConfig(*entity.Config) {}
 
 func (im *inlineMarker) GetHeight(provider core.Provider, cell *entity.Cell) float64 {
-	n := provider.GetLinesQuantity(im.text, &im.prop, cell.Width-im.offset()-im.prop.Right)
+	w := cell.Width - im.offset() - im.prop.Right
+	if w < 0 {
+		w = 0
+	}
+	n := provider.GetLinesQuantity(im.text, &im.prop, w)
 	if n < 1 {
 		n = 1
 	}
@@ -262,7 +268,11 @@ func renderBlock(m core.Maroto, b pdfBlock) {
 			// A ✓/✗-led item becomes a green-check / red-cross emoji bullet, drawn
 			// inline so wrapped lines hang under the text (like the • layout below).
 			if found, isCheck, rest := splitMarker(it); found {
-				p := props.Text{Size: 11, Color: rgbColor(Theme.Ink), Align: align.Left, BreakLineStrategy: breakline.EmptySpaceStrategy, Top: 1, Bottom: 1, Left: 2, Right: 1.5, VerticalPadding: 0.5}
+				// Family is set explicitly: inlineMarker draws via the provider
+				// directly, bypassing maroto's MakeValid defaulting, and gofpdf's
+				// SetFont("") silently keeps the last font — which could leak the
+				// mono family from a preceding code block.
+				p := props.Text{Family: pdfFontFamily, Size: 11, Color: rgbColor(Theme.Ink), Align: align.Left, BreakLineStrategy: breakline.EmptySpaceStrategy, Top: 1, Bottom: 1, Left: 2, Right: 1.5, VerticalPadding: 0.5}
 				m.AddAutoRow(col.New(pdfGrid).Add(&inlineMarker{img: markerEmoji(isCheck), text: rest, prop: p}))
 				continue
 			}
@@ -305,7 +315,7 @@ func renderBlock(m core.Maroto, b pdfBlock) {
 				if ci < len(r) {
 					cell = r[ci]
 				}
-				base := props.Text{Size: 10, Style: style, Color: textColor, Top: 1, Bottom: 2, Left: 2, Right: 2, VerticalPadding: 0.5}
+				base := props.Text{Family: pdfFontFamily, Size: 10, Style: style, Color: textColor, Top: 1, Bottom: 2, Left: 2, Right: 2, VerticalPadding: 0.5}
 				// A ✓/✗-led body cell renders the marker as a colour emoji inline
 				// (green check / red cross), keeping the cell text ink-coloured.
 				if found, isCheck, rest := splitMarker(cell); found && !header {
