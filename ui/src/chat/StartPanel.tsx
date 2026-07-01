@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
@@ -40,6 +41,10 @@ export function StartPanel({
 }) {
   // No thread exists yet, so uploads are deferred: files are held (see
   // pendingAttachmentNames) and bound to the thread once the first send creates it.
+  // Pick the greeting once per mount — greetingForNow is now random, so calling it
+  // inline would reroll it on every re-render. useState's lazy initialiser runs
+  // exactly once (unlike useMemo, whose cache React may drop).
+  const [greeting] = useState(() => greetingForNow(displayName));
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
@@ -54,7 +59,7 @@ export function StartPanel({
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
         <h2 className="ui-greeting-text mb-8 flex items-center gap-1.5 font-serif">
           <img src={loomLogo} alt="" aria-hidden className="h-10 w-10 -translate-y-1" />
-          <span className="-translate-y-0.5">{greetingForNow(displayName)}</span>
+          <span className="-translate-y-0.5">{greeting}</span>
         </h2>
         <div className="w-full max-w-[674px]">
           <WindowFileDrop enabled onAttachFiles={onAttachFiles} onAttachError={onAttachError} />

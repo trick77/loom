@@ -1,6 +1,11 @@
 import { expect, test } from "vitest";
 
-import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
+import {
+  greetingForNow,
+  possibleGreetings,
+  reconcileUserMessage,
+  updateMessageAttachment,
+} from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 
 function userMessage(
@@ -124,4 +129,52 @@ test("updates an attachment inside an already rendered user message", () => {
     documentId: "doc-1",
   });
   expect(messages[0].attachments?.[0].status).toBe("uploading");
+});
+
+// A rand that always returns 0 makes greetingForNow deterministic: it picks the
+// first eligible entry ("{name} returns!") and, in renderGreeting, 0 < 0.5 selects
+// the named form.
+const zero = () => 0;
+
+test("greetingForNow substitutes the first name and is deterministic under a fixed rand", () => {
+  const morning = new Date(2026, 0, 2, 9, 0, 0);
+  expect(greetingForNow("Jan Novak", morning, zero)).toBe("Jan returns!");
+});
+
+test("morning-only greetings are eligible in the morning and not at night", () => {
+  const morning = new Date(2026, 0, 2, 9, 0, 0);
+  const night = new Date(2026, 0, 2, 23, 30, 0);
+
+  expect(possibleGreetings("Jan", morning)).toContain("Good morning");
+  expect(possibleGreetings("Jan", morning)).not.toContain("Hello, night owl");
+
+  expect(possibleGreetings("Jan", night)).toContain("Hello, night owl");
+  expect(possibleGreetings("Jan", night)).not.toContain("Good morning");
+});
+
+test("weekday greetings only appear on their day", () => {
+  const fridayAfternoon = new Date(2026, 0, 2, 14, 0, 0);
+  const mondayMorning = new Date(2026, 0, 5, 9, 0, 0);
+  // Guard against a wrong assumption about these calendar dates.
+  expect(fridayAfternoon.getDay()).toBe(5);
+  expect(mondayMorning.getDay()).toBe(1);
+
+  expect(possibleGreetings("Jan", fridayAfternoon)).toContain("Happy Friday, Jan");
+  expect(possibleGreetings("Jan", mondayMorning)).not.toContain("Happy Friday, Jan");
+});
+
+test("without a name, only nameless greetings are used and no placeholder leaks", () => {
+  const night = new Date(2026, 0, 2, 23, 30, 0);
+  const options = possibleGreetings("", night);
+
+  // Named-only entries (e.g. "{name} returns!", "Up late, {name}?") are dropped.
+  expect(options).not.toContain("{name} returns!");
+  expect(options.every((greeting) => !greeting.includes("{name}"))).toBe(true);
+  expect(options).toContain("Hello, night owl");
+
+  // And an actual pick never renders a dangling placeholder.
+  for (let i = 0; i < 50; i += 1) {
+    const rand = () => i / 50;
+    expect(greetingForNow("", night, rand)).not.toContain("{name}");
+  }
 });
