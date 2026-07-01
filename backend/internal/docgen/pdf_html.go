@@ -175,9 +175,17 @@ func colTag(n int) string {
 	return "td"
 }
 
+// pdfAccentHex is the app's "clay" accent — the working-dots colour
+// (--color-accent-strong in ui/src/index.css) — used for the PDF header band,
+// headings and callouts so exported PDFs match the UI. It is lighter than the
+// shared Theme.Accent (which the PPTX generator still uses).
+const pdfAccentHex = "D97757"
+
 // pdfCSS builds the stylesheet, sourcing colours from the shared Theme palette.
 func pdfCSS() string {
-	onAccent := textOnHex(Theme.AccentHex)
+	// The clay accent sits just above the auto-contrast luminance threshold, but
+	// the brand uses light text on it (as in the app), so keep the on-accent cream.
+	onAccent := Theme.CreamHex
 	return fmt.Sprintf(`
 @font-face{font-family:"Loom Sans";font-weight:normal;font-style:normal;src:url(%q)}
 @font-face{font-family:"Loom Sans";font-weight:bold;font-style:normal;src:url(%q)}
@@ -214,7 +222,7 @@ pre.code code{font-family:inherit;background:none}
 .mark-no{color:var(--danger);font-weight:600}
 `,
 		fontRegularFile, fontBoldFile, fontItalicFile, fontMonoFile, fontMonoBoldFile,
-		Theme.InkHex, Theme.CreamHex, Theme.CreamAltHex, Theme.AccentHex,
+		Theme.InkHex, Theme.CreamHex, Theme.CreamAltHex, pdfAccentHex,
 		Theme.SageHex, Theme.MutedHex, Theme.CalloutHex, onAccent, markerDangerHex,
 	)
 }
