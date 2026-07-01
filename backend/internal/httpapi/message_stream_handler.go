@@ -196,7 +196,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Background reasoning-title generation. The deferred wait is a safety net so
 	// no title goroutine writes to the SSE stream after the handler returns on an
 	// early error path.
-	titles := newReasoningTitleTracker(s, stream, streamCtx, inference)
+	titles := newReasoningTitleTracker(s, stream, streamCtx, inference, userResponseLanguage(user))
 	defer titles.wait()
 	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, imageArtifactRequired, editSource)
 	if err != nil {

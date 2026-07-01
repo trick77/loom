@@ -135,7 +135,7 @@ func TestApplyMemoryEdit_appliesInstructionInPlace(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
-	out, err := c.ApplyMemoryEdit(context.Background(), "", "- Works at Thoughtworks", "Remember I live in Zurich and love climbing", UserMemorySystemPrompt)
+	out, err := c.ApplyMemoryEdit(context.Background(), "", "- Works at Thoughtworks", "Remember I live in Zurich and love climbing", UserMemorySystemPrompt, "")
 	if err != nil {
 		t.Fatalf("ApplyMemoryEdit error = %v", err)
 	}
@@ -163,7 +163,7 @@ func TestApplyMemoryEdit_authoritativeRemoval(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
-	out, err := c.ApplyMemoryEdit(context.Background(), "", "- Former baseball player", "Forget my baseball career", UserMemorySystemPrompt)
+	out, err := c.ApplyMemoryEdit(context.Background(), "", "- Former baseball player", "Forget my baseball career", UserMemorySystemPrompt, "")
 	if err != nil {
 		t.Fatalf("ApplyMemoryEdit error = %v", err)
 	}

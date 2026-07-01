@@ -962,7 +962,7 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	title, err := client.GenerateThreadTitle(context.Background(), "Can you explain x?", "Sure.")
+	title, err := client.GenerateThreadTitle(context.Background(), "Can you explain x?", "Sure.", "")
 	if err != nil {
 		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
@@ -994,10 +994,10 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 		name string
 		call func(c *Client) (string, error)
 	}{
-		{"chat title", func(c *Client) (string, error) { return c.GenerateThreadTitle(context.Background(), "Hi", "") }},
+		{"chat title", func(c *Client) (string, error) { return c.GenerateThreadTitle(context.Background(), "Hi", "", "") }},
 		{"classify", func(c *Client) (string, error) { return c.ClassifyThread(context.Background(), "Hi") }},
 		{"reasoning title", func(c *Client) (string, error) {
-			return c.GenerateReasoningTitle(context.Background(), "some reasoning")
+			return c.GenerateReasoningTitle(context.Background(), "some reasoning", "")
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1053,10 +1053,10 @@ func TestClient_TitlesSkippedWhenTruncatedAtTokenCap(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	if got, err := client.GenerateReasoningTitle(context.Background(), "some reasoning"); err != nil || got != "" {
+	if got, err := client.GenerateReasoningTitle(context.Background(), "some reasoning", ""); err != nil || got != "" {
 		t.Fatalf("reasoning title = %q, err = %v; want skipped (empty)", got, err)
 	}
-	if got, err := client.GenerateThreadTitle(context.Background(), "Hi", ""); err != nil || got != "New thread" {
+	if got, err := client.GenerateThreadTitle(context.Background(), "Hi", "", ""); err != nil || got != "New thread" {
 		t.Fatalf("thread title = %q, err = %v; want New thread", got, err)
 	}
 }
@@ -1182,7 +1182,7 @@ func TestClient_GenerateTitleOmitsEmptyAssistantMessage(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	title, err := client.GenerateThreadTitle(context.Background(), "Hi", "")
+	title, err := client.GenerateThreadTitle(context.Background(), "Hi", "", "")
 	if err != nil {
 		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
@@ -1216,7 +1216,7 @@ func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	title, err := client.GenerateThreadTitle(context.Background(), `Tell me about "Lens" by IPverse`, "")
+	title, err := client.GenerateThreadTitle(context.Background(), `Tell me about "Lens" by IPverse`, "", "")
 	if err != nil {
 		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
@@ -1265,7 +1265,7 @@ func TestClient_GenerateTitleFramesAssistantReplyWhenPresent(t *testing.T) {
 
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
-	if _, err := client.GenerateThreadTitle(context.Background(), "Hi", "Hi there"); err != nil {
+	if _, err := client.GenerateThreadTitle(context.Background(), "Hi", "Hi there", ""); err != nil {
 		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
 	// Both the user request and the assistant reply are framed into one user turn
@@ -1275,5 +1275,41 @@ func TestClient_GenerateTitleFramesAssistantReplyWhenPresent(t *testing.T) {
 	}
 	if gotMessages[1].Role != "user" || !strings.Contains(gotMessages[1].Content, "Hi there") {
 		t.Fatalf("framed user message = %#v, want assistant reply included", gotMessages[1])
+	}
+}
+
+func TestClient_GenerateTitleHonorsResponseLanguage(t *testing.T) {
+	captureSystem := func(t *testing.T, responseLanguage string) string {
+		t.Helper()
+		var gotSystem string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Messages []Message `json:"messages"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("Decode request body: %v", err)
+			}
+			if len(body.Messages) > 0 {
+				gotSystem = body.Messages[0].Content
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Titel"}}]}`))
+		}))
+		t.Cleanup(server.Close)
+
+		client := NewClient(Config{BaseURL: server.URL}, server.Client())
+		if _, err := client.GenerateThreadTitle(context.Background(), "Hallo", "", responseLanguage); err != nil {
+			t.Fatalf("GenerateThreadTitle() error: %v", err)
+		}
+		return gotSystem
+	}
+
+	// A resolved language name appears as a directive in the title system prompt.
+	if got := captureSystem(t, "German"); !strings.Contains(got, "this language: German.") {
+		t.Fatalf("system prompt = %q, want German directive", got)
+	}
+	// The English default passes no language, so no directive is appended.
+	if got := captureSystem(t, ""); strings.Contains(got, "this language:") {
+		t.Fatalf("system prompt = %q, want no language directive for default", got)
 	}
 }

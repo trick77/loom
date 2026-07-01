@@ -62,7 +62,7 @@ func (s *server) refreshProjectDescriptionIfDue(ctx context.Context, user auth.U
 		return nil
 	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "project_description", Round: 1}
-	description, err := s.llm.GenerateProjectDescription(llm.WithInferenceMetadata(ctx, inference), project.Name, titles)
+	description, err := s.llm.GenerateProjectDescription(llm.WithInferenceMetadata(ctx, inference), project.Name, titles, userResponseLanguage(user))
 	if err != nil {
 		slog.Warn("generate project description failed", "project_id", projectID, "error", err)
 		return nil

@@ -20,18 +20,19 @@ const reasoningTitleTimeout = 10 * time.Second
 // collected so they can be merged into the persisted activity trace. The zero
 // value is not usable; build one with newReasoningTitleTracker.
 type reasoningTitleTracker struct {
-	s       *server
-	stream  *sse.Writer
-	ctx     context.Context
-	inf     llm.InferenceMetadata
-	wg      sync.WaitGroup
-	mu      sync.Mutex
-	titles  map[string]string // reasoning id -> title
-	spawned map[string]bool   // reasoning id -> already generating
+	s        *server
+	stream   *sse.Writer
+	ctx      context.Context
+	inf      llm.InferenceMetadata
+	language string // user's response language; "" for the English default
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	titles   map[string]string // reasoning id -> title
+	spawned  map[string]bool   // reasoning id -> already generating
 }
 
-func newReasoningTitleTracker(s *server, stream *sse.Writer, ctx context.Context, inf llm.InferenceMetadata) *reasoningTitleTracker {
-	return &reasoningTitleTracker{s: s, stream: stream, ctx: ctx, inf: inf, titles: map[string]string{}, spawned: map[string]bool{}}
+func newReasoningTitleTracker(s *server, stream *sse.Writer, ctx context.Context, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
+	return &reasoningTitleTracker{s: s, stream: stream, ctx: ctx, inf: inf, language: language, titles: map[string]string{}, spawned: map[string]bool{}}
 }
 
 // spawn kicks off a background title generation for one reasoning round. It is a
@@ -59,7 +60,7 @@ func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) {
 		// shared HTTP client has no timeout. On timeout the title is simply skipped.
 		ctx, cancel := context.WithTimeout(t.ctx, reasoningTitleTimeout)
 		defer cancel()
-		title, err := t.s.llm.GenerateReasoningTitle(llm.WithInferenceMetadata(ctx, inf), reasoning)
+		title, err := t.s.llm.GenerateReasoningTitle(llm.WithInferenceMetadata(ctx, inf), reasoning, t.language)
 		if err != nil || strings.TrimSpace(title) == "" {
 			return
 		}

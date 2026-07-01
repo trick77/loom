@@ -13,8 +13,12 @@ import (
 
 const threadTitleSystemPrompt = "You write short thread titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
 
-func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistantMessage string) (string, error) {
+func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistantMessage, responseLanguage string) (string, error) {
 	start := time.Now()
+	// The user's chat replies honor their response-language preference (see
+	// systemPromptForUser); mirror that here so an auto-generated title matches the
+	// language the conversation is in rather than defaulting to English.
+	system := appendLanguageDirective(threadTitleSystemPrompt, responseLanguage)
 	// Frame the request as material to be titled, not a turn to answer. Passed as
 	// a bare user message, an imperative prompt ("Explain why glaciers are blue")
 	// makes the model answer the question and use the answer as the title; the
@@ -25,7 +29,7 @@ func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistant
 	}
 	framed += "\n\nTitle:"
 	messages := []Message{
-		{Role: "system", Content: threadTitleSystemPrompt},
+		{Role: "system", Content: system},
 		{Role: "user", Content: framed},
 	}
 	resp, err := c.executeUtilityChatRequest(ctx, messages)

@@ -85,7 +85,7 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		title, titleErr = s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(requestCtx, titleInference), userMessage, assistantMessage)
+		title, titleErr = s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(requestCtx, titleInference), userMessage, assistantMessage, userResponseLanguage(user))
 	}()
 	if categoryOverride != "" {
 		category = categoryOverride
@@ -163,6 +163,18 @@ func systemPromptForUser(user auth.User, now time.Time) string {
 		return loomSystemPrompt + "\nAlways answer in English." + dateLine
 	}
 	return loomSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "." + dateLine
+}
+
+// userResponseLanguage resolves the language a user-facing utility generation
+// (thread title, project description, reasoning title, project memory) should be
+// written in, mirroring systemPromptForUser so these match the language the chat
+// answers in. Empty (auto/unset) means the English default, which needs no
+// directive.
+func userResponseLanguage(user auth.User) string {
+	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
+		return ""
+	}
+	return languageName(user.ResponseLanguage)
 }
 
 // languageName resolves a profile language value to its English name (for

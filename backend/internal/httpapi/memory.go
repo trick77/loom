@@ -47,6 +47,10 @@ type memoryScope struct {
 	purpose      string // inference metadata purpose
 	header       string // generation header block (e.g. project name/description)
 	systemPrompt string // llm system prompt selecting the memory's style
+	// localize writes the generated memory in the user's response language. True
+	// only for user-facing memory (project memory, shown in the context panel);
+	// false for the internal user-memory digest, which is never shown as prose.
+	localize bool
 
 	get    func(ctx context.Context) (content string, sourceCount int, updatedAt *time.Time, err error)
 	upsert func(ctx context.Context, content string, sourceCount int) error
@@ -56,6 +60,16 @@ type memoryScope struct {
 	// the memory (the user's explicit standing instructions, for the user scope).
 	// nil — or a "" result — means no exclusions (e.g. project memory).
 	exclusions func(ctx context.Context) (string, error)
+}
+
+// responseLanguage returns the language this scope's memory should be written in:
+// the user's response language for a localized (user-facing) scope, or "" — the
+// English default — for the internal user-memory digest.
+func (scope memoryScope) responseLanguage(user auth.User) string {
+	if !scope.localize {
+		return ""
+	}
+	return userResponseLanguage(user)
 }
 
 // refreshMemoryIfDue runs an incremental refresh when the gate is met. It is the
@@ -117,7 +131,7 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 		}
 	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
-	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt)
+	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt, scope.responseLanguage(user))
 	if err != nil {
 		return err
 	}
@@ -142,7 +156,7 @@ func (s *server) editMemory(ctx context.Context, user auth.User, scope memorySco
 	// markdown). ApplyMemoryEdit's own user message supplies the authoritative
 	// "apply only this instruction, leave the rest unchanged" framing that
 	// overrides the prompt's summarize-from-conversation wording.
-	edited, err := s.llm.ApplyMemoryEdit(llm.WithInferenceMetadata(ctx, inference), scope.header, current, instruction, scope.systemPrompt)
+	edited, err := s.llm.ApplyMemoryEdit(llm.WithInferenceMetadata(ctx, inference), scope.header, current, instruction, scope.systemPrompt, scope.responseLanguage(user))
 	if err != nil {
 		return err
 	}

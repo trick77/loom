@@ -178,12 +178,12 @@ type ChatClient interface {
 	StreamChat(context.Context, []llm.Message, func(string) error) (string, error)
 	StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error)
 	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
-	GenerateThreadTitle(context.Context, string, string) (string, error)
+	GenerateThreadTitle(context.Context, string, string, string) (string, error)
 	ClassifyThread(context.Context, string) (string, error)
-	GenerateReasoningTitle(context.Context, string) (string, error)
-	GenerateMemory(context.Context, string, string, string, string, string) (string, error)
-	ApplyMemoryEdit(context.Context, string, string, string, string) (string, error)
-	GenerateProjectDescription(context.Context, string, []string) (string, error)
+	GenerateReasoningTitle(context.Context, string, string) (string, error)
+	GenerateMemory(context.Context, string, string, string, string, string, string) (string, error)
+	ApplyMemoryEdit(context.Context, string, string, string, string, string) (string, error)
+	GenerateProjectDescription(context.Context, string, []string, string) (string, error)
 }
 
 // ToolService exposes configured MCP tools to chat handlers.
