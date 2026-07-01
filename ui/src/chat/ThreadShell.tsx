@@ -185,16 +185,27 @@ export function ThreadShell({
     streamingThreadIDRef,
   });
 
-  const handleStopResponse = useCallback(() => {
-    if (!isSending) return;
-    const threadID = streamingThreadIDRef.current;
-    if (threadID !== null) {
-      void stopMessage(threadID).catch((error: unknown) => {
-        handleActionError(error, "Message failed to stop.", setSendError);
-      });
-    }
-    streamAbortRef.current?.abort();
-  }, [handleActionError, isSending]);
+  const handleStopResponse = useCallback(
+    (source = "stop_button") => {
+      if (!isSending) return;
+      const threadID = streamingThreadIDRef.current;
+      const abort = () => streamAbortRef.current?.abort();
+      if (threadID === null) {
+        abort();
+        return;
+      }
+      // Tell the server which UI action stopped the stream, and only abort the
+      // fetch once that stop request has been sent. Aborting first would drop the
+      // connection and make the server log the generic request-context cancel
+      // instead of this attributed one (the cancel cause is first-writer-wins).
+      void stopMessage(threadID, source)
+        .catch((error: unknown) => {
+          handleActionError(error, "Message failed to stop.", setSendError);
+        })
+        .finally(abort);
+    },
+    [handleActionError, isSending],
+  );
 
   useEffect(() => {
     if (window.location.pathname === "/") {
@@ -227,7 +238,7 @@ export function ThreadShell({
       if (event.key !== "Escape") return;
       if (activeThreadIDRef.current !== streamingThreadIDRef.current) return;
       event.preventDefault();
-      handleStopResponse();
+      handleStopResponse("escape");
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -607,6 +618,14 @@ export function ThreadShell({
       const targetThreadID = targetThread.id;
       activeThreadIDRef.current = targetThreadID;
       abortController = new AbortController();
+      // A prior stream is still live (a new turn started before it finished, e.g.
+      // sending on another thread). Attribute its cancellation as new_send before
+      // aborting so the server logs the intent rather than a bare request-context
+      // drop; awaiting lets the stop cause win the server-side cancel race.
+      const supersededThreadID = streamingThreadIDRef.current;
+      if (supersededThreadID !== null && streamAbortRef.current !== null) {
+        await stopMessage(supersededThreadID, "new_send").catch(() => undefined);
+      }
       streamAbortRef.current?.abort();
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);

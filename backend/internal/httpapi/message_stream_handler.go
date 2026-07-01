@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -366,8 +367,38 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	s.activeStreams.stop(user.ID, threadID, errStreamStopRequested)
+	s.activeStreams.stop(user.ID, threadID, stopCause(r.URL.Query().Get("source")))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// stopCause builds the cancellation cause for an explicit client stop. It always
+// wraps errStreamStopRequested (so cancel_source stays "stop_endpoint"), and folds
+// the client-declared UI trigger — "stop_button", "escape", "new_send" — into the
+// cause message so it surfaces in the canceled log's reason field. Attribution is
+// reliable because the client awaits this stop request before aborting its fetch,
+// so this cause wins the WithCancelCause race over the raw request-context cancel.
+func stopCause(source string) error {
+	source = sanitizeCancelSource(source)
+	if source == "" {
+		return errStreamStopRequested
+	}
+	return fmt.Errorf("%w (%s)", errStreamStopRequested, source)
+}
+
+// sanitizeCancelSource clamps a client-supplied source label to a short
+// [a-z0-9_] token so it can be logged verbatim without injection risk.
+func sanitizeCancelSource(source string) string {
+	source = strings.ToLower(strings.TrimSpace(source))
+	if len(source) > 32 {
+		source = source[:32]
+	}
+	var b strings.Builder
+	for _, r := range source {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 type streamUserError struct {
