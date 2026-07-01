@@ -97,6 +97,40 @@ func TestGotenbergConvert_MapsErrors(t *testing.T) {
 	}
 }
 
+func TestGotenbergPing(t *testing.T) {
+	t.Run("healthy returns nil", func(t *testing.T) {
+		var gotPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+		if err := NewGotenbergClient(GotenbergConfig{BaseURL: srv.URL}).Ping(context.Background()); err != nil {
+			t.Fatalf("Ping: %v", err)
+		}
+		if gotPath != "/health" {
+			t.Errorf("path = %q, want /health", gotPath)
+		}
+	})
+
+	t.Run("non-200 is an error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+		err := NewGotenbergClient(GotenbergConfig{BaseURL: srv.URL}).Ping(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "503") {
+			t.Fatalf("expected 503 error, got %v", err)
+		}
+	})
+
+	t.Run("unreachable is an error", func(t *testing.T) {
+		if err := NewGotenbergClient(GotenbergConfig{BaseURL: "http://127.0.0.1:0"}).Ping(context.Background()); err == nil {
+			t.Fatal("expected transport error")
+		}
+	})
+}
+
 func TestGotenbergConvert_TransportError(t *testing.T) {
 	// Nothing is listening here.
 	c := NewGotenbergClient(GotenbergConfig{BaseURL: "http://127.0.0.1:0"})

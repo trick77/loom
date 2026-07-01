@@ -146,6 +146,25 @@ func (c *GotenbergClient) Convert(ctx context.Context, html string, assets []got
 	}
 }
 
+// Ping verifies the Gotenberg sidecar is reachable and healthy via its
+// GET /health endpoint (200 = up). Used as a startup readiness probe so the
+// backend can refuse to boot when PDF export would be dead on arrival.
+func (c *GotenbergClient) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
+	if err != nil {
+		return fmt.Errorf("build gotenberg health request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gotenberg health request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("gotenberg health check: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // writeFilePart adds a "files" multipart part with the given filename and bytes.
 func writeFilePart(mw *multipart.Writer, filename string, data []byte) error {
 	w, err := mw.CreateFormFile("files", filename)

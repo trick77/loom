@@ -40,6 +40,25 @@ func NewTikaClient(cfg TikaConfig) *TikaClient {
 	}
 }
 
+// Ping verifies the Tika server is reachable via its GET /version endpoint. Used
+// as a startup readiness probe so the backend can refuse to boot when document
+// text extraction would be dead on arrival.
+func (c *TikaClient) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/version", nil)
+	if err != nil {
+		return fmt.Errorf("build tika health request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("tika health request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("tika health check: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // Extract streams the file bytes to Tika's `PUT /tika` endpoint and returns the
 // extracted plain text, capped at maxExtractedTextBytes. The Content-Type hint
 // helps Tika pick the right parser; Accept: text/plain selects plain output.
