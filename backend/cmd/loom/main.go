@@ -154,6 +154,11 @@ func run() error {
 			Model:   cfg.EmbedModel,
 		}, http.DefaultClient)
 		tikaClient := documents.NewTikaClient(documents.TikaConfig{BaseURL: cfg.TikaURL})
+		// Tika is an essential dependency of document RAG: fail fast at boot rather
+		// than surface opaque extraction errors on the first upload.
+		if err := requireSidecar("tika", cfg.TikaURL, tikaClient.Ping); err != nil {
+			return err
+		}
 		ingester := rag.NewIngester(ragStore, documents.VolumeOpener{UsersDir: cfg.UsersDir}, tikaClient, embedClient)
 		ingester.SetUsageRecorder(usageStore)
 		if llmClient != nil {
@@ -164,6 +169,16 @@ func run() error {
 		documentService = docs
 	}
 	gotenbergClient := docgen.NewGotenbergClient(docgen.GotenbergConfig{BaseURL: cfg.GotenbergURL})
+	// Gotenberg backs PDF export, which is enabled whenever the doc tools are
+	// offered to the model (artifact store present + a users dir configured; the
+	// store is always built, so this mirrors availableTools' gate on UsersDir).
+	// Fail fast at boot rather than let the model start a create_pdf_file call
+	// that can only end in a per-request "tool failed".
+	if strings.TrimSpace(cfg.UsersDir) != "" {
+		if err := requireSidecar("gotenberg", cfg.GotenbergURL, gotenbergClient.Ping); err != nil {
+			return err
+		}
+	}
 	docTools := []docgen.Generator{
 		docgen.TextGenerator{},
 		docgen.NewPDFGenerator(gotenbergClient),
@@ -289,6 +304,28 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// sidecarReadinessTimeout bounds each startup health probe. Gotenberg and Tika
+// are declared service_healthy dependencies in compose, so under Docker they are
+// already up by the time loom boots; this window only needs to absorb a brief
+// restart race, not a cold start.
+const sidecarReadinessTimeout = 15 * time.Second
+
+// requireSidecar probes an essential sidecar's health endpoint at startup and
+// returns an error (aborting boot) when it is unreachable. This is a defensive,
+// in-process guard on top of compose's depends_on: service_healthy — it keeps the
+// backend from coming up able to accept work (PDF export, document extraction) it
+// cannot fulfil, failing fast with a clear cause instead of opaque per-request
+// errors. It does not address slow/unavailable upstreams once serving.
+func requireSidecar(name, url string, ping func(context.Context) error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), sidecarReadinessTimeout)
+	defer cancel()
+	if err := ping(ctx); err != nil {
+		return fmt.Errorf("%s sidecar not reachable at %s: %w", name, url, err)
+	}
+	slog.Info("sidecar ready", "sidecar", name, "url", url)
+	return nil
 }
 
 func responseLogDirForConfig(cfg config.Config) string {
