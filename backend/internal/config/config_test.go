@@ -52,6 +52,22 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ObscuraMCPURL != "" {
 		t.Errorf("ObscuraMCPURL default = %q, want empty opt-in value", cfg.ObscuraMCPURL)
 	}
+	if cfg.GotenbergURL != "http://gotenberg:3000" {
+		t.Errorf("GotenbergURL default = %q, want http://gotenberg:3000", cfg.GotenbergURL)
+	}
+}
+
+func TestLoad_gotenbergURLOverride(t *testing.T) {
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_GOTENBERG_URL", "http://localhost:3000")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.GotenbergURL != "http://localhost:3000" {
+		t.Errorf("GotenbergURL = %q, want override", cfg.GotenbergURL)
+	}
 }
 
 func TestLoad_overrides_and_required(t *testing.T) {

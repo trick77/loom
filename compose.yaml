@@ -37,6 +37,7 @@ services:
       BACKEND_PUBLIC_URL: "${BACKEND_PUBLIC_URL}"
       BACKEND_AUTH_MODE: "${BACKEND_AUTH_MODE:-oidc}"
       BACKEND_TIKA_URL: "http://tika:9998"
+      BACKEND_GOTENBERG_URL: "http://gotenberg:3000"
       BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY}"
       BACKEND_FETCH_MCP_URL: "http://fetch:8090/mcp"
@@ -80,6 +81,9 @@ services:
     depends_on:
       tika:
         condition: service_healthy
+      gotenberg:
+        # HTML→PDF rendering for create_pdf_file
+        condition: service_healthy
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
         condition: service_healthy
@@ -97,6 +101,22 @@ services:
       - loom
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9998"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+    labels:
+      traefik.enable: "false"
+
+  gotenberg:
+    # Chromium-based HTML→PDF renderer for create_pdf_file (Noto Color Emoji bundled)
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    networks:
+      - loom
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]
       interval: 60s
       timeout: 5s
       start_period: 30s

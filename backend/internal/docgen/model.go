@@ -1,6 +1,9 @@
 package docgen
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 const MaxGeneratedInputBytes = 1 << 20
 
@@ -16,6 +19,9 @@ type GenerateRequest struct {
 	Format   string
 	Filename string
 	Payload  map[string]any
+	// Context is optional; generators that call out to a sidecar (PDF → Gotenberg)
+	// use it to bound the render. Nil is treated as context.Background().
+	Context context.Context
 }
 
 type GeneratedMeta struct {

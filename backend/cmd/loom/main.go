@@ -163,9 +163,10 @@ func run() error {
 		docs.SetUsageRecorder(usageStore)
 		documentService = docs
 	}
+	gotenbergClient := docgen.NewGotenbergClient(docgen.GotenbergConfig{BaseURL: cfg.GotenbergURL})
 	docTools := []docgen.Generator{
 		docgen.TextGenerator{},
-		docgen.PDFGenerator{},
+		docgen.NewPDFGenerator(gotenbergClient),
 		docgen.XLSXGenerator{},
 		docgen.DOCXGenerator{},
 		docgen.PPTXGenerator{},
