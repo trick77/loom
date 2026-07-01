@@ -116,12 +116,11 @@ export function IncognitoPanel({
           </div>
           <button
             aria-label="Exit incognito"
-            aria-pressed
             className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
             onClick={onExit}
             type="button"
           >
-            <Icon name="ghost" size="18px" />
+            <Icon name="close" size="18px" />
           </button>
         </header>
 
