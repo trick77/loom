@@ -153,7 +153,7 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   if (/conversation_search/i.test(name)) {
     // Distinct kind so the trace renders a loupe (own-history search) rather than
     // the globe used for web search — see ActivityTracePanel.
-    return { kind: "conversationSearch", title: query ?? "Searching past conversations" };
+    return { kind: "conversationSearch", title: query ? capitalizeFirst(query) : "Searching past conversations" };
   }
   if (/read_thread/i.test(name)) {
     return { kind: "generated", title: "Reading a conversation" };
@@ -166,7 +166,7 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
     return { kind: "lookup", title: ip !== undefined ? `Looking up ${ip}` : "Looking up an IP address" };
   }
   if (isSearchTool(name) || query !== undefined) {
-    return { kind: "search", title: query ?? "Searching the web" };
+    return { kind: "search", title: query ? capitalizeFirst(query) : "Searching the web" };
   }
   if (isDocsTool(name)) {
     return { kind: "search", title: "Searching the documentation" };
@@ -312,6 +312,14 @@ function stripReasoningLeadIn(value: string): string {
     .replace(/^let(?:'s| us)\s+/i, "")
     .replace(/^thinking through\s+/i, "")
     .replace(/^checking\s+/i, "checked ");
+}
+
+// Uppercase the first character so a verbatim tool query (which the model
+// emits in lowercase) reads as a tidy line in the trace, leaving the rest as-is.
+function capitalizeFirst(value: string): string {
+  const trimmed = value.trimStart();
+  if (trimmed === "") return value;
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function stringValue(record: Record<string, unknown>, keys: string[]): string | undefined {

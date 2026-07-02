@@ -1742,7 +1742,7 @@ test("restores persisted activity trace when reopening a chat", async () => {
   fireEvent.click(toggle);
 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
-  expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
+  expect(screen.getByText("Agentgateway kgateway")).toBeInTheDocument();
   expect(screen.getByText("Agentgateway")).toBeInTheDocument();
   // The reasoning row shows the clock timeline node.
   expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
@@ -2382,7 +2382,7 @@ test("shows active activity trace with reasoning and tool activity before assist
   // The window auto-opens while inference runs — no click needed.
   expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
   expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
-  expect(within(trace).getByText("agentgateway kgateway")).toBeInTheDocument();
+  expect(within(trace).getByText("Agentgateway kgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Running")).toBeInTheDocument();
   // While the turn is still active, the timeline is not yet capped with a "Done" node.
   expect(within(trace).queryByText("Done")).toBeNull();
@@ -3448,7 +3448,7 @@ test("surfaces the server error and keeps failed activity trace visible", async 
     fireEvent.click(traceToggle);
   }
   expect(within(trace as HTMLElement).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(within(trace as HTMLElement).getByText("agentgateway")).toBeInTheDocument();
+  expect(within(trace as HTMLElement).getByText("Agentgateway")).toBeInTheDocument();
   expect(within(trace as HTMLElement).getByText("Failed")).toBeInTheDocument();
 });
 
@@ -3638,12 +3638,12 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   expect(toggle).toHaveTextContent("Search current sources");
   expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
   expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
-  expect(screen.queryByText("agentgateway kgateway")).not.toBeInTheDocument();
+  expect(screen.queryByText("Agentgateway kgateway")).not.toBeInTheDocument();
 
   fireEvent.click(toggle);
 
   expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
-  expect(screen.getByText("agentgateway kgateway")).toBeInTheDocument();
+  expect(screen.getByText("Agentgateway kgateway")).toBeInTheDocument();
   // Tools make this a real timeline: the turn is capped with the Done node glyph.
   expect(document.querySelector(".ui-activity-trace-icon-done")).not.toBeNull();
   expect(document.querySelector(".ui-activity-trace-body-flat")).toBeNull();

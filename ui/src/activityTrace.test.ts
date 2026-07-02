@@ -179,7 +179,7 @@ describe("activity trace model", () => {
 
   test("derives tool titles from query, url, filename and readable name", () => {
     expect(summarizeToolCall("tavily__tavily_search", "{\"query\":\"balcony glazing\"}")).toMatchObject({
-      title: "balcony glazing",
+      title: "Balcony glazing",
     });
     expect(summarizeToolCall("fetch__fetch", "{\"url\":\"https://example.com\"}")).toMatchObject({
       title: "example.com",
@@ -228,7 +228,7 @@ describe("activity trace model", () => {
     });
     expect(summarizeToolCall("conversation_search", '{"query":"frozen snapshots"}')).toMatchObject({
       kind: "conversationSearch",
-      title: "frozen snapshots",
+      title: "Frozen snapshots",
     });
     expect(summarizeToolCall("conversation_search", "{}")).toMatchObject({
       kind: "conversationSearch",
