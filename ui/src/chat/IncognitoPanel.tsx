@@ -127,7 +127,7 @@ export function IncognitoPanel({
 
         {isEmpty ? (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 pb-[8vh] sm:px-8">
-            <h2 className="ui-greeting-text mb-8 flex items-center gap-1.5 font-serif">
+            <h2 className="ui-greeting-text mb-8 flex items-center gap-2.5 font-serif">
               <img src={loomLogo} alt="" aria-hidden className="h-10 w-10 -translate-y-1" />
               <span className="-translate-y-0.5">Let's chat incognito</span>
             </h2>
