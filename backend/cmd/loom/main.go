@@ -378,9 +378,6 @@ func toolConfigForConfig(cfg config.Config) (toolServerConfig, error) {
 	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
 		required.Servers["tavily"] = mcp.TavilyServerConfig(cfg.TavilyURL, cfg.TavilyAPIKey)
 	}
-	if strings.TrimSpace(cfg.Context7APIKey) != "" {
-		required.Servers["context7"] = mcp.Context7ServerConfig(cfg.Context7MCPURL, cfg.Context7APIKey)
-	}
 	// Servers from the optional JSON file are best-effort and override a built-in
 	// of the same name (the built-in is dropped from the required set so user
 	// configuration always wins, and a flaky override can't fail boot).
@@ -397,10 +394,6 @@ func toolConfigForConfig(cfg config.Config) (toolServerConfig, error) {
 		out.FileServers.Servers[name] = server
 	}
 	return out, nil
-}
-
-func context7Configured(cfg config.Config) bool {
-	return strings.TrimSpace(cfg.Context7APIKey) != ""
 }
 
 func tavilyConfigured(cfg config.Config) bool {

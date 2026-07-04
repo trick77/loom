@@ -90,8 +90,6 @@ type Config struct {
 	TavilyAPIKey   string // enables built-in Tavily web search when set
 	FetchMCPURL    string
 	ObscuraMCPURL  string
-	Context7MCPURL string
-	Context7APIKey string
 	// MCPServersFile points at an optional JSON file (standard `mcpServers`
 	// format) whose servers are merged on top of the built-in MCP servers.
 	// Defaults to /conf/mcp.json (the mounted conf dir); an absent file is a
@@ -155,8 +153,6 @@ func Load() (Config, error) {
 		TavilyAPIKey:            env("BACKEND_TAVILY_API_KEY", ""),
 		FetchMCPURL:             env("BACKEND_FETCH_MCP_URL", ""),
 		ObscuraMCPURL:           env("BACKEND_OBSCURA_MCP_URL", ""),
-		Context7MCPURL:          env("BACKEND_CONTEXT7_MCP_URL", "https://mcp.context7.com/mcp"),
-		Context7APIKey:          env("BACKEND_CONTEXT7_API_KEY", ""),
 		MCPServersFile:          env("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
 		AdminInitialPassword:    env("BACKEND_ADMIN_INITIAL_PASSWORD", ""),
 		SessionSecret:           env("BACKEND_SESSION_SECRET", ""),
@@ -234,9 +230,6 @@ func Load() (Config, error) {
 		}
 	default:
 		return Config{}, fmt.Errorf("BACKEND_AUTH_MODE must be one of: oidc, dev")
-	}
-	if cfg.Context7APIKey != "" && cfg.Context7MCPURL == "" {
-		return Config{}, fmt.Errorf("BACKEND_CONTEXT7_MCP_URL is required when BACKEND_CONTEXT7_API_KEY is set")
 	}
 	if cfg.BFLAPIKey != "" {
 		if cfg.BFLBaseURL == "" {

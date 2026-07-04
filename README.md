@@ -178,11 +178,6 @@ without a key there is no built-in search tool). Loom connects to Tavily's hoste
 `BACKEND_TAVILY_URL` (default `https://mcp.tavily.com/mcp/`), authenticating via the `tavilyApiKey`
 query parameter, and exposes only the `tavily_search` tool.
 
-Loom can also expose Context7 documentation tools when `BACKEND_CONTEXT7_API_KEY` is set. It uses
-the remote Streamable HTTP endpoint `https://mcp.context7.com/mcp` by default; override it with
-`BACKEND_CONTEXT7_MCP_URL` if needed. Loom sends the key as the `CONTEXT7_API_KEY` request header
-and exposes the remote tools as `context7__resolve-library-id` and `context7__query-docs`.
-
 The default Compose setup also includes two MCP sidecars configured with first-class env vars:
 
 - `fetch` exposes the reference `mcp-server-fetch` URL/document reader as `fetch__fetch`. Use it for
@@ -199,7 +194,9 @@ without rebuilding. Point `BACKEND_MCP_SERVERS_FILE` at a file in the standard `
 overriding any built-in of the same name. Keep secrets out of the file — every string value supports
 `${VAR}` interpolation resolved from the backend environment, so tokens stay in env vars. A missing
 referenced variable, an unknown `type`, or malformed JSON fails fast at startup; an absent file is a
-no-op. For example, to add ipverse-lens whois search:
+no-op. Because a referenced-but-unset variable fails startup, delete any server entry whose token you
+are not providing. This is where the secondary, best-effort integrations live — **Context7
+documentation** and **ipverse-lens whois** — for example:
 
 ```json
 {
@@ -208,14 +205,26 @@ no-op. For example, to add ipverse-lens whois search:
       "type": "http",
       "url": "https://gateway.ipverse.net/mcp",
       "headers": { "Authorization": "Bearer ${IPVERSE_API_KEY}" }
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": { "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}" }
     }
   }
 }
 ```
 
-with `IPVERSE_API_KEY` set in the loom container's environment. The default Compose setup mounts
-`./conf` read-only at `/conf`, so copy `conf/mcp.json.example` to `conf/mcp.json` and restart.
-`type` accepts `http` (Streamable HTTP, the default) or `stdio`.
+with `IPVERSE_API_KEY` / `CONTEXT7_API_KEY` set in the loom container's environment. Context7 exposes
+its remote tools as `context7__resolve-library-id` and `context7__query-docs`. Unlike the first-class
+integrations above, a file server is **best-effort**: if it is unreachable at startup, Loom logs a
+warning and continues instead of failing the boot. The default Compose setup mounts `./conf`
+read-only at `/conf`, so copy `conf/mcp.json.example` to `conf/mcp.json` and restart. `type` accepts
+`http` (Streamable HTTP, the default) or `stdio`.
+
+> **Migration:** Context7 used to be a built-in configured via `BACKEND_CONTEXT7_API_KEY` /
+> `BACKEND_CONTEXT7_MCP_URL`. Those variables are gone. Set `CONTEXT7_API_KEY` (no `BACKEND_` prefix)
+> and add the `context7` entry to `conf/mcp.json` as shown above.
 
 Configured MCP tools are exposed to the chat model as OpenAI-compatible function tools
 named `<server>__<tool>`, such as `tavily__tavily_search`. During a streamed response, Loom pauses

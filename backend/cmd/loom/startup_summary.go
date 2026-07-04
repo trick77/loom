@@ -40,7 +40,6 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		mcpCapability(mcpConfig, runtime),
 		mcpFileCapability(cfg),
 		tavilyCapability(cfg),
-		context7Capability(cfg),
 		bflImageCapability(cfg, runtime),
 		responseLoggingCapability(cfg),
 	}
@@ -115,13 +114,6 @@ func tavilyCapability(cfg config.Config) startupCapability {
 		return startupCapability{Name: "Tavily web search", Status: "disabled", Detail: "set BACKEND_TAVILY_API_KEY"}
 	}
 	return startupCapability{Name: "Tavily web search", Status: "enabled", Detail: "source=env"}
-}
-
-func context7Capability(cfg config.Config) startupCapability {
-	if !context7Configured(cfg) {
-		return startupCapability{Name: "Context7 docs", Status: "disabled", Detail: "set BACKEND_CONTEXT7_API_KEY"}
-	}
-	return startupCapability{Name: "Context7 docs", Status: "enabled", Detail: "source=env"}
 }
 
 func bflImageCapability(cfg config.Config, runtime startupRuntime) startupCapability {

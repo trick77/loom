@@ -40,12 +40,6 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.TavilyAPIKey != "" {
 		t.Errorf("TavilyAPIKey default = %q, want empty opt-in value", cfg.TavilyAPIKey)
 	}
-	if cfg.Context7MCPURL != "https://mcp.context7.com/mcp" {
-		t.Errorf("Context7MCPURL default = %q, want Context7 remote endpoint", cfg.Context7MCPURL)
-	}
-	if cfg.Context7APIKey != "" {
-		t.Errorf("Context7APIKey default = %q, want empty opt-in value", cfg.Context7APIKey)
-	}
 	if cfg.FetchMCPURL != "" {
 		t.Errorf("FetchMCPURL default = %q, want empty opt-in value", cfg.FetchMCPURL)
 	}
@@ -153,33 +147,6 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 				t.Fatalf("Load() error = %v, want %q", err, tc.wantErr)
 			}
 		})
-	}
-}
-
-func TestLoad_context7Settings(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
-	t.Setenv("BACKEND_CONTEXT7_API_KEY", "ctx-key")
-	t.Setenv("BACKEND_CONTEXT7_MCP_URL", "https://context7.example/mcp")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Context7APIKey != "ctx-key" {
-		t.Fatalf("Context7APIKey = %q, want ctx-key", cfg.Context7APIKey)
-	}
-	if cfg.Context7MCPURL != "https://context7.example/mcp" {
-		t.Fatalf("Context7MCPURL = %q, want override", cfg.Context7MCPURL)
-	}
-}
-
-func TestLoad_context7RequiresURLWhenEnabled(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
-	t.Setenv("BACKEND_CONTEXT7_API_KEY", "ctx-key")
-	t.Setenv("BACKEND_CONTEXT7_MCP_URL", "")
-
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error when Context7 API key is set without MCP URL")
 	}
 }
 
