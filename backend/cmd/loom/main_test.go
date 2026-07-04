@@ -108,25 +108,6 @@ func TestTavilyConfiguredDetectsEnv(t *testing.T) {
 	}
 }
 
-func TestToolConfigForConfigAddsContext7WhenAPIKeyIsSet(t *testing.T) {
-	cfg := config.Config{
-		Context7APIKey: "ctx-key",
-		Context7MCPURL: "https://mcp.context7.com/mcp",
-	}
-
-	got := mustToolConfig(t, cfg)
-	context7 := got.Servers["context7"]
-	if context7.Transport != mcp.TransportStreamableHTTP {
-		t.Fatalf("context7 transport = %q, want streamable-http", context7.Transport)
-	}
-	if context7.URL != "https://mcp.context7.com/mcp" {
-		t.Fatalf("context7 URL = %q, want Context7 remote endpoint", context7.URL)
-	}
-	if context7.Headers["CONTEXT7_API_KEY"] != "ctx-key" {
-		t.Fatalf("context7 headers = %#v, want API key header", context7.Headers)
-	}
-}
-
 func TestToolConfigForConfigAddsFirstClassMCPTools(t *testing.T) {
 	cfg := config.Config{
 		FetchMCPURL:   "http://fetch:8090/mcp",
@@ -227,15 +208,6 @@ func TestToolConfigForConfigPropagatesFileError(t *testing.T) {
 	}
 	if _, err := toolConfigForConfig(config.Config{MCPServersFile: path}); err == nil {
 		t.Fatal("toolConfigForConfig() error = nil, want propagated file error")
-	}
-}
-
-func TestContext7ConfiguredDetectsEnv(t *testing.T) {
-	if context7Configured(config.Config{}) {
-		t.Fatal("context7Configured() = true without API key, want false")
-	}
-	if !context7Configured(config.Config{Context7APIKey: "ctx-key"}) {
-		t.Fatal("context7Configured() = false with API key, want true")
 	}
 }
 

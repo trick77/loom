@@ -19,7 +19,6 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	assertCapability(t, items, "embeddings", "disabled", "BACKEND_EMBED_BASE_URL")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
-	assertCapability(t, items, "Context7 docs", "disabled", "BACKEND_CONTEXT7_API_KEY")
 	assertCapability(t, items, "BFL image generation", "disabled", "BACKEND_BFL_API_KEY")
 	assertCapability(t, items, "document generation", "enabled", "tools=5")
 	assertCapability(t, items, "artifacts", "enabled", "users_dir=/data/users")
@@ -35,8 +34,6 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 		TikaURL:        "http://tika:9998",
 		UsersDir:       "/data/users",
 		TavilyAPIKey:   "tavily-key",
-		Context7APIKey: "ctx-key",
-		Context7MCPURL: "https://mcp.context7.com/mcp",
 		BFLAPIKey:      "bfl-key",
 		BFLModel:       "flux-2-klein-4b",
 		ChatLogDir:     "logs/llm-responses",
@@ -49,7 +46,6 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	assertCapability(t, items, "embeddings", "enabled", "text-embedding-3-small")
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")
-	assertCapability(t, items, "Context7 docs", "enabled", "source=env")
 	assertCapability(t, items, "BFL image generation", "enabled", "model=flux-2-klein-4b tools=1")
 	assertCapability(t, items, "LLM response logging", "enabled", "logs/llm-responses")
 }

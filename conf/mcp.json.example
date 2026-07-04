@@ -1,11 +1,18 @@
 {
-  "_comment": "Extra MCP servers in the standard mcpServers format. Copy this to conf/mcp.json (the path in BACKEND_MCP_SERVERS_FILE, default /conf/mcp.json). Servers here merge on top of the built-ins and override any built-in of the same name. Keep secrets out of this file: ${VAR} is interpolated from the backend process environment at startup. 'type' is 'http' (Streamable HTTP, default) or 'stdio'.",
+  "_comment": "Extra MCP servers in the standard mcpServers format. Copy this to conf/mcp.json (the path in BACKEND_MCP_SERVERS_FILE, default /conf/mcp.json). Servers here merge on top of the built-ins and override any built-in of the same name. Keep secrets out of this file: ${VAR} is interpolated from the backend process environment at startup. Each entry's ${VAR} must be set — a present entry with an unset var fails startup, so delete any server you are not using. 'type' is 'http' (Streamable HTTP, default) or 'stdio'.",
   "mcpServers": {
     "ipverse": {
       "type": "http",
       "url": "https://gateway.ipverse.net/mcp",
       "headers": {
         "Authorization": "Bearer ${IPVERSE_API_KEY}"
+      }
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
       }
     }
   }
