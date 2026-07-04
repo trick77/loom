@@ -256,6 +256,28 @@ export type Page<T> = {
 // match-centered snippet with the hits wrapped in « » (see renderSnippet).
 export type ThreadContentHit = { thread: Thread; snippet: string };
 
+// MCPServerStatus is one row of the /mcp slash command: a configured MCP
+// server's live reachability plus metadata. endpoint is credential-free (host
+// only). error carries the probe failure reason when active is false.
+export type MCPServerStatus = {
+  name: string;
+  active: boolean;
+  transport: string;
+  endpoint: string;
+  origin: string; // "built-in" | "file"
+  toolCount: number;
+  error?: string;
+};
+
+// MCPToolInfo is one row of the /tools slash command. required is the tool's
+// required arguments (serialized as null when the tool declares none).
+export type MCPToolInfo = {
+  name: string;
+  server: string;
+  description: string;
+  required: string[] | null;
+};
+
 export type Usage = {
   promptTokens: number;
   completionTokens: number;
