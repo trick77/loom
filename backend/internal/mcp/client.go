@@ -345,9 +345,10 @@ func (c *remoteClient) toolAllowed(name string) bool {
 	return false
 }
 
-// scrubURLError redacts the query string (which may carry secrets such as
-// Tavily's ?tavilyApiKey=) from *url.Error values before they propagate into
-// logs or upstream error messages.
+// scrubURLError redacts credentials from *url.Error values before they
+// propagate into logs, upstream error messages, or the /mcp status panel: the
+// query string (which may carry secrets such as Tavily's ?tavilyApiKey=) and any
+// userinfo (user:pass@host in a configured server URL).
 func scrubURLError(err error) error {
 	var urlErr *url.Error
 	if !errors.As(err, &urlErr) {
@@ -355,6 +356,7 @@ func scrubURLError(err error) error {
 	}
 	if u, parseErr := url.Parse(urlErr.URL); parseErr == nil {
 		u.RawQuery = ""
+		u.User = nil
 		urlErr.URL = u.String()
 	} else if i := strings.IndexByte(urlErr.URL, '?'); i >= 0 {
 		urlErr.URL = urlErr.URL[:i]

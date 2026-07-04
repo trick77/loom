@@ -288,6 +288,19 @@ func TestNewServiceFromConfigsDropsFailedBestEffortServer(t *testing.T) {
 	if len(statuses) != 2 {
 		t.Fatalf("ServerStatus() = %#v, want both servers tracked", statuses)
 	}
+	// Sorted by name: ipverse (file, down) then tavily (built-in, up).
+	byName := map[string]ServerStatus{statuses[0].Name: statuses[0], statuses[1].Name: statuses[1]}
+	ipverse := byName["ipverse"]
+	if ipverse.Origin != OriginFile || ipverse.Active || ipverse.ToolCount != 0 || ipverse.Error == "" {
+		t.Fatalf("ipverse status = %+v, want file/down/0 tools/with error", ipverse)
+	}
+	tavily := byName["tavily"]
+	if tavily.Origin != OriginBuiltIn || !tavily.Active || tavily.ToolCount != 1 || tavily.Error != "" {
+		t.Fatalf("tavily status = %+v, want built-in/up/1 tool/no error", tavily)
+	}
+	if tavily.Transport != TransportStreamableHTTP || tavily.Endpoint == "" || strings.Contains(tavily.Endpoint, "/") {
+		t.Fatalf("tavily endpoint = %q, want a bare credential-free host", tavily.Endpoint)
+	}
 }
 
 func TestNewServiceFromConfigsRequiredFailureIsFatal(t *testing.T) {

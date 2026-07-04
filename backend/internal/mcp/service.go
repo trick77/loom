@@ -5,11 +5,21 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/llm"
+)
+
+// Server origin labels reported by ServerStatus: a built-in server is wired from
+// first-class app settings, a file server comes from the mcp.json file (and is
+// best-effort — an unreachable one degrades instead of failing boot).
+const (
+	OriginBuiltIn = "built-in"
+	OriginFile    = "file"
 )
 
 const (
@@ -24,6 +34,7 @@ type Service struct {
 	tools      []llm.Tool
 	routes     map[string]toolRoute
 	cfg        Config
+	origins    map[string]string
 	httpClient *http.Client
 }
 
@@ -32,16 +43,26 @@ type toolRoute struct {
 	name   string
 }
 
-// ServerStatus reports whether a configured MCP server is currently reachable.
+// ServerStatus reports a configured MCP server's live reachability and metadata.
+// Endpoint is credential-free (host for HTTP, command for stdio) — headers and
+// tokens are never included. Error carries the probe failure reason when a
+// server is unreachable.
 type ServerStatus struct {
-	Name   string `json:"name"`
-	Active bool   `json:"active"`
+	Name      string `json:"name"`
+	Active    bool   `json:"active"`
+	Transport string `json:"transport"`
+	Endpoint  string `json:"endpoint"`
+	Origin    string `json:"origin"`
+	ToolCount int    `json:"toolCount"`
+	Error     string `json:"error,omitempty"`
 }
 
 // ServerStatus live-probes every configured MCP server with a bounded timeout
-// and reports which are currently reachable. It uses a fresh client per probe so
-// a server that recovered after a failed startup is reported active again (the
-// routing clients cache their first init result and never recover).
+// and reports reachability plus metadata. It uses a fresh client per probe so a
+// server that recovered after a failed startup is reported active again (the
+// routing clients cache their first init result and never recover). ToolCount is
+// the number of tools currently exposed to the model, so a server that recovered
+// post-startup can read active with a zero count until the next restart.
 func (s *Service) ServerStatus(ctx context.Context) []ServerStatus {
 	if s == nil || len(s.cfg.Servers) == 0 {
 		return nil
@@ -52,29 +73,81 @@ func (s *Service) ServerStatus(ctx context.Context) []ServerStatus {
 	}
 	sort.Strings(names)
 
+	counts := s.toolCounts()
 	statuses := make([]ServerStatus, len(names))
 	var wg sync.WaitGroup
 	for i, name := range names {
 		wg.Add(1)
 		go func(i int, name string) {
 			defer wg.Done()
-			statuses[i] = ServerStatus{Name: name, Active: s.probeServer(ctx, name)}
+			active, probeErr := s.probeServer(ctx, name)
+			sc := s.cfg.Servers[name]
+			origin := s.origins[name]
+			if origin == "" {
+				origin = OriginBuiltIn
+			}
+			statuses[i] = ServerStatus{
+				Name:      name,
+				Active:    active,
+				Transport: sc.Transport,
+				Endpoint:  endpointForServer(sc),
+				Origin:    origin,
+				ToolCount: counts[name],
+				Error:     probeErr,
+			}
 		}(i, name)
 	}
 	wg.Wait()
 	return statuses
 }
 
-func (s *Service) probeServer(ctx context.Context, name string) bool {
+// probeServer reports whether a server is reachable and, when it is not, the
+// failure reason (already credential-scrubbed by the client's error path).
+func (s *Service) probeServer(ctx context.Context, name string) (bool, string) {
 	client := clientForServer(name, s.cfg.Servers[name], s.httpClient)
 	defer func() { _ = client.Close() }()
 	probeCtx, cancel := context.WithTimeout(ctx, statusProbeTimeout)
 	defer cancel()
+	var err error
 	if probe, ok := client.(interface{ Probe(context.Context) error }); ok {
-		return probe.Probe(probeCtx) == nil
+		err = probe.Probe(probeCtx)
+	} else {
+		_, err = client.ListTools(probeCtx)
 	}
-	_, err := client.ListTools(probeCtx)
-	return err == nil
+	if err != nil {
+		return false, err.Error()
+	}
+	return true, ""
+}
+
+// toolCounts tallies how many exposed tools each server currently contributes,
+// derived from the serverName__toolName exposed-name convention.
+func (s *Service) toolCounts() map[string]int {
+	counts := make(map[string]int, len(s.cfg.Servers))
+	for _, t := range s.tools {
+		if server, _, ok := SplitExposedToolName(t.Function.Name); ok {
+			counts[server]++
+		}
+	}
+	return counts
+}
+
+// endpointForServer returns a display-safe endpoint with no credentials: the
+// host for HTTP servers (url.Host excludes any userinfo, and path/query are
+// dropped) and the command for stdio servers. Headers/tokens are never exposed.
+func endpointForServer(sc ServerConfig) string {
+	if sc.Transport == TransportStdio {
+		return sc.Command
+	}
+	if u, err := url.Parse(sc.URL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	// Fallback for a scheme-less or opaque URL that yields no host: still drop any
+	// query string so a credential-bearing param is never surfaced.
+	if i := strings.IndexByte(sc.URL, '?'); i >= 0 {
+		return sc.URL[:i]
+	}
+	return sc.URL
 }
 
 func NewService(clients map[string]Client) (*Service, error) {
@@ -238,21 +311,30 @@ func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, htt
 			})
 		}
 	}
-	// Union the configs so ServerStatus live-probes best-effort servers too.
+	// Union the configs so ServerStatus live-probes best-effort servers too, and
+	// record each server's origin so status can label built-in vs file-defined.
 	merged := Config{Servers: make(map[string]ServerConfig, len(required.Servers)+len(bestEffort.Servers))}
+	origins := make(map[string]string, len(required.Servers)+len(bestEffort.Servers))
 	for name, sc := range required.Servers {
 		merged.Servers[name] = sc
+		origins[name] = OriginBuiltIn
 	}
 	for name, sc := range bestEffort.Servers {
 		merged.Servers[name] = sc
+		origins[name] = OriginFile
 	}
 	service.cfg = merged
+	service.origins = origins
 	service.httpClient = httpClient
 	return service, nil
 }
 
 func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client, logger *slog.Logger) (*Service, error) {
-	service := &Service{routes: map[string]toolRoute{}, cfg: cfg, httpClient: httpClient}
+	origins := make(map[string]string, len(cfg.Servers))
+	for name := range cfg.Servers {
+		origins[name] = OriginFile
+	}
+	service := &Service{routes: map[string]toolRoute{}, cfg: cfg, origins: origins, httpClient: httpClient}
 	names := make([]string, 0, len(cfg.Servers))
 	for name := range cfg.Servers {
 		names = append(names, name)

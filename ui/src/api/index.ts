@@ -13,3 +13,4 @@ export * from "./documents";
 export * from "./sharing";
 export * from "./stream";
 export * from "./user";
+export * from "./mcp";

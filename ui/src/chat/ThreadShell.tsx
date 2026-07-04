@@ -31,6 +31,8 @@ import { MemoryPage } from "../MemoryPage";
 import { navigate, routeFromLocation, type RouteState } from "./routing";
 import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
+import { SlashCommandPanel } from "./SlashCommandPanel";
+import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
 import { useMediaQuery } from "./useMediaQuery";
 import {
   composerAttachmentFromArtifact,
@@ -111,6 +113,9 @@ export function ThreadShell({
   // (only one conversation is active at a time).
   const [incognito, setIncognito] = useState(false);
   const [incognitoMessages, setIncognitoMessages] = useState<MessageWithActivityTrace[]>([]);
+  // A slash command ("/mcp", "/tools", …) opens this ephemeral overlay panel
+  // instead of sending a message; null when no panel is open.
+  const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(null);
   const clearStreamingBlocks = useCallback(() => {
     streamingBlocksRef.current = [];
     setStreamingBlocks([]);
@@ -556,7 +561,19 @@ export function ThreadShell({
   async function handleSend(attachments: ComposerAttachment[] = pendingAttachments.map(toSentAttachment)) {
     const content = draft.trim();
     if (content === "" || isSending) return;
+    if (runSlashCommand(content)) return;
     await sendContent(content, { restoreDraftOnError: true, attachments });
+  }
+
+  // runSlashCommand intercepts a "/command" draft: it opens the ephemeral overlay
+  // panel and clears the composer instead of sending a message to the LLM.
+  // Returns true when the draft was a command (so callers stop).
+  function runSlashCommand(content: string): boolean {
+    const command = matchSlashCommand(content);
+    if (command === null) return false;
+    setDraft("");
+    setSlashCommand(command.name);
+    return true;
   }
 
   async function handleRetry(content: string) {
@@ -905,6 +922,7 @@ export function ThreadShell({
   async function handleIncognitoSend() {
     const content = draft.trim();
     if (content === "" || isSending) return;
+    if (runSlashCommand(content)) return;
     await sendIncognitoContent(content, true);
   }
 
@@ -939,6 +957,9 @@ export function ThreadShell({
             onExit={exitIncognito}
           />
         </main>
+        {slashCommand !== null && (
+          <SlashCommandPanel command={slashCommand} onClose={() => setSlashCommand(null)} />
+        )}
       </div>
     );
   }
@@ -1214,6 +1235,9 @@ export function ThreadShell({
         />
       )}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {slashCommand !== null && (
+        <SlashCommandPanel command={slashCommand} onClose={() => setSlashCommand(null)} />
+      )}
       {searchOpen && (
         <SearchModal
           onClose={() => setSearchOpen(false)}

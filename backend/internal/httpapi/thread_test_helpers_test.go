@@ -15,6 +15,7 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 )
 
 var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
@@ -837,11 +838,16 @@ type fakeMCPService struct {
 	result    string
 	err       error
 	available map[string]bool
+	servers   []mcp.ServerStatus
 	callFunc  func(ctx context.Context, name string, args map[string]any) (string, error)
 }
 
 func (f fakeMCPService) Tools() []llm.Tool {
 	return f.tools
+}
+
+func (f fakeMCPService) ServerStatus(context.Context) []mcp.ServerStatus {
+	return f.servers
 }
 
 func (f fakeMCPService) CallTool(ctx context.Context, name string, args map[string]any) (string, error) {

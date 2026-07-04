@@ -1,9 +1,10 @@
-import { useCallback, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ATTACHMENT_ACCEPT } from "../api";
 import { AttachmentPreview } from "../components/AttachmentPreview";
 import { attachAcceptedFiles, formatAttachmentSize } from "./attachmentFiles";
 import { Icon } from "./Icon";
+import { matchSlashCommand, slashSuggestions } from "./slashCommands";
 import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
 export function Composer({
@@ -42,6 +43,16 @@ export function Composer({
   onRemoveAttachment?(id: string): void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Slash-command typeahead: while the draft is a lone "/token", suggest matching
+  // commands. `dismissed` hides the popover after Escape until the draft changes.
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+  const suggestions = suggestionsDismissed ? [] : slashSuggestions(draft);
+  const showSuggestions = suggestions.length > 0;
+  useEffect(() => {
+    // Keep the highlighted item in range as the draft narrows the matches.
+    setSelectedIndex((current) => (current >= suggestions.length ? 0 : current));
+  }, [suggestions.length]);
   // Base (empty) height per variant, preserved as the textarea's min-height so
   // the composer keeps its current look before any auto-grow kicks in.
   const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
@@ -124,14 +135,71 @@ export function Composer({
         className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} ${attachments.length > 0 ? "pt-2" : "pt-5"} pb-3 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
         placeholder={placeholder}
         value={draft}
-        onChange={(event) => onDraftChange(event.target.value)}
+        onChange={(event) => {
+          // Any edit re-opens the popover a prior Escape had dismissed.
+          setSuggestionsDismissed(false);
+          onDraftChange(event.target.value);
+        }}
         onKeyDown={(event) => {
+          if (showSuggestions) {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setSelectedIndex((current) => (current + 1) % suggestions.length);
+              return;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setSelectedIndex((current) => (current - 1 + suggestions.length) % suggestions.length);
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setSuggestionsDismissed(true);
+              return;
+            }
+            if (event.key === "Tab") {
+              event.preventDefault();
+              onDraftChange(`/${suggestions[selectedIndex].name}`);
+              return;
+            }
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              // A fully typed command submits (runSlashCommand fires downstream);
+              // a partial one first completes to the highlighted command.
+              if (matchSlashCommand(draft) !== null) {
+                if (!isSending && !sendDisabled) onSend();
+              } else {
+                onDraftChange(`/${suggestions[selectedIndex].name}`);
+              }
+              return;
+            }
+          }
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
             if (!isSending && !sendDisabled) onSend();
           }
         }}
       />
+      {showSuggestions && (
+        <div className="absolute bottom-full left-3 z-10 mb-2 w-[280px] overflow-hidden rounded-xl border border-[#4b4a46] bg-[#2f2f2c] py-1 shadow-[0_14px_28px_rgba(0,0,0,0.32)]">
+          {suggestions.map((command, index) => (
+            <button
+              key={command.name}
+              type="button"
+              // Prevent the textarea from losing focus (which would fire before onClick).
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onDraftChange(`/${command.name}`)}
+              onMouseEnter={() => setSelectedIndex(index)}
+              className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left ${
+                index === selectedIndex ? "bg-[#3a3a37]" : ""
+              }`}
+            >
+              <span className="font-mono text-sm text-[#f3f0e8]">/{command.name}</span>
+              <span className="truncate text-xs text-[#aaa79e]">{command.description}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}>
         {incognito ? (
           // Uploads persist (indexing / artifact rows), so they are unavailable in an
