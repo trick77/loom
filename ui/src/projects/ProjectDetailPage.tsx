@@ -107,7 +107,8 @@ export function ProjectDetailPage({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-[802px] px-4 pb-16 pt-10 md:px-6">
+      <div className="relative mx-auto w-full max-w-[802px] px-4 pb-16 pt-10 md:px-6">
+        <SidebarOpenButton variant="floating" onClick={onOpenSidebar} />
         <button
           aria-label="All projects"
           className="ui-control-text flex items-center gap-1.5 text-[#c7c5bd] hover:text-white"
@@ -130,7 +131,6 @@ export function ProjectDetailPage({
             <header className="mt-5 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <SidebarOpenButton onClick={onOpenSidebar} />
                   <h1 className="truncate font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">
                     {project.name}
                   </h1>

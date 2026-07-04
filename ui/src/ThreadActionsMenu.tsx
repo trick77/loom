@@ -12,8 +12,11 @@ export const menuItemClass =
 export const menuIconClass = "grid h-[21px] w-[21px] shrink-0 place-items-center";
 // Destructive menu entry: muted red by default, solid red highlight on hover
 // (inset with rounded corners, white text/icon). Shared by every Delete menu.
+// Colors match claude.ai's delete entry exactly: resting text is its --danger-000
+// token = rgb(236,126,126) = #ec7e7e, hover fill is its --danger fill token =
+// rgb(208,59,59) = #d03b3b.
 export const menuDeleteItemClass =
-  "mx-1 flex min-h-[30px] w-[calc(100%-0.5rem)] items-start gap-2.5 rounded-md px-3 py-1 text-left text-[#d98278] transition-colors hover:bg-[#d03b3c] hover:text-white";
+  "mx-1 flex min-h-[30px] w-[calc(100%-0.5rem)] items-start gap-2.5 rounded-md px-3 py-1 text-left text-[#ec7e7e] transition-colors hover:bg-[#d03b3b] hover:text-white";
 
 export function ThreadActionsMenu({
   menuKey,
