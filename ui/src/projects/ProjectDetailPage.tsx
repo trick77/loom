@@ -108,33 +108,33 @@ export function ProjectDetailPage({
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-[802px] px-4 pb-16 pt-10 md:px-6">
-        <button
-          aria-label="All projects"
-          className="ui-control-text flex items-center gap-1.5 text-[#c7c5bd] hover:text-white"
-          type="button"
-          onClick={onBack}
-        >
-          <svg
-            aria-hidden="true"
-            className="h-4 w-4"
-            fill="currentColor"
-            viewBox="0 0 256 256"
-            xmlns="http://www.w3.org/2000/svg"
+        <div className="flex items-center gap-1">
+          <SidebarOpenButton onClick={onOpenSidebar} />
+          <button
+            aria-label="All projects"
+            className="ui-control-text flex items-center gap-1.5 text-[#c7c5bd] hover:text-white"
+            type="button"
+            onClick={onBack}
           >
-            <path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z" />
-          </svg>
-          All projects
-        </button>
+            <svg
+              aria-hidden="true"
+              className="h-4 w-4"
+              fill="currentColor"
+              viewBox="0 0 256 256"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z" />
+            </svg>
+            All projects
+          </button>
+        </div>
         <div className="mt-2 flex flex-col gap-8">
           <div className="min-w-0 w-full">
             <header className="mt-5 flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <SidebarOpenButton onClick={onOpenSidebar} />
-                  <h1 className="truncate font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">
-                    {project.name}
-                  </h1>
-                </div>
+                <h1 className="truncate font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">
+                  {project.name}
+                </h1>
                 {project.description !== "" && (
                   <p className="mt-3 max-w-[720px] text-sm leading-5 text-[#d5d2c9]">
                     {project.description}

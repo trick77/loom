@@ -106,10 +106,10 @@ export function ProjectsPage({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-[802px] px-4 pb-16 pt-10 md:px-6">
+      <div className="relative mx-auto w-full max-w-[802px] px-4 pb-16 pt-10 md:px-6">
+        <SidebarOpenButton variant="floating" onClick={onOpenSidebar} />
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <SidebarOpenButton onClick={onOpenSidebar} />
             <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Projects</h1>
           </div>
           <div className="flex items-center gap-2.5">
