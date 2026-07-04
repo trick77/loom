@@ -385,6 +385,23 @@ func TestRemoteClientScrubsSecretFromTransportError(t *testing.T) {
 	}
 }
 
+func TestRemoteClientScrubsUserinfoFromTransportError(t *testing.T) {
+	// A server URL with user:pass@host userinfo must not leak the password into
+	// the error — which now surfaces in the /mcp status panel, not just logs.
+	client := NewRemoteClient("secret", ServerConfig{
+		Transport: TransportStreamableHTTP,
+		URL:       "http://admin:hunter2@127.0.0.1:1/mcp",
+	}, &http.Client{Timeout: 2 * time.Second})
+
+	_, err := client.ListTools(context.Background())
+	if err == nil {
+		t.Fatal("ListTools() error = nil, want connection error")
+	}
+	if strings.Contains(err.Error(), "hunter2") {
+		t.Fatalf("error leaks userinfo password: %v", err)
+	}
+}
+
 func runMCPTestHelper(t *testing.T) {
 	t.Helper()
 	scanner := bufio.NewScanner(os.Stdin)

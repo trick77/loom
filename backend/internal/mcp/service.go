@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -140,6 +141,11 @@ func endpointForServer(sc ServerConfig) string {
 	}
 	if u, err := url.Parse(sc.URL); err == nil && u.Host != "" {
 		return u.Host
+	}
+	// Fallback for a scheme-less or opaque URL that yields no host: still drop any
+	// query string so a credential-bearing param is never surfaced.
+	if i := strings.IndexByte(sc.URL, '?'); i >= 0 {
+		return sc.URL[:i]
 	}
 	return sc.URL
 }
