@@ -51,7 +51,7 @@ export function PdfLightbox({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-6 backdrop-blur-[2px]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

@@ -49,6 +49,12 @@ export function Composer({
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const suggestions = suggestionsDismissed ? [] : slashSuggestions(draft);
   const showSuggestions = suggestions.length > 0;
+  // `suggestions` recomputes synchronously from the draft, but selectedIndex is
+  // only re-clamped by the effect below (which runs after paint). During the
+  // render right after the draft narrows the list, selectedIndex can still point
+  // past the end, so derive a clamped index for reads — keyboard completion and
+  // the highlight must never index an undefined suggestion.
+  const activeIndex = selectedIndex < suggestions.length ? selectedIndex : 0;
   useEffect(() => {
     // Keep the highlighted item in range as the draft narrows the matches.
     setSelectedIndex((current) => (current >= suggestions.length ? 0 : current));
@@ -159,7 +165,7 @@ export function Composer({
             }
             if (event.key === "Tab") {
               event.preventDefault();
-              onDraftChange(`/${suggestions[selectedIndex].name}`);
+              onDraftChange(`/${suggestions[activeIndex].name}`);
               return;
             }
             if (event.key === "Enter" && !event.shiftKey) {
@@ -169,7 +175,7 @@ export function Composer({
               if (matchSlashCommand(draft) !== null) {
                 if (!isSending && !sendDisabled) onSend();
               } else {
-                onDraftChange(`/${suggestions[selectedIndex].name}`);
+                onDraftChange(`/${suggestions[activeIndex].name}`);
               }
               return;
             }
@@ -191,7 +197,7 @@ export function Composer({
               onClick={() => onDraftChange(`/${command.name}`)}
               onMouseEnter={() => setSelectedIndex(index)}
               className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left ${
-                index === selectedIndex ? "bg-[#3a3a37]" : ""
+                index === activeIndex ? "bg-[#3a3a37]" : ""
               }`}
             >
               <span className="font-mono text-sm text-[#f3f0e8]">/{command.name}</span>

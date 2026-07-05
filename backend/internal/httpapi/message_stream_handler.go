@@ -114,11 +114,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decide whether the image path will run before classifying: when it will, we
-	// stamp the thread's category deterministically as image_generation instead of
-	// letting the text classifier guess (it would mislabel and the image path
-	// discards the classifier block anyway). Computed once here and reused below.
-	imageArtifactRequired := s.imageArtifactRequired(body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
+	// Decide how this turn routes to image generation/editing before classifying,
+	// via one semantic gate call (language-agnostic; see classifyImageTurn). When
+	// the image path will run we stamp the thread's category deterministically as
+	// image_generation instead of letting the text classifier guess (it would
+	// mislabel and the image path discards the classifier block anyway). Computed
+	// once here and reused below.
+	imageRoute := s.classifyImageTurn(streamCtx, user.ID, threadID, body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
+	imageArtifactRequired := imageRoute.generate
 
 	// category drives the prompt-classifier block injected below. On the first
 	// message we classify now (synchronously, before the answer history is built)
@@ -198,7 +201,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// requests never pull in a prior image. This is best-effort: if the source
 	// can't be loaded the turn proceeds text-only rather than failing, unlike an
 	// explicit attachment (handled above) whose failure is surfaced to the user.
-	if len(imageParts) == 0 && s.isImageEditFollowUp(body.Content, priorMessages) {
+	if len(imageParts) == 0 && imageRoute.reuseSource {
 		if sourceID := latestImageArtifactID(priorMessages); sourceID != "" {
 			if parts, partsErr := s.imageContentParts(r.Context(), user.ID, threadID, userMessage.Content, []string{sourceID}); partsErr != nil {
 				slog.Warn("auto-attach of prior image failed; continuing without source image",
@@ -232,7 +235,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// early error path.
 	titles := newReasoningTitleTracker(s, stream, streamCtx, inference, userResponseLanguage(user))
 	defer titles.wait()
-	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, gate, imageArtifactRequired, editSource)
+	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, gate, imageArtifactRequired, editSource, imageRoute.typography)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)

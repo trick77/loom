@@ -115,7 +115,10 @@ func (s *Service) probeServer(ctx context.Context, name string) (bool, string) {
 		_, err = client.ListTools(probeCtx)
 	}
 	if err != nil {
-		return false, err.Error()
+		// The reason is surfaced verbatim in the (auth-only) /mcp status panel, so
+		// scrub credentials at this boundary regardless of which client path produced
+		// the error.
+		return false, scrubURLError(err).Error()
 	}
 	return true, ""
 }
@@ -142,12 +145,21 @@ func endpointForServer(sc ServerConfig) string {
 	if u, err := url.Parse(sc.URL); err == nil && u.Host != "" {
 		return u.Host
 	}
-	// Fallback for a scheme-less or opaque URL that yields no host: still drop any
-	// query string so a credential-bearing param is never surfaced.
-	if i := strings.IndexByte(sc.URL, '?'); i >= 0 {
-		return sc.URL[:i]
+	// A scheme-less or opaque URL (e.g. "admin:pw@host:port/path") parses with an
+	// empty Host and its user:pass@ folded into the opaque/scheme, so returning it
+	// verbatim would leak credentials into the panel. Re-parse with a synthetic
+	// scheme so the authority — including any userinfo — is recognised and dropped,
+	// keeping only the host.
+	if u, err := url.Parse("http://" + strings.TrimPrefix(sc.URL, "//")); err == nil && u.Host != "" {
+		return u.Host
 	}
-	return sc.URL
+	// Last resort: strip any userinfo and query string by hand so credentials are
+	// never surfaced.
+	rest := stripURLUserinfo(sc.URL)
+	if i := strings.IndexByte(rest, '?'); i >= 0 {
+		rest = rest[:i]
+	}
+	return rest
 }
 
 func NewService(clients map[string]Client) (*Service, error) {

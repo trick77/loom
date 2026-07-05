@@ -5,6 +5,7 @@ import { menuDeleteItemClass, menuIconClass, menuItemClass, ThreadActionsMenu, T
 import { ArchiveIcon } from "../projects/ProjectActionsMenu";
 import { Icon } from "./Icon";
 import type { SidebarIconName } from "./types";
+import { useMenuPlacement } from "./useMenuPlacement";
 
 export function SidebarPrimaryItem({
   icon,
@@ -277,7 +278,7 @@ export function SidebarProjectItem({
 
 function ProjectSidebarMenu({
   project,
-  className = "right-0 top-full",
+  className = "right-0",
   onStarChange,
   onEdit,
   onArchive,
@@ -290,10 +291,12 @@ function ProjectSidebarMenu({
   onArchive(project: Project): void;
   onDelete(project: Project): void;
 }) {
+  const { menuRef, verticalClass } = useMenuPlacement();
   return (
     <div
+      ref={menuRef}
       aria-label="Project actions"
-      className={`ui-sidebar-text absolute z-20 mt-1 w-[155px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
+      className={`ui-sidebar-text absolute z-20 ${verticalClass} w-[155px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
       <button

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ErrorText } from "../chat/ErrorText";
 import { ModalShell } from "../chat/threadModals";
+import { modalCancelButtonClass, modalDangerButtonClass } from "../ThreadActionsMenu";
 
 // splitFilename separates a filename into an editable stem and a fixed extension
 // (including the dot). A leading dot (dotfiles) or no dot yields an empty
@@ -96,20 +97,10 @@ export function DeleteArtifactModal({
       </div>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
-        <button
-          autoFocus
-          className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]"
-          onClick={onCancel}
-          type="button"
-        >
+        <button autoFocus className={modalCancelButtonClass} onClick={onCancel} type="button">
           Cancel
         </button>
-        <button
-          className="h-8 rounded-md bg-[#b85c52] px-3.5 text-sm font-medium text-[#fffaf2] disabled:opacity-50"
-          disabled={disabled}
-          onClick={onDelete}
-          type="button"
-        >
+        <button className={modalDangerButtonClass} disabled={disabled} onClick={onDelete} type="button">
           Delete
         </button>
       </div>

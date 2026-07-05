@@ -230,6 +230,7 @@ type ChatClient interface {
 	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
 	GenerateThreadTitle(context.Context, string, string, string) (string, error)
 	ClassifyThread(context.Context, string) (string, error)
+	ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error)
 	GenerateReasoningTitle(context.Context, string, string) (string, error)
 	GenerateMemory(context.Context, string, string, string, string, string, string) (string, error)
 	ApplyMemoryEdit(context.Context, string, string, string, string, string) (string, error)
