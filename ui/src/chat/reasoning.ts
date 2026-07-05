@@ -9,9 +9,6 @@ export type ReasoningEffort = "low" | "medium" | "high";
 // pill marks it as the recommended choice.
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "high";
 
-// localStorage key for the persisted reasoning-effort choice.
-export const REASONING_EFFORT_STORAGE_KEY = "loom.reasoningEffort";
-
 // The only model Loom serves, shown as a static (non-interactive) label in the
 // composer — there is no model picker. This is Xiaomi's official spelling
 // (mimo.xiaomi.com / huggingface.co/XiaomiMiMo), matching the backend's
@@ -51,10 +48,6 @@ export const REASONING_OPTIONS: ReasoningOption[] = [
       "The least reasoning and the fastest replies, but the weakest answers. Best kept for quick, straightforward asks.",
   },
 ];
-
-export function isReasoningEffort(value: unknown): value is ReasoningEffort {
-  return value === "low" || value === "medium" || value === "high";
-}
 
 export function reasoningLabel(effort: ReasoningEffort): string {
   return REASONING_OPTIONS.find((option) => option.value === effort)?.label ?? "High";
