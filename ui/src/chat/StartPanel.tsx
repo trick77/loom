@@ -6,6 +6,7 @@ import { ErrorText } from "./ErrorText";
 import { Icon } from "./Icon";
 import { pickGreeting } from "./threadUtils";
 import { PromptStarters } from "./PromptStarters";
+import type { PastedText } from "./pastedText";
 import type { ReasoningEffort } from "./reasoning";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
@@ -23,6 +24,9 @@ export function StartPanel({
   onReasoningEffortChange,
   onOpenSidebar,
   onDraftChange,
+  pastedTexts,
+  onAddPastedText,
+  onRemovePastedText,
   onSend,
   onStop,
   onAttachFiles,
@@ -41,6 +45,9 @@ export function StartPanel({
   onReasoningEffortChange(value: ReasoningEffort): void;
   onOpenSidebar(): void;
   onDraftChange(value: string): void;
+  pastedTexts: PastedText[];
+  onAddPastedText(text: string): void;
+  onRemovePastedText(id: string): void;
   onSend(): void;
   onStop(): void;
   onAttachFiles(files: File[]): void;
@@ -94,6 +101,9 @@ export function StartPanel({
             reasoningEffort={reasoningEffort}
             onReasoningEffortChange={onReasoningEffortChange}
             onDraftChange={onDraftChange}
+            pastedTexts={pastedTexts}
+            onAddPastedText={onAddPastedText}
+            onRemovePastedText={onRemovePastedText}
             onSend={onSend}
             onStop={onStop}
             onAttachFiles={onAttachFiles}

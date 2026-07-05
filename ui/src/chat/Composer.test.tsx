@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { Composer } from "./Composer";
+import { PASTE_AS_ATTACHMENT_THRESHOLD } from "./pastedText";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 
 afterEach(() => {
@@ -222,4 +223,87 @@ test("removes an attachment preview before send", () => {
   fireEvent.click(screen.getByRole("button", { name: "Remove notes.txt" }));
 
   expect(onRemoveAttachment).toHaveBeenCalledWith("att-1");
+});
+
+test("collapses an oversized paste into a pasted-text chip", () => {
+  const onAddPastedText = vi.fn();
+  const onDraftChange = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={onDraftChange}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAddPastedText={onAddPastedText}
+    />,
+  );
+
+  const text = "A".repeat(PASTE_AS_ATTACHMENT_THRESHOLD + 1);
+  const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
+    clipboardData: { getData: () => text },
+  });
+
+  // preventDefault was called, so the browser's inline insertion is suppressed.
+  expect(notCancelled).toBe(false);
+  expect(onAddPastedText).toHaveBeenCalledWith(text);
+  expect(onDraftChange).not.toHaveBeenCalled();
+});
+
+test("leaves a paste at the threshold inline", () => {
+  const onAddPastedText = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAddPastedText={onAddPastedText}
+    />,
+  );
+
+  const text = "A".repeat(PASTE_AS_ATTACHMENT_THRESHOLD);
+  const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
+    clipboardData: { getData: () => text },
+  });
+
+  // Default paste proceeds (not cancelled) and no chip is created.
+  expect(notCancelled).toBe(true);
+  expect(onAddPastedText).not.toHaveBeenCalled();
+});
+
+test("renders a pasted-text chip with a preview and badge, and removes it", () => {
+  const onRemovePastedText = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAddPastedText={vi.fn()}
+      pastedTexts={[{ id: "pasted-1", text: "first line\nsecond line", lineCount: 2 }]}
+      onRemovePastedText={onRemovePastedText}
+    />,
+  );
+
+  expect(screen.getByText("Pasted")).toBeInTheDocument();
+  expect(screen.getByText(/first line/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Remove pasted text, 2 lines" }));
+
+  expect(onRemovePastedText).toHaveBeenCalledWith("pasted-1");
 });

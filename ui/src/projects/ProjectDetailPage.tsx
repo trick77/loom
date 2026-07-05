@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
+import type { PastedText } from "../chat/pastedText";
 import type { ReasoningEffort } from "../chat/reasoning";
 import {
   isImageAttachment,
@@ -30,6 +31,9 @@ export function ProjectDetailPage({
   onReasoningEffortChange,
   onBack,
   onDraftChange,
+  pastedTexts,
+  onAddPastedText,
+  onRemovePastedText,
   onSend,
   onStop,
   onOpenThread,
@@ -57,6 +61,9 @@ export function ProjectDetailPage({
   onReasoningEffortChange(value: ReasoningEffort): void;
   onBack(): void;
   onDraftChange(value: string): void;
+  pastedTexts: PastedText[];
+  onAddPastedText(text: string): void;
+  onRemovePastedText(id: string): void;
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onOpenThread(threadID: string): void;
@@ -183,6 +190,9 @@ export function ProjectDetailPage({
                 reasoningEffort={reasoningEffort}
                 onReasoningEffortChange={onReasoningEffortChange}
                 onDraftChange={onDraftChange}
+                pastedTexts={pastedTexts}
+                onAddPastedText={onAddPastedText}
+                onRemovePastedText={onRemovePastedText}
                 onSend={handleSendRequest}
                 onStop={onStop}
                 onAttachFiles={handleAttachFiles}

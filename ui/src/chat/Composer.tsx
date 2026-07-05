@@ -9,6 +9,7 @@ import { Icon } from "./Icon";
 import { ReasoningMenu } from "./ReasoningMenu";
 import { MODEL_LABEL, type ReasoningEffort } from "./reasoning";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
+import { PASTE_AS_ATTACHMENT_THRESHOLD, type PastedText } from "./pastedText";
 import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
 export function Composer({
@@ -28,6 +29,9 @@ export function Composer({
   onAttachError,
   attachments = [],
   onRemoveAttachment,
+  pastedTexts = [],
+  onAddPastedText,
+  onRemovePastedText,
 }: {
   variant: "start" | "thread";
   draft: string;
@@ -51,6 +55,11 @@ export function Composer({
   onAttachError?(message: string): void;
   attachments?: ComposerAttachment[];
   onRemoveAttachment?(id: string): void;
+  // Large pastes collapsed into removable "Pasted" chips (see pastedText.ts).
+  // When onAddPastedText is omitted, an oversized paste falls back to inline insertion.
+  pastedTexts?: PastedText[];
+  onAddPastedText?(text: string): void;
+  onRemovePastedText?(id: string): void;
 }) {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +84,10 @@ export function Composer({
   const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
   const sendIconClass = variant === "thread" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   const padX = "px-6";
-  const canSend = !isSending && !sendDisabled && draft.trim() !== "";
+  // A paste-only message (empty textarea but a staged "Pasted" chip) is sendable.
+  const hasContent = draft.trim() !== "" || pastedTexts.length > 0;
+  const hasStagedRow = attachments.length > 0 || pastedTexts.length > 0;
+  const canSend = !isSending && !sendDisabled && hasContent;
   const actionButtonClass = isSending
     ? "bg-[#3a3a37] hover:bg-[#4b4a46]"
     : "bg-accent hover:bg-accent-strong disabled:bg-accent";
@@ -130,12 +142,15 @@ export function Composer({
         onSend();
       }}
     >
-      {attachments.length > 0 && (
+      {hasStagedRow && (
         <div
           aria-label={t("composer.attachments")}
           className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[104px]`}
         >
           <div className="flex flex-wrap gap-2">
+            {pastedTexts.map((pasted) => (
+              <PastedTextPill key={pasted.id} pasted={pasted} onRemove={onRemovePastedText} />
+            ))}
             {attachments.map((attachment) => (
               <AttachmentPill
                 key={attachment.id}
@@ -149,9 +164,18 @@ export function Composer({
       <textarea
         ref={textareaRef}
         rows={1}
-        className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} ${attachments.length > 0 ? "pt-2" : "pt-5"} pb-3 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
+        className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} ${hasStagedRow ? "pt-2" : "pt-5"} pb-3 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
         placeholder={placeholder}
         value={draft}
+        onPaste={(event) => {
+          // A very large plain-text paste collapses into a removable "Pasted" chip
+          // instead of flooding the textarea. Char count only — matches claude.ai.
+          if (onAddPastedText === undefined) return;
+          const text = event.clipboardData.getData("text/plain");
+          if (text.length <= PASTE_AS_ATTACHMENT_THRESHOLD) return;
+          event.preventDefault();
+          onAddPastedText(text);
+        }}
         onChange={(event) => {
           // Any edit re-opens the popover a prior Escape had dismissed.
           setSuggestionsDismissed(false);
@@ -282,17 +306,45 @@ export function Composer({
   );
 }
 
-function AttachmentRemoveButton({ attachment, onRemove }: { attachment: ComposerAttachment; onRemove: (id: string) => void }) {
-  const { t } = useTranslation();
+function AttachmentRemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#64615a] bg-[#343432] text-[#d8d4ca] opacity-95 transition-colors hover:bg-[#44423d] hover:text-[#f3f0e8]"
       type="button"
-      aria-label={t("composer.removeAttachment", { filename: attachment.filename })}
-      onClick={() => onRemove(attachment.id)}
+      aria-label={label}
+      onClick={onClick}
     >
       <Icon name="closeCircle" size="14px" />
     </button>
+  );
+}
+
+// A large paste, rendered as a compact card echoing claude.ai's "Pasted text"
+// chip: a small clamped preview of the raw text with an uppercase "Pasted" badge.
+function PastedTextPill({ pasted, onRemove }: { pasted: PastedText; onRemove?: (id: string) => void }) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="group/attachment relative flex h-[76px] w-[140px] max-w-full flex-col overflow-hidden rounded-lg border border-[#4b4a46] bg-[#343432] text-[#f3f0e8] shadow-[0_8px_18px_rgba(0,0,0,0.18)]"
+      title={t("composer.pastedText")}
+    >
+      {/* Preview of the raw text: tiny, wrapped, clipped by the fixed card height.
+          Cap the substring so a multi-megabyte paste never renders in full. */}
+      <p className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap break-all px-2 pt-2 pl-7 font-mono text-[8px] leading-[11px] text-[#aaa79e]">
+        {pasted.text.slice(0, 400)}
+      </p>
+      <div className="flex-none px-2 pb-1.5">
+        <span className="inline-block rounded-[4px] border border-[#55534d] bg-[#2f2f2c]/70 px-1 py-0.5 text-[10px] font-medium uppercase leading-none text-[#d8d4ca]">
+          {t("composer.pastedBadge")}
+        </span>
+      </div>
+      {onRemove !== undefined && (
+        <AttachmentRemoveButton
+          label={t("composer.removePastedText", { count: pasted.lineCount })}
+          onClick={() => onRemove(pasted.id)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -333,7 +385,12 @@ function AttachmentPill({
             {attachment.error ?? t("composer.uploadFailed")}
           </span>
         )}
-        {onRemove !== undefined && <AttachmentRemoveButton attachment={attachment} onRemove={onRemove} />}
+        {onRemove !== undefined && (
+          <AttachmentRemoveButton
+            label={t("composer.removeAttachment", { filename: attachment.filename })}
+            onClick={() => onRemove(attachment.id)}
+          />
+        )}
       </div>
     );
   }
@@ -359,7 +416,12 @@ function AttachmentPill({
           </div>
         )}
       </div>
-      {onRemove !== undefined && <AttachmentRemoveButton attachment={attachment} onRemove={onRemove} />}
+      {onRemove !== undefined && (
+        <AttachmentRemoveButton
+          label={t("composer.removeAttachment", { filename: attachment.filename })}
+          onClick={() => onRemove(attachment.id)}
+        />
+      )}
     </div>
   );
 }
