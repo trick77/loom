@@ -12,6 +12,7 @@ import { ErrorText } from "./ErrorText";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import { AssistantProse, MessageBubble } from "./messages";
+import type { PastedText } from "./pastedText";
 import type { ReasoningEffort } from "./reasoning";
 import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./threadUtils";
@@ -37,6 +38,9 @@ export function ThreadPanel({
   onReasoningEffortChange,
   onOpenSidebar,
   onDraftChange,
+  pastedTexts,
+  onAddPastedText,
+  onRemovePastedText,
   onSend,
   onStop,
   onRetry,
@@ -64,6 +68,9 @@ export function ThreadPanel({
   reasoningEffort: ReasoningEffort;
   onReasoningEffortChange(value: ReasoningEffort): void;
   onDraftChange(value: string): void;
+  pastedTexts: PastedText[];
+  onAddPastedText(text: string): void;
+  onRemovePastedText(id: string): void;
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onRetry(content: string): void;
@@ -488,6 +495,9 @@ export function ThreadPanel({
                 reasoningEffort={reasoningEffort}
                 onReasoningEffortChange={onReasoningEffortChange}
                 onDraftChange={onDraftChange}
+                pastedTexts={pastedTexts}
+                onAddPastedText={onAddPastedText}
+                onRemovePastedText={onRemovePastedText}
                 onSend={handleSendRequest}
                 onStop={onStop}
                 onAttachFiles={thread === null ? undefined : handleAttachFiles}

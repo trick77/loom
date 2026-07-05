@@ -7,6 +7,7 @@ import { ErrorText } from "./ErrorText";
 import { Icon } from "./Icon";
 import { AssistantProse, MessageBubble } from "./messages";
 import { ActivityTracePanel } from "./ActivityTracePanel";
+import type { PastedText } from "./pastedText";
 import type { ReasoningEffort } from "./reasoning";
 import type { MessageWithActivityTrace } from "./types";
 import { previousUserContent } from "./threadUtils";
@@ -27,6 +28,9 @@ export function IncognitoPanel({
   reasoningEffort,
   onReasoningEffortChange,
   onDraftChange,
+  pastedTexts,
+  onAddPastedText,
+  onRemovePastedText,
   onSend,
   onStop,
   onRetry,
@@ -40,6 +44,9 @@ export function IncognitoPanel({
   reasoningEffort: ReasoningEffort;
   onReasoningEffortChange(value: ReasoningEffort): void;
   onDraftChange(value: string): void;
+  pastedTexts: PastedText[];
+  onAddPastedText(text: string): void;
+  onRemovePastedText(id: string): void;
   onSend(): void;
   onStop(): void;
   onRetry(content: string): void;
@@ -81,6 +88,9 @@ export function IncognitoPanel({
       reasoningEffort={reasoningEffort}
       onReasoningEffortChange={onReasoningEffortChange}
       onDraftChange={onDraftChange}
+      pastedTexts={pastedTexts}
+      onAddPastedText={onAddPastedText}
+      onRemovePastedText={onRemovePastedText}
       onSend={onSend}
       onStop={onStop}
     />

@@ -34,6 +34,7 @@ import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
+import { createPastedText, type PastedText } from "./pastedText";
 import { useMediaQuery } from "./useMediaQuery";
 import {
   composerAttachmentFromArtifact,
@@ -90,6 +91,21 @@ export function ThreadShell({
   const { t, i18n } = useTranslation();
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
   const [draft, setDraft] = useState("");
+  // Large pastes collapsed into removable "Pasted" chips shown above the textarea.
+  // Folded back into the outgoing message content on send (never uploaded/indexed).
+  const [pastedTexts, setPastedTexts] = useState<PastedText[]>([]);
+  function handleAddPastedText(text: string) {
+    setPastedTexts((current) => [...current, createPastedText(text)]);
+  }
+  function handleRemovePastedText(id: string) {
+    setPastedTexts((current) => current.filter((pasted) => pasted.id !== id));
+  }
+  // Merge the trimmed draft with any staged pasted blocks into the message content.
+  function composeSendContent(): string {
+    return [draft.trim(), ...pastedTexts.map((pasted) => pasted.text)]
+      .filter((part) => part !== "")
+      .join("\n\n");
+  }
   // Files attached on the new-thread start screen, held until the first send creates
   // a thread to bind them to (deferred upload — avoids orphan empty threads and
   // scopes the upload to the thread it was attached in).
@@ -570,10 +586,22 @@ export function ThreadShell({
   }
 
   async function handleSend(attachments: ComposerAttachment[] = pendingAttachments.map(toSentAttachment)) {
-    const content = draft.trim();
+    const draftText = draft.trim();
+    const content = composeSendContent();
     if (content === "" || isSending) return;
-    if (runSlashCommand(content)) return;
-    await sendContent(content, { restoreDraftOnError: true, attachments });
+    // Slash command detection is the draft alone (the popover keys off it too); it
+    // clears any staged chips along with the draft.
+    if (runSlashCommand(draftText)) return;
+    // Clear chips optimistically; on a send error sendContent restores the chips
+    // and the draft-only text (not the merged content) for retry.
+    const restorePastedTexts = pastedTexts;
+    setPastedTexts([]);
+    await sendContent(content, {
+      restoreDraftOnError: true,
+      attachments,
+      restoreDraft: draftText,
+      restorePastedTexts,
+    });
   }
 
   // runSlashCommand intercepts a "/command" draft: it opens the ephemeral overlay
@@ -583,6 +611,7 @@ export function ThreadShell({
     const command = matchSlashCommand(content);
     if (command === null) return false;
     setDraft("");
+    setPastedTexts([]);
     setSlashCommand(command.name);
     return true;
   }
@@ -594,7 +623,15 @@ export function ThreadShell({
 
   async function sendContent(
     content: string,
-    options: { restoreDraftOnError: boolean; attachments: ComposerAttachment[] },
+    options: {
+      restoreDraftOnError: boolean;
+      attachments: ComposerAttachment[];
+      // On error restore the textarea to this (the draft alone, without the merged
+      // pasted blocks) and re-stage restorePastedTexts, so a large paste returns as
+      // a chip rather than flooding the textarea. Defaults to the full `content`.
+      restoreDraft?: string;
+      restorePastedTexts?: PastedText[];
+    },
   ) {
     setDraft("");
     setIsSending(true);
@@ -813,7 +850,10 @@ export function ThreadShell({
         const staleID = optimisticUserMessageID;
         setMessages((current) => current.filter((item) => item.id !== staleID));
       }
-      if (options.restoreDraftOnError) setDraft(content);
+      if (options.restoreDraftOnError) {
+        setDraft(options.restoreDraft ?? content);
+        if (options.restorePastedTexts !== undefined) setPastedTexts(options.restorePastedTexts);
+      }
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
@@ -832,6 +872,7 @@ export function ThreadShell({
     // button at an unrelated thread.
     streamAbortRef.current?.abort();
     setDraft("");
+    setPastedTexts([]);
     setSendError("");
     clearStreamingBlocks();
     setIsSending(false);
@@ -847,6 +888,7 @@ export function ThreadShell({
     setIncognito(false);
     setIncognitoMessages([]);
     setDraft("");
+    setPastedTexts([]);
     setSendError("");
     clearStreamingBlocks();
     setIsSending(false);
@@ -857,7 +899,13 @@ export function ThreadShell({
   // to the stateless endpoint: no thread is created, no navigation happens, and the
   // whole prior transcript is replayed as history (the server keeps none). The
   // assistant message is appended to the in-memory transcript only.
-  async function sendIncognitoContent(content: string, restoreDraftOnError: boolean) {
+  async function sendIncognitoContent(
+    content: string,
+    restoreDraftOnError: boolean,
+    // On error restore the textarea to restore.draft (without the merged pasted
+    // blocks) and re-stage restore.pastedTexts. Defaults to the full `content`.
+    restore?: { draft: string; pastedTexts: PastedText[] },
+  ) {
     setDraft("");
     setIsSending(true);
     clearStreamingBlocks();
@@ -920,7 +968,10 @@ export function ThreadShell({
       keepFailedTurnVisible = true;
       // Drop the optimistic user bubble that never got a reply so the user can retry.
       setIncognitoMessages((current) => current.filter((message) => message.id !== tempID));
-      if (restoreDraftOnError) setDraft(content);
+      if (restoreDraftOnError) {
+        setDraft(restore?.draft ?? content);
+        if (restore !== undefined) setPastedTexts(restore.pastedTexts);
+      }
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
@@ -932,10 +983,13 @@ export function ThreadShell({
   }
 
   async function handleIncognitoSend() {
-    const content = draft.trim();
+    const draftText = draft.trim();
+    const content = composeSendContent();
     if (content === "" || isSending) return;
-    if (runSlashCommand(content)) return;
-    await sendIncognitoContent(content, true);
+    if (runSlashCommand(draftText)) return;
+    const restorePastedTexts = pastedTexts;
+    setPastedTexts([]);
+    await sendIncognitoContent(content, true, { draft: draftText, pastedTexts: restorePastedTexts });
   }
 
   async function handleIncognitoRetry(content: string) {
@@ -965,6 +1019,9 @@ export function ThreadShell({
             reasoningEffort={reasoningEffort}
             onReasoningEffortChange={setReasoningEffort}
             onDraftChange={setDraft}
+            pastedTexts={pastedTexts}
+            onAddPastedText={handleAddPastedText}
+            onRemovePastedText={handleRemovePastedText}
             onSend={() => void handleIncognitoSend()}
             onStop={() => handleStopResponse("incognito")}
             onRetry={(content) => void handleIncognitoRetry(content)}
@@ -1115,6 +1172,9 @@ export function ThreadShell({
               onReasoningEffortChange={setReasoningEffort}
               onBack={navigateToProjects}
               onDraftChange={setDraft}
+              pastedTexts={pastedTexts}
+              onAddPastedText={handleAddPastedText}
+              onRemovePastedText={handleRemovePastedText}
               onSend={handleSend}
               onStop={handleStopResponse}
               onOpenThread={(threadID) => void selectThread(threadID)}
@@ -1151,6 +1211,9 @@ export function ThreadShell({
             onReasoningEffortChange={setReasoningEffort}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onDraftChange={setDraft}
+            pastedTexts={pastedTexts}
+            onAddPastedText={handleAddPastedText}
+            onRemovePastedText={handleRemovePastedText}
             onSend={handleSend}
             onStop={handleStopResponse}
             onAttachFiles={handleAttachPendingFiles}
@@ -1177,6 +1240,9 @@ export function ThreadShell({
             reasoningEffort={reasoningEffort}
             onReasoningEffortChange={setReasoningEffort}
             onDraftChange={setDraft}
+            pastedTexts={pastedTexts}
+            onAddPastedText={handleAddPastedText}
+            onRemovePastedText={handleRemovePastedText}
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
