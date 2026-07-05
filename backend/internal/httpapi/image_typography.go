@@ -11,6 +11,14 @@ import (
 // (which is told to preserve "text requirements"), so logo/text intent surfaces
 // as vocab even when the raw user message lacked it.
 //
+// This is now a FALLBACK to the semantic gate's language-agnostic NeedsText
+// signal (see llm.ClassifyImageIntent). The gate authoritatively picks the
+// typography model on the required-image path from the user's own words in any
+// language; this lexical check additionally covers the case where the model
+// self-initiates generate_image in the normal tool loop (where no gate NeedsText
+// flag flows), reading its own English-leaning compiled prompt. resolveThreadImageModel
+// ORs the two, so either signal selects flex.
+//
 // It fires on three cues, biased toward firing because the cost of a miss (text
 // rendered on the weaker klein model) is worse than the cost of a false positive
 // (a non-text image generated on the slightly slower/costlier flex):

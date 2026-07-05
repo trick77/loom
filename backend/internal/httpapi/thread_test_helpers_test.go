@@ -155,7 +155,7 @@ type fakeThreadStore struct {
 	// the auto-description summarizes and the count the refresh gate compares against.
 	projectThreadTitles []string
 	userMemory          chat.UserMemory
-	userMessageCount          int
+	userMessageCount    int
 	// userDirectives backs the directive store stubs; ordered as inserted.
 	userDirectives []chat.UserDirective
 	// directiveWriteErr, when set, is returned by AddUserDirective /
@@ -582,6 +582,10 @@ type fakeChatClient struct {
 	// streamErr, when set, makes StreamChatWithTools emit any reasoning then return
 	// the error (no content), modelling a turn that fails/stalls mid-stream.
 	streamErr error
+	// imageIntent is the canned reply of the semantic image-routing gate. Its
+	// zero value ({Action:""}) maps to ImageIntentNone, so tests that never touch
+	// images get the non-image path for free.
+	imageIntent llm.ImageIntent
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -620,6 +624,10 @@ func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, _, _ string)
 
 func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, error) {
 	return f.category, nil
+}
+
+func (f fakeChatClient) ClassifyImageIntent(_ context.Context, _ string, _, _ bool) (llm.ImageIntent, error) {
+	return f.imageIntent, nil
 }
 
 func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string) (string, error) {
@@ -715,6 +723,10 @@ func (f *blockingChatClient) ClassifyThread(context.Context, string) (string, er
 	return "", nil
 }
 
+func (f *blockingChatClient) ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error) {
+	return llm.ImageIntent{Action: llm.ImageIntentNone}, nil
+}
+
 func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
@@ -737,6 +749,7 @@ type fakeToolChatClient struct {
 	tools          [][]llm.Tool
 	plain          string
 	classifyResult string
+	imageIntent    llm.ImageIntent
 	titleResult    string
 	titleFor       func(reasoning string) string
 }
@@ -812,6 +825,10 @@ func (f *fakeToolChatClient) GenerateThreadTitle(context.Context, string, string
 
 func (f *fakeToolChatClient) ClassifyThread(context.Context, string) (string, error) {
 	return f.classifyResult, nil
+}
+
+func (f *fakeToolChatClient) ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error) {
+	return f.imageIntent, nil
 }
 
 func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning, _ string) (string, error) {
