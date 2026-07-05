@@ -33,8 +33,12 @@ type mcpToolInfo struct {
 	Required    []string `json:"required"`
 }
 
-// handleMCPTools backs the /tools slash command: every tool currently exposed to
-// the model, with its server, description, and required arguments.
+// handleMCPTools backs the /tools slash command: every MCP tool the configured
+// servers advertise, with its server, description, and required arguments. This
+// is the full configured surface — the catalog of what is available in principle.
+// Per-turn category gating (see availableTools) may inject only a subset of these
+// into any given request, so a tool listed here is not guaranteed to be offered
+// on every turn.
 func (s *server) handleMCPTools(w http.ResponseWriter, r *http.Request) {
 	if _, ok := auth.UserFromContext(r.Context()); !ok {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")

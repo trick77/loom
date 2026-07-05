@@ -1016,7 +1016,9 @@ func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 		}},
 	}
 
-	tools := srv.availableTools(chat.Thread{})
+	// Gate with the coding category so the docgen tools are offered (this test is
+	// about de-duping an MCP tool against a built-in, not about gating).
+	tools := srv.availableTools(chat.Thread{}, newToolGate(string(classifier.Coding), "", ""))
 
 	var builtInCount, searchCount int
 	for _, tool := range tools {
@@ -1587,7 +1589,7 @@ func TestStreamMessageSystemPromptRoutesURLTools(t *testing.T) {
 	if !strings.Contains(history[0].Content, "For URLs, use the lightweight fetch tool first") {
 		t.Fatalf("system prompt = %q, want fetch-first URL routing directive", history[0].Content)
 	}
-	if !strings.Contains(history[0].Content, "Use browser tools only when fetch cannot access useful content") {
+	if !strings.Contains(history[0].Content, "Use the browser navigation tool only when fetch cannot access useful content") {
 		t.Fatalf("system prompt = %q, want browser fallback directive", history[0].Content)
 	}
 }
@@ -2112,5 +2114,130 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 	if got.Category != string(classifier.CreativeWriting) {
 		t.Fatalf("thread category = %q, want %q (normal classification)", got.Category, classifier.CreativeWriting)
+	}
+}
+
+// TestStreamMessageGatesToolsByCategory drives a full HTTP turn through
+// classification, the tool gate, and availableTools, then inspects the exact
+// tool array handed to the LLM — the end-to-end proof that a plain turn ships a
+// trimmed set while a coding turn gets the coding-relevant tools. It exercises
+// the real path a manual run would, but deterministically.
+func TestStreamMessageGatesToolsByCategory(t *testing.T) {
+	toolNames := func(tools []llm.Tool) map[string]bool {
+		names := map[string]bool{}
+		for _, tool := range tools {
+			names[tool.Function.Name] = true
+		}
+		return names
+	}
+	newServer := func(category string, llmClient *fakeToolChatClient) http.Handler {
+		return newAuthenticatedServer(t, Deps{
+			Thread:    &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}},
+			Artifacts: fakeArtifactStore{},
+			UsersDir:  t.TempDir(),
+			DocTools:  []docgen.Generator{docgen.TextGenerator{}},
+			LLM:       llmClient,
+			MCP: fakeMCPService{
+				tools: []llm.Tool{
+					{Type: "function", Function: llm.ToolFunction{Name: "search__web", Description: "Search the web"}},
+					{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs", Description: "Library docs"}},
+				},
+				toolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
+			},
+		})
+	}
+	run := func(t *testing.T, category, content string) map[string]bool {
+		t.Helper()
+		llmClient := &fakeToolChatClient{
+			classifyResult: category,
+			titleResult:    "T",
+			results:        []llm.StreamResult{{Content: "ok"}},
+		}
+		req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"`+content+`"}`)
+		rec := httptest.NewRecorder()
+		newServer(category, llmClient).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+		}
+		if len(llmClient.tools) != 1 {
+			t.Fatalf("tool rounds = %d, want 1; body=%s", len(llmClient.tools), rec.Body.String())
+		}
+		return toolNames(llmClient.tools[0])
+	}
+
+	t.Run("general turn ships a trimmed set", func(t *testing.T) {
+		names := run(t, string(classifier.General), "please tell me a short friendly greeting")
+		// Always-on core + category-neutral MCP remain.
+		for _, want := range []string{conversationSearchToolName, "search__web"} {
+			if !names[want] {
+				t.Fatalf("general turn missing always-on tool %q; got %v", want, names)
+			}
+		}
+		// Gated groups are withheld.
+		if names["create_text_file"] {
+			t.Fatalf("general turn should not offer docgen tools; got %v", names)
+		}
+		if names["context7__query-docs"] {
+			t.Fatalf("general turn should not offer coding-tagged context7; got %v", names)
+		}
+	})
+
+	t.Run("coding turn gets docgen and context7", func(t *testing.T) {
+		names := run(t, string(classifier.Coding), "please help me understand this program")
+		if !names["create_text_file"] {
+			t.Fatalf("coding turn should offer docgen tools; got %v", names)
+		}
+		if !names["context7__query-docs"] {
+			t.Fatalf("coding turn should offer coding-tagged context7; got %v", names)
+		}
+	})
+}
+
+// TestStreamMessageDriftReclassifiesContinuedTurn verifies the semantic drift
+// gate: a continued turn on a thread whose sticky category is general (already
+// titled, so no first-message classification runs) re-classifies THIS message,
+// and when that classification is coding the coding-tagged context7 tools are
+// injected — without any keyword lexicon.
+func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
+	llmClient := &fakeToolChatClient{
+		classifyResult: string(classifier.Coding), // fresh per-turn classification
+		results:        []llm.StreamResult{{Content: "ok"}},
+	}
+	server := newAuthenticatedServer(t, Deps{
+		// Non-default title + stored general category => no re-title, drift runs.
+		Thread:    &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Weekend plans", Category: string(classifier.General)}},
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+		DocTools:  []docgen.Generator{docgen.TextGenerator{}},
+		LLM:       llmClient,
+		MCP: fakeMCPService{
+			tools:          []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs"}}},
+			toolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
+		},
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"wie behebe ich diese Fehlermeldung in meinem Code"}`)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if len(llmClient.tools) != 1 {
+		t.Fatalf("tool rounds = %d, want 1; body=%s", len(llmClient.tools), rec.Body.String())
+	}
+	var hasContext7, hasDocgen bool
+	for _, tool := range llmClient.tools[0] {
+		switch tool.Function.Name {
+		case "context7__query-docs":
+			hasContext7 = true
+		case "create_text_file":
+			hasDocgen = true
+		}
+	}
+	if !hasContext7 {
+		t.Fatal("drift-to-coding turn should offer context7 (via fresh classification, not keywords)")
+	}
+	if !hasDocgen {
+		t.Fatal("drift-to-coding turn should offer docgen (coding is a docgen category)")
 	}
 }

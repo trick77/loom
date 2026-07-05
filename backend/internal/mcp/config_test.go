@@ -59,7 +59,7 @@ func TestFetchServerConfigAllowlistsFetchTool(t *testing.T) {
 	}
 }
 
-func TestObscuraServerConfigExposesAdvertisedTools(t *testing.T) {
+func TestObscuraServerConfigAllowlistsNavigateAndSnapshot(t *testing.T) {
 	cfg := ObscuraServerConfig("http://obscura:8090/mcp")
 	if cfg.Transport != TransportStreamableHTTP {
 		t.Fatalf("Transport = %q, want streamable-http", cfg.Transport)
@@ -67,7 +67,11 @@ func TestObscuraServerConfigExposesAdvertisedTools(t *testing.T) {
 	if cfg.URL != "http://obscura:8090/mcp" {
 		t.Fatalf("URL = %q, want configured URL", cfg.URL)
 	}
-	if len(cfg.Tools) != 0 {
-		t.Fatalf("Tools = %#v, want no allowlist", cfg.Tools)
+	// The allowlist keeps the obscura surface to the two tools the fetch->obscura
+	// fallback drives, instead of injecting the full ~20-tool browser surface into
+	// every prompt.
+	want := []string{"browser_navigate", "browser_snapshot"}
+	if !reflect.DeepEqual(cfg.Tools, want) {
+		t.Fatalf("Tools = %#v, want %#v", cfg.Tools, want)
 	}
 }

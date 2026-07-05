@@ -394,6 +394,41 @@ func (s *Service) Tools() []llm.Tool {
 	return append([]llm.Tool(nil), s.tools...)
 }
 
+// ToolsFor returns the exposed tools whose server is relevant to the given active
+// category set. A server that declares no Categories is category-neutral and
+// always included (the safe default that keeps generically-useful servers like
+// web search on for every turn); a server that declares Categories is included
+// only when the active set contains one of them. A tool whose server is unknown
+// to the config is included, so a missing config never silently drops tools.
+// Passing an empty active set therefore yields only the category-neutral servers.
+func (s *Service) ToolsFor(active map[string]bool) []llm.Tool {
+	if s == nil {
+		return nil
+	}
+	out := make([]llm.Tool, 0, len(s.tools))
+	for _, t := range s.tools {
+		server, _, ok := SplitExposedToolName(t.Function.Name)
+		if !ok {
+			out = append(out, t)
+			continue
+		}
+		cats := s.cfg.Servers[server].Categories
+		if len(cats) == 0 || anyCategoryActive(cats, active) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func anyCategoryActive(cats []string, active map[string]bool) bool {
+	for _, c := range cats {
+		if active[c] {
+			return true
+		}
+	}
+	return false
+}
+
 // HasTool reports whether an exposed tool with the given name is registered.
 func (s *Service) HasTool(name string) bool {
 	if s == nil {

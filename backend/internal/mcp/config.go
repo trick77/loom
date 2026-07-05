@@ -37,6 +37,14 @@ type ServerConfig struct {
 	// only tools whose original name appears here are exposed; an empty list
 	// exposes every tool the server advertises.
 	Tools []string `json:"tools"`
+	// Categories is an optional list of conversation classifier categories this
+	// server is relevant to (e.g. ["coding"]). When non-empty, the server's tools
+	// are injected into the prompt only for turns whose active category set
+	// includes one of these values; an empty list is category-neutral and always
+	// injected. Values are opaque strings here — the httpapi layer maps them to
+	// its classifier categories — so an unrecognized value simply never matches
+	// and hides the server. See Service.ToolsFor.
+	Categories []string `json:"categories"`
 }
 
 func ExposedToolName(serverName, toolName string) string {
@@ -89,9 +97,18 @@ func FetchServerConfig(url string) ServerConfig {
 	}
 }
 
+// ObscuraServerConfig builds the config for the headless-browser sidecar. The
+// Tools allowlist deliberately exposes only navigate + snapshot: those are the
+// two tools the deterministic fetch->obscura fallback drives (see
+// obscuraNavigateToolName/obscuraSnapshotToolName in the httpapi package), and
+// they cover read-style browsing. The full obscura surface (~20 interactive
+// browser tools: click/type/form-fill/evaluate/...) is not injected — it would
+// dominate the prompt's tool budget on every turn and Loom's flows do not drive
+// interactive browser automation.
 func ObscuraServerConfig(url string) ServerConfig {
 	return ServerConfig{
 		Transport: TransportStreamableHTTP,
 		URL:       url,
+		Tools:     []string{"browser_navigate", "browser_snapshot"},
 	}
 }
