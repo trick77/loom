@@ -142,7 +142,7 @@ func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[
 func (c *remoteClient) Probe(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, c.cfg.URL, nil)
 	if err != nil {
-		return err
+		return scrubURLError(err)
 	}
 	for key, value := range c.cfg.Headers {
 		req.Header.Set(key, value)
