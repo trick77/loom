@@ -129,14 +129,45 @@ func parseImageIntent(reply string) ImageIntent {
 	}
 }
 
-// extractJSONObject returns the first {...} span in s (from the first "{" to the
-// last "}"), or "" when there is none. Lets the parse survive a model that wraps
-// the object in a code fence or a stray lead-in despite the "ONLY JSON" instruction.
+// extractJSONObject returns the first brace-balanced {...} span in s, or "" when
+// there is none. Lets the parse survive a model that wraps the object in a code
+// fence or a stray lead-in despite the "ONLY JSON" instruction. Returning the
+// first BALANCED object (not first-"{"-to-last-"}") means a reply that echoes the
+// prompt's example object before the real one still parses the example rather
+// than joining two objects into invalid JSON. Brace counting ignores braces
+// inside strings so a "}" in a value does not close early.
 func extractJSONObject(s string) string {
-	open := strings.Index(s, "{")
-	closeIdx := strings.LastIndex(s, "}")
-	if open == -1 || closeIdx <= open {
+	start := strings.IndexByte(s, '{')
+	if start == -1 {
 		return ""
 	}
-	return s[open : closeIdx+1]
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return ""
 }

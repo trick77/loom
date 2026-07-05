@@ -99,6 +99,9 @@ func TestParseImageIntent(t *testing.T) {
 		{`{"action":"nonsense"}`, ImageIntent{Action: ImageIntentNone}}, // unknown -> none
 		{`not json at all`, ImageIntent{Action: ImageIntentNone}},
 		{``, ImageIntent{Action: ImageIntentNone}},
+		// Two objects (echoed example, then the answer): the first BALANCED object is
+		// parsed rather than joining both into invalid JSON that drops to none.
+		{`{"action":"create","needs_text":true} {"action":"none"}`, ImageIntent{Action: ImageIntentCreate, NeedsText: true}},
 		// needs_text on a none reply is dropped (meaningless without an image action).
 		{`{"action":"none","needs_text":true}`, ImageIntent{Action: ImageIntentNone}},
 	}

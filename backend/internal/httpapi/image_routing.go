@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"unicode"
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
@@ -74,6 +75,39 @@ func imageRoutingFor(intent llm.ImageIntent, hasAttachedImage, threadHasImage bo
 	default:
 		return imageRouting{}
 	}
+}
+
+// wordTokens lowercases content and splits it into alphanumeric tokens
+// (Unicode-aware, so umlauts survive). Used by the typography fallback below,
+// which scans the model-authored compiled image prompt.
+func wordTokens(content string) []string {
+	var tokens []string
+	var current strings.Builder
+	flush := func() {
+		if current.Len() == 0 {
+			return
+		}
+		tokens = append(tokens, current.String())
+		current.Reset()
+	}
+	for _, r := range strings.ToLower(content) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			current.WriteRune(r)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return tokens
+}
+
+func containsAnyToken(tokens []string, set map[string]bool) bool {
+	for _, token := range tokens {
+		if set[token] {
+			return true
+		}
+	}
+	return false
 }
 
 // priorConversationHasImageArtifact reports whether any earlier message in the

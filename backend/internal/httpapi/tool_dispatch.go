@@ -308,18 +308,22 @@ const maxTypographyImageSide = 1024
 // resolveThreadImageModel returns the image model to use for this thread, locking
 // the choice on the first image generated in it. If the thread has no locked
 // model yet it picks the typography model when typography routing is configured
-// and the turn's semantic intent gate flagged legible-text/logo work, otherwise
-// the default model, then persists the choice via the atomic set-if-empty. Every
-// later image in the thread reuses the locked value, so the model never
-// flip-flops mid-conversation. If persistence fails it falls back to the in-memory
-// decision so generation still proceeds (an empty result defers to the provider's
-// configured default).
-func (s *server) resolveThreadImageModel(ctx context.Context, userID string, thread chat.Thread, typography bool) string {
+// and the turn is legible-text/logo work, otherwise the default model, then
+// persists the choice via the atomic set-if-empty. Every later image in the thread
+// reuses the locked value, so the model never flip-flops mid-conversation. If
+// persistence fails it falls back to the in-memory decision so generation still
+// proceeds (an empty result defers to the provider's configured default).
+//
+// Typography is signalled two ways, OR'd: the semantic gate's language-agnostic
+// NeedsText flag (authoritative on the required-image path), and a lexical scan of
+// the model-authored compiled prompt (which covers a self-initiated generate_image
+// in the normal tool loop, where no gate flag flows).
+func (s *server) resolveThreadImageModel(ctx context.Context, userID string, thread chat.Thread, typography bool, compiledPrompt string) string {
 	if locked := strings.TrimSpace(thread.ImageModel); locked != "" {
 		return locked
 	}
 	candidate := s.bflDefaultModel
-	if tm := strings.TrimSpace(s.bflTypographyModel); tm != "" && typography {
+	if tm := strings.TrimSpace(s.bflTypographyModel); tm != "" && (typography || isTypographyImageRequest(compiledPrompt)) {
 		candidate = tm
 	}
 	if updated, _, err := s.thread.SetThreadImageModelIfEmpty(ctx, userID, thread.ID, candidate); err == nil {
@@ -368,7 +372,7 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	}
 	// Pick (and lock, once per thread) the image model. When it is the typography
 	// model, clamp output to ≤1024 px/side so flex matches the klein default's size.
-	req.Model = s.resolveThreadImageModel(ctx, user.ID, thread, typography)
+	req.Model = s.resolveThreadImageModel(ctx, user.ID, thread, typography, req.Prompt)
 	if tm := strings.TrimSpace(s.bflTypographyModel); tm != "" && req.Model == tm {
 		req.Width, req.Height = imagegen.ClampMaxSide(req.Width, req.Height, maxTypographyImageSide)
 	}
