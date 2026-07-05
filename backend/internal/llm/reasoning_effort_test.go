@@ -46,7 +46,7 @@ func TestClient_StreamUsesReasoningEffortFromContext(t *testing.T) {
 // With no per-request effort (utility calls, or a client that never sends one),
 // the turn falls back to the client's configured default.
 func TestClient_StreamFallsBackToDefaultReasoningEffort(t *testing.T) {
-	if effort := captureReasoningEffort(t, context.Background()); effort != defaultReasoningEffort {
-		t.Fatalf("reasoning_effort = %q, want %q", effort, defaultReasoningEffort)
+	if effort := captureReasoningEffort(t, context.Background()); effort != DefaultReasoningEffort {
+		t.Fatalf("reasoning_effort = %q, want %q", effort, DefaultReasoningEffort)
 	}
 }

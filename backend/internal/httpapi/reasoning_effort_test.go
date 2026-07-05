@@ -1,6 +1,10 @@
 package httpapi
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/trick77/loom/internal/llm"
+)
 
 // normalizeReasoningEffort passes MiMo's accepted values through unchanged and
 // clamps everything else (empty, unknown, an old client that never sends one) to
@@ -10,10 +14,10 @@ func TestNormalizeReasoningEffort(t *testing.T) {
 		"low":     "low",
 		"medium":  "medium",
 		"high":    "high",
-		"":        defaultReasoningEffort,
-		"xhigh":   defaultReasoningEffort,
-		"HIGH":    defaultReasoningEffort,
-		"maximum": defaultReasoningEffort,
+		"":        llm.DefaultReasoningEffort,
+		"xhigh":   llm.DefaultReasoningEffort,
+		"HIGH":    llm.DefaultReasoningEffort,
+		"maximum": llm.DefaultReasoningEffort,
 	}
 	for input, want := range cases {
 		if got := normalizeReasoningEffort(input); got != want {

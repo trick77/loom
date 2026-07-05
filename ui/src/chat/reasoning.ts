@@ -27,28 +27,28 @@ export type ReasoningOption = {
 };
 
 // Ordered high -> low so the recommended default sits at the top of the menu.
-// Descriptions frame each level by the task it suits and the depth-vs-speed
-// trade-off. On an unlimited plan there is nothing to say about cost or quotas,
-// so they stay out of the copy entirely.
+// The copy is explicit that this is a speed-for-quality trade: less reasoning
+// means faster replies but weaker answers. On an unlimited plan there is nothing
+// to say about cost or quotas, so that stays out of the copy entirely.
 export const REASONING_OPTIONS: ReasoningOption[] = [
   {
     value: "high",
     label: "High",
     badge: "Standard",
     description:
-      "Thinks the longest before answering — best for intricate coding, multi-step problems, and questions with subtle edge cases. The default.",
+      "The most reasoning and the strongest answers, at the cost of speed. Best for hard coding, multi-step problems, and tricky edge cases. The default.",
   },
   {
     value: "medium",
     label: "Medium",
     description:
-      "A measured amount of thinking that still reasons through most everyday tasks, but reaches an answer noticeably sooner.",
+      "Less reasoning for faster replies, with some loss of answer quality. A fair balance for everyday tasks that are not especially hard.",
   },
   {
     value: "low",
     label: "Low",
     description:
-      "Minimal thinking for quick, well-defined asks where the path to the answer is already clear — the fastest replies.",
+      "The least reasoning and the fastest replies, but the weakest answers. Best kept for quick, straightforward asks.",
   },
 ];
 

@@ -40,21 +40,17 @@ var (
 	errStreamSuperseded    = errors.New("stream superseded by newer request")
 )
 
-// defaultReasoningEffort is the reasoning depth applied when the client sends no
-// (or an unrecognized) reasoning_effort. Mirrors the llm client's own default so
-// an old client that never sends the field behaves exactly as before.
-const defaultReasoningEffort = "high"
-
 // normalizeReasoningEffort clamps the client-supplied reasoning depth to the
 // values MiMo accepts (low/medium/high), defaulting anything empty or unknown to
-// high. Trusting the raw string would let the client push an arbitrary value into
-// the outbound reasoning_effort field, which MiMo rejects with a 400.
+// llm.DefaultReasoningEffort. Trusting the raw string would let the client push an
+// arbitrary value into the outbound reasoning_effort field, which MiMo rejects
+// with a 400.
 func normalizeReasoningEffort(effort string) string {
 	switch effort {
 	case "low", "medium", "high":
 		return effort
 	default:
-		return defaultReasoningEffort
+		return llm.DefaultReasoningEffort
 	}
 }
 

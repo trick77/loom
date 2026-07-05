@@ -122,12 +122,23 @@ export function ThreadShell({
   // The composer's reasoning-effort choice, persisted so it survives reloads and
   // applies across every thread (it is a session preference, not a per-thread one).
   // Lazy init reads localStorage once; the effect below writes it back on change.
+  // Storage access is guarded: a locked-down webview (or enterprise policy that
+  // disables site data) throws on access, and this is the top-level shell — an
+  // unguarded throw would blank the whole app. Fall back to the default instead.
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
-    const stored = localStorage.getItem(REASONING_EFFORT_STORAGE_KEY);
-    return isReasoningEffort(stored) ? stored : DEFAULT_REASONING_EFFORT;
+    try {
+      const stored = localStorage.getItem(REASONING_EFFORT_STORAGE_KEY);
+      return isReasoningEffort(stored) ? stored : DEFAULT_REASONING_EFFORT;
+    } catch {
+      return DEFAULT_REASONING_EFFORT;
+    }
   });
   useEffect(() => {
-    localStorage.setItem(REASONING_EFFORT_STORAGE_KEY, reasoningEffort);
+    try {
+      localStorage.setItem(REASONING_EFFORT_STORAGE_KEY, reasoningEffort);
+    } catch {
+      // Persistence is best-effort; a storage-blocked context still works for the session.
+    }
   }, [reasoningEffort]);
   // A slash command ("/mcp", "/tools", …) opens this ephemeral overlay panel
   // instead of sending a message; null when no panel is open.
