@@ -71,6 +71,20 @@ export const en = {
     uploading: "Uploading...",
     processing: "Processing...",
     uploadFailed: "Upload failed",
+    reasoning: {
+      ariaEffort: "Reasoning effort",
+      ariaLevel: "Reasoning: {{level}}",
+      default: "Default",
+      high: "High",
+      highDesc:
+        "Thinks the most, for the most accurate and thorough answers. Best for coding, math, and careful analysis. A little slower to respond. The default.",
+      medium: "Medium",
+      mediumDesc:
+        "Thinks less and replies faster. Still reliable for everyday questions and writing, just less thorough.",
+      low: "Low",
+      lowDesc:
+        "Thinks the least and replies fastest, so answers are more likely to miss details or slip up. Best for simple questions and quick edits.",
+    },
   },
   startPanel: {
     placeholder: "How can I help you today?",

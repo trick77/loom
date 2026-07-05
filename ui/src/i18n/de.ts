@@ -73,6 +73,20 @@ export const de = {
     uploading: "Wird hochgeladen...",
     processing: "Wird verarbeitet...",
     uploadFailed: "Upload fehlgeschlagen",
+    reasoning: {
+      ariaEffort: "Denkaufwand",
+      ariaLevel: "Denkaufwand: {{level}}",
+      default: "Standard",
+      high: "Hoch",
+      highDesc:
+        "Denkt am gründlichsten nach, für die genauesten und sorgfältigsten Antworten. Ideal für Programmieren, Mathematik und gründliche Analysen. Antwortet etwas langsamer. Die Voreinstellung.",
+      medium: "Mittel",
+      mediumDesc:
+        "Denkt weniger nach und antwortet schneller. Weiterhin zuverlässig für alltägliche Fragen und Texte, nur etwas weniger gründlich.",
+      low: "Niedrig",
+      lowDesc:
+        "Denkt am wenigsten nach und antwortet am schnellsten, daher werden eher Details übersehen oder Fehler gemacht. Ideal für einfache Fragen und schnelle Korrekturen.",
+    },
   },
   startPanel: {
     placeholder: "Wie kann ich dir heute helfen?",

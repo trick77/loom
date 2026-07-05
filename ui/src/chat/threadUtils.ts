@@ -79,21 +79,39 @@ function eligibleGreetings(name: string, now: Date): Greeting[] {
   });
 }
 
-function renderGreeting(greeting: Greeting, name: string, rand: () => number): string {
+// GreetingPick is the stable, language-independent outcome of choosing a greeting:
+// which catalog slot and which form, plus the name to interpolate. Callers memoize
+// the pick and translate it at render time (greetingTextFor / t) so the greeting
+// re-localizes when the UI language switches instead of freezing at mount.
+export type GreetingPick = { key: string; form: "named" | "unnamed"; name: string };
+
+function chooseForm(greeting: Greeting, name: string, rand: () => number): "named" | "unnamed" {
   const canName = name !== "" && Boolean(greeting.named);
   const useNamed = canName && (!greeting.unnamed || rand() < 0.5);
-  if (useNamed) return greetingText(greeting.key, "named", name);
-  if (greeting.unnamed) return greetingText(greeting.key, "unnamed", name);
-  return greetingText(greeting.key, "named", name);
+  if (useNamed) return "named";
+  if (greeting.unnamed) return "unnamed";
+  return "named";
 }
 
-// greetingForNow picks a time/day-appropriate greeting at random. `now` and `rand`
-// are injectable so callers (and tests) can pin the moment and the choice.
-export function greetingForNow(fullName: string, now = new Date(), rand = Math.random): string {
+// pickGreeting makes the time/day-appropriate random choice once. `now`/`rand` are
+// injectable so callers (and tests) can pin the moment and the choice.
+export function pickGreeting(fullName: string, now = new Date(), rand = Math.random): GreetingPick {
   const name = firstName(fullName);
   const eligible = eligibleGreetings(name, now);
   const pick = eligible[Math.floor(rand() * eligible.length)] ?? eligible[0];
-  return renderGreeting(pick, name, rand);
+  return { key: pick.key, form: chooseForm(pick, name, rand), name };
+}
+
+// greetingTextFor localizes a pick against the current i18n language.
+export function greetingTextFor(pick: GreetingPick): string {
+  return greetingText(pick.key, pick.form, pick.name);
+}
+
+// greetingForNow picks and localizes in one call (kept for tests and any
+// non-reactive caller). Reactive UI should memoize pickGreeting and translate at
+// render time so a language switch takes effect.
+export function greetingForNow(fullName: string, now = new Date(), rand = Math.random): string {
+  return greetingTextFor(pickGreeting(fullName, now, rand));
 }
 
 // possibleGreetings enumerates every string greetingForNow could return at `now`

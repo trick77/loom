@@ -252,7 +252,7 @@ export function Composer({
               picker. Hidden on the narrowest widths so the reasoning control and
               send button always fit. No trailing gap here: the reasoning trigger's
               own left padding is the single word-space before it. */}
-          <span className="hidden select-none text-[13px] text-[#aaa79e] sm:inline">{MODEL_LABEL}</span>
+          <span className="hidden select-none text-[13px] leading-none text-[#aaa79e] sm:inline">{MODEL_LABEL}</span>
           <ReasoningMenu value={reasoningEffort} onChange={onReasoningEffortChange} />
           <button
             className={`ui-composer-send ml-2 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { menuItemClass } from "../ThreadActionsMenu";
 import { Icon } from "./Icon";
-import { REASONING_OPTIONS, reasoningLabel, type ReasoningEffort } from "./reasoning";
+import { REASONING_OPTIONS, type ReasoningEffort } from "./reasoning";
 import { useMenuPlacement } from "./useMenuPlacement";
 
 // ReasoningMenu — the composer's reasoning-effort selector. A compact trigger
@@ -18,9 +19,11 @@ export function ReasoningMenu({
   value: ReasoningEffort;
   onChange(value: ReasoningEffort): void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const { menuRef, verticalClass } = useMenuPlacement();
+  const activeLabel = t(`composer.reasoning.${value}`);
 
   useEffect(() => {
     if (!open) return;
@@ -48,11 +51,11 @@ export function ReasoningMenu({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Reasoning: ${reasoningLabel(value)}`}
+        aria-label={t("composer.reasoning.ariaLevel", { level: activeLabel })}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-7 items-center gap-1 rounded-md pl-1 pr-2 text-[13px] leading-none text-[#aaa79e] transition-colors hover:bg-[#3a3a37] hover:text-[#f3f0e8]"
+        className="ml-1 flex h-7 items-center gap-1 rounded-md pl-1 pr-2 text-[13px] leading-none text-[#aaa79e] transition-colors hover:bg-[#3a3a37] hover:text-[#f3f0e8]"
       >
-        <span>{reasoningLabel(value)}</span>
+        <span>{activeLabel}</span>
         {/* Border-drawn caret matching the reasoning-title chevron (ui-thinking-chevron):
             a bordered square with no font whitespace, so it centers cleanly on the
             text. Points down when closed, flips up when open. */}
@@ -66,7 +69,7 @@ export function ReasoningMenu({
       {open && (
         <div
           ref={menuRef}
-          aria-label="Reasoning effort"
+          aria-label={t("composer.reasoning.ariaEffort")}
           role="menu"
           // Opens downward when there's room, flipping up only when the composer is
           // docked at the bottom (useMenuPlacement measures the live space).
@@ -88,14 +91,16 @@ export function ReasoningMenu({
               >
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className="text-[13px] font-medium text-[#f3f0e8]">{option.label}</span>
-                    {option.badge !== undefined && (
+                    <span className="text-[13px] font-medium text-[#f3f0e8]">{t(`composer.reasoning.${option.value}`)}</span>
+                    {option.default === true && (
                       <span className="rounded-[5px] bg-[#4a4741] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[#d8d4ca]">
-                        {option.badge}
+                        {t("composer.reasoning.default")}
                       </span>
                     )}
                   </span>
-                  <span className="mt-0.5 block text-[12px] leading-snug text-[#aaa79e]">{option.description}</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug text-[#aaa79e]">
+                    {t(`composer.reasoning.${option.value}Desc`)}
+                  </span>
                 </span>
                 {/* Blue right-side checkmark for the active level, matching the
                     language switcher in UserMenu. */}
