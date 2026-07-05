@@ -80,14 +80,15 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 }
 
 // updateMeRequest is the body of PATCH /api/me. responseLanguage is the coupled
-// UI display + LLM answer language: 'en'/'de' pin both, 'auto' lets the model
-// detect the answer language and the UI fall back to the browser locale.
+// UI display + LLM answer language: 'en'/'de' pin both. There is no 'auto' — an
+// unset profile is seeded from the browser locale on first visit, and the answer
+// language directive already yields to an explicit in-message language request.
 type updateMeRequest struct {
 	ResponseLanguage string `json:"responseLanguage"`
 }
 
 // allowedResponseLanguages is the set of values PATCH /api/me accepts.
-var allowedResponseLanguages = map[string]bool{"en": true, "de": true, "auto": true}
+var allowedResponseLanguages = map[string]bool{"en": true, "de": true}
 
 func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFromContext(r.Context())

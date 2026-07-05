@@ -13,7 +13,7 @@ import (
 )
 
 func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
-	user := auth.User{ID: "u1", ResponseLanguage: "auto"}
+	user := auth.User{ID: "u1", ResponseLanguage: "en"}
 	newMsg := chat.Message{Role: chat.RoleUser, Content: "Hi"}
 
 	without := buildLLMHistory(user, "", "", "", "", "", "", nil, newMsg)

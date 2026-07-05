@@ -168,7 +168,7 @@ VALUES (?, ?, ?, 'user')`,
 	if err != nil {
 		t.Fatalf("create bob thread: %v", err)
 	}
-	alice := auth.User{ID: "alice", Username: "alice", Role: auth.RoleUser, ResponseLanguage: "auto"}
+	alice := auth.User{ID: "alice", Username: "alice", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := newAuthenticatedServerForUser(t, alice, Deps{Thread: threadStore})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/threads/"+bobThread.ID, "")

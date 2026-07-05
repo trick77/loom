@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/llm"
 )
 
@@ -52,5 +54,43 @@ func TestMessageMetricsFromTurn_NoContextTokensWhenFinalCallUsageAbsent(t *testi
 
 	if metrics.ContextTokens != nil {
 		t.Errorf("ContextTokens = %v, want nil when the final call reported no usage", *metrics.ContextTokens)
+	}
+}
+
+// A pinned profile language is used by default but must be phrased so an explicit
+// in-message request wins, and it must never force English on an unset profile.
+func TestSystemPromptForUser_LanguageDirective(t *testing.T) {
+	now := time.Now()
+
+	for _, build := range []struct {
+		name string
+		fn   func(auth.User, time.Time) string
+	}{
+		{"chat", systemPromptForUser},
+		{"incognito", incognitoSystemPromptForUser},
+	} {
+		// Pinned de -> escape-clause pin, no absolute "Always answer".
+		pinned := build.fn(auth.User{ResponseLanguage: "de"}, now)
+		if !strings.Contains(pinned, "Answer in German. If the user asks for a different language, or writes their message in a different language, reply in that language instead.") {
+			t.Errorf("%s pinned de: missing escape-clause directive: %q", build.name, pinned)
+		}
+		if strings.Contains(pinned, "Always answer") {
+			t.Errorf("%s pinned de: unexpected absolute directive: %q", build.name, pinned)
+		}
+
+		// Unset -> track the user's own language, never force English.
+		unset := build.fn(auth.User{ResponseLanguage: ""}, now)
+		if !strings.Contains(unset, "Answer in the language the user writes in.") {
+			t.Errorf("%s unset: missing neutral directive: %q", build.name, unset)
+		}
+		if strings.Contains(unset, "English") {
+			t.Errorf("%s unset: must not force English: %q", build.name, unset)
+		}
+
+		// A legacy "auto" row (predating removal) is treated as unset, not English.
+		legacy := build.fn(auth.User{ResponseLanguage: "auto"}, now)
+		if !strings.Contains(legacy, "Answer in the language the user writes in.") {
+			t.Errorf("%s legacy auto: want neutral directive: %q", build.name, legacy)
+		}
 	}
 }

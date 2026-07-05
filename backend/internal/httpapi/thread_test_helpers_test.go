@@ -18,7 +18,7 @@ import (
 	"github.com/trick77/loom/internal/mcp"
 )
 
-var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
+var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 
 func newAuthenticatedServer(t *testing.T, deps Deps) http.Handler {
 	t.Helper()

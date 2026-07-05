@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ThreadShell } from "./ThreadShell";
 import loomLogo from "./assets/loom-logo.svg";
-import { getMe, listUsers, logout, type User } from "./api";
-import { applyUserLanguage } from "./i18n";
+import { getMe, listUsers, logout, updateMe, type User } from "./api";
+import { applyUserLanguage, seedLanguageFor } from "./i18n";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
 
@@ -22,8 +22,19 @@ export default function App() {
     getMe()
       .then((currentUser) => {
         if (!active) return;
-        applyUserLanguage(currentUser?.responseLanguage);
-        setUser(currentUser);
+        // A signed-in profile with no pinned language (unset, or a legacy `auto`)
+        // is seeded from the browser locale once, so the language stops being
+        // unset and drives the LLM answer language. Applied optimistically; the
+        // PATCH is best-effort and the optimistic value stays on failure.
+        const seed = currentUser ? seedLanguageFor(currentUser.responseLanguage) : null;
+        if (currentUser && seed) {
+          applyUserLanguage(seed);
+          setUser({ ...currentUser, responseLanguage: seed });
+          void updateMe({ responseLanguage: seed }).catch(() => {});
+        } else {
+          applyUserLanguage(currentUser?.responseLanguage);
+          setUser(currentUser);
+        }
         setStatus(currentUser ? "ready" : "signed-out");
       })
       .catch(() => {

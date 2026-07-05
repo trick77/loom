@@ -170,10 +170,7 @@ const incognitoDirectAnswerNudge = "Answer my previous message directly now, in 
 
 func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
 	dateLine := "\nThe current date is " + now.Format("2006-01-02") + ". Treat this as today when interpreting time-relative requests; do not assume an earlier year."
-	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
-		return incognitoSystemPrompt + "\nAlways answer in English." + dateLine
-	}
-	return incognitoSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "." + dateLine
+	return incognitoSystemPrompt + languageDirective(user.ResponseLanguage) + dateLine
 }
 
 // buildIncognitoHistory assembles the model history for an incognito turn: the
@@ -201,17 +198,28 @@ func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 
 func systemPromptForUser(user auth.User, now time.Time) string {
 	dateLine := "\nThe current date is " + now.Format("2006-01-02") + ". Treat this as today when interpreting time-relative requests and when constructing search queries; do not assume an earlier year."
-	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
-		return loomSystemPrompt + "\nAlways answer in English." + dateLine
+	return loomSystemPrompt + languageDirective(user.ResponseLanguage) + dateLine
+}
+
+// languageDirective builds the answer-language line appended to the chat and
+// incognito system prompts. A pinned profile language (en/de) is the default, but
+// it yields to an explicit in-message request or a message written in another
+// language — so a per-turn "answer in X" always wins over the profile. An
+// empty/unset value pins nothing and simply tracks the user's own language; a
+// legacy "auto" (predating its removal) is treated the same, defensively.
+func languageDirective(responseLanguage string) string {
+	if responseLanguage == "" || strings.EqualFold(responseLanguage, "auto") {
+		return "\nAnswer in the language the user writes in."
 	}
-	return loomSystemPrompt + "\nAlways answer in this language: " + languageName(user.ResponseLanguage) + "." + dateLine
+	return "\nAnswer in " + languageName(responseLanguage) + ". If the user asks for a different language, or writes their message in a different language, reply in that language instead."
 }
 
 // userResponseLanguage resolves the language a user-facing utility generation
 // (thread title, project description, reasoning title, project memory) should be
-// written in, mirroring systemPromptForUser so these match the language the chat
-// answers in. Empty (auto/unset) means the English default, which needs no
-// directive.
+// written in. A pinned profile language is returned so the utility matches the
+// chat's answer language. Unset returns "" — no directive, so the utility simply
+// follows the source content's own language (which is the user's), consistent
+// with the chat's unset behavior. A legacy "auto" is treated as unset, defensively.
 func userResponseLanguage(user auth.User) string {
 	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
 		return ""

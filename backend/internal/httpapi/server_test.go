@@ -90,7 +90,7 @@ func TestMeRequiresSession(t *testing.T) {
 }
 
 func TestMeReturnsCurrentUser(t *testing.T) {
-	user := auth.User{ID: "u1", Username: "jan", DisplayName: "Jan", Role: auth.RoleAdmin, ResponseLanguage: "auto"}
+	user := auth.User{ID: "u1", Username: "jan", DisplayName: "Jan", Role: auth.RoleAdmin, ResponseLanguage: "en"}
 	srv := New(Deps{
 		Version:  "test",
 		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
@@ -116,7 +116,7 @@ func TestMeReturnsCurrentUser(t *testing.T) {
 }
 
 func TestUpdateMeSetsResponseLanguage(t *testing.T) {
-	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
+	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
 		Version:  "test",
 		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
@@ -142,21 +142,25 @@ func TestUpdateMeSetsResponseLanguage(t *testing.T) {
 }
 
 func TestUpdateMeRejectsUnsupportedLanguage(t *testing.T) {
-	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
+	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
 		Version:  "test",
 		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
 		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
 		Users:    fakeUserStore{user: user, ok: true},
 	})
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"responseLanguage":"fr"}`))
-	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+	// "auto" was removed as a value; both an unrelated tag and the retired
+	// "auto" must be rejected now.
+	for _, lang := range []string{"fr", "auto"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"responseLanguage":"`+lang+`"}`))
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
 
-	srv.ServeHTTP(rec, req)
+		srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("lang %q: status = %d, want 400: %s", lang, rec.Code, rec.Body.String())
+		}
 	}
 }
 
@@ -212,7 +216,7 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 }
 
 func TestAdminUsersRequiresAdmin(t *testing.T) {
-	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
+	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
 		Version:  "test",
 		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
@@ -249,7 +253,7 @@ func TestAuthCallbackRedirectsOnOIDCError(t *testing.T) {
 }
 
 func TestDevAuthLoginCreatesAdminSession(t *testing.T) {
-	user := auth.User{ID: "u1", Username: "dev", Role: auth.RoleAdmin, ResponseLanguage: "auto"}
+	user := auth.User{ID: "u1", Username: "dev", Role: auth.RoleAdmin, ResponseLanguage: "en"}
 	session := auth.Session{Token: "tok", UserID: user.ID, ExpiresAt: time.Now().Add(time.Hour)}
 	srv := New(Deps{
 		Version: "test",

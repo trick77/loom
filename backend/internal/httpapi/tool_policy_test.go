@@ -170,7 +170,7 @@ func TestAvailableToolsGatesCategoryTaggedMCP(t *testing.T) {
 // the docgen tools are actually offered. Naming a gated-out tool would invite the
 // model to call a tool whose schema it never received.
 func TestFileToolGuardrailTracksDocgenGating(t *testing.T) {
-	user := auth.User{ID: "u1", ResponseLanguage: "auto"}
+	user := auth.User{ID: "u1", ResponseLanguage: "en"}
 	newMsg := chat.Message{Role: chat.RoleUser, Content: "hello"}
 
 	guidanceFor := func(gate toolGate) string {
