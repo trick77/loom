@@ -57,27 +57,6 @@ func parseBlocks(payload map[string]any) []pdfBlock {
 	return out
 }
 
-// blocksFromMarkdown converts a plain content string into heading/paragraph/bullets blocks.
-func blocksFromMarkdown(content string) []pdfBlock {
-	var out []pdfBlock
-	for _, line := range strings.Split(content, "\n") {
-		t := strings.TrimSpace(line)
-		switch {
-		case t == "":
-			continue
-		case strings.HasPrefix(t, "## "):
-			out = append(out, pdfBlock{Type: "heading", Level: 2, Text: strings.TrimSpace(t[3:])})
-		case strings.HasPrefix(t, "# "):
-			out = append(out, pdfBlock{Type: "heading", Level: 1, Text: strings.TrimSpace(t[2:])})
-		case strings.HasPrefix(t, "- "):
-			out = append(out, pdfBlock{Type: "bullets", Items: []string{strings.TrimSpace(t[2:])}})
-		default:
-			out = append(out, pdfBlock{Type: "paragraph", Text: t})
-		}
-	}
-	return out
-}
-
 // Canonical status-marker runes. The many check/cross variants a model emits are
 // normalized to these when markers are coloured (see markers() in pdf_html.go).
 const (

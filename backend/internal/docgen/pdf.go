@@ -3,6 +3,7 @@ package docgen
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -33,17 +34,31 @@ func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta,
 	blocks := parseBlocks(req.Payload)
 	content, _ := req.Payload["content"].(string)
 	if len(blocks) == 0 && strings.TrimSpace(content) == "" {
+		// Distinguish "nothing provided" from "blocks were provided but parsed to
+		// zero usable items" (e.g. a JSON-string that failed to decode, or items
+		// missing a "type"). The specific message reaches both the model and the
+		// dispatcher log so the actual payload shape is diagnosable.
+		if raw, present := req.Payload["blocks"]; present {
+			if arr, ok := raw.([]any); ok && len(arr) == 0 {
+				return GeneratedMeta{}, errors.New("blocks array was empty; add blocks (each with a \"type\"), or supply markdown in \"content\"")
+			}
+			return GeneratedMeta{}, fmt.Errorf("blocks were provided but none were parseable (got %T); pass blocks as a JSON array of objects each with a \"type\", or supply markdown in \"content\"", raw)
+		}
 		return GeneratedMeta{}, errors.New("content or blocks are required")
-	}
-	if len(blocks) == 0 {
-		blocks = blocksFromMarkdown(content)
 	}
 	subtitle, _ := req.Payload["subtitle"].(string)
 	if strings.TrimSpace(title) == "" {
 		title = "Document"
 	}
 
-	html := renderHTML(title, subtitle, blocks)
+	// Prefer the structured blocks path; otherwise render the markdown content
+	// fallback through a real markdown renderer (renderMarkdownBody).
+	var html string
+	if len(blocks) > 0 {
+		html = renderHTML(title, subtitle, blocks)
+	} else {
+		html = renderHTMLWithBody(title, subtitle, renderMarkdownBody(content))
+	}
 	if g.client == nil {
 		return GeneratedMeta{}, errors.New("pdf renderer is not configured")
 	}

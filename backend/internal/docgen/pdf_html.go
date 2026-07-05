@@ -78,8 +78,19 @@ func highlightCode(source, lang string) string {
 	return buf.String()
 }
 
-// renderHTML builds the full HTML document sent to Gotenberg.
+// renderHTML builds the full HTML document from typed blocks.
 func renderHTML(title, subtitle string, blocks []pdfBlock) string {
+	var body strings.Builder
+	for _, blk := range blocks {
+		renderHTMLBlock(&body, blk)
+	}
+	return renderHTMLWithBody(title, subtitle, body.String())
+}
+
+// renderHTMLWithBody wraps an already-rendered body fragment in the shared PDF
+// document shell (band header + subtitle + CSS). Used by both the blocks path
+// (via renderHTML) and the markdown-content fallback (renderMarkdownBody).
+func renderHTMLWithBody(title, subtitle, bodyHTML string) string {
 	var b strings.Builder
 	b.WriteString("<!doctype html><html><head><meta charset=\"utf-8\">")
 	b.WriteString("<style>")
@@ -90,9 +101,7 @@ func renderHTML(title, subtitle string, blocks []pdfBlock) string {
 	if strings.TrimSpace(subtitle) != "" {
 		b.WriteString(`<p class="subtitle">` + esc(subtitle) + `</p>`)
 	}
-	for _, blk := range blocks {
-		renderHTMLBlock(&b, blk)
-	}
+	b.WriteString(bodyHTML)
 	b.WriteString("</body></html>")
 	return b.String()
 }
@@ -220,6 +229,21 @@ pre.code{font-family:"Loom Mono",ui-monospace,monospace;font-size:11px;line-heig
 pre.code code{font-family:inherit;background:none}
 .mark-ok{color:var(--sage);font-weight:600}
 .mark-no{color:var(--danger);font-weight:600}
+.md h1{color:var(--accent);font-size:19px;margin:14px 0 4px;break-after:avoid}
+.md h2{color:var(--accent);font-size:19px;margin:14px 0 4px;break-after:avoid}
+.md h3,.md h4,.md h5,.md h6{color:var(--accent);font-size:15px;margin:10px 0 3px;break-after:avoid}
+.md p{margin:3px 0}
+.md ul,.md ol{margin:4px 0;padding-left:1.2em}
+.md li{margin:2px 0}
+.md strong{font-weight:bold}
+.md em{font-style:italic}
+.md a{color:var(--accent);text-decoration:none}
+.md blockquote{background:var(--callout);color:var(--accent);font-style:italic;padding:8px 12px;margin:8px 0;border-radius:2px;break-inside:avoid}
+.md blockquote p{margin:0}
+.md code{font-family:"Loom Mono",ui-monospace,monospace;font-size:11px;background:var(--cream);padding:1px 4px;border-radius:2px}
+.md pre{font-family:"Loom Mono",ui-monospace,monospace;font-size:11px;line-height:1.4;background:var(--cream-alt);color:var(--ink);padding:8px 10px;margin:6px 0;white-space:pre;overflow:hidden;border-radius:2px;break-inside:avoid}
+.md pre code{font-family:inherit;background:none;padding:0}
+.md hr{border:0;border-top:1px solid var(--cream-alt);margin:10px 0}
 `,
 		fontRegularFile, fontBoldFile, fontItalicFile, fontMonoFile, fontMonoBoldFile,
 		Theme.InkHex, Theme.CreamHex, Theme.CreamAltHex, pdfAccentHex,
