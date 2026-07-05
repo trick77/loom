@@ -17,7 +17,7 @@ import (
 	"github.com/trick77/loom/internal/usage"
 )
 
-const loomSystemPrompt = "Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Reach for markdown structure only when it genuinely helps the reader: a list when the content is a true enumeration the user would naturally keep as a list (steps to follow, distinct parameters, a checklist), a table to compare several items across the same dimensions, and headings only for genuinely long, multi-section answers. Keep short or simple answers as plain prose — do not add structure for its own sake. Use **bold** sparingly to mark key terms. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. When the user refers to an earlier discussion or decision, or before answering a question that your past conversations together likely already covered, call conversation_search to find the relevant prior threads, then read_thread with a result's thread id to read one in full. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Long code or data you include inline is fine and is offered for download automatically. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use browser tools only when fetch cannot access useful content, the user asks for visual inspection, or the task requires interaction, navigation, screenshots, login/session behavior, or JavaScript-rendered state. Ignore the language of tool results and retrieved documents."
+const loomSystemPrompt = "Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Reach for markdown structure only when it genuinely helps the reader: a list when the content is a true enumeration the user would naturally keep as a list (steps to follow, distinct parameters, a checklist), a table to compare several items across the same dimensions, and headings only for genuinely long, multi-section answers. Keep short or simple answers as plain prose — do not add structure for its own sake. Use **bold** sparingly to mark key terms. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. When the user refers to an earlier discussion or decision, or before answering a question that your past conversations together likely already covered, call conversation_search to find the relevant prior threads, then read_thread with a result's thread id to read one in full. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Long code or data you include inline is fine and is offered for download automatically. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use the browser navigation tool only when fetch cannot access useful content or the page needs JavaScript rendering; it navigates to the URL and reads back the rendered page. Ignore the language of tool results and retrieved documents."
 
 // fileToolGuardrailPrompt steers when to call the file-creation (docgen) tools.
 // It is injected into the system prompt only on turns where those tools are
@@ -126,18 +126,34 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// classification is adopted for this turn even if the concurrent title call
 	// failed (generateAndSendThreadTitle returns the category regardless).
 	category := thread.Category
+	freshlyClassified := false
 	if shouldGenerateThreadTitle(thread.Title, userMessage.Content) {
 		categoryOverride := ""
 		if imageArtifactRequired {
 			categoryOverride = string(classifier.ImageGeneration)
 		}
 		category, _ = s.generateAndSendThreadTitle(streamCtx, context.WithoutCancel(r.Context()), stream, user, threadID, userMessage.Content, "", categoryOverride)
+		freshlyClassified = true
+	}
+
+	// Semantic drift detection: on a continued turn whose sticky category does not
+	// already grant the coding-doc tools, re-classify THIS message so a thread that
+	// drifted into coding/how-to (in any language) still gets context7 et al. This
+	// reuses the same model classifier as the first message — no hand-maintained
+	// keyword lexicon. Skipped when the turn was just classified, when the image
+	// path will run (its tools are forced), or when the sticky category already
+	// grants those tools. Fail-safe: ClassifyThread returns General on failure, so
+	// a failed classification simply adds nothing.
+	turnCategory := ""
+	if !freshlyClassified && !imageArtifactRequired && !categoryGrantsCodingDocs(category) {
+		driftInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify_drift", Round: 1}
+		turnCategory, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(streamCtx, driftInference), userMessage.Content)
 	}
 
 	// Gate the injected tool set (and the tool guidance that must match it) on the
-	// turn's category plus per-message keyword escalation. Built once here so the
-	// system prompt and the offered tools stay consistent (see toolGate).
-	gate := newToolGate(category, userMessage.Content)
+	// sticky + per-turn category plus explicit-format escalation. Built once here so
+	// the system prompt and the offered tools stay consistent (see toolGate).
+	gate := newToolGate(category, turnCategory, userMessage.Content)
 	fileToolGuidance := ""
 	if gate.docgenEnabled() {
 		fileToolGuidance = fileToolGuardrailPrompt

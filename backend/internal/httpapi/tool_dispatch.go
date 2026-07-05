@@ -180,8 +180,14 @@ func (s *server) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 		// MCP servers are gated by their declared categories: a category-neutral
 		// server (no categories, e.g. web search) is always offered, while a
 		// category-tagged server (e.g. context7 -> "coding") is offered only when
-		// its category is active for this turn.
-		for _, tool := range s.mcp.ToolsFor(gate.activeCategories()) {
+		// its category is active for this turn. With no category signal at all
+		// (widenAll) every server is offered, so a legacy empty-category thread
+		// never loses tools it had before gating.
+		mcpTools := s.mcp.Tools()
+		if !gate.widenAll() {
+			mcpTools = s.mcp.ToolsFor(gate.activeCategories())
+		}
+		for _, tool := range mcpTools {
 			if owner, exists := names[tool.Function.Name]; exists {
 				slog.Warn("skipping duplicate MCP tool name", "tool", tool.Function.Name, "existing", owner)
 				continue
