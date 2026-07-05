@@ -21,13 +21,14 @@ type fileConfig struct {
 // ${VAR} interpolation so secrets stay in the environment and never live in the
 // committed file.
 type fileServer struct {
-	Type    string            `json:"type"`
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers"`
-	Command string            `json:"command"`
-	Args    []string          `json:"args"`
-	Env     map[string]string `json:"env"`
-	Tools   []string          `json:"tools"`
+	Type       string            `json:"type"`
+	URL        string            `json:"url"`
+	Headers    map[string]string `json:"headers"`
+	Command    string            `json:"command"`
+	Args       []string          `json:"args"`
+	Env        map[string]string `json:"env"`
+	Tools      []string          `json:"tools"`
+	Categories []string          `json:"categories"`
 }
 
 // envRefPattern matches ${NAME} references. Only the braced form is supported so
@@ -105,13 +106,14 @@ func (f fileServer) toServerConfig(lookupEnv func(string) (string, bool)) (Serve
 		return ServerConfig{}, err
 	}
 	cfg := ServerConfig{
-		Transport: transport,
-		URL:       url,
-		Headers:   headers,
-		Command:   command,
-		Args:      args,
-		Env:       envVars,
-		Tools:     f.Tools,
+		Transport:  transport,
+		URL:        url,
+		Headers:    headers,
+		Command:    command,
+		Args:       args,
+		Env:        envVars,
+		Tools:      f.Tools,
+		Categories: f.Categories,
 	}
 	switch transport {
 	case TransportStreamableHTTP:

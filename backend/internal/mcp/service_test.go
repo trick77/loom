@@ -44,6 +44,49 @@ func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
 	}
 }
 
+func TestToolsForGatesByServerCategories(t *testing.T) {
+	svc := &Service{
+		tools: []llm.Tool{
+			{Function: llm.ToolFunction{Name: "tavily__search"}}, // category-neutral
+			{Function: llm.ToolFunction{Name: "context7__docs"}}, // coding-only
+			{Function: llm.ToolFunction{Name: "bareword"}},       // no server prefix
+		},
+		cfg: Config{Servers: map[string]ServerConfig{
+			"tavily":   {}, // no Categories -> always exposed
+			"context7": {Categories: []string{"coding"}},
+		}},
+	}
+
+	names := func(tools []llm.Tool) []string {
+		out := make([]string, len(tools))
+		for i, tool := range tools {
+			out[i] = tool.Function.Name
+		}
+		return out
+	}
+
+	// Coding active: both the neutral server, the coding server, and the
+	// server-less tool are exposed.
+	got := names(svc.ToolsFor(map[string]bool{"coding": true}))
+	want := []string{"tavily__search", "context7__docs", "bareword"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ToolsFor(coding) = %v, want %v", got, want)
+	}
+
+	// General active: the coding-tagged server is withheld; neutral + server-less remain.
+	got = names(svc.ToolsFor(map[string]bool{"general": true}))
+	want = []string{"tavily__search", "bareword"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ToolsFor(general) = %v, want %v", got, want)
+	}
+
+	// Empty active set: only category-neutral (and server-less) tools.
+	got = names(svc.ToolsFor(map[string]bool{}))
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ToolsFor(empty) = %v, want %v", got, want)
+	}
+}
+
 func TestServiceRejectsDuplicateToolNames(t *testing.T) {
 	_, err := NewService(map[string]Client{
 		"a": &fakeClient{tools: []Tool{{Name: "dup__tool", OriginalName: "tool", ServerName: "dup"}}},
