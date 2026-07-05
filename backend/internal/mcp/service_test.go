@@ -377,3 +377,28 @@ func (f *fakeClient) Close() error {
 }
 
 var _ = llm.Tool{}
+
+func TestEndpointForServerNeverLeaksCredentials(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{"scheme with userinfo", "http://admin:hunter2@127.0.0.1:8080/mcp", "127.0.0.1:8080"},
+		{"scheme-less with userinfo", "admin:hunter2@127.0.0.1:8080/mcp", "127.0.0.1:8080"},
+		{"protocol-relative with userinfo", "//admin:hunter2@127.0.0.1:8080/mcp", "127.0.0.1:8080"},
+		{"scheme-less host only", "127.0.0.1:8080/mcp", "127.0.0.1:8080"},
+		{"query string dropped", "https://host:9/mcp?tavilyApiKey=secret", "host:9"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := endpointForServer(ServerConfig{Transport: TransportStreamableHTTP, URL: tc.url})
+			if strings.Contains(got, "hunter2") || strings.Contains(got, "secret") || strings.Contains(got, "@") {
+				t.Fatalf("endpoint %q leaks credentials", got)
+			}
+			if got != tc.want {
+				t.Fatalf("endpointForServer(%q) = %q, want %q", tc.url, got, tc.want)
+			}
+		})
+	}
+}

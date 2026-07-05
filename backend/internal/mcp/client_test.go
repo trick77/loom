@@ -402,6 +402,31 @@ func TestRemoteClientScrubsUserinfoFromTransportError(t *testing.T) {
 	}
 }
 
+func TestRemoteClientProbeScrubsUserinfoFromTransportError(t *testing.T) {
+	// Probe is the error source the /mcp status panel actually surfaces (the panel
+	// prefers the Probe interface over ListTools), so its transport errors must
+	// scrub userinfo too — otherwise a user:pass@host server URL leaks the password
+	// into the panel for every authenticated user.
+	client := NewRemoteClient("secret", ServerConfig{
+		Transport: TransportStreamableHTTP,
+		URL:       "http://admin:hunter2@127.0.0.1:1/mcp",
+	}, &http.Client{Timeout: 2 * time.Second})
+
+	probe, ok := client.(interface {
+		Probe(context.Context) error
+	})
+	if !ok {
+		t.Fatal("remote client does not implement Probe")
+	}
+	err := probe.Probe(context.Background())
+	if err == nil {
+		t.Fatal("Probe() error = nil, want connection error")
+	}
+	if strings.Contains(err.Error(), "hunter2") {
+		t.Fatalf("Probe error leaks userinfo password: %v", err)
+	}
+}
+
 func runMCPTestHelper(t *testing.T) {
 	t.Helper()
 	scanner := bufio.NewScanner(os.Stdin)

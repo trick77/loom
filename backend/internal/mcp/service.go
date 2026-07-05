@@ -142,12 +142,26 @@ func endpointForServer(sc ServerConfig) string {
 	if u, err := url.Parse(sc.URL); err == nil && u.Host != "" {
 		return u.Host
 	}
-	// Fallback for a scheme-less or opaque URL that yields no host: still drop any
-	// query string so a credential-bearing param is never surfaced.
-	if i := strings.IndexByte(sc.URL, '?'); i >= 0 {
-		return sc.URL[:i]
+	// A scheme-less or opaque URL (e.g. "admin:pw@host:port/path") parses with an
+	// empty Host and its user:pass@ folded into the opaque/scheme, so returning it
+	// verbatim would leak credentials into the panel. Re-parse with a synthetic
+	// scheme so the authority — including any userinfo — is recognised and dropped,
+	// keeping only the host.
+	if u, err := url.Parse("http://" + strings.TrimPrefix(sc.URL, "//")); err == nil && u.Host != "" {
+		return u.Host
 	}
-	return sc.URL
+	// Last resort: strip any userinfo (up to the first '@' before a path) and query
+	// string by hand so credentials are never surfaced.
+	rest := sc.URL
+	if at := strings.IndexByte(rest, '@'); at >= 0 {
+		if slash := strings.IndexByte(rest, '/'); slash < 0 || at < slash {
+			rest = rest[at+1:]
+		}
+	}
+	if i := strings.IndexByte(rest, '?'); i >= 0 {
+		rest = rest[:i]
+	}
+	return rest
 }
 
 func NewService(clients map[string]Client) (*Service, error) {
