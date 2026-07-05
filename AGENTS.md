@@ -46,12 +46,13 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 
 ## Frontend
 - Vite + React + TS + Tailwind. UI is **direction A (Warm Editorial)**: design tokens are CSS variables
-  `--ui-*` in `src/theme/tokens.css`; use the themed Tailwind classes (`bg-bg`, `bg-panel`,
-  `text-ink`, `text-muted`, `bg-accent`, `rounded-ui`, `font-serif`/`font-sans`). The real Anthropic
-  font is a documented swap point in `tokens.css` + `index.css`.
-- `npm run build` empties `backend/web/dist` and overwrites the tracked `.gitkeep` + placeholder
-  `index.html`. Do NOT commit built assets — only those two placeholders are tracked; restore them
-  (`git checkout -- backend/web/dist/.gitkeep backend/web/dist/index.html`) after a local build.
+  `--ui-*` in `ui/src/index.css`; use the themed Tailwind classes (`bg-bg`, `bg-panel`,
+  `text-ink`, `text-muted`, `bg-accent`, `rounded-ui`, `font-serif`/`font-sans`). The Anthropic
+  variable fonts (`Anthropic Sans`/`Serif`/`Mono`/`Icons`) are self-hosted via `@font-face` in
+  `ui/src/index.css` and wired to `--font-sans`/`--font-serif`/`--font-mono`.
+- `npm run build` empties `backend/web/dist` and overwrites the tracked placeholder `index.html`.
+  Do NOT commit built assets — only that placeholder is tracked; restore it
+  (`git checkout -- backend/web/dist/index.html`) after a local build.
 
 ## Security invariants (must hold in every feature)
 - Every DB query is scoped by `user_id`; no cross-user access to any resource.
