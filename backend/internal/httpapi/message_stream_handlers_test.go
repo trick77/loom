@@ -1887,24 +1887,33 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 	}
 }
 
-func TestStreamMessageStopsAfterToolCallLimit(t *testing.T) {
+// When the model batches more calls of one tool than its per-round cap allows,
+// loom must not abort the turn. It runs up to the cap and defers the rest with a
+// tool result, then completes with a normal final answer.
+func TestStreamMessageDefersDefaultToolCallsBeyondCap(t *testing.T) {
 	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	toolCalls := make([]llm.ToolCall, maxToolCallsPerRound+1)
-	for i := range toolCalls {
-		toolCalls[i] = llm.ToolCall{
-			ID: "call_limit",
-			Function: llm.ToolCallFunction{
-				Name:      "search__web",
-				Arguments: `{}`,
-			},
-		}
+	// Round 1 batches one search past the default per-round cap; round 2 concludes.
+	round1 := make([]llm.ToolCall, maxToolCallsPerRound+1)
+	for i := range round1 {
+		round1[i] = llm.ToolCall{ID: "call_search", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}
 	}
+	llmClient := &fakeToolChatClient{results: []llm.StreamResult{
+		{ToolCalls: round1},
+		{Content: "Final answer."},
+	}}
+	calls := map[string]int{}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    &fakeToolChatClient{results: []llm.StreamResult{{ToolCalls: toolCalls}}},
-		MCP:    fakeMCPService{tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}},
+		LLM:    llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+				calls[name]++
+				return "search result", nil
+			},
+		},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
@@ -1912,11 +1921,63 @@ func TestStreamMessageStopsAfterToolCallLimit(t *testing.T) {
 	srv.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "too many tool calls") {
-		t.Fatalf("SSE body missing tool-call-limit error:\n%s", body)
+	if strings.Contains(body, "event: error") || strings.Contains(body, "too many tool calls") {
+		t.Fatalf("SSE body must not abort on tool-call overflow:\n%s", body)
 	}
-	if len(store.messages) != 1 || store.messages[0].Role != chat.RoleUser {
-		t.Fatalf("persisted messages = %#v, want only user message", store.messages)
+	if calls["search__web"] != maxToolCallsPerRound {
+		t.Fatalf("search__web executed %d times, want %d (one deferred)", calls["search__web"], maxToolCallsPerRound)
+	}
+	if !strings.Contains(body, "Deferred:") {
+		t.Fatalf("SSE body missing deferred tool result:\n%s", body)
+	}
+	if store.assistantContent != "Final answer." {
+		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
+	}
+}
+
+// The cheap fetch/obscura tools get a higher per-round cap than the default, so a
+// paste with a dozen links runs them all in one round.
+func TestStreamMessageDefersCheapToolCallsBeyondHigherCap(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	round1 := make([]llm.ToolCall, cheapToolCallsPerRound+1)
+	for i := range round1 {
+		round1[i] = llm.ToolCall{ID: "call_fetch", Function: llm.ToolCallFunction{Name: fetchToolName, Arguments: `{"url":"https://example.com"}`}}
+	}
+	llmClient := &fakeToolChatClient{results: []llm.StreamResult{
+		{ToolCalls: round1},
+		{Content: "Fetched the links."},
+	}}
+	calls := map[string]int{}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: fetchToolName}}},
+			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+				calls[name]++
+				return "page contents", nil
+			},
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Fetch these"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "event: error") || strings.Contains(body, "too many tool calls") {
+		t.Fatalf("SSE body must not abort on fetch overflow:\n%s", body)
+	}
+	if calls[fetchToolName] != cheapToolCallsPerRound {
+		t.Fatalf("fetch executed %d times, want %d (higher cheap-tool cap, one deferred)", calls[fetchToolName], cheapToolCallsPerRound)
+	}
+	if !strings.Contains(body, "Deferred:") {
+		t.Fatalf("SSE body missing deferred tool result:\n%s", body)
+	}
+	if store.assistantContent != "Fetched the links." {
+		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
 	}
 }
 

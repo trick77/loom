@@ -20,12 +20,28 @@ const (
 	// (e.g. fetching source after source) otherwise burns rounds — and wall-clock —
 	// without converging. Enough for genuine multi-step research, low enough to stop
 	// a spiral.
-	maxToolRounds             = 6
-	maxToolCallsPerRound      = 8
+	maxToolRounds        = 6
+	maxToolCallsPerRound = 8 // default cap for how many times one tool may run in a single round
+	// cheapToolCallsPerRound is the higher per-round cap for the inexpensive
+	// fetch/obscura tools: a single paste can carry a dozen links, and fetching
+	// them is essentially free, so they should not share the conservative default.
+	cheapToolCallsPerRound    = 12
 	maxToolCallDuration       = 30 * time.Second
 	maxToolResultContentBytes = 32 << 10
 	toolFailedPrefix          = "tool failed"
 )
+
+// toolCallCapPerRound reports how many times a given tool may run in one round.
+// fetch/obscura are very inexpensive (an HTTP read / a headless page load), so
+// they get a higher cap than the conservative default that guards pricier tools.
+func toolCallCapPerRound(name string) int {
+	switch name {
+	case fetchToolName, obscuraNavigateToolName, obscuraSnapshotToolName:
+		return cheapToolCallsPerRound
+	default:
+		return maxToolCallsPerRound
+	}
+}
 
 type assistantLoopResult struct {
 	llm.StreamResult
@@ -59,6 +75,11 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	// Only the first that produces an artifact runs; the rest are skipped with a
 	// tool result so the model sees the limit and stops asking.
 	imageGenerated := false
+	// lastRoundDeferred records whether the round that actually ran tools last had
+	// to defer any call past its per-round cap. If the loop then exits because the
+	// round budget is exhausted, the forced final answer flags the leftover work so
+	// the user can ask to continue (a fresh turn has a fresh round budget).
+	lastRoundDeferred := false
 	var artifacts []artifactResponse
 	b := &blockBuilder{}
 	for round := 1; round <= maxToolRounds; round++ {
@@ -81,9 +102,6 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			}
 			slog.Info("forcing final answer", "reason", "empty_after_tools", "round", round)
 			break
-		}
-		if len(result.ToolCalls) > maxToolCallsPerRound {
-			return assistantLoopResult{}, streamUserError{message: fmt.Sprintf("too many tool calls in one assistant round: %d", len(result.ToolCalls))}
 		}
 		// Log every tool call's argument size so document payloads are measurable in
 		// retrospect instead of guessed at: a create_*_file call serializes the whole
@@ -118,10 +136,29 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			Content:   result.Content,
 			ToolCalls: result.ToolCalls,
 		})
+		// Per-round, per-tool overflow: a model may batch more calls for one tool
+		// than its cap allows in a single round (e.g. a paste with a dozen links →
+		// a dozen fetch calls). Rather than aborting the whole turn, run up to the
+		// cap and defer the rest with a tool result telling the model to reissue
+		// them — the next round has a fresh cap, so the leftovers are picked up
+		// automatically within the round budget.
+		perToolCount := map[string]int{}
+		lastRoundDeferred = false
 		for _, call := range result.ToolCalls {
 			var output string
+			perToolCount[call.Function.Name]++
+			// The one-image-per-turn skip is checked first: generate_image is bounded
+			// by imageGenerated, not the per-round cap, so it must never fall through
+			// to the "reissue it next round" deferral message (which would be wrong —
+			// a reissued image call is only skipped again).
 			if call.Function.Name == "generate_image" && imageGenerated {
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
+			} else if cap := toolCallCapPerRound(call.Function.Name); perToolCount[call.Function.Name] > cap {
+				// The instruction rides with the deferral in history so the model sees
+				// it on every exit path — including when it concludes with prose without
+				// reissuing (which never reaches the forced-final directive below).
+				output = fmt.Sprintf("Deferred: at most %d %s call(s) run per round, so this call was not run. Reissue it in a later round to process it. If you finish answering before it runs, tell the user that not everything was processed and offer to continue.", cap, call.Function.Name)
+				lastRoundDeferred = true
 			} else {
 				var response *artifactResponse
 				var handled bool
@@ -157,9 +194,17 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	// to a reply using the gathered results instead of issuing yet another tool
 	// call (which it cannot run and which would otherwise yield an empty turn).
 	// A system directive (not a user turn) avoids biasing the answer's language.
+	finalDirective := "Provide your final answer now using the information already gathered above. Do not call any more tools."
+	if lastRoundDeferred {
+		// Some tool calls were deferred past this turn's per-round caps and never
+		// ran. Tell the user so they can ask to continue — a fresh turn gets a
+		// fresh round budget. Kept language-neutral so the model answers in the
+		// user's language rather than being biased toward English.
+		finalDirective += " Some requested items could not be processed within this turn's tool limit. In your answer, briefly tell the user that not everything was processed and offer to continue if they'd like the rest."
+	}
 	finalHistory := append(history[:len(history):len(history)], llm.Message{
 		Role:    "system",
-		Content: "Provide your final answer now using the information already gathered above. Do not call any more tools.",
+		Content: finalDirective,
 	})
 	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(titles, result)
