@@ -216,9 +216,10 @@ func languageDirective(responseLanguage string) string {
 
 // userResponseLanguage resolves the language a user-facing utility generation
 // (thread title, project description, reasoning title, project memory) should be
-// written in, mirroring systemPromptForUser so these match the language the chat
-// answers in. Empty (unset) needs no directive; a legacy "auto" is treated the
-// same, defensively.
+// written in. A pinned profile language is returned so the utility matches the
+// chat's answer language. Unset returns "" — no directive, so the utility simply
+// follows the source content's own language (which is the user's), consistent
+// with the chat's unset behavior. A legacy "auto" is treated as unset, defensively.
 func userResponseLanguage(user auth.User) string {
 	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
 		return ""
