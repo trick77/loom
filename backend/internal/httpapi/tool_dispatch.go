@@ -256,9 +256,38 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	if generator == nil {
 		return "", nil, false
 	}
+	output, resp := s.runDocGenerator(ctx, stream, user, thread, call, generator)
+	return output, resp, true
+}
+
+// runDocGenerator executes a file-generating built-in tool (create_pdf_file,
+// create_docx_file, …) and returns the model-facing output plus any artifact
+// response. Unlike the MCP path (executeToolCall), these tools previously logged
+// nothing on failure — a "tool failed: …" string went only to the model, leaving
+// server-side failures invisible. The deferred log fixes that: every outcome is
+// recorded with the tool name, argument size, a truncated argument preview and
+// the result, so the next failure is diagnosable from the logs.
+func (s *server) runDocGenerator(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifactResponse) {
+	start := time.Now()
+	defer func() {
+		attrs := []any{
+			"tool", call.Function.Name,
+			"thread_id", thread.ID,
+			"user_id", user.ID,
+			"arg_bytes", len(call.Function.Arguments),
+			"args", summarizeForLog(call.Function.Arguments),
+			"duration_ms", time.Since(start).Milliseconds(),
+		}
+		if strings.HasPrefix(output, "tool failed") {
+			slog.Warn("builtin tool failed", append(attrs, "output", output)...)
+		} else {
+			slog.Info("builtin tool completed", append(attrs, "result", output)...)
+		}
+	}()
+
 	args, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
-		return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
+		return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil
 	}
 	filename, _ := args["filename"].(string)
 	var buffer bytes.Buffer
@@ -269,10 +298,10 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 		Context:  ctx,
 	}, &buffer)
 	if err != nil {
-		return capToolOutput("tool failed: " + err.Error()), nil, true
+		return capToolOutput("tool failed: " + err.Error()), nil
 	}
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
-		return "tool failed: generated file is too large", nil, true
+		return "tool failed: generated file is too large", nil
 	}
 	out, file, err := artifact.CreateOutputFile(artifact.OutputRequest{
 		UsersDir:        s.usersDir,
@@ -283,16 +312,16 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 		Extension:       meta.Extension,
 	})
 	if err != nil {
-		return capToolOutput("tool failed: " + err.Error()), nil, true
+		return capToolOutput("tool failed: " + err.Error()), nil
 	}
 	if _, err := file.Write(buffer.Bytes()); err != nil {
 		_ = file.Close()
 		_ = os.Remove(out.AbsPath)
-		return capToolOutput("tool failed: write artifact: " + err.Error()), nil, true
+		return capToolOutput("tool failed: write artifact: " + err.Error()), nil
 	}
 	if err := file.Close(); err != nil {
 		_ = os.Remove(out.AbsPath)
-		return capToolOutput("tool failed: close artifact: " + err.Error()), nil, true
+		return capToolOutput("tool failed: close artifact: " + err.Error()), nil
 	}
 	// Eagerly generate the sidecar thumbnail (best-effort) from the bytes already in
 	// hand; a non-raster artifact yields none and is served via lazy backfill later.
@@ -310,7 +339,7 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	if err != nil {
 		_ = os.Remove(out.AbsPath)
 		artifact.RemoveThumbnail(s.usersDir, user.ID, out.VolumeRelPath)
-		return capToolOutput("tool failed: persist artifact: " + err.Error()), nil, true
+		return capToolOutput("tool failed: persist artifact: " + err.Error()), nil
 	}
 	response := artifactResponse{
 		ID:              created.ID,
@@ -322,7 +351,7 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 		ThumbnailURL:    created.ThumbnailURL,
 	}
 	_ = sendSSEJSON(stream, "artifact", response)
-	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response, true
+	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
 
 // maxTypographyImageSide caps typography-model (FLUX.2 [flex]) output to the same
