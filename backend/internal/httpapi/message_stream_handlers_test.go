@@ -402,6 +402,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 
 	llmClient := &fakeToolChatClient{
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
 		results: []llm.StreamResult{
 			{
 				Content: "",
@@ -474,6 +475,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 		t.Fatal(err)
 	}
 	llmClient := &fakeToolChatClient{
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
 		results: []llm.StreamResult{{
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_1",
@@ -601,7 +603,10 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 }
 
 func TestStreamMessageRequiresGenerateImageForObviousImageRequest(t *testing.T) {
-	llmClient := &fakeToolChatClient{results: []llm.StreamResult{{Content: "I am a text-based AI assistant and cannot generate images."}}}
+	llmClient := &fakeToolChatClient{
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		results:     []llm.StreamResult{{Content: "I am a text-based AI assistant and cannot generate images."}},
+	}
 	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
@@ -656,6 +661,7 @@ func TestStreamMessageRequiresGenerateImageForObviousImageRequest(t *testing.T) 
 
 func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 	llmClient := &fakeToolChatClient{
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
 		results: []llm.StreamResult{{
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_1",
@@ -693,6 +699,7 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 
 func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T) {
 	llmClient := &fakeToolChatClient{
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
 		results: []llm.StreamResult{
 			{
 				Content: "Sure, I will create that now.",
@@ -747,7 +754,10 @@ func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
 			Artifacts: json.RawMessage(`[{"id":"art_1","displayFilename":"generated-image.png","mimeType":"image/png","downloadUrl":"/api/artifacts/art_1/download"}]`),
 		}},
 	}
-	capturingLLM := &fakeToolChatClient{results: []llm.StreamResult{{Content: textOnlyImageClaim}}}
+	capturingLLM := &fakeToolChatClient{
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentEdit},
+		results:     []llm.StreamResult{{Content: textOnlyImageClaim}},
+	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
@@ -856,157 +866,82 @@ func TestStreamMessageAddsImageAttachmentsToLLMHistory(t *testing.T) {
 	}
 }
 
-func TestImageArtifactRequiredAvoidsSubstringFalsePositives(t *testing.T) {
-	srv := &server{
-		artifacts:  fakeArtifactStore{},
-		usersDir:   t.TempDir(),
-		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-	}
-	priorMessages := []chat.Message{{
-		Role:      chat.RoleAssistant,
-		Artifacts: json.RawMessage(`[{"mimeType":"image/png"}]`),
-	}}
+// TestImageRoutingFor covers the pure mapping from a semantic ImageIntent plus
+// the two image-presence flags to the concrete routing decision. The language
+// understanding that produces the intent lives in the gate's prompt (exercised
+// by the llm package's ClassifyImageIntent test and the end-to-end run), so this
+// test stays deterministic and network-free.
+func TestImageRoutingFor(t *testing.T) {
+	create := llm.ImageIntent{Action: llm.ImageIntentCreate}
+	createText := llm.ImageIntent{Action: llm.ImageIntentCreate, NeedsText: true}
+	edit := llm.ImageIntent{Action: llm.ImageIntentEdit}
+	editText := llm.ImageIntent{Action: llm.ImageIntentEdit, NeedsText: true}
+	none := llm.ImageIntent{Action: llm.ImageIntentNone}
 
-	for _, content := range []string{
-		"I surrender",
-		"what's the entry point",
-		"explain that industry",
-		"How do I render this template?",
-		"describe the image under this URL",
-		"explain how to draw a UML diagram",
-		"lifestyle changes",
-		"conversion tracking",
-		// Bare generic verbs and pronouns no longer route an unrelated turn to the
-		// image tool just because an image exists earlier in the thread.
-		"change the subject and tell me about Rome",
-		"make sure to cite that source",
-		"try again, explain it differently",
-		// Coding/CSS vocabulary overlaps image words but must not force the tool.
-		"what version of python should I use",
-		"set the background color of my css to blue",
-		"add a red border to the table",
-		"i prefer a minimal style for my code",
-		"make the font bigger",
-		// Widened verbs are polysemous; they must stay out without a nearby image
-		// noun (the object-noun pairing is the guard).
-		"imagine you are a senior engineer reviewing this code",
-		"design a REST API for the users service",
-		"design a database schema for orders",
-		// Words that double as code identifiers / UI components / layout terms are
-		// deliberately NOT image-creation nouns, so these coding/layout requests must
-		// not force the tool.
-		"create a button component for the navbar",
-		"create an icon component for the navbar",
-		"make an avatar component",
-		"generate thumbnails for the video list",
-		"create a sprite sheet for the game",
-		"make an emoji picker component",
-		"render a PDF in portrait mode",
-		"create a drawing app with a canvas",
-	} {
-		t.Run(content, func(t *testing.T) {
-			if srv.imageArtifactRequired(content, false, priorMessages) {
-				t.Fatalf("imageArtifactRequired(%q) = true, want false", content)
+	tests := []struct {
+		name         string
+		intent       llm.ImageIntent
+		attached     bool
+		threadHasImg bool
+		want         imageRouting
+	}{
+		// A create always generates; typography follows needs_text and does not
+		// depend on an image being present.
+		{"create fresh", create, false, false, imageRouting{generate: true}},
+		{"create logo -> typography", createText, false, false, imageRouting{generate: true, typography: true}},
+		{"create ignores prior image", create, false, true, imageRouting{generate: true}},
+
+		// An edit routes only when a source image exists; reuseSource fires only for
+		// the prior-image case (no fresh attachment to act on instead).
+		{"edit, no image -> nothing", edit, false, false, imageRouting{}},
+		{"edit, prior image -> reuse", edit, false, true, imageRouting{generate: true, reuseSource: true}},
+		{"edit, attachment -> no reuse", edit, true, false, imageRouting{generate: true}},
+		{"edit, both -> attachment wins, no reuse", edit, true, true, imageRouting{generate: true}},
+		{"edit typography, prior image", editText, false, true, imageRouting{generate: true, reuseSource: true, typography: true}},
+		// needs_text is meaningless without a source image to act on.
+		{"edit typography, no image -> nothing", editText, false, false, imageRouting{}},
+
+		// none never routes.
+		{"none", none, false, false, imageRouting{}},
+		{"none with attachment", none, true, false, imageRouting{}},
+		{"none with prior image", none, false, true, imageRouting{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := imageRoutingFor(tt.intent, tt.attached, tt.threadHasImg); got != tt.want {
+				t.Fatalf("imageRoutingFor(%+v, attached=%v, thread=%v) = %+v, want %+v",
+					tt.intent, tt.attached, tt.threadHasImg, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestImageArtifactRequiredDetectsCreationAndGermanFollowUps(t *testing.T) {
-	srv := &server{
+// TestClassifyImageTurnPreconditions checks the cheap short-circuits that must
+// run before (and instead of) the gate: no image tooling configured, and an
+// empty message both skip the LLM call and route as non-image.
+func TestClassifyImageTurnPreconditions(t *testing.T) {
+	create := llm.ImageIntent{Action: llm.ImageIntentCreate}
+
+	// Image tooling configured + a non-empty message: the gate's intent is mapped.
+	configured := &server{
 		artifacts:  fakeArtifactStore{},
 		usersDir:   t.TempDir(),
 		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		llm:        fakeChatClient{imageIntent: create},
 	}
-	priorMessages := []chat.Message{{
-		Role:      chat.RoleAssistant,
-		Artifacts: json.RawMessage(`[{"mimeType":"image/png"}]`),
-	}}
-
-	for _, content := range []string{
-		"generate an image of a robot",
-		"create a logo for trick77",
-		"erstelle ein Logo fuer trick77",
-		"zeichne mir ein Bild",
-		"mach es cyberpunk",
-		"ändere den Stil",
-		// Widened creation vocabulary: new verbs (imagine/design) and concrete
-		// visual-artifact nouns (favicon, sticker, mascot, …).
-		"Imagine a favicon for Loom, an AI based knowledge research prompting web app.",
-		"design a mascot for my startup",
-		"create a favicon",
-		"make a sticker of a cat",
-		"draw a caricature of my friend",
-		"entwirf ein Maskottchen",
-	} {
-		t.Run(content, func(t *testing.T) {
-			if !srv.imageArtifactRequired(content, false, priorMessages) {
-				t.Fatalf("imageArtifactRequired(%q) = false, want true", content)
-			}
-		})
+	if got := configured.classifyImageTurn(context.Background(), "user_1", "thr_1", "zeichne mir einen Fuchs", false, nil); !got.generate {
+		t.Fatalf("classifyImageTurn(create intent) = %+v, want generate=true", got)
 	}
-}
-
-func TestImageArtifactRequiredRoutesAttachedImageEdits(t *testing.T) {
-	srv := &server{
-		artifacts:  fakeArtifactStore{},
-		usersDir:   t.TempDir(),
-		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+	// Empty message never routes, even with tooling and a create-returning gate.
+	if got := configured.classifyImageTurn(context.Background(), "user_1", "thr_1", "   ", false, nil); got != (imageRouting{}) {
+		t.Fatalf("classifyImageTurn(empty content) = %+v, want zero routing", got)
 	}
 
-	// With a freshly attached photo, a transform/edit instruction routes to the
-	// image tool even though it carries no "image"/"bild" object noun (which is why
-	// the text-only heuristic alone would miss it and let the classifier suppress it).
-	for _, content := range []string{
-		"render a lego set from this photo",
-		"turn this into a lego set",
-		"make it a watercolor",
-		"draw this as a cartoon",
-		"transform this into a marble statue",
-		"verwandle das in ein Gemälde",
-		// Re-imagine family paired with a visual target ("logo"/"icon"): a redesign of
-		// an attached image routes to the image tool.
-		"rethink this logo. black background, icon color #c15f3c",
-		"redesign the icon",
-		"reimagine this logo as a minimalist mark",
-	} {
-		t.Run("edit/"+content, func(t *testing.T) {
-			if !srv.imageArtifactRequired(content, true, nil) {
-				t.Fatalf("imageArtifactRequired(%q, attached) = false, want true", content)
-			}
-			// Without the attachment (and no prior image), the same text must not route.
-			if srv.imageArtifactRequired(content, false, nil) {
-				t.Fatalf("imageArtifactRequired(%q, no attachment) = true, want false", content)
-			}
-		})
-	}
-
-	// A bare attachment with a question or a text/data conversion must NOT route to
-	// image generation — those are the "describe this image" use case, not editing.
-	for _, content := range []string{
-		"describe this image",
-		"what's wrong with this code",
-		"convert this to csv",
-		"summarize this",
-		"what is this",
-		"extract the text from this",
-		// Polysemous verbs whose dominant sense is non-visual must not route just
-		// because an image is attached and they need no visual target.
-		"draw a conclusion from this chart",
-		"what render engine produced this",
-		"give me a rough sketch of the plan",
-		"render the json in this screenshot as text",
-		// Re-imagine verbs are polysemous: without a visual target they must not route,
-		// even with an image attached (a screenshot of code, say).
-		"rethink this function",
-		"redesign the architecture",
-		"rework this approach",
-	} {
-		t.Run("describe/"+content, func(t *testing.T) {
-			if srv.imageArtifactRequired(content, true, nil) {
-				t.Fatalf("imageArtifactRequired(%q, attached) = true, want false", content)
-			}
-		})
+	// No image tooling: never routes (and the gate must not be consulted — a nil
+	// llm would panic if it were).
+	noTools := &server{artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
+	if got := noTools.classifyImageTurn(context.Background(), "user_1", "thr_1", "zeichne mir einen Fuchs", true, nil); got != (imageRouting{}) {
+		t.Fatalf("classifyImageTurn(no image tools) = %+v, want zero routing", got)
 	}
 }
 
@@ -1067,94 +1002,6 @@ func TestLatestImageArtifactIDReturnsNewestWithID(t *testing.T) {
 	}
 	if got := latestImageArtifactID(none); got != "" {
 		t.Fatalf("latestImageArtifactID = %q, want empty", got)
-	}
-}
-
-func TestIsImageEditFollowUpGating(t *testing.T) {
-	srv := &server{
-		artifacts:  fakeArtifactStore{},
-		usersDir:   t.TempDir(),
-		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-	}
-	withImage := []chat.Message{{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_1","mimeType":"image/png"}]`)}}
-
-	// An explicit edit/restyle of the existing image — a pronoun pointing back at
-	// it, or a transform verb/noun — reuses the prior image as the vision source.
-	for _, content := range []string{
-		"make it cyberpunk",
-		"mach es cyberpunk",
-		"create a variation",
-		"turn it into a watercolor",
-		"ändere den Stil",
-		"give it a retro look",
-		// Edits without a style word: an edit-target (size, brightness, medium)
-		// near a back-reference pronoun, or a strong image-specific verb on its own.
-		"make it bigger",
-		"make it darker",
-		"make it a watercolor",
-		"turn it into a sketch",
-		"crop it",
-	} {
-		if !srv.isImageEditFollowUp(content, withImage) {
-			t.Fatalf("isImageEditFollowUp(%q) = false, want true", content)
-		}
-	}
-
-	// A fresh creation must NOT pull in an unrelated prior image — even when it
-	// carries a style word, and even when (like "draw a retro car") it lacks an
-	// "image"/"logo" object token so isImageCreationRequest alone wouldn't catch it.
-	// A bare style adjective is not an edit signal.
-	for _, content := range []string{
-		"generate an image of a robot",
-		"make a logo with bold colors",
-		"zeichne ein minimalistisches Bild",
-		"draw a retro car",
-		"create a neon sign",
-		"a cyberpunk cityscape",
-	} {
-		if srv.isImageEditFollowUp(content, withImage) {
-			t.Fatalf("isImageEditFollowUp(%q) = true, want false (fresh creation)", content)
-		}
-	}
-
-	// Ordinary chat that merely contains a back-reference pronoun or a generic
-	// verb — with no image-style descriptor nearby — must NOT silently re-feed the
-	// prior image as vision input.
-	for _, content := range []string{
-		"what does this mean",
-		"do you understand that",
-		"how do I render this template",
-		"change the subject and tell me about Rome",
-		"make sure to cite that source",
-		// Coding/chat vocabulary that overlaps image words must NOT misfire just
-		// because an image exists earlier in the thread.
-		"what version of python should I use",
-		"edit my config file",
-		"turn off dark mode",
-		"set the background color of my css to blue",
-		"add a red border to the table",
-		"change the oil and replace the brake pads",
-		"make the contrast clearer in your explanation",
-		"i prefer a minimal style for my code",
-		"make the font bigger",
-		"make sure the sky is blue",
-		// "minimal" is no longer a style descriptor, "upscale" needs an object
-		// pronoun, and demonstratives this/that do not corroborate size targets —
-		// so these code/devops/layout phrasings stay out.
-		"a minimal change to that function",
-		"try a minimal style for my code",
-		"upscale the kubernetes deployment",
-		"make this div bigger",
-		"can you make that smaller in the layout",
-	} {
-		if srv.isImageEditFollowUp(content, withImage) {
-			t.Fatalf("isImageEditFollowUp(%q) = true, want false (not an edit)", content)
-		}
-	}
-
-	// A follow-up phrasing without any prior image has nothing to reuse.
-	if srv.isImageEditFollowUp("make it cyberpunk", nil) {
-		t.Fatal("isImageEditFollowUp(no prior image) = true, want false")
 	}
 }
 
@@ -2179,6 +2026,8 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 
 	llmClient := &fakeToolChatClient{
 		titleResult: "Cat astronaut",
+		// The image-intent gate routes this as a creation, which stamps the category.
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
 		// The classifier would say creative_writing; the override must win.
 		classifyResult: string(classifier.CreativeWriting),
 		results: []llm.StreamResult{{
