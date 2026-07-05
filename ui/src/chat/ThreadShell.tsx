@@ -589,12 +589,19 @@ export function ThreadShell({
     const draftText = draft.trim();
     const content = composeSendContent();
     if (content === "" || isSending) return;
-    // Slash commands are the draft alone; a staged paste means this is a real message.
-    if (pastedTexts.length === 0 && runSlashCommand(draftText)) return;
-    // Clear chips optimistically; on a send error sendContent restores the merged
-    // content into the draft, so the pasted text is preserved (inline) for retry.
+    // Slash command detection is the draft alone (the popover keys off it too); it
+    // clears any staged chips along with the draft.
+    if (runSlashCommand(draftText)) return;
+    // Clear chips optimistically; on a send error sendContent restores the chips
+    // and the draft-only text (not the merged content) for retry.
+    const restorePastedTexts = pastedTexts;
     setPastedTexts([]);
-    await sendContent(content, { restoreDraftOnError: true, attachments });
+    await sendContent(content, {
+      restoreDraftOnError: true,
+      attachments,
+      restoreDraft: draftText,
+      restorePastedTexts,
+    });
   }
 
   // runSlashCommand intercepts a "/command" draft: it opens the ephemeral overlay
@@ -604,6 +611,7 @@ export function ThreadShell({
     const command = matchSlashCommand(content);
     if (command === null) return false;
     setDraft("");
+    setPastedTexts([]);
     setSlashCommand(command.name);
     return true;
   }
@@ -615,7 +623,15 @@ export function ThreadShell({
 
   async function sendContent(
     content: string,
-    options: { restoreDraftOnError: boolean; attachments: ComposerAttachment[] },
+    options: {
+      restoreDraftOnError: boolean;
+      attachments: ComposerAttachment[];
+      // On error restore the textarea to this (the draft alone, without the merged
+      // pasted blocks) and re-stage restorePastedTexts, so a large paste returns as
+      // a chip rather than flooding the textarea. Defaults to the full `content`.
+      restoreDraft?: string;
+      restorePastedTexts?: PastedText[];
+    },
   ) {
     setDraft("");
     setIsSending(true);
@@ -834,7 +850,10 @@ export function ThreadShell({
         const staleID = optimisticUserMessageID;
         setMessages((current) => current.filter((item) => item.id !== staleID));
       }
-      if (options.restoreDraftOnError) setDraft(content);
+      if (options.restoreDraftOnError) {
+        setDraft(options.restoreDraft ?? content);
+        if (options.restorePastedTexts !== undefined) setPastedTexts(options.restorePastedTexts);
+      }
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
@@ -880,7 +899,13 @@ export function ThreadShell({
   // to the stateless endpoint: no thread is created, no navigation happens, and the
   // whole prior transcript is replayed as history (the server keeps none). The
   // assistant message is appended to the in-memory transcript only.
-  async function sendIncognitoContent(content: string, restoreDraftOnError: boolean) {
+  async function sendIncognitoContent(
+    content: string,
+    restoreDraftOnError: boolean,
+    // On error restore the textarea to restore.draft (without the merged pasted
+    // blocks) and re-stage restore.pastedTexts. Defaults to the full `content`.
+    restore?: { draft: string; pastedTexts: PastedText[] },
+  ) {
     setDraft("");
     setIsSending(true);
     clearStreamingBlocks();
@@ -943,7 +968,10 @@ export function ThreadShell({
       keepFailedTurnVisible = true;
       // Drop the optimistic user bubble that never got a reply so the user can retry.
       setIncognitoMessages((current) => current.filter((message) => message.id !== tempID));
-      if (restoreDraftOnError) setDraft(content);
+      if (restoreDraftOnError) {
+        setDraft(restore?.draft ?? content);
+        if (restore !== undefined) setPastedTexts(restore.pastedTexts);
+      }
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
@@ -958,9 +986,10 @@ export function ThreadShell({
     const draftText = draft.trim();
     const content = composeSendContent();
     if (content === "" || isSending) return;
-    if (pastedTexts.length === 0 && runSlashCommand(draftText)) return;
+    if (runSlashCommand(draftText)) return;
+    const restorePastedTexts = pastedTexts;
     setPastedTexts([]);
-    await sendIncognitoContent(content, true);
+    await sendIncognitoContent(content, true, { draft: draftText, pastedTexts: restorePastedTexts });
   }
 
   async function handleIncognitoRetry(content: string) {

@@ -15,6 +15,12 @@ export type PastedText = {
 };
 
 export function createPastedText(text: string): PastedText {
+  // Count newlines without materializing an array of every line — a paste can be
+  // multiple megabytes and this only feeds an aria-label.
+  let lineCount = 1;
+  for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", index + 1)) {
+    lineCount += 1;
+  }
   return {
     // Avoid crypto.randomUUID: it is undefined in insecure contexts (plain
     // http://), which a corporate intranet deployment may well be. Date.now() +
@@ -22,6 +28,6 @@ export function createPastedText(text: string): PastedText {
     // the optimistic message ids in ThreadShell).
     id: `pasted-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     text,
-    lineCount: text.split("\n").length,
+    lineCount,
   };
 }

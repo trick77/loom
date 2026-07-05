@@ -144,7 +144,7 @@ export function Composer({
     >
       {hasStagedRow && (
         <div
-          aria-label={t("composer.attachments")}
+          aria-label={attachments.length > 0 ? t("composer.attachments") : t("composer.pastedText")}
           className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[104px]`}
         >
           <div className="flex flex-wrap gap-2">
@@ -174,6 +174,15 @@ export function Composer({
           const text = event.clipboardData.getData("text/plain");
           if (text.length <= PASTE_AS_ATTACHMENT_THRESHOLD) return;
           event.preventDefault();
+          // preventDefault suppresses the native paste, which would normally also
+          // replace any selected text. Since the paste becomes a chip rather than
+          // inline text, drop the selected range ourselves so a "select-all + paste
+          // to replace" gesture doesn't leave the old draft behind (it would
+          // otherwise be sent alongside the pasted block).
+          const target = event.currentTarget;
+          const start = target.selectionStart ?? 0;
+          const end = target.selectionEnd ?? 0;
+          if (end > start) onDraftChange(draft.slice(0, start) + draft.slice(end));
           onAddPastedText(text);
         }}
         onChange={(event) => {

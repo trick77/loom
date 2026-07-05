@@ -254,6 +254,36 @@ test("collapses an oversized paste into a pasted-text chip", () => {
   expect(onDraftChange).not.toHaveBeenCalled();
 });
 
+test("drops the selected draft text when a large paste replaces a selection", () => {
+  const onAddPastedText = vi.fn();
+  const onDraftChange = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft="old draft"
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={onDraftChange}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAddPastedText={onAddPastedText}
+    />,
+  );
+
+  const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+  // Select the entire existing draft, as a "select-all then paste to replace" gesture.
+  textbox.selectionStart = 0;
+  textbox.selectionEnd = "old draft".length;
+  const text = "A".repeat(PASTE_AS_ATTACHMENT_THRESHOLD + 1);
+  fireEvent.paste(textbox, { clipboardData: { getData: () => text } });
+
+  // The selected text is removed so it is not sent alongside the pasted block.
+  expect(onDraftChange).toHaveBeenCalledWith("");
+  expect(onAddPastedText).toHaveBeenCalledWith(text);
+});
+
 test("leaves a paste at the threshold inline", () => {
   const onAddPastedText = vi.fn();
   render(
