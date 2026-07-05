@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 // Finds the nearest scrollable ancestor so we can tell whether a dropdown would
 // overflow the visible area (e.g. the sidebar's scroll <nav>, or a page's
@@ -29,11 +29,11 @@ export function useMenuPlacement(): {
   const menuRef = useRef<HTMLDivElement>(null);
   const [dropUp, setDropUp] = useState(false);
 
-  // useLayoutEffect measures + flips before the browser paints, so the menu never
-  // flashes downward first. The menu only mounts while open, so this runs once
-  // per open. el.offsetHeight captures the real (variable) menu height, and
-  // offsetParent is the menu's positioned anchor (the `relative` row/wrapper).
-  useLayoutEffect(() => {
+  // measure decides the open direction from the live geometry: el.offsetHeight is
+  // the real (variable) menu height, offsetParent is the positioned anchor (the
+  // `relative` row/wrapper), and the nearest scroll container gives the visible
+  // bounds the menu must fit within.
+  const measure = useCallback(() => {
     const el = menuRef.current;
     const anchor = el?.offsetParent as HTMLElement | null;
     if (el === null || anchor === null) return;
@@ -47,6 +47,20 @@ export function useMenuPlacement(): {
     const spaceAbove = anchorRect.top - topLimit;
     setDropUp(spaceBelow < menuHeight && spaceAbove > spaceBelow);
   }, []);
+
+  // Measure before paint so the menu never flashes downward first, then keep the
+  // direction correct while it stays open: scrolling the list/sidebar or resizing
+  // the window changes the anchor's position relative to the visible bounds.
+  useLayoutEffect(() => {
+    measure();
+    // Capture-phase scroll catches any ancestor scroll container, not just window.
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
+  }, [measure]);
 
   return {
     menuRef,

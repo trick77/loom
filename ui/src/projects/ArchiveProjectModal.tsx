@@ -1,4 +1,5 @@
 import type { Project } from "../api";
+import { modalCancelButtonClass } from "../ThreadActionsMenu";
 
 export function ArchiveProjectModal({
   project,
@@ -27,15 +28,11 @@ export function ArchiveProjectModal({
         </p>
         {error !== "" && <p className="mt-3 text-sm text-[#d98278]">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            className="rounded-md bg-[#5c5b56] px-3 py-2 text-sm font-medium text-white hover:bg-[#696861]"
-            type="button"
-            onClick={onCancel}
-          >
+          <button className={modalCancelButtonClass} type="button" onClick={onCancel}>
             Cancel
           </button>
           <button
-            className="rounded-md bg-white px-3 py-2 text-sm font-medium text-[#1d1d1b] disabled:opacity-50"
+            className="h-8 rounded-md bg-white px-3.5 text-sm font-medium text-[#1d1d1b] transition-colors hover:bg-[#ece9e2] disabled:opacity-50"
             type="button"
             disabled={disabled}
             onClick={onArchive}
