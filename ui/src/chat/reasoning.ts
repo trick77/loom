@@ -35,19 +35,19 @@ export const REASONING_OPTIONS: ReasoningOption[] = [
     label: "High",
     badge: "Standard",
     description:
-      "The most reasoning and the strongest answers, at the cost of speed. Best for hard coding, multi-step problems, and tricky edge cases. The default.",
+      "Thinks the most, for the most accurate and thorough answers. Best for coding, math, and careful analysis. A little slower to respond. The default.",
   },
   {
     value: "medium",
     label: "Medium",
     description:
-      "Less reasoning for faster replies, with some loss of answer quality. A fair balance for everyday tasks that are not especially hard.",
+      "Thinks less and replies faster. Still reliable for everyday questions and writing, just less thorough.",
   },
   {
     value: "low",
     label: "Low",
     description:
-      "The least reasoning and the fastest replies, but the weakest answers. Best kept for quick, straightforward asks.",
+      "Thinks the least and replies fastest, so answers are more likely to miss details or slip up. Best for simple questions and quick edits.",
   },
 ];
 
