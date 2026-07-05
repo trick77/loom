@@ -119,8 +119,14 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	return category, sendSSEJSON(stream, "thread", thread)
 }
 
-func buildLLMHistory(user auth.User, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+func buildLLMHistory(user auth.User, toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	systemContent := systemPromptForUser(user, time.Now())
+	// Tool guidance (e.g. the file-creation guardrail) travels with the tools it
+	// describes: it is passed non-empty only when those tools are offered this
+	// turn, so the prompt never names a tool that was gated out of the request.
+	if strings.TrimSpace(toolGuidance) != "" {
+		systemContent += "\n\n" + toolGuidance
+	}
 	if strings.TrimSpace(classifierContext) != "" {
 		systemContent += "\n\n" + classifierContext
 	}

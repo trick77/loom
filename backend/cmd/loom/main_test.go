@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -132,8 +133,9 @@ func TestToolConfigForConfigAddsFirstClassMCPTools(t *testing.T) {
 	if obscura.URL != "http://obscura:8090/mcp" {
 		t.Fatalf("obscura URL = %q, want configured URL", obscura.URL)
 	}
-	if len(obscura.Tools) != 0 {
-		t.Fatalf("obscura tools = %#v, want no allowlist", obscura.Tools)
+	wantObscuraTools := []string{"browser_navigate", "browser_snapshot"}
+	if !reflect.DeepEqual(obscura.Tools, wantObscuraTools) {
+		t.Fatalf("obscura tools = %#v, want %#v", obscura.Tools, wantObscuraTools)
 	}
 }
 

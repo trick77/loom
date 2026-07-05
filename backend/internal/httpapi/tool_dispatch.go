@@ -107,7 +107,15 @@ func (s *server) fetchObscuraFallback(ctx context.Context, user auth.User, toolN
 	return capToolOutput(snapshot), true
 }
 
-func (s *server) availableTools(thread chat.Thread) []llm.Tool {
+// availableTools assembles the tool set injected into the prompt for this turn.
+// The always-on core (cross-thread memory, directives, web search) is offered
+// unconditionally; the heavier optional groups are gated by the turn's toolGate
+// so a simple turn no longer ships file-generation schemas or coding-doc MCP
+// tools it will never use. gate is a widen-only signal, so gating can only omit
+// tools the turn is unlikely to need — never one the model has already been told
+// to use. Called once per turn (not per round); the trimmed set is reused across
+// all tool rounds.
+func (s *server) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 	tools := []llm.Tool(nil)
 	names := map[string]string{}
 	// The cross-thread summarizer is only meaningful inside a project (it reads the
@@ -133,17 +141,23 @@ func (s *server) availableTools(thread chat.Thread) []llm.Tool {
 		tools = append(tools, tool)
 	}
 	if s.artifacts != nil && strings.TrimSpace(s.usersDir) != "" {
-		for _, gen := range s.docTools {
-			schema := gen.Schema()
-			names[schema.Name] = "built_in"
-			tools = append(tools, llm.Tool{
-				Type: "function",
-				Function: llm.ToolFunction{
-					Name:        schema.Name,
-					Description: schema.Description,
-					Parameters:  schema.Parameters,
-				},
-			})
+		// Doc generators are the biggest built-in schema chunk, so they are gated:
+		// injected only when the turn's category or wording plausibly wants a
+		// downloadable file. Image generation stays available (one small schema,
+		// and the image path forces it separately when required).
+		if gate.docgenEnabled() {
+			for _, gen := range s.docTools {
+				schema := gen.Schema()
+				names[schema.Name] = "built_in"
+				tools = append(tools, llm.Tool{
+					Type: "function",
+					Function: llm.ToolFunction{
+						Name:        schema.Name,
+						Description: schema.Description,
+						Parameters:  schema.Parameters,
+					},
+				})
+			}
 		}
 		for _, gen := range s.imageTools {
 			schema := gen.Schema()
@@ -163,7 +177,17 @@ func (s *server) availableTools(thread chat.Thread) []llm.Tool {
 		}
 	}
 	if s.mcp != nil {
-		for _, tool := range s.mcp.Tools() {
+		// MCP servers are gated by their declared categories: a category-neutral
+		// server (no categories, e.g. web search) is always offered, while a
+		// category-tagged server (e.g. context7 -> "coding") is offered only when
+		// its category is active for this turn. With no category signal at all
+		// (widenAll) every server is offered, so a legacy empty-category thread
+		// never loses tools it had before gating.
+		mcpTools := s.mcp.Tools()
+		if !gate.widenAll() {
+			mcpTools = s.mcp.ToolsFor(gate.activeCategories())
+		}
+		for _, tool := range mcpTools {
 			if owner, exists := names[tool.Function.Name]; exists {
 				slog.Warn("skipping duplicate MCP tool name", "tool", tool.Function.Name, "existing", owner)
 				continue
