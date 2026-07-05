@@ -125,6 +125,16 @@ export const en = {
       readingProjectThreads: "Reading project threads",
       browsingWeb: "Browsing the web",
       fetchingWebPage: "Fetching a web page",
+      creating: "Creating {{name}}",
+      activityComplete: "Activity complete",
+      gen: {
+        image: "image",
+        pdf: "PDF file",
+        document: "document",
+        spreadsheet: "spreadsheet",
+        presentation: "presentation",
+        file: "file",
+      },
     },
   },
   tabTitle: {

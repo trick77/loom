@@ -127,6 +127,16 @@ export const de = {
       readingProjectThreads: "Projekt-Threads werden gelesen",
       browsingWeb: "Web wird durchstöbert",
       fetchingWebPage: "Webseite wird abgerufen",
+      creating: "{{name}} wird erstellt",
+      activityComplete: "Aktivität abgeschlossen",
+      gen: {
+        image: "Bild",
+        pdf: "PDF-Datei",
+        document: "Dokument",
+        spreadsheet: "Tabelle",
+        presentation: "Präsentation",
+        file: "Datei",
+      },
     },
   },
   tabTitle: {

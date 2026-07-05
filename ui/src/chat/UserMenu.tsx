@@ -53,7 +53,11 @@ export function UserMenu({
         right + LANGUAGE_FLYOUT_WIDTH <= window.innerWidth
           ? right
           : rect.left - 4 - LANGUAGE_FLYOUT_WIDTH;
-      setFlyoutPos({ top: rect.top, left });
+      // The account menu sits at the sidebar bottom, so clamp the flyout up when
+      // it would run past the viewport bottom (row height ~34px per language).
+      const estimatedHeight = SUPPORTED_LANGUAGES.length * 34 + 12;
+      const top = Math.max(8, Math.min(rect.top, window.innerHeight - estimatedHeight - 8));
+      setFlyoutPos({ top, left });
     }
     setShowLanguages(true);
   }
