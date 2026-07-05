@@ -8,10 +8,12 @@ import {
 } from "react";
 import type { ExtraProps } from "react-markdown";
 import Markdown from "react-markdown";
+import { useTranslation } from "react-i18next";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import { type ContentBlock, type Message } from "../api";
+import i18n from "../i18n";
 import { MessageMetrics } from "../MessageMetrics";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import {
@@ -47,6 +49,7 @@ export function MessageBubble({
   /** Read-only public share viewer: hide actions, metrics and citations. */
   publicView?: boolean;
 }) {
+  const { t } = useTranslation();
   if (message.role === "user") {
     return (
       <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
@@ -61,9 +64,9 @@ export function MessageBubble({
         {publicView && message.hadAttachment === true && <AttachmentNotShared />}
         {!publicView && (
           <MessageActions
-            copyLabel="Copy message"
+            copyLabel={t("messages.copyMessage")}
             copyText={message.content}
-            retryLabel="Retry message"
+            retryLabel={t("messages.retryMessage")}
             onRetry={() => onRetry?.(message.content)}
             alignRight
           />
@@ -88,9 +91,9 @@ export function MessageBubble({
       ))}
       {!publicView && (
         <MessageActions
-          copyLabel="Copy response"
+          copyLabel={t("messages.copyResponse")}
           copyText={markdownToPlainText(proseText)}
-          retryLabel="Retry response"
+          retryLabel={t("messages.retryResponse")}
           onRetry={retryContent === null ? undefined : () => onRetry?.(retryContent)}
           metricsMessage={message}
           category={category}
@@ -107,10 +110,11 @@ export function MessageBubble({
 // stays private); this keeps an assistant reply that references "the file you
 // sent" from reading as a non-sequitur.
 function AttachmentNotShared() {
+  const { t } = useTranslation();
   return (
     <div className="mt-2 flex items-center justify-end gap-1.5 text-xs italic text-[#8a857b]">
       <Icon name="attach" size="14px" />
-      Attachment not shared
+      {t("messages.attachmentNotShared")}
     </div>
   );
 }
@@ -211,14 +215,15 @@ function SentFileAttachment({ attachment }: { attachment: ComposerAttachment }) 
 }
 
 function sentAttachmentStatus(attachment: ComposerAttachment): string {
-  if (attachment.status === "queued") return "Attached";
-  if (attachment.status === "uploading") return "Uploading...";
-  if (attachment.status === "processing") return "Processing...";
-  if (attachment.status === "error") return attachment.error ?? "Upload failed";
+  if (attachment.status === "queued") return i18n.t("messages.attached");
+  if (attachment.status === "uploading") return i18n.t("messages.uploading");
+  if (attachment.status === "processing") return i18n.t("messages.processing");
+  if (attachment.status === "error") return attachment.error ?? i18n.t("messages.uploadFailed");
   return formatAttachmentSize(attachment.sizeBytes);
 }
 
 function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
+  const { t } = useTranslation();
   const preRef = useRef<HTMLPreElement | null>(null);
   const [copied, setCopied] = useState(false);
   const resetRef = useRef<number | null>(null);
@@ -243,8 +248,8 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
         type="button"
         className="ui-codeblock-copy"
         onClick={handleCopy}
-        aria-label={copied ? "Kopiert" : "Code kopieren"}
-        title={copied ? "Kopiert" : "Code kopieren"}
+        aria-label={copied ? t("messages.copied") : t("messages.copyCode")}
+        title={copied ? t("messages.copied") : t("messages.copyCode")}
       >
         {copied ? <CheckIcon className="h-4 w-4" /> : <Icon name="copy" size="1rem" />}
       </button>
@@ -369,6 +374,7 @@ function MessageActions({
   alignRight?: boolean;
   streaming?: boolean;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
@@ -421,8 +427,8 @@ function MessageActions({
           }`}
           onClick={handleSpeak}
           type="button"
-          title={speaking ? "Stop" : "Read aloud"}
-          aria-label={speaking ? "Stop reading" : "Read aloud"}
+          title={speaking ? t("messages.stop") : t("messages.readAloud")}
+          aria-label={speaking ? t("messages.stopReading") : t("messages.readAloud")}
         >
           <Icon name="volume" size="1.15rem" />
         </button>
@@ -431,7 +437,7 @@ function MessageActions({
         className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
         onClick={handleCopy}
         type="button"
-        title="Copy"
+        title={t("messages.copy")}
         aria-label={copyLabel}
       >
         {copied ? <CheckIcon className="h-[1.15rem] w-[1.15rem]" /> : <Icon name="copy" size="1.15rem" />}
@@ -441,7 +447,7 @@ function MessageActions({
           className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
           onClick={onRetry}
           type="button"
-          title="Retry"
+          title={t("messages.retry")}
           aria-label={retryLabel}
         >
           <Icon name="retry" size="1.15rem" />
@@ -453,8 +459,11 @@ function MessageActions({
 }
 
 function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string; receivedBytes: number }) {
+  const { t } = useTranslation();
   const progressText =
-    receivedBytes > 0 ? `Receiving file... ${formatReceivedKB(receivedBytes)} received` : "Receiving file...";
+    receivedBytes > 0
+      ? t("messages.receivingFileProgress", { received: formatReceivedKB(receivedBytes) })
+      : t("messages.receivingFile");
   return (
     <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
       <div className="flex items-center gap-3">
@@ -464,7 +473,7 @@ function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">{label} response</div>
+          <div className="ui-message-text truncate">{t("messages.labelResponse", { label })}</div>
           <div className="ui-meta-text text-[#aaa79e]">{progressText}</div>
         </div>
       </div>
@@ -473,6 +482,7 @@ function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string
 }
 
 function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
+  const { t } = useTranslation();
   return (
     <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
       <div className="flex items-center gap-3">
@@ -482,15 +492,15 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">{artifact.label} response</div>
-          <div className="ui-meta-text text-[#aaa79e]">Ready to download</div>
+          <div className="ui-message-text truncate">{t("messages.labelResponse", { label: artifact.label })}</div>
+          <div className="ui-meta-text text-[#aaa79e]">{t("messages.readyToDownload")}</div>
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
           onClick={() => downloadEmbeddedArtifact(artifact)}
           type="button"
-          title={`Download ${artifact.label} response`}
-          aria-label={`Download ${artifact.label} response`}
+          title={t("messages.downloadResponse", { label: artifact.label })}
+          aria-label={t("messages.downloadResponse", { label: artifact.label })}
         >
           <DownloadIcon />
         </button>
@@ -508,6 +518,7 @@ function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }
 // viewBox (no intrinsic size), so the preview uses a min-height floor rather than
 // reserving an aspect-ratio box.
 function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
+  const { t } = useTranslation();
   const [previewUrl, setPreviewUrl] = useState("");
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
@@ -517,7 +528,9 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
     return () => URL.revokeObjectURL(url);
   }, [artifact.content]);
 
-  const altText = `${artifact.label} response`;
+  const altText = t("messages.labelResponse", { label: artifact.label });
+  const previewLabel = t("messages.previewResponse", { label: artifact.label });
+  const downloadLabel = t("messages.downloadResponse", { label: artifact.label });
 
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
@@ -525,8 +538,8 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
         className="block min-h-[16rem] w-full cursor-zoom-in bg-[#1f1f1d]"
         onClick={() => previewUrl !== "" && setLightboxOpen(true)}
         type="button"
-        title={`Preview ${altText}`}
-        aria-label={`Preview ${altText}`}
+        title={previewLabel}
+        aria-label={previewLabel}
       >
         {previewUrl !== "" && (
           <img className="block max-h-[28rem] w-full object-contain" src={previewUrl} alt={altText} loading="lazy" />
@@ -535,14 +548,14 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="ui-message-text truncate">{altText}</div>
-          <div className="ui-meta-text text-[#aaa79e]">Ready to download</div>
+          <div className="ui-meta-text text-[#aaa79e]">{t("messages.readyToDownload")}</div>
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
           onClick={() => downloadEmbeddedArtifact(artifact)}
           type="button"
-          title={`Download ${altText}`}
-          aria-label={`Download ${altText}`}
+          title={downloadLabel}
+          aria-label={downloadLabel}
         >
           <DownloadIcon />
         </button>

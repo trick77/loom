@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import { getUsage, type Usage } from "../api";
 import { formatTimeAgo } from "../timeago";
@@ -16,79 +18,91 @@ function fmt(n: number): string {
 // regenerates when there is new activity (messages pending) AND the memory is past
 // its window, so: no pending -> up to date; never generated -> eligible now;
 // otherwise count down the remaining window.
-function nextRefreshLabel(u: Usage, pending: number): string {
-  if (pending === 0) return "Up to date";
-  const pendingNote = `${fmt(pending)} pending`;
-  if (u.userMemoryUpdatedAt === null) return `Eligible now (${pendingNote})`;
+function nextRefreshLabel(u: Usage, pending: number, t: TFunction): string {
+  if (pending === 0) return t("settings.upToDate");
+  const note = t("settings.pendingNote", { formatted: fmt(pending) });
+  if (u.userMemoryUpdatedAt === null) return t("settings.eligibleNow", { note });
   const windowMs = u.userMemoryRefreshWindowHours * 3_600_000;
   const remainingMs = windowMs - (Date.now() - new Date(u.userMemoryUpdatedAt).getTime());
-  if (remainingMs <= 0) return `Eligible now (${pendingNote})`;
-  return `~${Math.ceil(remainingMs / 3_600_000)}h (${pendingNote})`;
+  if (remainingMs <= 0) return t("settings.eligibleNow", { note });
+  return t("settings.eligibleInHours", { hours: Math.ceil(remainingMs / 3_600_000), note });
 }
 
-function memoryRows(u: Usage): Row[] {
+function memoryRows(u: Usage, t: TFunction): Row[] {
   const pct = u.userMemoryMax > 0 ? Math.round((u.userMemoryLength / u.userMemoryMax) * 100) : 0;
   const pending = Math.max(u.userMemoryTotalMessages - u.userMemorySourceMessages, 0);
   const directivesPct =
     u.userDirectivesMax > 0 ? Math.round((u.userDirectivesLength / u.userDirectivesMax) * 100) : 0;
   return [
-    { label: "User memory length", value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)} (${pct}%)` },
+    { label: t("settings.memoryLength"), value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)} (${pct}%)` },
     {
-      label: "Last updated",
-      value: u.userMemoryUpdatedAt === null ? "Never" : formatTimeAgo(u.userMemoryUpdatedAt),
+      label: t("settings.lastUpdated"),
+      value: u.userMemoryUpdatedAt === null ? t("settings.never") : formatTimeAgo(u.userMemoryUpdatedAt),
     },
-    { label: "Messages captured", value: `${fmt(u.userMemorySourceMessages)} of ${fmt(u.userMemoryTotalMessages)}` },
-    { label: "Next refresh", value: nextRefreshLabel(u, pending) },
     {
-      label: "Other instructions",
-      value: `${fmt(u.userDirectivesCount)} (${fmt(u.userDirectivesLength)} / ${fmt(u.userDirectivesMax)} chars, ${directivesPct}%)`,
+      label: t("settings.messagesCaptured"),
+      value: t("settings.messagesCapturedValue", {
+        captured: fmt(u.userMemorySourceMessages),
+        total: fmt(u.userMemoryTotalMessages),
+      }),
+    },
+    { label: t("settings.nextRefresh"), value: nextRefreshLabel(u, pending, t) },
+    {
+      label: t("settings.otherInstructions"),
+      value: t("settings.otherInstructionsValue", {
+        directives: fmt(u.userDirectivesCount),
+        len: fmt(u.userDirectivesLength),
+        max: fmt(u.userDirectivesMax),
+        pct: directivesPct,
+      }),
     },
   ];
 }
 
-function sectionsFor(u: Usage): { group: string; rows: Row[] }[] {
+function sectionsFor(u: Usage, t: TFunction): { group: string; rows: Row[] }[] {
   return [
     {
-      group: "Memory",
-      rows: memoryRows(u),
+      group: t("settings.groupMemory"),
+      rows: memoryRows(u, t),
     },
     {
-      group: "Tokens",
+      group: t("settings.groupTokens"),
       rows: [
-        { label: "Total", value: fmt(u.totalTokens) },
-        { label: "Prompt", value: fmt(u.promptTokens) },
-        { label: "Completion", value: fmt(u.completionTokens) },
-        { label: "Cached", value: fmt(u.cachedTokens) },
-        { label: "Reasoning", value: fmt(u.reasoningTokens) },
+        { label: t("settings.total"), value: fmt(u.totalTokens) },
+        { label: t("settings.prompt"), value: fmt(u.promptTokens) },
+        { label: t("settings.completion"), value: fmt(u.completionTokens) },
+        { label: t("settings.cached"), value: fmt(u.cachedTokens) },
+        { label: t("settings.reasoning"), value: fmt(u.reasoningTokens) },
       ],
     },
     {
-      group: "Embeddings",
+      group: t("settings.groupEmbeddings"),
       rows: [
-        { label: "Embedding tokens", value: fmt(u.embeddingTokens) },
-        { label: "Embedding requests", value: fmt(u.embeddingRequests) },
+        { label: t("settings.embeddingTokens"), value: fmt(u.embeddingTokens) },
+        { label: t("settings.embeddingRequests"), value: fmt(u.embeddingRequests) },
       ],
     },
     {
-      group: "Tools",
+      group: t("settings.groupTools"),
       rows: [
-        { label: "Web searches", value: fmt(u.webSearches) },
-        { label: "Web fetches", value: fmt(u.webFetches) },
-        { label: "Obscura fetches", value: fmt(u.obscuraFetches) },
-        { label: "Image generations", value: fmt(u.imageGens) },
+        { label: t("settings.webSearches"), value: fmt(u.webSearches) },
+        { label: t("settings.webFetches"), value: fmt(u.webFetches) },
+        { label: t("settings.obscuraFetches"), value: fmt(u.obscuraFetches) },
+        { label: t("settings.imageGenerations"), value: fmt(u.imageGens) },
       ],
     },
     {
-      group: "Activity",
+      group: t("settings.groupActivity"),
       rows: [
-        { label: "Threads created", value: fmt(u.threadsCreated) },
-        { label: "Projects created", value: fmt(u.projectsCreated) },
+        { label: t("settings.threadsCreated"), value: fmt(u.threadsCreated) },
+        { label: t("settings.projectsCreated"), value: fmt(u.projectsCreated) },
       ],
     },
   ];
 }
 
 export function UsagePanel() {
+  const { t } = useTranslation();
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
 
@@ -99,22 +113,22 @@ export function UsagePanel() {
         if (active) setUsage(u);
       })
       .catch(() => {
-        if (active) setError("Failed to load usage.");
+        if (active) setError(t("settings.loadUsageFailed"));
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [t]);
 
   return (
     <div className="flex flex-col gap-6">
-      <h2 className="text-lg text-[#f4f0e8]">Usage</h2>
+      <h2 className="text-lg text-[#f4f0e8]">{t("settings.usage")}</h2>
       {error !== "" ? (
         <p className="text-[#d98278]">{error}</p>
       ) : usage === null ? (
-        <p className="text-[#8f8b82]">Loading…</p>
+        <p className="text-[#8f8b82]">{t("settings.loading")}</p>
       ) : (
-        sectionsFor(usage).map((section) => (
+        sectionsFor(usage, t).map((section) => (
           <div key={section.group} className="flex flex-col gap-1.5">
             <div className="text-sm font-medium text-[#8f8b82]">{section.group}</div>
             {section.rows.map((row) => (

@@ -1,12 +1,21 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 
+import { updateMe } from "../api";
+import { setLanguage, SUPPORTED_LANGUAGES, type UiLanguage } from "../i18n";
 import { menuIconClass, menuItemClass } from "../ThreadActionsMenu";
 import { Icon } from "./Icon";
 
+const LANGUAGE_FLYOUT_WIDTH = 240;
+
 /**
  * UserMenu — popup opened from the sidebar user row. Settings opens the settings
- * modal; Language is a deliberate dead entry for now (wired later); Log out runs
- * the existing logout. Styling mirrors ThreadActionsMenu.
+ * modal; Language opens a side flyout (claude-style) to pick English/Deutsch,
+ * which switches the UI locale and persists it to the profile (coupled with the
+ * LLM answer language); Log out runs the existing logout. Styling mirrors
+ * ThreadActionsMenu. The flyout is portalled to <body> so it escapes the
+ * sidebar's overflow clipping, and flips to the left edge when it would overflow.
  */
 export function UserMenu({
   onSettings,
@@ -19,6 +28,11 @@ export function UserMenu({
   onClose(): void;
   className?: string;
 }) {
+  const { t, i18n } = useTranslation();
+  const [showLanguages, setShowLanguages] = useState(false);
+  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const languageButtonRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -27,48 +41,118 @@ export function UserMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const active = (i18n.language.startsWith("de") ? "de" : "en") as UiLanguage;
+
+  function openLanguages() {
+    const rect = languageButtonRef.current?.getBoundingClientRect();
+    if (rect) {
+      // Prefer opening to the right of the row; flip to the left when it would
+      // overflow the viewport.
+      const right = rect.right + 4;
+      const left =
+        right + LANGUAGE_FLYOUT_WIDTH <= window.innerWidth
+          ? right
+          : rect.left - 4 - LANGUAGE_FLYOUT_WIDTH;
+      // The account menu sits at the sidebar bottom, so clamp the flyout up when
+      // it would run past the viewport bottom (row height ~34px per language).
+      const estimatedHeight = SUPPORTED_LANGUAGES.length * 34 + 12;
+      const top = Math.max(8, Math.min(rect.top, window.innerHeight - estimatedHeight - 8));
+      setFlyoutPos({ top, left });
+    }
+    setShowLanguages(true);
+  }
+
+  function chooseLanguage(language: UiLanguage) {
+    const previous = active;
+    setLanguage(language);
+    setShowLanguages(false);
+    onClose();
+    // Persist to the profile so the choice survives reloads and drives the LLM
+    // answer language. Revert the UI on failure so the two stay consistent.
+    updateMe({ responseLanguage: language }).catch(() => setLanguage(previous));
+  }
+
+  const languageLabel: Record<UiLanguage, string> = {
+    en: t("language.english"),
+    de: t("language.german"),
+  };
+
+  const panelClass =
+    "ui-sidebar-text w-[240px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)]";
+
   return (
-    <div
-      aria-label="User menu"
-      className={`ui-sidebar-text absolute z-30 w-[220px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
-      role="menu"
-    >
-      <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
-        role="menuitem"
-        type="button"
-        onClick={() => {
-          onClose();
-          onSettings();
-        }}
-      >
-        <Icon name="settings" size="19px" className={menuIconClass} />
-        Settings
-      </button>
-      <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
-        role="menuitem"
-        type="button"
-        onClick={() => {
-          /* Language switching is not wired yet — deliberate dead entry. */
-        }}
-      >
-        <Icon name="globe" size="19px" className={menuIconClass} />
-        Language
-      </button>
-      <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
-      <button
-        className={`${menuItemClass} text-[#f3f0e8]`}
-        role="menuitem"
-        type="button"
-        onClick={() => {
-          onClose();
-          onLogout();
-        }}
-      >
-        <LogoutMenuIcon />
-        Log out
-      </button>
+    <div aria-label={t("userMenu.label")} className={`absolute z-30 ${className}`}>
+      <div className={panelClass} role="menu">
+        <button
+          className={`${menuItemClass} text-[#f3f0e8]`}
+          role="menuitem"
+          type="button"
+          onMouseEnter={() => setShowLanguages(false)}
+          onClick={() => {
+            onClose();
+            onSettings();
+          }}
+        >
+          <Icon name="settings" size="19px" className={menuIconClass} />
+          {t("userMenu.settings")}
+        </button>
+        <button
+          ref={languageButtonRef}
+          className={`${menuItemClass} text-[#f3f0e8] ${showLanguages ? "bg-[#43423d]" : ""}`}
+          role="menuitem"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={showLanguages}
+          onMouseEnter={openLanguages}
+          onClick={openLanguages}
+        >
+          <Icon name="globe" size="19px" className={menuIconClass} />
+          {t("userMenu.language")}
+          <Icon name="chevronRight" size="16px" className="ml-auto text-[#8f8b82]" />
+        </button>
+        <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
+        <button
+          className={`${menuItemClass} text-[#f3f0e8]`}
+          role="menuitem"
+          type="button"
+          onMouseEnter={() => setShowLanguages(false)}
+          onClick={() => {
+            onClose();
+            onLogout();
+          }}
+        >
+          <LogoutMenuIcon />
+          {t("userMenu.logout")}
+        </button>
+      </div>
+      {showLanguages &&
+        flyoutPos &&
+        createPortal(
+          <div
+            className={`fixed z-[100] ${panelClass}`}
+            style={{ top: flyoutPos.top, left: flyoutPos.left }}
+            role="menu"
+            aria-label={t("userMenu.language")}
+            onMouseLeave={() => setShowLanguages(false)}
+          >
+            {SUPPORTED_LANGUAGES.map((language) => (
+              <button
+                key={language}
+                className={`${menuItemClass} text-[#f3f0e8]`}
+                role="menuitemradio"
+                aria-checked={active === language}
+                type="button"
+                onClick={() => chooseLanguage(language)}
+              >
+                <span className="min-w-0 flex-1 truncate text-left">{languageLabel[language]}</span>
+                {active === language && (
+                  <Icon name="check" size="17px" className="ml-2 shrink-0 text-[#5599e7]" />
+                )}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

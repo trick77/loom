@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   AuthExpiredError,
@@ -37,6 +38,7 @@ export function ArtifactsPage({
   // for artifacts that can be referenced as an image input.
   onUseInThread(artifact: Artifact): void;
 }) {
+  const { t } = useTranslation();
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [type, setType] = useState<ArtifactListType>("all");
@@ -69,7 +71,7 @@ export function ArtifactsPage({
   useEffect(() => {
     if (error instanceof AuthExpiredError) onSessionExpired();
   }, [error, onSessionExpired]);
-  const loadError = error !== null && !(error instanceof AuthExpiredError) ? "Artifacts failed to load." : "";
+  const loadError = error !== null && !(error instanceof AuthExpiredError) ? t("artifacts.loadFailed") : "";
 
   function updateSort(nextSort: ArtifactSort) {
     if (sort === nextSort) {
@@ -104,7 +106,7 @@ export function ArtifactsPage({
       );
       setRenameTarget(null);
     } catch (err) {
-      reportActionError(err, "Rename failed.");
+      reportActionError(err, t("artifacts.renameFailed"));
     } finally {
       setActionPending(false);
     }
@@ -119,7 +121,7 @@ export function ArtifactsPage({
       setItems((prev) => prev.filter((item) => item.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err) {
-      reportActionError(err, "Delete failed.");
+      reportActionError(err, t("artifacts.deleteFailed"));
     } finally {
       setActionPending(false);
     }
@@ -131,12 +133,12 @@ export function ArtifactsPage({
         <SidebarOpenButton variant="floating" onClick={onOpenSidebar} />
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Artifacts</h1>
+            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">{t("artifacts.title")}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <FilterButton active={type === "all"} label="All" onClick={() => setType("all")} />
-            <FilterButton active={type === "images"} label="Images" onClick={() => setType("images")} />
-            <FilterButton active={type === "files"} label="Files" onClick={() => setType("files")} />
+            <FilterButton active={type === "all"} label={t("artifacts.filterAll")} onClick={() => setType("all")} />
+            <FilterButton active={type === "images"} label={t("artifacts.filterImages")} onClick={() => setType("images")} />
+            <FilterButton active={type === "files"} label={t("artifacts.filterFiles")} onClick={() => setType("files")} />
           </div>
         </header>
 
@@ -151,8 +153,8 @@ export function ArtifactsPage({
             autoFocus
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search filenames..."
-            aria-label="Search filenames"
+            placeholder={t("artifacts.searchPlaceholder")}
+            aria-label={t("artifacts.searchLabel")}
             className="ui-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
           />
         </div>
@@ -170,15 +172,15 @@ export function ArtifactsPage({
                 hoveredArtifactID === artifacts[0]?.id ? "border-transparent" : "border-[#343432]"
               }`}
             >
-              <SortButton active={sort === "name"} label="Name" order={order} onClick={() => updateSort("name")} />
-              <SortButton active={sort === "modified"} label="Modified" order={order} onClick={() => updateSort("modified")} />
-              <SortButton active={sort === "size"} label="Size" order={order} onClick={() => updateSort("size")} />
+              <SortButton active={sort === "name"} label={t("artifacts.sortName")} order={order} onClick={() => updateSort("name")} />
+              <SortButton active={sort === "modified"} label={t("artifacts.sortModified")} order={order} onClick={() => updateSort("modified")} />
+              <SortButton active={sort === "size"} label={t("artifacts.sortSize")} order={order} onClick={() => updateSort("size")} />
             </div>
           )}
           {artifacts.length === 0 && loadError === "" ? (
             loaded && (
               <div className="py-10 text-center text-[#807d74]">
-                {searchTerm === "" ? "No artifacts yet." : "No artifacts match your search."}
+                {searchTerm === "" ? t("artifacts.empty") : t("artifacts.noMatch")}
               </div>
             )
           ) : (
@@ -223,7 +225,7 @@ export function ArtifactsPage({
           {/* Sentinel observed for infinite scroll; loads the next page when in view. */}
           <div ref={sentinelRef} aria-hidden="true" className="h-px" />
           {loadingMore && hasMore && (
-            <div className="ui-meta-text mt-3 px-1.5 text-[#8a887f]">Loading more…</div>
+            <div className="ui-meta-text mt-3 px-1.5 text-[#8a887f]">{t("artifacts.loadingMore")}</div>
           )}
         </div>
       </div>
@@ -384,6 +386,7 @@ function ArtifactRowFrame({
   onClick?: () => void;
   onHoverChange(hovered: boolean): void;
 } & ArtifactRowMenuProps) {
+  const { t } = useTranslation();
   const modifiedAt = artifact.modifiedAt ?? "";
   const interactive = onClick !== undefined;
   const rowRef = useRef<HTMLLIElement | null>(null);
@@ -465,7 +468,7 @@ function ArtifactRowFrame({
             hover, and is permanently shown on touch. */}
         <button
           aria-expanded={menuOpen}
-          aria-label={`Actions for ${artifact.displayFilename}`}
+          aria-label={t("artifacts.actionsFor", { filename: artifact.displayFilename })}
           className={`grid h-7 w-7 place-items-center justify-self-end rounded-md text-[#d8d4ca] transition-colors hover:bg-[#363632] hover:text-white ${
             showMenuButton ? "" : "invisible [@media(hover:none)]:visible"
           }`}
@@ -483,11 +486,12 @@ function ArtifactRowFrame({
 }
 
 function FileArtifactButton({ artifact }: { artifact: Artifact }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       className="flex w-full min-w-0 items-start gap-3 text-left"
-      aria-label={`Download ${artifact.displayFilename}`}
+      aria-label={t("artifacts.download", { filename: artifact.displayFilename })}
       onClick={() => void downloadToBrowser(artifact)}
     >
       <AttachmentPreview
@@ -520,11 +524,12 @@ function PdfArtifactRow({
   hovered: boolean;
   onHoverChange(hovered: boolean): void;
 } & ArtifactRowMenuProps) {
+  const { t } = useTranslation();
   const [previewOpen, setPreviewOpen] = useState(false);
   return (
     <>
       <ArtifactRowFrame
-        ariaLabel={`Preview ${artifact.displayFilename}`}
+        ariaLabel={t("artifacts.preview", { filename: artifact.displayFilename })}
         artifact={artifact}
         hideDivider={hideDivider}
         hovered={hovered}
@@ -534,7 +539,7 @@ function PdfArtifactRow({
         action={
           <div
             className="flex w-full min-w-0 items-start gap-3 text-left"
-            title={`Preview ${artifact.displayFilename}`}
+            title={t("artifacts.preview", { filename: artifact.displayFilename })}
           >
             <AttachmentPreview
               mimeType={artifact.mimeType}
@@ -573,6 +578,7 @@ function ImageArtifactRow({
   hovered: boolean;
   onHoverChange(hovered: boolean): void;
 } & ArtifactRowMenuProps) {
+  const { t } = useTranslation();
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
@@ -591,7 +597,7 @@ function ImageArtifactRow({
   return (
     <>
       <ArtifactRowFrame
-        ariaLabel={`Preview ${artifact.displayFilename}`}
+        ariaLabel={t("artifacts.preview", { filename: artifact.displayFilename })}
         artifact={artifact}
         hideDivider={hideDivider}
         hovered={hovered}
@@ -601,13 +607,13 @@ function ImageArtifactRow({
         action={
           <div
             className="flex w-full min-w-0 items-start gap-3 text-left"
-            title={`Preview ${artifact.displayFilename}`}
+            title={t("artifacts.preview", { filename: artifact.displayFilename })}
           >
             <AttachmentPreview
               mimeType={artifact.mimeType}
               filename={artifact.displayFilename}
               previewUrl={artifact.thumbnailUrl ?? artifact.downloadUrl}
-              alt={`${artifact.displayFilename} thumbnail`}
+              alt={t("artifacts.thumbnailAlt", { filename: artifact.displayFilename })}
               className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#1f1f1d] text-[#c7c5bd]"
             />
             <span className="block min-w-0">
@@ -625,14 +631,14 @@ function ImageArtifactRow({
           onClick={() => setLightboxOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label={`Preview ${artifact.displayFilename}`}
+          aria-label={t("artifacts.preview", { filename: artifact.displayFilename })}
         >
           <button
             className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-black/40 text-[#f3f0e8] transition-colors hover:bg-black/60"
             onClick={() => setLightboxOpen(false)}
             type="button"
-            title="Close preview"
-            aria-label="Close preview"
+            title={t("artifacts.closePreview")}
+            aria-label={t("artifacts.closePreview")}
           >
             <Icon name="close" size="20px" />
           </button>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Icon, type IconName } from "../chat/Icon";
 import { SharedChatsPanel } from "./SharedChatsPanel";
@@ -6,9 +7,9 @@ import { UsagePanel } from "./UsagePanel";
 
 type SettingsSection = "usage" | "shares";
 
-const SECTIONS: { id: SettingsSection; label: string; icon: IconName }[] = [
-  { id: "usage", label: "Usage", icon: "sliders" },
-  { id: "shares", label: "Shared chats", icon: "upload" },
+const SECTIONS: { id: SettingsSection; labelKey: string; icon: IconName }[] = [
+  { id: "usage", labelKey: "settings.usage", icon: "sliders" },
+  { id: "shares", labelKey: "settings.sharedChats", icon: "upload" },
 ];
 
 /**
@@ -16,6 +17,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: IconName }[] = [
  * There is deliberately no search box (per design).
  */
 export function SettingsModal({ onClose }: { onClose(): void }) {
+  const { t } = useTranslation();
   const [section, setSection] = useState<SettingsSection>("usage");
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
-      aria-label="Settings"
+      aria-label={t("settings.title")}
       onClick={onClose}
     >
       <div
@@ -40,7 +42,7 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
       >
         <nav className="w-[220px] shrink-0 border-r border-[#343432] bg-[#21211f] p-3">
           <div className="px-2 pb-2 pt-1 text-xs font-medium uppercase tracking-wide text-[#807d74]">
-            Settings
+            {t("settings.title")}
           </div>
           {SECTIONS.map((entry) => (
             <button
@@ -55,7 +57,7 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
               onClick={() => setSection(entry.id)}
             >
               <Icon name={entry.icon} size="18px" className="shrink-0" />
-              {entry.label}
+              {t(entry.labelKey)}
             </button>
           ))}
         </nav>
@@ -63,7 +65,7 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
           <button
             className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-md text-[#aaa79e] hover:bg-[#2a2a28]"
             type="button"
-            aria-label="Close settings"
+            aria-label={t("settings.closeSettings")}
             onClick={onClose}
           >
             <Icon name="close" size="18px" />

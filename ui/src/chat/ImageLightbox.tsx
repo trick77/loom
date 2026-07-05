@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Icon } from "./Icon";
 
@@ -19,6 +20,7 @@ export function ImageLightbox({
   onClose: () => void;
   fill?: boolean;
 }) {
+  const { t } = useTranslation();
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -33,14 +35,14 @@ export function ImageLightbox({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview ${alt}`}
+      aria-label={t("media.preview", { name: alt })}
     >
       <button
         className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-black/40 text-[#f3f0e8] transition-colors hover:bg-black/60"
         onClick={onClose}
         type="button"
-        title="Close preview"
-        aria-label="Close preview"
+        title={t("media.closePreview")}
+        aria-label={t("media.closePreview")}
       >
         <Icon name="close" size="20px" />
       </button>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
@@ -42,6 +43,7 @@ export function StartPanel({
   onRemoveAttachment(id: string): void;
   onEnterIncognito(): void;
 }) {
+  const { t } = useTranslation();
   // No thread exists yet, so uploads are deferred: files are held (see
   // pendingAttachmentNames) and bound to the thread once the first send creates it.
   // Pick the greeting once per mount — greetingForNow is now random, so calling it
@@ -51,7 +53,7 @@ export function StartPanel({
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
-        aria-label="Thread header"
+        aria-label={t("thread.header")}
         className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
@@ -59,10 +61,10 @@ export function StartPanel({
           <SidebarOpenButton onClick={onOpenSidebar} />
         </div>
         <button
-          aria-label="Use incognito"
+          aria-label={t("startPanel.useIncognito")}
           className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
           onClick={onEnterIncognito}
-          title="Use incognito"
+          title={t("startPanel.useIncognito")}
           type="button"
         >
           <Icon name="ghost" size="18px" />
@@ -81,7 +83,7 @@ export function StartPanel({
             draft={draft}
             isSending={isSending}
             sendDisabled={sendDisabled}
-            placeholder="How can I help you today?"
+            placeholder={t("startPanel.placeholder")}
             onDraftChange={onDraftChange}
             onSend={onSend}
             onStop={onStop}

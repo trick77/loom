@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import {
   DOCUMENT_ACCEPT,
@@ -24,16 +26,16 @@ const TRANSIENT_STATUSES: ReadonlySet<Document["status"]> = new Set([
 
 type Badge = { label: string; icon: IconName; className: string };
 
-function statusBadge(doc: Document): Badge {
+function statusBadge(doc: Document, t: TFunction): Badge {
   switch (doc.status) {
     case "embedded":
-      return { label: "Ready", icon: "checkCircle", className: "text-[#8fbf7f]" };
+      return { label: t("projects.knowledge.status.ready"), icon: "checkCircle", className: "text-[#8fbf7f]" };
     case "error":
-      return { label: "Error", icon: "alertCircle", className: "text-accent" };
+      return { label: t("projects.knowledge.status.error"), icon: "alertCircle", className: "text-accent" };
     case "stale":
-      return { label: "Stale", icon: "warning", className: "text-[#c9a227]" };
+      return { label: t("projects.knowledge.status.stale"), icon: "warning", className: "text-[#c9a227]" };
     default:
-      return { label: "Indexing…", icon: "spinner", className: "text-[#8f8b82]" };
+      return { label: t("projects.knowledge.status.indexing"), icon: "spinner", className: "text-[#8f8b82]" };
   }
 }
 
@@ -45,6 +47,7 @@ function statusBadge(doc: Document): Badge {
  * but is user-owned content, not a generated digest.
  */
 export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
+  const { t } = useTranslation();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -92,7 +95,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       }
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
+      setError(err instanceof Error ? err.message : t("projects.knowledge.error.upload"));
     } finally {
       setBusy(false);
       if (fileInputRef.current !== null) fileInputRef.current.value = "";
@@ -114,7 +117,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       setDocs((current) => current.filter((d) => d.id !== doc.id));
       setPendingDelete(null);
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : `Could not remove ${doc.filename}.`);
+      setDeleteError(
+        err instanceof Error ? err.message : t("projects.knowledge.error.remove", { filename: doc.filename }),
+      );
     } finally {
       setDeleting(false);
     }
@@ -126,7 +131,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       await indexDocument(doc.id);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Could not re-index ${doc.filename}.`);
+      setError(
+        err instanceof Error ? err.message : t("projects.knowledge.error.reindex", { filename: doc.filename }),
+      );
     }
   };
 
@@ -165,7 +172,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
 
   return (
     <section
-      aria-label="Knowledge"
+      aria-label={t("projects.knowledge.label")}
       className={`overflow-hidden rounded-2xl border bg-[#1f1f1d] transition-colors ${
         dragging ? "border-accent" : "border-[#343432]"
       }`}
@@ -177,7 +184,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       <div className="flex items-center gap-1.5 px-5 pt-5">
         <h2 className="flex items-center gap-1.5 text-[15px] font-medium text-[#ecece6]">
           <Icon name="artifact" size="21px" className="text-[#d5d2c9]" />
-          <span>Knowledge</span>
+          <span>{t("projects.knowledge.label")}</span>
         </h2>
         {busy && <Icon name="spinner" size="14px" className="text-[#8f8b82]" />}
         <input
@@ -191,7 +198,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       </div>
 
       <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
-        Upload documents so every thread in this project can search and cite them.
+        {t("projects.knowledge.description")}
       </p>
 
       {error !== "" && (
@@ -201,25 +208,25 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       )}
 
       {loading ? (
-        <p className="mt-3 px-5 pb-5 text-sm text-[#8f8b82]">Loading…</p>
+        <p className="mt-3 px-5 pb-5 text-sm text-[#8f8b82]">{t("projects.knowledge.loading")}</p>
       ) : docs.length === 0 ? (
         <div className="px-5 pb-5 pt-3">
           <button
             type="button"
             onClick={openPicker}
-            aria-label="Add documents to knowledge"
+            aria-label={t("projects.knowledge.addLabel")}
             className={`flex w-full flex-col items-center gap-1 rounded-xl border border-dashed px-4 py-7 text-center transition-colors ${
               dragging ? "border-accent bg-[#2a2a28]" : "border-[#3f3f3c] hover:bg-[#2a2a28]"
             }`}
           >
             <Icon name="upload" size="21px" className="text-[#d5d2c9]" />
-            <span className="text-sm leading-5 text-[#c7c5bd]">Drag documents here or tap to upload</span>
+            <span className="text-sm leading-5 text-[#c7c5bd]">{t("projects.knowledge.dropzone")}</span>
           </button>
         </div>
       ) : (
         <ul className="mt-2 max-h-[420px] overflow-y-auto px-2 pb-2">
           {docs.map((doc) => {
-            const badge = statusBadge(doc);
+            const badge = statusBadge(doc, t);
             const hovered = hoveredID === doc.id;
             return (
               <li
@@ -253,7 +260,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                   {(doc.status === "error" || doc.status === "stale") && (
                     <button
                       type="button"
-                      aria-label={`Re-index ${doc.filename}`}
+                      aria-label={t("projects.knowledge.reindex", { filename: doc.filename })}
                       className="grid h-7 w-7 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#343432]"
                       onClick={() => void handleReindex(doc)}
                     >
@@ -262,7 +269,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                   )}
                   <button
                     type="button"
-                    aria-label={`Remove ${doc.filename}`}
+                    aria-label={t("projects.knowledge.remove", { filename: doc.filename })}
                     className="grid h-7 w-7 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#343432]"
                     onClick={() => handleDeleteRequest(doc)}
                   >
@@ -280,7 +287,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
           <button
             type="button"
             onClick={openPicker}
-            aria-label="Add documents to knowledge"
+            aria-label={t("projects.knowledge.addLabel")}
             className={`flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-2.5 text-[13px] transition-colors ${
               dragging
                 ? "border-accent bg-[#2a2a28] text-[#c7c5bd]"
@@ -288,7 +295,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
             }`}
           >
             <Icon name="upload" size="18px" />
-            <span>Drag here or tap to add</span>
+            <span>{t("projects.knowledge.dropzoneCompact")}</span>
           </button>
         </div>
       )}

@@ -73,6 +73,20 @@ VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
 	return user, nil
 }
 
+// UpdateResponseLanguage persists a user's answer/UI language preference.
+func (s *UserStore) UpdateResponseLanguage(ctx context.Context, id, language string) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE users
+SET response_language = ?, updated_at = datetime('now')
+WHERE id = ?`,
+		language, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update response language: %w", err)
+	}
+	return nil
+}
+
 // ListUsers returns all app-local users ordered for the admin user list.
 func (s *UserStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `

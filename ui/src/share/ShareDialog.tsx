@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { createShare, disableShare, updateShare, type ShareInfo } from "../api";
 import { Icon, type IconName } from "../chat/Icon";
@@ -20,6 +21,7 @@ export function ShareDialog({
   onShareChange(next: ShareInfo | null): void;
   onClose(): void;
 }) {
+  const { t } = useTranslation();
   const isShared = share?.shared === true;
   const [choice, setChoice] = useState<"private" | "public">(isShared ? "public" : "private");
   const [busy, setBusy] = useState(false);
@@ -46,7 +48,7 @@ export function ShareDialog({
       const result = await fn();
       after?.(result);
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError(t("share.error"));
     } finally {
       setBusy(false);
     }
@@ -80,7 +82,7 @@ export function ShareDialog({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      setError("Couldn’t copy the link.");
+      setError(t("share.copyFailed"));
     }
   }
 
@@ -89,7 +91,7 @@ export function ShareDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
-      aria-label={isShared ? "Chat shared" : "Share chat"}
+      aria-label={isShared ? t("share.chatShared") : t("share.shareChat")}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -98,33 +100,33 @@ export function ShareDialog({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-sans text-[22px] font-semibold text-[#f4f0e8]">
-              {isShared ? "Chat shared" : "Share chat"}
+              {isShared ? t("share.chatShared") : t("share.shareChat")}
             </h2>
             <p className="mt-0.5 text-sm text-[#a8a399]">
               {isShared ? (
                 hasNewMessages ? (
                   <>
-                    New messages since last shared{" "}
+                    {t("share.newMessages")}{" "}
                     <button
                       type="button"
                       className="font-medium text-[#5599e7] underline underline-offset-2 transition-colors hover:text-[#6da7ec] disabled:opacity-50"
                       disabled={busy}
                       onClick={() => void run(() => updateShare(threadId), (info) => onShareChange(info))}
                     >
-                      Update
+                      {t("share.update")}
                     </button>
                   </>
                 ) : (
-                  "Future messages aren’t included."
+                  t("share.futureNotIncluded")
                 )
               ) : (
-                "Only messages up to this point will be shared."
+                t("share.onlyUpToNow")
               )}
             </p>
           </div>
           <button
             type="button"
-            aria-label="Close"
+            aria-label={t("common.close")}
             className="shrink-0 leading-none text-[#d5d2c9] transition-colors hover:text-white"
             onClick={onClose}
           >
@@ -136,16 +138,16 @@ export function ShareDialog({
         <div className="mt-4 overflow-hidden rounded-xl border border-[#454540] divide-y divide-[#454540]">
           <ShareOption
             icon="lock"
-            title="Keep private"
-            subtitle="Only you have access"
+            title={t("share.keepPrivate")}
+            subtitle={t("share.keepPrivateSub")}
             selected={choice === "private"}
             disabled={busy}
             onClick={selectPrivate}
           />
           <ShareOption
             icon="globe"
-            title="Create public link"
-            subtitle="Anyone with the link can view"
+            title={t("share.createPublicLink")}
+            subtitle={t("share.createPublicLinkSub")}
             selected={choice === "public"}
             disabled={busy}
             onClick={selectPublic}
@@ -171,14 +173,14 @@ export function ShareDialog({
               disabled={busy}
               onClick={() => void copyLink()}
             >
-              {copied ? "Copied" : "Copy link"}
+              {copied ? t("share.copied") : t("share.copyLink")}
             </button>
           </div>
         )}
 
         {/* Disclaimer — Claude's wording minus the Usage Policy link (loom has none). */}
         <p className="mt-4 text-xs leading-relaxed text-[#8a857b]">
-          Don’t share personal information or third-party content without permission.
+          {t("share.disclaimer")}
         </p>
 
         {!isShared && (
@@ -189,7 +191,7 @@ export function ShareDialog({
               disabled={busy || choice !== "public"}
               onClick={selectPublic}
             >
-              Create share link
+              {t("share.createShareLink")}
             </button>
           </div>
         )}

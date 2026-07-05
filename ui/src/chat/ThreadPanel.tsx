@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { ActivityTraceEvent } from "../activityTrace";
 import type { ContentBlock, Project, ShareInfo, Thread } from "../api";
@@ -70,6 +71,7 @@ export function ThreadPanel({
   onCloseThreadMenu(): void;
   onOpenSidebar(): void;
 }) {
+  const { t } = useTranslation();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -309,7 +311,7 @@ export function ThreadPanel({
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
-        aria-label="Thread header"
+        aria-label={t("thread.header")}
         className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
         role="banner"
       >
@@ -329,12 +331,12 @@ export function ThreadPanel({
                   <Icon name="chevronRight" size="16px" className="shrink-0 text-[#77736a]" />
                 </>
               )}
-              <span className="min-w-0 truncate">{thread?.title ?? "New thread"}</span>
+              <span className="min-w-0 truncate">{thread?.title ?? t("sidebar.newThread")}</span>
             </h1>
             {thread !== null && headerMenuKey !== null && (
               <button
                 aria-expanded={headerMenuOpen}
-                aria-label="Open thread actions"
+                aria-label={t("sidebar.openThreadActions")}
                 className="ml-1 grid h-5 w-5 shrink-0 place-items-center rounded-md text-[#88857d] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
                 onClick={() => onToggleThreadMenu(headerMenuKey)}
                 type="button"
@@ -363,11 +365,11 @@ export function ThreadPanel({
           {thread !== null && (
             <button
               type="button"
-              aria-label={share?.shared === true ? "Manage sharing" : "Share chat"}
+              aria-label={share?.shared === true ? t("thread.manageSharing") : t("thread.shareChat")}
               className="relative rounded-md bg-[#46453f] px-2.5 py-0.5 text-[#d6d3ca] transition-colors hover:bg-[#52514a] hover:text-[#f3f0e8]"
               onClick={() => setShareDialogOpen(true)}
             >
-              {share?.shared === true ? "Shared" : "Share"}
+              {share?.shared === true ? t("thread.shared") : t("thread.share")}
               {hasNewMessagesSinceShare && (
                 <span
                   aria-hidden
@@ -391,7 +393,7 @@ export function ThreadPanel({
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-bg to-transparent" />
         <div
           ref={transcriptRef}
-          aria-label="Conversation transcript"
+          aria-label={t("thread.transcript")}
           className="flex h-full flex-col overflow-y-auto px-6 pt-10 [scrollbar-gutter:stable_both-edges] md:px-8"
           onScroll={refreshScrollState}
           onTouchMove={disengageAutoScroll}
@@ -462,7 +464,7 @@ export function ThreadPanel({
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
           <div
-            aria-label="Message composer dock"
+            aria-label={t("thread.composerDock")}
             className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
@@ -477,7 +479,7 @@ export function ThreadPanel({
                 draft={draft}
                 isSending={isSending}
                 sendDisabled={sendDisabled || imageUploadPending}
-                placeholder="Write a message..."
+                placeholder={t("thread.messagePlaceholder")}
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}
                 onStop={onStop}
@@ -492,17 +494,17 @@ export function ThreadPanel({
                 </div>
               )}
               <div className="ui-meta-text mt-2 text-center text-[#858178]">
-                Loom can make mistakes. Please double-check responses.
+                {t("thread.disclaimer")}
               </div>
             </div>
           </div>
         </div>
         {showJumpToBottom && (
           <button
-            aria-label="Jump to latest message"
+            aria-label={t("thread.jumpToLatest")}
             className="absolute bottom-40 left-1/2 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border border-[#4b4a46] bg-[#2a2a28] text-[#f3f0e8] shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition-colors hover:bg-[#343432]"
             onClick={scrollToLatest}
-            title="Jump to latest"
+            title={t("thread.jumpToLatestTitle")}
             type="button"
           >
             <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">

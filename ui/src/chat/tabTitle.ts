@@ -1,4 +1,5 @@
 import type { Project, Thread } from "../api";
+import i18n from "../i18n";
 import type { RouteState } from "./routing";
 
 /**
@@ -14,22 +15,22 @@ export function tabTitle(
   let base: string | null;
   switch (route.view) {
     case "new":
-      base = "New thread";
+      base = i18n.t("tabTitle.newThread");
       break;
     case "threads":
-      base = "Recents";
+      base = i18n.t("tabTitle.recents");
       break;
     case "artifacts":
-      base = "Artifacts";
+      base = i18n.t("tabTitle.artifacts");
       break;
     case "memory":
-      base = "Memories";
+      base = i18n.t("tabTitle.memories");
       break;
     case "projects":
-      base = "Projects";
+      base = i18n.t("tabTitle.projects");
       break;
     case "project":
-      base = activeProject?.name ?? "Projects";
+      base = activeProject?.name ?? i18n.t("tabTitle.projects");
       break;
     case "thread":
       base = activeThread?.title ?? null;

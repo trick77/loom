@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AuthExpiredError,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
@@ -85,6 +86,7 @@ export function ThreadShell({
   onLogout,
   onSessionExpired,
 }: ThreadShellProps) {
+  const { t, i18n } = useTranslation();
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
   const [draft, setDraft] = useState("");
   // Files attached on the new-thread start screen, held until the first send creates
@@ -213,7 +215,7 @@ export function ThreadShell({
       // instead of this attributed one (the cancel cause is first-writer-wins).
       void stopMessage(threadID, source)
         .catch((error: unknown) => {
-          handleActionError(error, "Message failed to stop.", setSendError);
+          handleActionError(error, t("thread.stopFailed"), setSendError);
         })
         .finally(abort);
     },
@@ -308,7 +310,7 @@ export function ThreadShell({
 
   useEffect(() => {
     document.title = tabTitle(route, activeThread, activeProject);
-  }, [route, activeThread?.title, activeProject?.name]);
+  }, [route, activeThread?.title, activeProject?.name, i18n.language]);
 
   const navigateToNew = useCallback(() => {
     onThread();
@@ -478,7 +480,7 @@ export function ThreadShell({
       }
       setSendError("");
     } catch (error) {
-      handleActionError(error, "Thread failed to update.", setSendError);
+      handleActionError(error, t("thread.updateFailed"), setSendError);
     } finally {
       setIsUpdatingStar(false);
     }
@@ -517,7 +519,7 @@ export function ThreadShell({
       }
       setSendError("");
     } catch (error) {
-      handleActionError(error, "Project failed to update.", setSendError);
+      handleActionError(error, t("thread.projectUpdateFailed"), setSendError);
     } finally {
       setIsUpdatingStar(false);
     }

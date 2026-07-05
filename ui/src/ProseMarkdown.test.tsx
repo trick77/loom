@@ -15,7 +15,7 @@ test("applies syntax highlighting to fenced code blocks", () => {
 
 test("renders a copy button for each code block", () => {
   render(<ProseMarkdown>{codeSample}</ProseMarkdown>);
-  expect(screen.getByRole("button", { name: "Code kopieren" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copy code" })).toBeInTheDocument();
 });
 
 test("copies the code text to the clipboard and shows feedback", async () => {
@@ -23,10 +23,10 @@ test("copies the code text to the clipboard and shows feedback", async () => {
   vi.stubGlobal("navigator", { clipboard: { writeText } });
 
   render(<ProseMarkdown>{codeSample}</ProseMarkdown>);
-  fireEvent.click(screen.getByRole("button", { name: "Code kopieren" }));
+  fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
 
   expect(writeText).toHaveBeenCalledWith("const answer = 42;\n");
-  await waitFor(() => expect(screen.getByRole("button", { name: "Kopiert" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument());
 
   vi.unstubAllGlobals();
 });

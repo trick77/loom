@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -10,6 +11,7 @@ import {
   type ActivityTraceEvent,
   type ActivityTraceToolEvent,
 } from "../activityTrace";
+import i18n from "../i18n";
 import { Icon } from "./Icon";
 import { rehypeStreamFade } from "./streamFade";
 
@@ -34,6 +36,7 @@ export function ActivityTracePanel({
   initiallyExpanded?: boolean;
   onExpandedChange?(expanded: boolean): void;
 }) {
+  const { t } = useTranslation();
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(initiallyExpanded);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
   const [bodyMounted, setBodyMounted] = useState(expanded);
@@ -66,14 +69,14 @@ export function ActivityTracePanel({
   const hasBody = events.length > 0;
   return (
     <div
-      aria-label={active ? "Loom activity trace" : undefined}
+      aria-label={active ? t("activityTrace.label") : undefined}
       aria-live={active ? "polite" : undefined}
       className="ui-activity-trace"
       role={active ? "status" : undefined}
     >
       <button
         aria-expanded={expanded}
-        aria-label={expanded ? "Hide activity" : "Show activity"}
+        aria-label={expanded ? t("activityTrace.hideActivity") : t("activityTrace.showActivity")}
         className="ui-activity-trace-toggle"
         disabled={!hasBody}
         type="button"
@@ -125,6 +128,7 @@ export function ActivityTracePanel({
 const REASONING_CAP_PX = 192;
 
 function ReasoningContent({ content, streaming = false }: { content: string; streaming?: boolean }) {
+  const { t } = useTranslation();
   const [showFull, setShowFull] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -149,7 +153,7 @@ function ReasoningContent({ content, streaming = false }: { content: string; str
       </div>
       {overflowing && (
         <button className="ui-activity-reasoning-more" type="button" onClick={() => setShowFull((value) => !value)}>
-          {showFull ? "Show less" : "Show more"}
+          {showFull ? t("activityTrace.showLess") : t("activityTrace.showMore")}
         </button>
       )}
     </>
@@ -165,6 +169,7 @@ function ActivityTraceRow({
   headline: string;
   streaming: boolean;
 }) {
+  const { t } = useTranslation();
   if (event.type === "reasoning") {
     // Every reasoning round is a timeline node marked with the clock glyph,
     // regardless of running/done — the terminal "Done" node carries the
@@ -232,7 +237,7 @@ function ActivityTraceRow({
         {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
           <>
             <div className="ui-activity-result-count">
-              {event.preview.resultCount} {event.preview.resultCount === 1 ? "result" : "results"}
+              {t("activityTrace.results", { count: event.preview.resultCount })}
             </div>
             <div className="ui-activity-result-list">
               {event.preview.results.map((result, index) => (
@@ -247,13 +252,14 @@ function ActivityTraceRow({
 }
 
 function ActivityTraceDoneRow() {
+  const { t } = useTranslation();
   return (
     <div className="ui-activity-trace-row ui-activity-trace-row-done">
       <span className="ui-activity-trace-icon ui-activity-trace-icon-done" aria-hidden="true">
         <Icon name="checkCircle" size="1.125rem" />
       </span>
       <div className="min-w-0 flex-1">
-        <span className="ui-activity-done-label">Done</span>
+        <span className="ui-activity-done-label">{t("activityTrace.done")}</span>
       </div>
     </div>
   );
@@ -301,9 +307,9 @@ function latestReasoningTitle(events: ActivityTraceEvent[]): string | undefined 
 }
 
 function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {
-  if (event.status === "failed") return { label: "Failed", className: "ui-activity-status-failed" };
-  if (event.status === "running") return { label: "Running", className: "ui-activity-status-neutral" };
-  return { label: "Done", className: "ui-activity-status-neutral" };
+  if (event.status === "failed") return { label: i18n.t("activityTrace.failed"), className: "ui-activity-status-failed" };
+  if (event.status === "running") return { label: i18n.t("activityTrace.running"), className: "ui-activity-status-neutral" };
+  return { label: i18n.t("activityTrace.done"), className: "ui-activity-status-neutral" };
 }
 
 function GlobeTraceIcon() {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { editProjectMemory, getProjectMemory } from "../api";
 import { Icon } from "../chat/Icon";
@@ -12,6 +13,7 @@ import { MemoryComposer, useDismissOnOutside } from "../MemoryEditComposer";
  * the background after threads.
  */
 export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
+  const { t } = useTranslation();
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -35,7 +37,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
       setComposerOpen(false);
     } catch {
       if (projectIdRef.current === projectId) {
-        setError("Couldn't apply that — please try again.");
+        setError(t("projects.memory.editError"));
       }
     } finally {
       setPending(false);
@@ -68,21 +70,20 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
   return (
     <div className="relative" ref={containerRef}>
       <section
-        aria-label="Project memory"
+        aria-label={t("projects.memory.label")}
         className="relative overflow-hidden rounded-2xl border border-[#343432] bg-[#1f1f1d]"
       >
         <h2 className="flex items-center gap-1.5 px-5 pt-5 text-[15px] font-medium text-[#ecece6]">
           <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
-          <span>Project memory</span>
+          <span>{t("projects.memory.label")}</span>
         </h2>
 
         <p className="mt-1.5 px-5 text-[13px] leading-5 text-[#8a887f]">
-          A summary of what your threads in this project have covered, so each new one picks up
-          where the others left off.
+          {t("projects.memory.description")}
         </p>
 
         {loading ? (
-          <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">Loading…</p>
+          <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">{t("projects.memory.loading")}</p>
         ) : hasContent ? (
           <div
             className="relative mt-2 h-[490px] text-base text-[#f3f0e8]"
@@ -103,7 +104,7 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
           </div>
         ) : (
           <p className="mt-2 h-[490px] px-5 pb-5 text-sm leading-5 text-[#8f8b82]">
-            Project memory will show here after a few threads.
+            {t("projects.memory.empty")}
           </p>
         )}
 

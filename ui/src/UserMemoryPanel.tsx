@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { getUserDirectives, getUserMemory, type UserDirective } from "./api";
 import { Icon } from "./chat/Icon";
@@ -17,6 +18,7 @@ import { MemoryMarkdown } from "./MemoryMarkdown";
  *    displays them.
  */
 export function UserMemoryPanel() {
+  const { t } = useTranslation();
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [directives, setDirectives] = useState<UserDirective[]>([]);
@@ -58,42 +60,42 @@ export function UserMemoryPanel() {
   return (
     <div className="flex flex-col gap-4">
       <section
-        aria-label="Memories"
+        aria-label={t("memory.memoriesHeading")}
         className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
       >
         <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
           <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
-          <span>Memories</span>
+          <span>{t("memory.memoriesHeading")}</span>
         </h2>
 
         <p className="mt-1.5 text-[13px] leading-5 text-[#8a887f]">
-          What Loom has picked up about you across your threads, so each new one starts with context.
+          {t("memory.memoriesDescription")}
         </p>
 
         {loading ? (
-          <p className="mt-3 text-sm text-[#807d74]">Loading…</p>
+          <p className="mt-3 text-sm text-[#807d74]">{t("memory.loading")}</p>
         ) : hasContent ? (
           <div className="mt-3 text-base text-[#f3f0e8]" data-user-memory-content>
             <MemoryMarkdown content={content} />
           </div>
         ) : (
           <p className="mt-3 text-sm leading-5 text-[#807d74]">
-            Memories will show here after a few threads.
+            {t("memory.memoriesEmpty")}
           </p>
         )}
       </section>
 
       <section
-        aria-label="Other instructions"
+        aria-label={t("memory.otherInstructions")}
         className="rounded-2xl border border-[#343432] bg-[#1f1f1d] p-5"
       >
         <h2 className="flex items-center gap-1.5 text-sm font-medium text-[#ecece6]">
           <Icon name="memory" size="21px" className="text-[#d5d2c9]" />
-          <span>Other instructions</span>
+          <span>{t("memory.otherInstructions")}</span>
         </h2>
 
         <p className="mt-1.5 text-[13px] leading-5 text-[#8a887f]">
-          Standing instructions you've asked Loom to follow. Add, change, or remove these by telling Loom in chat.
+          {t("memory.otherInstructionsDescription")}
         </p>
 
         {directives.length > 0 ? (
@@ -110,7 +112,7 @@ export function UserMemoryPanel() {
           </ul>
         ) : (
           <p className="mt-3 text-sm leading-5 text-[#807d74]">
-            No saved instructions yet.
+            {t("memory.otherInstructionsEmpty")}
           </p>
         )}
       </section>

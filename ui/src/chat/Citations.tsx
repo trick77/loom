@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Citation } from "../api";
 
@@ -41,6 +42,7 @@ export function combineLikeSources(sources: Citation[]): CombinedSource[] {
 // MessageCitations renders the document sources that informed an assistant answer
 // as a "Sources" row of chips; clicking one reveals its matched snippet.
 export function MessageCitations({ citations }: { citations?: Citation[] }) {
+  const { t } = useTranslation();
   const [openFile, setOpenFile] = useState<string | null>(null);
   if (citations === undefined || citations.length === 0) return null;
   const combined = combineLikeSources(citations);
@@ -49,7 +51,7 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
   return (
     <div className="ui-meta-text mt-1 space-y-2 text-[#9a8f7e]">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[#858178]">Sources</span>
+        <span className="text-[#858178]">{t("citations.sources")}</span>
         {combined.map((source) => (
           <button
             key={source.filename}
@@ -58,16 +60,16 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             onClick={() => setOpenFile(openFile === source.filename ? null : source.filename)}
             title={
               source.full
-                ? `${source.filename} (full document)`
-                : `${source.filename} (${source.references} match${source.references > 1 ? "es" : ""})`
+                ? t("citations.tooltipFull", { filename: source.filename })
+                : t("citations.tooltipMatches", { filename: source.filename, count: source.references })
             }
           >
             <span className="max-w-[180px] truncate">{source.filename}</span>
             {source.full ? (
-              <span className="text-[#858178]">full document</span>
+              <span className="text-[#858178]">{t("citations.fullDocument")}</span>
             ) : (
               source.references > 1 && (
-                <span className="text-[#858178]">{source.references} excerpts</span>
+                <span className="text-[#858178]">{t("citations.excerpts", { count: source.references })}</span>
               )
             )}
           </button>
@@ -78,7 +80,9 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
           <div className="mb-1 flex items-center justify-between">
             <span className="truncate text-[#e8e4da]">{open.filename}</span>
             <span className="text-[#858178]">
-              {open.full ? "full document" : `relevance ${(open.bestScore * 100).toFixed(0)}%`}
+              {open.full
+                ? t("citations.fullDocument")
+                : t("citations.relevance", { percent: (open.bestScore * 100).toFixed(0) })}
             </span>
           </div>
           <p className="whitespace-pre-wrap">{open.bestSnippet}</p>

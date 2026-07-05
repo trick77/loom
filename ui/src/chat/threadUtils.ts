@@ -1,12 +1,14 @@
+import i18n from "../i18n";
 import type { Message } from "../api";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import type { MessageWithActivityTrace } from "./types";
 
-// A greeting for the start screen. `named` contains a `{name}` placeholder and is
-// only usable when we have a name; `unnamed` is the nameless form. An entry may
-// carry both (the renderer picks one), and `when` gates it to a time-of-day or
-// weekday — entries with no `when` are always eligible.
-type Greeting = { named?: string; unnamed?: string; when?: (now: Date) => boolean };
+// A greeting for the start screen. `key` indexes the localized text under the
+// `greetings` catalog namespace; `named`/`unnamed` flag which forms that entry
+// provides (named forms carry a `{{name}}` placeholder and need a name to
+// render), and `when` gates it to a time-of-day or weekday — entries with no
+// `when` are always eligible.
+type Greeting = { key: string; named?: boolean; unnamed?: boolean; when?: (now: Date) => boolean };
 
 // Time-of-day bands (non-overlapping) and weekday helpers, keyed on local time.
 const morning = (d: Date) => d.getHours() >= 5 && d.getHours() < 12;
@@ -17,43 +19,44 @@ const onDay = (day: number) => (d: Date) => d.getDay() === day; // 0=Sun … 6=S
 const weekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
 // The rotating pool. Mirrors the Claude home-screen set (brand lines adapted to
-// Loom), folding in the original five greetings so nothing is lost.
+// Loom), folding in the original five greetings so nothing is lost. Text lives in
+// the i18n `greetings` namespace so both languages rotate through the same slots.
 const GREETINGS: Greeting[] = [
   // Generic — always eligible.
-  { named: "{name} returns!" },
-  { named: "Back at it, {name}", unnamed: "Back at it!" },
-  { named: "Hey there, {name}", unnamed: "Hey there" },
-  { unnamed: "Greetings, whoever you are" },
-  { named: "Hi {name}, how are you?", unnamed: "Hi, how are you?" },
-  { named: "How was your day, {name}?", unnamed: "How was your day?" },
-  { named: "How's it going, {name}?", unnamed: "How's it going?" },
-  { named: "Welcome, {name}", unnamed: "Welcome" },
-  { named: "What's new, {name}?", unnamed: "What's new?" },
+  { key: "returns", named: true },
+  { key: "backAtIt", named: true, unnamed: true },
+  { key: "heyThere", named: true, unnamed: true },
+  { key: "whoever", unnamed: true },
+  { key: "howAreYou", named: true, unnamed: true },
+  { key: "howWasDay", named: true, unnamed: true },
+  { key: "howsItGoing", named: true, unnamed: true },
+  { key: "welcome", named: true, unnamed: true },
+  { key: "whatsNew", named: true, unnamed: true },
   // Morning.
-  { named: "Good morning, {name}", unnamed: "Good morning", when: morning },
-  { named: "Morning, {name}", when: morning },
-  { unnamed: "Coffee and Loom time?", when: morning },
+  { key: "goodMorning", named: true, unnamed: true, when: morning },
+  { key: "morning", named: true, when: morning },
+  { key: "coffee", unnamed: true, when: morning },
   // Afternoon.
-  { named: "Good afternoon, {name}", unnamed: "Good afternoon", when: afternoon },
-  { named: "Afternoon, {name}", when: afternoon },
+  { key: "goodAfternoon", named: true, unnamed: true, when: afternoon },
+  { key: "afternoon", named: true, when: afternoon },
   // Evening.
-  { named: "Good evening, {name}", unnamed: "Good evening", when: evening },
-  { named: "Evening, {name}", unnamed: "Evening", when: evening },
+  { key: "goodEvening", named: true, unnamed: true, when: evening },
+  { key: "evening", named: true, unnamed: true, when: evening },
   // Late night.
-  { unnamed: "Hello, night owl", when: night },
-  { named: "Up late, {name}?", when: night },
+  { key: "nightOwl", unnamed: true, when: night },
+  { key: "upLate", named: true, when: night },
   // Weekdays.
-  { named: "Happy Monday, {name}", unnamed: "Happy Monday", when: onDay(1) },
-  { named: "Happy Tuesday, {name}", unnamed: "Happy Tuesday", when: onDay(2) },
-  { named: "Happy Wednesday, {name}", unnamed: "Happy Wednesday", when: onDay(3) },
-  { named: "Happy Thursday, {name}", unnamed: "Happy Thursday", when: onDay(4) },
-  { named: "Happy Friday, {name}", unnamed: "Happy Friday", when: onDay(5) },
-  { named: "That Friday feeling, {name}", unnamed: "That Friday feeling", when: onDay(5) },
-  { named: "Happy Saturday, {name}", unnamed: "Happy Saturday!", when: onDay(6) },
-  { named: "Happy Sunday, {name}", unnamed: "Happy Sunday", when: onDay(0) },
-  { named: "Sunday session, {name}?", unnamed: "Sunday session?", when: onDay(0) },
+  { key: "happyMonday", named: true, unnamed: true, when: onDay(1) },
+  { key: "happyTuesday", named: true, unnamed: true, when: onDay(2) },
+  { key: "happyWednesday", named: true, unnamed: true, when: onDay(3) },
+  { key: "happyThursday", named: true, unnamed: true, when: onDay(4) },
+  { key: "happyFriday", named: true, unnamed: true, when: onDay(5) },
+  { key: "fridayFeeling", named: true, unnamed: true, when: onDay(5) },
+  { key: "happySaturday", named: true, unnamed: true, when: onDay(6) },
+  { key: "happySunday", named: true, unnamed: true, when: onDay(0) },
+  { key: "sundaySession", named: true, unnamed: true, when: onDay(0) },
   // Weekend.
-  { named: "Welcome to the weekend, {name}", unnamed: "Welcome to the weekend", when: weekend },
+  { key: "weekend", named: true, unnamed: true, when: weekend },
 ];
 
 function firstName(fullName: string): string {
@@ -61,22 +64,27 @@ function firstName(fullName: string): string {
   return trimmed === "" ? "" : trimmed.split(/\s+/)[0];
 }
 
+// greetingText resolves a localized greeting slot from the catalog.
+function greetingText(key: string, form: "named" | "unnamed", name: string): string {
+  return i18n.t(`greetings.${key}.${form}`, { name });
+}
+
 // eligibleGreetings returns the pool entries valid at `now`, dropping named-only
 // entries when there is no name to render them with.
 function eligibleGreetings(name: string, now: Date): Greeting[] {
   return GREETINGS.filter((g) => {
     if (g.when !== undefined && !g.when(now)) return false;
-    if (name === "" && g.unnamed === undefined) return false;
+    if (name === "" && !g.unnamed) return false;
     return true;
   });
 }
 
 function renderGreeting(greeting: Greeting, name: string, rand: () => number): string {
-  const canName = name !== "" && greeting.named !== undefined;
-  const useNamed =
-    canName && (greeting.unnamed === undefined || rand() < 0.5);
-  if (useNamed) return greeting.named!.replace("{name}", name);
-  return greeting.unnamed ?? greeting.named!.replace("{name}", name);
+  const canName = name !== "" && Boolean(greeting.named);
+  const useNamed = canName && (!greeting.unnamed || rand() < 0.5);
+  if (useNamed) return greetingText(greeting.key, "named", name);
+  if (greeting.unnamed) return greetingText(greeting.key, "unnamed", name);
+  return greetingText(greeting.key, "named", name);
 }
 
 // greetingForNow picks a time/day-appropriate greeting at random. `now` and `rand`
@@ -95,8 +103,8 @@ export function possibleGreetings(fullName: string, now = new Date()): string[] 
   const name = firstName(fullName);
   const out = new Set<string>();
   for (const g of eligibleGreetings(name, now)) {
-    if (name !== "" && g.named !== undefined) out.add(g.named.replace("{name}", name));
-    if (g.unnamed !== undefined) out.add(g.unnamed);
+    if (name !== "" && g.named) out.add(greetingText(g.key, "named", name));
+    if (g.unnamed) out.add(greetingText(g.key, "unnamed", name));
   }
   return [...out];
 }

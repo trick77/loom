@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { ErrorText } from "../chat/ErrorText";
 import { ModalShell } from "../chat/threadModals";
@@ -26,6 +27,7 @@ export function RenameArtifactModal({
   onCancel(): void;
   onSubmit(displayFilename: string): void;
 }) {
+  const { t } = useTranslation();
   const { stem, extension } = splitFilename(filename);
   const [value, setValue] = useState(stem);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -38,7 +40,7 @@ export function RenameArtifactModal({
 
   const trimmed = value.trim();
   return (
-    <ModalShell title="Rename artifact" onCancel={onCancel}>
+    <ModalShell title={t("artifacts.renameTitle")} onCancel={onCancel}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -49,7 +51,7 @@ export function RenameArtifactModal({
         <div className="mt-3 flex items-center rounded-lg border border-[#5b5851] bg-[#1f1f1d] pr-3 focus-within:border-[#807d74]">
           <input
             ref={inputRef}
-            aria-label="Artifact filename"
+            aria-label={t("artifacts.filenameLabel")}
             className="ui-control-text h-[38px] min-w-0 flex-1 bg-transparent px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -61,14 +63,14 @@ export function RenameArtifactModal({
         {error !== "" && <ErrorText>{error}</ErrorText>}
         <div className="mt-4 flex justify-end gap-2">
           <button className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]" onClick={onCancel} type="button">
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             className="h-8 rounded-md bg-[#50483d] px-3.5 text-sm font-medium text-[#fffaf2] disabled:opacity-50"
             disabled={disabled || trimmed === ""}
             type="submit"
           >
-            Save
+            {t("common.save")}
           </button>
         </div>
       </form>
@@ -89,19 +91,23 @@ export function DeleteArtifactModal({
   onCancel(): void;
   onDelete(): void;
 }) {
+  const { t } = useTranslation();
   return (
-    <ModalShell title="Delete artifact" onCancel={onCancel}>
+    <ModalShell title={t("artifacts.deleteTitle")} onCancel={onCancel}>
       <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">
-        Delete <span className="font-medium text-[#f3f0e8]">{filename}</span>? It will be removed from
-        your artifacts. Chats that used it will show the file as deleted.
+        <Trans
+          i18nKey="artifacts.deleteConfirm"
+          values={{ filename }}
+          components={{ name: <span className="font-medium text-[#f3f0e8]" /> }}
+        />
       </div>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
         <button autoFocus className={modalCancelButtonClass} onClick={onCancel} type="button">
-          Cancel
+          {t("common.cancel")}
         </button>
         <button className={modalDangerButtonClass} disabled={disabled} onClick={onDelete} type="button">
-          Delete
+          {t("common.delete")}
         </button>
       </div>
     </ModalShell>

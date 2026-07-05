@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ATTACHMENT_ACCEPT } from "../api";
+import i18n from "../i18n";
 import { AttachmentPreview } from "../components/AttachmentPreview";
 import { attachAcceptedFiles, formatAttachmentSize } from "./attachmentFiles";
 import { Icon } from "./Icon";
@@ -42,6 +44,7 @@ export function Composer({
   attachments?: ComposerAttachment[];
   onRemoveAttachment?(id: string): void;
 }) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Slash-command typeahead: while the draft is a lone "/token", suggest matching
   // commands. `dismissed` hides the popover after Escape until the draft changes.
@@ -121,7 +124,7 @@ export function Composer({
     >
       {attachments.length > 0 && (
         <div
-          aria-label="Message attachments"
+          aria-label={t("composer.attachments")}
           className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[104px]`}
         >
           <div className="flex flex-wrap gap-2">
@@ -201,7 +204,7 @@ export function Composer({
               }`}
             >
               <span className="font-mono text-sm text-[#f3f0e8]">/{command.name}</span>
-              <span className="truncate text-xs text-[#aaa79e]">{command.description}</span>
+              <span className="truncate text-xs text-[#aaa79e]">{t(command.description)}</span>
             </button>
           ))}
         </div>
@@ -216,7 +219,7 @@ export function Composer({
           <button
             className="leading-none disabled:opacity-40"
             type="button"
-            aria-label="Add attachment"
+            aria-label={t("composer.addAttachment")}
             disabled={onAttachFiles === undefined}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -241,7 +244,7 @@ export function Composer({
             className={`ui-composer-send grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
             disabled={!isSending && !canSend}
             type="submit"
-            aria-label={isSending ? "Stop response" : "Send message"}
+            aria-label={isSending ? t("composer.stopResponse") : t("composer.sendMessage")}
           >
             {isSending ? (
               <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
@@ -266,11 +269,12 @@ export function Composer({
 }
 
 function AttachmentRemoveButton({ attachment, onRemove }: { attachment: ComposerAttachment; onRemove: (id: string) => void }) {
+  const { t } = useTranslation();
   return (
     <button
       className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#64615a] bg-[#343432] text-[#d8d4ca] opacity-95 transition-colors hover:bg-[#44423d] hover:text-[#f3f0e8]"
       type="button"
-      aria-label={`Remove ${attachment.filename}`}
+      aria-label={t("composer.removeAttachment", { filename: attachment.filename })}
       onClick={() => onRemove(attachment.id)}
     >
       <Icon name="closeCircle" size="14px" />
@@ -285,6 +289,7 @@ function AttachmentPill({
   attachment: ComposerAttachment;
   onRemove?: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const uploading =
     attachment.status === "uploading" || attachment.status === "processing";
 
@@ -311,7 +316,7 @@ function AttachmentPill({
         )}
         {attachment.status === "error" && (
           <span className="absolute inset-x-0 bottom-0 truncate bg-[#5a2a27]/90 px-1.5 py-0.5 text-center text-[11px] text-[#f3d6d2]">
-            {attachment.error ?? "Upload failed"}
+            {attachment.error ?? t("composer.uploadFailed")}
           </span>
         )}
         {onRemove !== undefined && <AttachmentRemoveButton attachment={attachment} onRemove={onRemove} />}
@@ -346,9 +351,9 @@ function AttachmentPill({
 }
 
 function attachmentStatusLabel(attachment: ComposerAttachment): string {
-  if (attachment.status === "queued") return "Attached";
-  if (attachment.status === "uploading") return "Uploading...";
-  if (attachment.status === "processing") return "Processing...";
+  if (attachment.status === "queued") return i18n.t("composer.attached");
+  if (attachment.status === "uploading") return i18n.t("composer.uploading");
+  if (attachment.status === "processing") return i18n.t("composer.processing");
   if (attachment.status === "ready") return formatAttachmentSize(attachment.sizeBytes);
-  return attachment.error ?? "Upload failed";
+  return attachment.error ?? i18n.t("composer.uploadFailed");
 }
