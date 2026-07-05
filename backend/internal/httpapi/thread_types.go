@@ -120,14 +120,18 @@ type streamMessageRequest struct {
 	Content               string   `json:"content"`
 	DocumentAttachmentIDs []string `json:"documentAttachmentIds"`
 	ImageAttachmentIDs    []string `json:"imageAttachmentIds"`
+	// ReasoningEffort is the composer's chosen reasoning depth (low/medium/high).
+	// Empty or unknown values fall back to the default via normalizeReasoningEffort.
+	ReasoningEffort string `json:"reasoningEffort"`
 }
 
 // incognitoStreamRequest carries the whole ephemeral transcript from the client:
 // the new user Content plus the prior turns as History (the server persists
 // nothing, so it cannot reload them). Only user/assistant roles are honored.
 type incognitoStreamRequest struct {
-	Content string                  `json:"content"`
-	History []incognitoHistoryEntry `json:"history"`
+	Content         string                  `json:"content"`
+	History         []incognitoHistoryEntry `json:"history"`
+	ReasoningEffort string                  `json:"reasoningEffort"`
 }
 
 type incognitoHistoryEntry struct {

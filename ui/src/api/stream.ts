@@ -27,18 +27,22 @@ export async function streamMessage(
   content: string,
   handlers: StreamHandlers,
   signal?: AbortSignal,
-  opts: { documentAttachmentIds?: string[]; imageAttachmentIds?: string[] } = {},
+  opts: { documentAttachmentIds?: string[]; imageAttachmentIds?: string[]; reasoningEffort?: string } = {},
 ): Promise<void> {
   const requestBody: {
     content: string;
     documentAttachmentIds?: string[];
     imageAttachmentIds?: string[];
+    reasoningEffort?: string;
   } = { content };
   if (opts.documentAttachmentIds && opts.documentAttachmentIds.length > 0) {
     requestBody.documentAttachmentIds = opts.documentAttachmentIds;
   }
   if (opts.imageAttachmentIds && opts.imageAttachmentIds.length > 0) {
     requestBody.imageAttachmentIds = opts.imageAttachmentIds;
+  }
+  if (opts.reasoningEffort !== undefined && opts.reasoningEffort !== "") {
+    requestBody.reasoningEffort = opts.reasoningEffort;
   }
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stream`, {
     method: "POST",
@@ -83,11 +87,19 @@ export async function streamIncognitoMessage(
   history: { role: "user" | "assistant"; content: string }[],
   handlers: StreamHandlers,
   signal?: AbortSignal,
+  opts: { reasoningEffort?: string } = {},
 ): Promise<void> {
+  const requestBody: { content: string; history: typeof history; reasoningEffort?: string } = {
+    content,
+    history,
+  };
+  if (opts.reasoningEffort !== undefined && opts.reasoningEffort !== "") {
+    requestBody.reasoningEffort = opts.reasoningEffort;
+  }
   const response = await fetch(`/api/incognito/messages:stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, history }),
+    body: JSON.stringify(requestBody),
     signal,
   });
   if (response.status === 401) {

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
+import type { ReasoningEffort } from "../chat/reasoning";
 import {
   isImageAttachment,
   toSentAttachment,
@@ -25,6 +26,8 @@ export function ProjectDetailPage({
   isSending,
   sendDisabled = false,
   openThreadMenuID,
+  reasoningEffort,
+  onReasoningEffortChange,
   onBack,
   onDraftChange,
   onSend,
@@ -50,6 +53,8 @@ export function ProjectDetailPage({
   isSending: boolean;
   sendDisabled?: boolean;
   openThreadMenuID: string | null;
+  reasoningEffort: ReasoningEffort;
+  onReasoningEffortChange(value: ReasoningEffort): void;
   onBack(): void;
   onDraftChange(value: string): void;
   onSend(attachments?: ComposerAttachment[]): void;
@@ -175,6 +180,8 @@ export function ProjectDetailPage({
                 sendDisabled={sendDisabled || imageUploadPending}
                 placeholder={t("projects.detail.composerPlaceholder")}
                 autoFocus
+                reasoningEffort={reasoningEffort}
+                onReasoningEffortChange={onReasoningEffortChange}
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}
                 onStop={onStop}

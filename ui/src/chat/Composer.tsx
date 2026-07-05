@@ -6,6 +6,8 @@ import i18n from "../i18n";
 import { AttachmentPreview } from "../components/AttachmentPreview";
 import { attachAcceptedFiles, formatAttachmentSize } from "./attachmentFiles";
 import { Icon } from "./Icon";
+import { ReasoningMenu } from "./ReasoningMenu";
+import { MODEL_LABEL, type ReasoningEffort } from "./reasoning";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
 import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
@@ -17,6 +19,8 @@ export function Composer({
   placeholder,
   autoFocus = false,
   incognito = false,
+  reasoningEffort,
+  onReasoningEffortChange,
   onDraftChange,
   onSend,
   onStop,
@@ -34,6 +38,10 @@ export function Composer({
   // Incognito mode: dashed outline and no attachment affordance (uploads persist,
   // so they are unavailable in an ephemeral thread).
   incognito?: boolean;
+  // The reasoning-effort selection and its setter, shown in the footer next to the
+  // static model label.
+  reasoningEffort: ReasoningEffort;
+  onReasoningEffortChange(value: ReasoningEffort): void;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
@@ -239,9 +247,14 @@ export function Composer({
             if (files.length > 0) attachFiles(files);
           }}
         />
-        <div className="ui-meta-text flex items-center text-[#d8d4ca]">
+        <div className="ui-meta-text flex items-center gap-2 text-[#d8d4ca]">
+          {/* Static model label — Loom serves one model, so this is a name, not a
+              picker. Hidden on the narrowest widths so the reasoning control and
+              send button always fit. */}
+          <span className="hidden select-none text-[13px] text-[#aaa79e] sm:inline">{MODEL_LABEL}</span>
+          <ReasoningMenu value={reasoningEffort} onChange={onReasoningEffortChange} />
           <button
-            className={`ui-composer-send grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
+            className={`ui-composer-send ml-0.5 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
             disabled={!isSending && !canSend}
             type="submit"
             aria-label={isSending ? t("composer.stopResponse") : t("composer.sendMessage")}

@@ -42,10 +42,14 @@ const documentToolTimeout = 5 * time.Minute
 // visionModel (the omnimodal non-Pro variant) is used only for turns that carry
 // image input — mimo-v2.5-pro is text-only and 404s on any image_url part.
 const (
-	textModel              = "mimo-v2.5-pro"
-	visionModel            = "mimo-v2.5"
-	defaultReasoningEffort = "high"
+	textModel   = "mimo-v2.5-pro"
+	visionModel = "mimo-v2.5"
 )
+
+// DefaultReasoningEffort is the reasoning depth used when a turn carries no
+// per-request choice. Exported so the httpapi layer normalizes to the same value
+// the llm client falls back to, keeping the default defined in exactly one place.
+const DefaultReasoningEffort = "high"
 
 // Config holds the OpenAI-compatible chat completion settings.
 type Config struct {
@@ -128,7 +132,7 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 		apiKey:              cfg.APIKey,
 		model:               textModel,
 		visionModel:         visionModel,
-		reasoningEffort:     defaultReasoningEffort,
+		reasoningEffort:     DefaultReasoningEffort,
 		maxCompletionTokens: maxCompletionTokens,
 		timeout:             cfg.Timeout,
 		idleTimeout:         cfg.IdleTimeout,
@@ -189,14 +193,25 @@ func (c *Client) executeChatRequest(ctx context.Context, messages []Message, str
 	})
 }
 
-func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool, model string) (*http.Response, error) {
+func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool, model, reasoningEffort string) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
 		model:               model,
 		tools:               tools,
 		stream:              stream,
-		reasoningEffort:     c.reasoningEffort,
+		reasoningEffort:     reasoningEffort,
 		maxCompletionTokens: c.maxCompletionTokensForTools(tools),
 	})
+}
+
+// resolveReasoningEffort picks the reasoning depth for a turn: the per-request
+// value carried on the context (set by the httpapi layer from the composer
+// selection) when present, else the client's configured default. Utility calls
+// (titles, classifiers) never set the metadata field, so they keep the default.
+func (c *Client) resolveReasoningEffort(ctx context.Context) string {
+	if effort := inferenceMetadataFromContext(ctx).ReasoningEffort; effort != "" {
+		return effort
+	}
+	return c.reasoningEffort
 }
 
 // executeUtilityChatRequest runs a non-streaming secondary helper call (title or

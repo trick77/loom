@@ -7,6 +7,7 @@ import { ErrorText } from "./ErrorText";
 import { Icon } from "./Icon";
 import { AssistantProse, MessageBubble } from "./messages";
 import { ActivityTracePanel } from "./ActivityTracePanel";
+import type { ReasoningEffort } from "./reasoning";
 import type { MessageWithActivityTrace } from "./types";
 import { previousUserContent } from "./threadUtils";
 import { WorkingDot } from "./WorkingDot";
@@ -23,6 +24,8 @@ export function IncognitoPanel({
   streamingBlocks,
   isSending,
   sendError,
+  reasoningEffort,
+  onReasoningEffortChange,
   onDraftChange,
   onSend,
   onStop,
@@ -34,6 +37,8 @@ export function IncognitoPanel({
   streamingBlocks: ContentBlock[];
   isSending: boolean;
   sendError: string;
+  reasoningEffort: ReasoningEffort;
+  onReasoningEffortChange(value: ReasoningEffort): void;
   onDraftChange(value: string): void;
   onSend(): void;
   onStop(): void;
@@ -73,6 +78,8 @@ export function IncognitoPanel({
       draft={draft}
       isSending={isSending}
       placeholder={t("incognito.placeholder")}
+      reasoningEffort={reasoningEffort}
+      onReasoningEffortChange={onReasoningEffortChange}
       onDraftChange={onDraftChange}
       onSend={onSend}
       onStop={onStop}

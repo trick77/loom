@@ -12,6 +12,7 @@ import { ErrorText } from "./ErrorText";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import { AssistantProse, MessageBubble } from "./messages";
+import type { ReasoningEffort } from "./reasoning";
 import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserContent } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
@@ -32,6 +33,8 @@ export function ThreadPanel({
   isSending,
   sendDisabled,
   openThreadMenuID,
+  reasoningEffort,
+  onReasoningEffortChange,
   onOpenSidebar,
   onDraftChange,
   onSend,
@@ -58,6 +61,8 @@ export function ThreadPanel({
   isSending: boolean;
   sendDisabled: boolean;
   openThreadMenuID: string | null;
+  reasoningEffort: ReasoningEffort;
+  onReasoningEffortChange(value: ReasoningEffort): void;
   onDraftChange(value: string): void;
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
@@ -480,6 +485,8 @@ export function ThreadPanel({
                 isSending={isSending}
                 sendDisabled={sendDisabled || imageUploadPending}
                 placeholder={t("thread.messagePlaceholder")}
+                reasoningEffort={reasoningEffort}
+                onReasoningEffortChange={onReasoningEffortChange}
                 onDraftChange={onDraftChange}
                 onSend={handleSendRequest}
                 onStop={onStop}
