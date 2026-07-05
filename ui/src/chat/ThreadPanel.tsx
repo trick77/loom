@@ -346,7 +346,7 @@ export function ThreadPanel({
               <ThreadActionsMenu
                 menuKey={headerMenuKey}
                 thread={thread}
-                className="right-0 top-full"
+                className="right-0"
                 onDelete={onDeleteThread}
                 onRename={onRenameThread}
                 onShare={() => {

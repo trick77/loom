@@ -1,5 +1,6 @@
 import type { Thread } from "./api";
 import { Icon } from "./chat/Icon";
+import { useMenuPlacement } from "./chat/useMenuPlacement";
 
 // Standard menu entry: inset with rounded corners so the hover highlight floats
 // inside the menu (matching menuDeleteItemClass). The grey hover fill is baked in
@@ -17,6 +18,16 @@ export const menuIconClass = "grid h-[21px] w-[21px] shrink-0 place-items-center
 // rgb(208,59,59) = #d03b3b.
 export const menuDeleteItemClass =
   "mx-1 flex min-h-[30px] w-[calc(100%-0.5rem)] items-start gap-2.5 rounded-md px-3 py-1 text-left text-[#ec7e7e] transition-colors hover:bg-[#d03b3b] hover:text-white";
+
+// Shared modal action buttons, matching claude.ai's confirm dialog exactly so
+// every delete/remove modal looks identical. Danger fill is the same #d03b3b red
+// as menuDeleteItemClass (claude's --danger fill), lightening to #e34948 on hover
+// (claude's --danger-hover). Cancel is a translucent-white "secondary" button
+// (claude's fill-secondary: white/10 -> white/14 on hover).
+export const modalDangerButtonClass =
+  "h-8 rounded-md bg-[#d03b3b] px-3.5 text-sm font-medium text-white transition-colors hover:bg-[#e34948] disabled:opacity-50";
+export const modalCancelButtonClass =
+  "h-8 rounded-md bg-[rgba(255,255,255,0.10)] px-3.5 text-sm font-medium text-[#f3f0e8] transition-colors hover:bg-[rgba(255,255,255,0.14)]";
 
 export function ThreadActionsMenu({
   menuKey,
@@ -42,10 +53,12 @@ export function ThreadActionsMenu({
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
 }) {
   const hasProject = thread.projectId !== undefined && thread.projectId !== null;
+  const { menuRef, verticalClass } = useMenuPlacement();
   return (
     <div
+      ref={menuRef}
       aria-label="Thread actions"
-      className={`ui-sidebar-text absolute z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
+      className={`ui-sidebar-text absolute z-20 ${verticalClass} w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
       {onSelect !== undefined && (

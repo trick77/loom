@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef } from "react";
 
+import { modalCancelButtonClass, modalDangerButtonClass } from "../ThreadActionsMenu";
 import { ErrorText } from "./ErrorText";
 
 export function RenameThreadModal({
@@ -71,20 +72,10 @@ export function DeleteThreadModal({
       <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">Are you sure you want to delete this thread?</div>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
-        <button
-          autoFocus
-          className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]"
-          onClick={onCancel}
-          type="button"
-        >
+        <button autoFocus className={modalCancelButtonClass} onClick={onCancel} type="button">
           Cancel
         </button>
-        <button
-          className="h-8 rounded-md bg-[#b85c52] px-3.5 text-sm font-medium text-[#fffaf2] disabled:opacity-50"
-          disabled={disabled}
-          onClick={onDelete}
-          type="button"
-        >
+        <button className={modalDangerButtonClass} disabled={disabled} onClick={onDelete} type="button">
           Delete
         </button>
       </div>
@@ -111,7 +102,7 @@ export function ModalShell({
   }, [onCancel]);
   return (
     <div
-      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(10,10,9,0.62)] px-4 md:pr-4 md:pl-[378px]"
+      className="fixed inset-0 z-40 grid place-items-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px] md:pr-4 md:pl-[378px]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}

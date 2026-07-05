@@ -90,7 +90,7 @@ export function SearchModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] grid items-start justify-items-center bg-[rgba(10,10,9,0.62)] px-4 pt-[12vh]"
+      className="fixed inset-0 z-[60] grid items-start justify-items-center bg-[rgba(0,0,0,0.5)] px-4 pt-[12vh] backdrop-blur-[2px]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

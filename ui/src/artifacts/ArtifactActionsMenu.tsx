@@ -1,5 +1,6 @@
 import { DownloadIcon } from "../chat/icons";
 import { Icon } from "../chat/Icon";
+import { useMenuPlacement } from "../chat/useMenuPlacement";
 import { menuDeleteItemClass, menuIconClass, menuItemClass, TrashMenuIcon } from "../ThreadActionsMenu";
 
 // ArtifactActionsMenu is the per-row context menu for the Artifacts library:
@@ -20,10 +21,14 @@ export function ArtifactActionsMenu({
   onRename(): void;
   onDelete(): void;
 }) {
+  // Anchored 44px down from the row top (below the ⋮). Mirror that offset when
+  // flipping up so a bottom-row menu isn't clipped by the end of the list.
+  const { menuRef, dropUp } = useMenuPlacement();
   return (
     <div
+      ref={menuRef}
       aria-label="Artifact actions"
-      className="ui-sidebar-text absolute right-3 top-11 z-20 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
+      className={`ui-sidebar-text absolute right-3 ${dropUp ? "bottom-11" : "top-11"} z-20 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)]`}
       role="menu"
     >
       <button className={`${menuItemClass} text-[#f3f0e8]`} role="menuitem" type="button" onClick={onDownload}>
