@@ -4,7 +4,7 @@ import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
 import { Icon } from "./Icon";
-import { greetingForNow } from "./threadUtils";
+import { pickGreeting } from "./threadUtils";
 import { PromptStarters } from "./PromptStarters";
 import type { ReasoningEffort } from "./reasoning";
 import type { ComposerAttachment } from "./useDocumentAttachments";
@@ -51,10 +51,12 @@ export function StartPanel({
   const { t } = useTranslation();
   // No thread exists yet, so uploads are deferred: files are held (see
   // pendingAttachmentNames) and bound to the thread once the first send creates it.
-  // Pick the greeting once per mount — greetingForNow is now random, so calling it
-  // inline would reroll it on every re-render. useState's lazy initialiser runs
-  // exactly once (unlike useMemo, whose cache React may drop).
-  const [greeting] = useState(() => greetingForNow(displayName));
+  // Pick the greeting slot once per mount (useState's lazy initialiser runs exactly
+  // once, so the random choice never re-rolls on re-render), but translate it below
+  // at render time — so switching the UI language re-localizes the greeting instead
+  // of leaving the mount-time language frozen in.
+  const [greetingPick] = useState(() => pickGreeting(displayName));
+  const greeting = t(`greetings.${greetingPick.key}.${greetingPick.form}`, { name: greetingPick.name });
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header

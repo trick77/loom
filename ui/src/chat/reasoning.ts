@@ -19,42 +19,19 @@ export const MODEL_LABEL = "MiMo 2.5 Pro";
 
 export type ReasoningOption = {
   value: ReasoningEffort;
-  label: string;
-  description: string;
-  // Short pill shown beside the label (only "Standard" today, marking the default).
-  badge?: string;
+  // Marks the recommended default (the "Default" pill). The label and description
+  // are localized in ReasoningMenu via i18n keys (composer.reasoning.*), so they
+  // are not stored here.
+  default?: boolean;
 };
 
 // Ordered high -> low so the recommended default sits at the top of the menu.
-// The copy is explicit that this is a speed-for-quality trade: less reasoning
-// means faster replies but weaker answers. On an unlimited plan there is nothing
-// to say about cost or quotas, so that stays out of the copy entirely.
 export const REASONING_OPTIONS: ReasoningOption[] = [
-  {
-    value: "high",
-    label: "High",
-    badge: "Standard",
-    description:
-      "Thinks the most, for the most accurate and thorough answers. Best for coding, math, and careful analysis. A little slower to respond. The default.",
-  },
-  {
-    value: "medium",
-    label: "Medium",
-    description:
-      "Thinks less and replies faster. Still reliable for everyday questions and writing, just less thorough.",
-  },
-  {
-    value: "low",
-    label: "Low",
-    description:
-      "Thinks the least and replies fastest, so answers are more likely to miss details or slip up. Best for simple questions and quick edits.",
-  },
+  { value: "high", default: true },
+  { value: "medium" },
+  { value: "low" },
 ];
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return value === "low" || value === "medium" || value === "high";
-}
-
-export function reasoningLabel(effort: ReasoningEffort): string {
-  return REASONING_OPTIONS.find((option) => option.value === effort)?.label ?? "High";
 }
