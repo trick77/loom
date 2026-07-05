@@ -8,10 +8,10 @@
 // (its cutoff is ~4091); we collapse sooner and also on line count to keep the
 // composer uncluttered. A paste under both thresholds is inserted inline as usual.
 export const PASTE_AS_ATTACHMENT_THRESHOLD = 2000;
-// The composer only shows ~11 lines (desktop) / ~6 (mobile) before it scrolls, so
-// collapse once a paste clearly overflows the box; a normal typed multi-line
-// message (a couple of short paragraphs) stays comfortably under this.
-export const PASTE_AS_ATTACHMENT_LINE_THRESHOLD = 15;
+// Collapse only a genuine wall of lines: set well above a typical typed multi-line
+// message or a short pasted email so it isn't triggered eagerly (the composer
+// scrolls past ~11 lines, so these still scroll a little before collapsing).
+export const PASTE_AS_ATTACHMENT_LINE_THRESHOLD = 25;
 
 export type PastedText = {
   id: string;
