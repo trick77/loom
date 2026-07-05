@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   AuthExpiredError,
@@ -7,16 +8,10 @@ import {
   type MCPServerStatus,
   type MCPToolInfo,
 } from "../api";
+import i18n from "../i18n";
 import { UsagePanel } from "../settings/UsagePanel";
 import { Icon } from "./Icon";
 import { SLASH_COMMANDS, type SlashCommandName } from "./slashCommands";
-
-const TITLES: Record<SlashCommandName, string> = {
-  mcp: "MCP servers",
-  tools: "Available tools",
-  usage: "Usage",
-  help: "Slash commands",
-};
 
 /**
  * SlashCommandPanel — the ephemeral overlay a slash command opens. It renders
@@ -30,6 +25,7 @@ export function SlashCommandPanel({
   command: SlashCommandName;
   onClose(): void;
 }) {
+  const { t } = useTranslation();
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -43,7 +39,7 @@ export function SlashCommandPanel({
       className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
-      aria-label={TITLES[command]}
+      aria-label={t(`slash.titles.${command}`)}
       onClick={onClose}
     >
       <div
@@ -54,12 +50,12 @@ export function SlashCommandPanel({
           <div className="flex items-center gap-2 text-sm font-medium text-[#f4f0e8]">
             <span className="font-mono text-[#aaa79e]">/{command}</span>
             <span className="text-[#807d74]">·</span>
-            <span>{TITLES[command]}</span>
+            <span>{t(`slash.titles.${command}`)}</span>
           </div>
           <button
             className="grid h-8 w-8 place-items-center rounded-md text-[#aaa79e] hover:bg-[#2a2a28]"
             type="button"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={onClose}
           >
             <Icon name="close" size="18px" />
@@ -97,7 +93,7 @@ function useAsync<T>(load: () => Promise<T>): { loading: boolean; error: string;
       })
       .catch((err) => {
         if (cancelled) return;
-        const message = err instanceof AuthExpiredError ? "Your session expired. Reload to sign in." : String(err?.message ?? err);
+        const message = err instanceof AuthExpiredError ? i18n.t("slash.sessionExpired") : String(err?.message ?? err);
         setState({ loading: false, error: message, value: null });
       });
     return () => {
@@ -110,11 +106,12 @@ function useAsync<T>(load: () => Promise<T>): { loading: boolean; error: string;
 }
 
 function PanelState({ loading, error, empty }: { loading: boolean; error: string; empty?: string }) {
+  const { t } = useTranslation();
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-6 text-sm text-[#aaa79e]">
         <Icon name="spinner" size="18px" />
-        Loading…
+        {t("slash.loading")}
       </div>
     );
   }
@@ -125,20 +122,21 @@ function PanelState({ loading, error, empty }: { loading: boolean; error: string
 }
 
 function MCPServersView() {
+  const { t } = useTranslation();
   const { loading, error, value } = useAsync<MCPServerStatus[]>(getMCPServers);
   if (loading || error !== "" || value === null || value.length === 0) {
-    return <PanelState loading={loading} error={error} empty="No MCP servers configured." />;
+    return <PanelState loading={loading} error={error} empty={t("slash.noServers")} />;
   }
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
         <tr className="text-left text-xs uppercase tracking-wide text-[#807d74]">
-          <th className="pb-2 pr-4 font-medium">Server</th>
-          <th className="pb-2 pr-4 font-medium">Status</th>
-          <th className="pb-2 pr-4 font-medium">Type</th>
-          <th className="pb-2 pr-4 font-medium">Origin</th>
-          <th className="pb-2 pr-4 font-medium">Tools</th>
-          <th className="pb-2 font-medium">Endpoint</th>
+          <th className="pb-2 pr-4 font-medium">{t("slash.columns.server")}</th>
+          <th className="pb-2 pr-4 font-medium">{t("slash.columns.status")}</th>
+          <th className="pb-2 pr-4 font-medium">{t("slash.columns.type")}</th>
+          <th className="pb-2 pr-4 font-medium">{t("slash.columns.origin")}</th>
+          <th className="pb-2 pr-4 font-medium">{t("slash.columns.tools")}</th>
+          <th className="pb-2 font-medium">{t("slash.columns.endpoint")}</th>
         </tr>
       </thead>
       <tbody className="text-[#e7e3d9]">
@@ -151,7 +149,7 @@ function MCPServersView() {
                   className={`inline-block h-2 w-2 rounded-full ${server.active ? "bg-[#5fbf7f]" : "bg-[#d1655a]"}`}
                   aria-hidden
                 />
-                {server.active ? "up" : "down"}
+                {server.active ? t("slash.up") : t("slash.down")}
               </span>
               {!server.active && server.error !== undefined && server.error !== "" && (
                 <div className="mt-1 max-w-[220px] text-xs text-[#c98b82]">{server.error}</div>
@@ -174,9 +172,10 @@ function transportLabel(transport: string): string {
 }
 
 function ToolsView() {
+  const { t } = useTranslation();
   const { loading, error, value } = useAsync<MCPToolInfo[]>(getMCPTools);
   if (loading || error !== "" || value === null || value.length === 0) {
-    return <PanelState loading={loading} error={error} empty="No tools are currently exposed." />;
+    return <PanelState loading={loading} error={error} empty={t("slash.noTools")} />;
   }
   // Group by server, preserving each server's tool order.
   const groups = new Map<string, MCPToolInfo[]>();
@@ -213,12 +212,13 @@ function ToolsView() {
 }
 
 function HelpView() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col divide-y divide-[#333230] rounded-lg border border-[#333230]">
       {SLASH_COMMANDS.map((command) => (
         <div key={command.name} className="flex items-baseline gap-3 px-3.5 py-2.5">
           <span className="w-24 shrink-0 font-mono text-sm text-[#e7e3d9]">/{command.name}</span>
-          <span className="text-sm text-[#aaa79e]">{command.description}</span>
+          <span className="text-sm text-[#aaa79e]">{t(command.description)}</span>
         </div>
       ))}
     </div>

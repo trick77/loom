@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import type { Thread } from "./api";
 import { Icon } from "./chat/Icon";
 import { useMenuPlacement } from "./chat/useMenuPlacement";
@@ -52,12 +54,13 @@ export function ThreadActionsMenu({
   onRemoveFromProject?(thread: Thread): void;
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
 }) {
+  const { t } = useTranslation();
   const hasProject = thread.projectId !== undefined && thread.projectId !== null;
   const { menuRef, verticalClass } = useMenuPlacement();
   return (
     <div
       ref={menuRef}
-      aria-label="Thread actions"
+      aria-label={t("thread.actions")}
       className={`ui-sidebar-text absolute z-20 ${verticalClass} w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
@@ -70,7 +73,7 @@ export function ThreadActionsMenu({
             onClick={() => onSelect(thread)}
           >
             <CheckMenuIcon />
-            Select
+            {t("thread.select")}
           </button>
           <MenuSeparator />
         </>
@@ -84,7 +87,7 @@ export function ThreadActionsMenu({
         <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
           <Icon name={thread.starred ? "starOff" : "star"} size="19px" />
         </span>
-        {thread.starred ? "Unstar" : "Star"}
+        {thread.starred ? t("thread.unstar") : t("thread.star")}
       </button>
       <button
         className={`${menuItemClass} text-[#f3f0e8]`}
@@ -95,7 +98,7 @@ export function ThreadActionsMenu({
         <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
           <Icon name="edit" size="19px" />
         </span>
-        Rename
+        {t("thread.rename")}
       </button>
       {onShare !== undefined && (
         <button
@@ -107,7 +110,7 @@ export function ThreadActionsMenu({
           <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
             <Icon name="upload" size="19px" />
           </span>
-          Share
+          {t("thread.share")}
         </button>
       )}
       {hasProject ? (
@@ -119,7 +122,7 @@ export function ThreadActionsMenu({
           onClick={() => onRemoveFromProject?.(thread)}
         >
           <ProjectMenuIcon />
-          Remove from project
+          {t("thread.removeFromProject")}
         </button>
       ) : (
         <button
@@ -130,7 +133,7 @@ export function ThreadActionsMenu({
           onClick={() => onAddToProject?.(thread)}
         >
           <ProjectMenuIcon />
-          Add to project
+          {t("thread.addToProject")}
         </button>
       )}
       <MenuSeparator />
@@ -141,7 +144,7 @@ export function ThreadActionsMenu({
         onClick={() => onDelete(thread)}
       >
         <TrashMenuIcon />
-        Delete
+        {t("common.delete")}
       </button>
     </div>
   );

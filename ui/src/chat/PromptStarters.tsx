@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ICONS, Icon, type IconName } from "./Icon";
-import promptStarters from "./promptStarters.json";
+import promptStartersEn from "./promptStarters.json";
+import promptStartersDe from "./promptStarters.de.json";
 
 type PromptCategory = {
   key: string;
@@ -9,6 +11,19 @@ type PromptCategory = {
   icon: IconName;
   suggestions: string[];
 };
+
+// The prompt-starter content is localized: each locale has its own JSON with the
+// same structure (keys/icons/sampleSize shared, text translated). The suggestions
+// also seed the LLM prompt, so a German UI offers German starters.
+type PromptData = {
+  template: string;
+  sampleSize: number;
+  categories: { key: string; label: string; icon: string; suggestions: string[] }[];
+};
+
+function datasetFor(language: string): PromptData {
+  return (language.startsWith("de") ? promptStartersDe : promptStartersEn) as PromptData;
+}
 
 /** Validates a glyph name from the JSON against the icon font at load time, so a
  * typo'd `icon` value fails fast here instead of rendering an empty glyph later. */
@@ -19,20 +34,11 @@ function toIconName(value: string): IconName {
   return value as IconName;
 }
 
-const TEMPLATE: string = promptStarters.template;
-const SAMPLE_SIZE: number = promptStarters.sampleSize;
-const CATEGORIES: PromptCategory[] = promptStarters.categories.map((category) => ({
-  key: category.key,
-  label: category.label,
-  icon: toIconName(category.icon),
-  suggestions: category.suggestions,
-}));
-
 /** Wraps a suggestion in the prompt template, lowercasing the first letter so it
  * reads naturally inside "Could you …?". */
-function buildPrompt(suggestion: string): string {
+function buildPrompt(template: string, suggestion: string): string {
   const phrase = suggestion.charAt(0).toLowerCase() + suggestion.slice(1);
-  return TEMPLATE.replace("{suggestion}", phrase);
+  return template.replace("{suggestion}", phrase);
 }
 
 /** Returns up to `count` randomly chosen items (Fisher–Yates on a copy). */
@@ -46,6 +52,18 @@ function randomSample(items: string[], count: number): string[] {
 }
 
 export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
+  const { t, i18n } = useTranslation();
+  const data = useMemo(() => datasetFor(i18n.language), [i18n.language]);
+  const categories = useMemo<PromptCategory[]>(
+    () =>
+      data.categories.map((category) => ({
+        key: category.key,
+        label: category.label,
+        icon: toIconName(category.icon),
+        suggestions: category.suggestions,
+      })),
+    [data],
+  );
   const [open, setOpen] = useState<{ category: PromptCategory; suggestions: string[] } | null>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const headerRef = useRef<HTMLButtonElement>(null);
@@ -55,7 +73,7 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
     setOpen((current) =>
       current?.category.key === category.key
         ? null
-        : { category, suggestions: randomSample(category.suggestions, SAMPLE_SIZE) },
+        : { category, suggestions: randomSample(category.suggestions, data.sampleSize) },
     );
   }
 
@@ -76,8 +94,8 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
 
   if (open === null) {
     return (
-      <ul aria-label="Prompt categories" className="mt-4 flex flex-wrap justify-center gap-2">
-        {CATEGORIES.map((category, index) => (
+      <ul aria-label={t("messages.promptStarters.categories")} className="mt-4 flex flex-wrap justify-center gap-2">
+        {categories.map((category, index) => (
           <li
             key={category.key}
             className="prompt-pop-in"
@@ -106,7 +124,7 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
       <div className="overflow-hidden rounded-2xl border border-[rgba(226,225,218,0.15)] bg-[#2c2c2a] p-2 shadow-[0_1px_2px_rgba(11,11,11,0.06),0_2px_8px_rgba(0,0,0,0.24)]">
         <button
           ref={headerRef}
-          aria-label={`Close ${open.category.label} suggestions`}
+          aria-label={t("messages.promptStarters.closeSuggestions", { label: open.category.label })}
           className="group ui-meta-text flex w-full items-center gap-2 px-2 py-1 text-left text-[#97958c]"
           type="button"
           onClick={() => toggle(open.category)}
@@ -117,14 +135,14 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
             <Icon name="close" size="0.95rem" />
           </span>
         </button>
-        <ul aria-label={`${open.category.label} suggestions`} className="mt-1 flex flex-col">
+        <ul aria-label={t("messages.promptStarters.suggestions", { label: open.category.label })} className="mt-1 flex flex-col">
           {open.suggestions.map((suggestion) => (
             <li key={suggestion} className="ui-prompt-option">
               <button
                 className="ui-control-text flex w-full items-center rounded-lg px-2 py-2.5 text-left text-[#c3c2b7] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f3f0e8]"
                 type="button"
                 onClick={() => {
-                  onPick(buildPrompt(suggestion));
+                  onPick(buildPrompt(data.template, suggestion));
                   setOpen(null);
                 }}
               >

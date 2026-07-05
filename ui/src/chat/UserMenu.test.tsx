@@ -1,8 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import "../i18n";
+import { setLanguage } from "../i18n";
 import { UserMenu } from "./UserMenu";
+
+vi.mock("../api", () => ({ updateMe: vi.fn().mockResolvedValue({}) }));
+
+afterEach(() => setLanguage("en"));
 
 describe("UserMenu", () => {
   it("renders Settings, Language and Log out and fires callbacks", () => {
@@ -20,14 +26,20 @@ describe("UserMenu", () => {
     expect(onLogout).toHaveBeenCalledOnce();
   });
 
-  it("Language is inert (does not throw, no callbacks)", () => {
-    const onSettings = vi.fn();
-    const onLogout = vi.fn();
-    render(<UserMenu onSettings={onSettings} onLogout={onLogout} onClose={() => {}} />);
+  it("expands an English/Deutsch picker and switches on selection", async () => {
+    const { updateMe } = await import("../api");
+    const onClose = vi.fn();
+    render(<UserMenu onSettings={vi.fn()} onLogout={vi.fn()} onClose={onClose} />);
+
+    // Collapsed by default.
+    expect(screen.queryByRole("menuitemradio", { name: "Deutsch (Deutschland)" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Language" }));
-    expect(onSettings).not.toHaveBeenCalled();
-    expect(onLogout).not.toHaveBeenCalled();
+    expect(screen.getByRole("menuitemradio", { name: "English (US)" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Deutsch (Deutschland)" }));
+    expect(updateMe).toHaveBeenCalledWith({ responseLanguage: "de" });
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("aligns icons with the first line of wrapping action text", () => {

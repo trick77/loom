@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { downloadArtifact } from "../api";
 import { Icon } from "./Icon";
@@ -18,6 +19,7 @@ export function PdfLightbox({
   filename: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [objectUrl, setObjectUrl] = useState("");
   const [error, setError] = useState(false);
 
@@ -55,14 +57,14 @@ export function PdfLightbox({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview ${filename}`}
+      aria-label={t("media.preview", { name: filename })}
     >
       <button
         className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-md bg-black/40 text-[#f3f0e8] transition-colors hover:bg-black/60"
         onClick={onClose}
         type="button"
-        title="Close preview"
-        aria-label="Close preview"
+        title={t("media.closePreview")}
+        aria-label={t("media.closePreview")}
       >
         <Icon name="close" size="20px" />
       </button>
@@ -71,9 +73,9 @@ export function PdfLightbox({
         onClick={(event) => event.stopPropagation()}
       >
         {error ? (
-          <div className="ui-meta-text px-4 text-[#d36f67]">Preview failed</div>
+          <div className="ui-meta-text px-4 text-[#d36f67]">{t("media.previewFailed")}</div>
         ) : objectUrl === "" ? (
-          <div className="ui-meta-text px-4 text-[#aaa79e]">Loading preview…</div>
+          <div className="ui-meta-text px-4 text-[#aaa79e]">{t("media.loadingPreview")}</div>
         ) : (
           <iframe className="h-full w-full border-0" src={objectUrl} title={filename} />
         )}

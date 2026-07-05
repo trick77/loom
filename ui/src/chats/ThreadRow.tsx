@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Thread } from "../api";
 import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
@@ -52,6 +53,7 @@ export function ThreadRow({
   snippet?: string;
   searchQuery?: string;
 }) {
+  const { t } = useTranslation();
   const rowRef = useRef<HTMLLIElement | null>(null);
 
   useEffect(() => {
@@ -126,7 +128,7 @@ export function ThreadRow({
           type="button"
           role="checkbox"
           aria-checked={selected}
-          aria-label={selected ? "Deselect thread" : "Select thread"}
+          aria-label={selected ? t("chats.deselectThread") : t("chats.selectThread")}
           onClick={onToggleSelected}
           className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-md border transition-colors ${
             selected ? "border-[#c6613f] bg-[#c6613f] text-white" : "border-[#56554f] text-transparent"
@@ -167,7 +169,7 @@ export function ThreadRow({
       {!selectMode && (
         <button
           aria-expanded={menuOpen}
-          aria-label="Open thread actions"
+          aria-label={t("chats.openActions")}
           className={`absolute right-3 grid h-7 w-7 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
             showMenuButton ? "" : "invisible [@media(hover:none)]:visible"
           }`}

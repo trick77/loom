@@ -11,6 +11,7 @@ import {
   type Thread,
 } from "../api";
 import { normalizeActivityTrace } from "../activityTrace";
+import i18n from "../i18n";
 import type { RouteState } from "./routing";
 import { composerAttachmentFromMessageAttachment } from "./useDocumentAttachments";
 import type { MessageWithActivityTrace } from "./types";
@@ -56,7 +57,7 @@ export function useThreadData({
           onSessionExpired();
           return;
         }
-        setLoadError("Thread data failed to load.");
+        setLoadError(i18n.t("errors.threadDataLoadFailed"));
       });
     return () => {
       active = false;
@@ -90,7 +91,7 @@ export function useThreadData({
       })
       .catch((error: unknown) => {
         if (!active) return;
-        handleActionError(error, "Thread failed to load.", setLoadError);
+        handleActionError(error, i18n.t("errors.threadLoadFailed"), setLoadError);
       });
     return () => {
       active = false;
@@ -116,7 +117,7 @@ export function useThreadData({
       })
       .catch((error: unknown) => {
         if (!active) return;
-        handleActionError(error, "Project threads failed to load.", setLoadError);
+        handleActionError(error, i18n.t("errors.projectThreadsLoadFailed"), setLoadError);
       });
     return () => {
       active = false;

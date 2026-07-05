@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import { SidebarOpenButton } from "./SidebarOpenButton";
 import { UserMemoryPanel } from "./UserMemoryPanel";
 
@@ -7,12 +9,13 @@ import { UserMemoryPanel } from "./UserMemoryPanel";
  * (Artifacts, Projects) and renders the read-only UserMemoryPanel.
  */
 export function MemoryPage({ onOpenSidebar }: { onOpenSidebar(): void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="relative mx-auto w-full max-w-[802px] px-4 pb-16 pt-10 md:px-6">
         <SidebarOpenButton variant="floating" onClick={onOpenSidebar} />
         <header className="flex min-w-0 items-center gap-2">
-          <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Memories</h1>
+          <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">{t("memory.title")}</h1>
         </header>
         <div className="mt-6">
           <UserMemoryPanel />

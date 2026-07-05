@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useId, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import { modalCancelButtonClass, modalDangerButtonClass } from "../ThreadActionsMenu";
 import { ErrorText } from "./ErrorText";
@@ -18,13 +19,14 @@ export function RenameThreadModal({
   onCancel(): void;
   onSubmit(): void;
 }) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
   }, []);
   return (
-    <ModalShell title="Rename thread" onCancel={onCancel}>
+    <ModalShell title={t("thread.renameTitle")} onCancel={onCancel}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -33,7 +35,7 @@ export function RenameThreadModal({
       >
         <input
           ref={inputRef}
-          aria-label="Thread title"
+          aria-label={t("thread.threadTitleLabel")}
           className="ui-control-text mt-3 h-[38px] w-full rounded-lg border border-[#5b5851] bg-[#1f1f1d] px-3 text-[#f3f0e8] outline-none selection:bg-[#6f6250] selection:text-[#fffaf2]"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
@@ -41,14 +43,14 @@ export function RenameThreadModal({
         {error !== "" && <ErrorText>{error}</ErrorText>}
         <div className="mt-4 flex justify-end gap-2">
           <button className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]" onClick={onCancel} type="button">
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             className="h-8 rounded-md bg-[#50483d] px-3.5 text-sm font-medium text-[#fffaf2] disabled:opacity-50"
             disabled={disabled || title.trim() === ""}
             type="submit"
           >
-            Save
+            {t("common.save")}
           </button>
         </div>
       </form>
@@ -67,16 +69,17 @@ export function DeleteThreadModal({
   onCancel(): void;
   onDelete(): void;
 }) {
+  const { t } = useTranslation();
   return (
-    <ModalShell title="Delete thread" onCancel={onCancel}>
-      <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">Are you sure you want to delete this thread?</div>
+    <ModalShell title={t("thread.deleteTitle")} onCancel={onCancel}>
+      <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">{t("thread.deleteConfirm")}</div>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
         <button autoFocus className={modalCancelButtonClass} onClick={onCancel} type="button">
-          Cancel
+          {t("common.cancel")}
         </button>
         <button className={modalDangerButtonClass} disabled={disabled} onClick={onDelete} type="button">
-          Delete
+          {t("common.delete")}
         </button>
       </div>
     </ModalShell>

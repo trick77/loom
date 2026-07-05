@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import type { Project, Thread } from "../api";
 import { Icon } from "../chat/Icon";
 
@@ -16,8 +18,12 @@ export function ProjectPickerDialog({
   onCancel(): void;
   onSelect(project: Project): void;
 }) {
-  const title = threads.length === 1 ? "Add to project" : "Move to project";
-  const subtitle = threads.length === 1 ? threads[0]?.title ?? "" : `${threads.length} threads selected`;
+  const { t } = useTranslation();
+  const title = threads.length === 1 ? t("projects.picker.addTitle") : t("projects.picker.moveTitle");
+  const subtitle =
+    threads.length === 1
+      ? threads[0]?.title ?? ""
+      : t("projects.picker.selectedCount", { count: threads.length });
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px]">
@@ -31,7 +37,7 @@ export function ProjectPickerDialog({
           <button
             className="leading-none text-[#d5d2c9] hover:text-white"
             type="button"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={onCancel}
           >
             <Icon name="close" size="1.5rem" />
@@ -40,7 +46,7 @@ export function ProjectPickerDialog({
         <p className="mt-2 truncate text-sm text-[#aaa79e]">{subtitle}</p>
         <div className="mt-4 max-h-[260px] overflow-y-auto">
           {projects.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[#807d74]">No projects yet.</p>
+            <p className="py-6 text-center text-sm text-[#807d74]">{t("projects.picker.empty")}</p>
           ) : (
             projects.map((project) => (
               <button

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { ContentBlock } from "../api";
 import { Composer } from "./Composer";
@@ -44,6 +45,7 @@ export function IncognitoPanel({
   onRetry(content: string): void;
   onExit(): void;
 }) {
+  const { t } = useTranslation();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const isEmpty = messages.length === 0 && !isSending;
 
@@ -64,7 +66,7 @@ export function IncognitoPanel({
 
   const notice = (
     <div className="ui-meta-text mt-3 text-center text-[#5599e7]">
-      Incognito threads aren't saved, added to memory, or used to train models.
+      {t("incognito.notice")}
     </div>
   );
 
@@ -75,7 +77,7 @@ export function IncognitoPanel({
       autoFocus
       draft={draft}
       isSending={isSending}
-      placeholder="Message incognito..."
+      placeholder={t("incognito.placeholder")}
       reasoningEffort={reasoningEffort}
       onReasoningEffortChange={onReasoningEffortChange}
       onDraftChange={onDraftChange}
@@ -115,15 +117,15 @@ export function IncognitoPanel({
     <section className="flex h-svh min-h-0 flex-col bg-bg p-2 sm:p-3">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-dashed border-[#4b4a46] bg-[#141412]">
         <header
-          aria-label="Incognito thread header"
+          aria-label={t("incognito.headerLabel")}
           className="ui-control-text flex h-11 shrink-0 items-center justify-between gap-3 px-4 text-[#d5d2c9]"
         >
           <div className="flex min-w-0 items-center gap-2">
             <Icon name="ghost" size="18px" />
-            <span className="font-sans">Incognito thread</span>
+            <span className="font-sans">{t("incognito.title")}</span>
           </div>
           <button
-            aria-label="Exit incognito"
+            aria-label={t("incognito.exit")}
             className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
             onClick={onExit}
             type="button"
@@ -136,7 +138,7 @@ export function IncognitoPanel({
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 pb-[8vh] sm:px-8">
             <h2 className="ui-greeting-text mb-8 flex items-center gap-2.5 font-serif">
               <img src={loomLogo} alt="" aria-hidden className="h-10 w-10 -translate-y-1" />
-              <span className="-translate-y-0.5">Let's chat incognito</span>
+              <span className="-translate-y-0.5">{t("incognito.greeting")}</span>
             </h2>
             <div className="w-full max-w-[674px]">
               {composer}
@@ -147,7 +149,7 @@ export function IncognitoPanel({
         ) : (
           <div
             ref={transcriptRef}
-            aria-label="Incognito conversation transcript"
+            aria-label={t("incognito.transcriptLabel")}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-6 md:px-8"
             role="region"
           >
@@ -168,7 +170,7 @@ export function IncognitoPanel({
               {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
             </div>
             <div
-              aria-label="Message composer dock"
+              aria-label={t("incognito.composerDock")}
               className="sticky bottom-0 -mx-6 bg-[#141412] px-6 pb-4 pt-3 md:-mx-8 md:px-8"
             >
               <div className="mx-auto w-full max-w-[754px]">

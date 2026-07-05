@@ -6,6 +6,7 @@ import {
   type Project,
   type Thread,
 } from "../api";
+import i18n from "../i18n";
 import { removeThreadsById, replaceThreadById, upsertThreadById } from "../projects/projectMembership";
 import type { RouteState } from "./routing";
 
@@ -73,7 +74,7 @@ export function useThreadActions({
       setRenamingThread(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, "Thread failed to rename.", setModalError);
+      handleActionError(error, i18n.t("errors.threadRenameFailed"), setModalError);
     } finally {
       setIsMutatingThread(false);
     }
@@ -94,7 +95,7 @@ export function useThreadActions({
       setDeletingThread(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, "Thread failed to delete.", setModalError);
+      handleActionError(error, i18n.t("errors.threadDeleteFailed"), setModalError);
     } finally {
       setIsMutatingThread(false);
     }
@@ -114,7 +115,7 @@ export function useThreadActions({
         .filter((result): result is PromiseFulfilledResult<{ original: Thread; updated: Thread }> => result.status === "fulfilled")
         .map((result) => result.value.updated);
       if (updatedThreads.length === 0) {
-        throw new Error("No threads moved.");
+        throw new Error(i18n.t("errors.noThreadsMoved"));
       }
       const failedThreads = results
         .map((result, index) => (result.status === "rejected" ? targetThreads[index] : null))
@@ -142,9 +143,9 @@ export function useThreadActions({
       setMovingThreads(failedThreads);
       setThreadMutationVersion((value) => value + 1);
       const failedCount = failedThreads.length;
-      setModalError(failedCount > 0 ? `${failedCount} thread${failedCount === 1 ? "" : "s"} failed to move.` : "");
+      setModalError(failedCount > 0 ? i18n.t("errors.threadsFailedToMoveCount", { count: failedCount }) : "");
     } catch (error) {
-      handleActionError(error, "Threads failed to move.", setModalError);
+      handleActionError(error, i18n.t("errors.threadsMoveFailed"), setModalError);
     } finally {
       setIsMutatingThread(false);
     }
@@ -164,7 +165,7 @@ export function useThreadActions({
       setOpenThreadMenuID(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, "Thread failed to remove from project.", setModalError);
+      handleActionError(error, i18n.t("errors.threadRemoveFromProjectFailed"), setModalError);
     } finally {
       setIsMutatingThread(false);
     }

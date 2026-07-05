@@ -115,6 +115,51 @@ func TestMeReturnsCurrentUser(t *testing.T) {
 	}
 }
 
+func TestUpdateMeSetsResponseLanguage(t *testing.T) {
+	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
+	srv := New(Deps{
+		Version:  "test",
+		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
+		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
+		Users:    fakeUserStore{user: user, ok: true},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"responseLanguage":"de"}`))
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var body auth.User
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.ResponseLanguage != "de" {
+		t.Fatalf("responseLanguage = %q, want de", body.ResponseLanguage)
+	}
+}
+
+func TestUpdateMeRejectsUnsupportedLanguage(t *testing.T) {
+	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "auto"}
+	srv := New(Deps{
+		Version:  "test",
+		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
+		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
+		Users:    fakeUserStore{user: user, ok: true},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"responseLanguage":"fr"}`))
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDownloadArtifactRequiresOwningUser(t *testing.T) {
 	usersDir := t.TempDir()
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -313,4 +358,8 @@ func (f fakeUserStore) UpsertFromClaims(context.Context, auth.Claims, string) (a
 
 func (f fakeUserStore) ListUsers(context.Context) ([]auth.User, error) {
 	return []auth.User{f.user}, nil
+}
+
+func (f fakeUserStore) UpdateResponseLanguage(context.Context, string, string) error {
+	return nil
 }

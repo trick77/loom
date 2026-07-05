@@ -1,4 +1,7 @@
+import { useTranslation } from "react-i18next";
+
 import type { Project, Thread, User } from "../api";
+import i18n from "../i18n";
 import { UserMenu } from "./UserMenu";
 import { Icon } from "./Icon";
 import type { RouteState } from "./routing";
@@ -91,6 +94,7 @@ export function Sidebar({
   onToggleThreadMenu(menuKey: string): void;
   onCloseThreadMenu(): void;
 }) {
+  const { t } = useTranslation();
   const addToProject = projectsAvailable ? onAddThreadToProject : undefined;
   return (
     <>
@@ -105,7 +109,7 @@ export function Sidebar({
             {!railCollapsed && (
               <button
                 type="button"
-                aria-label="Search"
+                aria-label={t("sidebar.search")}
                 onClick={onOpenSearch}
                 className="grid place-items-center rounded transition-colors hover:text-white"
               >
@@ -114,7 +118,7 @@ export function Sidebar({
             )}
             <button
               type="button"
-              aria-label={!isMobile && sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+              aria-label={!isMobile && sidebarCollapsed ? t("sidebar.showSidebar") : t("sidebar.hideSidebar")}
               aria-expanded={isMobile ? mobileSidebarOpen : !sidebarCollapsed}
               onClick={() => (isMobile ? onCloseMobileSidebar() : onToggleDesktopCollapsed())}
               className="ui-sidebar-btn grid place-items-center rounded transition-colors hover:text-white"
@@ -130,38 +134,38 @@ export function Sidebar({
             } ${route.view === "new" && !showAdmin ? "bg-[#111110]" : ""}`}
             onClick={onNewThread}
             type="button"
-            aria-label="New thread"
+            aria-label={t("sidebar.newThread")}
           >
             <span className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full bg-[hsl(180deg_3%_19%)] text-[hsl(55deg_9%_74%)]">
               <svg className="h-[13px] w-[13px]" viewBox="0 0 24 24" aria-hidden="true" fill="none">
                 <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </span>
-            {!railCollapsed && <span>New thread</span>}
+            {!railCollapsed && <span>{t("sidebar.newThread")}</span>}
           </button>
           <SidebarPrimaryItem
-            label="Threads"
+            label={t("sidebar.threads")}
             icon="threads"
             collapsed={railCollapsed}
             active={route.view === "threads" && !showAdmin}
             onClick={onThreads}
           />
           <SidebarPrimaryItem
-            label="Artifacts"
+            label={t("sidebar.artifacts")}
             icon="artifacts"
             collapsed={railCollapsed}
             active={route.view === "artifacts" && !showAdmin}
             onClick={onArtifacts}
           />
           <SidebarPrimaryItem
-            label="Projects"
+            label={t("sidebar.projects")}
             icon="projects"
             collapsed={railCollapsed}
             active={(route.view === "projects" || route.view === "project") && !showAdmin}
             onClick={onProjects}
           />
           <SidebarPrimaryItem
-            label="Memories"
+            label={t("sidebar.memories")}
             icon="memory"
             collapsed={railCollapsed}
             active={route.view === "memory" && !showAdmin}
@@ -175,7 +179,7 @@ export function Sidebar({
                 </div>
               )}
               <SidebarSection
-                title="Starred"
+                title={t("sidebar.starred")}
                 threads={starredThreads}
                 activeThreadID={route.view === "thread" ? route.threadID : null}
                 openThreadMenuID={openThreadMenuID}
@@ -205,7 +209,7 @@ export function Sidebar({
               />
               <section className="mt-5">
                 <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">
-                  <span>Projects</span>
+                  <span>{t("sidebar.projects")}</span>
                 </div>
                 <div className="space-y-1.5">
                   {unstarredProjects.map((project) => (
@@ -227,7 +231,7 @@ export function Sidebar({
                 </div>
               </section>
               <SidebarSection
-                title="Recents"
+                title={t("sidebar.recents")}
                 threads={recentThreads}
                 activeThreadID={route.view === "thread" ? route.threadID : null}
                 openThreadMenuID={openThreadMenuID}
@@ -244,10 +248,10 @@ export function Sidebar({
                   type="button"
                   className="mt-1.5 flex h-7 w-full items-center gap-2.5 rounded-md px-1.5 text-left text-[#c7c5bd] transition-colors hover:bg-[#2a2a28]"
                   onClick={onThreads}
-                  aria-label="All threads"
+                  aria-label={t("sidebar.allThreads")}
                 >
                   <Icon name="allThreads" size="21px" className="h-[21px] w-[21px] shrink-0 text-[#f0eee7]" />
-                  <span className="truncate">All threads</span>
+                  <span className="truncate">{t("sidebar.allThreads")}</span>
                 </button>
               )}
               {user.role === "admin" && (
@@ -256,7 +260,7 @@ export function Sidebar({
                   onClick={onAdmin}
                   type="button"
                 >
-                  Admin
+                  {t("sidebar.admin")}
                 </button>
               )}
             </>
@@ -271,7 +275,7 @@ export function Sidebar({
               railCollapsed ? "justify-center p-1" : "gap-3 px-1.5 py-1"
             }`}
             type="button"
-            aria-label="Account menu"
+            aria-label={t("sidebar.accountMenu")}
             aria-haspopup="menu"
             aria-expanded={userMenuOpen}
             onClick={onToggleUserMenu}
@@ -307,7 +311,7 @@ export function Sidebar({
 }
 
 function roleLabel(_role: User["role"]): string {
-  return "Unlimited Plan";
+  return i18n.t("sidebar.plan");
 }
 
 function initialsFor(name: string): string {

@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Project, Thread } from "../api";
 import { menuDeleteItemClass, menuIconClass, menuItemClass, ThreadActionsMenu, TrashMenuIcon } from "../ThreadActionsMenu";
@@ -134,6 +135,7 @@ function SidebarThreadItem({
   onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
 }) {
+  const { t } = useTranslation();
   const itemRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -162,7 +164,7 @@ function SidebarThreadItem({
         </button>
         <button
           aria-expanded={menuOpen}
-          aria-label="Open thread actions"
+          aria-label={t("sidebar.openThreadActions")}
           // Keep inactive rows visually quiet while preserving keyboard access
           // to the thread actions.
           className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
@@ -217,6 +219,7 @@ export function SidebarProjectItem({
   onToggleMenu(menuKey: string): void;
   onCloseMenu(): void;
 }) {
+  const { t } = useTranslation();
   const itemRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -247,7 +250,7 @@ export function SidebarProjectItem({
         </button>
         <button
           aria-expanded={menuOpen}
-          aria-label="Open project actions"
+          aria-label={t("sidebar.openProjectActions")}
           // Keep inactive rows visually quiet while preserving keyboard access
           // to the project actions.
           className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
@@ -291,11 +294,12 @@ function ProjectSidebarMenu({
   onArchive(project: Project): void;
   onDelete(project: Project): void;
 }) {
+  const { t } = useTranslation();
   const { menuRef, verticalClass } = useMenuPlacement();
   return (
     <div
       ref={menuRef}
-      aria-label="Project actions"
+      aria-label={t("sidebar.projectActions")}
       className={`ui-sidebar-text absolute z-20 ${verticalClass} w-[155px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
@@ -308,7 +312,7 @@ function ProjectSidebarMenu({
         <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
           <Icon name={project.starred ? "starOff" : "star"} size="19px" />
         </span>
-        {project.starred ? "Unstar" : "Star"}
+        {project.starred ? t("sidebar.unstar") : t("sidebar.star")}
       </button>
       <button
         className={`${menuItemClass} text-[#f3f0e8]`}
@@ -319,7 +323,7 @@ function ProjectSidebarMenu({
         <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
           <Icon name="edit" size="19px" />
         </span>
-        Edit details
+        {t("sidebar.editDetails")}
       </button>
       <div className="mx-[14px] my-[5px] h-px bg-[#454540]" role="separator" />
       <button
@@ -329,7 +333,7 @@ function ProjectSidebarMenu({
         onClick={() => onArchive(project)}
       >
         <ArchiveIcon />
-        Archive
+        {t("sidebar.archive")}
       </button>
       <button
         className={menuDeleteItemClass}
@@ -338,7 +342,7 @@ function ProjectSidebarMenu({
         onClick={() => onDelete(project)}
       >
         <TrashMenuIcon />
-        Delete
+        {t("common.delete")}
       </button>
     </div>
   );

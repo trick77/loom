@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import type { Project } from "../api";
 import { Icon } from "../chat/Icon";
 import { useMenuPlacement } from "../chat/useMenuPlacement";
@@ -20,11 +22,12 @@ export function ProjectActionsMenu({
   onUnarchive(project: Project): void;
   onDelete(project: Project): void;
 }) {
+  const { t } = useTranslation();
   const { menuRef, verticalClass } = useMenuPlacement();
   return (
     <div
       ref={menuRef}
-      aria-label="Project actions"
+      aria-label={t("projects.actions.menuLabel")}
       className={`ui-sidebar-text absolute z-20 ${verticalClass} w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
@@ -35,7 +38,7 @@ export function ProjectActionsMenu({
         onClick={() => onEdit(project)}
       >
         <EditIcon />
-        Edit details
+        {t("projects.actions.editDetails")}
       </button>
       <div className="mx-[14px] my-[5px] h-px bg-[#454540]" role="separator" />
       <button
@@ -45,7 +48,7 @@ export function ProjectActionsMenu({
         onClick={() => (archived ? onUnarchive : onArchive)(project)}
       >
         <ArchiveIcon />
-        {archived ? "Unarchive" : "Archive"}
+        {archived ? t("projects.actions.unarchive") : t("projects.actions.archive")}
       </button>
       <button
         className={menuDeleteItemClass}
@@ -54,7 +57,7 @@ export function ProjectActionsMenu({
         onClick={() => onDelete(project)}
       >
         <TrashMenuIcon />
-        Delete
+        {t("common.delete")}
       </button>
     </div>
   );

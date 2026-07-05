@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
@@ -16,16 +17,6 @@ import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel";
-
-// Editable starters the project pills drop into the composer. Each is a complete,
-// sendable prompt the user edits to steer the emphasis — both ride the same
-// read_project_threads tool, which reads the project's other threads so the model
-// can synthesize across them. SUMMARIZE produces a digest; OPEN_QUESTIONS produces
-// the actionable counterpart (what's unresolved / what to do next).
-const SUMMARIZE_PROJECT_PROMPT =
-  "Summarize the threads in this project, pulling out key facts and takeaways.";
-const OPEN_QUESTIONS_PROMPT =
-  "What's still open in this project? List the open questions, unresolved decisions, and next steps across its threads.";
 
 export function ProjectDetailPage({
   project,
@@ -82,6 +73,7 @@ export function ProjectDetailPage({
   onToggleStar(project: Project, starred: boolean): void;
   onOpenSidebar(): void;
 }) {
+  const { t } = useTranslation();
   const projectMenuKey = `Project:${project.id}`;
   const [hoveredThreadID, setHoveredThreadID] = useState<string | null>(null);
   // Composer uploads are scoped to this project's knowledge.
@@ -116,7 +108,7 @@ export function ProjectDetailPage({
         <div className="flex items-center gap-1">
           <SidebarOpenButton onClick={onOpenSidebar} />
           <button
-            aria-label="All projects"
+            aria-label={t("projects.detail.allProjects")}
             className="ui-control-text flex items-center gap-1.5 text-[#c7c5bd] hover:text-white"
             type="button"
             onClick={onBack}
@@ -130,7 +122,7 @@ export function ProjectDetailPage({
             >
               <path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z" />
             </svg>
-            All projects
+            {t("projects.detail.allProjects")}
           </button>
         </div>
         <div className="mt-2 flex flex-col gap-8">
@@ -150,7 +142,7 @@ export function ProjectDetailPage({
                 <div className="relative" data-project-detail-menu-root>
                   <button
                     aria-expanded={openThreadMenuID === projectMenuKey}
-                    aria-label="Open project actions"
+                    aria-label={t("projects.detail.openActions")}
                     className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
                     type="button"
                     onClick={() => onToggleThreadMenu(projectMenuKey)}
@@ -169,7 +161,7 @@ export function ProjectDetailPage({
                   )}
                 </div>
                 <button
-                  aria-label={project.starred ? "Unstar project" : "Star project"}
+                  aria-label={project.starred ? t("projects.detail.unstar") : t("projects.detail.star")}
                   aria-pressed={project.starred}
                   className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
                   type="button"
@@ -186,7 +178,7 @@ export function ProjectDetailPage({
                 draft={draft}
                 isSending={isSending}
                 sendDisabled={sendDisabled || imageUploadPending}
-                placeholder="How can I help you today?"
+                placeholder={t("projects.detail.composerPlaceholder")}
                 autoFocus
                 reasoningEffort={reasoningEffort}
                 onReasoningEffortChange={onReasoningEffortChange}
@@ -214,19 +206,19 @@ export function ProjectDetailPage({
                   type="button"
                   className="prompt-pop-in ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
                   style={{ animationDelay: "0ms" }}
-                  onClick={() => onDraftChange(SUMMARIZE_PROJECT_PROMPT)}
+                  onClick={() => onDraftChange(t("projects.detail.summarizePrompt"))}
                 >
                   <Icon className="text-[#97958c]" name="projectSummary" size="1.3rem" />
-                  Summarize threads
+                  {t("projects.detail.summarizeThreads")}
                 </button>
                 <button
                   type="button"
                   className="prompt-pop-in ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
                   style={{ animationDelay: "50ms" }}
-                  onClick={() => onDraftChange(OPEN_QUESTIONS_PROMPT)}
+                  onClick={() => onDraftChange(t("projects.detail.openQuestionsPrompt"))}
                 >
                   <Icon className="text-[#97958c]" name="openItems" size="1.3rem" />
-                  Surface gaps
+                  {t("projects.detail.surfaceGaps")}
                 </button>
               </div>
             )}
@@ -240,7 +232,7 @@ export function ProjectDetailPage({
             )}
             <ul className="mt-6">
               {threads.length === 0 ? (
-                <li className="py-10 text-center text-[#807d74]">No threads in this project yet.</li>
+                <li className="py-10 text-center text-[#807d74]">{t("projects.detail.noThreads")}</li>
               ) : (
                 threads.map((thread, index) => {
                   const nextThread = threads[index + 1];

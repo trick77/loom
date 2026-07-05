@@ -1,5 +1,6 @@
 import { AuthExpiredError, expectJSON } from "./http";
 import { DOCUMENT_MAX_THREAD_ATTACHMENTS, type Artifact, type Document } from "./types";
+import i18n from "../i18n";
 
 export async function uploadDocument(
   file: File,
@@ -14,13 +15,13 @@ export async function uploadDocument(
     throw new AuthExpiredError();
   }
   if (response.status === 415) {
-    throw new Error("Unsupported document format");
+    throw new Error(i18n.t("errors.unsupportedDocumentFormat"));
   }
   if (response.status === 409) {
-    throw new Error(`A thread can have up to ${DOCUMENT_MAX_THREAD_ATTACHMENTS} attached files.`);
+    throw new Error(i18n.t("errors.tooManyAttachments", { count: DOCUMENT_MAX_THREAD_ATTACHMENTS }));
   }
   if (response.status === 413) {
-    throw new Error("Files must be 25 MB or smaller.");
+    throw new Error(i18n.t("errors.fileTooLarge"));
   }
   return expectJSON<Document>(response, "failed to upload document");
 }
@@ -38,13 +39,13 @@ export async function uploadImageAttachment(
     throw new AuthExpiredError();
   }
   if (response.status === 415) {
-    throw new Error("Unsupported image format");
+    throw new Error(i18n.t("errors.unsupportedImageFormat"));
   }
   if (response.status === 409) {
-    throw new Error(`A thread can have up to ${DOCUMENT_MAX_THREAD_ATTACHMENTS} attached files.`);
+    throw new Error(i18n.t("errors.tooManyAttachments", { count: DOCUMENT_MAX_THREAD_ATTACHMENTS }));
   }
   if (response.status === 413) {
-    throw new Error("Files must be 25 MB or smaller.");
+    throw new Error(i18n.t("errors.fileTooLarge"));
   }
   return expectJSON<Artifact>(response, "failed to upload image");
 }

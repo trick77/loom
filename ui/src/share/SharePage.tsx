@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   getPublicShare,
@@ -17,6 +18,7 @@ type Status = "loading" | "not-found" | "error" | "ready";
 // renders only the frozen snapshot: title, "Shared by", a notice, and the
 // transcript — no sidebar, composer, actions, metrics, or citations.
 export function SharePage({ shareId }: { shareId: string }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<Status>("loading");
   const [share, setShare] = useState<PublicShare | null>(null);
 
@@ -51,17 +53,13 @@ export function SharePage({ shareId }: { shareId: string }) {
   }, [shareId]);
 
   if (status === "loading") {
-    return <CenteredNotice>Loading…</CenteredNotice>;
+    return <CenteredNotice>{t("share.loading")}</CenteredNotice>;
   }
   if (status === "not-found") {
-    return (
-      <CenteredNotice>
-        This conversation isn’t available. The link may have been disabled or removed.
-      </CenteredNotice>
-    );
+    return <CenteredNotice>{t("share.notAvailable")}</CenteredNotice>;
   }
   if (status === "error" || share === null) {
-    return <CenteredNotice>Something went wrong loading this conversation.</CenteredNotice>;
+    return <CenteredNotice>{t("share.loadError")}</CenteredNotice>;
   }
 
   return (
@@ -70,12 +68,12 @@ export function SharePage({ shareId }: { shareId: string }) {
         <div className="flex min-w-0 items-center gap-2">
           <img src={loomLogo} alt="" aria-hidden className="h-5 w-5 shrink-0" />
           <h1 className="min-w-0 truncate font-sans text-sm font-normal text-[#d5d2c9]">
-            {share.title || "Shared conversation"}
+            {share.title || t("share.sharedConversation")}
           </h1>
         </div>
         {share.author !== "" && (
           <span className="shrink-0 rounded-md bg-[#46453f] px-2.5 py-0.5 text-sm text-[#d6d3ca]">
-            Shared by {share.author}
+            {t("share.sharedBy", { author: share.author })}
           </span>
         )}
       </header>
@@ -97,12 +95,13 @@ export function SharePage({ shareId }: { shareId: string }) {
 // ShareNotice is the thin info banner above the transcript. It mirrors Claude's
 // notice but drops the "Report" affordance and the vendor framing.
 function ShareNotice() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-2 rounded-lg border border-[#34342f] bg-[#262622] px-4 py-3 text-[13px] leading-relaxed text-[#9a958b]">
       <span aria-hidden className="mt-px text-[#7f7b72]">
         ⓘ
       </span>
-      <p>This is a shared copy of a conversation. Some content, such as uploaded files, may not be shown here.</p>
+      <p>{t("share.notice")}</p>
     </div>
   );
 }
