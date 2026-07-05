@@ -115,7 +115,10 @@ func (s *Service) probeServer(ctx context.Context, name string) (bool, string) {
 		_, err = client.ListTools(probeCtx)
 	}
 	if err != nil {
-		return false, err.Error()
+		// The reason is surfaced verbatim in the (auth-only) /mcp status panel, so
+		// scrub credentials at this boundary regardless of which client path produced
+		// the error.
+		return false, scrubURLError(err).Error()
 	}
 	return true, ""
 }
@@ -150,14 +153,9 @@ func endpointForServer(sc ServerConfig) string {
 	if u, err := url.Parse("http://" + strings.TrimPrefix(sc.URL, "//")); err == nil && u.Host != "" {
 		return u.Host
 	}
-	// Last resort: strip any userinfo (up to the first '@' before a path) and query
-	// string by hand so credentials are never surfaced.
-	rest := sc.URL
-	if at := strings.IndexByte(rest, '@'); at >= 0 {
-		if slash := strings.IndexByte(rest, '/'); slash < 0 || at < slash {
-			rest = rest[at+1:]
-		}
-	}
+	// Last resort: strip any userinfo and query string by hand so credentials are
+	// never surfaced.
+	rest := stripURLUserinfo(sc.URL)
 	if i := strings.IndexByte(rest, '?'); i >= 0 {
 		rest = rest[:i]
 	}
