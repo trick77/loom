@@ -354,14 +354,40 @@ func scrubURLError(err error) error {
 	if !errors.As(err, &urlErr) {
 		return err
 	}
-	if u, parseErr := url.Parse(urlErr.URL); parseErr == nil {
+	if u, parseErr := url.Parse(urlErr.URL); parseErr == nil && u.Host != "" {
 		u.RawQuery = ""
 		u.User = nil
 		urlErr.URL = u.String()
-	} else if i := strings.IndexByte(urlErr.URL, '?'); i >= 0 {
-		urlErr.URL = urlErr.URL[:i]
+	} else {
+		// A scheme-less/opaque URL (e.g. "admin:pw@host/path") parses with an empty
+		// Host and its user:pass@ folded into the scheme/opaque part, so clearing
+		// u.User does nothing and u.String() reproduces the password. Strip userinfo
+		// (and any query) by hand instead.
+		urlErr.URL = stripURLUserinfo(urlErr.URL)
+		if i := strings.IndexByte(urlErr.URL, '?'); i >= 0 {
+			urlErr.URL = urlErr.URL[:i]
+		}
 	}
 	return urlErr
+}
+
+// stripURLUserinfo removes a "user:pass@" authority segment from a URL string,
+// including the scheme-less/opaque forms url.Parse can't isolate. It targets the
+// '@' that precedes the host (before the first path '/'), leaving the path intact.
+func stripURLUserinfo(raw string) string {
+	authStart := 0
+	if i := strings.Index(raw, "://"); i >= 0 {
+		authStart = i + 3
+	}
+	rest := raw[authStart:]
+	at := strings.IndexByte(rest, '@')
+	if at < 0 {
+		return raw
+	}
+	if slash := strings.IndexByte(rest, '/'); slash >= 0 && at > slash {
+		return raw // the '@' is in the path, not userinfo
+	}
+	return raw[:authStart] + rest[at+1:]
 }
 
 type stdioClient struct {

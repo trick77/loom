@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"reflect"
@@ -405,11 +406,12 @@ func TestRemoteClientScrubsUserinfoFromTransportError(t *testing.T) {
 func TestRemoteClientProbeScrubsUserinfoFromTransportError(t *testing.T) {
 	// Probe is the error source the /mcp status panel actually surfaces (the panel
 	// prefers the Probe interface over ListTools), so its transport errors must
-	// scrub userinfo too — otherwise a user:pass@host server URL leaks the password
-	// into the panel for every authenticated user.
+	// scrub userinfo too. The URL is deliberately scheme-less: url.Parse treats
+	// "admin" as the scheme and folds "hunter2@host" into the opaque part, the exact
+	// shape that defeated the naive scrubber and leaked the password into the panel.
 	client := NewRemoteClient("secret", ServerConfig{
 		Transport: TransportStreamableHTTP,
-		URL:       "http://admin:hunter2@127.0.0.1:1/mcp",
+		URL:       "admin:hunter2@127.0.0.1:1/mcp",
 	}, &http.Client{Timeout: 2 * time.Second})
 
 	probe, ok := client.(interface {
@@ -424,6 +426,26 @@ func TestRemoteClientProbeScrubsUserinfoFromTransportError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "hunter2") {
 		t.Fatalf("Probe error leaks userinfo password: %v", err)
+	}
+}
+
+func TestScrubURLErrorRemovesCredentials(t *testing.T) {
+	cases := []struct {
+		name   string
+		rawURL string
+	}{
+		{"scheme with userinfo and query", "http://admin:hunter2@host:9/mcp?tavilyApiKey=secret"},
+		{"scheme-less with userinfo", "admin:hunter2@127.0.0.1:1/mcp"},
+		{"protocol-relative with userinfo", "//admin:hunter2@host/mcp"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scrubbed := scrubURLError(&url.Error{Op: "Head", URL: tc.rawURL, Err: errors.New("boom")})
+			msg := scrubbed.Error()
+			if strings.Contains(msg, "hunter2") || strings.Contains(msg, "secret") {
+				t.Fatalf("scrubbed error still leaks credentials: %s", msg)
+			}
+		})
 	}
 }
 
