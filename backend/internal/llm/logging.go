@@ -20,6 +20,17 @@ type InferenceMetadata struct {
 	// argument through every StreamChatWithTools call site; utility/title calls
 	// leave it empty and keep the default. See resolveReasoningEffort.
 	ReasoningEffort string
+	// SuppressThinking turns MiMo's native thinking off for this turn
+	// ({"thinking":{"type":"disabled"}}), the same lever the utility calls use.
+	// Set on the forced-final answer turns: by then all research reasoning has
+	// already happened across the tool rounds and sits in history, so the model
+	// only needs to write the answer — leaving thinking on lets it burn the whole
+	// completion budget on reasoning and emit no prose (finish_reason=length).
+	SuppressThinking bool
+	// MaxCompletionTokens overrides the turn's completion-token cap when > 0. The
+	// forced-final answer sets a larger budget than the default chat cap so a
+	// synthesis over many gathered sources has room to complete.
+	MaxCompletionTokens int
 	// Incognito marks an ephemeral turn whose content must never be written to
 	// disk. It suppresses the dev-only response-body log (see wrapResponseLogger)
 	// so an incognito transcript leaves no trace even when response logging is on.

@@ -68,6 +68,20 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// decision above): the composer's per-request choice from the context, else the
 	// configured default. Reused for both the outbound request and StreamResult.
 	reasoningEffort := c.resolveReasoningEffort(ctx)
+	// Per-turn overrides carried on the context (set by the httpapi layer): the
+	// forced-final answer turn disables thinking and widens the completion budget.
+	meta := inferenceMetadataFromContext(ctx)
+	var thinking *thinkingOption
+	if meta.SuppressThinking {
+		// Mirror the utility calls: send only {"thinking":{"type":"disabled"}} and
+		// drop the reasoning-effort field, so the two directives never conflict.
+		thinking = &thinkingOption{Type: "disabled"}
+		reasoningEffort = ""
+	}
+	maxCompletionTokens := c.maxCompletionTokensForTools(tools)
+	if meta.MaxCompletionTokens > 0 {
+		maxCompletionTokens = meta.MaxCompletionTokens
+	}
 	callCtx := ctx
 	var cancel context.CancelFunc
 	if timeout := c.timeoutForTools(tools); timeout > 0 {
@@ -108,7 +122,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 	}
 
-	resp, err := c.executeChatRequestWithTools(streamCtx, messages, tools, true, model, reasoningEffort)
+	resp, err := c.executeChatRequestWithTools(streamCtx, messages, tools, true, model, reasoningEffort, thinking, maxCompletionTokens)
 	if err != nil {
 		// The watchdog can fire before the first byte arrives (upstream never
 		// responds); report that as a stall rather than a raw context error.

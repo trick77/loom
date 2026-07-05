@@ -206,7 +206,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		Role:    "system",
 		Content: finalDirective,
 	})
-	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, inferenceWithPurpose(inference, "chat_final", maxToolRounds+1), nil)
+	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, finalAnswerInference(inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(titles, result)
 	if persistInterruptedPartial(result, err) {
 		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
@@ -221,7 +221,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			Role:    "system",
 			Content: "You have no tools available and must not emit any tool call. Answer the user's question now in plain prose, using only the information already gathered above.",
 		})
-		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, inferenceWithPurpose(inference, "chat_final_retry", maxToolRounds+2), nil)
+		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalAnswerInference(inference, "chat_final_retry", maxToolRounds+2), nil)
 		b.addResult(titles, result)
 		if persistInterruptedPartial(result, err) {
 			return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
@@ -413,5 +413,24 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round int) llm.InferenceMetadata {
 	metadata.Purpose = purpose
 	metadata.Round = round
+	return metadata
+}
+
+// finalAnswerMaxCompletionTokens is the widened completion budget for the forced
+// final answer. The default chat cap is sized for a single answer with thinking;
+// the forced final synthesizes many gathered sources with thinking off, so it
+// gets more room for prose (and never spends the budget on reasoning).
+const finalAnswerMaxCompletionTokens = 4096
+
+// finalAnswerInference builds the metadata for a forced final-answer turn: it
+// disables thinking and widens the completion budget. By this point all research
+// reasoning already happened across the tool rounds and is in history, so the
+// model only needs to write the answer — leaving thinking on lets a reasoning
+// model burn the whole budget thinking and emit no prose (finish_reason=length),
+// which is the failure this turns off.
+func finalAnswerInference(metadata llm.InferenceMetadata, purpose string, round int) llm.InferenceMetadata {
+	metadata = inferenceWithPurpose(metadata, purpose, round)
+	metadata.SuppressThinking = true
+	metadata.MaxCompletionTokens = finalAnswerMaxCompletionTokens
 	return metadata
 }
