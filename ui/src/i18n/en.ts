@@ -7,6 +7,7 @@ export const en = {
     delete: "Delete",
     save: "Save",
     loading: "Loading",
+    newThread: "New thread",
   },
   app: {
     loading: "Loading",
@@ -42,7 +43,6 @@ export const en = {
     search: "Search",
     showSidebar: "Show sidebar",
     hideSidebar: "Hide sidebar",
-    newThread: "New thread",
     threads: "Threads",
     artifacts: "Artifacts",
     projects: "Projects",
@@ -152,7 +152,6 @@ export const en = {
     },
   },
   tabTitle: {
-    newThread: "New thread",
     recents: "Recents",
     artifacts: "Artifacts",
     memories: "Memories",
@@ -456,7 +455,6 @@ export const en = {
     moveToProject: "Move to project",
     moveToProjectHint: "Create a project before moving threads",
     selectThreads: "Select threads",
-    newThread: "New thread",
     searchPlaceholder: "Search threads…",
     searchLabel: "Search threads",
     loadFailed: "Threads failed to load.",

@@ -9,6 +9,7 @@ export const de = {
     delete: "Löschen",
     save: "Speichern",
     loading: "Wird geladen",
+    newThread: "Neuer Thread",
   },
   app: {
     loading: "Wird geladen",
@@ -44,7 +45,6 @@ export const de = {
     search: "Suchen",
     showSidebar: "Seitenleiste einblenden",
     hideSidebar: "Seitenleiste ausblenden",
-    newThread: "Neuer Thread",
     threads: "Threads",
     artifacts: "Artefakte",
     projects: "Projekte",
@@ -154,7 +154,6 @@ export const de = {
     },
   },
   tabTitle: {
-    newThread: "Neuer Thread",
     recents: "Zuletzt verwendet",
     artifacts: "Artefakte",
     memories: "Erinnerungen",
@@ -459,7 +458,6 @@ export const de = {
     moveToProject: "Zu Projekt verschieben",
     moveToProjectHint: "Erstelle ein Projekt, bevor du Threads verschiebst",
     selectThreads: "Threads auswählen",
-    newThread: "Neuer Thread",
     searchPlaceholder: "Threads durchsuchen…",
     searchLabel: "Threads durchsuchen",
     loadFailed: "Threads konnten nicht geladen werden.",

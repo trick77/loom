@@ -336,7 +336,7 @@ export function ThreadPanel({
                   <Icon name="chevronRight" size="16px" className="shrink-0 text-[#77736a]" />
                 </>
               )}
-              <span className="min-w-0 truncate">{thread?.title ?? t("sidebar.newThread")}</span>
+              <span className="min-w-0 truncate">{thread?.title ?? t("common.newThread")}</span>
             </h1>
             {thread !== null && headerMenuKey !== null && (
               <button

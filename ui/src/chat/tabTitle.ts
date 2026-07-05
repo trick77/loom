@@ -15,7 +15,7 @@ export function tabTitle(
   let base: string | null;
   switch (route.view) {
     case "new":
-      base = i18n.t("tabTitle.newThread");
+      base = i18n.t("common.newThread");
       break;
     case "threads":
       base = i18n.t("tabTitle.recents");
