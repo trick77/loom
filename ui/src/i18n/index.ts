@@ -20,7 +20,7 @@ function isSupported(value: string | null | undefined): value is UiLanguage {
 // browserLanguage maps navigator.language ("de-CH", "de", "en-US", …) onto a
 // supported UI locale. German-speaking locales pick `de`; everything else `en`.
 function browserLanguage(): UiLanguage {
-  const nav = typeof navigator !== "undefined" ? navigator.language : "";
+  const nav = (typeof navigator !== "undefined" && navigator.language) || "";
   return nav.toLowerCase().startsWith("de") ? "de" : "en";
 }
 
@@ -53,12 +53,21 @@ export function setLanguage(language: UiLanguage): void {
 }
 
 // applyUserLanguage reconciles the freshly loaded profile with the UI locale.
-// A pinned profile language (`en`/`de`) is authoritative; an `auto`/unknown
-// value leaves the browser-locale choice in place so the LLM keeps auto-detecting.
+// A pinned profile language (`en`/`de`) is authoritative; an unset/unknown value
+// leaves the browser-locale choice in place (the caller seeds it — see
+// seedLanguageFor).
 export function applyUserLanguage(responseLanguage: string | undefined | null): void {
   if (isSupported(responseLanguage)) {
     setLanguage(responseLanguage);
   }
+}
+
+// seedLanguageFor returns the browser locale to write into a profile that has no
+// supported language yet (empty/unset, or a legacy `auto`), or null when the
+// profile is already pinned to `en`/`de`. The caller persists the result to the
+// profile so the language stops being unset.
+export function seedLanguageFor(responseLanguage: string | undefined | null): UiLanguage | null {
+  return isSupported(responseLanguage) ? null : browserLanguage();
 }
 
 void i18n.use(initReactI18next).init({

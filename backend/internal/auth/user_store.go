@@ -60,7 +60,7 @@ WHERE oidc_subject = ?`,
 		Email:            claims.Email,
 		DisplayName:      claims.Name,
 		Role:             role,
-		ResponseLanguage: "auto",
+		ResponseLanguage: "",
 	}
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO users (id, oidc_subject, username, email, display_name, role, response_language, last_seen_at)

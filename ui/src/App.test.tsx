@@ -86,6 +86,47 @@ test("renders authenticated shell for signed-in users", async () => {
   expect(window.location.pathname).toBe("/new");
 });
 
+test("seeds the browser locale into a profile that has no language yet", async () => {
+  // basicSignedInFetch returns /api/me with no responseLanguage; the jsdom
+  // navigator locale resolves to `en`, so the profile is seeded with `en`.
+  const fetchMock = basicSignedInFetch();
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+
+  await screen.findByRole("button", { name: /new thread/i });
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/me",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ responseLanguage: "en" }),
+      }),
+    ),
+  );
+});
+
+test("does not overwrite a profile that already has a pinned language", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/me") {
+      return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan", responseLanguage: "en" });
+    }
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+
+  await screen.findByRole("button", { name: /new thread/i });
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    "/api/me",
+    expect.objectContaining({ method: "PATCH" }),
+  );
+});
+
 test("opens the artifact library from the sidebar", async () => {
   vi.stubGlobal(
     "fetch",

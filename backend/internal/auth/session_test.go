@@ -16,7 +16,7 @@ func insertTestUser(t *testing.T, db DBTX, role Role) User {
 		Email:            "test@example.com",
 		DisplayName:      "Test User",
 		Role:             role,
-		ResponseLanguage: "auto",
+		ResponseLanguage: "en",
 	}
 	_, err := db.ExecContext(context.Background(), `
 INSERT INTO users (id, oidc_subject, username, email, display_name, role, response_language)
