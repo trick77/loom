@@ -9,6 +9,7 @@ import {
   type Project,
   type Thread,
 } from "../api";
+import i18n from "../i18n";
 import type { RouteState } from "./routing";
 
 export function useProjectActions({
@@ -59,7 +60,7 @@ export function useProjectActions({
         navigateToProject(project);
       }
     } catch (error) {
-      handleActionError(error, "Project failed to save.", setModalError);
+      handleActionError(error, i18n.t("errors.projectSaveFailed"), setModalError);
     } finally {
       setIsMutatingProject(false);
     }
@@ -83,7 +84,7 @@ export function useProjectActions({
       setOpenThreadMenuID(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, "Project failed to archive.", setModalError);
+      handleActionError(error, i18n.t("errors.projectArchiveFailed"), setModalError);
     } finally {
       setIsMutatingProject(false);
     }
@@ -103,7 +104,7 @@ export function useProjectActions({
       setOpenThreadMenuID(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, "Project failed to unarchive.", setModalError);
+      handleActionError(error, i18n.t("errors.projectUnarchiveFailed"), setModalError);
     } finally {
       setIsMutatingProject(false);
     }
@@ -124,7 +125,7 @@ export function useProjectActions({
       }
       setModalError("");
     } catch (error) {
-      handleActionError(error, "Project failed to delete.", setModalError);
+      handleActionError(error, i18n.t("errors.projectDeleteFailed"), setModalError);
     } finally {
       setIsMutatingProject(false);
     }

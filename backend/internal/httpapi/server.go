@@ -265,6 +265,7 @@ type UserService interface {
 	auth.UserLookup
 	UpsertFromClaims(context.Context, auth.Claims, string) (auth.User, error)
 	ListUsers(context.Context) ([]auth.User, error)
+	UpdateResponseLanguage(ctx context.Context, id, language string) error
 }
 
 // newServer builds the server struct from its dependencies. Shared by New (which
@@ -308,6 +309,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/auth/callback", s.handleAuthCallback)
 	mux.Handle("POST /api/auth/logout", s.requireAuth(http.HandlerFunc(s.handleAuthLogout)))
 	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
+	mux.Handle("PATCH /api/me", s.requireAuth(http.HandlerFunc(s.handleUpdateMe)))
 	mux.Handle("GET /api/me/usage", s.requireAuth(http.HandlerFunc(s.handleGetUsage)))
 	mux.Handle("GET /api/me/memory", s.requireAuth(http.HandlerFunc(s.handleGetUserMemory)))
 	mux.Handle("GET /api/me/directives", s.requireAuth(http.HandlerFunc(s.handleGetUserDirectives)))

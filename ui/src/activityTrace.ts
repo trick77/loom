@@ -1,4 +1,5 @@
 import type { ToolCallEvent, ToolResultEvent } from "./api";
+import i18n from "./i18n";
 
 const TOOL_FAILED_PREFIX = "tool failed";
 
@@ -153,36 +154,36 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   if (/conversation_search/i.test(name)) {
     // Distinct kind so the trace renders a loupe (own-history search) rather than
     // the globe used for web search — see ActivityTracePanel.
-    return { kind: "conversationSearch", title: query ? capitalizeFirst(query) : "Searching past conversations" };
+    return { kind: "conversationSearch", title: query ? capitalizeFirst(query) : i18n.t("activityTrace.trace.searchPastConversations") };
   }
   if (/read_thread/i.test(name)) {
-    return { kind: "generated", title: "Reading a conversation" };
+    return { kind: "generated", title: i18n.t("activityTrace.trace.readingConversation") };
   }
   if (/ipverse/i.test(name)) {
     // IP-reputation lookups: render a loupe with explanatory text rather than a
     // bare IP under the generic external-link glyph — check before the web-search
     // branch since an IP arg may be named "query".
     const ip = ipAddressValue(args);
-    return { kind: "lookup", title: ip !== undefined ? `Looking up ${ip}` : "Looking up an IP address" };
+    return { kind: "lookup", title: ip !== undefined ? i18n.t("activityTrace.trace.lookupIp", { ip }) : i18n.t("activityTrace.trace.lookupIpAddress") };
   }
   if (isSearchTool(name) || query !== undefined) {
-    return { kind: "search", title: query ? capitalizeFirst(query) : "Searching the web" };
+    return { kind: "search", title: query ? capitalizeFirst(query) : i18n.t("activityTrace.trace.searchWeb") };
   }
   if (isDocsTool(name)) {
-    return { kind: "search", title: "Searching the documentation" };
+    return { kind: "search", title: i18n.t("activityTrace.trace.searchDocumentation") };
   }
   if (/read_project_threads/i.test(name)) {
-    return { kind: "generated", title: "Reading project threads" };
+    return { kind: "generated", title: i18n.t("activityTrace.trace.readingProjectThreads") };
   }
   const url = stringValue(args, ["url", "uri", "href"]);
   if (url !== undefined) {
     return { kind: "fetch", title: domainFromURL(url) ?? url, url };
   }
   if (isBrowserTool(name)) {
-    return { kind: "fetch", title: "Browsing the web" };
+    return { kind: "fetch", title: i18n.t("activityTrace.trace.browsingWeb") };
   }
   if (isFetchTool(name)) {
-    return { kind: "fetch", title: "Fetching a web page" };
+    return { kind: "fetch", title: i18n.t("activityTrace.trace.fetchingWebPage") };
   }
   const file = stringValue(args, ["filename", "file", "path", "displayFilename"]);
   const generated = generatedToolLabel(name, file);

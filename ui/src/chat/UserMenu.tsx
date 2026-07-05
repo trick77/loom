@@ -1,12 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
+import { updateMe } from "../api";
+import { setLanguage, SUPPORTED_LANGUAGES, type UiLanguage } from "../i18n";
 import { menuIconClass, menuItemClass } from "../ThreadActionsMenu";
 import { Icon } from "./Icon";
 
 /**
  * UserMenu — popup opened from the sidebar user row. Settings opens the settings
- * modal; Language is a deliberate dead entry for now (wired later); Log out runs
- * the existing logout. Styling mirrors ThreadActionsMenu.
+ * modal; Language expands an inline English/Deutsch picker that switches the UI
+ * locale and persists it to the profile (coupled with the LLM answer language);
+ * Log out runs the existing logout. Styling mirrors ThreadActionsMenu.
  */
 export function UserMenu({
   onSettings,
@@ -19,6 +23,9 @@ export function UserMenu({
   onClose(): void;
   className?: string;
 }) {
+  const { t, i18n } = useTranslation();
+  const [showLanguages, setShowLanguages] = useState(false);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -27,9 +34,26 @@ export function UserMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const active = (i18n.language.startsWith("de") ? "de" : "en") as UiLanguage;
+
+  function chooseLanguage(language: UiLanguage) {
+    const previous = active;
+    setLanguage(language);
+    setShowLanguages(false);
+    onClose();
+    // Persist to the profile so the choice survives reloads and drives the LLM
+    // answer language. Revert the UI on failure so the two stay consistent.
+    updateMe({ responseLanguage: language }).catch(() => setLanguage(previous));
+  }
+
+  const languageLabel: Record<UiLanguage, string> = {
+    en: t("language.english"),
+    de: t("language.german"),
+  };
+
   return (
     <div
-      aria-label="User menu"
+      aria-label={t("userMenu.label")}
       className={`ui-sidebar-text absolute z-30 w-[220px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
@@ -43,19 +67,34 @@ export function UserMenu({
         }}
       >
         <Icon name="settings" size="19px" className={menuIconClass} />
-        Settings
+        {t("userMenu.settings")}
       </button>
       <button
         className={`${menuItemClass} text-[#f3f0e8]`}
         role="menuitem"
         type="button"
-        onClick={() => {
-          /* Language switching is not wired yet — deliberate dead entry. */
-        }}
+        aria-expanded={showLanguages}
+        onClick={() => setShowLanguages((open) => !open)}
       >
         <Icon name="globe" size="19px" className={menuIconClass} />
-        Language
+        {t("userMenu.language")}
       </button>
+      {showLanguages &&
+        SUPPORTED_LANGUAGES.map((language) => (
+          <button
+            key={language}
+            className={`${menuItemClass} pl-[42px] text-[#f3f0e8]`}
+            role="menuitemradio"
+            aria-checked={active === language}
+            type="button"
+            onClick={() => chooseLanguage(language)}
+          >
+            <span className={menuIconClass}>
+              {active === language && <Icon name="check" size="17px" className="text-[#5599e7]" />}
+            </span>
+            {languageLabel[language]}
+          </button>
+        ))}
       <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
       <button
         className={`${menuItemClass} text-[#f3f0e8]`}
@@ -67,7 +106,7 @@ export function UserMenu({
         }}
       >
         <LogoutMenuIcon />
-        Log out
+        {t("userMenu.logout")}
       </button>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Icon } from "./chat/Icon";
 
@@ -27,7 +28,7 @@ export function MemoryComposer({
   onClose,
   pending,
   error,
-  placeholder = "Tell me what to remember or forget…",
+  placeholder: propPlaceholder,
   onSubmit,
 }: {
   open: boolean;
@@ -38,6 +39,8 @@ export function MemoryComposer({
   placeholder?: string;
   onSubmit: (instruction: string) => void;
 }) {
+  const { t } = useTranslation();
+  const placeholder = propPlaceholder ?? t("memory.composerPlaceholder");
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -79,7 +82,7 @@ export function MemoryComposer({
         <button
           type="button"
           data-testid="memory-edit-button"
-          aria-label="Edit memories"
+          aria-label={t("memory.editMemories")}
           aria-expanded={open}
           aria-hidden={open}
           tabIndex={open ? -1 : 0}
@@ -129,7 +132,7 @@ export function MemoryComposer({
           <button
             type="button"
             data-testid="memory-edit-submit"
-            aria-label="Apply memory edit"
+            aria-label={t("memory.applyEdit")}
             disabled={!canSend}
             onClick={submit}
             className="grid h-9 w-9 flex-none place-items-center rounded-full bg-accent text-[#eeeae2] transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-45"

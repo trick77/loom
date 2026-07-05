@@ -1,37 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ThreadShell } from "./ThreadShell";
 import loomLogo from "./assets/loom-logo.svg";
 import { getMe, listUsers, logout, type User } from "./api";
-
-const TAGLINES = [
-  "Weave your thoughts, thread by thread.",
-  "Pull a thread. See where it leads.",
-  "Every thought has another thread.",
-  "Where every idea forks.",
-  "One prompt, a thousand threads.",
-  "Follow the thread. Find the thought.",
-  "Think in threads.",
-  "Wander every branch of thought.",
-  "Untangle. Explore. Weave.",
-  "Where conversations branch.",
-  "Spin ideas into threads.",
-  "A loom for a branching mind.",
-];
+import { applyUserLanguage } from "./i18n";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
 
 export default function App() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<Status>("loading");
   const [user, setUser] = useState<User | null>(null);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
-  const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
+  const taglines = t("app.taglines", { returnObjects: true }) as string[];
+  const [taglineIndex] = useState(() => Math.floor(Math.random() * taglines.length));
+  const tagline = taglines[taglineIndex] ?? taglines[0];
 
   useEffect(() => {
     let active = true;
     getMe()
       .then((currentUser) => {
         if (!active) return;
+        applyUserLanguage(currentUser?.responseLanguage);
         setUser(currentUser);
         setStatus(currentUser ? "ready" : "signed-out");
       })
@@ -78,7 +69,7 @@ export default function App() {
   if (status === "loading") {
     return (
       <div className="flex h-svh items-center justify-center bg-bg font-sans text-muted">
-        Loading
+        {t("app.loading")}
       </div>
     );
   }
@@ -96,7 +87,7 @@ export default function App() {
             href="/api/auth/login"
             className="mt-6 rounded-ui bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"
           >
-            Sign in
+            {t("app.signIn")}
           </a>
         </section>
       </main>
@@ -106,7 +97,7 @@ export default function App() {
   if (status === "error" || user === null) {
     return (
       <div className="flex h-svh items-center justify-center bg-bg font-sans text-ink">
-        Service unavailable
+        {t("app.serviceUnavailable")}
       </div>
     );
   }
@@ -121,7 +112,7 @@ export default function App() {
       onSessionExpired={handleSessionExpired}
       adminPanel={
         <section className="h-full overflow-y-auto p-6">
-          <h1 className="font-serif text-2xl font-light tracking-tight">Admin</h1>
+          <h1 className="font-serif text-2xl font-light tracking-tight">{t("app.admin")}</h1>
           <div className="mt-4 divide-y divide-border border-y border-border">
             {adminUsers.map((adminUser) => (
               <div key={adminUser.id} className="flex justify-between py-3 text-sm">

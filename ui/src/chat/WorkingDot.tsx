@@ -10,13 +10,16 @@
  * mounted, so during that gap these dots are the ONLY activity cue and must
  * announce it themselves. The dots themselves are decorative (empty spans).
  */
+import { useTranslation } from "react-i18next";
+
 export function WorkingDot() {
+  const { t } = useTranslation();
   return (
     <div className="ui-working-dots" role="status">
       <span />
       <span />
       <span />
-      <span className="sr-only">Working</span>
+      <span className="sr-only">{t("thread.working")}</span>
     </div>
   );
 }

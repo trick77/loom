@@ -6,23 +6,21 @@
  * < 1 min -> "just now", < 1 h -> minutes, < 24 h -> hours,
  * < 48 h -> "yesterday", otherwise whole days.
  */
+import i18n from "./i18n";
+
 export function formatTimeAgo(iso: string, now: Date = new Date()): string {
   const then = new Date(iso);
   const ms = now.getTime() - then.getTime();
   if (Number.isNaN(ms)) return "";
-  if (ms < 0) return "just now";
+  if (ms < 0) return i18n.t("timeago.justNow");
 
   const minute = 60_000;
   const hour = 60 * minute;
   const day = 24 * hour;
 
-  if (ms < minute) return "just now";
-  if (ms < hour) return plural(Math.floor(ms / minute), "minute");
-  if (ms < day) return plural(Math.floor(ms / hour), "hour");
-  if (ms < 2 * day) return "yesterday";
-  return plural(Math.floor(ms / day), "day");
-}
-
-function plural(value: number, unit: string): string {
-  return `${value} ${unit}${value === 1 ? "" : "s"} ago`;
+  if (ms < minute) return i18n.t("timeago.justNow");
+  if (ms < hour) return i18n.t("timeago.minute", { count: Math.floor(ms / minute) });
+  if (ms < day) return i18n.t("timeago.hour", { count: Math.floor(ms / hour) });
+  if (ms < 2 * day) return i18n.t("timeago.yesterday");
+  return i18n.t("timeago.day", { count: Math.floor(ms / day) });
 }

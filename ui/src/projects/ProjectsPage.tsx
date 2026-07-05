@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import { listProjects, type Project } from "../api";
 import { Icon } from "../chat/Icon";
@@ -9,11 +11,9 @@ import { ProjectActionsMenu } from "./ProjectActionsMenu";
 type ProjectSort = "recent" | "edited" | "created";
 type ProjectTab = "active" | "archived";
 
-const SORT_LABELS: Record<ProjectSort, string> = {
-  recent: "Recent activity",
-  edited: "Last edited",
-  created: "Date created",
-};
+function sortLabel(sort: ProjectSort, t: TFunction): string {
+  return t(`projects.page.sort.${sort}`);
+}
 
 export function ProjectsPage({
   projects,
@@ -36,6 +36,7 @@ export function ProjectsPage({
   onUnarchiveProject(project: Project): void;
   onDeleteProject(project: Project): void;
 }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [openMenuID, setOpenMenuID] = useState<string | null>(null);
   const [sort, setSort] = useState<ProjectSort>("recent");
@@ -57,7 +58,7 @@ export function ProjectsPage({
         if (!cancelled) setArchived(items);
       })
       .catch(() => {
-        if (!cancelled) setArchivedError("Failed to load archived projects.");
+        if (!cancelled) setArchivedError(t("projects.page.loadArchivedError"));
       })
       .finally(() => {
         if (!cancelled) setArchivedLoading(false);
@@ -110,7 +111,7 @@ export function ProjectsPage({
         <SidebarOpenButton variant="floating" onClick={onOpenSidebar} />
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">Projects</h1>
+            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">{t("projects.page.title")}</h1>
           </div>
           <div className="flex items-center gap-2.5">
             <div className="relative">
@@ -120,12 +121,12 @@ export function ProjectsPage({
                 type="button"
                 onClick={() => setSortOpen((value) => !value)}
               >
-                Sort by <span className="font-semibold text-white">{SORT_LABELS[sort]}</span>
+                {t("projects.page.sortBy")} <span className="font-semibold text-white">{sortLabel(sort, t)}</span>
                 <Icon name="chevronDown" size="14px" />
               </button>
               {sortOpen && (
                 <div
-                  aria-label="Project sort options"
+                  aria-label={t("projects.page.sortOptionsLabel")}
                   className="ui-sidebar-text absolute right-0 top-full z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)]"
                   role="menu"
                 >
@@ -141,7 +142,7 @@ export function ProjectsPage({
                         setSortOpen(false);
                       }}
                     >
-                      {SORT_LABELS[option]}
+                      {sortLabel(option, t)}
                       {sort === option && <Icon name="check" size="16px" className="text-[#4f8cff]" />}
                     </button>
                   ))}
@@ -153,7 +154,7 @@ export function ProjectsPage({
               type="button"
               onClick={onCreateProject}
             >
-              New project
+              {t("projects.page.newProject")}
             </button>
           </div>
         </header>
@@ -166,13 +167,13 @@ export function ProjectsPage({
           <input
             autoFocus
             className="ui-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
-            placeholder="Search projects..."
-            aria-label="Search projects"
+            placeholder={t("projects.page.searchPlaceholder")}
+            aria-label={t("projects.page.searchLabel")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        <div className="mt-4 flex items-center gap-1.5" role="tablist" aria-label="Project filter">
+        <div className="mt-4 flex items-center gap-1.5" role="tablist" aria-label={t("projects.page.filterLabel")}>
           {(["active", "archived"] as const).map((option) => (
             <button
               key={option}
@@ -187,7 +188,7 @@ export function ProjectsPage({
                 setOpenMenuID(null);
               }}
             >
-              {option === "active" ? "Your projects" : "Archived"}
+              {option === "active" ? t("projects.page.tabActive") : t("projects.page.tabArchived")}
             </button>
           ))}
         </div>
@@ -198,7 +199,7 @@ export function ProjectsPage({
         )}
         {filtered.length === 0 ? (
           <div className="py-10 text-center text-[#807d74]">
-            {emptyMessage(tab, query, archivedLoading)}
+            {emptyMessage(tab, query, archivedLoading, t)}
           </div>
         ) : (
         <div className="mt-7 grid gap-6 md:grid-cols-2">
@@ -218,14 +219,14 @@ export function ProjectsPage({
               >
                 <span className="truncate">{project.name}</span>
                 {project.archivedAt != null && (
-                  <Icon name="archived" size="15px" label="Archived" className="shrink-0 text-[#8f8b82]" />
+                  <Icon name="archived" size="15px" label={t("projects.page.archivedBadge")} className="shrink-0 text-[#8f8b82]" />
                 )}
               </button>
               {project.description !== "" && (
                 <p className="mt-5 line-clamp-3 text-sm leading-5 text-[#c7c5bd]">{project.description}</p>
               )}
               <p className="absolute bottom-4 left-4 text-sm text-[#8f8b82]">
-                Updated {formatTimeAgo(project.lastActivityAt)}
+                {t("projects.page.updated", { time: formatTimeAgo(project.lastActivityAt) })}
               </p>
               <div
                 className="absolute right-3 top-3"
@@ -234,7 +235,7 @@ export function ProjectsPage({
               >
                 <button
                   aria-expanded={openMenuID === project.id}
-                  aria-label={`Open project actions for ${project.name}`}
+                  aria-label={t("projects.page.openActions", { name: project.name })}
                   className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
                   type="button"
                   onClick={(event) => {
@@ -264,10 +265,12 @@ export function ProjectsPage({
   );
 }
 
-function emptyMessage(tab: ProjectTab, query: string, archivedLoading: boolean): string {
-  if (query.trim() !== "") return "No projects match your search.";
-  if (tab === "archived") return archivedLoading ? "Loading archived projects…" : "No archived projects.";
-  return "No projects yet.";
+function emptyMessage(tab: ProjectTab, query: string, archivedLoading: boolean, t: TFunction): string {
+  if (query.trim() !== "") return t("projects.page.empty.search");
+  if (tab === "archived") {
+    return archivedLoading ? t("projects.page.empty.archivedLoading") : t("projects.page.empty.archived");
+  }
+  return t("projects.page.empty.none");
 }
 
 function compareDatesDesc(a: string, b: string): number {

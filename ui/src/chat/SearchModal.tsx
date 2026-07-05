@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Icon } from "./Icon";
 import { formatTimeAgo } from "../timeago";
@@ -16,6 +17,7 @@ export function SearchModal({
   onClose(): void;
   onSelectThread(threadID: string): void;
 }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -103,7 +105,7 @@ export function SearchModal({
         onKeyDown={handleKeyDown}
       >
         <h2 id={titleID} className="sr-only">
-          Search chats
+          {t("search.searchChats")}
         </h2>
         <div className="flex h-[52px] shrink-0 items-center gap-3 px-4">
           <Icon name="search" size="18px" className="shrink-0 text-[#807d74]" />
@@ -112,13 +114,13 @@ export function SearchModal({
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search chats…"
-            aria-label="Search chats"
+            placeholder={t("search.placeholder")}
+            aria-label={t("search.searchChats")}
             className="ui-composer-text min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-[#807d74]"
           />
           <button
             type="button"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={onClose}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#c3c2b7] transition-colors hover:bg-[#3f3f3a] hover:text-white"
           >
@@ -134,11 +136,11 @@ export function SearchModal({
         >
           <div ref={contentRef} className="px-1.5 py-1.5">
           {hasQuery && (
-            <div className="ui-meta-text px-3 pb-1 pt-1.5 text-[#97958c]">Search results</div>
+            <div className="ui-meta-text px-3 pb-1 pt-1.5 text-[#97958c]">{t("search.resultsHeading")}</div>
           )}
           {results.length === 0 ? (
             <div className="px-3 py-6 text-center text-[14px] text-[#807d74]">
-              {hasQuery ? "No chats match your search." : "No chats yet."}
+              {hasQuery ? t("search.noMatch") : t("search.empty")}
             </div>
           ) : (
             <ul>

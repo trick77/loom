@@ -79,6 +79,43 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, user)
 }
 
+// updateMeRequest is the body of PATCH /api/me. responseLanguage is the coupled
+// UI display + LLM answer language: 'en'/'de' pin both, 'auto' lets the model
+// detect the answer language and the UI fall back to the browser locale.
+type updateMeRequest struct {
+	ResponseLanguage string `json:"responseLanguage"`
+}
+
+// allowedResponseLanguages is the set of values PATCH /api/me accepts.
+var allowedResponseLanguages = map[string]bool{"en": true, "de": true, "auto": true}
+
+func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if s.users == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "users are not configured")
+		return
+	}
+	var body updateMeRequest
+	if err := decodeJSONBody(w, r, &body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !allowedResponseLanguages[body.ResponseLanguage] {
+		writeJSONError(w, http.StatusBadRequest, "unsupported response language")
+		return
+	}
+	if err := s.users.UpdateResponseLanguage(r.Context(), user.ID, body.ResponseLanguage); err != nil {
+		serverError(w, r, err, "update response language failed")
+		return
+	}
+	user.ResponseLanguage = body.ResponseLanguage
+	writeJSON(w, user)
+}
+
 func (s *server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if s.users == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "users are not configured")

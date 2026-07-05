@@ -8,14 +8,16 @@ export type SlashCommandName = "mcp" | "tools" | "usage" | "help";
 
 export type SlashCommand = {
   name: SlashCommandName;
+  // i18n key for the human-readable description; the `/name` token itself is a
+  // typed command and is never translated.
   description: string;
 };
 
 export const SLASH_COMMANDS: SlashCommand[] = [
-  { name: "mcp", description: "MCP server status" },
-  { name: "tools", description: "Available tools and descriptions" },
-  { name: "usage", description: "Your token and quota usage" },
-  { name: "help", description: "List the available slash commands" },
+  { name: "mcp", description: "slash.desc.mcp" },
+  { name: "tools", description: "slash.desc.tools" },
+  { name: "usage", description: "slash.desc.usage" },
+  { name: "help", description: "slash.desc.help" },
 ];
 
 // matchSlashCommand returns the command a draft resolves to, or null. A draft is

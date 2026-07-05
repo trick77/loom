@@ -11,6 +11,20 @@ export async function getMe(): Promise<User | null> {
   return response.json();
 }
 
+// updateMe persists profile preferences. responseLanguage is the coupled UI +
+// LLM answer language ('en'/'de' pin both; 'auto' lets the model detect).
+export async function updateMe(patch: { responseLanguage: string }): Promise<User> {
+  const response = await fetch("/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    throw new Error("failed to update profile");
+  }
+  return response.json();
+}
+
 export async function listUsers(): Promise<User[]> {
   const response = await fetch("/api/admin/users");
   if (!response.ok) {
