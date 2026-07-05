@@ -241,7 +241,8 @@ pre.code code{font-family:inherit;background:none}
 .md blockquote{background:var(--callout);color:var(--accent);font-style:italic;padding:8px 12px;margin:8px 0;border-radius:2px;break-inside:avoid}
 .md blockquote p{margin:0}
 .md code{font-family:"Loom Mono",ui-monospace,monospace;font-size:11px;background:var(--cream);padding:1px 4px;border-radius:2px}
-.md pre.code code{padding:0;background:none}
+.md pre{font-family:"Loom Mono",ui-monospace,monospace;font-size:11px;line-height:1.4;background:var(--cream-alt);color:var(--ink);padding:8px 10px;margin:6px 0;white-space:pre;overflow:hidden;border-radius:2px;break-inside:avoid}
+.md pre code{font-family:inherit;background:none;padding:0}
 .md hr{border:0;border-top:1px solid var(--cream-alt);margin:10px 0}
 `,
 		fontRegularFile, fontBoldFile, fontItalicFile, fontMonoFile, fontMonoBoldFile,

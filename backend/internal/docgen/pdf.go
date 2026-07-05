@@ -39,6 +39,9 @@ func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta,
 		// missing a "type"). The specific message reaches both the model and the
 		// dispatcher log so the actual payload shape is diagnosable.
 		if raw, present := req.Payload["blocks"]; present {
+			if arr, ok := raw.([]any); ok && len(arr) == 0 {
+				return GeneratedMeta{}, errors.New("blocks array was empty; add blocks (each with a \"type\"), or supply markdown in \"content\"")
+			}
 			return GeneratedMeta{}, fmt.Errorf("blocks were provided but none were parseable (got %T); pass blocks as a JSON array of objects each with a \"type\", or supply markdown in \"content\"", raw)
 		}
 		return GeneratedMeta{}, errors.New("content or blocks are required")

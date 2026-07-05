@@ -91,6 +91,31 @@ func TestPDFUnparseableBlocksGivesSpecificError(t *testing.T) {
 	}
 }
 
+func TestPDFEmptyBlocksArrayError(t *testing.T) {
+	// An empty (but present) blocks array with no content gets a clearer message
+	// than the generic "none were parseable".
+	_, err := PDFGenerator{}.Generate(GenerateRequest{
+		Filename: "f",
+		Payload:  map[string]any{"blocks": []any{}},
+	}, &discardWriter{})
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("expected an empty-array error, got: %v", err)
+	}
+}
+
+func TestRenderMarkdownBodyStylesIndentedCode(t *testing.T) {
+	// 4-space indented code is an ast.CodeBlock (not fenced), so it renders as a
+	// bare <pre> the highlighting wrapper never touches; the .md pre rule keeps it
+	// on the code panel instead of unstyled.
+	html := renderMarkdownBody("    plain indented code\n")
+	if !strings.Contains(html, "<pre><code>") {
+		t.Errorf("indented code did not render as <pre><code>:\n%s", html)
+	}
+	if !strings.Contains(pdfCSS(), ".md pre{") {
+		t.Error("pdfCSS missing the .md pre fallback rule for indented code blocks")
+	}
+}
+
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
