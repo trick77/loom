@@ -77,7 +77,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	}
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, ReasoningEffort: normalizeReasoningEffort(body.ReasoningEffort), Incognito: true}
 	titles := newReasoningTitleTracker(s, stream, streamCtx, inference, userResponseLanguage(user))
 	defer titles.wait()
 

@@ -18,6 +18,8 @@ test("reports unsupported picker files instead of silently ignoring them", () =>
       draft=""
       isSending={false}
       placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -51,6 +53,8 @@ test("attaches supported picker files and reports unsupported companions", () =>
       draft=""
       isSending={false}
       placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -94,6 +98,8 @@ test("renders uploading attachment previews inside the composer", () => {
       isSending={false}
       placeholder="Write a message..."
       attachments={attachments}
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -128,6 +134,8 @@ test("shows a thumbnail for previewable image attachments", () => {
       isSending={false}
       placeholder="Write a message..."
       attachments={attachments}
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -162,6 +170,8 @@ test("keeps attachment previews above the draft text area", () => {
       isSending={false}
       placeholder="Write a message..."
       attachments={attachments}
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -199,6 +209,8 @@ test("removes an attachment preview before send", () => {
       isSending={false}
       placeholder="How can I help you today?"
       attachments={attachments}
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}

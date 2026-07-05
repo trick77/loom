@@ -646,7 +646,7 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
     "/api/threads/t1/messages:stream",
     expect.objectContaining({
       method: "POST",
-      body: JSON.stringify({ content: "It is hot" }),
+      body: JSON.stringify({ content: "It is hot", reasoningEffort: "high" }),
     }),
   ));
 
@@ -821,7 +821,7 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
       "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "What is this image?", imageAttachmentIds: ["art_image"] }),
+        body: JSON.stringify({ content: "What is this image?", imageAttachmentIds: ["art_image"], reasoningEffort: "high" }),
       }),
     ),
   );
@@ -923,7 +923,7 @@ test("\"Use in thread\" references an existing artifact without re-uploading it"
       "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "Describe this", imageAttachmentIds: ["art_1"] }),
+        body: JSON.stringify({ content: "Describe this", imageAttachmentIds: ["art_1"], reasoningEffort: "high" }),
       }),
     ),
   );
@@ -1022,7 +1022,7 @@ test("retries a failed deferred new-chat image upload before streaming", async (
       "/api/threads/t2/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "What is this image?", imageAttachmentIds: ["art_image_retry"] }),
+        body: JSON.stringify({ content: "What is this image?", imageAttachmentIds: ["art_image_retry"], reasoningEffort: "high" }),
       }),
     ),
   );
@@ -2797,7 +2797,7 @@ test("retrying a markdown assistant response resends the previous user message",
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/threads/t1/messages:stream",
     expect.objectContaining({
-      body: JSON.stringify({ content: "Make a short report" }),
+      body: JSON.stringify({ content: "Make a short report", reasoningEffort: "high" }),
       method: "POST",
     }),
   );
@@ -2819,7 +2819,7 @@ test("user message actions copy and retry the selected prompt", async () => {
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/threads/t1/messages:stream",
     expect.objectContaining({
-      body: JSON.stringify({ content: "Make a short report" }),
+      body: JSON.stringify({ content: "Make a short report", reasoningEffort: "high" }),
       method: "POST",
     }),
   );

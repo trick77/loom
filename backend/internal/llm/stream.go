@@ -64,6 +64,10 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// carries an image part, else the text model. The same `messages` slice is
 	// re-sent on every tool round within this turn, so the choice stays stable.
 	model := c.modelForMessages(messages)
+	// One reasoning-effort decision for the whole turn (matching the single model
+	// decision above): the composer's per-request choice from the context, else the
+	// configured default. Reused for both the outbound request and StreamResult.
+	reasoningEffort := c.resolveReasoningEffort(ctx)
 	callCtx := ctx
 	var cancel context.CancelFunc
 	if timeout := c.timeoutForTools(tools); timeout > 0 {
@@ -104,7 +108,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 	}
 
-	resp, err := c.executeChatRequestWithTools(streamCtx, messages, tools, true, model)
+	resp, err := c.executeChatRequestWithTools(streamCtx, messages, tools, true, model, reasoningEffort)
 	if err != nil {
 		// The watchdog can fire before the first byte arrives (upstream never
 		// responds); report that as a stall rather than a raw context error.
@@ -302,7 +306,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			}
 			result.Duration = time.Since(start)
 			result.Model = model
-			result.ReasoningEffort = c.reasoningEffort
+			result.ReasoningEffort = reasoningEffort
 			observeInference(streamCtx, model, result.Duration, result.Usage, result.FinishReason, progress()...)
 			return result, nil
 		}
@@ -402,7 +406,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	}
 	result.Duration = time.Since(start)
 	result.Model = model
-	result.ReasoningEffort = c.reasoningEffort
+	result.ReasoningEffort = reasoningEffort
 	observeInference(streamCtx, model, result.Duration, result.Usage, result.FinishReason, progress()...)
 	return result, nil
 }

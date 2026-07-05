@@ -14,6 +14,12 @@ type InferenceMetadata struct {
 	ThreadID string
 	Purpose  string
 	Round    int
+	// ReasoningEffort is the per-request reasoning depth chosen for this turn
+	// (low/medium/high). Empty falls back to the client's default. It rides the
+	// context so the httpapi layer can steer the effort without threading a new
+	// argument through every StreamChatWithTools call site; utility/title calls
+	// leave it empty and keep the default. See resolveReasoningEffort.
+	ReasoningEffort string
 	// Incognito marks an ephemeral turn whose content must never be written to
 	// disk. It suppresses the dev-only response-body log (see wrapResponseLogger)
 	// so an incognito transcript leaves no trace even when response logging is on.

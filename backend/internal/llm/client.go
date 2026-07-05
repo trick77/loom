@@ -189,14 +189,25 @@ func (c *Client) executeChatRequest(ctx context.Context, messages []Message, str
 	})
 }
 
-func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool, model string) (*http.Response, error) {
+func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool, model, reasoningEffort string) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
 		model:               model,
 		tools:               tools,
 		stream:              stream,
-		reasoningEffort:     c.reasoningEffort,
+		reasoningEffort:     reasoningEffort,
 		maxCompletionTokens: c.maxCompletionTokensForTools(tools),
 	})
+}
+
+// resolveReasoningEffort picks the reasoning depth for a turn: the per-request
+// value carried on the context (set by the httpapi layer from the composer
+// selection) when present, else the client's configured default. Utility calls
+// (titles, classifiers) never set the metadata field, so they keep the default.
+func (c *Client) resolveReasoningEffort(ctx context.Context) string {
+	if effort := inferenceMetadataFromContext(ctx).ReasoningEffort; effort != "" {
+		return effort
+	}
+	return c.reasoningEffort
 }
 
 // executeUtilityChatRequest runs a non-streaming secondary helper call (title or

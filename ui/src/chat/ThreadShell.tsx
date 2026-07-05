@@ -60,6 +60,12 @@ import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
+import {
+  DEFAULT_REASONING_EFFORT,
+  isReasoningEffort,
+  REASONING_EFFORT_STORAGE_KEY,
+  type ReasoningEffort,
+} from "./reasoning";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export { buildImageStats } from "./artifacts";
@@ -113,6 +119,16 @@ export function ThreadShell({
   // (only one conversation is active at a time).
   const [incognito, setIncognito] = useState(false);
   const [incognitoMessages, setIncognitoMessages] = useState<MessageWithActivityTrace[]>([]);
+  // The composer's reasoning-effort choice, persisted so it survives reloads and
+  // applies across every thread (it is a session preference, not a per-thread one).
+  // Lazy init reads localStorage once; the effect below writes it back on change.
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
+    const stored = localStorage.getItem(REASONING_EFFORT_STORAGE_KEY);
+    return isReasoningEffort(stored) ? stored : DEFAULT_REASONING_EFFORT;
+  });
+  useEffect(() => {
+    localStorage.setItem(REASONING_EFFORT_STORAGE_KEY, reasoningEffort);
+  }, [reasoningEffort]);
   // A slash command ("/mcp", "/tools", …) opens this ephemeral overlay panel
   // instead of sending a message; null when no panel is open.
   const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(null);
@@ -775,7 +791,7 @@ export function ThreadShell({
             setProjectThreads((current) => upsertThreadById(current, updatedThread));
           }
         },
-      }, abortController.signal, { documentAttachmentIds, imageAttachmentIds });
+      }, abortController.signal, { documentAttachmentIds, imageAttachmentIds, reasoningEffort });
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
@@ -902,6 +918,7 @@ export function ThreadShell({
           },
         },
         abortController.signal,
+        { reasoningEffort },
       );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -950,6 +967,8 @@ export function ThreadShell({
             streamingBlocks={streamingBlocks}
             isSending={isSending}
             sendError={sendError}
+            reasoningEffort={reasoningEffort}
+            onReasoningEffortChange={setReasoningEffort}
             onDraftChange={setDraft}
             onSend={() => void handleIncognitoSend()}
             onStop={() => handleStopResponse("incognito")}
@@ -1097,6 +1116,8 @@ export function ThreadShell({
               isSending={false}
               sendDisabled={isSending}
               openThreadMenuID={openThreadMenuID}
+              reasoningEffort={reasoningEffort}
+              onReasoningEffortChange={setReasoningEffort}
               onBack={navigateToProjects}
               onDraftChange={setDraft}
               onSend={handleSend}
@@ -1131,6 +1152,8 @@ export function ThreadShell({
             sendError={sendError}
             attachments={pendingAttachments}
             attachNote={pendingAttachNote}
+            reasoningEffort={reasoningEffort}
+            onReasoningEffortChange={setReasoningEffort}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onDraftChange={setDraft}
             onSend={handleSend}
@@ -1156,6 +1179,8 @@ export function ThreadShell({
             isSending={activeThreadIsStreaming}
             sendDisabled={isSending && !activeThreadIsStreaming}
             openThreadMenuID={openThreadMenuID}
+            reasoningEffort={reasoningEffort}
+            onReasoningEffortChange={setReasoningEffort}
             onDraftChange={setDraft}
             onSend={handleSend}
             onStop={handleStopResponse}

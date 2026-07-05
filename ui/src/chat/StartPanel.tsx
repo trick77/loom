@@ -5,6 +5,7 @@ import { ErrorText } from "./ErrorText";
 import { Icon } from "./Icon";
 import { greetingForNow } from "./threadUtils";
 import { PromptStarters } from "./PromptStarters";
+import type { ReasoningEffort } from "./reasoning";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
 import loomLogo from "../assets/loom-logo.svg";
@@ -17,6 +18,8 @@ export function StartPanel({
   sendError,
   attachments,
   attachNote,
+  reasoningEffort,
+  onReasoningEffortChange,
   onOpenSidebar,
   onDraftChange,
   onSend,
@@ -33,6 +36,8 @@ export function StartPanel({
   sendError: string;
   attachments: ComposerAttachment[];
   attachNote: string;
+  reasoningEffort: ReasoningEffort;
+  onReasoningEffortChange(value: ReasoningEffort): void;
   onOpenSidebar(): void;
   onDraftChange(value: string): void;
   onSend(): void;
@@ -82,6 +87,8 @@ export function StartPanel({
             isSending={isSending}
             sendDisabled={sendDisabled}
             placeholder="How can I help you today?"
+            reasoningEffort={reasoningEffort}
+            onReasoningEffortChange={onReasoningEffortChange}
             onDraftChange={onDraftChange}
             onSend={onSend}
             onStop={onStop}
