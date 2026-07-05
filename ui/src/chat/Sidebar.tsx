@@ -134,14 +134,14 @@ export function Sidebar({
             } ${route.view === "new" && !showAdmin ? "bg-[#111110]" : ""}`}
             onClick={onNewThread}
             type="button"
-            aria-label={t("sidebar.newThread")}
+            aria-label={t("common.newThread")}
           >
             <span className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full bg-[hsl(180deg_3%_19%)] text-[hsl(55deg_9%_74%)]">
               <svg className="h-[13px] w-[13px]" viewBox="0 0 24 24" aria-hidden="true" fill="none">
                 <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </span>
-            {!railCollapsed && <span>{t("sidebar.newThread")}</span>}
+            {!railCollapsed && <span>{t("common.newThread")}</span>}
           </button>
           <SidebarPrimaryItem
             label={t("sidebar.threads")}

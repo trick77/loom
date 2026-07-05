@@ -246,7 +246,7 @@ export function ThreadsPage({
                 {t("chats.selectThreads")}
               </PillButton>
               <PillButton variant="white" onClick={onNewThread}>
-                {t("chats.newThread")}
+                {t("common.newThread")}
               </PillButton>
             </div>
           )}
