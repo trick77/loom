@@ -193,13 +193,14 @@ func (c *Client) executeChatRequest(ctx context.Context, messages []Message, str
 	})
 }
 
-func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool, model, reasoningEffort string) (*http.Response, error) {
+func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool, model, reasoningEffort string, thinking *thinkingOption, maxCompletionTokens int) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
 		model:               model,
 		tools:               tools,
 		stream:              stream,
 		reasoningEffort:     reasoningEffort,
-		maxCompletionTokens: c.maxCompletionTokensForTools(tools),
+		thinking:            thinking,
+		maxCompletionTokens: maxCompletionTokens,
 	})
 }
 
