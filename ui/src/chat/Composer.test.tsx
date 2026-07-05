@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { Composer } from "./Composer";
-import { PASTE_AS_ATTACHMENT_THRESHOLD } from "./pastedText";
+import { PASTE_AS_ATTACHMENT_LINE_THRESHOLD, PASTE_AS_ATTACHMENT_THRESHOLD } from "./pastedText";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 
 afterEach(() => {
@@ -281,6 +281,34 @@ test("drops the selected draft text when a large paste replaces a selection", ()
 
   // The selected text is removed so it is not sent alongside the pasted block.
   expect(onDraftChange).toHaveBeenCalledWith("");
+  expect(onAddPastedText).toHaveBeenCalledWith(text);
+});
+
+test("collapses a tall paste that exceeds the line threshold under the char limit", () => {
+  const onAddPastedText = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAddPastedText={onAddPastedText}
+    />,
+  );
+
+  // Many short lines: well under the character limit, but past the line threshold.
+  const text = "x\n".repeat(PASTE_AS_ATTACHMENT_LINE_THRESHOLD + 1);
+  expect(text.length).toBeLessThanOrEqual(PASTE_AS_ATTACHMENT_THRESHOLD);
+  const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
+    clipboardData: { getData: () => text },
+  });
+
+  expect(notCancelled).toBe(false);
   expect(onAddPastedText).toHaveBeenCalledWith(text);
 });
 
