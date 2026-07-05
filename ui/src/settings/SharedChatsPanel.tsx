@@ -80,7 +80,7 @@ export function SharedChatsPanel() {
               <button
                 type="button"
                 aria-label="Disable link"
-                className="shrink-0 rounded-md border border-[#3a3a36] px-2.5 py-1 text-xs text-[#d98278] transition-colors hover:bg-[#d03b3c] hover:text-white"
+                className="shrink-0 rounded-md border border-[#3a3a36] px-2.5 py-1 text-xs text-[#ec7e7e] transition-colors hover:bg-[#d03b3b] hover:text-white"
                 onClick={() => void revoke(item)}
               >
                 <span className="flex items-center gap-1.5">

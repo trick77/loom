@@ -1,10 +1,11 @@
 import type { Project } from "../api";
 import { Icon } from "../chat/Icon";
+import { useMenuPlacement } from "../chat/useMenuPlacement";
 import { menuDeleteItemClass, menuIconClass, menuItemClass, TrashMenuIcon } from "../ThreadActionsMenu";
 
 export function ProjectActionsMenu({
   project,
-  className = "right-0 top-full",
+  className = "right-0",
   archived = false,
   onEdit,
   onArchive,
@@ -19,10 +20,12 @@ export function ProjectActionsMenu({
   onUnarchive(project: Project): void;
   onDelete(project: Project): void;
 }) {
+  const { menuRef, verticalClass } = useMenuPlacement();
   return (
     <div
+      ref={menuRef}
       aria-label="Project actions"
-      className={`ui-sidebar-text absolute z-20 mt-1 w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
+      className={`ui-sidebar-text absolute z-20 ${verticalClass} w-[168px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)] ${className}`}
       role="menu"
     >
       <button

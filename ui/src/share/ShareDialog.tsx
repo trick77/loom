@@ -86,7 +86,7 @@ export function ShareDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-label={isShared ? "Chat shared" : "Share chat"}

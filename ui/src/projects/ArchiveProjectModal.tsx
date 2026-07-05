@@ -14,7 +14,7 @@ export function ArchiveProjectModal({
   onArchive(): void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px]">
       <section
         aria-label="Archive project"
         className="w-full max-w-[460px] rounded-[10px] border border-[#55524b] bg-[#383834] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]"
