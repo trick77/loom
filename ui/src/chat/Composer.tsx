@@ -9,7 +9,7 @@ import { Icon } from "./Icon";
 import { ReasoningMenu } from "./ReasoningMenu";
 import { MODEL_LABEL, type ReasoningEffort } from "./reasoning";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
-import { PASTE_AS_ATTACHMENT_THRESHOLD, type PastedText } from "./pastedText";
+import { shouldCollapsePaste, type PastedText } from "./pastedText";
 import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
 export function Composer({
@@ -168,11 +168,11 @@ export function Composer({
         placeholder={placeholder}
         value={draft}
         onPaste={(event) => {
-          // A very large plain-text paste collapses into a removable "Pasted" chip
-          // instead of flooding the textarea. Char count only — matches claude.ai.
+          // A large or tall plain-text paste collapses into a removable "Pasted"
+          // chip instead of flooding the textarea (char- or line-count threshold).
           if (onAddPastedText === undefined) return;
           const text = event.clipboardData.getData("text/plain");
-          if (text.length <= PASTE_AS_ATTACHMENT_THRESHOLD) return;
+          if (!shouldCollapsePaste(text)) return;
           event.preventDefault();
           // preventDefault suppresses the native paste, which would normally also
           // replace any selected text. Since the paste becomes a chip rather than
