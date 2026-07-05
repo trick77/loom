@@ -61,12 +61,7 @@ import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
-import {
-  DEFAULT_REASONING_EFFORT,
-  isReasoningEffort,
-  REASONING_EFFORT_STORAGE_KEY,
-  type ReasoningEffort,
-} from "./reasoning";
+import { DEFAULT_REASONING_EFFORT, type ReasoningEffort } from "./reasoning";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export { buildImageStats } from "./artifacts";
@@ -121,27 +116,11 @@ export function ThreadShell({
   // (only one conversation is active at a time).
   const [incognito, setIncognito] = useState(false);
   const [incognitoMessages, setIncognitoMessages] = useState<MessageWithActivityTrace[]>([]);
-  // The composer's reasoning-effort choice, persisted so it survives reloads and
-  // applies across every thread (it is a session preference, not a per-thread one).
-  // Lazy init reads localStorage once; the effect below writes it back on change.
-  // Storage access is guarded: a locked-down webview (or enterprise policy that
-  // disables site data) throws on access, and this is the top-level shell — an
-  // unguarded throw would blank the whole app. Fall back to the default instead.
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
-    try {
-      const stored = localStorage.getItem(REASONING_EFFORT_STORAGE_KEY);
-      return isReasoningEffort(stored) ? stored : DEFAULT_REASONING_EFFORT;
-    } catch {
-      return DEFAULT_REASONING_EFFORT;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(REASONING_EFFORT_STORAGE_KEY, reasoningEffort);
-    } catch {
-      // Persistence is best-effort; a storage-blocked context still works for the session.
-    }
-  }, [reasoningEffort]);
+  // The composer's reasoning-effort choice. In-memory only — it is not persisted
+  // and does not carry across threads: every new thread opens at the default
+  // (navigateToNew resets it), and a manual change applies to the current thread
+  // only. High is the model's own default.
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT);
   // A slash command ("/mcp", "/tools", …) opens this ephemeral overlay panel
   // instead of sending a message; null when no panel is open.
   const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(null);
@@ -349,6 +328,9 @@ export function ThreadShell({
       clearStreamingBlocks();
     }
     setSendError("");
+    // Every new thread starts at the default reasoning effort; the previous
+    // thread's choice does not carry over (it is never persisted).
+    setReasoningEffort(DEFAULT_REASONING_EFFORT);
     navigate({ view: "new" });
     setRoute({ view: "new" });
   }, [clearStreamingBlocks, onThread]);
