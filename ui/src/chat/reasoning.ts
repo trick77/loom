@@ -13,10 +13,9 @@ export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "high";
 export const REASONING_EFFORT_STORAGE_KEY = "loom.reasoningEffort";
 
 // The only model Loom serves, shown as a static (non-interactive) label in the
-// composer — there is no model picker. This is Xiaomi's official spelling
-// (mimo.xiaomi.com / huggingface.co/XiaomiMiMo), matching the backend's
-// mimo-v2.5-pro model tag.
-export const MODEL_LABEL = "MiMo-V2.5-Pro";
+// composer — there is no model picker. Display form of Xiaomi's MiMo-V2.5-Pro
+// (mimo.xiaomi.com), reading like a name rather than the model tag.
+export const MODEL_LABEL = "MiMo 2.5 Pro";
 
 export type ReasoningOption = {
   value: ReasoningEffort;

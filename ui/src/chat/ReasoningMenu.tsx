@@ -50,7 +50,7 @@ export function ReasoningMenu({
         aria-expanded={open}
         aria-label={`Reasoning: ${reasoningLabel(value)}`}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-7 items-center gap-1 rounded-md px-2 text-[13px] leading-none text-[#aaa79e] transition-colors hover:bg-[#3a3a37] hover:text-[#f3f0e8]"
+        className="flex h-7 items-center gap-1 rounded-md pl-1 pr-2 text-[13px] leading-none text-[#aaa79e] transition-colors hover:bg-[#3a3a37] hover:text-[#f3f0e8]"
       >
         <span>{reasoningLabel(value)}</span>
         {/* Border-drawn caret matching the reasoning-title chevron (ui-thinking-chevron):

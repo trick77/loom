@@ -247,14 +247,15 @@ export function Composer({
             if (files.length > 0) attachFiles(files);
           }}
         />
-        <div className="ui-meta-text flex items-center gap-2 text-[#d8d4ca]">
+        <div className="ui-meta-text flex items-center text-[#d8d4ca]">
           {/* Static model label — Loom serves one model, so this is a name, not a
               picker. Hidden on the narrowest widths so the reasoning control and
-              send button always fit. */}
+              send button always fit. No trailing gap here: the reasoning trigger's
+              own left padding is the single word-space before it. */}
           <span className="hidden select-none text-[13px] text-[#aaa79e] sm:inline">{MODEL_LABEL}</span>
           <ReasoningMenu value={reasoningEffort} onChange={onReasoningEffortChange} />
           <button
-            className={`ui-composer-send ml-0.5 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
+            className={`ui-composer-send ml-2 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
             disabled={!isSending && !canSend}
             type="submit"
             aria-label={isSending ? t("composer.stopResponse") : t("composer.sendMessage")}
