@@ -17,6 +17,9 @@ func TestMessageContainsURL(t *testing.T) {
 		"check www.example.com for me":              true,
 		"check (www.example.com) for me":            true, // leading punctuation trimmed
 		"see \"www.example.ch\"":                    true,
+		"Fass «www.blick.ch» zusammen":              true,  // Unicode quotes are a boundary
+		"schau bei [Blick](www.blick.ch)":           true,  // markdown link, scheme-less
+		"what does the prefix www. stand for":       false, // bare "www." with no domain after
 		"how do I use node.js streams":              false, // bare domain-lookalike must not match
 		"example.com without a scheme":              false, // deliberate: no bare-domain matching
 		"Agents are downstream of context. Which thread here says this and what does it mean": false,

@@ -31,7 +31,11 @@ func threadClassifySystemPrompt(userMessage string) string {
 }
 
 // messageContainsURL reports whether the message contains an explicit link:
-// an http/https scheme anywhere, or a www.-prefixed token. Deliberately no
+// an http/https scheme anywhere, or a "www." at a word boundary (nothing
+// alphanumeric before it, so "awww." does not match, and something alphanumeric
+// after it, so a bare "www." mentioned as a prefix does not). The boundary scan
+// — rather than token splitting — also catches links wrapped in Unicode quotes
+// («www.blick.ch») or markdown syntax ([Blick](www.blick.ch)). Deliberately no
 // bare-domain matching — ".js" and ".io" are real TLDs, so tokens like "node.js"
 // would false-positive and re-open the exact misclassification this guards.
 func messageContainsURL(message string) bool {
@@ -39,12 +43,25 @@ func messageContainsURL(message string) bool {
 	if strings.Contains(lower, "http://") || strings.Contains(lower, "https://") {
 		return true
 	}
-	for _, tok := range strings.Fields(lower) {
-		if strings.HasPrefix(strings.TrimLeft(tok, "(<[\"'"), "www.") {
+	for i := 0; ; {
+		j := strings.Index(lower[i:], "www.")
+		if j < 0 {
+			return false
+		}
+		j += i
+		// ASCII byte checks suffice: the string is lowercased, and any byte of a
+		// multibyte rune (e.g. «) is >= 0x80, which reads as a boundary here.
+		boundaryBefore := j == 0 || !isASCIIAlnum(lower[j-1])
+		domainAfter := j+4 < len(lower) && isASCIIAlnum(lower[j+4])
+		if boundaryBefore && domainAfter {
 			return true
 		}
+		i = j + 4
 	}
-	return false
+}
+
+func isASCIIAlnum(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 // ClassifyThread picks the prompt-classifier category for a conversation from its

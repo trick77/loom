@@ -76,8 +76,10 @@ func TestValuesAndPromptGuideCoverEveryCategory(t *testing.T) {
 
 func TestPromptGuideExcludes(t *testing.T) {
 	guide := PromptGuide(URLLookup)
-	// The excluded category is withheld from the menu for this call only.
-	if contains(guide, string(URLLookup)) {
+	// The excluded category's menu line is withheld for this call only. Probe for
+	// the "- value:" line, not the bare value, so a gloss merely mentioning the
+	// category by name would not false-positive.
+	if contains(guide, "- "+string(URLLookup)+":") {
 		t.Errorf("PromptGuide(URLLookup) must not offer %q", URLLookup)
 	}
 	// Exclusion is per-call, not a validity change: the category stays valid.
