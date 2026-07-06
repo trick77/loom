@@ -10,11 +10,42 @@ import (
 	"github.com/trick77/loom/internal/classifier"
 )
 
-// threadClassifySystemPrompt asks the helper model to pick exactly one category
+// threadClassifyInstructions asks the helper model to pick exactly one category
 // for the conversation. It is deliberately separate from the title call so the
 // title prompt stays untouched and this prompt can be tuned purely for routing
-// accuracy. The reply is a single category value (a few tokens), not JSON.
-var threadClassifySystemPrompt = "You classify the first user message of a conversation into exactly one category. Pick the most specific category that fits. Use \"knowledge_discovery\" only for informational or educational queries that fit no more specialized category, and \"general\" only for chit-chat or queries that fit nothing else. Reply with ONLY the category value (lowercase, no punctuation, nothing else). Categories:\n" + classifier.PromptGuide()
+// accuracy. The reply is a single category value (a few tokens), not JSON. The
+// category list is appended per call (see threadClassifySystemPrompt) because the
+// offered set depends on the message.
+const threadClassifyInstructions = "You classify the first user message of a conversation into exactly one category. Pick the most specific category that fits, but only a category whose defining input is actually present in the message — url_lookup requires a pasted URL; summarization, translation, and writing_editing require the text itself (or an attachment reference). Use \"knowledge_discovery\" only for informational or educational queries that fit no more specialized category, and \"general\" only for chit-chat or queries that fit nothing else. Reply with ONLY the category value (lowercase, no punctuation, nothing else). Categories:\n"
+
+// threadClassifySystemPrompt builds the classify system prompt for one message.
+// When the message contains no URL, url_lookup is withheld from the menu entirely
+// — deictic prompts ("which thread here says this") otherwise read to a small
+// model as "answer about a specific referenced thing" and leak into url_lookup;
+// withholding it makes the model re-pick the true best category itself.
+func threadClassifySystemPrompt(userMessage string) string {
+	if messageContainsURL(userMessage) {
+		return threadClassifyInstructions + classifier.PromptGuide()
+	}
+	return threadClassifyInstructions + classifier.PromptGuide(classifier.URLLookup)
+}
+
+// messageContainsURL reports whether the message contains an explicit link:
+// an http/https scheme anywhere, or a www.-prefixed token. Deliberately no
+// bare-domain matching — ".js" and ".io" are real TLDs, so tokens like "node.js"
+// would false-positive and re-open the exact misclassification this guards.
+func messageContainsURL(message string) bool {
+	lower := strings.ToLower(message)
+	if strings.Contains(lower, "http://") || strings.Contains(lower, "https://") {
+		return true
+	}
+	for _, tok := range strings.Fields(lower) {
+		if strings.HasPrefix(strings.TrimLeft(tok, "(<[\"'"), "www.") {
+			return true
+		}
+	}
+	return false
+}
 
 // ClassifyThread picks the prompt-classifier category for a conversation from its
 // first user message. It always returns a valid category — General on any request,
@@ -24,7 +55,7 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 	start := time.Now()
 	framed := "First user message:\n\"\"\"\n" + strings.TrimSpace(userMessage) + "\n\"\"\"\n\nCategory:"
 	messages := []Message{
-		{Role: "system", Content: threadClassifySystemPrompt},
+		{Role: "system", Content: threadClassifySystemPrompt(userMessage)},
 		{Role: "user", Content: framed},
 	}
 	resp, err := c.executeUtilityChatRequest(ctx, messages)
@@ -50,5 +81,12 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 	// punctuation, or stray prose) and coerces anything unrecognized — including a
 	// truncated "length" reply — to General, so a bad reply never produces a bad
 	// category.
-	return string(classifier.Match(choice.Message.Content)), nil
+	category := classifier.Match(choice.Message.Content)
+	// Belt and braces: url_lookup was withheld from the menu when the message has
+	// no URL, but the model may still name it. Its block ("rely solely on the page
+	// at the URL") is actively harmful without a URL, so coerce to General.
+	if category == classifier.URLLookup && !messageContainsURL(userMessage) {
+		category = classifier.General
+	}
+	return string(category), nil
 }
