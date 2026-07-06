@@ -167,6 +167,20 @@ test("renders the prompt-classifier category as a humanized pill on assistant me
   expect(screen.getByText("Knowledge discovery")).toBeInTheDocument();
 });
 
+test("renders the url_lookup category with the URL acronym upper-cased", () => {
+  const message: Message = {
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "The page is about physics.",
+    createdAt: "2026-06-14T00:00:00Z",
+  };
+
+  render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} category="url_lookup" />);
+
+  expect(screen.getByText("URL lookup")).toBeInTheDocument();
+});
+
 test("renders no category pill when the thread is unclassified", () => {
   const message: Message = {
     id: "m1",

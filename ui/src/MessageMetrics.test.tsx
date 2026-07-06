@@ -13,11 +13,12 @@ test("renders nothing without renderable metrics", () => {
   expect(container).toBeEmptyDOMElement();
 });
 
-test("renders the metrics line when data is present", () => {
+test("renders the metrics line when data is present, leading with the reasoning effort", () => {
   render(
     <MessageMetrics
-      message={assistant({ model: "mimo", durationMs: 5000, promptTokens: 10, completionTokens: 500, totalTokens: 510 })}
+      message={assistant({ model: "mimo", reasoningEffort: "high", durationMs: 5000, promptTokens: 10, completionTokens: 500, totalTokens: 510 })}
     />,
   );
-  expect(screen.getByText(/^mimo · 5s · ↑/)).toBeInTheDocument();
+  // The model name is never shown; the line leads with the reasoning-effort level.
+  expect(screen.getByText(/^high · 5s · ↑/)).toBeInTheDocument();
 });

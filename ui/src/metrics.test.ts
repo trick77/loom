@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { formatDuration, buildMetricsString, hasRenderableMetrics } from "./metrics";
+import { formatDuration, buildMetricsString, hasRenderableMetrics, humanizeCategory } from "./metrics";
 import type { Message } from "./api";
 
 function assistant(extra: Partial<Message>): Message {
@@ -24,21 +24,28 @@ test("hasRenderableMetrics requires duration and any token usage", () => {
   expect(hasRenderableMetrics(assistant({ durationMs: 2000, promptTokens: 0, completionTokens: 0, totalTokens: 0 }))).toBe(false);
 });
 
-test("buildMetricsString assembles model, duration, token counts and context %", () => {
+test("buildMetricsString omits the lead segment when the message stored no reasoning effort", () => {
   const line = buildMetricsString(
     assistant({ model: "mimo", durationMs: 5000, promptTokens: 49498, completionTokens: 1502, totalTokens: 249000, contextTokens: 51000, cachedTokens: 38208, reasoningTokens: 205 }),
   );
+  // The model name is never shown; with no reasoningEffort the line starts at duration.
   // The % comes from contextTokens (final call's model-reported total), NOT the
-  // accumulated totalTokens (249000): 51000 / 1048576 = 4.86% -> "5 %"
-  expect(line).toBe("mimo  ·  5s  ·  ↑ 49 498 (38 208/c)  ·  ↓ 1 502 (205/r)  ·  5 %");
+  // accumulated totalTokens (249000): 51000 / 1048576 = 4.86% -> "5 %"
+  expect(line).toBe("5s  ·  ↑ 49 498 (38 208/c)  ·  ↓ 1 502 (205/r)  ·  5 %");
 });
 
-test("buildMetricsString appends the reasoning effort level to the model", () => {
+test("buildMetricsString leads with the reasoning effort level, without the model or parentheses", () => {
   const line = buildMetricsString(
     assistant({ model: "mimo-v2.5-pro", reasoningEffort: "high", durationMs: 5000, promptTokens: 100000, completionTokens: 4858, totalTokens: 104858, contextTokens: 104858 }),
   );
-  // 104858 / 1048576 = 10.0% -> "10 %"
-  expect(line).toBe("mimo-v2.5-pro (high)  ·  5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10 %");
+  // 104858 / 1048576 = 10.0% -> "10 %"
+  expect(line).toBe("high  ·  5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10 %");
+});
+
+test("humanizeCategory sentence-cases snake_case and upper-cases the URL acronym", () => {
+  expect(humanizeCategory("url_lookup")).toBe("URL lookup");
+  expect(humanizeCategory("knowledge_discovery")).toBe("Knowledge discovery");
+  expect(humanizeCategory("")).toBe("");
 });
 
 test("buildMetricsString renders completion-only token burn", () => {

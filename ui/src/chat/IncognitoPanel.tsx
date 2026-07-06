@@ -34,6 +34,7 @@ export function IncognitoPanel({
   onSend,
   onStop,
   onRetry,
+  focusSignal,
   onExit,
 }: {
   messages: MessageWithActivityTrace[];
@@ -50,6 +51,8 @@ export function IncognitoPanel({
   onSend(): void;
   onStop(): void;
   onRetry(content: string): void;
+  // Bumped by the parent when a retry loads a message into the composer, to refocus it.
+  focusSignal?: number;
   onExit(): void;
 }) {
   const { t } = useTranslation();
@@ -83,6 +86,7 @@ export function IncognitoPanel({
       incognito
       autoFocus
       draft={draft}
+      focusSignal={focusSignal}
       isSending={isSending}
       placeholder={t("incognito.placeholder")}
       reasoningEffort={reasoningEffort}

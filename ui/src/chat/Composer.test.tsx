@@ -81,6 +81,34 @@ test("attaches supported picker files and reports unsupported companions", () =>
   );
 });
 
+test("focuses the textarea and moves the caret to the end when focusSignal changes", () => {
+  function renderComposer(focusSignal: number) {
+    return (
+      <Composer
+        variant="thread"
+        draft="retry me"
+        focusSignal={focusSignal}
+        isSending={false}
+        placeholder="Write a message..."
+        reasoningEffort="high"
+        onReasoningEffortChange={() => undefined}
+        onDraftChange={() => undefined}
+        onSend={() => undefined}
+        onStop={() => undefined}
+      />
+    );
+  }
+  const { rerender } = render(renderComposer(0));
+  const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+  // Mount does not steal focus (signal unchanged from its initial value).
+  expect(textarea).not.toHaveFocus();
+
+  rerender(renderComposer(1));
+  expect(textarea).toHaveFocus();
+  expect(textarea.selectionStart).toBe("retry me".length);
+  expect(textarea.selectionEnd).toBe("retry me".length);
+});
+
 test("renders uploading attachment previews inside the composer", () => {
   const attachments: ComposerAttachment[] = [
     {
