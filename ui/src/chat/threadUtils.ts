@@ -131,10 +131,10 @@ export function isNearBottom(element: HTMLElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
 }
 
-export function previousUserContent(messages: Message[], beforeIndex: number): string | null {
+export function previousUserMessage(messages: Message[], beforeIndex: number): Message | null {
   for (let index = beforeIndex - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message.role === "user") return message.content;
+    if (message.role === "user") return message;
   }
   return null;
 }

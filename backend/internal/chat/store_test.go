@@ -462,12 +462,16 @@ func TestMessagesPersistAttachments(t *testing.T) {
 	}
 
 	rawAttachments := json.RawMessage(`[{"kind":"image","artifactId":"art_1","filename":"photo.png","mimeType":"image/png","sizeBytes":1234,"downloadUrl":"/api/artifacts/art_1/download"}]`)
-	message, err := store.AddMessageWithAttachments(ctx, userID, thread.ID, RoleUser, "Look at this", rawAttachments)
+	rawPastedTexts := json.RawMessage(`[{"text":"a very long pasted block","lineCount":42}]`)
+	message, err := store.AddMessageWithAttachments(ctx, userID, thread.ID, RoleUser, "Look at this", rawAttachments, rawPastedTexts)
 	if err != nil {
 		t.Fatalf("AddMessageWithAttachments() error = %v", err)
 	}
 	if string(message.Attachments) != string(rawAttachments) {
 		t.Fatalf("message.Attachments = %s", message.Attachments)
+	}
+	if string(message.PastedTexts) != string(rawPastedTexts) {
+		t.Fatalf("message.PastedTexts = %s", message.PastedTexts)
 	}
 
 	messages, found, err := store.ListMessages(ctx, userID, thread.ID)
@@ -476,6 +480,9 @@ func TestMessagesPersistAttachments(t *testing.T) {
 	}
 	if string(messages[0].Attachments) != string(rawAttachments) {
 		t.Fatalf("listed Attachments = %s", messages[0].Attachments)
+	}
+	if string(messages[0].PastedTexts) != string(rawPastedTexts) {
+		t.Fatalf("listed PastedTexts = %s", messages[0].PastedTexts)
 	}
 }
 
@@ -495,6 +502,9 @@ func TestMessagesDefaultAttachmentsToEmptyArray(t *testing.T) {
 	}
 	if string(message.Attachments) != "[]" {
 		t.Fatalf("message.Attachments = %s, want []", message.Attachments)
+	}
+	if string(message.PastedTexts) != "[]" {
+		t.Fatalf("message.PastedTexts = %s, want []", message.PastedTexts)
 	}
 }
 

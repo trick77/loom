@@ -144,6 +144,7 @@ type fakeThreadStore struct {
 	lastCitations             json.RawMessage
 	lastContentBlocks         json.RawMessage
 	lastAttachments           json.RawMessage
+	lastPastedTexts           json.RawMessage
 	createThreadErr           error
 	deleteThreadErr           error
 	updateThreadInput         chat.UpdateThreadInput
@@ -324,11 +325,15 @@ func (f *fakeThreadStore) AddMessage(ctx context.Context, _ string, threadID str
 	return f.AddMessageWithUsage(ctx, "", threadID, role, content, chat.MessageTokenUsage{})
 }
 
-func (f *fakeThreadStore) AddMessageWithAttachments(ctx context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage) (chat.Message, error) {
+func (f *fakeThreadStore) AddMessageWithAttachments(ctx context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage) (chat.Message, error) {
 	if len(attachments) == 0 {
 		attachments = json.RawMessage("[]")
 	}
+	if len(pastedTexts) == 0 {
+		pastedTexts = json.RawMessage("[]")
+	}
 	f.lastAttachments = attachments
+	f.lastPastedTexts = pastedTexts
 	message := chat.Message{
 		ID:            "msg_1",
 		ThreadID:      threadID,
@@ -338,6 +343,7 @@ func (f *fakeThreadStore) AddMessageWithAttachments(ctx context.Context, _ strin
 		ActivityTrace: json.RawMessage("[]"),
 		Citations:     json.RawMessage("[]"),
 		Attachments:   attachments,
+		PastedTexts:   pastedTexts,
 	}
 	f.messages = append(f.messages, message)
 	return message, nil

@@ -9,6 +9,7 @@ import { Icon } from "./Icon";
 import { ReasoningMenu } from "./ReasoningMenu";
 import { MODEL_LABEL, type ReasoningEffort } from "./reasoning";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
+import { PastedTextCard } from "./PastedTextCard";
 import { shouldCollapsePaste, type PastedText } from "./pastedText";
 import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
@@ -162,7 +163,7 @@ export function Composer({
       {hasStagedRow && (
         <div
           aria-label={attachments.length > 0 ? t("composer.attachments") : t("composer.pastedText")}
-          className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[104px]`}
+          className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[164px]`}
         >
           <div className="flex flex-wrap gap-2">
             {pastedTexts.map((pasted) => (
@@ -345,32 +346,16 @@ function AttachmentRemoveButton({ label, onClick }: { label: string; onClick: ()
   );
 }
 
-// A large paste, rendered as a compact card echoing claude.ai's "Pasted text"
-// chip: a small clamped preview of the raw text with an uppercase "Pasted" badge.
+// A large paste, rendered as a compact 120×120 "Pasted" chip echoing claude.ai
+// (see PastedTextCard). Removable here in the composer; the same card renders
+// statically in the sent message bubble (messages.tsx).
 function PastedTextPill({ pasted, onRemove }: { pasted: PastedText; onRemove?: (id: string) => void }) {
-  const { t } = useTranslation();
   return (
-    <div
-      className="group/attachment relative flex h-[76px] w-[140px] max-w-full flex-col overflow-hidden rounded-lg border border-[#4b4a46] bg-[#343432] text-[#f3f0e8] shadow-[0_8px_18px_rgba(0,0,0,0.18)]"
-      title={t("composer.pastedText")}
-    >
-      {/* Preview of the raw text: tiny, wrapped, clipped by the fixed card height.
-          Cap the substring so a multi-megabyte paste never renders in full. */}
-      <p className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap break-all px-2 pt-2 pl-7 font-mono text-[8px] leading-[11px] text-[#aaa79e]">
-        {pasted.text.slice(0, 400)}
-      </p>
-      <div className="flex-none px-2 pb-1.5">
-        <span className="inline-block rounded-[4px] border border-[#55534d] bg-[#2f2f2c]/70 px-1 py-0.5 text-[10px] font-medium uppercase leading-none text-[#d8d4ca]">
-          {t("composer.pastedBadge")}
-        </span>
-      </div>
-      {onRemove !== undefined && (
-        <AttachmentRemoveButton
-          label={t("composer.removePastedText", { count: pasted.lineCount })}
-          onClick={() => onRemove(pasted.id)}
-        />
-      )}
-    </div>
+    <PastedTextCard
+      text={pasted.text}
+      lineCount={pasted.lineCount}
+      onRemove={onRemove === undefined ? undefined : () => onRemove(pasted.id)}
+    />
   );
 }
 

@@ -97,7 +97,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Persist the images and documents the user sent with this message so the sent
 	// previews survive a reload (resolved user-scoped; out-of-scope ids skipped).
 	sentAttachments := s.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs)
-	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments)
+	// Persist the collapsed paste blocks so the sent bubble renders "Pasted" chips
+	// on reload instead of the inline wall of text. Their text is already folded
+	// into body.Content, so the model and every content-derived path (title,
+	// classifier, RAG, history) are unchanged; this is render-only metadata.
+	pastedTexts := marshalPastedTexts(body.PastedTexts)
+	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments, pastedTexts)
 	if err != nil {
 		writeThreadStoreError(w, r, err, http.StatusBadRequest, "message content is required", "message content is too long")
 		return

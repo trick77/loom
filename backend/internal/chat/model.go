@@ -144,7 +144,13 @@ type Message struct {
 	// Attachments are the images and documents the user sent with this message,
 	// persisted so a sent message's previews survive a reload. A JSON array of
 	// MessageAttachment; "[]" for messages sent without attachments.
-	Attachments   json.RawMessage `json:"attachments"`
+	Attachments json.RawMessage `json:"attachments"`
+	// PastedTexts are large text blocks the user pasted into the composer, each
+	// collapsed into a "Pasted" chip instead of flooding the message bubble. A JSON
+	// array of MessagePastedText; "[]" when none. Stored purely for rendering — the
+	// block text is also folded into Content so the model sees it unchanged; the
+	// bubble strips it back out and renders a chip.
+	PastedTexts   json.RawMessage `json:"pastedTexts"`
 	ActivityTrace json.RawMessage `json:"activityTrace"`
 	// ContentBlocks is the ordered, interleaved timeline of this assistant
 	// message — text prose, tool-activity trace runs, and artifacts — in the
@@ -191,6 +197,15 @@ const (
 	AttachmentKindImage    = "image"
 	AttachmentKindDocument = "document"
 )
+
+// MessagePastedText is one large text block the user pasted into the composer,
+// collapsed into a "Pasted" chip. It is the persisted, serialized shape stored in
+// Message.PastedTexts. Text is the full pasted content (also folded into
+// Message.Content for the model); LineCount drives the chip's aria-label.
+type MessagePastedText struct {
+	Text      string `json:"text"`
+	LineCount int    `json:"lineCount"`
+}
 
 type MessageTokenUsage struct {
 	PromptTokens     *int

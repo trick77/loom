@@ -11,11 +11,12 @@ import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
+import type { MessagePastedText } from "../api";
 import { AssistantProse, MessageBubble } from "./messages";
 import type { PastedText } from "./pastedText";
 import type { ReasoningEffort } from "./reasoning";
 import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
-import { isNearBottom, previousUserContent } from "./threadUtils";
+import { isNearBottom, previousUserMessage } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { WindowFileDrop } from "./WindowFileDrop";
 import { WorkingDot } from "./WorkingDot";
@@ -74,7 +75,7 @@ export function ThreadPanel({
   onRemovePastedText(id: string): void;
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
-  onRetry(content: string): void;
+  onRetry(content: string, pastedTexts?: MessagePastedText[]): void;
   // Bumped by the parent when a retry loads a message into the composer, to refocus it.
   focusSignal?: number;
   onOpenProject(project: Project): void;
@@ -276,9 +277,9 @@ export function ThreadPanel({
   );
 
   const handleRetryRequest = useCallback(
-    (content: string) => {
+    (content: string, pastedTexts?: MessagePastedText[]) => {
       pinToLatest();
-      onRetry(content);
+      onRetry(content, pastedTexts);
     },
     [onRetry, pinToLatest],
   );
@@ -422,7 +423,7 @@ export function ThreadPanel({
               <div key={message.clientKey ?? message.id} className="space-y-6">
                 <MessageBubble
                   message={message}
-                  retryContent={message.role === "assistant" ? previousUserContent(messages, index) : null}
+                  retryMessage={message.role === "assistant" ? previousUserMessage(messages, index) : null}
                   onRetry={handleRetryRequest}
                   category={thread?.category}
                 />

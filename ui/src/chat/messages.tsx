@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
-import { type ContentBlock, type Message } from "../api";
+import { type ContentBlock, type Message, type MessagePastedText } from "../api";
 import i18n from "../i18n";
 import { MessageMetrics } from "../MessageMetrics";
 import { ActivityTracePanel } from "./ActivityTracePanel";
@@ -24,6 +24,8 @@ import {
   type DownloadableResponse,
 } from "./artifacts";
 import { messageBlocks } from "./contentBlocks";
+import { PastedTextCard } from "./PastedTextCard";
+import { stripPastedBlocks } from "./pastedText";
 import { AttachmentPreview, isRevocablePreview } from "../components/AttachmentPreview";
 import { formatAttachmentSize } from "./attachmentFiles";
 import { MessageCitations } from "./Citations";
@@ -36,29 +38,58 @@ import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachm
 
 export function MessageBubble({
   message,
-  retryContent,
+  retryMessage,
   onRetry,
   category,
   publicView = false,
 }: {
   message: Message & { attachments?: ComposerAttachment[]; hadAttachment?: boolean };
-  retryContent: string | null;
-  onRetry?(content: string): void;
+  // The message a retry re-loads into the composer (the previous user message for an
+  // assistant bubble). Carries its pasted blocks so retry re-stages chips rather than
+  // flooding the composer with the folded inline paste.
+  retryMessage: Pick<Message, "content" | "pastedTexts"> | null;
+  onRetry?(content: string, pastedTexts?: MessagePastedText[]): void;
   /** Thread-level prompt-classifier category, shown as a pill in the assistant metrics row. */
   category?: string;
   /** Read-only public share viewer: hide actions, metrics and citations. */
   publicView?: boolean;
 }) {
   const { t } = useTranslation();
+  // Large pasted blocks were folded into content on send (so the model sees them);
+  // strip them back out for display and render each matched block as a "Pasted"
+  // chip, so the bubble shows the typed text, not the inline wall of paste (mirrors
+  // claude.ai). Memoized so an unrelated list re-render (e.g. every streamed token)
+  // does not re-run the scan over the full content. Runs for every role; assistant
+  // messages carry no pastedTexts, so it is a cheap no-op there.
+  const { text: displayContent, matched: pastedMatched } = useMemo(() => {
+    const blocks = message.pastedTexts ?? [];
+    return blocks.length > 0
+      ? stripPastedBlocks(message.content, blocks)
+      : { text: message.content, matched: [] as boolean[] };
+  }, [message.content, message.pastedTexts]);
   if (message.role === "user") {
+    const pastedTexts = message.pastedTexts ?? [];
     return (
       <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
         {message.attachments !== undefined && message.attachments.length > 0 && (
           <SentAttachments attachments={message.attachments} />
         )}
-        {message.content !== "" && (
+        {pastedMatched.some(Boolean) && (
+          <div className="mt-2 flex flex-wrap justify-end gap-2">
+            {pastedTexts.map((pasted, index) =>
+              pastedMatched[index] ? (
+                <PastedTextCard
+                  key={`${message.id}-pasted-${index}`}
+                  text={pasted.text}
+                  lineCount={pasted.lineCount}
+                />
+              ) : null,
+            )}
+          </div>
+        )}
+        {displayContent !== "" && (
           <div className="ui-message-text ui-user-message-text mt-2 rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
-            {message.content}
+            {displayContent}
           </div>
         )}
         {publicView && message.hadAttachment === true && <AttachmentNotShared />}
@@ -67,7 +98,9 @@ export function MessageBubble({
             copyLabel={t("messages.copyMessage")}
             copyText={message.content}
             retryLabel={t("messages.retryMessage")}
-            onRetry={() => onRetry?.(message.content)}
+            // Retry re-stages the collapsed pastes as chips (not the inline wall):
+            // pass the stripped draft plus the blocks, so resend keeps the collapse.
+            onRetry={() => onRetry?.(displayContent, message.pastedTexts)}
             alignRight
           />
         )}
@@ -94,7 +127,14 @@ export function MessageBubble({
           copyLabel={t("messages.copyResponse")}
           copyText={markdownToPlainText(proseText)}
           retryLabel={t("messages.retryResponse")}
-          onRetry={retryContent === null ? undefined : () => onRetry?.(retryContent)}
+          onRetry={
+            retryMessage === null
+              ? undefined
+              : () => {
+                  const blocks = retryMessage.pastedTexts ?? [];
+                  onRetry?.(stripPastedBlocks(retryMessage.content, blocks).text, retryMessage.pastedTexts);
+                }
+          }
           metricsMessage={message}
           category={category}
           speakable

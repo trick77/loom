@@ -24,7 +24,7 @@ test("renders sent attachments above the user message text", () => {
     ],
   };
 
-  render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} />);
+  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
 
   const attachment = screen.getByText("briefing.pdf");
   const text = screen.getByText("Summarize this document");
@@ -61,7 +61,7 @@ test("renders sent images as compact thumbnails without file text", () => {
     ],
   };
 
-  render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} />);
+  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
 
   const images = document.querySelectorAll('img[src^="blob:"]');
   const text = screen.getByText("Explain these images");
@@ -93,7 +93,7 @@ test("renders a fenced SVG response inline as a sandboxed image with download an
     createdAt: "2026-06-14T00:00:00Z",
   };
 
-  render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} />);
+  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
 
   // The SVG renders via an <img> blob URL (secure-image mode) — not inline DOM —
   // and the blob is typed image/svg+xml so the browser will actually paint it.
@@ -119,7 +119,7 @@ test("revokes the SVG preview object URL when the bubble unmounts", () => {
     createdAt: "2026-06-14T00:00:00Z",
   };
 
-  const { unmount } = render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} />);
+  const { unmount } = render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
   unmount();
 
   expect(revokeObjectURL).toHaveBeenCalledWith("blob:svg-preview");
@@ -145,7 +145,7 @@ test("revokes sent attachment preview URLs when they unmount", () => {
     ],
   };
 
-  const { unmount } = render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} />);
+  const { unmount } = render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
   unmount();
 
   expect(revoke).toHaveBeenCalledWith("blob:image-preview");
@@ -161,7 +161,7 @@ test("renders the prompt-classifier category as a humanized pill on assistant me
   };
 
   render(
-    <MessageBubble message={message} retryContent={null} onRetry={vi.fn()} category="knowledge_discovery" />,
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="knowledge_discovery" />,
   );
 
   expect(screen.getByText("Knowledge discovery")).toBeInTheDocument();
@@ -176,7 +176,7 @@ test("renders the url_lookup category with the URL acronym upper-cased", () => {
     createdAt: "2026-06-14T00:00:00Z",
   };
 
-  render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} category="url_lookup" />);
+  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="url_lookup" />);
 
   expect(screen.getByText("URL lookup")).toBeInTheDocument();
 });
@@ -190,7 +190,7 @@ test("renders no category pill when the thread is unclassified", () => {
     createdAt: "2026-06-14T00:00:00Z",
   };
 
-  render(<MessageBubble message={message} retryContent={null} onRetry={vi.fn()} category="" />);
+  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="" />);
 
   expect(screen.queryByText("Knowledge discovery")).not.toBeInTheDocument();
 });
