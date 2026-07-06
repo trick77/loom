@@ -83,7 +83,7 @@ export function SharePage({ shareId }: { shareId: string }) {
           <ShareNotice />
           {share.messages.map((message) => (
             <div key={message.id} className="space-y-6">
-              <MessageBubble message={toRenderMessage(message)} retryContent={null} publicView />
+              <MessageBubble message={toRenderMessage(message)} retryMessage={null} publicView />
             </div>
           ))}
         </div>

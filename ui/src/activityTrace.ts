@@ -104,8 +104,11 @@ export function completeTrace(events: ActivityTraceEvent[]): ActivityTraceEvent[
   });
 }
 
-export function normalizeActivityTrace(events: ActivityTraceEvent[] | undefined): ActivityTraceEvent[] | undefined {
-  if (events === undefined || events.length === 0) return undefined;
+export function normalizeActivityTrace(events: ActivityTraceEvent[] | null | undefined): ActivityTraceEvent[] | undefined {
+  // Guard null, not just undefined: the backend stores activity_trace as a
+  // json.RawMessage that can serialize to JSON `null` (a persisted "null" blob),
+  // and a null here would otherwise crash the whole thread load on `.length`.
+  if (events == null || events.length === 0) return undefined;
   return events.map((event) => {
     if (event.type === "reasoning") {
       return { ...event, status: event.status === "running" ? "done" : event.status };

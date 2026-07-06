@@ -98,6 +98,18 @@ export type Message = {
   durationMs?: number;
   model?: string;
   reasoningEffort?: string;
+  // pastedTexts are large blocks the user pasted into the composer, collapsed into
+  // "Pasted" chips. Their text is also folded into content (so the model sees it);
+  // the sent bubble strips it back out and renders a chip. Absent/[] when none.
+  pastedTexts?: MessagePastedText[];
+};
+
+// MessagePastedText is the persisted shape of one collapsed paste block on a
+// message (mirrors the backend chat.MessagePastedText). It travels on the base
+// Message so the sent bubble renders a chip whether just-sent or reloaded.
+export type MessagePastedText = {
+  text: string;
+  lineCount: number;
 };
 
 export type Artifact = {

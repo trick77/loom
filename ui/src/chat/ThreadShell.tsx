@@ -12,6 +12,7 @@ import {
   streamIncognitoMessage,
   type Artifact,
   type ContentBlock,
+  type MessagePastedText,
   type Project,
   type ShareInfo,
   type Thread,
@@ -34,7 +35,7 @@ import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
-import { createPastedText, type PastedText } from "./pastedText";
+import { createPastedText, pastedTextFromBlock, toPastedTextBlock, type PastedText } from "./pastedText";
 import { useMediaQuery } from "./useMediaQuery";
 import {
   composerAttachmentFromArtifact,
@@ -604,6 +605,7 @@ export function ThreadShell({
       attachments,
       restoreDraft: draftText,
       restorePastedTexts,
+      pastedTexts: restorePastedTexts,
     });
   }
 
@@ -620,10 +622,13 @@ export function ThreadShell({
   }
 
   // Retry loads the message back into the composer for the user to edit and send
-  // manually, rather than re-sending it immediately.
-  function handleRetry(content: string) {
-    if (content.trim() === "" || activeThread === null) return;
+  // manually, rather than re-sending it immediately. Collapsed pastes are re-staged
+  // as chips (not the folded inline text), so a resend keeps the same collapse.
+  function handleRetry(content: string, pastedTexts?: MessagePastedText[]) {
+    const blocks = pastedTexts ?? [];
+    if ((content.trim() === "" && blocks.length === 0) || activeThread === null) return;
     setDraft(content);
+    setPastedTexts(blocks.map(pastedTextFromBlock));
     setComposerFocusTick((tick) => tick + 1);
   }
 
@@ -637,6 +642,10 @@ export function ThreadShell({
       // a chip rather than flooding the textarea. Defaults to the full `content`.
       restoreDraft?: string;
       restorePastedTexts?: PastedText[];
+      // The collapsed paste blocks to send with this message: folded into `content`
+      // for the model, and carried alongside so the sent bubble renders "Pasted"
+      // chips instead of the inline wall of text (persisted server-side).
+      pastedTexts?: PastedText[];
     },
   ) {
     setDraft("");
@@ -744,6 +753,9 @@ export function ThreadShell({
           ...(options.attachments.length > 0
             ? { attachments: options.attachments.map(toSentAttachment) }
             : {}),
+          ...(options.pastedTexts && options.pastedTexts.length > 0
+            ? { pastedTexts: options.pastedTexts.map(toPastedTextBlock) }
+            : {}),
         };
         setMessages((current) => [...current, optimisticMessage]);
       }
@@ -829,7 +841,12 @@ export function ThreadShell({
             setProjectThreads((current) => upsertThreadById(current, updatedThread));
           }
         },
-      }, abortController.signal, { documentAttachmentIds, imageAttachmentIds, reasoningEffort });
+      }, abortController.signal, {
+        documentAttachmentIds,
+        imageAttachmentIds,
+        reasoningEffort,
+        pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
+      });
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
@@ -927,6 +944,11 @@ export function ThreadShell({
       role: "user",
       content,
       createdAt: new Date().toISOString(),
+      // Render collapsed pastes as chips here too (incognito is ephemeral, so this
+      // is the in-session bubble only), matching the persisted path in sendContent.
+      ...(restore && restore.pastedTexts.length > 0
+        ? { pastedTexts: restore.pastedTexts.map(toPastedTextBlock) }
+        : {}),
     };
     setIncognitoMessages((current) => [...current, optimisticMessage]);
     const abortController = new AbortController();
@@ -998,9 +1020,11 @@ export function ThreadShell({
     await sendIncognitoContent(content, true, { draft: draftText, pastedTexts: restorePastedTexts });
   }
 
-  function handleIncognitoRetry(content: string) {
-    if (content.trim() === "") return;
+  function handleIncognitoRetry(content: string, pastedTexts?: MessagePastedText[]) {
+    const blocks = pastedTexts ?? [];
+    if (content.trim() === "" && blocks.length === 0) return;
     setDraft(content);
+    setPastedTexts(blocks.map(pastedTextFromBlock));
     setComposerFocusTick((tick) => tick + 1);
   }
 

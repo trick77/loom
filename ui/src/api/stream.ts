@@ -3,6 +3,7 @@ import type {
   Artifact,
   Citation,
   Message,
+  MessagePastedText,
   Thread,
   ToolCallEvent,
   ToolResultEvent,
@@ -27,13 +28,19 @@ export async function streamMessage(
   content: string,
   handlers: StreamHandlers,
   signal?: AbortSignal,
-  opts: { documentAttachmentIds?: string[]; imageAttachmentIds?: string[]; reasoningEffort?: string } = {},
+  opts: {
+    documentAttachmentIds?: string[];
+    imageAttachmentIds?: string[];
+    reasoningEffort?: string;
+    pastedTexts?: MessagePastedText[];
+  } = {},
 ): Promise<void> {
   const requestBody: {
     content: string;
     documentAttachmentIds?: string[];
     imageAttachmentIds?: string[];
     reasoningEffort?: string;
+    pastedTexts?: MessagePastedText[];
   } = { content };
   if (opts.documentAttachmentIds && opts.documentAttachmentIds.length > 0) {
     requestBody.documentAttachmentIds = opts.documentAttachmentIds;
@@ -43,6 +50,9 @@ export async function streamMessage(
   }
   if (opts.reasoningEffort !== undefined && opts.reasoningEffort !== "") {
     requestBody.reasoningEffort = opts.reasoningEffort;
+  }
+  if (opts.pastedTexts && opts.pastedTexts.length > 0) {
+    requestBody.pastedTexts = opts.pastedTexts;
   }
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stream`, {
     method: "POST",

@@ -123,6 +123,11 @@ type streamMessageRequest struct {
 	// ReasoningEffort is the composer's chosen reasoning depth (low/medium/high).
 	// Empty or unknown values fall back to the default via normalizeReasoningEffort.
 	ReasoningEffort string `json:"reasoningEffort"`
+	// PastedTexts are large blocks the user pasted into the composer, collapsed
+	// into "Pasted" chips. Their text is already folded into Content (so the model
+	// sees it); they are persisted separately only so the sent bubble can render a
+	// chip instead of the inline wall of text.
+	PastedTexts []chat.MessagePastedText `json:"pastedTexts"`
 }
 
 // incognitoStreamRequest carries the whole ephemeral transcript from the client:
