@@ -36,6 +36,10 @@ const (
 	Planning           Category = "planning"
 	Weather            Category = "weather"
 	Translation        Category = "translation"
+	Health             Category = "health"
+	EntertainmentRecs  Category = "entertainment_recs"
+	LocalInfo          Category = "local_info"
+	FinanceInvesting   Category = "finance_investing"
 	URLLookup          Category = "url_lookup"
 	// ImageGeneration labels threads routed to image generation. It is a hidden
 	// category: assigned deterministically by the request heuristics
@@ -125,8 +129,24 @@ var catalog = []struct {
 		gloss: "translating text between languages",
 		block: "Provide only the translation. Do not cite sources or add notes.",
 	}},
+	{Health, entry{
+		gloss: "medical, health, fitness, or nutrition questions",
+		block: "Answer in careful flowing prose. State how strong the evidence is behind each claim and distinguish established consensus from emerging findings; never diagnose. Close with when seeing a professional is warranted, if it is.",
+	}},
+	{EntertainmentRecs, entry{
+		gloss: "recommendations for movies, series, books, music, or games",
+		block: "Give a shortlist with one line per item on why it fits the user's stated taste, and recommend one top pick. Note where to watch, read, or listen when known.",
+	}},
+	{LocalInfo, entry{
+		gloss: "places, restaurants, businesses, or services in a specific area",
+		block: "List options with the practical details that matter (location, price range, what it's known for). When the user asks without naming a place and their location is known, use it. Flag that hours and availability change and are worth verifying.",
+	}},
+	{FinanceInvesting, entry{
+		gloss: "stocks, markets, investing, or personal-finance questions",
+		block: "Prioritize recent data and label it with its as-of date. Present the risks alongside the upside, and keep it informational — no personalized investment advice.",
+	}},
 	{URLLookup, entry{
-		gloss: "reading or answering about a specific URL the user gave",
+		gloss: "answering about the page at an explicit http/https link pasted in the message",
 		block: "Answer relying solely on the content of the page at the URL, and cite it.",
 	}},
 	{ImageGeneration, entry{
@@ -199,12 +219,18 @@ func Values() []Category {
 
 // PromptGuide renders the taxonomy as a newline-separated list of
 // "- value: gloss" lines, for embedding in the classifying model's system prompt.
-// Hidden categories are omitted so the model is never offered them.
-func PromptGuide() string {
+// Hidden categories are omitted so the model is never offered them. Callers may
+// exclude further categories for this one call (e.g. url_lookup when the message
+// contains no URL) — an excluded category stays valid, it is just not offered.
+func PromptGuide(exclude ...Category) string {
+	excluded := make(map[Category]bool, len(exclude))
+	for _, c := range exclude {
+		excluded[c] = true
+	}
 	var b strings.Builder
 	first := true
 	for _, c := range catalog {
-		if c.entry.hidden {
+		if c.entry.hidden || excluded[c.cat] {
 			continue
 		}
 		if !first {
