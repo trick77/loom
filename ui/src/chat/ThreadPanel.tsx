@@ -44,6 +44,7 @@ export function ThreadPanel({
   onSend,
   onStop,
   onRetry,
+  focusSignal,
   onOpenProject,
   onDeleteThread,
   onRenameThread,
@@ -74,6 +75,8 @@ export function ThreadPanel({
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onRetry(content: string): void;
+  // Bumped by the parent when a retry loads a message into the composer, to refocus it.
+  focusSignal?: number;
   onOpenProject(project: Project): void;
   onDeleteThread(thread: Thread): void;
   onRenameThread(thread: Thread): void;
@@ -489,6 +492,7 @@ export function ThreadPanel({
               <Composer
                 variant="thread"
                 draft={draft}
+                focusSignal={focusSignal}
                 isSending={isSending}
                 sendDisabled={sendDisabled || imageUploadPending}
                 placeholder={t("thread.messagePlaceholder")}

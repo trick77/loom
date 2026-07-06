@@ -2,12 +2,14 @@ import type { Message } from "./api";
 
 /**
  * Turn a snake_case prompt-classifier category into a display label for the pill
- * (e.g. "knowledge_discovery" -> "Knowledge discovery"). Sentence case.
+ * (e.g. "knowledge_discovery" -> "Knowledge discovery"). Sentence case, with the
+ * URL acronym kept upper-case ("url_lookup" -> "URL lookup").
  */
 export function humanizeCategory(category: string): string {
   const spaced = category.replace(/_/g, " ").trim();
   if (spaced === "") return "";
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  const sentence = spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  return sentence.replace(/\bUrl\b/, "URL");
 }
 
 /** Narrow no-break space (U+202F) — used as the thousands separator and after the arrows. */
@@ -81,16 +83,17 @@ export function hasRenderableMetrics(message: Message): boolean {
 }
 
 /**
- * Build the metrics line (model (effort) · duration · ↑in (cached/c) · ↓out (reasoning/r) · context%),
- * or null when there is nothing renderable.
+ * Build the metrics line (effort · duration · ↑in (cached/c) · ↓out (reasoning/r) · context%),
+ * or null when there is nothing renderable. The lead segment is the reasoning-effort level
+ * used for that inference (no model name); omitted when the message stored no effort.
  */
 export function buildMetricsString(message: Message): string | null {
   if (!hasRenderableMetrics(message)) return null;
   const durationMs = message.durationMs as number;
 
   const segments: string[] = [];
-  if (message.model) {
-    segments.push(message.reasoningEffort ? `${message.model} (${message.reasoningEffort})` : message.model);
+  if (message.reasoningEffort) {
+    segments.push(message.reasoningEffort);
   }
   segments.push(formatDuration(durationMs));
   if (hasPositiveValue(message.promptTokens) && hasPositiveValue(message.completionTokens)) {

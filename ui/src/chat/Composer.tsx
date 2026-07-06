@@ -19,6 +19,7 @@ export function Composer({
   sendDisabled = false,
   placeholder,
   autoFocus = false,
+  focusSignal,
   incognito = false,
   reasoningEffort,
   onReasoningEffortChange,
@@ -39,6 +40,10 @@ export function Composer({
   sendDisabled?: boolean;
   placeholder: string;
   autoFocus?: boolean;
+  // A counter the parent bumps to pull focus into the textarea (with the caret at
+  // the end) — e.g. when a retry loads a message back in for editing. Focuses only
+  // on an actual change, never on mount or an unrelated remount.
+  focusSignal?: number;
   // Incognito mode: dashed outline and no attachment affordance (uploads persist,
   // so they are unavailable in an ephemeral thread).
   incognito?: boolean;
@@ -107,6 +112,18 @@ export function Composer({
   useLayoutEffect(() => {
     if (autoFocus) textareaRef.current?.focus();
   }, [autoFocus]);
+  // Focus the textarea (caret at the end) when the parent bumps focusSignal — e.g. a
+  // retry loading a message back in. Compare against the previous value so this fires
+  // only on an actual change, never on mount or an unrelated remount.
+  const prevFocusSignal = useRef(focusSignal);
+  useLayoutEffect(() => {
+    if (focusSignal === prevFocusSignal.current) return;
+    prevFocusSignal.current = focusSignal;
+    const el = textareaRef.current;
+    if (el === null) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [focusSignal]);
   // Re-measure when the textarea's width changes (window resize, breakpoint,
   // rotation) - a different width re-wraps the text and changes the needed
   // height. Guard on width only: autoGrow mutates the element's height, so

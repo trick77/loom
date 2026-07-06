@@ -91,6 +91,9 @@ export function ThreadShell({
   const { t, i18n } = useTranslation();
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
   const [draft, setDraft] = useState("");
+  // Bumped whenever a retry loads a message back into the composer, to focus the
+  // textarea and move the caret to the end (see Composer's focusSignal).
+  const [composerFocusTick, setComposerFocusTick] = useState(0);
   // Large pastes collapsed into removable "Pasted" chips shown above the textarea.
   // Folded back into the outgoing message content on send (never uploaded/indexed).
   const [pastedTexts, setPastedTexts] = useState<PastedText[]>([]);
@@ -616,9 +619,12 @@ export function ThreadShell({
     return true;
   }
 
-  async function handleRetry(content: string) {
-    if (content.trim() === "" || isSending || activeThread === null) return;
-    await sendContent(content, { restoreDraftOnError: false, attachments: [] });
+  // Retry loads the message back into the composer for the user to edit and send
+  // manually, rather than re-sending it immediately.
+  function handleRetry(content: string) {
+    if (content.trim() === "" || activeThread === null) return;
+    setDraft(content);
+    setComposerFocusTick((tick) => tick + 1);
   }
 
   async function sendContent(
@@ -992,9 +998,10 @@ export function ThreadShell({
     await sendIncognitoContent(content, true, { draft: draftText, pastedTexts: restorePastedTexts });
   }
 
-  async function handleIncognitoRetry(content: string) {
-    if (content.trim() === "" || isSending) return;
-    await sendIncognitoContent(content, false);
+  function handleIncognitoRetry(content: string) {
+    if (content.trim() === "") return;
+    setDraft(content);
+    setComposerFocusTick((tick) => tick + 1);
   }
 
   const activeThreadOwnsStreamState = activeThread !== null && streamingThreadID === activeThread.id;
@@ -1024,7 +1031,8 @@ export function ThreadShell({
             onRemovePastedText={handleRemovePastedText}
             onSend={() => void handleIncognitoSend()}
             onStop={() => handleStopResponse("incognito")}
-            onRetry={(content) => void handleIncognitoRetry(content)}
+            onRetry={handleIncognitoRetry}
+            focusSignal={composerFocusTick}
             onExit={exitIncognito}
           />
         </main>
@@ -1246,6 +1254,7 @@ export function ThreadShell({
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
+            focusSignal={composerFocusTick}
             onOpenProject={navigateToProject}
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}

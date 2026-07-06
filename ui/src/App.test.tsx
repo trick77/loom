@@ -2826,7 +2826,7 @@ test("copying a markdown assistant response writes rendered plain text", async (
   expect(writeText).toHaveBeenCalledWith("Overview\n\nA short report.");
 });
 
-test("retrying a markdown assistant response resends the previous user message", async () => {
+test("retrying a markdown assistant response loads the previous user message into the composer", async () => {
   const fetchMock = persistedMarkdownChatFetch();
   vi.stubGlobal("fetch", fetchMock);
 
@@ -2834,13 +2834,12 @@ test("retrying a markdown assistant response resends the previous user message",
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
   fireEvent.click(await screen.findByRole("button", { name: "Retry response" }));
 
-  expect(await screen.findByText("Retried")).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith(
+  // Retry now populates the composer for manual editing instead of re-sending.
+  const composer = (await screen.findByPlaceholderText("Write a message...")) as HTMLTextAreaElement;
+  expect(composer.value).toBe("Make a short report");
+  expect(fetchMock).not.toHaveBeenCalledWith(
     "/api/threads/t1/messages:stream",
-    expect.objectContaining({
-      body: JSON.stringify({ content: "Make a short report", reasoningEffort: "high" }),
-      method: "POST",
-    }),
+    expect.objectContaining({ method: "POST" }),
   );
 });
 
@@ -2856,13 +2855,12 @@ test("user message actions copy and retry the selected prompt", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Retry message" }));
 
   expect(writeText).toHaveBeenCalledWith("Make a short report");
-  expect(await screen.findByText("Retried")).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith(
+  // Retry loads the prompt into the composer rather than re-sending it.
+  const composer = (await screen.findByPlaceholderText("Write a message...")) as HTMLTextAreaElement;
+  expect(composer.value).toBe("Make a short report");
+  expect(fetchMock).not.toHaveBeenCalledWith(
     "/api/threads/t1/messages:stream",
-    expect.objectContaining({
-      body: JSON.stringify({ content: "Make a short report", reasoningEffort: "high" }),
-      method: "POST",
-    }),
+    expect.objectContaining({ method: "POST" }),
   );
 });
 
