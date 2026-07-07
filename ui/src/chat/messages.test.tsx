@@ -164,7 +164,7 @@ test("renders the prompt-classifier category as a humanized pill on assistant me
     <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="knowledge_discovery" />,
   );
 
-  expect(screen.getByText("Knowledge discovery")).toBeInTheDocument();
+  expect(screen.getByText("Knowledge Discovery")).toBeInTheDocument();
 });
 
 test("renders the url_lookup category with the URL acronym upper-cased", () => {
@@ -178,7 +178,7 @@ test("renders the url_lookup category with the URL acronym upper-cased", () => {
 
   render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="url_lookup" />);
 
-  expect(screen.getByText("URL lookup")).toBeInTheDocument();
+  expect(screen.getByText("URL Lookup")).toBeInTheDocument();
 });
 
 test("renders no category pill when the thread is unclassified", () => {
@@ -192,5 +192,5 @@ test("renders no category pill when the thread is unclassified", () => {
 
   render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="" />);
 
-  expect(screen.queryByText("Knowledge discovery")).not.toBeInTheDocument();
+  expect(screen.queryByText("Knowledge Discovery")).not.toBeInTheDocument();
 });

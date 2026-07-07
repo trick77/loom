@@ -42,9 +42,9 @@ test("buildMetricsString leads with the reasoning effort level, without the mode
   expect(line).toBe("high  ·  5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10 %");
 });
 
-test("humanizeCategory sentence-cases snake_case and upper-cases the URL acronym", () => {
-  expect(humanizeCategory("url_lookup")).toBe("URL lookup");
-  expect(humanizeCategory("knowledge_discovery")).toBe("Knowledge discovery");
+test("humanizeCategory title-cases snake_case and upper-cases the URL acronym", () => {
+  expect(humanizeCategory("url_lookup")).toBe("URL Lookup");
+  expect(humanizeCategory("knowledge_discovery")).toBe("Knowledge Discovery");
   expect(humanizeCategory("")).toBe("");
 });
 
