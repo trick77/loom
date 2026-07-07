@@ -2,14 +2,14 @@ import type { Message } from "./api";
 
 /**
  * Turn a snake_case prompt-classifier category into a display label for the pill
- * (e.g. "knowledge_discovery" -> "Knowledge discovery"). Sentence case, with the
- * URL acronym kept upper-case ("url_lookup" -> "URL lookup").
+ * (e.g. "knowledge_discovery" -> "Knowledge Discovery"). Title case, with the
+ * URL acronym kept upper-case ("url_lookup" -> "URL Lookup").
  */
 export function humanizeCategory(category: string): string {
   const spaced = category.replace(/_/g, " ").trim();
   if (spaced === "") return "";
-  const sentence = spaced.charAt(0).toUpperCase() + spaced.slice(1);
-  return sentence.replace(/\bUrl\b/, "URL");
+  const titled = spaced.replace(/\b\w/g, (c) => c.toUpperCase());
+  return titled.replace(/\bUrl\b/, "URL");
 }
 
 /** Narrow no-break space (U+202F) — used as the thousands separator and after the arrows. */
