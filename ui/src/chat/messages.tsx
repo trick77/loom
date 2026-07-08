@@ -133,6 +133,10 @@ export function MessageBubble({
       {blocks.map((block, index) => (
         <AssistantBlock key={`${message.id}-block-${index}`} block={block} sources={sources} />
       ))}
+      {/* Sources sit directly under the answer text, on their own line, above the
+          copy/retry/TTS + metrics footer. Citations only exist on the persisted
+          message, so this row appears once the answer finishes streaming. */}
+      {!publicView && <MessageCitations citations={message.citations} />}
       {!publicView && (
         <MessageActions
           copyLabel={t("messages.copyResponse")}
@@ -151,7 +155,6 @@ export function MessageBubble({
           speakable
         />
       )}
-      {!publicView && <MessageCitations citations={message.citations} />}
     </div>
   );
 }

@@ -194,3 +194,21 @@ test("renders no category pill when the thread is unclassified", () => {
 
   expect(screen.queryByText("Knowledge Discovery")).not.toBeInTheDocument();
 });
+
+test("renders the sources row above the metrics/status footer", () => {
+  const message: Message = {
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "Answer with a source.",
+    createdAt: "2026-06-14T00:00:00Z",
+    citations: [{ documentId: "", filename: "example.com", snippet: "", score: 0, url: "https://example.com/x", index: 1 }],
+  };
+
+  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="knowledge_discovery" />);
+
+  const sources = screen.getByText("Sources");
+  const status = screen.getByText("Knowledge Discovery");
+  // The status line must follow the sources row in document order (Sources above).
+  expect(sources.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
