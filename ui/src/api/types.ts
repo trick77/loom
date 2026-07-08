@@ -177,6 +177,10 @@ export type Citation = {
   // source and (for those) uses filename as the display label (the site name).
   url?: string;
   index?: number;
+  // title (article/page title) and favicon (source-provided icon url) feed the
+  // sources sidebar; snippet carries what the source delivered. Web sources only.
+  title?: string;
+  favicon?: string;
 };
 
 // Document is an uploaded file tracked for retrieval-augmented generation.

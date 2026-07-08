@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Citation } from "../api";
+import { SourceFavicon } from "./SourceFavicon";
+import { SourcesSidebar } from "./SourcesSidebar";
 
 type CombinedSource = {
   filename: string;
@@ -65,6 +67,7 @@ function combineWebSources(sources: Citation[]): Citation[] {
 export function MessageCitations({ citations }: { citations?: Citation[] }) {
   const { t } = useTranslation();
   const [openFile, setOpenFile] = useState<string | null>(null);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   if (citations === undefined || citations.length === 0) return null;
   const combined = combineLikeSources(citations.filter((c) => !isWebSource(c)));
   const webSources = combineWebSources(citations.filter(isWebSource));
@@ -74,19 +77,31 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
   return (
     <div className="ui-meta-text mt-1 space-y-2 text-[#9a8f7e]">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[#858178]">{t("citations.sources")}</span>
-        {webSources.map((source) => (
-          <a
-            key={`web-${source.index}-${source.url}`}
-            href={source.url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex items-center gap-1 rounded-ui border border-[#4b4a46] bg-[#2a2a28] px-2 py-0.5 text-[#d8d4ca] no-underline transition-colors hover:bg-[#343432]"
-            title={source.url}
+        {webSources.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setSourcesOpen(true)}
+            className="group inline-flex items-center gap-2 rounded-full py-0.5 pr-1 transition-colors"
+            aria-haspopup="dialog"
+            aria-expanded={sourcesOpen}
           >
-            <span className="max-w-[180px] truncate">{source.filename}</span>
-          </a>
-        ))}
+            <span className="flex items-center">
+              {webSources.slice(0, 3).map((source, index) => (
+                <SourceFavicon
+                  key={`fav-${source.index}-${source.url}`}
+                  citation={source}
+                  size={18}
+                  className={`ring-2 ring-[#1a1917] ${index > 0 ? "-ml-1.5" : ""}`}
+                />
+              ))}
+            </span>
+            <span className="text-[#858178] transition-colors group-hover:text-[#d8d4ca]">
+              {t("citations.sources")}
+            </span>
+          </button>
+        ) : (
+          <span className="text-[#858178]">{t("citations.sources")}</span>
+        )}
         {combined.map((source) => (
           <button
             key={source.filename}
@@ -123,6 +138,7 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
           <p className="whitespace-pre-wrap">{open.bestSnippet}</p>
         </div>
       )}
+      <SourcesSidebar open={sourcesOpen} sources={webSources} onClose={() => setSourcesOpen(false)} />
     </div>
   );
 }

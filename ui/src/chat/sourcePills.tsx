@@ -8,7 +8,8 @@ import type { Citation } from "../api";
 export type WebSourceRef = { url: string; label: string };
 
 // SourceMap maps a [n] citation index to its web source, built from a message's
-// citations (or the live web_sources stream event).
+// persisted citations. Used only for the inline pills; the sidebar reads the full
+// citation records directly.
 export type SourceMap = Map<number, WebSourceRef>;
 
 // webSourceMap collects the web-search citations (those carrying a url + index)
@@ -36,28 +37,86 @@ const MARKER = /\[(\d+)\]/g;
 // Never rewrite markers inside code, pre or existing links — a "[1]" there is
 // code/text, not a citation.
 const SKIP_TAGS = new Set(["code", "pre", "a"]);
+// Cap how many distinct source pills render inline. MiMo tends to dump every
+// citation in one cluster at the end of the answer, so an uncapped render is a
+// wall of pills that just repeats the footer Sources row. Beyond the cap, markers
+// are dropped from the prose — every source still appears in the sidebar.
+const MAX_INLINE_PILLS = 3;
 // The custom element the plugin emits; ProseMarkdown maps it to <SourcePill>.
 export const SOURCE_PILL_TAG = "citepill";
 
-// rehypeSourcePills replaces [n] citation markers in prose text with <citepill>
-// elements for any n present in `sources`. Markers whose number is not a known
-// source (out of range, or the model hallucinated one) are left as plain text.
-// It only rewrites complete "[n]" tokens, so a partially-streamed "[1" stays as
-// text until the closing bracket arrives — no flicker of broken pills.
+const PILL_CLASS =
+  "ui-source-pill mx-0.5 inline-flex items-center rounded-full bg-[#363632] px-2 py-0.5 align-baseline font-sans text-[0.75rem] leading-[1.45rem] transition-colors hover:bg-[#44443f]";
+
+type Ctx = {
+  sources: SourceMap;
+  shown: Set<number>; // the first MAX_INLINE_PILLS distinct cited indices
+  emitted: Set<number>; // indices already rendered (dedupe across the message)
+};
+
+// rehypeSourcePills replaces [n] citation markers in prose with inline pills for
+// the first MAX_INLINE_PILLS distinct cited sources; markers for any further
+// (or repeated) sources are dropped from the text — they remain in the sidebar.
+// Markers whose number is not a known source (out of range / hallucinated) are
+// left as plain text, and only complete "[n]" tokens are rewritten (a partial
+// "[1" streams through untouched).
 export function rehypeSourcePills(sources: SourceMap) {
   return (tree: Root) => {
-    walk(tree.children, sources);
+    const cited = collectCitedIndices(tree.children, sources);
+    if (cited.length === 0) return;
+    walk(tree.children, {
+      sources,
+      shown: new Set(cited.slice(0, MAX_INLINE_PILLS)),
+      emitted: new Set(),
+    });
   };
 }
 
-function walk(children: RootContent[], sources: SourceMap): void {
+// collectCitedIndices returns the ordered, de-duplicated list of source indices
+// actually cited in the prose, so the cap applies per message rather than per
+// text node.
+function collectCitedIndices(children: RootContent[], sources: SourceMap): number[] {
+  const seen = new Set<number>();
+  const order: number[] = [];
+  const visit = (nodes: RootContent[]) => {
+    for (const child of nodes) {
+      if (child.type === "element") {
+        if (SKIP_TAGS.has(child.tagName)) continue;
+        visit(child.children);
+      } else if (child.type === "text") {
+        MARKER.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = MARKER.exec(child.value)) !== null) {
+          const n = Number(m[1]);
+          if (sources.has(n) && !seen.has(n)) {
+            seen.add(n);
+            order.push(n);
+          }
+        }
+      }
+    }
+  };
+  visit(children);
+  return order;
+}
+
+function pillElement(ref: WebSourceRef): ElementContent {
+  return {
+    type: "element",
+    tagName: SOURCE_PILL_TAG,
+    properties: { href: ref.url },
+    children: [{ type: "text", value: ref.label }],
+  };
+}
+
+function walk(children: RootContent[], ctx: Ctx): void {
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
     if (child.type === "element") {
       if (SKIP_TAGS.has(child.tagName)) continue;
-      walk(child.children, sources);
+      walk(child.children, ctx);
     } else if (child.type === "text") {
-      const replaced = splitMarkers(child, sources);
+      const replaced = splitMarkers(child, ctx);
       if (replaced !== null) {
         children.splice(i, 1, ...replaced);
         i += replaced.length - 1;
@@ -66,7 +125,7 @@ function walk(children: RootContent[], sources: SourceMap): void {
   }
 }
 
-function splitMarkers(node: Text, sources: SourceMap): ElementContent[] | null {
+function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
   const value = node.value;
   if (!value.includes("[")) return null;
   MARKER.lastIndex = 0;
@@ -75,34 +134,19 @@ function splitMarkers(node: Text, sources: SourceMap): ElementContent[] | null {
   let changed = false;
   let match: RegExpExecArray | null;
   while ((match = MARKER.exec(value)) !== null) {
-    const ref = sources.get(Number(match[1]));
+    const n = Number(match[1]);
+    const ref = ctx.sources.get(n);
     if (ref === undefined) continue; // unknown marker -> keep as literal text
-    const adjacent = match.index === last;
-    const prev = out[out.length - 1];
-    // Collapse a run of the same source ("[1][1]") into one pill, matching how
-    // Claude renders a citation cluster.
-    if (
-      adjacent &&
-      prev !== undefined &&
-      prev.type === "element" &&
-      prev.tagName === SOURCE_PILL_TAG &&
-      prev.properties?.href === ref.url
-    ) {
-      last = match.index + match[0].length;
-      changed = true;
-      continue;
-    }
-    if (match.index > last) {
-      out.push({ type: "text", value: value.slice(last, match.index) });
-    }
-    out.push({
-      type: "element",
-      tagName: SOURCE_PILL_TAG,
-      properties: { href: ref.url },
-      children: [{ type: "text", value: ref.label }],
-    });
+    // Emit the text between the previous marker and this one.
+    if (match.index > last) out.push({ type: "text", value: value.slice(last, match.index) });
     last = match.index + match[0].length;
     changed = true;
+    // Render a pill only for one of the first-N distinct sources, once; all other
+    // markers (overflow or repeats) are removed from the prose.
+    if (ctx.shown.has(n) && !ctx.emitted.has(n)) {
+      out.push(pillElement(ref));
+      ctx.emitted.add(n);
+    }
   }
   if (!changed) return null;
   if (last < value.length) out.push({ type: "text", value: value.slice(last) });
@@ -118,12 +162,7 @@ export function SourcePill({ href, children }: { href?: unknown; children?: Reac
     // The color/underline live in CSS (.ui-source-pill) so they outrank the
     // ".ui-markdown a" link styling this pill renders inside; the layout utilities
     // here aren't contested by that rule.
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className="ui-source-pill mx-0.5 inline-flex items-center rounded-full bg-[#363632] px-2 py-0.5 align-baseline font-sans text-[0.75rem] leading-[1.45rem] transition-colors hover:bg-[#44443f]"
-    >
+    <a href={href} target="_blank" rel="noreferrer noopener" className={PILL_CLASS}>
       {children}
     </a>
   );

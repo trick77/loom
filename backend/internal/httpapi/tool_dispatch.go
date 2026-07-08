@@ -28,6 +28,11 @@ func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.T
 		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", err)
 		return capToolOutput("tool failed: invalid arguments: " + err.Error())
 	}
+	// Ask Tavily for each result's favicon regardless of what the model requested,
+	// so the sources sidebar can show real icons. Harmless if the model already set it.
+	if call.Function.Name == tavilySearchExposedName {
+		arguments["include_favicon"] = true
+	}
 	callCtx, cancel := context.WithTimeout(ctx, maxToolCallDuration)
 	defer cancel()
 	start := time.Now()
@@ -580,6 +585,12 @@ func parseToolArguments(raw string) (map[string]any, error) {
 	var args map[string]any
 	if err := json.Unmarshal([]byte(raw), &args); err != nil {
 		return nil, err
+	}
+	if args == nil {
+		// A literal `null` (or a JSON null the provider emits for absent args)
+		// unmarshals to a nil map with no error; return an empty map so callers can
+		// safely read and write entries (e.g. injecting include_favicon).
+		return map[string]any{}, nil
 	}
 	return args, nil
 }

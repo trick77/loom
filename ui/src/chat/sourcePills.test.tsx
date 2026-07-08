@@ -56,4 +56,22 @@ describe("ProseMarkdown inline source pills", () => {
     render(<ProseMarkdown sources={sources}>{"Repeated cite [1][1] here."}</ProseMarkdown>);
     expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(1);
   });
+
+  it("caps inline pills at 3 distinct sources and drops the rest", () => {
+    const many = webSourceMap([
+      { documentId: "", filename: "One", snippet: "", score: 0, url: "https://one.com", index: 1 },
+      { documentId: "", filename: "Two", snippet: "", score: 0, url: "https://two.com", index: 2 },
+      { documentId: "", filename: "Three", snippet: "", score: 0, url: "https://three.com", index: 3 },
+      { documentId: "", filename: "Four", snippet: "", score: 0, url: "https://four.com", index: 4 },
+      { documentId: "", filename: "Five", snippet: "", score: 0, url: "https://five.com", index: 5 },
+    ]);
+    render(<ProseMarkdown sources={many}>{"A clustered answer [1][2][3][4][5]."}</ProseMarkdown>);
+    // Only the first three distinct sources render inline.
+    expect(screen.getAllByRole("link")).toHaveLength(3);
+    expect(screen.getByRole("link", { name: "Three" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Four" })).not.toBeInTheDocument();
+    // Overflow markers are removed from the prose, not left as literal text.
+    expect(screen.queryByText(/\[4\]/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\[5\]/)).not.toBeInTheDocument();
+  });
 });

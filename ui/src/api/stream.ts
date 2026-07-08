@@ -21,7 +21,6 @@ type StreamHandlers = {
   onToolResult?(event: ToolResultEvent): void;
   onArtifact?(artifact: Artifact): void;
   onKnowledgeSources?(sources: Citation[]): void;
-  onWebSources?(sources: Citation[]): void;
 };
 
 export async function streamMessage(
@@ -212,9 +211,6 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "knowledge_sources":
       handlers.onKnowledgeSources?.((payload as { sources: Citation[] }).sources);
-      break;
-    case "web_sources":
-      handlers.onWebSources?.((payload as { sources: Citation[] }).sources);
       break;
     case "done":
       break;
