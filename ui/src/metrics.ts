@@ -120,16 +120,3 @@ export function formatMessageTime(createdAt: string): string {
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 }
-
-/**
- * Build the full status line shown at the end of a message: the message's own time
- * first, then the metrics line when there is one ("07:30 · high · 5s · …"). Messages
- * without renderable metrics (e.g. the user's sent messages) show the time alone.
- * Empty string only if the time is unparseable and there are no metrics.
- */
-export function buildStatusLine(message: Message): string {
-  const time = formatMessageTime(message.createdAt);
-  const metrics = buildMetricsString(message);
-  if (time === "") return metrics ?? "";
-  return metrics !== null ? `${time}${DOT_SEPARATOR}${metrics}` : time;
-}

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { formatDuration, buildMetricsString, buildStatusLine, formatMessageTime, hasRenderableMetrics, humanizeCategory } from "./metrics";
+import { formatDuration, buildMetricsString, formatMessageTime, hasRenderableMetrics, humanizeCategory } from "./metrics";
 import type { Message } from "./api";
 
 function assistant(extra: Partial<Message>): Message {
@@ -87,20 +87,4 @@ test("formatMessageTime renders a 24-hour HH:MM clock, and empty for an unparsea
   // TZ-independent: assert the shape, not a hardcoded local time.
   expect(formatMessageTime("2026-05-31T14:32:00Z")).toMatch(/^\d{2}:\d{2}$/);
   expect(formatMessageTime("not-a-date")).toBe("");
-});
-
-test("buildStatusLine leads with the message time, then the metrics when present", () => {
-  const message = assistant({ reasoningEffort: "high", durationMs: 5000, promptTokens: 100000, completionTokens: 4858, totalTokens: 104858, contextTokens: 104858 });
-  const time = formatMessageTime(message.createdAt);
-  const metrics = buildMetricsString(message) as string;
-  const line = buildStatusLine(message);
-  // Time first, then the (unchanged) metrics line joined by the middle-dot separator.
-  expect(line.startsWith(time)).toBe(true);
-  expect(line.endsWith(metrics)).toBe(true);
-  expect(line).toContain("·");
-});
-
-test("buildStatusLine shows the time alone when there are no renderable metrics", () => {
-  const message = assistant({ completionTokens: 100 });
-  expect(buildStatusLine(message)).toBe(formatMessageTime(message.createdAt));
 });
