@@ -2056,16 +2056,104 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 	if store.assistantContent != "Final answer after the tool ran." {
 		t.Fatalf("assistantContent = %q, want forced final answer", store.assistantContent)
 	}
-	// The forced final turn must nudge the model to stop using tools.
+	// The forced final turn must nudge the model to deliver its answer via the
+	// final_answer tool rather than issuing another research tool call.
 	lastHistory := llmClient.histories[len(llmClient.histories)-1]
 	nudged := false
 	for _, msg := range lastHistory {
-		if msg.Role == "system" && strings.Contains(msg.Content, "Do not call any more tools") {
+		if msg.Role == "system" && strings.Contains(msg.Content, "final_answer tool") {
 			nudged = true
 		}
 	}
 	if !nudged {
-		t.Fatalf("final turn history missing the no-more-tools nudge: %#v", lastHistory)
+		t.Fatalf("final turn history missing the final_answer nudge: %#v", lastHistory)
+	}
+	// The forced final turn must offer exactly the final_answer tool (and nothing
+	// else), so a tool-eager model has a tool-shaped channel to answer through.
+	lastTools := llmClient.tools[len(llmClient.tools)-1]
+	if len(lastTools) != 1 || lastTools[0].Function.Name != finalAnswerToolName {
+		t.Fatalf("final turn tools = %#v, want only final_answer", lastTools)
+	}
+}
+
+// When the model answers the forced final turn by calling final_answer (as a
+// tool-eager model like MiMo does), the loop lifts the tool's text argument into
+// the assistant message content instead of leaving the turn empty.
+func TestStreamMessageAdoptsFinalAnswerToolCall(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	// Round 1 runs a tool; round 2 is empty (model gives up) → forced final turn;
+	// the forced final result is a final_answer tool call carrying the answer text.
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
+			{},
+			{ToolCalls: []llm.ToolCall{{ID: "call_final", Function: llm.ToolCallFunction{Name: finalAnswerToolName, Arguments: `{"text":"Here is the synthesized answer."}`}}}},
+		},
+	}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
+		MCP: fakeMCPService{
+			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "empty assistant response") {
+		t.Fatalf("SSE body returned empty response despite a final_answer call:\n%s", body)
+	}
+	if store.assistantContent != "Here is the synthesized answer." {
+		t.Fatalf("assistantContent = %q, want the final_answer text", store.assistantContent)
+	}
+	// The adopted final_answer call must not surface as a raw tool_call in the body.
+	if strings.Contains(body, finalAnswerToolName) {
+		t.Fatalf("final_answer tool name leaked into the response body:\n%s", body)
+	}
+}
+
+// A final_answer call truncated at the token cap leaves unclosed <tool_call> markup
+// the parser cannot recover. Even if upstream scrubbing were bypassed, the loop must
+// never persist that raw markup as the answer — it blanks it and falls back.
+func TestStreamMessageDoesNotPersistTruncatedFinalAnswerMarkup(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	rawMarkup := "<tool_call><function=final_answer><parameter=text>a long synthesis cut off mid-"
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
+			{},                   // empty after tools → forced final turn
+			{Content: rawMarkup}, // forced final: truncated markup (simulating unscrubbed)
+			{Content: rawMarkup}, // retry: same
+		},
+	}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
+		MCP: fakeMCPService{
+			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	// The persisted answer (what survives a reload) must be the clean fallback, never
+	// the raw markup.
+	if strings.Contains(store.assistantContent, "<tool_call>") {
+		t.Fatalf("raw tool-call markup leaked into persisted content: %q", store.assistantContent)
+	}
+	if store.assistantContent != finalAnswerFallback {
+		t.Fatalf("assistantContent = %q, want the fallback message", store.assistantContent)
 	}
 }
 
