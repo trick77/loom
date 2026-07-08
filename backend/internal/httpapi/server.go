@@ -76,6 +76,8 @@ type server struct {
 	bflDefaultModel            string
 	bflTypographyModel         string
 	usersDir                   string
+	faviconCacheDir            string
+	faviconClient              *http.Client // nil → faviconDefaultClient (overridden in tests)
 	oidcAdminGroup             string
 	devAuthClaims              auth.Claims
 	postLogoutRedirectURL      string
@@ -290,6 +292,7 @@ func newServer(d Deps) *server {
 		bflDefaultModel:            d.BFLDefaultModel,
 		bflTypographyModel:         d.BFLTypographyModel,
 		usersDir:                   d.UsersDir,
+		faviconCacheDir:            faviconCacheDirFor(d.UsersDir),
 		oidcAdminGroup:             d.OIDCAdminGroup,
 		devAuthClaims:              d.DevAuthClaims,
 		postLogoutRedirectURL:      d.PostLogoutRedirectURL,
@@ -354,6 +357,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/shares/{shareID}", s.handleGetPublicShare)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/download", s.handlePublicShareArtifactDownload)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/thumbnail", s.handlePublicShareArtifactThumbnail)
+	mux.Handle("GET /api/favicon", s.requireAuth(http.HandlerFunc(s.handleFavicon)))
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
 	mux.Handle("POST /api/artifacts/images/upload", s.requireAuth(http.HandlerFunc(s.handleUploadImageAttachment)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))

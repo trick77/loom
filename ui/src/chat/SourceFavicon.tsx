@@ -16,6 +16,13 @@ function googleFavicon(host: string, sizePx: number): string {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=${sizePx}`;
 }
 
+// faviconProxy routes a remote favicon url through the backend so the bytes are
+// fetched once, cached on disk, and served with a long browser Cache-Control —
+// avoiding repeated third-party fetches and load flicker on every re-render.
+export function faviconProxy(u: string): string {
+  return `/api/favicon?u=${encodeURIComponent(u)}`;
+}
+
 // Deterministic muted colours for the letter-avatar fallback.
 const AVATAR_COLORS = ["#8a6d3b", "#4a7a8c", "#7a5a8c", "#5a8c6d", "#8c5a5a", "#5a6d8c", "#8c7a4a"];
 function colorFor(seed: string): string {
@@ -42,9 +49,9 @@ export function SourceFavicon({
   const label = (citation.filename ?? host).trim();
   const chain = useMemo(
     () =>
-      [citation.favicon, host === "" ? "" : googleFavicon(host, Math.max(32, size * 2))].filter(
-        (u): u is string => typeof u === "string" && u !== "",
-      ),
+      [citation.favicon, host === "" ? "" : googleFavicon(host, Math.max(32, size * 2))]
+        .filter((u): u is string => typeof u === "string" && u !== "")
+        .map(faviconProxy),
     [citation.favicon, host, size],
   );
   const [step, setStep] = useState(0);
