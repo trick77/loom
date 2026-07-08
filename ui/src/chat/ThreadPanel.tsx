@@ -13,6 +13,7 @@ import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import type { MessagePastedText } from "../api";
 import { AssistantProse, MessageBubble } from "./messages";
+import type { SourceMap } from "./sourcePills";
 import type { PastedText } from "./pastedText";
 import type { ReasoningEffort } from "./reasoning";
 import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
@@ -30,6 +31,7 @@ export function ThreadPanel({
   messages,
   draft,
   streamingBlocks,
+  streamingSources,
   toolPending,
   sendError,
   isSending,
@@ -62,6 +64,8 @@ export function ThreadPanel({
   messages: MessageWithActivityTrace[];
   draft: string;
   streamingBlocks: ContentBlock[];
+  /** Web-source registry for the in-flight turn, so streaming [n] markers resolve to pills. */
+  streamingSources?: SourceMap;
   toolPending: boolean;
   sendError: string;
   isSending: boolean;
@@ -441,7 +445,7 @@ export function ThreadPanel({
                 if (block.type === "text") {
                   if (block.content === "") return;
                   elements.push(
-                    <AssistantProse key={`stream-text-${index}`} streaming>
+                    <AssistantProse key={`stream-text-${index}`} streaming sources={streamingSources}>
                       {block.content}
                     </AssistantProse>,
                   );

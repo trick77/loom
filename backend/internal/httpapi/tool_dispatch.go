@@ -21,7 +21,7 @@ import (
 	"github.com/trick77/loom/internal/sse"
 )
 
-func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int) string {
+func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry) string {
 	args := summarizeForLog(call.Function.Arguments)
 	arguments, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
@@ -35,14 +35,16 @@ func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.T
 	durationMS := time.Since(start).Milliseconds()
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
-		if fallback, ok := s.fetchObscuraFallback(callCtx, user, call.Function.Name, arguments, round); ok {
+		if fallback, ok := s.fetchObscuraFallback(callCtx, user, call.Function.Name, arguments, round, reg); ok {
 			return fallback
 		}
 		return capToolOutput("tool failed: " + err.Error())
 	}
 	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
 	s.countToolCall(ctx, user, call.Function.Name)
-	return capToolOutput(output)
+	// Annotate web-search/fetch results with [n] citation markers and register
+	// their source URLs before capping, so the model can cite them inline.
+	return capToolOutput(s.relabelWebToolOutput(call.Function.Name, arguments, output, reg))
 }
 
 // countToolCall increments the per-user counter for a successfully completed
@@ -82,7 +84,7 @@ var tavilySearchExposedName = mcp.ExposedToolName(tavilyServerName, mcp.TavilySe
 // It only fires for the fetch tool when obscura is configured and the call
 // carried a URL. On success it returns the obscura snapshot and true; otherwise
 // it returns ok=false so the caller surfaces the original fetch failure.
-func (s *server) fetchObscuraFallback(ctx context.Context, user auth.User, toolName string, arguments map[string]any, round int) (string, bool) {
+func (s *server) fetchObscuraFallback(ctx context.Context, user auth.User, toolName string, arguments map[string]any, round int, reg *webSourceRegistry) (string, bool) {
 	if toolName != fetchToolName {
 		return "", false
 	}
@@ -104,7 +106,9 @@ func (s *server) fetchObscuraFallback(ctx context.Context, user auth.User, toolN
 	}
 	slog.Info("fetch failed, obscura fallback succeeded", "url", url, "round", round, "result_bytes", len(snapshot))
 	s.recordUsage("obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
-	return capToolOutput(snapshot), true
+	// The requested fetch URL is the source; annotate the rendered snapshot with
+	// its [n] marker so the model cites it inline like any other web source.
+	return capToolOutput(prependURLSource(url, snapshot, reg)), true
 }
 
 // availableTools assembles the tool set injected into the prompt for this turn.

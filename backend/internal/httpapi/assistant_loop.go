@@ -49,9 +49,13 @@ type assistantLoopResult struct {
 	ToolError     string
 	ActivityTrace []activityTraceEvent
 	Blocks        []contentBlock
+	// WebSources are the web-search/fetch sources gathered this turn, in the [n]
+	// order the model cites them. Persisted as citations and rendered as inline
+	// source pills + a bottom "Sources" row.
+	WebSources []webSource
 }
 
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool) (assistantLoopResult, error) {
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool) (out assistantLoopResult, outErr error) {
 	tools := s.availableTools(thread, gate)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -81,6 +85,22 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	// the user can ask to continue (a fresh turn has a fresh round budget).
 	lastRoundDeferred := false
 	var artifacts []artifactResponse
+	// reg accumulates web-search/fetch sources across rounds, assigning each a
+	// stable [n] index the model cites inline. emittedSources tracks how many have
+	// been streamed to the client so the registry is pushed (via web_sources) as it
+	// grows — before the answer round streams, so live [n] markers resolve to pills.
+	reg := newWebSourceRegistry()
+	// Stamp gathered sources onto every subsequent return (natural answer, forced
+	// final, interrupted partial) in one place. The tool-less/image fast paths
+	// return above this and never gather web sources.
+	defer func() { out.WebSources = reg.all() }()
+	emittedSources := 0
+	emitWebSources := func() {
+		if reg.len() > emittedSources {
+			_ = sendSSEJSON(stream, "web_sources", map[string]any{"sources": webSourceCitations(reg.all())})
+			emittedSources = reg.len()
+		}
+	}
 	b := &blockBuilder{}
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
@@ -172,7 +192,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 						}
 					}
 				} else {
-					output = s.executeToolCall(ctx, user, call, round)
+					output = s.executeToolCall(ctx, user, call, round, reg)
 				}
 			}
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
@@ -186,6 +206,9 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			})
 		}
 		toolRan = true
+		// Push any newly gathered sources now, so the client has the [n] registry
+		// before the next round streams the answer prose.
+		emitWebSources()
 		if round == maxToolRounds {
 			slog.Info("forcing final answer", "reason", "rounds_exhausted", "round", round)
 		}

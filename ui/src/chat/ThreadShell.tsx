@@ -11,6 +11,7 @@ import {
   streamMessage,
   streamIncognitoMessage,
   type Artifact,
+  type Citation,
   type ContentBlock,
   type MessagePastedText,
   type Project,
@@ -18,6 +19,7 @@ import {
   type Thread,
   type User,
 } from "../api";
+import { webSourceMap } from "./sourcePills";
 import {
   appendArtifactBlock,
   appendReasoningDeltaBlock,
@@ -130,6 +132,10 @@ export function ThreadShell({
   const [streamingBlocks, setStreamingBlocks] = useState<ContentBlock[]>([]);
   const streamingBlocksRef = useRef<ContentBlock[]>([]);
   const [toolPending, setToolPending] = useState(false);
+  // Web sources gathered during the in-flight turn (via the web_sources event),
+  // so inline [n] markers in the streaming answer resolve to pills before the
+  // message settles. Cleared with the rest of the streaming state each turn.
+  const [streamingWebSources, setStreamingWebSources] = useState<Citation[]>([]);
   // Incognito mode is a standalone, ephemeral chat reachable only from /new. Its
   // transcript lives entirely here and is never persisted or added to the thread
   // lists; exiting or leaving discards it. It reuses the shared streaming state
@@ -148,6 +154,7 @@ export function ThreadShell({
     streamingBlocksRef.current = [];
     setStreamingBlocks([]);
     setToolPending(false);
+    setStreamingWebSources([]);
   }, []);
   // Flush hook for the deferred new-thread upload: the scope is supplied per call at
   // send time (the thread does not exist yet when the file is picked). Its
@@ -714,6 +721,7 @@ export function ThreadShell({
       streamAbortRef.current?.abort();
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
+      setStreamingWebSources([]);
       const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
       // Accumulate this turn's ordered blocks in a closure-local array, the single
       // source of truth for the graft at turn end. The rendered state mirror is
@@ -805,6 +813,12 @@ export function ThreadShell({
         },
         onArtifact: (artifact) => {
           applyBlocks((current) => appendArtifactBlock(current, artifact));
+        },
+        onWebSources: (sources) => {
+          // The registry grows across tool rounds; each event carries the full set
+          // so far, so replace rather than append. Lets streaming [n] markers in the
+          // answer resolve to pills before the message settles.
+          if (isCurrentThread()) setStreamingWebSources(sources);
         },
         onAssistantMessage: (message) => {
           // The persisted message may already carry the backend's ordered
@@ -1032,6 +1046,9 @@ export function ThreadShell({
   const activeThreadIsStreaming = isSending && activeThreadOwnsStreamState;
   const visibleStreamingBlocks = activeThreadOwnsStreamState ? streamingBlocks : [];
   const visibleToolPending = activeThreadOwnsStreamState ? toolPending : false;
+  const visibleStreamingSources = activeThreadOwnsStreamState
+    ? webSourceMap(streamingWebSources)
+    : undefined;
   // Keep errors with the thread that owns the active or failed stream state.
   const visibleSendError = streamingThreadID === null || activeThreadOwnsStreamState ? sendError : "";
 
@@ -1264,6 +1281,7 @@ export function ThreadShell({
             messages={messages}
             draft={draft}
             streamingBlocks={visibleStreamingBlocks}
+            streamingSources={visibleStreamingSources}
             toolPending={visibleToolPending}
             sendError={visibleSendError}
             isSending={activeThreadIsStreaming}

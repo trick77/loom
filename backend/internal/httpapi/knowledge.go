@@ -28,6 +28,13 @@ type citation struct {
 	// Full marks a source whose entire document was injected (not a retrieved
 	// excerpt), so the UI can label it "full document" instead of "N excerpts".
 	Full bool `json:"full,omitempty"`
+	// URL and Index are set for web-search citations (Tavily/fetch/obscura): URL
+	// is the source link and Index is the [n] marker the model cites inline. RAG
+	// document citations leave both zero-valued. The frontend distinguishes a web
+	// source by the presence of url. For web citations Filename holds the display
+	// label (the site name), not a document filename.
+	URL   string `json:"url,omitempty"`
+	Index int    `json:"index,omitempty"`
 }
 
 // knowledgeContextForThread retrieves the most relevant indexed chunks for the
