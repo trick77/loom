@@ -113,7 +113,7 @@ export function Sidebar({
                 onClick={onOpenSearch}
                 className="grid place-items-center rounded transition-colors hover:text-white"
               >
-                <Icon name="search" size="18px" />
+                <Icon name="search" size="20px" />
               </button>
             )}
             <button
