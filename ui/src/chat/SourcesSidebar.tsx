@@ -47,7 +47,7 @@ export function SourcesSidebar({
         className="ui-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-full flex-col border-l border-[#343432] bg-[#1c1b18] md:w-[400px] md:max-w-[92vw]"
       >
         <div className="flex items-center justify-between border-b border-[#343432] px-4 py-3">
-          <h3 className="text-[1.05rem] font-semibold text-[#f3f0e8]">{t("citations.sources")}</h3>
+          <h3 className="font-serif text-[1.15rem] font-medium text-[#f3f0e8]">{t("citations.sources")}</h3>
           <button
             type="button"
             onClick={onClose}
@@ -91,14 +91,14 @@ function SourceCard({ citation }: { citation: Citation }) {
       rel="noreferrer noopener"
       className="block rounded-[10px] px-3 py-2.5 no-underline transition-colors hover:bg-[#201f1c]"
     >
-      <div className="mb-1 flex items-center gap-2 text-[0.8rem] text-[#9a8f7e]">
+      <div className="mb-1 flex items-center gap-2 text-[13px] text-[#8a887f]">
         <SourceFavicon citation={citation} size={16} />
         <span className="truncate">{site}</span>
       </div>
-      <p className="mb-1 text-[0.9rem] font-semibold leading-snug text-[#f3f0e8]">{title}</p>
+      <p className="mb-1 text-[15px] font-semibold leading-snug text-[#f3f0e8]">{title}</p>
       {citation.snippet !== undefined && citation.snippet !== "" && (
         <p
-          className="text-[0.82rem] leading-normal text-[#9a8f7e]"
+          className="text-[13px] leading-5 text-[#8a887f]"
           style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
         >
           {citation.snippet}

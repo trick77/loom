@@ -88,12 +88,12 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             {/* pl-0.5 offsets the leftmost favicon's 2px ring so the icons' visible
                 edge lines up with the prose and action row above. */}
             <span className="flex items-center pl-0.5">
-              {webSources.slice(0, 3).map((source, index) => (
+              {webSources.slice(0, 10).map((source, index) => (
                 <SourceFavicon
                   key={`fav-${source.index}-${source.url}`}
                   citation={source}
                   size={18}
-                  className={`ring-2 ring-[#1a1917] ${index > 0 ? "-ml-1.5" : ""}`}
+                  className={`ring-2 ring-[#1a1917] ${index > 0 ? "-ml-2.5" : ""}`}
                 />
               ))}
             </span>
