@@ -155,7 +155,7 @@ func TestRelabelWebToolOutputNonWebToolIsNoop(t *testing.T) {
 
 func TestWebSourceCitations(t *testing.T) {
 	sources := []webSource{
-		{Index: 1, URL: "https://truefoundry.com", Label: "Truefoundry"},
+		{Index: 1, URL: "https://truefoundry.com", Label: "Truefoundry", Title: "TF", Snippet: "deploys models", Favicon: "https://x/f.png"},
 		{Index: 2, URL: "https://modal.com", Label: "Modal"},
 	}
 	cits := webSourceCitations(sources)
@@ -165,7 +165,78 @@ func TestWebSourceCitations(t *testing.T) {
 	if cits[0].URL != "https://truefoundry.com" || cits[0].Index != 1 || cits[0].Filename != "Truefoundry" {
 		t.Errorf("citation 0 = %+v", cits[0])
 	}
+	if cits[0].Title != "TF" || cits[0].Snippet != "deploys models" || cits[0].Favicon != "https://x/f.png" {
+		t.Errorf("citation 0 missing sidebar fields: %+v", cits[0])
+	}
 	if cits[0].DocumentID != "" {
 		t.Errorf("web citation should have no DocumentID, got %q", cits[0].DocumentID)
+	}
+}
+
+func TestRelabelTavilyTextCapturesSidebarFields(t *testing.T) {
+	raw := strings.Join([]string{
+		"Detailed Results:",
+		"",
+		"Title: TrueFoundry | ML Platform",
+		"URL: https://truefoundry.com",
+		"Content: TrueFoundry lets teams deploy models on Kubernetes.",
+		"Favicon: https://truefoundry.com/favicon.ico",
+	}, "\n")
+	reg := newWebSourceRegistry()
+	relabelTavilyResult(raw, reg)
+	if reg.len() != 1 {
+		t.Fatalf("expected 1 source, got %d", reg.len())
+	}
+	src := reg.all()[0]
+	if src.Title != "TrueFoundry | ML Platform" {
+		t.Errorf("title = %q", src.Title)
+	}
+	if src.Snippet != "TrueFoundry lets teams deploy models on Kubernetes." {
+		t.Errorf("snippet = %q", src.Snippet)
+	}
+	if src.Favicon != "https://truefoundry.com/favicon.ico" {
+		t.Errorf("favicon = %q", src.Favicon)
+	}
+}
+
+func TestFetchSourceCapturesSnippet(t *testing.T) {
+	srv := &server{}
+	reg := newWebSourceRegistry()
+	page := "  Modal is a serverless   platform\nfor running Python.  "
+	out := srv.relabelWebToolOutput(fetchToolName, map[string]any{"url": "https://modal.com/docs"}, page, reg)
+	if !strings.HasPrefix(out, "Web source [1]: https://modal.com/docs") {
+		t.Errorf("expected fetch header, got:\n%s", out)
+	}
+	if got := reg.all()[0].Snippet; got != "Modal is a serverless platform for running Python." {
+		t.Errorf("snippet = %q (whitespace should be collapsed)", got)
+	}
+}
+
+func TestParseToolArgumentsNullIsWritableMap(t *testing.T) {
+	// A literal JSON null must yield a non-nil, writable map (Tavily's favicon
+	// injection writes into it), not a nil map that panics on assignment.
+	for _, raw := range []string{"null", "", "  "} {
+		args, err := parseToolArguments(raw)
+		if err != nil {
+			t.Fatalf("parseToolArguments(%q) error: %v", raw, err)
+		}
+		if args == nil {
+			t.Fatalf("parseToolArguments(%q) returned nil map", raw)
+		}
+		args["include_favicon"] = true // must not panic
+	}
+}
+
+func TestAddDetailedBackfillsEmptyFields(t *testing.T) {
+	reg := newWebSourceRegistry()
+	// First seen with no detail (e.g. a bare fetch), then again with details (Tavily).
+	reg.addDetailed("https://modal.com/docs", "", "", "")
+	reg.addDetailed("https://modal.com/docs#frag", "Modal Docs", "Run Python serverlessly", "https://modal.com/fav.ico")
+	if reg.len() != 1 {
+		t.Fatalf("expected dedupe to 1 source, got %d", reg.len())
+	}
+	src := reg.all()[0]
+	if src.Title != "Modal Docs" || src.Snippet != "Run Python serverlessly" || src.Favicon != "https://modal.com/fav.ico" {
+		t.Errorf("expected backfill, got %+v", src)
 	}
 }

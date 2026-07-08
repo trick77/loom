@@ -267,6 +267,8 @@ export const de = {
     excerpts_one: "{{count}} Auszug",
     excerpts_other: "{{count}} Auszüge",
     relevance: "Relevanz {{percent}}%",
+    more: "Mehr",
+    close: "Schliessen",
   },
   artifactCard: {
     previewFailed: "Vorschau fehlgeschlagen",

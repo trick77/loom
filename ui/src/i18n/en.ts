@@ -265,6 +265,8 @@ export const en = {
     excerpts_one: "{{count}} excerpt",
     excerpts_other: "{{count}} excerpts",
     relevance: "relevance {{percent}}%",
+    more: "More",
+    close: "Close",
   },
   artifactCard: {
     previewFailed: "Preview failed",

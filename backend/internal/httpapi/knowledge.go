@@ -35,6 +35,12 @@ type citation struct {
 	// label (the site name), not a document filename.
 	URL   string `json:"url,omitempty"`
 	Index int    `json:"index,omitempty"`
+	// Title and Favicon are web-citation extras for the sources sidebar: Title is
+	// the page/article title (Snippet carries what the source delivered), Favicon
+	// is a source-provided icon URL when available (the frontend otherwise derives
+	// one). Empty for RAG document citations.
+	Title   string `json:"title,omitempty"`
+	Favicon string `json:"favicon,omitempty"`
 }
 
 // knowledgeContextForThread retrieves the most relevant indexed chunks for the

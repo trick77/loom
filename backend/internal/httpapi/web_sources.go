@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/net/publicsuffix"
 )
@@ -14,12 +15,20 @@ import (
 // webSource is one web source gathered during an assistant turn: a stable Index
 // the model cites inline as [n], the source URL, and a short display Label (the
 // registrable domain's main label — the part immediately left of the public
-// suffix, e.g. "truefoundry.com" -> "Truefoundry", "foo.co.uk" -> "Foo").
+// suffix, e.g. "truefoundry.com" -> "Truefoundry", "foo.co.uk" -> "Foo"). Title,
+// Snippet and Favicon feed the sources sidebar (what the source delivered); they
+// may be empty when the tool didn't provide them.
 type webSource struct {
-	Index int    `json:"index"`
-	URL   string `json:"url"`
-	Label string `json:"label"`
+	Index   int    `json:"index"`
+	URL     string `json:"url"`
+	Label   string `json:"label"`
+	Title   string `json:"title,omitempty"`
+	Snippet string `json:"snippet,omitempty"`
+	Favicon string `json:"favicon,omitempty"`
 }
+
+// maxSourceSnippetChars caps the per-source snippet stored for the sidebar.
+const maxSourceSnippetChars = 240
 
 // webSourceRegistry accumulates the web sources gathered across one turn's tool
 // rounds, assigning each unique URL a stable, monotonic [n] index. A URL seen
@@ -31,26 +40,72 @@ type webSourceRegistry struct {
 	sources      []webSource
 	byKey        map[string]int
 	obscuraNavHd string // header line to prepend to the next obscura snapshot
+	obscuraNavID int    // registry index of the last obscura navigation (0 = none)
 }
 
 func newWebSourceRegistry() *webSourceRegistry {
 	return &webSourceRegistry{byKey: map[string]int{}}
 }
 
-// add registers rawURL if new and returns its index. ok is false when the URL
-// cannot be normalized (non-http(s) or unparseable), so callers skip labeling.
+// add registers rawURL (no sidebar detail) and returns its index.
 func (r *webSourceRegistry) add(rawURL string) (index int, ok bool) {
+	return r.addDetailed(rawURL, "", "", "")
+}
+
+// addDetailed registers rawURL if new and returns its index; ok is false when the
+// URL cannot be normalized (non-http(s) or unparseable). A URL seen again keeps
+// its first index, but empty detail fields (title/snippet/favicon) are backfilled
+// if this call supplies them — so a page first seen as a bare fetch URL gains its
+// title/snippet when Tavily later returns it (or vice versa).
+func (r *webSourceRegistry) addDetailed(rawURL, title, snippet, favicon string) (index int, ok bool) {
 	key, host, ok := normalizeURL(rawURL)
 	if !ok {
 		return 0, false
 	}
+	title = strings.TrimSpace(title)
+	snippet = snippetFromText(snippet)
+	favicon = strings.TrimSpace(favicon)
 	if idx, seen := r.byKey[key]; seen {
+		src := &r.sources[idx-1]
+		if src.Title == "" {
+			src.Title = title
+		}
+		if src.Snippet == "" {
+			src.Snippet = snippet
+		}
+		if src.Favicon == "" {
+			src.Favicon = favicon
+		}
 		return idx, true
 	}
 	idx := len(r.sources) + 1
 	r.byKey[key] = idx
-	r.sources = append(r.sources, webSource{Index: idx, URL: strings.TrimSpace(rawURL), Label: deriveLabel(host)})
+	r.sources = append(r.sources, webSource{
+		Index:   idx,
+		URL:     strings.TrimSpace(rawURL),
+		Label:   deriveLabel(host),
+		Title:   title,
+		Snippet: snippet,
+		Favicon: favicon,
+	})
 	return idx, true
+}
+
+// snippetFromText collapses whitespace and caps a source snippet for the sidebar.
+func snippetFromText(s string) string {
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	if len(s) <= maxSourceSnippetChars {
+		return s
+	}
+	// Trim to the cap on a rune boundary, then back off to the last space.
+	cut := s[:maxSourceSnippetChars]
+	for len(cut) > 0 && !utf8.RuneStart(cut[len(cut)-1]) {
+		cut = cut[:len(cut)-1]
+	}
+	if sp := strings.LastIndexByte(cut, ' '); sp > maxSourceSnippetChars/2 {
+		cut = cut[:sp]
+	}
+	return strings.TrimSpace(cut) + "…"
 }
 
 func (r *webSourceRegistry) all() []webSource { return r.sources }
@@ -130,18 +185,30 @@ func (s *server) relabelWebToolOutput(toolName string, arguments map[string]any,
 	case tavilySearchExposedName:
 		return relabelTavilyResult(output, reg)
 	case fetchToolName:
-		return prependURLSource(argURL(arguments), output, reg)
+		// The fetched page text is the source's snippet (what it delivered).
+		idx, ok := reg.addDetailed(argURL(arguments), "", output, "")
+		if !ok {
+			return output
+		}
+		return fmt.Sprintf("Web source [%d]: %s\n\n%s", idx, strings.TrimSpace(argURL(arguments)), output)
 	case obscuraNavigateToolName:
 		out := prependURLSource(argURL(arguments), output, reg)
 		if idx, ok := reg.add(argURL(arguments)); ok {
 			// Remember this source so the following browser_snapshot (the call that
-			// actually returns the page text) inherits the same marker.
+			// actually returns the page text) inherits the same marker and snippet.
 			reg.obscuraNavHd = fmt.Sprintf("Web source [%d]: %s", idx, strings.TrimSpace(argURL(arguments)))
+			reg.obscuraNavID = idx
 		}
 		return out
 	case obscuraSnapshotToolName:
 		if reg.obscuraNavHd == "" {
 			return output
+		}
+		// Backfill the navigated source's snippet from the rendered page text.
+		if reg.obscuraNavID > 0 && reg.obscuraNavID <= len(reg.sources) {
+			if src := &reg.sources[reg.obscuraNavID-1]; src.Snippet == "" {
+				src.Snippet = snippetFromText(output)
+			}
 		}
 		return reg.obscuraNavHd + "\n\n" + output
 	default:
@@ -172,8 +239,10 @@ func prependURLSource(rawURL, output string, reg *webSourceRegistry) string {
 // returns raw JSON instead of the MCP server's formatted text.
 type tavilyJSON struct {
 	Results []struct {
-		Title string `json:"title"`
-		URL   string `json:"url"`
+		Title   string `json:"title"`
+		URL     string `json:"url"`
+		Content string `json:"content"`
+		Favicon string `json:"favicon"`
 	} `json:"results"`
 }
 
@@ -196,7 +265,7 @@ func relabelTavilyResult(raw string, reg *webSourceRegistry) string {
 	if err := json.Unmarshal([]byte(raw), &parsed); err == nil && len(parsed.Results) > 0 {
 		var b strings.Builder
 		for _, res := range parsed.Results {
-			idx, ok := reg.add(res.URL)
+			idx, ok := reg.addDetailed(res.URL, res.Title, res.Content, res.Favicon)
 			if !ok {
 				continue
 			}
@@ -229,21 +298,34 @@ func relabelTavilyResult(raw string, reg *webSourceRegistry) string {
 // Returns the rewritten text and the number of sources registered.
 func relabelTavilyText(raw string, reg *webSourceRegistry) (string, int) {
 	lines := strings.Split(raw, "\n")
-	// First pass: map each Title-line index to the URL found later in its block.
+	// First pass: for each result block (started by a "Title:" line) collect the
+	// title, url, content and favicon fields.
 	type block struct {
 		titleLine int
+		title     string
 		url       string
+		content   string
+		favicon   string
 	}
 	var blocks []block
 	current := -1
+	field := func(line, prefix string) string {
+		return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), prefix))
+	}
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(trimmed, "Title:"):
-			blocks = append(blocks, block{titleLine: i})
+			blocks = append(blocks, block{titleLine: i, title: field(line, "Title:")})
 			current = len(blocks) - 1
-		case strings.HasPrefix(trimmed, "URL:") && current >= 0 && blocks[current].url == "":
-			blocks[current].url = strings.TrimSpace(strings.TrimPrefix(trimmed, "URL:"))
+		case current < 0:
+			// preamble (e.g. the "Answer:" section) before the first result
+		case strings.HasPrefix(trimmed, "URL:") && blocks[current].url == "":
+			blocks[current].url = field(line, "URL:")
+		case strings.HasPrefix(trimmed, "Content:") && blocks[current].content == "":
+			blocks[current].content = field(line, "Content:")
+		case strings.HasPrefix(trimmed, "Favicon:") && blocks[current].favicon == "":
+			blocks[current].favicon = field(line, "Favicon:")
 		}
 	}
 	registered := 0
@@ -251,7 +333,7 @@ func relabelTavilyText(raw string, reg *webSourceRegistry) (string, int) {
 		if blk.url == "" {
 			continue
 		}
-		idx, ok := reg.add(blk.url)
+		idx, ok := reg.addDetailed(blk.url, blk.title, blk.content, blk.favicon)
 		if !ok {
 			continue
 		}
@@ -278,6 +360,9 @@ func webSourceCitations(sources []webSource) []citation {
 			Filename: ws.Label,
 			URL:      ws.URL,
 			Index:    ws.Index,
+			Title:    ws.Title,
+			Snippet:  ws.Snippet,
+			Favicon:  ws.Favicon,
 		})
 	}
 	return out
