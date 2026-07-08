@@ -2,8 +2,48 @@ import "@testing-library/jest-dom/vitest";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
-import { combineLikeSources, MessageCitations } from "./Citations";
+import { combineLikeSources, dedupeByHost, MessageCitations } from "./Citations";
 import type { Citation } from "../api";
+
+const webSource = (url: string, index: number): Citation => ({
+  documentId: "",
+  filename: url,
+  snippet: "",
+  score: 0,
+  url,
+  index,
+});
+
+describe("dedupeByHost", () => {
+  it("keeps one source per hostname, preserving first-seen order", () => {
+    const sources = [
+      webSource("https://en.wikipedia.org/wiki/A", 1),
+      webSource("https://en.wikipedia.org/wiki/B", 2),
+      webSource("https://modal.com/docs", 3),
+    ];
+    const deduped = dedupeByHost(sources);
+    expect(deduped.map((s) => s.url)).toEqual([
+      "https://en.wikipedia.org/wiki/A",
+      "https://modal.com/docs",
+    ]);
+  });
+
+  it("treats hosts case-insensitively", () => {
+    const deduped = dedupeByHost([
+      webSource("https://Example.com/a", 1),
+      webSource("https://example.com/b", 2),
+    ]);
+    expect(deduped).toHaveLength(1);
+  });
+
+  it("keeps sources with unparseable hosts instead of collapsing or dropping them", () => {
+    const deduped = dedupeByHost([
+      webSource("not a url", 1),
+      webSource("also not a url", 2),
+    ]);
+    expect(deduped).toHaveLength(2);
+  });
+});
 
 describe("combineLikeSources", () => {
   it("groups chunks by filename, counts references, and keeps the best snippet", () => {

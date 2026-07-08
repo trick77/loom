@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Citation } from "../api";
-import { SourceFavicon } from "./SourceFavicon";
+import { hostOf, SourceFavicon } from "./SourceFavicon";
 import { SourcesSidebar } from "./SourcesSidebar";
 
 type CombinedSource = {
@@ -61,6 +61,23 @@ function combineWebSources(sources: Citation[]): Citation[] {
   return unique.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
 }
 
+// dedupeByHost keeps the first web source per hostname so the favicon pile shows
+// one icon per distinct site — two pages cited from the same domain share a
+// favicon and would otherwise render as visual duplicates. Sources with an
+// unparseable host fall back to their (already URL-unique) url as the key so they
+// are neither merged together nor dropped. Input order (citation order) is kept.
+export function dedupeByHost(sources: Citation[]): Citation[] {
+  const seen = new Set<string>();
+  const unique: Citation[] = [];
+  for (const source of sources) {
+    const key = hostOf(source.url) || source.url;
+    if (key === undefined || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(source);
+  }
+  return unique;
+}
+
 // MessageCitations renders the sources that informed an assistant answer as a
 // "Sources" row of chips. Document sources reveal their matched snippet on click;
 // web sources link out to the page.
@@ -71,6 +88,9 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
   if (citations === undefined || citations.length === 0) return null;
   const combined = combineLikeSources(citations.filter((c) => !isWebSource(c)));
   const webSources = combineWebSources(citations.filter(isWebSource));
+  // The pile is a per-site visual summary, so collapse to one favicon per host;
+  // the sidebar still lists every distinct page from `webSources`.
+  const faviconSources = dedupeByHost(webSources);
   if (combined.length === 0 && webSources.length === 0) return null;
   const open = combined.find((source) => source.filename === openFile) ?? null;
 
@@ -88,7 +108,7 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             {/* pl-[3px] offsets the leftmost favicon's 3px ring so the icons' visible
                 edge lines up with the prose and action row above. */}
             <span className="flex items-center pl-[3px]">
-              {webSources.slice(0, 10).map((source, index, shown) => (
+              {faviconSources.slice(0, 10).map((source, index, shown) => (
                 <SourceFavicon
                   key={`fav-${source.index}-${source.url}`}
                   citation={source}
