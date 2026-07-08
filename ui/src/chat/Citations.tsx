@@ -85,15 +85,16 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             aria-haspopup="dialog"
             aria-expanded={sourcesOpen}
           >
-            {/* pl-0.5 offsets the leftmost favicon's 2px ring so the icons' visible
+            {/* pl-[3px] offsets the leftmost favicon's 3px ring so the icons' visible
                 edge lines up with the prose and action row above. */}
-            <span className="flex items-center pl-0.5">
-              {webSources.slice(0, 10).map((source, index) => (
+            <span className="flex items-center pl-[3px]">
+              {webSources.slice(0, 10).map((source, index, shown) => (
                 <SourceFavicon
                   key={`fav-${source.index}-${source.url}`}
                   citation={source}
                   size={18}
-                  className={`ring-2 ring-[#1a1917] ${index > 0 ? "-ml-2.5" : ""}`}
+                  className={`relative ring-[3px] ring-[#1a1917] ${index > 0 ? "-ml-[3px]" : ""}`}
+                  style={{ zIndex: shown.length - index }}
                 />
               ))}
             </span>
