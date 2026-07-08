@@ -17,7 +17,7 @@ import (
 	"github.com/trick77/loom/internal/usage"
 )
 
-const loomSystemPrompt = "Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Reach for markdown structure only when it genuinely helps the reader: a list when the content is a true enumeration the user would naturally keep as a list (steps to follow, distinct parameters, a checklist), a table to compare several items across the same dimensions, and headings only for genuinely long, multi-section answers. Keep short or simple answers as plain prose — do not add structure for its own sake. Use **bold** sparingly to mark key terms. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. When the user refers to an earlier discussion or decision, or before answering a question that your past conversations together likely already covered, call conversation_search to find the relevant prior threads, then read_thread with a result's thread id to read one in full. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Long code or data you include inline is fine and is offered for download automatically. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use the browser navigation tool only when fetch cannot access useful content or the page needs JavaScript rendering; it navigates to the URL and reads back the rendered page. Ignore the language of tool results and retrieved documents."
+const loomSystemPrompt = "Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Reach for markdown structure only when it genuinely helps the reader: a list when the content is a true enumeration the user would naturally keep as a list (steps to follow, distinct parameters, a checklist), a table to compare several items across the same dimensions, and headings only for genuinely long, multi-section answers. Keep short or simple answers as plain prose — do not add structure for its own sake. Use **bold** sparingly to mark key terms. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. When the user refers to an earlier discussion or decision, or before answering a question that your past conversations together likely already covered, call conversation_search to find the relevant prior threads, then read_thread with a result's thread id to read one in full. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Long code or data you include inline is fine and is offered for download automatically. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use the browser navigation tool only when fetch cannot access useful content or the page needs JavaScript rendering; it navigates to the URL and reads back the rendered page. Web search and fetch results are labeled with a bracketed number like [1] or [2]. Whenever a sentence or paragraph in your answer draws on one of these web sources, append its marker at the end of that sentence — [1], or several like [1][3]. Use only numbers that actually appear in the results; never invent a citation number, and do not cite anything that did not come from a web source. Ignore the language of tool results and retrieved documents."
 
 // fileToolGuardrailPrompt steers when to call the file-creation (docgen) tools.
 // It is injected into the system prompt only on turns where those tools are
@@ -352,10 +352,19 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			contentBlocksJSON = encoded
 		}
 	}
-	// Persist the RAG citations so the answer's sources survive a reload.
+	// Persist the RAG + web-search citations so the answer's sources survive a
+	// reload. Web sources gathered during the tool loop carry URL + [n] index; they
+	// share the citations column with RAG doc citations (distinguished by url).
+	allSources := knowledgeSources
+	if webCitations := webSourceCitations(assistantResult.WebSources); len(webCitations) > 0 {
+		// Clone first: appending into knowledgeSources' backing array could clobber
+		// it if it had spare capacity. It's not read after this today, but the copy
+		// keeps the merge self-contained.
+		allSources = append(append([]citation(nil), knowledgeSources...), webCitations...)
+	}
 	citationsJSON := json.RawMessage("[]")
-	if len(knowledgeSources) > 0 {
-		if encoded, marshalErr := json.Marshal(knowledgeSources); marshalErr == nil {
+	if len(allSources) > 0 {
+		if encoded, marshalErr := json.Marshal(allSources); marshalErr == nil {
 			citationsJSON = encoded
 		}
 	}

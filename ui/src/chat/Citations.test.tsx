@@ -49,4 +49,31 @@ describe("MessageCitations", () => {
     expect(screen.getByText("full document")).toBeInTheDocument();
     expect(screen.queryByText(/excerpt/)).not.toBeInTheDocument();
   });
+
+  it("renders web sources as link chips ordered by citation index, deduped by url", () => {
+    const sources: Citation[] = [
+      { documentId: "", filename: "Modal", snippet: "", score: 0, url: "https://modal.com", index: 2 },
+      { documentId: "", filename: "Truefoundry", snippet: "", score: 0, url: "https://truefoundry.com", index: 1 },
+      // Duplicate URL (same page cited twice) collapses to one chip.
+      { documentId: "", filename: "Modal", snippet: "", score: 0, url: "https://modal.com", index: 3 },
+    ];
+    render(<MessageCitations citations={sources} />);
+    expect(screen.getByText("Sources")).toBeInTheDocument();
+    const links = screen.getAllByRole("link");
+    expect(links).toHaveLength(2);
+    // Ordered by index: Truefoundry (1) before Modal (2).
+    expect(links[0]).toHaveTextContent("Truefoundry");
+    expect(links[0]).toHaveAttribute("href", "https://truefoundry.com");
+    expect(links[1]).toHaveTextContent("Modal");
+  });
+
+  it("renders both document and web sources together", () => {
+    const sources: Citation[] = [
+      { documentId: "d1", filename: "guide.pdf", snippet: "a", score: 0.9 },
+      { documentId: "", filename: "Modal", snippet: "", score: 0, url: "https://modal.com", index: 1 },
+    ];
+    render(<MessageCitations citations={sources} />);
+    expect(screen.getByText("guide.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Modal" })).toHaveAttribute("href", "https://modal.com");
+  });
 });

@@ -1,12 +1,14 @@
 import {
   type ComponentPropsWithoutRef,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import type { ExtraProps } from "react-markdown";
+import type { Components, ExtraProps } from "react-markdown";
+import type { PluggableList } from "unified";
 import Markdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import rehypeHighlight from "rehype-highlight";
@@ -34,6 +36,7 @@ import { CheckIcon, DownloadIcon } from "./icons";
 import { Icon } from "./Icon";
 import { ImageLightbox } from "./ImageLightbox";
 import { rehypeStreamFade } from "./streamFade";
+import { rehypeSourcePills, SourcePill, SOURCE_PILL_TAG, webSourceMap, type SourceMap } from "./sourcePills";
 import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
 
 export function MessageBubble({
@@ -117,10 +120,15 @@ export function MessageBubble({
     .filter((block): block is Extract<ContentBlock, { type: "text" }> => block.type === "text")
     .map((block) => block.content)
     .join("\n\n");
+  // Build the [n] -> web-source map once per message so inline citation markers in
+  // any text block resolve to source pills. Memoized so its identity is stable
+  // across re-renders — a fresh Map each render would force react-markdown to
+  // re-run the rehype pass on every streamed token.
+  const sources = useMemo(() => webSourceMap(message.citations), [message.citations]);
   return (
     <div className="max-w-[46rem] space-y-3">
       {blocks.map((block, index) => (
-        <AssistantBlock key={`${message.id}-block-${index}`} block={block} />
+        <AssistantBlock key={`${message.id}-block-${index}`} block={block} sources={sources} />
       ))}
       {!publicView && (
         <MessageActions
@@ -163,14 +171,14 @@ function AttachmentNotShared() {
 // collapsed, inactive activity panel; text blocks render prose (with
 // downloadable/pending-fenced-artifact detection); artifact blocks render the
 // generated-artifact card.
-function AssistantBlock({ block }: { block: ContentBlock }) {
+function AssistantBlock({ block, sources }: { block: ContentBlock; sources?: SourceMap }) {
   if (block.type === "trace") {
     return <ActivityTracePanel events={block.events} active={false} />;
   }
   if (block.type === "artifact") {
     return <GeneratedArtifactCard artifact={block.artifact} />;
   }
-  return <AssistantProse>{block.content}</AssistantProse>;
+  return <AssistantProse sources={sources}>{block.content}</AssistantProse>;
 }
 
 function SentAttachments({ attachments }: { attachments: ComposerAttachment[] }) {
@@ -303,15 +311,21 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
 export function ProseMarkdown({
   children,
   streaming = false,
+  sources,
 }: {
   children: string;
   streaming?: boolean;
+  /** Web-source registry for resolving inline [n] citation markers to pills. */
+  sources?: SourceMap;
 }) {
+  const rehypePlugins: PluggableList = [rehypeHighlight];
+  if (streaming) rehypePlugins.push(rehypeStreamFade);
+  if (sources !== undefined) rehypePlugins.push([rehypeSourcePills, sources]);
   return (
     <div className="ui-message-text ui-markdown text-[#f3f0e8]">
       <Markdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={streaming ? [rehypeHighlight, rehypeStreamFade] : [rehypeHighlight]}
+        rehypePlugins={rehypePlugins}
         components={{
           a({ children, ...props }) {
             return (
@@ -320,6 +334,12 @@ export function ProseMarkdown({
               </a>
             );
           },
+          // Custom element emitted by rehypeSourcePills for each [n] citation.
+          // Cast: react-markdown's Components type is keyed by HTML tag names, so a
+          // custom element name isn't in the type — the runtime maps it fine.
+          [SOURCE_PILL_TAG]: ({ href, children }: { href?: unknown; children?: ReactNode }) => (
+            <SourcePill href={href}>{children}</SourcePill>
+          ),
           img({ src, ...props }) {
             // Only render images whose src is an absolute, loadable URL. The model
             // sometimes embeds a generated image by its bare filename (e.g.
@@ -330,7 +350,7 @@ export function ProseMarkdown({
             return ok ? <img src={src} {...props} /> : null;
           },
           pre: CodeBlock,
-        }}
+        } as Components}
       >
         {children}
       </Markdown>
@@ -345,9 +365,12 @@ export function ProseMarkdown({
 export function AssistantProse({
   children,
   streaming = false,
+  sources,
 }: {
   children: string;
   streaming?: boolean;
+  /** Web-source registry for resolving inline [n] citation markers to pills. */
+  sources?: SourceMap;
 }) {
   // Memoize on the text so the parsed artifact keeps a stable identity across
   // re-renders. SvgResponseBubble's blob effect keys on artifact.content; for a
@@ -366,9 +389,9 @@ export function AssistantProse({
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
-        {before !== "" && <ProseMarkdown streaming={streaming}>{before}</ProseMarkdown>}
+        {before !== "" && <ProseMarkdown streaming={streaming} sources={sources}>{before}</ProseMarkdown>}
         <Bubble artifact={artifact} />
-        {after !== "" && <ProseMarkdown streaming={streaming}>{after}</ProseMarkdown>}
+        {after !== "" && <ProseMarkdown streaming={streaming} sources={sources}>{after}</ProseMarkdown>}
       </div>
     );
   }
@@ -380,7 +403,7 @@ export function AssistantProse({
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
-        <ProseMarkdown streaming={streaming}>{before}</ProseMarkdown>
+        <ProseMarkdown streaming={streaming} sources={sources}>{before}</ProseMarkdown>
         <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />
       </div>
     );
@@ -388,7 +411,7 @@ export function AssistantProse({
 
   return (
     <div className="ui-assistant-message group w-full">
-      <ProseMarkdown streaming={streaming}>{children}</ProseMarkdown>
+      <ProseMarkdown streaming={streaming} sources={sources}>{children}</ProseMarkdown>
     </div>
   );
 }
