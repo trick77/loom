@@ -85,7 +85,9 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             aria-haspopup="dialog"
             aria-expanded={sourcesOpen}
           >
-            <span className="flex items-center">
+            {/* pl-0.5 offsets the leftmost favicon's 2px ring so the icons' visible
+                edge lines up with the prose and action row above. */}
+            <span className="flex items-center pl-0.5">
               {webSources.slice(0, 3).map((source, index) => (
                 <SourceFavicon
                   key={`fav-${source.index}-${source.url}`}
