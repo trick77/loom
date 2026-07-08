@@ -121,6 +121,42 @@ func TestHandleFavicon_rejectsNonImage(t *testing.T) {
 	}
 }
 
+func TestHandleFavicon_rejectsSVG(t *testing.T) {
+	// image/svg+xml passes a naive "image/" prefix check but can carry <script>;
+	// serving it same-origin would be a stored-XSS vector, so it must be refused.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
+	}))
+	defer upstream.Close()
+	s := faviconServer(t)
+
+	rec := getFavicon(t, s, upstream.URL+"/icon.svg", nil)
+	if rec.Code == http.StatusOK {
+		t.Fatalf("svg favicon must be rejected, got 200")
+	}
+}
+
+func TestHandleFavicon_setsHardeningHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("\x89PNGok"))
+	}))
+	defer upstream.Close()
+	s := faviconServer(t)
+
+	rec := getFavicon(t, s, upstream.URL+"/f.ico", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if rec.Header().Get("Content-Security-Policy") == "" {
+		t.Fatal("missing Content-Security-Policy")
+	}
+}
+
 func TestHandleFavicon_badRequests(t *testing.T) {
 	s := faviconServer(t)
 	for _, tc := range []struct {

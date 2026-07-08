@@ -16,10 +16,13 @@ function googleFavicon(host: string, sizePx: number): string {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=${sizePx}`;
 }
 
-// faviconProxy routes a remote favicon url through the backend so the bytes are
-// fetched once, cached on disk, and served with a long browser Cache-Control —
-// avoiding repeated third-party fetches and load flicker on every re-render.
+// faviconProxy routes a remote http(s) favicon url through the backend so the bytes
+// are fetched once, cached on disk, and served with a long browser Cache-Control —
+// avoiding repeated third-party fetches and load flicker on every re-render. Non-http
+// urls (e.g. an inline data: favicon) are passed through unchanged: the backend only
+// proxies http(s), and they already render directly in the browser.
 export function faviconProxy(u: string): string {
+  if (!/^https?:\/\//i.test(u)) return u;
   return `/api/favicon?u=${encodeURIComponent(u)}`;
 }
 

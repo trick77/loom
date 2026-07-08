@@ -22,7 +22,11 @@ const (
 	// faviconCacheControl lets browsers cache proxied favicons for a week. After that
 	// the browser revalidates via the ETag, but the server never re-fetches upstream:
 	// the on-disk entry is permanent, so a 304 just re-serves the same bytes. To
-	// refresh a stale favicon, delete its file from the cache dir.
+	// refresh a stale favicon, delete its file from the cache dir. There is no
+	// eviction, so the cache dir grows with the number of distinct favicon urls ever
+	// requested (each capped at faviconMaxBytes); the route is auth-gated, so this is
+	// an accepted trade-off rather than an open-ended surface. Add LRU eviction if the
+	// dir is ever observed to grow unreasonably.
 	faviconCacheControl = "public, max-age=604800"
 	faviconMaxBytes     = 256 << 10 // 256 KiB — favicons are tiny; cap abuse.
 	faviconFetchTimeout = 5 * time.Second
@@ -52,22 +56,44 @@ var faviconDefaultClient = &http.Client{
 
 // faviconLocks serializes concurrent fetches of the same url so a burst of
 // identical requests hits the network once; the losers find the file on disk on
-// their double-check. Distinct favicon urls are bounded by the number of cited
-// sites, so the map does not grow without bound in practice.
+// their double-check. Because the endpoint accepts an arbitrary url, the map is
+// kept bounded by ref-counting: an entry is dropped once its last in-flight
+// waiter releases it, so only keys with active requests are held. Correctness
+// never depends on the lock (the on-disk double-check and atomic write make
+// concurrent fetches of the same key harmless) — it is purely stampede control.
+type faviconGate struct {
+	mu   sync.Mutex
+	refs int
+}
+
 var (
 	faviconLocksMu sync.Mutex
-	faviconLocks   = map[string]*sync.Mutex{}
+	faviconLocks   = map[string]*faviconGate{}
 )
 
-func faviconLock(key string) *sync.Mutex {
+// faviconAcquire returns the (locked) gate for key, registering a reference.
+func faviconAcquire(key string) *faviconGate {
 	faviconLocksMu.Lock()
-	defer faviconLocksMu.Unlock()
-	m, ok := faviconLocks[key]
+	g, ok := faviconLocks[key]
 	if !ok {
-		m = &sync.Mutex{}
-		faviconLocks[key] = m
+		g = &faviconGate{}
+		faviconLocks[key] = g
 	}
-	return m
+	g.refs++
+	faviconLocksMu.Unlock()
+	g.mu.Lock()
+	return g
+}
+
+// faviconRelease unlocks the gate and evicts it from the map when no waiters remain.
+func faviconRelease(key string, g *faviconGate) {
+	g.mu.Unlock()
+	faviconLocksMu.Lock()
+	g.refs--
+	if g.refs == 0 {
+		delete(faviconLocks, key)
+	}
+	faviconLocksMu.Unlock()
 }
 
 // guardPublicAddr rejects connections to non-public IP ranges. IsPrivate covers
@@ -113,16 +139,18 @@ func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cache miss: serialize same-key fetches, then double-check the cache.
-	lock := faviconLock(key)
-	lock.Lock()
-	defer lock.Unlock()
+	// Cache miss: serialize same-key fetches, then double-check the cache. The gate
+	// is released before serving so a slow client never blocks other same-key
+	// requests — by then the bytes are on disk.
+	gate := faviconAcquire(key)
 	if path, ct, ok := s.faviconCached(key); ok {
+		faviconRelease(key, gate)
 		serveFaviconFile(w, r, path, ct, etag)
 		return
 	}
 
 	path, ct, status, err := s.fetchAndCacheFavicon(r.Context(), key, raw)
+	faviconRelease(key, gate)
 	if err != nil {
 		if status == 0 {
 			status = http.StatusBadGateway
@@ -157,9 +185,13 @@ func (s *server) fetchAndCacheFavicon(ctx context.Context, key, rawURL string) (
 		return "", "", resp.StatusCode, fmt.Errorf("upstream status %d", resp.StatusCode)
 	}
 
-	ct := strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
-	if !strings.HasPrefix(ct, "image/") {
-		return "", "", http.StatusUnsupportedMediaType, fmt.Errorf("non-image content-type %q", ct)
+	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]))
+	// SVG is rejected: it can carry <script>, and we re-serve favicon bytes from our
+	// own origin. Favicons are raster in practice, so blocking it costs nothing and
+	// removes the stored-XSS vector outright. serveFaviconFile adds nosniff + a
+	// locked-down CSP as defence in depth for the raster types we do serve.
+	if !strings.HasPrefix(ct, "image/") || ct == "image/svg+xml" {
+		return "", "", http.StatusUnsupportedMediaType, fmt.Errorf("unsupported content-type %q", ct)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, faviconMaxBytes+1))
@@ -230,6 +262,12 @@ func serveFaviconFile(w http.ResponseWriter, r *http.Request, path, contentType,
 	if contentType != "" {
 		w.Header().Set("Content-Type", contentType)
 	}
+	// Defence in depth for bytes fetched from a third party and served same-origin:
+	// forbid MIME sniffing, and sandbox any active content so a mislabeled/crafted
+	// payload cannot execute in the app's origin if loaded outside an <img>.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Cache-Control", faviconCacheControl)
 	w.Header().Set("ETag", etag)
 	http.ServeContent(w, r, path, info.ModTime(), f)

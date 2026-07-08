@@ -35,6 +35,12 @@ describe("SourceFavicon", () => {
     expect(decodeURIComponent(src)).toContain("google.com/s2/favicons?domain=modal.com");
   });
 
+  it("passes a non-http (data:) favicon through unproxied", () => {
+    const dataUri = "data:image/png;base64,AAAA";
+    const { container } = render(<SourceFavicon citation={web({ favicon: dataUri })} />);
+    expect(container.querySelector("img")!.getAttribute("src")).toBe(dataUri);
+  });
+
   it("falls straight to a letter avatar when there is no url", () => {
     const { container } = render(<SourceFavicon citation={web({ url: "", filename: "Guardian" })} />);
     expect(container.querySelector("img")).toBeNull();
