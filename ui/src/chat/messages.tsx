@@ -17,6 +17,7 @@ import remarkGfm from "remark-gfm";
 import { type ContentBlock, type Message, type MessagePastedText } from "../api";
 import i18n from "../i18n";
 import { MessageMetrics } from "../MessageMetrics";
+import { formatMessageTime } from "../metrics";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import {
   downloadableResponse,
@@ -104,6 +105,8 @@ export function MessageBubble({
             // Retry re-stages the collapsed pastes as chips (not the inline wall):
             // pass the stripped draft plus the blocks, so resend keeps the collapse.
             onRetry={() => onRetry?.(displayContent, message.pastedTexts)}
+            // The sent message carries only its time (no token metrics) in the status line.
+            metricsMessage={message}
             alignRight
           />
         )}
@@ -481,41 +484,66 @@ function MessageActions({
   // (model name, token cost) only once the message has settled.
   if (streaming) return null;
 
-  return (
-    <div className={`mt-2 flex items-center gap-1 ${alignRight ? "justify-end" : ""}`}>
-      {speakable && (
-        <button
-          className={`grid h-6 w-6 place-items-center transition-colors hover:text-[#f3f0e8] ${
-            speaking ? "text-[#f3f0e8]" : "text-[#858178]"
-          }`}
-          onClick={handleSpeak}
-          type="button"
-          title={speaking ? t("messages.stop") : t("messages.readAloud")}
-          aria-label={speaking ? t("messages.stopReading") : t("messages.readAloud")}
-        >
-          <Icon name="volume" size="1.15rem" />
-        </button>
-      )}
+  const copyButton = (
+    <button
+      className="grid h-6 w-5 place-items-center text-[#858178] hover:text-[#f3f0e8]"
+      onClick={handleCopy}
+      type="button"
+      title={t("messages.copy")}
+      aria-label={copyLabel}
+    >
+      {copied ? <CheckIcon className="h-[1rem] w-[1rem]" /> : <Icon name="copy" size="1rem" />}
+    </button>
+  );
+  const retryButton =
+    onRetry !== undefined ? (
       <button
-        className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
-        onClick={handleCopy}
+        className="grid h-6 w-5 place-items-center text-[#858178] hover:text-[#f3f0e8]"
+        onClick={onRetry}
         type="button"
-        title={t("messages.copy")}
-        aria-label={copyLabel}
+        title={t("messages.retry")}
+        aria-label={retryLabel}
       >
-        {copied ? <CheckIcon className="h-[1.15rem] w-[1.15rem]" /> : <Icon name="copy" size="1.15rem" />}
+        <Icon name="retry" size="0.875rem" />
       </button>
-      {onRetry !== undefined && (
-        <button
-          className="grid h-6 w-6 place-items-center text-[#858178] hover:text-[#f3f0e8]"
-          onClick={onRetry}
-          type="button"
-          title={t("messages.retry")}
-          aria-label={retryLabel}
-        >
-          <Icon name="retry" size="1.15rem" />
-        </button>
-      )}
+    ) : null;
+  const volumeButton = speakable ? (
+    <button
+      className={`grid h-6 w-5 place-items-center transition-colors hover:text-[#f3f0e8] ${
+        speaking ? "text-[#f3f0e8]" : "text-[#858178]"
+      }`}
+      onClick={handleSpeak}
+      type="button"
+      title={speaking ? t("messages.stop") : t("messages.readAloud")}
+      aria-label={speaking ? t("messages.stopReading") : t("messages.readAloud")}
+    >
+      <Icon name="volume" size="1rem" />
+    </button>
+  ) : null;
+
+  // The user's own prompt: everything hugs the right edge, reading time → retry →
+  // copy (copy furthest right). User messages carry no token metrics, so only the
+  // message time shows — rendered as a plain span, no pill.
+  if (alignRight) {
+    const time = metricsMessage ? formatMessageTime(metricsMessage.createdAt) : "";
+    return (
+      <div className="mt-2 flex items-center justify-end gap-0.5">
+        {time !== "" && (
+          <span className="mr-1 font-sans text-[0.75rem] leading-[1.45rem] text-[#858178]">{time}</span>
+        )}
+        {retryButton}
+        {copyButton}
+      </div>
+    );
+  }
+
+  // The assistant answer: copy sits leftmost, then read-aloud and retry, with the
+  // time-led metrics status line pushed to the right edge (ml-auto inside MessageMetrics).
+  return (
+    <div className="mt-2 flex items-center gap-0.5">
+      {copyButton}
+      {volumeButton}
+      {retryButton}
       {metricsMessage && <MessageMetrics message={metricsMessage} category={category} />}
     </div>
   );
