@@ -2056,104 +2056,70 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 	if store.assistantContent != "Final answer after the tool ran." {
 		t.Fatalf("assistantContent = %q, want forced final answer", store.assistantContent)
 	}
-	// The forced final turn must nudge the model to deliver its answer via the
-	// final_answer tool rather than issuing another research tool call.
+	// The forced final turn is a clean, tool-free synthesis: it nudges the model to
+	// write its answer from the gathered notes, and offers no tools.
 	lastHistory := llmClient.histories[len(llmClient.histories)-1]
 	nudged := false
 	for _, msg := range lastHistory {
-		if msg.Role == "system" && strings.Contains(msg.Content, "final_answer tool") {
+		if strings.Contains(msg.Content, "write your complete final answer") {
 			nudged = true
 		}
 	}
 	if !nudged {
-		t.Fatalf("final turn history missing the final_answer nudge: %#v", lastHistory)
+		t.Fatalf("final turn history missing the synthesis directive: %#v", lastHistory)
 	}
-	// The forced final turn must offer exactly the final_answer tool (and nothing
-	// else), so a tool-eager model has a tool-shaped channel to answer through.
 	lastTools := llmClient.tools[len(llmClient.tools)-1]
-	if len(lastTools) != 1 || lastTools[0].Function.Name != finalAnswerToolName {
-		t.Fatalf("final turn tools = %#v, want only final_answer", lastTools)
+	if len(lastTools) != 0 {
+		t.Fatalf("final turn tools = %#v, want none (tool-free synthesis)", lastTools)
 	}
 }
 
-// When the model answers the forced final turn by calling final_answer (as a
-// tool-eager model like MiMo does), the loop lifts the tool's text argument into
-// the assistant message content instead of leaving the turn empty.
-func TestStreamMessageAdoptsFinalAnswerToolCall(t *testing.T) {
+// The forced final-answer turn is rebuilt as a clean synthesis: the
+// tool-call/tool-result rounds are dropped and the gathered notes are inlined into
+// the final user message, so the model answers in prose (like the utility calls)
+// instead of reflexively emitting another tool call over a tool-saturated history.
+func TestStreamMessageForcedFinalUsesCleanSynthesisHistory(t *testing.T) {
 	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
-	// Round 1 runs a tool; round 2 is empty (model gives up) → forced final turn;
-	// the forced final result is a final_answer tool call carrying the answer text.
+	// Round 1 runs a tool; round 2 is empty (model gives up) → forced final turn.
 	llmClient := &fakeToolChatClient{
 		results: []llm.StreamResult{
 			{ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
 			{},
-			{ToolCalls: []llm.ToolCall{{ID: "call_final", Function: llm.ToolCallFunction{Name: finalAnswerToolName, Arguments: `{"text":"Here is the synthesized answer."}`}}}},
 		},
+		plain: "Synthesized answer from notes.",
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
-			result: "search result",
+			result: "SEARCH_RESULT_NOTE",
 		},
 	})
 	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Compare things"}`)
 
 	srv.ServeHTTP(rec, req)
 
-	body := rec.Body.String()
-	if strings.Contains(body, "empty assistant response") {
-		t.Fatalf("SSE body returned empty response despite a final_answer call:\n%s", body)
+	if store.assistantContent != "Synthesized answer from notes." {
+		t.Fatalf("assistantContent = %q, want the synthesized prose", store.assistantContent)
 	}
-	if store.assistantContent != "Here is the synthesized answer." {
-		t.Fatalf("assistantContent = %q, want the final_answer text", store.assistantContent)
+	final := llmClient.histories[len(llmClient.histories)-1]
+	// No tool-call/tool-result turns survive into the synthesis history.
+	for _, msg := range final {
+		if msg.Role == "tool" || len(msg.ToolCalls) > 0 {
+			t.Fatalf("synthesis history still carries tool turns: %#v", final)
+		}
 	}
-	// The adopted final_answer call must not surface as a raw tool_call in the body.
-	if strings.Contains(body, finalAnswerToolName) {
-		t.Fatalf("final_answer tool name leaked into the response body:\n%s", body)
+	// The gathered notes are inlined into the final message.
+	joined := ""
+	for _, msg := range final {
+		joined += msg.Content
 	}
-}
-
-// A final_answer call truncated at the token cap leaves unclosed <tool_call> markup
-// the parser cannot recover. Even if upstream scrubbing were bypassed, the loop must
-// never persist that raw markup as the answer — it blanks it and falls back.
-func TestStreamMessageDoesNotPersistTruncatedFinalAnswerMarkup(t *testing.T) {
-	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
-	}
-	rawMarkup := "<tool_call><function=final_answer><parameter=text>a long synthesis cut off mid-"
-	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
-			{ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
-			{},                   // empty after tools → forced final turn
-			{Content: rawMarkup}, // forced final: truncated markup (simulating unscrubbed)
-			{Content: rawMarkup}, // retry: same
-		},
-	}
-	srv := newAuthenticatedServer(t, Deps{
-		Thread: store,
-		LLM:    llmClient,
-		MCP: fakeMCPService{
-			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
-			result: "search result",
-		},
-	})
-	rec := httptest.NewRecorder()
-	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Search Lume"}`)
-
-	srv.ServeHTTP(rec, req)
-
-	// The persisted answer (what survives a reload) must be the clean fallback, never
-	// the raw markup.
-	if strings.Contains(store.assistantContent, "<tool_call>") {
-		t.Fatalf("raw tool-call markup leaked into persisted content: %q", store.assistantContent)
-	}
-	if store.assistantContent != finalAnswerFallback {
-		t.Fatalf("assistantContent = %q, want the fallback message", store.assistantContent)
+	if !strings.Contains(joined, "SEARCH_RESULT_NOTE") {
+		t.Fatalf("synthesis history missing inlined notes: %#v", final)
 	}
 }
 

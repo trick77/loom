@@ -94,6 +94,12 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	// return above this and never gather web sources.
 	defer func() { out.WebSources = reg.all() }()
 	b := &blockBuilder{}
+	// The prompt prefix before any tool round: original system prompt + prior
+	// conversation + the user's question. The forced final answer rebuilds a clean
+	// synthesis history from this prefix (dropping the tool-call rounds), so capture
+	// its length now — the loop only appends, so history[:initialHistoryLen] stays
+	// this prefix.
+	initialHistoryLen := len(history)
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
@@ -202,49 +208,45 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			slog.Info("forcing final answer", "reason", "rounds_exhausted", "round", round)
 		}
 	}
-	// Force a final answer. Telling MiMo to "answer now, no tools" does not work
-	// after a research turn: it compulsively emits another, unrunnable tool call
-	// that the inline parser strips to empty (the failure this path defeats). So
-	// instead of removing tools, offer a single final_answer(text) tool — a
-	// tool-shaped channel a tool-eager model will actually use to deliver the answer.
-	// adoptFinalAnswer lifts the tool's text back into the turn's content; a direct
-	// prose answer is still accepted if the model writes one. A system directive (not
-	// a user turn) avoids biasing the answer's language.
-	finalTool := finalAnswerTool()
-	finalDirective := "You have gathered enough information. Provide your final answer now by calling the final_answer tool exactly once, passing your complete answer as its text argument. Answer in the user's language. Do not call any other tool."
+	// Force a final answer. Appending a directive to the tool-saturated history does
+	// not work: after a research turn MiMo reflexively emits another (unrunnable) tool
+	// call — it is pattern-continuing the tool-call/tool-result rounds — which is
+	// stripped to empty and dead-ends the turn. Instead rebuild the final turn as a
+	// clean, tool-free synthesis over the gathered notes: the shape every reliable
+	// prose call in the codebase uses. This also streams the answer live (no tool
+	// suppression), so a long synthesis never looks like a dead thread.
+	var extraDirective string
 	if lastRoundDeferred {
-		// Some tool calls were deferred past this turn's per-round caps and never
-		// ran. Tell the user so they can ask to continue — a fresh turn gets a
-		// fresh round budget. Kept language-neutral so the model answers in the
-		// user's language rather than being biased toward English.
-		finalDirective += " Some requested items could not be processed within this turn's tool limit. In your answer, briefly tell the user that not everything was processed and offer to continue if they'd like the rest."
+		// Some tool calls were deferred past this turn's per-round caps and never ran.
+		// Tell the user so they can ask to continue — a fresh turn gets a fresh round
+		// budget. Kept language-neutral so the model answers in the user's language.
+		extraDirective = "Some requested items could not be processed within this turn's tool limit; briefly tell the user that not everything was processed and offer to continue if they'd like the rest."
 	}
-	finalHistory := append(history[:len(history):len(history)], llm.Message{
-		Role:    "system",
-		Content: finalDirective,
-	})
-	result, err := s.streamFinalAnswerTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, finalAnswerInference(inference, "chat_final", maxToolRounds+1), []llm.Tool{finalTool})
-	if err == nil {
-		result = adoptFinalAnswer(result)
+	finalHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, extraDirective)
+	if !ok {
+		// No gathered notes (should not happen once tools ran) — fall back to the full
+		// history with a plain, tool-free directive.
+		directive := "Provide your final answer now using the information already gathered above. Do not call any more tools."
+		if extraDirective != "" {
+			directive += " " + extraDirective
+		}
+		finalHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: directive})
 	}
+	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, finalAnswerInference(inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(titles, result)
 	if persistInterruptedPartial(result, err) {
 		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 	}
-	// Still no usable answer — neither prose nor a final_answer call carrying text
-	// (the model emitted a different tool, or the call was truncated at the token
-	// cap). Retry once with a firmer directive, then fall back to a fixed message —
-	// anything but persisting an empty (and therefore discarded) turn.
+	// Backstop: if the clean synthesis still produced no prose (e.g. the model emitted
+	// an inline tool call that was stripped), retry once with a firmer directive, then
+	// fall back to a fixed message — anything but persisting an empty turn.
 	if err == nil && strings.TrimSpace(result.Content) == "" {
-		slog.Info("retrying empty final answer", "reason", "no_final_answer_text", "round", maxToolRounds+1)
-		retryHistory := append(history[:len(history):len(history)], llm.Message{
-			Role:    "system",
-			Content: "Call the final_answer tool now with your complete answer as its text argument. Emit nothing else: do not call any other tool and do not write any other tool-call markup.",
-		})
-		result, err = s.streamFinalAnswerTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalAnswerInference(inference, "chat_final_retry", maxToolRounds+2), []llm.Tool{finalTool})
-		if err == nil {
-			result = adoptFinalAnswer(result)
+		slog.Info("retrying empty final answer", "reason", "empty_synthesis", "round", maxToolRounds+1)
+		retryHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, "Answer in plain prose now. Do not emit any tool call or any tool-call markup.")
+		if !ok {
+			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}
+		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalAnswerInference(inference, "chat_final_retry", maxToolRounds+2), nil)
 		b.addResult(titles, result)
 		if persistInterruptedPartial(result, err) {
 			return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
@@ -387,24 +389,14 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writ
 // (or calling a tool), so the title overlaps the answer stream instead of
 // waiting for the turn to finish.
 func (s *server) streamAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
-	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, true, true)
+	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, true)
 }
 
 func (s *server) streamAssistantTurnSuppressingContent(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
-	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, false, true)
+	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, false)
 }
 
-// streamFinalAnswerTurn runs the forced final-answer turn. Its lone tool is the
-// internal final_answer channel (adoptFinalAnswer folds it back into prose), so its
-// tool_pending/tool_call plumbing must not surface to the client as a stray tool
-// pill. Content still streams: if the model answers in prose it renders live; if it
-// answers via final_answer the content is gated upstream and the answer lands with
-// the end-of-turn assistant_message instead.
-func (s *server) streamFinalAnswerTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
-	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, true, false)
-}
-
-func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent, streamTools bool) (llm.StreamResult, error) {
+func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
 	callCtx := llm.WithInferenceMetadata(ctx, meta)
 	var reasoningBuf strings.Builder
 	titleSpawned := false
@@ -425,9 +417,6 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 		}
 		if event.ToolPending {
 			spawnTitle()
-			if !streamTools {
-				return nil
-			}
 			return sendSSEJSON(stream, "tool_pending", struct{}{})
 		}
 		if event.Delta != "" && streamContent {
@@ -436,9 +425,6 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 		}
 		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
 			spawnTitle()
-			if !streamTools {
-				return nil
-			}
 			return sendSSEJSON(stream, "tool_call", toolCallResponse{
 				ID:        event.ToolCall.ID,
 				Name:      event.ToolCall.Function.Name,
@@ -458,11 +444,7 @@ func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round 
 // finalAnswerMaxCompletionTokens is the widened completion budget for the forced
 // final answer. The default chat cap is sized for a single answer with thinking;
 // the forced final synthesizes many gathered sources with thinking off, so it
-// gets more room for prose (and never spends the budget on reasoning). Sized
-// generously because the answer now rides a final_answer tool-call argument: a
-// truncation there breaks the whole call (an unclosed block is unparseable and
-// gets scrubbed to empty → fallback), so headroom directly avoids losing a long
-// research synthesis.
+// gets more room for prose (and never spends the budget on reasoning).
 const finalAnswerMaxCompletionTokens = 8192
 
 // finalAnswerInference builds the metadata for a forced final-answer turn: it
