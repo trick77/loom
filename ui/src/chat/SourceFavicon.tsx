@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 
 import type { Citation } from "../api";
 
@@ -31,10 +31,12 @@ export function SourceFavicon({
   citation,
   size = 16,
   className = "",
+  style,
 }: {
   citation: Citation;
   size?: number;
   className?: string;
+  style?: CSSProperties;
 }) {
   const host = hostOf(citation.url);
   const label = (citation.filename ?? host).trim();
@@ -54,7 +56,7 @@ export function SourceFavicon({
       <span
         aria-hidden="true"
         className={`inline-grid place-items-center rounded-full font-sans font-semibold text-white ${className}`}
-        style={{ ...dim, background: colorFor(label || "?"), fontSize: `${Math.round(size * 0.55)}px` }}
+        style={{ ...dim, background: colorFor(label || "?"), fontSize: `${Math.round(size * 0.55)}px`, ...style }}
       >
         {letter}
       </span>
@@ -66,7 +68,7 @@ export function SourceFavicon({
       alt=""
       loading="lazy"
       className={`rounded-full bg-[#2a2a28] object-cover ${className}`}
-      style={dim}
+      style={{ ...dim, ...style }}
       onError={() => setStep((s) => s + 1)}
     />
   );
