@@ -775,11 +775,7 @@ func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, fu
 func (f *fakeToolChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	f.histories = append(f.histories, append([]llm.Message(nil), history...))
 	f.tools = append(f.tools, append([]llm.Tool(nil), tools...))
-	// No tools, or all scripted tool-round results consumed: answer in prose from
-	// f.plain. The forced final-answer turn now carries a single final_answer tool,
-	// so it no longer has len(tools)==0 — the exhausted-results case models a model
-	// that replies to that turn with prose (which the loop accepts directly).
-	if len(tools) == 0 || len(f.results) == 0 {
+	if len(tools) == 0 {
 		result, err := f.StreamChatResult(context.Background(), history, nil)
 		if err != nil {
 			return llm.StreamResult{}, err
