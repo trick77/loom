@@ -111,7 +111,7 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 		// Best-effort: dedup against the user's standing instructions, but never
 		// fail the refresh just because the exclusion list couldn't be loaded.
 		if ex, err := scope.exclusions(ctx); err != nil {
-			slog.Warn("load memory exclusions failed", "scope", scope.name, "error", err)
+			slog.Warn("load memory exclusions failed", "scope", scope.name, "err", err)
 		} else {
 			excluded = ex
 		}

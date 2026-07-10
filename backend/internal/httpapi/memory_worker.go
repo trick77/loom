@@ -67,7 +67,7 @@ func (w *MemoryWorker) runOnce(ctx context.Context) {
 	}
 	users, err := s.users.ListUsers(ctx)
 	if err != nil {
-		slog.Warn("memory sweep: list users failed", "error", err)
+		slog.Warn("memory sweep: list users failed", "err", err)
 		return
 	}
 	for _, user := range users {
@@ -97,7 +97,7 @@ func (w *MemoryWorker) refreshUserMemory(ctx context.Context, user auth.User) {
 	rctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
 	defer cancel()
 	if err := w.s.refreshMemoryIfDue(rctx, user, w.s.userMemoryScope(user), memoryUserRefreshAge); err != nil {
-		slog.Warn("memory sweep: user memory refresh failed", "user_id", user.ID, "error", err)
+		slog.Warn("memory sweep: user memory refresh failed", "user_id", user.ID, "err", err)
 	}
 }
 
@@ -106,7 +106,7 @@ func (w *MemoryWorker) refreshUserMemory(ctx context.Context, user auth.User) {
 func (w *MemoryWorker) refreshProjectMemories(ctx context.Context, user auth.User) {
 	projects, err := w.s.thread.ListProjects(ctx, user.ID, false)
 	if err != nil {
-		slog.Warn("memory sweep: list projects failed", "user_id", user.ID, "error", err)
+		slog.Warn("memory sweep: list projects failed", "user_id", user.ID, "err", err)
 		return
 	}
 	for _, project := range projects {
@@ -121,7 +121,7 @@ func (w *MemoryWorker) refreshProjectMemory(ctx context.Context, user auth.User,
 	rctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
 	defer cancel()
 	if err := w.s.refreshMemoryIfDue(rctx, user, w.s.projectMemoryScope(user, project), memoryProjectDebounce); err != nil {
-		slog.Warn("memory sweep: project memory refresh failed", "project_id", project.ID, "error", err)
+		slog.Warn("memory sweep: project memory refresh failed", "project_id", project.ID, "err", err)
 	}
 	// Refresh the project's big-picture description (a summary of its thread titles)
 	// as the count-gated backstop to the per-title trigger: the gate is a cheap no-op
@@ -129,6 +129,6 @@ func (w *MemoryWorker) refreshProjectMemory(ctx context.Context, user auth.User,
 	// debounce window that no later trigger swept up. Best-effort; errors are logged
 	// inside refreshProjectDescriptionIfDue.
 	if err := w.s.refreshProjectDescriptionIfDue(rctx, user, project.ID); err != nil {
-		slog.Warn("memory sweep: project description refresh failed", "project_id", project.ID, "error", err)
+		slog.Warn("memory sweep: project description refresh failed", "project_id", project.ID, "err", err)
 	}
 }

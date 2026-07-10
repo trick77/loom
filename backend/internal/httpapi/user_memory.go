@@ -55,12 +55,12 @@ func (s *server) userMemoryScope(user auth.User) memoryScope {
 func (s *server) userContextForUser(ctx context.Context, userID string) string {
 	var blocks []string
 	if directives, err := s.thread.ListUserDirectives(ctx, userID); err != nil {
-		slog.Warn("load user directives failed", "error", err)
+		slog.Warn("load user directives failed", "err", err)
 	} else if block := renderUserDirectives(directives); block != "" {
 		blocks = append(blocks, block)
 	}
 	if memory, _, err := s.thread.GetUserMemory(ctx, userID); err != nil {
-		slog.Warn("load user memory failed", "error", err)
+		slog.Warn("load user memory failed", "err", err)
 	} else if block := renderUserContext(memory.Content); block != "" {
 		blocks = append(blocks, block)
 	}

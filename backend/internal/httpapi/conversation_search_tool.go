@@ -68,7 +68,7 @@ func (s *server) conversationSearchDigest(ctx context.Context, userID string, th
 
 	hits, err := s.thread.SearchMessages(ctx, userID, query, projectID, thread.ID, conversationSearchMaxResults)
 	if err != nil {
-		slog.Warn("conversation_search: search failed", "error", err)
+		slog.Warn("conversation_search: search failed", "err", err)
 		return "tool failed: search failed: " + err.Error()
 	}
 	if len(hits) == 0 {

@@ -62,7 +62,7 @@ func (s *server) projectThreadsDigest(ctx context.Context, userID string, thread
 		Limit:     maxProjectSummaryThreads + 2,
 	})
 	if err != nil {
-		slog.Warn("read_project_threads: list threads failed", "project_id", *thread.ProjectID, "error", err)
+		slog.Warn("read_project_threads: list threads failed", "project_id", *thread.ProjectID, "err", err)
 		return "tool failed: could not list the project's threads: " + err.Error()
 	}
 

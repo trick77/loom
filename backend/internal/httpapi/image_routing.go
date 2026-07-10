@@ -47,7 +47,7 @@ func (s *server) classifyImageTurn(ctx context.Context, user, threadID, content 
 	meta := llm.InferenceMetadata{UserID: user, ThreadID: threadID, Purpose: "image_intent", Round: 1}
 	intent, err := s.llm.ClassifyImageIntent(llm.WithInferenceMetadata(ctx, meta), content, hasAttachedImage, threadHasImage)
 	if err != nil {
-		slog.Warn("image-intent classification failed; routing as non-image", "thread_id", threadID, "error", err)
+		slog.Warn("image-intent classification failed; routing as non-image", "thread_id", threadID, "err", err)
 	}
 	return imageRoutingFor(intent, hasAttachedImage, threadHasImage)
 }

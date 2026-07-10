@@ -42,7 +42,7 @@ func (s *server) renderThreadDigest(ctx context.Context, userID string, t chat.T
 	}
 	messages, err := s.thread.ListRecentMessages(ctx, userID, t.ID, maxRecentMessagesPerThread)
 	if err != nil {
-		slog.Warn("thread digest: list messages failed", "thread_id", t.ID, "error", err)
+		slog.Warn("thread digest: list messages failed", "thread_id", t.ID, "err", err)
 		b.WriteString("(could not load this thread's messages)\n")
 		return b.String()
 	}
