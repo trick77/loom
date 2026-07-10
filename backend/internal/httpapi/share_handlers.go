@@ -3,11 +3,13 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"html"
 	"net/http"
 	"strings"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/web"
 )
 
 // share_handlers.go implements the public, unauthenticated share viewer endpoints
@@ -62,6 +64,112 @@ type publicShareResponse struct {
 	Author   string          `json:"author"`
 	SharedAt string          `json:"sharedAt"`
 	Messages json.RawMessage `json:"messages"`
+}
+
+// handleShareIndex serves the SPA's index.html for a public share URL, injecting
+// per-share Open Graph / Twitter-card <meta> so link-preview bots (Slack, iMessage,
+// Discord, X, …) render a rich card with the thread title instead of a bare
+// "Loom" box. Real browsers receive the same HTML and boot the SPA as usual
+// (ui/src/main.tsx routes /share/ to the read-only viewer).
+//
+// noindex is kept: link unfurl (preview for someone who already holds the link) and
+// search indexing are independent concerns, so revealing the title in a card does
+// not weaken the anti-indexing stance. On any lookup miss (unknown, disabled, or a
+// DB hiccup) we serve the plain index — the SPA shows its own not-found and no title
+// leaks; enrichment is best-effort.
+func (s *server) handleShareIndex(w http.ResponseWriter, r *http.Request) {
+	noindex(w)
+	index, ok := web.IndexHTML()
+	if !ok {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	share, found := s.lookupPublicShare(r)
+	if !found {
+		_, _ = w.Write(index)
+		return
+	}
+	// The author lives only in the sanitized snapshot (same shape as
+	// handleGetPublicShare); a missing/garbled author just omits the "Shared by …".
+	var stored struct {
+		Author string `json:"author"`
+	}
+	_ = json.Unmarshal(share.Snapshot, &stored)
+
+	base := s.shareAbsoluteBase(r)
+	page := injectShareMeta(string(index), share.Title, stored.Author,
+		base+"/share/"+share.ShareID, base+"/og-card.png")
+	_, _ = w.Write([]byte(page))
+}
+
+// lookupPublicShare resolves an active public share for handleShareIndex. A nil
+// store, a lookup error, a missing share, or a disabled share all resolve to
+// (zero, false) so the caller degrades to serving the plain index.
+func (s *server) lookupPublicShare(r *http.Request) (chat.Share, bool) {
+	if s.thread == nil {
+		return chat.Share{}, false
+	}
+	share, ok, err := s.thread.GetShareByShareID(r.Context(), r.PathValue("shareID"))
+	if err != nil || !ok || !share.Shared {
+		return chat.Share{}, false
+	}
+	return share, true
+}
+
+// shareAbsoluteBase returns the scheme+host used to build the absolute og:url and
+// og:image (Open Graph requires absolute URLs). It prefers the configured PublicURL
+// and falls back to the incoming request (honoring X-Forwarded-Proto behind a proxy)
+// so dev/self-hosted setups without PublicURL still produce a working card.
+func (s *server) shareAbsoluteBase(r *http.Request) string {
+	if s.publicURL != "" {
+		return strings.TrimRight(s.publicURL, "/")
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = p
+	}
+	return scheme + "://" + r.Host
+}
+
+// injectShareMeta inserts the OG/Twitter card tags before </head> and rewrites the
+// tab <title>. Every dynamic value is HTML-escaped, so a title/author containing
+// quotes or angle brackets cannot break out of the attribute or inject markup.
+func injectShareMeta(index, title, author, shareURL, imageURL string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "Shared conversation"
+	}
+	desc := "Shared on Loom"
+	if a := strings.TrimSpace(author); a != "" {
+		desc = "Shared by " + a + " · Loom"
+	}
+	t := html.EscapeString(title)
+	d := html.EscapeString(desc)
+	u := html.EscapeString(shareURL)
+	img := html.EscapeString(imageURL)
+
+	meta := strings.Join([]string{
+		`    <meta property="og:type" content="website" />`,
+		`    <meta property="og:site_name" content="Loom" />`,
+		`    <meta property="og:title" content="` + t + `" />`,
+		`    <meta property="og:description" content="` + d + `" />`,
+		`    <meta property="og:url" content="` + u + `" />`,
+		`    <meta property="og:image" content="` + img + `" />`,
+		`    <meta name="twitter:card" content="summary_large_image" />`,
+		`    <meta name="twitter:title" content="` + t + `" />`,
+		`    <meta name="twitter:description" content="` + d + `" />`,
+		`    <meta name="twitter:image" content="` + img + `" />`,
+		"  </head>",
+	}, "\n")
+
+	out := strings.Replace(index, "</head>", meta, 1)
+	out = strings.Replace(out, "<title>Loom</title>", "<title>"+t+" · Loom</title>", 1)
+	return out
 }
 
 // handlePublicShareArtifactDownload serves a generated artifact referenced by an

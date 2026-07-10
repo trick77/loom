@@ -371,6 +371,11 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/documents/{documentID}/unindex", s.requireAuth(http.HandlerFunc(s.handleUnindexDocument)))
 	mux.Handle("DELETE /api/documents/{documentID}", s.requireAuth(http.HandlerFunc(s.handleDeleteDocument)))
 	if d.Static != nil {
+		// Server-render per-share OG/Twitter meta into index.html so link-preview
+		// bots get a rich card. More specific than the "/" catch-all, so only the
+		// exact single-segment share URL is intercepted; assets/other routes still
+		// hit d.Static. See handleShareIndex in share_handlers.go.
+		mux.HandleFunc("GET /share/{shareID}", s.handleShareIndex)
 		mux.Handle("/", d.Static)
 	}
 

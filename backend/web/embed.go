@@ -11,6 +11,15 @@ import (
 //go:embed all:dist
 var distFS embed.FS
 
+// IndexHTML returns the embedded dist/index.html bytes. Callers that need to
+// server-render a per-route <head> (e.g. Open Graph meta for share links) template
+// this instead of letting the SPA handler serve the file verbatim. ok is false if
+// the file is missing (a build error, since dist is embedded at build time).
+func IndexHTML() (html []byte, ok bool) {
+	b, err := distFS.ReadFile("dist/index.html")
+	return b, err == nil
+}
+
 // SPAHandler serves the embedded frontend (web/dist) as a SPA.
 func SPAHandler() http.Handler {
 	sub, err := fs.Sub(distFS, "dist")
