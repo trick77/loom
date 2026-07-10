@@ -52,7 +52,7 @@ func (s *server) readThreadDigest(ctx context.Context, userID, threadID string) 
 	}
 	thread, ok, err := s.thread.GetThread(ctx, userID, threadID)
 	if err != nil {
-		slog.Warn("read_thread: get thread failed", "thread_id", threadID, "error", err)
+		slog.Warn("read_thread: get thread failed", "thread_id", threadID, "err", err)
 		return "tool failed: could not load that thread: " + err.Error()
 	}
 	if !ok {

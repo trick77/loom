@@ -22,7 +22,7 @@ func (s *server) maybeRefreshProjectDescriptionAsync(parent context.Context, use
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), memoryBackgroundTimeout)
 		defer cancel()
 		if err := s.refreshProjectDescriptionIfDue(ctx, user, projectID); err != nil {
-			slog.Warn("background project description refresh failed", "project_id", projectID, "error", err)
+			slog.Warn("background project description refresh failed", "project_id", projectID, "err", err)
 		}
 	}()
 }
@@ -64,7 +64,7 @@ func (s *server) refreshProjectDescriptionIfDue(ctx context.Context, user auth.U
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "project_description", Round: 1}
 	description, err := s.llm.GenerateProjectDescription(llm.WithInferenceMetadata(ctx, inference), project.Name, titles, userResponseLanguage(user))
 	if err != nil {
-		slog.Warn("generate project description failed", "project_id", projectID, "error", err)
+		slog.Warn("generate project description failed", "project_id", projectID, "err", err)
 		return nil
 	}
 	if strings.TrimSpace(description) == "" {
@@ -74,7 +74,7 @@ func (s *server) refreshProjectDescriptionIfDue(ctx context.Context, user auth.U
 	// description the user hand-edited between the load above and here is never
 	// clobbered. The current titled-thread count is recorded as the new gate baseline.
 	if _, _, err := s.thread.SetAutoProjectDescription(ctx, user.ID, projectID, description, len(titles)); err != nil {
-		slog.Warn("persist project description failed", "project_id", projectID, "error", err)
+		slog.Warn("persist project description failed", "project_id", projectID, "err", err)
 	}
 	return nil
 }

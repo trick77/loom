@@ -209,7 +209,7 @@ func (s *server) recordUsage(counter string, fn func() error) {
 		return
 	}
 	if err := fn(); err != nil {
-		slog.Warn("usage counter update failed", "counter", counter, "error", err)
+		slog.Warn("usage counter update failed", "counter", counter, "err", err)
 	}
 }
 

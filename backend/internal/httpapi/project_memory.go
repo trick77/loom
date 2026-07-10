@@ -60,7 +60,7 @@ func (s *server) projectContextForThread(ctx context.Context, userID string, thr
 	}
 	project, err := s.findProject(ctx, userID, *thread.ProjectID)
 	if err != nil {
-		slog.Warn("load project for context failed", "error", err)
+		slog.Warn("load project for context failed", "err", err)
 		return ""
 	}
 	if project == nil {
@@ -68,7 +68,7 @@ func (s *server) projectContextForThread(ctx context.Context, userID string, thr
 	}
 	memory, _, err := s.thread.GetProjectMemory(ctx, userID, *thread.ProjectID)
 	if err != nil {
-		slog.Warn("load project memory failed", "error", err)
+		slog.Warn("load project memory failed", "err", err)
 		memory = chat.ProjectMemory{}
 	}
 	block := renderProjectContext(*project, memory.Content)
@@ -94,7 +94,7 @@ func (s *server) countOtherProjectThreads(ctx context.Context, userID string, th
 	}
 	ids, err := s.thread.ListThreadIDs(ctx, userID, chat.ListThreadsOptions{ProjectID: thread.ProjectID})
 	if err != nil {
-		slog.Warn("count project threads failed", "error", err)
+		slog.Warn("count project threads failed", "err", err)
 		return 0
 	}
 	count := 0
@@ -140,7 +140,7 @@ func (s *server) maybeRefreshProjectMemoryAsync(parent context.Context, user aut
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), memoryBackgroundTimeout)
 		defer cancel()
 		if err := s.refreshProjectMemoryIfDue(ctx, user, projectID); err != nil {
-			slog.Warn("background project memory refresh failed", "project_id", projectID, "error", err)
+			slog.Warn("background project memory refresh failed", "project_id", projectID, "err", err)
 		}
 	}()
 }

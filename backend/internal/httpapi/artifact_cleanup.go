@@ -27,11 +27,11 @@ func (s *server) cleanupArtifactFiles(userID string, artifacts []artifact.Artifa
 	for _, item := range artifacts {
 		abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)
 		if err != nil {
-			slog.Warn("artifact cleanup skipped unsafe path", "artifact_id", item.ID, "error", err)
+			slog.Warn("artifact cleanup skipped unsafe path", "artifact_id", item.ID, "err", err)
 			continue
 		}
 		if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
-			slog.Warn("artifact cleanup failed", "artifact_id", item.ID, "error", err)
+			slog.Warn("artifact cleanup failed", "artifact_id", item.ID, "err", err)
 		}
 	}
 }

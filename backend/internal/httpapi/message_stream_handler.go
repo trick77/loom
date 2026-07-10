@@ -224,7 +224,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		if sourceID := latestImageArtifactID(priorMessages); sourceID != "" {
 			if parts, partsErr := s.imageContentParts(r.Context(), user.ID, threadID, userMessage.Content, []string{sourceID}); partsErr != nil {
 				slog.Warn("auto-attach of prior image failed; continuing without source image",
-					"thread_id", threadID, "artifact_id", sourceID, "error", partsErr)
+					"thread_id", threadID, "artifact_id", sourceID, "err", partsErr)
 			} else {
 				imageParts = parts
 				editSourceID = sourceID
@@ -243,7 +243,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	if imageArtifactRequired && editSourceID != "" {
 		if src, ok, srcErr := s.loadEditSourceImage(r.Context(), user.ID, threadID, editSourceID); srcErr != nil {
 			slog.Warn("load edit source image failed; generating without source image",
-				"thread_id", threadID, "artifact_id", editSourceID, "error", srcErr)
+				"thread_id", threadID, "artifact_id", editSourceID, "err", srcErr)
 		} else if ok {
 			editSource = &src
 		}
@@ -341,13 +341,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	titles.mergeIntoBlocks(assistantResult.Blocks)
 	activityTraceJSON, err := json.Marshal(assistantResult.ActivityTrace)
 	if err != nil {
-		slog.Warn("marshal activity trace failed", "thread_id", threadID, "error", err)
+		slog.Warn("marshal activity trace failed", "thread_id", threadID, "err", err)
 		activityTraceJSON = []byte("[]")
 	}
 	contentBlocksJSON := []byte("[]")
 	if len(assistantResult.Blocks) > 0 {
 		if encoded, marshalErr := json.Marshal(assistantResult.Blocks); marshalErr != nil {
-			slog.Warn("marshal content blocks failed", "thread_id", threadID, "error", marshalErr)
+			slog.Warn("marshal content blocks failed", "thread_id", threadID, "err", marshalErr)
 		} else {
 			contentBlocksJSON = encoded
 		}

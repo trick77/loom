@@ -86,7 +86,7 @@ func (s *server) extractCodeArtifacts(ctx context.Context, stream *sse.Writer, u
 	for _, q := range qualifyingCodeBlocks(content) {
 		response, err := s.createCodeArtifact(ctx, user, thread, q.block, q.extension, q.filename)
 		if err != nil {
-			slog.Warn("auto code artifact failed", "thread_id", thread.ID, "filename", q.filename, "error", err)
+			slog.Warn("auto code artifact failed", "thread_id", thread.ID, "filename", q.filename, "err", err)
 			continue
 		}
 		_ = sendSSEJSON(stream, "artifact", response)
