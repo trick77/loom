@@ -61,17 +61,22 @@ function combineWebSources(sources: Citation[]): Citation[] {
   return unique.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
 }
 
-// dedupeByHost keeps the first web source per hostname so the favicon pile shows
-// one icon per distinct site — two pages cited from the same domain share a
-// favicon and would otherwise render as visual duplicates. Sources with an
-// unparseable host fall back to their (already URL-unique) url as the key so they
-// are neither merged together nor dropped. Input order (citation order) is kept.
-export function dedupeByHost(sources: Citation[]): Citation[] {
+// dedupeByDomain keeps the first web source per registrable domain so the favicon
+// pile shows one icon per distinct site — pages from different subdomains of the
+// same site (github.com, docs.github.com, gist.github.com) share a favicon and
+// would otherwise render as visual duplicates. Keying on hostname alone doesn't
+// collapse those, so we dedupe on the backend-computed site label (`filename`,
+// the registrable domain's main label via the public-suffix list, e.g.
+// "Github") — the correct grouping level. Sources whose label is empty (an IP or
+// bare public-suffix host the backend couldn't label) fall back to their hostname
+// and then their (already URL-unique) url, so they are neither merged together
+// nor dropped. Input order (citation order) is kept.
+export function dedupeByDomain(sources: Citation[]): Citation[] {
   const seen = new Set<string>();
   const unique: Citation[] = [];
   for (const source of sources) {
-    const key = hostOf(source.url) || source.url;
-    if (key === undefined || seen.has(key)) continue;
+    const key = source.filename.trim().toLowerCase() || hostOf(source.url) || source.url;
+    if (key === undefined || key === "" || seen.has(key)) continue;
     seen.add(key);
     unique.push(source);
   }
@@ -88,9 +93,9 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
   if (citations === undefined || citations.length === 0) return null;
   const combined = combineLikeSources(citations.filter((c) => !isWebSource(c)));
   const webSources = combineWebSources(citations.filter(isWebSource));
-  // The pile is a per-site visual summary, so collapse to one favicon per host;
+  // The pile is a per-site visual summary, so collapse to one favicon per site;
   // the sidebar still lists every distinct page from `webSources`.
-  const faviconSources = dedupeByHost(webSources);
+  const faviconSources = dedupeByDomain(webSources);
   if (combined.length === 0 && webSources.length === 0) return null;
   const open = combined.find((source) => source.filename === openFile) ?? null;
 
