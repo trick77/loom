@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import type { Citation } from "../api";
 
@@ -12,18 +12,15 @@ export function hostOf(url?: string): string {
   }
 }
 
-function googleFavicon(host: string, sizePx: number): string {
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=${sizePx}`;
-}
-
-// faviconProxy routes a remote http(s) favicon url through the backend so the bytes
-// are fetched once, cached on disk, and served with a long browser Cache-Control —
-// avoiding repeated third-party fetches and load flicker on every re-render. Non-http
-// urls (e.g. an inline data: favicon) are passed through unchanged: the backend only
-// proxies http(s), and they already render directly in the browser.
-export function faviconProxy(u: string): string {
-  if (!/^https?:\/\//i.test(u)) return u;
-  return `/api/favicon?u=${encodeURIComponent(u)}`;
+// siteIconURL routes a source's page url through the backend, which resolves the
+// best icon for the site (apple-touch-icon / largest raster / favicon.ico / a
+// rendered service icon), caches it, and serves it same-origin with a long
+// Cache-Control. One request, one good icon — no client-side fallback chain that
+// would flash a placeholder and then swap. The backend deliberately prefers opaque,
+// high-res icons so they stay visible on the dark-only UI (a site's default favicon
+// is often a dark, light-mode-only glyph).
+function siteIconURL(pageURL: string): string {
+  return `/api/favicon?u=${encodeURIComponent(pageURL)}`;
 }
 
 // Deterministic muted colours for the letter-avatar fallback.
@@ -34,9 +31,10 @@ function colorFor(seed: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-// SourceFavicon shows a web source's icon, trying (1) a tool-provided favicon url,
-// then (2) Google's favicon service, and finally (3) a coloured letter avatar when
-// both fail to load.
+// SourceFavicon shows a web source's icon, resolved and cached by the backend, and
+// falls back to a coloured letter avatar when the source has no url or no icon could
+// be found. The image fades in on load over a transparent background, so there is no
+// dark placeholder disc flashing before the icon paints.
 export function SourceFavicon({
   citation,
   size = 16,
@@ -50,17 +48,12 @@ export function SourceFavicon({
 }) {
   const host = hostOf(citation.url);
   const label = (citation.filename ?? host).trim();
-  const chain = useMemo(
-    () =>
-      [citation.favicon, host === "" ? "" : googleFavicon(host, Math.max(32, size * 2))]
-        .filter((u): u is string => typeof u === "string" && u !== "")
-        .map(faviconProxy),
-    [citation.favicon, host, size],
-  );
-  const [step, setStep] = useState(0);
+  const src = citation.url !== undefined && host !== "" ? siteIconURL(citation.url) : "";
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const dim = { width: `${size}px`, height: `${size}px`, flex: "0 0 auto" };
 
-  if (step >= chain.length) {
+  if (src === "" || failed) {
     const letter = (label[0] ?? "?").toUpperCase();
     return (
       <span
@@ -74,12 +67,13 @@ export function SourceFavicon({
   }
   return (
     <img
-      src={chain[step]}
+      src={src}
       alt=""
-      loading="lazy"
-      className={`rounded-full bg-[#2a2a28] object-cover ${className}`}
+      decoding="async"
+      className={`rounded-full object-cover transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0"} ${className}`}
       style={{ ...dim, ...style }}
-      onError={() => setStep((s) => s + 1)}
+      onLoad={() => setLoaded(true)}
+      onError={() => setFailed(true)}
     />
   );
 }

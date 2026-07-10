@@ -30,7 +30,10 @@ const (
 	faviconCacheControl = "public, max-age=604800"
 	faviconMaxBytes     = 256 << 10 // 256 KiB — favicons are tiny; cap abuse.
 	faviconFetchTimeout = 5 * time.Second
-	faviconUserAgent    = "loom-favicon-cache/1.0"
+	// faviconResolveTimeout bounds a whole resolve (page fetch + candidate probes)
+	// so a slow site can't tie the request up for one 5s timeout per candidate.
+	faviconResolveTimeout = 12 * time.Second
+	faviconUserAgent      = "loom-favicon-cache/1.0"
 )
 
 // faviconDefaultClient fetches favicon bytes with a short timeout and an SSRF guard
@@ -114,11 +117,15 @@ func guardPublicAddr(_, address string, _ syscall.RawConn) error {
 	return nil
 }
 
-// handleFavicon proxies and caches a single favicon image. The frontend routes
-// each entry of its fallback chain (tool-provided url, then Google's favicon
-// service) through here, so both hit a shared on-disk cache and re-renders serve
-// from the browser cache instead of re-fetching third parties. On any failure it
-// returns a non-2xx status so the <img>'s onError advances the chain unchanged.
+// handleFavicon resolves, proxies and caches the best icon for a web source. The
+// query "u" is the source's page URL; the backend resolves the site's best icon
+// (apple-touch-icon / largest raster / favicon.ico / a rendered service icon — see
+// resolveIconCandidates) rather than trusting a single tool-provided favicon URL,
+// which is often a dark, light-mode-only glyph that vanishes on the dark UI. The
+// resolved bytes are cached on disk keyed by host and served with a long browser
+// Cache-Control, so re-renders and reloads serve from cache instead of re-resolving
+// or re-fetching third parties. On failure it returns a non-2xx so the <img>'s
+// onError falls back to the letter avatar.
 func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("u")
 	if raw == "" {
@@ -130,17 +137,23 @@ func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid url")
 		return
 	}
+	scheme := strings.ToLower(target.Scheme)
+	// Authority (host[:port]) — the identity for caching and for building the site's
+	// candidate icon URLs. Real sources use the default port, so this is just the
+	// hostname in practice; keeping any explicit port keeps non-standard ports correct.
+	host := strings.ToLower(target.Host)
 
-	key := faviconCacheKey(raw)
+	// Cache and serialize by host: one site shows one icon, so all its pages/paths
+	// share a single resolved-and-cached icon.
+	key := faviconCacheKey(host)
 	etag := faviconETag(key)
-
 	if path, ct, ok := s.faviconCached(key); ok {
 		serveFaviconFile(w, r, path, ct, etag)
 		return
 	}
 
-	// Cache miss: serialize same-key fetches, then double-check the cache. The gate
-	// is released before serving so a slow client never blocks other same-key
+	// Cache miss: serialize same-host resolves, then double-check the cache. The gate
+	// is released before serving so a slow client never blocks other same-host
 	// requests — by then the bytes are on disk.
 	gate := faviconAcquire(key)
 	if path, ct, ok := s.faviconCached(key); ok {
@@ -149,25 +162,44 @@ func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, ct, status, err := s.fetchAndCacheFavicon(r.Context(), key, raw)
+	ctx, cancel := context.WithTimeout(r.Context(), faviconResolveTimeout)
+	defer cancel()
+	path, ct, err := s.resolveAndCacheIcon(ctx, key, scheme, host, raw)
 	faviconRelease(key, gate)
 	if err != nil {
-		if status == 0 {
-			status = http.StatusBadGateway
-		}
-		writeJSONError(w, status, "favicon fetch failed")
+		writeJSONError(w, http.StatusBadGateway, "favicon resolve failed")
 		return
 	}
 	serveFaviconFile(w, r, path, ct, etag)
 }
 
-// fetchAndCacheFavicon downloads the favicon at rawURL, validates it is a small
-// image, and persists the bytes (plus a .ct sidecar holding its content-type)
-// atomically. status carries an HTTP status to surface to the caller on error.
-func (s *server) fetchAndCacheFavicon(ctx context.Context, key, rawURL string) (path, contentType string, status int, err error) {
+// resolveAndCacheIcon tries each candidate icon for the site (best-first) and
+// persists the first one that is a valid small raster image under the host key,
+// returning its on-disk path and content-type. It errors only when no candidate
+// yields a usable icon.
+func (s *server) resolveAndCacheIcon(ctx context.Context, key, scheme, host, pageURL string) (path, contentType string, err error) {
+	for _, candidate := range s.resolveIconCandidates(ctx, scheme, host, pageURL) {
+		body, ct, ferr := s.fetchFaviconBytes(ctx, candidate)
+		if ferr != nil {
+			continue
+		}
+		p, werr := s.writeFaviconCache(key, body, ct)
+		if werr != nil {
+			return "", "", werr
+		}
+		return p, ct, nil
+	}
+	return "", "", errors.New("no usable icon")
+}
+
+// fetchFaviconBytes downloads a single candidate icon URL and validates it is a
+// small raster image, returning its bytes and content-type. SVG is rejected: it can
+// carry <script>, and we re-serve favicon bytes from our own origin. serveFaviconFile
+// adds nosniff + a locked-down CSP as defence in depth for the raster types we serve.
+func (s *server) fetchFaviconBytes(ctx context.Context, rawURL string) (body []byte, contentType string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return "", "", http.StatusBadRequest, err
+		return nil, "", err
 	}
 	req.Header.Set("Accept", "image/*")
 	req.Header.Set("User-Agent", faviconUserAgent)
@@ -178,45 +210,44 @@ func (s *server) fetchAndCacheFavicon(ctx context.Context, key, rawURL string) (
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", http.StatusBadGateway, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", "", resp.StatusCode, fmt.Errorf("upstream status %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("upstream status %d", resp.StatusCode)
 	}
-
 	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]))
-	// SVG is rejected: it can carry <script>, and we re-serve favicon bytes from our
-	// own origin. Favicons are raster in practice, so blocking it costs nothing and
-	// removes the stored-XSS vector outright. serveFaviconFile adds nosniff + a
-	// locked-down CSP as defence in depth for the raster types we do serve.
 	if !strings.HasPrefix(ct, "image/") || ct == "image/svg+xml" {
-		return "", "", http.StatusUnsupportedMediaType, fmt.Errorf("unsupported content-type %q", ct)
+		return nil, "", fmt.Errorf("unsupported content-type %q", ct)
 	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, faviconMaxBytes+1))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, faviconMaxBytes+1))
 	if err != nil {
-		return "", "", http.StatusBadGateway, err
+		return nil, "", err
 	}
-	if len(body) == 0 {
-		return "", "", http.StatusBadGateway, errors.New("empty favicon")
+	if len(data) == 0 {
+		return nil, "", errors.New("empty favicon")
 	}
-	if len(body) > faviconMaxBytes {
-		return "", "", http.StatusRequestEntityTooLarge, errors.New("favicon too large")
+	if len(data) > faviconMaxBytes {
+		return nil, "", errors.New("favicon too large")
 	}
+	return data, ct, nil
+}
 
+// writeFaviconCache persists icon bytes (plus a .ct sidecar holding the content-type)
+// under key, atomically, and returns the data file path.
+func (s *server) writeFaviconCache(key string, body []byte, contentType string) (path string, err error) {
 	dir, err := s.faviconDir()
 	if err != nil {
-		return "", "", http.StatusInternalServerError, err
+		return "", err
 	}
 	dataPath := filepath.Join(dir, key)
 	if err := faviconWriteAtomic(dataPath, body); err != nil {
-		return "", "", http.StatusInternalServerError, err
+		return "", err
 	}
-	if err := faviconWriteAtomic(dataPath+".ct", []byte(ct)); err != nil {
-		return "", "", http.StatusInternalServerError, err
+	if err := faviconWriteAtomic(dataPath+".ct", []byte(contentType)); err != nil {
+		return "", err
 	}
-	return dataPath, ct, http.StatusOK, nil
+	return dataPath, nil
 }
 
 // faviconCached returns the on-disk path and content-type when both the image and
@@ -297,8 +328,10 @@ func faviconWriteAtomic(path string, data []byte) error {
 	return nil
 }
 
-func faviconCacheKey(rawURL string) string {
-	sum := sha256.Sum256([]byte(rawURL))
+// faviconCacheKey hashes a cache identity (the source host) into a filesystem-safe
+// cache filename.
+func faviconCacheKey(host string) string {
+	sum := sha256.Sum256([]byte(host))
 	return hex.EncodeToString(sum[:])
 }
 

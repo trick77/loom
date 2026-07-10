@@ -77,7 +77,8 @@ type server struct {
 	bflTypographyModel         string
 	usersDir                   string
 	faviconCacheDir            string
-	faviconClient              *http.Client // nil → faviconDefaultClient (overridden in tests)
+	faviconClient              *http.Client             // nil → faviconDefaultClient (overridden in tests)
+	faviconService             func(host string) string // nil → Google's favicon service (overridden in tests)
 	oidcAdminGroup             string
 	devAuthClaims              auth.Claims
 	postLogoutRedirectURL      string
