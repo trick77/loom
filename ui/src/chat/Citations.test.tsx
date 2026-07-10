@@ -2,46 +2,60 @@ import "@testing-library/jest-dom/vitest";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
-import { combineLikeSources, dedupeByHost, MessageCitations } from "./Citations";
+import { combineLikeSources, dedupeByDomain, MessageCitations } from "./Citations";
 import type { Citation } from "../api";
 
-const webSource = (url: string, index: number): Citation => ({
+// The backend sets filename to the registrable-domain label (its main label via
+// the public-suffix list, e.g. "Github"); dedupeByDomain keys on it. Callers may
+// omit label to exercise the empty-label fallback.
+const webSource = (url: string, index: number, label = ""): Citation => ({
   documentId: "",
-  filename: url,
+  filename: label,
   snippet: "",
   score: 0,
   url,
   index,
 });
 
-describe("dedupeByHost", () => {
-  it("keeps one source per hostname, preserving first-seen order", () => {
+describe("dedupeByDomain", () => {
+  it("collapses subdomains of one site (same registrable-domain label) to one, preserving first-seen order", () => {
     const sources = [
-      webSource("https://en.wikipedia.org/wiki/A", 1),
-      webSource("https://en.wikipedia.org/wiki/B", 2),
-      webSource("https://modal.com/docs", 3),
+      webSource("https://github.com/torvalds", 1, "Github"),
+      webSource("https://docs.github.com/en/actions", 2, "Github"),
+      webSource("https://gist.github.com/abc", 3, "Github"),
+      webSource("https://modal.com/docs", 4, "Modal"),
     ];
-    const deduped = dedupeByHost(sources);
+    const deduped = dedupeByDomain(sources);
     expect(deduped.map((s) => s.url)).toEqual([
-      "https://en.wikipedia.org/wiki/A",
+      "https://github.com/torvalds",
       "https://modal.com/docs",
     ]);
   });
 
-  it("treats hosts case-insensitively", () => {
-    const deduped = dedupeByHost([
-      webSource("https://Example.com/a", 1),
-      webSource("https://example.com/b", 2),
+  it("treats labels case-insensitively", () => {
+    const deduped = dedupeByDomain([
+      webSource("https://example.com/a", 1, "Example"),
+      webSource("https://www.example.com/b", 2, "example"),
     ]);
     expect(deduped).toHaveLength(1);
   });
 
-  it("keeps sources with unparseable hosts instead of collapsing or dropping them", () => {
-    const deduped = dedupeByHost([
-      webSource("not a url", 1),
-      webSource("also not a url", 2),
+  it("keeps different registrable domains that share a first label separate", () => {
+    // Two distinct sites whose backend labels differ are not merged.
+    const deduped = dedupeByDomain([
+      webSource("https://modal.com/a", 1, "Modal"),
+      webSource("https://truefoundry.com/b", 2, "Truefoundry"),
     ]);
     expect(deduped).toHaveLength(2);
+  });
+
+  it("falls back to host/url and does not collapse sources with an empty label", () => {
+    const deduped = dedupeByDomain([
+      webSource("https://198.51.100.7/a", 1),
+      webSource("https://203.0.113.9/b", 2),
+      webSource("not a url", 3),
+    ]);
+    expect(deduped).toHaveLength(3);
   });
 });
 
