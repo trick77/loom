@@ -10,35 +10,28 @@ function web(extra: Partial<Citation>): Citation {
 }
 
 describe("SourceFavicon", () => {
-  it("prefers a tool-provided favicon, then Google, then a letter avatar — both proxied", () => {
-    const { container } = render(<SourceFavicon citation={web({ favicon: "https://cdn.example/icon.png" })} />);
-    const img = () => container.querySelector("img");
-    // 1) tool-provided favicon, routed through the backend cache proxy
-    expect(img()!.getAttribute("src")).toBe(
-      `/api/favicon?u=${encodeURIComponent("https://cdn.example/icon.png")}`,
-    );
-    // 2) on error -> Google favicon service for the host, also proxied
-    fireEvent.error(img()!);
-    const src2 = img()!.getAttribute("src")!;
-    expect(src2).toContain("/api/favicon?u=");
-    expect(decodeURIComponent(src2)).toContain("google.com/s2/favicons?domain=modal.com");
-    // 3) on error again -> letter avatar (no <img>)
-    fireEvent.error(img()!);
+  it("requests the backend-resolved site icon for the source's page url", () => {
+    const { container } = render(<SourceFavicon citation={web({})} />);
+    const img = container.querySelector("img")!;
+    expect(img.getAttribute("src")).toBe(`/api/favicon?u=${encodeURIComponent("https://modal.com")}`);
+    // No lazy loading (tiny, in-view) and no dark placeholder background.
+    expect(img.getAttribute("loading")).toBeNull();
+    expect(img.className).not.toContain("bg-[#2a2a28]");
+  });
+
+  it("fades the icon in on load", () => {
+    const { container } = render(<SourceFavicon citation={web({})} />);
+    const img = () => container.querySelector("img")!;
+    expect(img().className).toContain("opacity-0");
+    fireEvent.load(img());
+    expect(img().className).toContain("opacity-100");
+  });
+
+  it("falls back to a letter avatar when the icon fails to load", () => {
+    const { container } = render(<SourceFavicon citation={web({})} />);
+    fireEvent.error(container.querySelector("img")!);
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getByText("M")).toBeInTheDocument();
-  });
-
-  it("starts at the proxied Google service when no favicon is provided", () => {
-    const { container } = render(<SourceFavicon citation={web({ favicon: undefined })} />);
-    const src = container.querySelector("img")!.getAttribute("src")!;
-    expect(src).toContain("/api/favicon?u=");
-    expect(decodeURIComponent(src)).toContain("google.com/s2/favicons?domain=modal.com");
-  });
-
-  it("passes a non-http (data:) favicon through unproxied", () => {
-    const dataUri = "data:image/png;base64,AAAA";
-    const { container } = render(<SourceFavicon citation={web({ favicon: dataUri })} />);
-    expect(container.querySelector("img")!.getAttribute("src")).toBe(dataUri);
   });
 
   it("falls straight to a letter avatar when there is no url", () => {
