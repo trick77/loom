@@ -11,12 +11,13 @@ import (
 // yields the exposed tool name "fetch__fetch" that the rest of the app keys on.
 const fetchClientToolName = "fetch"
 
-// fetchClientDescription is copied verbatim from the upstream mcp-server-fetch
-// tool so the model sees the identical tool description it did when fetch ran as
-// a sidecar.
-const fetchClientDescription = `Fetches a URL from the internet and optionally extracts its contents as markdown.
-
-Although originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.`
+// fetchClientDescription is the fetch tool description shown to the model. The
+// first line is upstream mcp-server-fetch's. Upstream's trailing "Although
+// originally you did not have internet access…" paragraph is intentionally
+// dropped: it is legacy framing that carries no operational intent and only
+// costs tokens in every tool-list injection. This is a deliberate divergence
+// from byte-for-byte sidecar parity, kept minimal so tool dispatch is unchanged.
+const fetchClientDescription = `Fetches a URL from the internet and optionally extracts its contents as markdown.`
 
 // fetchClient is an in-process Client that replaces the external fetch MCP
 // sidecar. It performs the fetch directly in the backend via the shared
