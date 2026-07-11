@@ -9,6 +9,9 @@ import (
 const (
 	TransportStreamableHTTP = "streamable-http"
 	TransportStdio          = "stdio"
+	// TransportInProcess routes a server to an in-process Client implemented in
+	// Go, with no network or subprocess. Used by the built-in fetch tool.
+	TransportInProcess = "in-process"
 	// defaultTavilyURL is the hosted Tavily MCP endpoint used by the built-in
 	// Tavily web-search adapter when BACKEND_TAVILY_URL is unset.
 	defaultTavilyURL = "https://mcp.tavily.com/mcp/"
@@ -89,10 +92,13 @@ func TavilyServerConfig(baseURL, apiKey string) ServerConfig {
 	return cfg
 }
 
-func FetchServerConfig(url string) ServerConfig {
+// FetchServerConfig builds the config for the built-in fetch tool. Fetch runs
+// in-process (via the shared github.com/trick77/webfetch module) rather than as
+// an external MCP sidecar, so there is no URL; the exposed tool name and surface
+// ("fetch__fetch") are unchanged.
+func FetchServerConfig() ServerConfig {
 	return ServerConfig{
-		Transport: TransportStreamableHTTP,
-		URL:       url,
+		Transport: TransportInProcess,
 		Tools:     []string{"fetch"},
 	}
 }

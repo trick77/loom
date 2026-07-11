@@ -48,12 +48,22 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 
 	for _, want := range []string{
 		`image: ghcr.io/trick77/loom:latest`,
-		`image: ghcr.io/trick77/loom-fetch:latest`,
 		`image: h4ckf0r0day/obscura:0.1.8`,
 	} {
 		if !strings.Contains(compose, want) {
 			t.Fatalf("compose.yaml missing production image reference %q", want)
 		}
+	}
+	// Fetch runs in-process (github.com/trick77/webfetch), so there is no fetch
+	// sidecar image, service, or isolated network anymore.
+	if strings.Contains(compose, "loom-fetch") {
+		t.Fatal("compose.yaml must not reference the removed loom-fetch image")
+	}
+	if strings.Contains(compose, "\n  fetch:") {
+		t.Fatal("compose.yaml must not define a fetch service; fetch runs in-process")
+	}
+	if strings.Contains(compose, "fetch-mcp") {
+		t.Fatal("compose.yaml must not reference the removed fetch-mcp network")
 	}
 
 	envExample, err := os.ReadFile("../../../.env.example")
@@ -154,7 +164,7 @@ func TestProductionComposeDefinesTraefikEntrypoint(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"tika", "fetch", "obscura"} {
+	for _, name := range []string{"tika", "obscura"} {
 		service := composeService(t, compose, name)
 		if !strings.Contains(service, `traefik.enable: "false"`) {
 			t.Fatalf("%s service must disable Traefik", name)
@@ -178,7 +188,7 @@ func TestProductionComposeUsesNamedPrivateNetworks(t *testing.T) {
 	}
 
 	backendService := composeService(t, compose, "loom")
-	for _, want := range []string{"- traefik", "- loom", "- fetch-mcp"} {
+	for _, want := range []string{"- traefik", "- loom"} {
 		if !strings.Contains(backendService, want) {
 			t.Fatalf("loom service missing network %q", want)
 		}
@@ -186,7 +196,6 @@ func TestProductionComposeUsesNamedPrivateNetworks(t *testing.T) {
 
 	for _, want := range []string{
 		"\n  loom:",
-		"\n  fetch-mcp:",
 		"\n  traefik:\n    external: true",
 	} {
 		if !strings.Contains(compose, want) {
@@ -202,7 +211,7 @@ func TestProductionComposeHealthchecksUseSixtySecondIntervals(t *testing.T) {
 	}
 	compose := string(data)
 
-	for _, name := range []string{"loom", "tika", "fetch", "obscura"} {
+	for _, name := range []string{"loom", "tika", "obscura"} {
 		service := composeService(t, compose, name)
 		if !strings.Contains(service, "\n    healthcheck:") {
 			t.Fatalf("%s service missing healthcheck", name)
@@ -291,13 +300,8 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 	}
 	workflow := string(data)
 
-	for _, want := range []string{
-		`ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}`,
-		`ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.version }}`,
-	} {
-		if !strings.Contains(workflow, want) {
-			t.Fatalf("release workflow missing image tag %q", want)
-		}
+	if !strings.Contains(workflow, `ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}`) {
+		t.Fatal("release workflow missing backend image tag")
 	}
 	if strings.Contains(workflow, "-ui:${{ steps.ver.outputs.version }}") {
 		t.Fatal("release workflow must not publish a separate loom-ui image")
@@ -305,22 +309,22 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 	if strings.Contains(workflow, "loom-obscura") || strings.Contains(workflow, "Build and push Obscura MCP image") {
 		t.Fatal("release workflow must not build or publish an Obscura wrapper image")
 	}
+	// Fetch runs in-process now, so there is no fetch companion image.
+	if strings.Contains(workflow, "loom-fetch") || strings.Contains(workflow, "-fetch:") ||
+		strings.Contains(workflow, "Build and push fetch MCP image") {
+		t.Fatal("release workflow must not build or publish the removed fetch image")
+	}
 
 	tagStep := strings.Index(workflow, "- name: Create and push tag")
 	if tagStep < 0 {
 		t.Fatal("release workflow missing final git tag step")
 	}
-	for _, imageStep := range []string{
-		"- name: Build and push backend image",
-		"- name: Build and push fetch MCP image",
-	} {
-		idx := strings.Index(workflow, imageStep)
-		if idx < 0 {
-			t.Fatalf("release workflow missing %q", imageStep)
-		}
-		if idx > tagStep {
-			t.Fatalf("%q must run before the git tag step", imageStep)
-		}
+	idx := strings.Index(workflow, "- name: Build and push backend image")
+	if idx < 0 {
+		t.Fatal("release workflow missing backend image build step")
+	}
+	if idx > tagStep {
+		t.Fatal("backend image build must run before the git tag step")
 	}
 }
 
@@ -362,63 +366,7 @@ func TestPRWorkflowTypechecksUI(t *testing.T) {
 	}
 }
 
-func TestReleaseWorkflowBuildsCompanionImagesOnlyWhenChanged(t *testing.T) {
-	data, err := os.ReadFile("../../../.github/workflows/release.yaml")
-	if err != nil {
-		t.Fatalf("read release workflow: %v", err)
-	}
-	workflow := string(data)
-
-	for _, want := range []string{
-		`echo "previous=$LATEST" >> "$GITHUB_OUTPUT"`,
-		`- id: companion_changes`,
-		`git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- fetch`,
-		`echo "fetch_changed=true" >> "$GITHUB_OUTPUT"`,
-		`if: ${{ steps.companion_changes.outputs.fetch_changed == 'true' }}`,
-	} {
-		if !strings.Contains(workflow, want) {
-			t.Fatalf("release workflow missing companion-change gating fragment %q", want)
-		}
-	}
-	for _, unwanted := range []string{
-		`git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- obscura`,
-		`obscura_changed`,
-		`ghcr.io/${{ github.repository }}-obscura`,
-	} {
-		if strings.Contains(workflow, unwanted) {
-			t.Fatalf("release workflow must not contain Obscura companion gating fragment %q", unwanted)
-		}
-	}
-}
-
-func TestReleaseWorkflowBuildsFetchCompanionImageWhenLatestTagIsMissing(t *testing.T) {
-	data, err := os.ReadFile("../../../.github/workflows/release.yaml")
-	if err != nil {
-		t.Fatalf("read release workflow: %v", err)
-	}
-	workflow := string(data)
-
-	for _, want := range []string{
-		`docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-fetch:latest"`,
-		`fetch_missing=true`,
-		`if [ "$fetch_source_changed" = "true" ] || [ "$fetch_missing" = "true" ]; then`,
-	} {
-		if !strings.Contains(workflow, want) {
-			t.Fatalf("release workflow missing missing-companion-image fragment %q", want)
-		}
-	}
-	for _, unwanted := range []string{
-		`docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-obscura:latest"`,
-		`obscura_missing`,
-		`obscura_source_changed`,
-	} {
-		if strings.Contains(workflow, unwanted) {
-			t.Fatalf("release workflow must not contain Obscura missing-image fragment %q", unwanted)
-		}
-	}
-}
-
-func TestCleanupWorkflowDoesNotManageObscuraWrapperImage(t *testing.T) {
+func TestCleanupWorkflowManagesOnlyTheLoomImage(t *testing.T) {
 	data, err := os.ReadFile("../../../.github/workflows/cleanup-images.yaml")
 	if err != nil {
 		t.Fatalf("read cleanup workflow: %v", err)
@@ -428,8 +376,11 @@ func TestCleanupWorkflowDoesNotManageObscuraWrapperImage(t *testing.T) {
 	if strings.Contains(workflow, "loom-obscura") {
 		t.Fatal("cleanup workflow must not manage the removed Obscura wrapper image")
 	}
-	if !strings.Contains(workflow, `image-names: "loom, loom-fetch"`) {
-		t.Fatal("cleanup workflow must retain Loom and fetch image cleanup")
+	if strings.Contains(workflow, "loom-fetch") {
+		t.Fatal("cleanup workflow must not manage the removed fetch image")
+	}
+	if !strings.Contains(workflow, `image-names: "loom"`) {
+		t.Fatal("cleanup workflow must manage the loom image")
 	}
 	if strings.Contains(workflow, "loom-ui") {
 		t.Fatal("cleanup workflow must not manage the removed loom-ui image")

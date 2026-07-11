@@ -178,11 +178,12 @@ without a key there is no built-in search tool). Loom connects to Tavily's hoste
 `BACKEND_TAVILY_URL` (default `https://mcp.tavily.com/mcp/`), authenticating via the `tavilyApiKey`
 query parameter, and exposes only the `tavily_search` tool.
 
-The default Compose setup also includes two MCP sidecars configured with first-class env vars:
+Two more first-class tools round out web access:
 
-- `fetch` exposes the reference `mcp-server-fetch` URL/document reader as `fetch__fetch`. Use it for
-  normal URL reading, article/document extraction, summarization, and quoting. Configure its endpoint
-  with `BACKEND_FETCH_MCP_URL`.
+- `fetch__fetch` is a URL/document reader that runs **in-process** in the backend via the shared
+  [`github.com/trick77/webfetch`](https://github.com/trick77/webfetch) module — a faithful Go port of
+  the reference `mcp-server-fetch`. No sidecar container or configuration is required; it is always
+  available. Use it for normal URL reading, article/document extraction, summarization, and quoting.
 - `obscura` exposes browser automation tools as `obscura__<tool>`. Use it only when a page needs
   JavaScript rendering, visual inspection, navigation, screenshots, or interaction. Compose runs the
   official Obscura image with native MCP HTTP bound to `0.0.0.0:8090`. Configure its endpoint with

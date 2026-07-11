@@ -40,9 +40,6 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.TavilyAPIKey != "" {
 		t.Errorf("TavilyAPIKey default = %q, want empty opt-in value", cfg.TavilyAPIKey)
 	}
-	if cfg.FetchMCPURL != "" {
-		t.Errorf("FetchMCPURL default = %q, want empty opt-in value", cfg.FetchMCPURL)
-	}
 	if cfg.ObscuraMCPURL != "" {
 		t.Errorf("ObscuraMCPURL default = %q, want empty opt-in value", cfg.ObscuraMCPURL)
 	}
@@ -152,15 +149,11 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 
 func TestLoad_firstClassMCPToolURLs(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
-	t.Setenv("BACKEND_FETCH_MCP_URL", "http://fetch:8090/mcp")
 	t.Setenv("BACKEND_OBSCURA_MCP_URL", "http://obscura:8090/mcp")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.FetchMCPURL != "http://fetch:8090/mcp" {
-		t.Fatalf("FetchMCPURL = %q, want fetch MCP URL", cfg.FetchMCPURL)
 	}
 	if cfg.ObscuraMCPURL != "http://obscura:8090/mcp" {
 		t.Fatalf("ObscuraMCPURL = %q, want obscura MCP URL", cfg.ObscuraMCPURL)
