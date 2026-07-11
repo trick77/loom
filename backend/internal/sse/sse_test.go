@@ -38,8 +38,9 @@ func TestWriter_setsAntiBufferingHeader(t *testing.T) {
 		t.Fatalf("NewWriter error: %v", err)
 	}
 
-	// X-Accel-Buffering: no asks nginx (and several LBs that honor it) fronting the
-	// backend not to buffer the response, so events reach the client as they are sent.
+	// X-Accel-Buffering: no asks any fronting proxy / LB that honors the convention
+	// (Traefik and others) not to buffer the response, so events reach the client as
+	// they are sent.
 	if v := rec.Header().Get("X-Accel-Buffering"); v != "no" {
 		t.Errorf("X-Accel-Buffering = %q, want no", v)
 	}

@@ -29,7 +29,8 @@ func NewWriter(w http.ResponseWriter) (*Writer, error) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	// Tell loom's own reverse proxy (nginx and several LBs honor this) not to buffer.
+	// Ask any fronting reverse proxy / LB that honors this convention (Traefik and
+	// several others) not to buffer the stream.
 	w.Header().Set("X-Accel-Buffering", "no")
 	return &Writer{w: w, flusher: flusher, lastActivity: time.Now()}, nil
 }

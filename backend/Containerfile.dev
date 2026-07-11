@@ -8,8 +8,8 @@
 #   docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build --remove-orphans
 #   cd ui && npm run dev              # real UI with hot-reload on http://localhost:5173
 #
-# The production backend image in backend/Containerfile is also API-only; the
-# production UI runs in its own nginx image.
+# Unlike this dev image, the production backend image in backend/Containerfile
+# builds the frontend and embeds the real UI, so it serves both API and SPA.
 
 # --- Stage 1: build the Go binary (pure-Go, no cgo) ---
 FROM golang:1.25-alpine AS build

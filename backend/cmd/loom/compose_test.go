@@ -48,7 +48,6 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 
 	for _, want := range []string{
 		`image: ghcr.io/trick77/loom:latest`,
-		`image: ghcr.io/trick77/loom-ui:latest`,
 		`image: ghcr.io/trick77/loom-fetch:latest`,
 		`image: h4ckf0r0day/obscura:0.1.8`,
 	} {
@@ -111,31 +110,20 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 	}
 }
 
-func TestProductionComposeOnlyPublishesUI(t *testing.T) {
+func TestProductionComposePublishesNoHostPorts(t *testing.T) {
 	data, err := os.ReadFile("../../../compose.yaml")
 	if err != nil {
 		t.Fatalf("read compose.yaml: %v", err)
 	}
 	compose := string(data)
 
-	uiService := strings.Index(compose, "\n  loom-ui:")
-	if uiService < 0 {
-		t.Fatal("compose.yaml missing loom-ui service")
+	// The single loom image serves API + embedded SPA and is reached only via
+	// Traefik, so no service publishes host ports (and the old nginx UI is gone).
+	if strings.Contains(compose, "\n  loom-ui:") {
+		t.Fatal("compose.yaml must not define a separate loom-ui service")
 	}
-	apiService := strings.Index(compose, "\n  loom:")
-	if apiService < 0 {
-		t.Fatal("compose.yaml missing loom service")
-	}
-	if !strings.Contains(compose[uiService:], `- "127.0.0.1:8081:80"`) {
-		t.Fatal("loom-ui must publish localhost port 8081 to container port 80")
-	}
-	backendServiceEnd := strings.Index(compose[apiService+1:], "\n  tika:")
-	if backendServiceEnd < 0 {
-		t.Fatal("compose.yaml service ordering changed; expected tika after loom")
-	}
-	backendService := compose[apiService : apiService+1+backendServiceEnd]
-	if strings.Contains(backendService, "\n    ports:") {
-		t.Fatal("loom backend service must not publish host ports")
+	if strings.Contains(compose, "\n    ports:") {
+		t.Fatal("no production service may publish host ports; Traefik fronts loom directly")
 	}
 }
 
@@ -146,27 +134,27 @@ func TestProductionComposeDefinesTraefikEntrypoint(t *testing.T) {
 	}
 	compose := string(data)
 
-	uiService := composeService(t, compose, "loom-ui")
+	loomService := composeService(t, compose, "loom")
 	for _, want := range []string{
 		"- traefik",
 		`traefik.enable: "true"`,
 		`traefik.docker.network: traefik`,
-		`traefik.http.services.loom.loadbalancer.server.port: "80"`,
+		`traefik.http.services.loom.loadbalancer.server.port: "8080"`,
 		`traefik.http.routers.loom.entrypoints: websecure`,
 		"`loom.trick77.com`",
 		`traefik.http.routers.loom.tls: "true"`,
 	} {
-		if !strings.Contains(uiService, want) {
-			t.Fatalf("loom-ui service missing Traefik fragment %q", want)
+		if !strings.Contains(loomService, want) {
+			t.Fatalf("loom service missing Traefik fragment %q", want)
 		}
 	}
 	for _, unwanted := range []string{"certresolver", "loom-http", "redirect-to-https"} {
-		if strings.Contains(uiService, unwanted) {
-			t.Fatalf("loom-ui service must not include unnecessary Traefik fragment %q", unwanted)
+		if strings.Contains(loomService, unwanted) {
+			t.Fatalf("loom service must not include unnecessary Traefik fragment %q", unwanted)
 		}
 	}
 
-	for _, name := range []string{"loom", "tika", "fetch", "obscura"} {
+	for _, name := range []string{"tika", "fetch", "obscura"} {
 		service := composeService(t, compose, name)
 		if !strings.Contains(service, `traefik.enable: "false"`) {
 			t.Fatalf("%s service must disable Traefik", name)
@@ -189,15 +177,8 @@ func TestProductionComposeUsesNamedPrivateNetworks(t *testing.T) {
 		t.Fatal("compose.yaml must use named private networks instead of the implicit default network")
 	}
 
-	uiService := composeService(t, compose, "loom-ui")
-	for _, want := range []string{"- traefik", "- loom"} {
-		if !strings.Contains(uiService, want) {
-			t.Fatalf("loom-ui service missing network %q", want)
-		}
-	}
-
 	backendService := composeService(t, compose, "loom")
-	for _, want := range []string{"- loom", "- fetch-mcp"} {
+	for _, want := range []string{"- traefik", "- loom", "- fetch-mcp"} {
 		if !strings.Contains(backendService, want) {
 			t.Fatalf("loom service missing network %q", want)
 		}
@@ -221,7 +202,7 @@ func TestProductionComposeHealthchecksUseSixtySecondIntervals(t *testing.T) {
 	}
 	compose := string(data)
 
-	for _, name := range []string{"loom-ui", "loom", "tika", "fetch", "obscura"} {
+	for _, name := range []string{"loom", "tika", "fetch", "obscura"} {
 		service := composeService(t, compose, name)
 		if !strings.Contains(service, "\n    healthcheck:") {
 			t.Fatalf("%s service missing healthcheck", name)
@@ -260,31 +241,28 @@ func TestProductionComposeUsesPhysicalDataDirectory(t *testing.T) {
 	}
 }
 
-func TestUIContainerfileUsesSingleWorkerNginxProxy(t *testing.T) {
-	for _, path := range []string{
-		"../../../ui/Containerfile",
-		"../../../ui/nginx.conf",
-	} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("missing %s: %v", path, err)
-		}
+func TestBackendContainerfileBuildsAndEmbedsUI(t *testing.T) {
+	// The single production image builds the Vite bundle in a node stage and copies
+	// it into backend/web/dist so //go:embed all:dist bakes the real UI into the Go
+	// binary. There is no longer a separate nginx UI image.
+	if _, err := os.Stat("../../../ui/nginx.conf"); err == nil {
+		t.Fatal("ui/nginx.conf must be removed; the backend serves the SPA directly")
 	}
-	data, err := os.ReadFile("../../../ui/nginx.conf")
+	if _, err := os.Stat("../../../ui/Containerfile"); err == nil {
+		t.Fatal("ui/Containerfile must be removed; the backend Containerfile builds the UI")
+	}
+	data, err := os.ReadFile("../../../backend/Containerfile")
 	if err != nil {
-		t.Fatalf("read ui/nginx.conf: %v", err)
+		t.Fatalf("read backend/Containerfile: %v", err)
 	}
-	conf := string(data)
+	dockerfile := string(data)
 	for _, want := range []string{
-		"worker_processes 1;",
-		"resolver 127.0.0.11 valid=30s ipv6=off;",
-		"set $loom_upstream http://loom:8080;",
-		"proxy_pass $loom_upstream;",
-		"proxy_buffering off;",
-		"location = /health",
-		"try_files $uri $uri/ /index.html;",
+		"FROM node:22-alpine AS ui",
+		"RUN npm run build",
+		"COPY --from=ui /app/ui/dist ./web/dist",
 	} {
-		if !strings.Contains(conf, want) {
-			t.Fatalf("ui/nginx.conf missing %q", want)
+		if !strings.Contains(dockerfile, want) {
+			t.Fatalf("backend/Containerfile missing UI-build fragment %q", want)
 		}
 	}
 }
@@ -315,12 +293,14 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 
 	for _, want := range []string{
 		`ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}`,
-		`ghcr.io/${{ github.repository }}-ui:${{ steps.ver.outputs.version }}`,
 		`ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.version }}`,
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Fatalf("release workflow missing image tag %q", want)
 		}
+	}
+	if strings.Contains(workflow, "-ui:${{ steps.ver.outputs.version }}") {
+		t.Fatal("release workflow must not publish a separate loom-ui image")
 	}
 	if strings.Contains(workflow, "loom-obscura") || strings.Contains(workflow, "Build and push Obscura MCP image") {
 		t.Fatal("release workflow must not build or publish an Obscura wrapper image")
@@ -332,7 +312,6 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 	}
 	for _, imageStep := range []string{
 		"- name: Build and push backend image",
-		"- name: Build and push UI image",
 		"- name: Build and push fetch MCP image",
 	} {
 		idx := strings.Index(workflow, imageStep)
@@ -358,12 +337,14 @@ func TestReleaseWorkflowBuildsProductionImages(t *testing.T) {
 	for _, want := range []string{
 		`name: Build and push backend image`,
 		`file: ./backend/Containerfile`,
-		`name: Build and push UI image`,
-		`file: ./ui/Containerfile`,
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Fatalf("release workflow missing production image build fragment %q", want)
 		}
+	}
+	// The UI is now built inside the backend image, so there is no separate build step.
+	if strings.Contains(workflow, `file: ./ui/Containerfile`) {
+		t.Fatal("release workflow must not build a separate ui image")
 	}
 }
 
@@ -447,7 +428,10 @@ func TestCleanupWorkflowDoesNotManageObscuraWrapperImage(t *testing.T) {
 	if strings.Contains(workflow, "loom-obscura") {
 		t.Fatal("cleanup workflow must not manage the removed Obscura wrapper image")
 	}
-	if !strings.Contains(workflow, `image-names: "loom, loom-ui, loom-fetch"`) {
-		t.Fatal("cleanup workflow must retain Loom, UI, and fetch image cleanup")
+	if !strings.Contains(workflow, `image-names: "loom, loom-fetch"`) {
+		t.Fatal("cleanup workflow must retain Loom and fetch image cleanup")
+	}
+	if strings.Contains(workflow, "loom-ui") {
+		t.Fatal("cleanup workflow must not manage the removed loom-ui image")
 	}
 }
