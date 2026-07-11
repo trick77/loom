@@ -26,7 +26,7 @@ func TestFetchClientAdvertisesFetchTool(t *testing.T) {
 	if !ok {
 		t.Fatalf("InputSchema properties missing: %#v", tool.InputSchema)
 	}
-	for _, key := range []string{"url", "max_length", "start_index", "raw"} {
+	for _, key := range []string{"url", "max_length", "start_index", "raw", "extract_pdf", "include_metadata"} {
 		if _, ok := props[key]; !ok {
 			t.Errorf("InputSchema missing property %q", key)
 		}

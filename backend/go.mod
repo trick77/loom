@@ -24,6 +24,7 @@ require (
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 	github.com/itlightning/dateparse v0.2.1 // indirect
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728 // indirect
 )
 
 require (
@@ -34,7 +35,7 @@ require (
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
-	github.com/trick77/webfetch v0.1.3
+	github.com/trick77/webfetch v0.1.5
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
