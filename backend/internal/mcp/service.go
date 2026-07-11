@@ -381,10 +381,14 @@ func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient 
 }
 
 func clientForServer(name string, server ServerConfig, httpClient *http.Client) Client {
-	if server.Transport == TransportStdio {
+	switch server.Transport {
+	case TransportInProcess:
+		return NewFetchClient(name)
+	case TransportStdio:
 		return NewStdioClient(name, server)
+	default:
+		return NewRemoteClient(name, server, httpClient)
 	}
-	return NewRemoteClient(name, server, httpClient)
 }
 
 func (s *Service) Tools() []llm.Tool {

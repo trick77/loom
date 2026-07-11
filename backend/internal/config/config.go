@@ -84,12 +84,11 @@ type Config struct {
 	BFLTypographyModel string
 	BFLPollTimeout     time.Duration
 
-	TikaURL        string
-	GotenbergURL   string // Gotenberg (Chromium) sidecar for HTML→PDF rendering
-	TavilyURL      string // hosted Tavily MCP endpoint for built-in web search
-	TavilyAPIKey   string // enables built-in Tavily web search when set
-	FetchMCPURL    string
-	ObscuraMCPURL  string
+	TikaURL       string
+	GotenbergURL  string // Gotenberg (Chromium) sidecar for HTML→PDF rendering
+	TavilyURL     string // hosted Tavily MCP endpoint for built-in web search
+	TavilyAPIKey  string // enables built-in Tavily web search when set
+	ObscuraMCPURL string
 	// MCPServersFile points at an optional JSON file (standard `mcpServers`
 	// format) whose servers are merged on top of the built-in MCP servers.
 	// Defaults to /conf/mcp.json (the mounted conf dir); an absent file is a
@@ -151,7 +150,6 @@ func Load() (Config, error) {
 		GotenbergURL:            env("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
 		TavilyURL:               env("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
 		TavilyAPIKey:            env("BACKEND_TAVILY_API_KEY", ""),
-		FetchMCPURL:             env("BACKEND_FETCH_MCP_URL", ""),
 		ObscuraMCPURL:           env("BACKEND_OBSCURA_MCP_URL", ""),
 		MCPServersFile:          env("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
 		AdminInitialPassword:    env("BACKEND_ADMIN_INITIAL_PASSWORD", ""),

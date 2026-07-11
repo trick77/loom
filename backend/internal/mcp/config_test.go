@@ -47,12 +47,12 @@ func TestTavilyServerConfigDefaultsURLWhenEmpty(t *testing.T) {
 }
 
 func TestFetchServerConfigAllowlistsFetchTool(t *testing.T) {
-	cfg := FetchServerConfig("http://fetch:8090/mcp")
-	if cfg.Transport != TransportStreamableHTTP {
-		t.Fatalf("Transport = %q, want streamable-http", cfg.Transport)
+	cfg := FetchServerConfig()
+	if cfg.Transport != TransportInProcess {
+		t.Fatalf("Transport = %q, want in-process", cfg.Transport)
 	}
-	if cfg.URL != "http://fetch:8090/mcp" {
-		t.Fatalf("URL = %q, want configured URL", cfg.URL)
+	if cfg.URL != "" {
+		t.Fatalf("URL = %q, want empty (runs in-process)", cfg.URL)
 	}
 	if !reflect.DeepEqual(cfg.Tools, []string{"fetch"}) {
 		t.Fatalf("Tools = %#v, want [fetch]", cfg.Tools)

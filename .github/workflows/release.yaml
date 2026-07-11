@@ -56,25 +56,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: companion_changes
-        name: Detect companion image changes
-        run: |
-          if git diff --quiet "${{ steps.ver.outputs.previous }}"...HEAD -- fetch; then
-            fetch_source_changed=false
-          else
-            fetch_source_changed=true
-          fi
-          if docker buildx imagetools inspect "ghcr.io/${{ github.repository }}-fetch:latest" >/dev/null 2>&1; then
-            fetch_missing=false
-          else
-            fetch_missing=true
-          fi
-          if [ "$fetch_source_changed" = "true" ] || [ "$fetch_missing" = "true" ]; then
-            echo "fetch_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "fetch_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build and push backend image
         uses: docker/build-push-action@v7
         with:
@@ -93,26 +74,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push fetch MCP image
-        if: ${{ steps.companion_changes.outputs.fetch_changed == 'true' }}
-        uses: docker/build-push-action@v7
-        with:
-          context: ./fetch
-          file: ./fetch/Containerfile
-          push: true
-          platforms: linux/amd64
-          tags: |
-            ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.version }}
-            ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.major }}.${{ steps.ver.outputs.minor }}
-            ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.major }}
-            ghcr.io/${{ github.repository }}-fetch:${{ steps.ver.outputs.short }}
-            ghcr.io/${{ github.repository }}-fetch:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Tag only AFTER required image pushes succeed, so a failed release never
-      # leaves an orphan git tag behind. The fetch companion image is required
-      # only when its source directory changed since the previous release.
+      # Tag only AFTER the image push succeeds, so a failed release never leaves
+      # an orphan git tag behind.
       - name: Create and push tag
         run: |
           git config user.name  "github-actions[bot]"

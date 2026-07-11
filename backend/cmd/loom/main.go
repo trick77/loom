@@ -369,9 +369,8 @@ func (t toolServerConfig) union() mcp.Config {
 
 func toolConfigForConfig(cfg config.Config) (toolServerConfig, error) {
 	required := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
-	if strings.TrimSpace(cfg.FetchMCPURL) != "" {
-		required.Servers["fetch"] = mcp.FetchServerConfig(cfg.FetchMCPURL)
-	}
+	// Fetch runs in-process (no sidecar), so it is always available.
+	required.Servers["fetch"] = mcp.FetchServerConfig()
 	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
 		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL)
 	}

@@ -72,14 +72,13 @@ func TestChatClientConfigFromConfig(t *testing.T) {
 
 func TestToolConfigForConfigAddsBuiltInTavily(t *testing.T) {
 	cfg := config.Config{
-		FetchMCPURL:  "http://fetch:8090/mcp",
 		TavilyURL:    "https://mcp.tavily.com/mcp/",
 		TavilyAPIKey: "secret",
 	}
 
 	got := mustToolConfig(t, cfg)
-	if got.Servers["fetch"].URL != "http://fetch:8090/mcp" {
-		t.Fatalf("fetch config = %#v", got.Servers["fetch"])
+	if got.Servers["fetch"].Transport != mcp.TransportInProcess {
+		t.Fatalf("fetch config = %#v, want in-process transport", got.Servers["fetch"])
 	}
 	tavily := got.Servers["tavily"]
 	if tavily.Transport != mcp.TransportStreamableHTTP {
@@ -111,17 +110,16 @@ func TestTavilyConfiguredDetectsEnv(t *testing.T) {
 
 func TestToolConfigForConfigAddsFirstClassMCPTools(t *testing.T) {
 	cfg := config.Config{
-		FetchMCPURL:   "http://fetch:8090/mcp",
 		ObscuraMCPURL: "http://obscura:8090/mcp",
 	}
 
 	got := mustToolConfig(t, cfg)
 	fetch := got.Servers["fetch"]
-	if fetch.Transport != mcp.TransportStreamableHTTP {
-		t.Fatalf("fetch transport = %q, want streamable-http", fetch.Transport)
+	if fetch.Transport != mcp.TransportInProcess {
+		t.Fatalf("fetch transport = %q, want in-process", fetch.Transport)
 	}
-	if fetch.URL != "http://fetch:8090/mcp" {
-		t.Fatalf("fetch URL = %q, want configured URL", fetch.URL)
+	if fetch.URL != "" {
+		t.Fatalf("fetch URL = %q, want empty (runs in-process)", fetch.URL)
 	}
 	if len(fetch.Tools) != 1 || fetch.Tools[0] != "fetch" {
 		t.Fatalf("fetch tools = %#v, want [fetch]", fetch.Tools)
@@ -170,7 +168,7 @@ func TestToolConfigForConfigFileOverridesBuiltIn(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	got := mustToolConfig(t, config.Config{FetchMCPURL: "http://fetch:8090/mcp", MCPServersFile: path})
+	got := mustToolConfig(t, config.Config{MCPServersFile: path})
 	if got.Servers["fetch"].URL != "http://override:9000/mcp" {
 		t.Fatalf("fetch URL = %q, want file override", got.Servers["fetch"].URL)
 	}
@@ -185,7 +183,7 @@ func TestToolConfigForConfigSplitsFileServersBestEffort(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	got, err := toolConfigForConfig(config.Config{FetchMCPURL: "http://fetch:8090/mcp", MCPServersFile: path})
+	got, err := toolConfigForConfig(config.Config{MCPServersFile: path})
 	if err != nil {
 		t.Fatalf("toolConfigForConfig() error = %v", err)
 	}
