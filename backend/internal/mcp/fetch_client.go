@@ -17,7 +17,7 @@ const fetchClientToolName = "fetch"
 // dropped: it is legacy framing that carries no operational intent and only
 // costs tokens in every tool-list injection. This is a deliberate divergence
 // from byte-for-byte sidecar parity, kept minimal so tool dispatch is unchanged.
-const fetchClientDescription = `Fetches a URL from the internet and extracts its contents as markdown. Set 'raw' for the unsimplified HTML, 'extract_pdf' to extract text from PDF responses, or 'include_metadata' to prepend a title/author/date block.`
+const fetchClientDescription = `Fetches a URL from the internet and extracts its contents as markdown. Set 'raw' for the unsimplified HTML, 'extract_pdf' to extract text from PDF responses, or 'include_metadata' to prepend a title/author/date block. If the default extraction drops content you need, use 'full_page' (whole page) or 'selector' (a specific CSS region); 'exclude_selectors' strips unwanted elements.`
 
 // fetchClient is an in-process Client that replaces the external fetch MCP
 // sidecar. It performs the fetch directly in the backend via the shared
@@ -89,6 +89,24 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 					"title":       "Include Metadata",
 					"type":        "boolean",
 				},
+				"full_page": map[string]any{
+					"default":     false,
+					"description": "Convert the whole page to markdown instead of extracting just the main article. Use when the default extraction drops content you need (tables, sidebars, docs pages). Ignored if 'selector' is set.",
+					"title":       "Full Page",
+					"type":        "boolean",
+				},
+				"selector": map[string]any{
+					"default":     "",
+					"description": "Convert only the element(s) matching this CSS selector, skipping main-article extraction. Takes precedence over 'full_page'.",
+					"title":       "Selector",
+					"type":        "string",
+				},
+				"exclude_selectors": map[string]any{
+					"description": "CSS selectors whose matching elements are removed before conversion (e.g. strip nav/cookie banners). Works with the default extraction and with full_page/selector.",
+					"title":       "Exclude Selectors",
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+				},
 			},
 			"required": []any{"url"},
 		},
@@ -98,11 +116,14 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 func (c *fetchClient) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
 	url, _ := arguments["url"].(string)
 	opts := webfetch.Options{
-		MaxLength:       argInt(arguments, "max_length"),
-		StartIndex:      argInt(arguments, "start_index"),
-		Raw:             argBool(arguments, "raw"),
-		ExtractPDF:      argBool(arguments, "extract_pdf"),
-		IncludeMetadata: argBool(arguments, "include_metadata"),
+		MaxLength:        argInt(arguments, "max_length"),
+		StartIndex:       argInt(arguments, "start_index"),
+		Raw:              argBool(arguments, "raw"),
+		ExtractPDF:       argBool(arguments, "extract_pdf"),
+		IncludeMetadata:  argBool(arguments, "include_metadata"),
+		FullPage:         argBool(arguments, "full_page"),
+		Selector:         argString(arguments, "selector"),
+		ExcludeSelectors: argStringSlice(arguments, "exclude_selectors"),
 	}
 	// A non-nil error keeps the deterministic fetch->obscura fallback working:
 	// the dispatch layer treats a CallTool error on fetch__fetch as "try
@@ -131,4 +152,26 @@ func argInt(args map[string]any, key string) int {
 func argBool(args map[string]any, key string) bool {
 	b, _ := args[key].(bool)
 	return b
+}
+
+// argString coerces a JSON tool argument to a string; missing/non-string yields "".
+func argString(args map[string]any, key string) string {
+	s, _ := args[key].(string)
+	return s
+}
+
+// argStringSlice coerces a JSON tool argument (a []any of strings) to []string,
+// skipping non-string and empty entries. Missing/non-array yields nil.
+func argStringSlice(args map[string]any, key string) []string {
+	raw, ok := args[key].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
