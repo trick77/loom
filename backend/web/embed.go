@@ -46,9 +46,18 @@ func spaHandler(fsys fs.FS) http.Handler {
 			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		}
 		if info, err := fs.Stat(fsys, trimLeadingSlash(r.URL.Path)); err == nil && !info.IsDir() {
+			// Vite emits content-hashed bundles under /assets/, so they can be cached
+			// forever; index.html (and the SPA fallback below) must not, or clients
+			// pin a stale entrypoint after a deploy.
+			if strings.HasPrefix(r.URL.Path, "/assets/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else if r.URL.Path == "/index.html" {
+				w.Header().Set("Cache-Control", "no-cache")
+			}
 			fileServer.ServeHTTP(w, r)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-cache")
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/"
 		fileServer.ServeHTTP(w, r2)

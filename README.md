@@ -124,9 +124,9 @@ session secrets.
 ### 5. Reverse proxy notes
 
 Loom OIDC does not require authentik ForwardAuth headers. In the production Compose stack, the
-nginx UI container is the only externally reachable service and proxies `/api/*` to the backend over
-the internal Compose network. Any outer reverse proxy only needs to route normal HTTPS traffic to
-the UI container.
+single `loom` container is the only externally reachable service: it serves the embedded SPA and the
+`/api/*` backend from one process on port 8080. Any outer reverse proxy only needs to route normal
+HTTPS traffic to that container.
 
 Required externally reachable paths:
 
