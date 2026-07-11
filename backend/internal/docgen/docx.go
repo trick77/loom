@@ -15,12 +15,14 @@ func (g DOCXGenerator) ToolName() string { return "create_docx_file" }
 func (g DOCXGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name:        g.ToolName(),
-		Description: "Create a DOCX document from Markdown or plain text content." + FileToolGuardrail,
+		Description: "Create a DOCX document from plain text. Blank lines separate paragraphs, and a " +
+			"line starting with `# ` becomes the document title. No other Markdown is interpreted " +
+			"(further headings, bullets, bold, tables, links are emitted as literal text)." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"filename": map[string]any{"type": "string", "description": "Short, descriptive output filename based on the document's content, without a path or file extension (e.g. `meeting-notes`)."},
-				"content":  map[string]any{"type": "string"},
+				"content":  map[string]any{"type": "string", "description": "Plain-text body. Blank lines separate paragraphs; a leading `# ` on a line makes it the title. Other Markdown is not parsed."},
 			},
 			"required":             []string{"filename", "content"},
 			"additionalProperties": false,

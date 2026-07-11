@@ -33,13 +33,13 @@ func (g PPTXGenerator) Schema() ToolSchema {
 		Description: "Create a styled PPTX presentation. Open with a 'title' slide, use 'section' " +
 			"dividers between parts, choose 'table' for tabular data, 'two-column' to compare, " +
 			"'big-number' to highlight a stat, and 'quote' for a pull quote. Vary layouts; do not " +
-			"put everything in plain bullets. Every slide needs a title (used as the heading), except " +
-			"the 'quote' layout, which displays only the quote and attribution." + FileToolGuardrail,
+			"put everything in plain bullets. Every slide needs a title (used as the heading); on a " +
+			"'quote' slide the title is still required but is not shown." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"filename": map[string]any{"type": "string", "description": "Short, descriptive output filename based on the presentation's content, without a path or file extension (e.g. `product-roadmap`)."},
-				"title":    map[string]any{"type": "string"},
+				"title":    map[string]any{"type": "string", "description": "Presentation title used for file metadata. Defaults to the first slide's title."},
 				"slides": map[string]any{
 					"type": "array",
 					"items": map[string]any{
@@ -48,25 +48,27 @@ func (g PPTXGenerator) Schema() ToolSchema {
 							"layout": map[string]any{
 								"type":        "string",
 								"enum":        []string{"title", "section", "bullets", "two-column", "big-number", "quote", "table"},
-								"description": "Slide layout. Defaults to bullets.",
+								"description": "Slide layout. Defaults to 'bullets'.",
 							},
-							"title":    map[string]any{"type": "string"},
-							"subtitle": map[string]any{"type": "string"},
-							"bullets":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"title":    map[string]any{"type": "string", "description": "Slide heading. Required on every slide, including 'quote' (where it is not displayed)."},
+							"subtitle": map[string]any{"type": "string", "description": "'title' layout: subtitle under the main title. Ignored by other layouts."},
+							"bullets":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "'bullets' (default) and 'title' layouts: the bullet list. Ignored by 'two-column' (use `columns`)."},
 							"columns": map[string]any{
-								"type": "object",
+								"type":        "object",
+								"description": "'two-column' layout: two bullet lists shown side by side.",
 								"properties": map[string]any{
-									"left":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-									"right": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+									"left":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Left-column bullets."},
+									"right": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Right-column bullets."},
 								},
 							},
-							"number":      map[string]any{"type": "string"},
-							"caption":     map[string]any{"type": "string"},
-							"quote":       map[string]any{"type": "string"},
-							"attribution": map[string]any{"type": "string"},
+							"number":      map[string]any{"type": "string", "description": "'big-number' layout: the headline figure (e.g. `98%`)."},
+							"caption":     map[string]any{"type": "string", "description": "'big-number' layout: short label shown under the figure."},
+							"quote":       map[string]any{"type": "string", "description": "'quote' layout: the pull-quote text."},
+							"attribution": map[string]any{"type": "string", "description": "'quote' layout: the quote's source/attribution."},
 							"table": map[string]any{
-								"type":  "array",
-								"items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+								"type":        "array",
+								"description": "'table' layout: rows of cells; the first row is rendered as the header.",
+								"items":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 							},
 						},
 						"required": []string{"title"},

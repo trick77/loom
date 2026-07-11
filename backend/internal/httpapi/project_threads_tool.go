@@ -33,7 +33,8 @@ func projectThreadsTool() llm.Tool {
 			Description: "Read the titles and conversation content of the OTHER threads in the current project. " +
 				"Call this whenever the user asks to summarize, compile, compare, or gather information across the " +
 				"threads or conversations in this project (for example \"summarize the threads in this project\"). " +
-				"It returns each thread's title, last-activity time, and message content (most recent thread first). " +
+				"It returns each thread's title, last-activity time, and message content (most recent thread first), " +
+				"covering up to 50 threads; when there are more, or the content is large, older threads are omitted and the result says so. " +
 				"After reading, synthesize a single answer with whatever emphasis the user asked for; do not rely on " +
 				"the project memory digest alone, which is lossy.",
 			Parameters: map[string]any{

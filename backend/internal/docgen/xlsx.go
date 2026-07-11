@@ -21,20 +21,21 @@ func (g XLSXGenerator) ToolName() string { return "create_xlsx_file" }
 func (g XLSXGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name:        g.ToolName(),
-		Description: "Create an XLSX spreadsheet from rows or CSV data." + FileToolGuardrail,
+		Description: "Create an XLSX spreadsheet. Provide exactly one of `rows` or `csvData` (if both " +
+			"are given, `rows` is used). The first row is treated as the header and frozen. Max 5000 rows." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"filename": map[string]any{"type": "string", "description": "Short, descriptive output filename based on the spreadsheet's content, without a path or file extension (e.g. `sales-data`)."},
 				"rows": map[string]any{
 					"type":        "array",
-					"description": "Spreadsheet rows, where each row is an array of cell values.",
+					"description": "Spreadsheet rows, where each row is an array of cell values. First row is the header. Ignored if omitted; provide this or `csvData`.",
 					"items": map[string]any{
 						"type":  "array",
 						"items": map[string]any{"type": []string{"string", "number", "boolean", "null"}},
 					},
 				},
-				"csvData": map[string]any{"type": "string"},
+				"csvData": map[string]any{"type": "string", "description": "Alternative to `rows`: raw CSV text (first row is the header). Ignored if `rows` is provided."},
 			},
 			"required":             []string{"filename"},
 			"additionalProperties": false,
