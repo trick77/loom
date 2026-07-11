@@ -33,13 +33,13 @@ func (g TextGenerator) ToolName() string {
 func (g TextGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name:        g.ToolName(),
-		Description: "Create a UTF-8 text-like file such as txt, md, csv, json, html, xml, yaml, or log." + FileToolGuardrail,
+		Description: "Create a UTF-8 text-like file such as txt, md, csv, json, html, xml, yaml, yml, or log." + FileToolGuardrail,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"filename":  map[string]any{"type": "string", "description": "Short, descriptive output filename based on the file's content, without a path or file extension (e.g. `notes`)."},
-				"extension": map[string]any{"type": "string"},
-				"content":   map[string]any{"type": "string"},
+				"extension": map[string]any{"type": "string", "description": "File extension without the dot (e.g. `md`, `json`, `yaml`). Defaults to an extension already present in `filename`, otherwise `txt`."},
+				"content":   map[string]any{"type": "string", "description": "The full UTF-8 file contents. Capped at 1 MiB."},
 			},
 			"required":             []string{"filename", "content"},
 			"additionalProperties": false,

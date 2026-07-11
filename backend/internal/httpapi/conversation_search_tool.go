@@ -30,7 +30,7 @@ func conversationSearchTool() llm.Tool {
 			Description: "Search the full text of ALL the user's past conversations — every thread, across every project — for a word or phrase. " +
 				"Use it whenever the user might be returning to something discussed before (\"didn't we talk about X?\", \"what did we decide about Y\"), " +
 				"or proactively before answering a question that earlier conversations likely already covered. " +
-				"Returns the most relevant matching messages, each with its thread title, date, and thread id. " +
+				"Returns up to 8 of the most relevant matching messages, each with its thread title, date, thread id, role, and a snippet of the matched message. " +
 				"To read a match in full, call read_thread with the thread id from a result.",
 			Parameters: map[string]any{
 				"type": "object",

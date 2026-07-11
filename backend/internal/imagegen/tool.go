@@ -64,7 +64,7 @@ func (t Tool) Schema() ToolSchema {
 			"properties": map[string]any{
 				"prompt": map[string]any{
 					"type":        "string",
-					"description": "Detailed visual prompt for the generated image.",
+					"description": "Detailed visual prompt for the generated image. Maximum 4000 characters.",
 				},
 				"filename": map[string]any{
 					"type":        "string",
@@ -72,11 +72,11 @@ func (t Tool) Schema() ToolSchema {
 				},
 				"width": map[string]any{
 					"type":        "integer",
-					"description": "Output width in pixels. Defaults to 1024. Rounded up to a multiple of 16.",
+					"description": "Output width in pixels. Defaults to 1024, minimum 64, rounded up to a multiple of 16. Width × height must not exceed 4,000,000 pixels (about 4 MP).",
 				},
 				"height": map[string]any{
 					"type":        "integer",
-					"description": "Output height in pixels. Defaults to 1024. Rounded up to a multiple of 16.",
+					"description": "Output height in pixels. Defaults to 1024, minimum 64, rounded up to a multiple of 16. Width × height must not exceed 4,000,000 pixels (about 4 MP).",
 				},
 				"seed": map[string]any{
 					"type":        "integer",
@@ -89,7 +89,7 @@ func (t Tool) Schema() ToolSchema {
 				},
 				"safety_tolerance": map[string]any{
 					"type":        "integer",
-					"description": "BFL safety tolerance from 0 to 5. Defaults to 2.",
+					"description": "Content-safety tolerance from 0 (strictest) to 5 (most permissive). Defaults to 2.",
 				},
 			},
 			"required": []string{"prompt"},
