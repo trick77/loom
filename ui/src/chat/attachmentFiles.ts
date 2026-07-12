@@ -18,6 +18,44 @@ export function filterAcceptedFiles(files: File[]): File[] {
   });
 }
 
+// The image MIME types the app accepts, mapped to the extension the attachment
+// pipeline expects. Kept in sync with the image entries of ATTACHMENT_ACCEPT.
+const CLIPBOARD_IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+};
+
+// toSupportedImageFile normalizes a clipboard image into a File the attachment
+// pipeline accepts. Pasted screenshots arrive as File objects whose name is often
+// generic ("image.png") or, in some browsers, empty — and filterAcceptedFiles keeps
+// a file only if its name ends in a supported extension. So we synthesize a filename
+// from the MIME type unless the original already carries a supported extension.
+// Returns null for a MIME type we don't support, so callers can skip it.
+export function toSupportedImageFile(file: File): File | null {
+  const ext = CLIPBOARD_IMAGE_EXTENSIONS[file.type];
+  if (ext === undefined) return null;
+  const name = file.name.toLowerCase();
+  if (ACCEPTED_EXTENSIONS.some((accepted) => name.endsWith(accepted))) return file;
+  return new File([file], `pasted-image${ext}`, { type: file.type });
+}
+
+// clipboardImageFiles extracts image files from a paste's clipboard data. It reads
+// clipboardData.files first (the modern surface), falling back to iterating .items
+// for browsers that only expose images there.
+export function clipboardImageFiles(data: DataTransfer): File[] {
+  const fromFiles = Array.from(data.files ?? []).filter((file) => file.type.startsWith("image/"));
+  if (fromFiles.length > 0) return fromFiles;
+  const fromItems: File[] = [];
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (file !== null) fromItems.push(file);
+  }
+  return fromItems;
+}
+
 export function isWithinUploadSizeLimit(file: File): boolean {
   return typeof file.size !== "number" || file.size <= DOCUMENT_MAX_UPLOAD_BYTES;
 }
