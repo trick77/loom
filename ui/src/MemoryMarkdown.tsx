@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+
+import { markdownRemarkPlugins, normalizeMathDelimiters, rehypeKatexPlugin } from "./chat/markdownConfig";
 
 /**
  * MemoryMarkdown renders a stored memory string as markdown. Both the user and
@@ -9,10 +11,12 @@ import remarkGfm from "remark-gfm";
  * Styling comes from the `.ui-memory-markdown` rules in index.css.
  */
 export function MemoryMarkdown({ content, className }: { content: string; className?: string }) {
+  const normalized = useMemo(() => normalizeMathDelimiters(content), [content]);
   return (
     <div className={className ? `ui-memory-markdown ${className}` : "ui-memory-markdown"}>
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={markdownRemarkPlugins}
+        rehypePlugins={[rehypeKatexPlugin]}
         components={{
           a({ children, ...props }) {
             return (
@@ -23,7 +27,7 @@ export function MemoryMarkdown({ content, className }: { content: string; classN
           },
         }}
       >
-        {content}
+        {normalized}
       </Markdown>
     </div>
   );

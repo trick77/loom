@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
+
+import { markdownRemarkPlugins, normalizeMathDelimiters, rehypeKatexPlugin } from "./markdownConfig";
 
 import {
   externalHTTPURL,
@@ -141,14 +142,21 @@ function ReasoningContent({ content, streaming = false }: { content: string; str
     setOverflowing(el.scrollHeight > REASONING_CAP_PX);
   }, [content]);
   const clamped = overflowing && !showFull;
+  // Rewrite legacy \(...\) / \[...\] into $-delimiters; memoized so the masking regexes
+  // don't re-run over the full reasoning text on every streaming delta.
+  const normalized = useMemo(() => normalizeMathDelimiters(content), [content]);
   return (
     <>
       <div ref={ref} className={clamped ? "ui-activity-reasoning ui-activity-reasoning-clamp" : "ui-activity-reasoning"}>
         <Markdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={streaming ? [rehypeHighlight, rehypeStreamFade] : [rehypeHighlight]}
+          remarkPlugins={markdownRemarkPlugins}
+          rehypePlugins={
+            streaming
+              ? [rehypeKatexPlugin, rehypeHighlight, rehypeStreamFade]
+              : [rehypeKatexPlugin, rehypeHighlight]
+          }
         >
-          {content}
+          {normalized}
         </Markdown>
       </div>
       {overflowing && (

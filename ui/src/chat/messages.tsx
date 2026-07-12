@@ -12,7 +12,8 @@ import type { PluggableList } from "unified";
 import Markdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
+
+import { markdownRemarkPlugins, normalizeMathDelimiters, rehypeKatexPlugin } from "./markdownConfig";
 
 import { type ContentBlock, type Message, type MessagePastedText } from "../api";
 import i18n from "../i18n";
@@ -324,13 +325,16 @@ export function ProseMarkdown({
   /** Web-source registry for resolving inline [n] citation markers to pills. */
   sources?: SourceMap;
 }) {
-  const rehypePlugins: PluggableList = [rehypeHighlight];
+  // rehypeKatex first so math renders before streamFade/sourcePills post-process the tree.
+  const rehypePlugins: PluggableList = [rehypeKatexPlugin, rehypeHighlight];
   if (streaming) rehypePlugins.push(rehypeStreamFade);
   if (sources !== undefined) rehypePlugins.push([rehypeSourcePills, sources]);
+  // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses.
+  const normalized = useMemo(() => normalizeMathDelimiters(children), [children]);
   return (
     <div className="ui-message-text ui-markdown text-[#f3f0e8]">
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={rehypePlugins}
         components={{
           a({ children, ...props }) {
@@ -358,7 +362,7 @@ export function ProseMarkdown({
           pre: CodeBlock,
         } as Components}
       >
-        {children}
+        {normalized}
       </Markdown>
     </div>
   );
