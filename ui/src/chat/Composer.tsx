@@ -4,7 +4,12 @@ import { useTranslation } from "react-i18next";
 import { ATTACHMENT_ACCEPT } from "../api";
 import i18n from "../i18n";
 import { AttachmentPreview } from "../components/AttachmentPreview";
-import { attachAcceptedFiles, formatAttachmentSize } from "./attachmentFiles";
+import {
+  attachAcceptedFiles,
+  clipboardImageFiles,
+  formatAttachmentSize,
+  toSupportedImageFile,
+} from "./attachmentFiles";
 import { Icon } from "./Icon";
 import { ReasoningMenu } from "./ReasoningMenu";
 import { MODEL_LABEL, type ReasoningEffort } from "./reasoning";
@@ -186,6 +191,22 @@ export function Composer({
         placeholder={placeholder}
         value={draft}
         onPaste={(event) => {
+          // A pasted screenshot / image goes through the same staging + upload path
+          // as the file picker and drag-drop. Only when attachments are available
+          // (onAttachFiles defined — omitted e.g. in incognito); otherwise fall
+          // through to normal text paste.
+          if (onAttachFiles !== undefined) {
+            const images = clipboardImageFiles(event.clipboardData)
+              .map(toSupportedImageFile)
+              .filter((file): file is File => file !== null);
+            if (images.length > 0) {
+              // Suppress the native paste: a clipboard image does nothing useful in a
+              // textarea, and a mixed image+text paste shouldn't also dump the text.
+              event.preventDefault();
+              attachFiles(images);
+              return;
+            }
+          }
           // A large or tall plain-text paste collapses into a removable "Pasted"
           // chip instead of flooding the textarea (char- or line-count threshold).
           if (onAddPastedText === undefined) return;
