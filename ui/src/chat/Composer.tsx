@@ -9,6 +9,7 @@ import {
   clipboardImageFiles,
   formatAttachmentSize,
   toSupportedImageFile,
+  UNSUPPORTED_FILE_MESSAGE,
 } from "./attachmentFiles";
 import { Icon } from "./Icon";
 import { ReasoningMenu } from "./ReasoningMenu";
@@ -191,26 +192,32 @@ export function Composer({
         placeholder={placeholder}
         value={draft}
         onPaste={(event) => {
+          const text = event.clipboardData.getData("text/plain");
           // A pasted screenshot / image goes through the same staging + upload path
           // as the file picker and drag-drop. Only when attachments are available
-          // (onAttachFiles defined — omitted e.g. in incognito); otherwise fall
-          // through to normal text paste.
-          if (onAttachFiles !== undefined) {
-            const images = clipboardImageFiles(event.clipboardData)
-              .map(toSupportedImageFile)
-              .filter((file): file is File => file !== null);
-            if (images.length > 0) {
-              // Suppress the native paste: a clipboard image does nothing useful in a
-              // textarea, and a mixed image+text paste shouldn't also dump the text.
+          // (onAttachFiles defined — omitted e.g. in incognito) and the clipboard
+          // carries no text: copying a cell range or rich content puts an image
+          // rendering *alongside* the text, and there the text is what the user
+          // meant — so a non-empty text/plain falls through to normal text paste.
+          if (onAttachFiles !== undefined && text.trim() === "") {
+            const clipboardImages = clipboardImageFiles(event.clipboardData);
+            if (clipboardImages.length > 0) {
+              // A clipboard image does nothing useful in a textarea, so suppress the
+              // native paste whether or not the type is one we accept.
               event.preventDefault();
-              attachFiles(images);
+              const images = clipboardImages
+                .map(toSupportedImageFile)
+                .filter((file): file is File => file !== null);
+              if (images.length > 0) attachFiles(images);
+              // Mirror the picker/drag-drop feedback for an unsupported image type
+              // (e.g. a TIFF/HEIC screenshot) rather than silently doing nothing.
+              else onAttachError?.(UNSUPPORTED_FILE_MESSAGE);
               return;
             }
           }
           // A large or tall plain-text paste collapses into a removable "Pasted"
           // chip instead of flooding the textarea (char- or line-count threshold).
           if (onAddPastedText === undefined) return;
-          const text = event.clipboardData.getData("text/plain");
           if (!shouldCollapsePaste(text)) return;
           event.preventDefault();
           // preventDefault suppresses the native paste, which would normally also
