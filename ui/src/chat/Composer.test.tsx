@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { UNSUPPORTED_FILE_MESSAGE } from "./attachmentFiles";
 import { Composer } from "./Composer";
 import { PASTE_AS_ATTACHMENT_LINE_THRESHOLD, PASTE_AS_ATTACHMENT_THRESHOLD } from "./pastedText";
 import type { ComposerAttachment } from "./useDocumentAttachments";
@@ -392,4 +393,122 @@ test("renders a pasted-text chip with a preview and badge, and removes it", () =
   fireEvent.click(screen.getByRole("button", { name: "Remove pasted text, 2 lines" }));
 
   expect(onRemovePastedText).toHaveBeenCalledWith("pasted-1");
+});
+
+const pngFile = (name: string) => new File([new Uint8Array([1])], name, { type: "image/png" });
+
+test("attaches a pasted screenshot, synthesizing a filename for a nameless image", () => {
+  const onAttachFiles = vi.fn();
+  const onAddPastedText = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAttachFiles={onAttachFiles}
+      onAddPastedText={onAddPastedText}
+    />,
+  );
+
+  const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
+    clipboardData: { getData: () => "", files: [pngFile("")] },
+  });
+
+  // The image is intercepted (native paste suppressed) and staged, not typed.
+  expect(notCancelled).toBe(false);
+  expect(onAddPastedText).not.toHaveBeenCalled();
+  expect(onAttachFiles).toHaveBeenCalledTimes(1);
+  expect(onAttachFiles.mock.calls[0][0].map((f: File) => f.name)).toEqual(["pasted-image.png"]);
+});
+
+test("preserves pasted text when the clipboard carries both text and an image rendering", () => {
+  // Copying a cell range / rich content puts an image alongside text/plain; the
+  // text is what the user meant, so it must not be hijacked into an attachment.
+  const onAttachFiles = vi.fn();
+  const onDraftChange = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={onDraftChange}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAttachFiles={onAttachFiles}
+      onAddPastedText={vi.fn()}
+    />,
+  );
+
+  const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
+    clipboardData: { getData: () => "col1\tcol2", files: [pngFile("image.png")] },
+  });
+
+  // Native text paste proceeds; the image is ignored.
+  expect(notCancelled).toBe(true);
+  expect(onAttachFiles).not.toHaveBeenCalled();
+});
+
+test("reports an unsupported pasted image type instead of silently ignoring it", () => {
+  const onAttachFiles = vi.fn();
+  const onAttachError = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAttachFiles={onAttachFiles}
+      onAttachError={onAttachError}
+    />,
+  );
+
+  const tiff = new File([new Uint8Array([1])], "shot.tiff", { type: "image/tiff" });
+  const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
+    clipboardData: { getData: () => "", files: [tiff] },
+  });
+
+  expect(notCancelled).toBe(false);
+  expect(onAttachFiles).not.toHaveBeenCalled();
+  expect(onAttachError).toHaveBeenCalledWith(UNSUPPORTED_FILE_MESSAGE);
+});
+
+test("ignores a pasted image when attachments are unavailable (incognito)", () => {
+  // Incognito renders without onAttachFiles; the image branch is skipped and the
+  // paste falls through to normal text handling without crashing.
+  const onAddPastedText = vi.fn();
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      reasoningEffort="high"
+      onReasoningEffortChange={() => undefined}
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      onAddPastedText={onAddPastedText}
+    />,
+  );
+
+  const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
+    clipboardData: { getData: () => "", files: [pngFile("")] },
+  });
+
+  expect(notCancelled).toBe(true);
+  expect(onAddPastedText).not.toHaveBeenCalled();
 });
