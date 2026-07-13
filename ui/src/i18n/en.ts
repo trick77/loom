@@ -563,7 +563,6 @@ export const en = {
     returns: { named: "{{name}} returns!" },
     backAtIt: { named: "Back at it, {{name}}", unnamed: "Back at it!" },
     heyThere: { named: "Hey there, {{name}}", unnamed: "Hey there" },
-    whoever: { unnamed: "Greetings, whoever you are" },
     howAreYou: { named: "Hi {{name}}, how are you?", unnamed: "Hi, how are you?" },
     howWasDay: { named: "How was your day, {{name}}?", unnamed: "How was your day?" },
     howsItGoing: { named: "How's it going, {{name}}?", unnamed: "How's it going?" },
