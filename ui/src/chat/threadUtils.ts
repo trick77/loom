@@ -26,7 +26,6 @@ const GREETINGS: Greeting[] = [
   { key: "returns", named: true },
   { key: "backAtIt", named: true, unnamed: true },
   { key: "heyThere", named: true, unnamed: true },
-  { key: "whoever", unnamed: true },
   { key: "howAreYou", named: true, unnamed: true },
   { key: "howWasDay", named: true, unnamed: true },
   { key: "howsItGoing", named: true, unnamed: true },

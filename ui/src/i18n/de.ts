@@ -563,7 +563,6 @@ export const de = {
     returns: { named: "{{name}} ist zurück!" },
     backAtIt: { named: "Weiter geht's, {{name}}", unnamed: "Weiter geht's!" },
     heyThere: { named: "Hallo, {{name}}", unnamed: "Hallo" },
-    whoever: { unnamed: "Sei gegrüsst, wer auch immer du bist" },
     howAreYou: { named: "Hi {{name}}, wie geht's?", unnamed: "Hi, wie geht's?" },
     howWasDay: { named: "Wie war dein Tag, {{name}}?", unnamed: "Wie war dein Tag?" },
     howsItGoing: { named: "Wie läuft's, {{name}}?", unnamed: "Wie läuft's?" },
