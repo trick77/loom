@@ -111,8 +111,11 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             aria-expanded={sourcesOpen}
           >
             {/* pl-[3px] offsets the leftmost favicon's 3px ring so the icons' visible
-                edge lines up with the prose and action row above. */}
-            <span className="flex items-center pl-[3px]">
+                edge lines up with the prose and action row above. `isolate` keeps the
+                favicons' per-icon z-index (used only to overlap within the pile) from
+                leaking into the transcript's stacking context and painting over the
+                sticky composer while scrolling. */}
+            <span className="isolate flex items-center pl-[3px]">
               {faviconSources.slice(0, 10).map((source, index, shown) => (
                 <SourceFavicon
                   key={`fav-${source.index}-${source.url}`}
