@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/ncruces/go-sqlite3 v0.23.3
 	github.com/xuri/excelize/v2 v2.11.0
-	github.com/yuin/goldmark v1.8.2
+	github.com/yuin/goldmark v1.8.4
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	golang.org/x/image v0.44.0
 	golang.org/x/net v0.57.0
