@@ -15,7 +15,7 @@
   "license": "ISC",
   "dependencies": {
     "i18next": "^26.3.4",
-    "katex": "^0.17.0",
+    "katex": "^0.18.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-i18next": "^17.0.8",
