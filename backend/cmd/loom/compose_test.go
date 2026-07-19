@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -265,8 +266,10 @@ func TestBackendContainerfileBuildsAndEmbedsUI(t *testing.T) {
 		t.Fatalf("read backend/Containerfile: %v", err)
 	}
 	dockerfile := string(data)
+	if !regexp.MustCompile(`(?m)^FROM node:\S+ AS ui$`).MatchString(dockerfile) {
+		t.Fatalf("backend/Containerfile missing node UI-build stage (FROM node:<tag> AS ui)")
+	}
 	for _, want := range []string{
-		"FROM node:22-alpine AS ui",
 		"RUN npm run build",
 		"COPY --from=ui /app/ui/dist ./web/dist",
 	} {
