@@ -1,4 +1,4 @@
-.PHONY: build test coverage backend-coverage fe-build fe-test fe-coverage run dev refresh docker-dev docker-dev-down tidy
+.PHONY: build test coverage coverage-gate backend-coverage fe-build fe-test fe-coverage run dev refresh docker-dev docker-dev-down tidy
 
 tidy:
 	cd backend && go mod tidy
@@ -8,9 +8,17 @@ test:
 
 coverage: backend-coverage fe-coverage
 
+# Enforce the gates against a base ref (default origin/master).
+# Requires diff-cover: pip install diff-cover
+coverage-gate: coverage
+	./hack/coverage-gate.sh $(BASE_REF)
+
 backend-coverage:
 	mkdir -p coverage
-	cd backend && go test ./... -covermode=atomic -coverprofile=../coverage/backend.out
+	# -coverpkg=./... attributes coverage across package boundaries. Without it
+	# code exercised only by another package's tests (the httpapi tests drive
+	# chat/store/llm) is reported as uncovered.
+	cd backend && go test ./... -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out
 	cd backend && go tool cover -func=../coverage/backend.out
 
 fe-test:
