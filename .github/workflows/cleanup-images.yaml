@@ -33,7 +33,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           image-names: "loom"
           tag-selection: both
-          keep-n-most-recent: 5
+          keep-n-most-recent: 10
           # Protect anything pushed in the last hour so a fresh release is never
           # caught by a concurrently scheduled cleanup.
           cut-off: 1h
