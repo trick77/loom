@@ -9,15 +9,15 @@ test:
 coverage: backend-coverage fe-coverage
 
 # Enforce the gates against a base ref (default origin/master).
-# Requires diff-cover: pip install diff-cover
+# Requires diff-cover: pip install diff-cover==10.3.0
 coverage-gate: coverage
 	./hack/coverage-gate.sh $(BASE_REF)
 
+# -coverpkg=./... attributes coverage across package boundaries. Without it code
+# exercised only by another package's tests (the httpapi tests drive chat/store/llm)
+# is reported as uncovered.
 backend-coverage:
 	mkdir -p coverage
-	# -coverpkg=./... attributes coverage across package boundaries. Without it
-	# code exercised only by another package's tests (the httpapi tests drive
-	# chat/store/llm) is reported as uncovered.
 	cd backend && go test ./... -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out
 	cd backend && go tool cover -func=../coverage/backend.out
 

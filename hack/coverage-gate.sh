@@ -26,8 +26,26 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 fail=0
+checked=0
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
 mkdir -p coverage
+
+# diff-cover prints "No lines with coverage information" and exits 0 when none of
+# the report's paths match the diff. That is legitimate for a docs/CI-only PR, but
+# it is also exactly what a broken path mapping looks like — and that bug already
+# shipped once here (lcov paths vs --src-roots). So treat the message as a failure
+# only when that stack's sources actually changed.
+assert_matched() {
+  local report="$1" label="$2" base
+  shift 2
+  base="$(git merge-base "$BASE_REF" HEAD)"
+  if git diff --name-only "$base"...HEAD -- "$@" | grep -qv '_test\.go$' &&
+    grep -q 'No lines with coverage information' "$report"; then
+    echo "FAIL: $label sources changed but diff-cover matched no coverage data." >&2
+    echo "      This usually means the report's paths do not match git's." >&2
+    fail=1
+  fi
+}
 
 # diff-cover needs the base commit present; CI checkouts are shallow by default.
 if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
@@ -37,6 +55,7 @@ fi
 
 # --- backend ------------------------------------------------------------------
 if [[ -f coverage/backend.out ]]; then
+  checked=1
   # gocover-cobertura must run inside the module dir, otherwise it resolves no
   # package info and silently emits an empty report.
   (cd backend && go run github.com/boumenot/gocover-cobertura@v1.5.0 \
@@ -50,6 +69,7 @@ if [[ -f coverage/backend.out ]]; then
     --fail-under "$PATCH_MIN" \
     --format "markdown:coverage/backend-patch.md" || fail=1
   cat coverage/backend-patch.md >> "$summary" 2>/dev/null || true
+  assert_matched coverage/backend-patch.md backend "backend/*.go"
 
   # `go tool cover` resolves packages via go.mod, so it must run inside backend/.
   total="$(cd backend && go tool cover -func=../coverage/backend.out |
@@ -65,6 +85,7 @@ fi
 # The UI project floor is enforced by vitest's own coverage.thresholds in
 # ui/vitest.config.ts, so only patch coverage is checked here.
 if [[ -f ui/coverage/lcov.info ]]; then
+  checked=1
   echo "== ui patch coverage (>= ${PATCH_MIN}%) =="
   # vitest writes SF: paths relative to ui/. --src-roots does NOT rewrite these
   # for lcov (it does for Cobertura's <sources>), and a mismatch makes diff-cover
@@ -77,6 +98,14 @@ if [[ -f ui/coverage/lcov.info ]]; then
     --fail-under "$PATCH_MIN" \
     --format "markdown:coverage/ui-patch.md" || fail=1
   cat coverage/ui-patch.md >> "$summary" 2>/dev/null || true
+  assert_matched coverage/ui-patch.md ui "ui/src/*.ts" "ui/src/*.tsx"
+fi
+
+# A gate that checked nothing must not report success: if neither profile was
+# produced (reporter moved, output dir changed), fail loudly instead of green.
+if [[ "$checked" -eq 0 ]]; then
+  echo "error: no coverage profiles found. Run 'make coverage' first." >&2
+  exit 2
 fi
 
 exit "$fail"

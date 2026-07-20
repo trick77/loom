@@ -12,12 +12,11 @@ export default defineConfig({
       reporter: ["text", "lcov"],
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}", "src/**/*.d.ts"],
-      // Project floor, not a target. Set just under the level already achieved
-      // (70.3% lines) so it pins the gain without going red on noise. Raise it
-      // as coverage climbs toward 80. Patch coverage on new lines is enforced
+      // Project floor. Currently at 77.7% lines, so this has ~2.7pp of headroom
+      // for environment noise. Patch coverage on new lines is enforced
       // separately at 80% by hack/coverage-gate.sh.
       thresholds: {
-        lines: 69,
+        lines: 75,
       },
     },
   },
