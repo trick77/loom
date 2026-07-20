@@ -3,6 +3,34 @@ name: Release
 on:
   push:
     branches: [master]
+    # Only cut a release when something that ships actually changed. The image is
+    # built from ui/ and backend/ (see backend/Containerfile), and nothing else in
+    # the tree reaches it.
+    #
+    # Without this, a .gitignore line or a comment fix each cut a full version,
+    # image build, GHCR push and git tag. Measured in the sibling peeq repo, which
+    # had the same unfiltered trigger: 38 pushes produced 38 releases, 16 of which
+    # changed nothing that ships.
+    #
+    # An ignore-list rather than an allow-list on purpose: a new top-level
+    # directory starts out releasing, which is the safe default. Forgetting to add
+    # a path here costs a redundant release; forgetting to remove one would
+    # silently skip a needed release.
+    #
+    # workflow_dispatch below is unfiltered, so a release can always be forced by
+    # hand — including after a change to this workflow, which .github/** ignores.
+    paths-ignore:
+      - "docs/**"
+      - "hack/**"
+      - "conf/**"
+      - ".github/**"
+      - "**/*.md"
+      - ".gitignore"
+      - ".env.example"
+      - "Makefile"
+      - "compose.yaml"
+      - "compose.dev.yaml"
+      - "compose.dev-uihmr.yaml"
   workflow_dispatch:
     inputs:
       bump:
