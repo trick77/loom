@@ -39,7 +39,16 @@ assert_matched() {
   local report="$1" label="$2" base
   shift 2
   base="$(git merge-base "$BASE_REF" HEAD)"
-  if git diff --name-only "$base"...HEAD -- "$@" | grep -qv '_test\.go$' &&
+  # Test files are excluded from coverage reports by design, so a diff touching
+  # only tests legitimately matches no coverage data — don't flag that.
+  # Count rather than `grep -qv`: under ugrep (a common macOS `grep`) the -q/-v
+  # combination returns 1 even when non-matching lines exist, silently disabling
+  # this guard locally while it still works under GNU grep in CI.
+  local changed
+  changed="$(git diff --name-only "$base"...HEAD -- "$@" |
+    grep -cvE '(_test\.go|\.test\.tsx?)$' || true)"
+
+  if [[ "${changed:-0}" -gt 0 ]] &&
     grep -q 'No lines with coverage information' "$report"; then
     echo "FAIL: $label sources changed but diff-cover matched no coverage data." >&2
     echo "      This usually means the report's paths do not match git's." >&2
