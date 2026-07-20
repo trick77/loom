@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -249,6 +251,50 @@ func TestAuthCallbackRedirectsOnOIDCError(t *testing.T) {
 	}
 	if loc := rec.Header().Get("Location"); loc != "/?auth_error=oidc_callback_failed" {
 		t.Fatalf("Location = %q", loc)
+	}
+}
+
+func TestAuthCallbackLogsFailureWithoutLeakingSecrets(t *testing.T) {
+	var logBuf bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
+	urlErr := &url.Error{
+		Op:  "Get",
+		URL: "https://idp.example.com/token?client_secret=topsecret123&code=authcode456",
+		Err: errors.New("400 Bad Request"),
+	}
+	wrapped := fmt.Errorf("exchange oidc code: %w", urlErr)
+
+	srv := New(Deps{
+		Version: "test",
+		OIDC:    fakeOIDCService{err: wrapped},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=x&code=authcode456", nil)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/?auth_error=oidc_callback_failed" {
+		t.Fatalf("Location = %q", loc)
+	}
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "oidc callback failed") {
+		t.Fatalf("log output missing failure message: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "idp.example.com") {
+		t.Fatalf("log output missing host, redaction too aggressive: %s", logOutput)
+	}
+	if strings.Contains(logOutput, "topsecret123") {
+		t.Fatalf("log output leaked client_secret: %s", logOutput)
+	}
+	if strings.Contains(logOutput, "authcode456") {
+		t.Fatalf("log output leaked auth code: %s", logOutput)
 	}
 }
 
