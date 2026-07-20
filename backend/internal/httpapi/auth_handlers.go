@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -29,6 +30,9 @@ func (s *server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	claims, err := s.oidc.HandleCallback(r)
 	if err != nil {
+		// Warn, not Error: a user abandoning the consent screen reaches this
+		// path too, so it is not necessarily a server fault.
+		slog.Warn("oidc callback failed", "err", redactErr(err))
 		http.Redirect(w, r, "/?auth_error=oidc_callback_failed", http.StatusFound)
 		return
 	}
