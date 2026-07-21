@@ -32,6 +32,20 @@ test("renders a $$ fence as display KaTeX", () => {
   expect(container.querySelector(".katex-display")).not.toBeNull();
 });
 
+// Regression: `\[...\]` normalised to a one-line `$$ x $$`, which micromark reads as
+// inline math, so LaTeX-native display math never produced a centred block.
+test("renders \\[...\\] on its own line as display KaTeX", () => {
+  const { container } = render(<ProseMarkdown>{"\\[g(x) = \\frac{a}{b}\\]"}</ProseMarkdown>);
+  expect(container.querySelector(".katex-display")).not.toBeNull();
+  expect(container.textContent).not.toContain("$$");
+});
+
+test("renders \\[...\\] mid-sentence as inline KaTeX", () => {
+  const { container } = render(<ProseMarkdown>{"so \\[a + b\\] follows"}</ProseMarkdown>);
+  expect(container.querySelector(".katex")).not.toBeNull();
+  expect(container.querySelector(".katex-display")).toBeNull();
+});
+
 // Regression: an amount touching the end of a formula merged into the delimiter run, so
 // neither the math nor the amount survived — the whole thing showed as raw `$$x$$$5`.
 test("renders math abutting a currency amount", () => {

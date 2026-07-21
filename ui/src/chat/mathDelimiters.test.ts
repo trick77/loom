@@ -7,8 +7,32 @@ describe("normalizeMathDelimiters", () => {
     expect(normalizeMathDelimiters("the value \\(x^2\\) grows")).toBe("the value $$x^2$$ grows");
   });
 
-  it("converts display \\[...\\] to $$...$$", () => {
-    expect(normalizeMathDelimiters("\\[g(x) = \\frac{a}{b}\\]")).toBe("$$g(x) = \\frac{a}{b}$$");
+  it("converts display \\[...\\] to a $$ fence", () => {
+    expect(normalizeMathDelimiters("\\[g(x) = \\frac{a}{b}\\]")).toBe(
+      "$$\ng(x) = \\frac{a}{b}\n$$",
+    );
+  });
+
+  it("keeps the fence indented with its line, for a formula inside a list item", () => {
+    expect(normalizeMathDelimiters("- item\n\n  \\[a + b\\]")).toBe(
+      "- item\n\n  $$\n  a + b\n  $$",
+    );
+  });
+
+  it("keeps two formulas on one line as two inline spans", () => {
+    expect(normalizeMathDelimiters("\\[a\\] and \\[b\\]")).toBe("$$a$$ and $$b$$");
+  });
+
+  it("leaves a four-space-indented formula inline, so it cannot read as code", () => {
+    expect(normalizeMathDelimiters("    \\[a\\]")).toBe("    $$a$$");
+  });
+
+  it("leaves a formula mid-sentence inline", () => {
+    expect(normalizeMathDelimiters("so \\[a + b\\] follows")).toBe("so $$a + b$$ follows");
+  });
+
+  it("fences a display formula that follows a line of prose", () => {
+    expect(normalizeMathDelimiters("Formula:\n\\[a\\]")).toBe("Formula:\n$$\na\n$$");
   });
 
   it("converts a multi-line display block", () => {
