@@ -19,7 +19,8 @@ export function formatTimeAgo(iso: string, now: Date = new Date()): string {
   const day = 24 * hour;
 
   if (ms < minute) return i18n.t("timeago.justNow");
-  if (ms < hour) return i18n.t("timeago.minute", { count: Math.floor(ms / minute) });
+  if (ms < hour)
+    return i18n.t("timeago.minute", { count: Math.floor(ms / minute) });
   if (ms < day) return i18n.t("timeago.hour", { count: Math.floor(ms / hour) });
   if (ms < 2 * day) return i18n.t("timeago.yesterday");
   return i18n.t("timeago.day", { count: Math.floor(ms / day) });

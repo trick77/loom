@@ -26,7 +26,11 @@ test("replaces the optimistic placeholder in place, keeping its clientKey", () =
     userMessage({ id: "temp-1", clientKey: "temp-1", content: "hi" }),
   ];
 
-  const result = reconcileUserMessage(messages, "temp-1", userMessage({ id: "m1", content: "hi" }));
+  const result = reconcileUserMessage(
+    messages,
+    "temp-1",
+    userMessage({ id: "m1", content: "hi" }),
+  );
 
   expect(result.map((m) => m.id)).toEqual(["m0", "m1"]);
   // clientKey carried over from the placeholder => stable React key, no remount.
@@ -38,9 +42,15 @@ test("replaces in place even when called after the reset that caused the bug", (
   // updater, which React could run after it had been reset to null — losing the
   // placeholder and appending a second bubble. The fix captures the temp id into a
   // const first, so this call always receives the real placeholder id and dedups.
-  const messages = [userMessage({ id: "temp-1", clientKey: "temp-1", content: "hi" })];
+  const messages = [
+    userMessage({ id: "temp-1", clientKey: "temp-1", content: "hi" }),
+  ];
 
-  const result = reconcileUserMessage(messages, "temp-1", userMessage({ id: "m1", content: "hi" }));
+  const result = reconcileUserMessage(
+    messages,
+    "temp-1",
+    userMessage({ id: "m1", content: "hi" }),
+  );
 
   expect(result.map((m) => m.id)).toEqual(["m1"]);
   expect(result[0].clientKey).toBe("temp-1");
@@ -55,12 +65,22 @@ test("preserves an already-loaded copy on a duplicate/late event (no key flip or
     content: "hi",
     createdAt: "2026-06-14T00:00:01Z",
     attachments: [
-      { id: "att-1", filename: "a.pdf", mimeType: "application/pdf", sizeBytes: 1, status: "ready" },
+      {
+        id: "att-1",
+        filename: "a.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 1,
+        status: "ready",
+      },
     ],
   });
   const messages = [userMessage({ id: "m0", content: "earlier" }), loaded];
 
-  const result = reconcileUserMessage(messages, null, userMessage({ id: "m1", content: "hi" }));
+  const result = reconcileUserMessage(
+    messages,
+    null,
+    userMessage({ id: "m1", content: "hi" }),
+  );
 
   expect(result).toEqual(messages);
   expect(result[1]).toBe(loaded); // same object reference => no remount, fields intact
@@ -71,7 +91,11 @@ test("appends once when no placeholder was inserted (id null, no temp bubble)", 
   // holds no temp bubble to reconcile — the confirmed message is simply added once.
   const messages = [userMessage({ id: "m0", content: "earlier" })];
 
-  const result = reconcileUserMessage(messages, null, userMessage({ id: "m1", content: "hi" }));
+  const result = reconcileUserMessage(
+    messages,
+    null,
+    userMessage({ id: "m1", content: "hi" }),
+  );
 
   expect(result.map((m) => m.id)).toEqual(["m0", "m1"]);
 });
@@ -83,7 +107,11 @@ test("is idempotent when a copy of the confirmed message is already present", ()
     userMessage({ id: "temp-1", clientKey: "temp-1", content: "hi" }),
   ];
 
-  const result = reconcileUserMessage(messages, "temp-1", userMessage({ id: "m1", content: "hi" }));
+  const result = reconcileUserMessage(
+    messages,
+    "temp-1",
+    userMessage({ id: "m1", content: "hi" }),
+  );
 
   expect(result.filter((m) => m.id === "m1")).toHaveLength(1);
   expect(result.map((m) => m.id)).toEqual(["m1"]);
@@ -92,7 +120,11 @@ test("is idempotent when a copy of the confirmed message is already present", ()
 test("appends when neither the placeholder nor a confirmed copy exist", () => {
   const messages = [userMessage({ id: "m0", content: "earlier" })];
 
-  const result = reconcileUserMessage(messages, "temp-gone", userMessage({ id: "m1", content: "hi" }));
+  const result = reconcileUserMessage(
+    messages,
+    "temp-gone",
+    userMessage({ id: "m1", content: "hi" }),
+  );
 
   expect(result.map((m) => m.id)).toEqual(["m0", "m1"]);
   expect(result[1].clientKey).toBe("m1");
@@ -159,8 +191,12 @@ test("weekday greetings only appear on their day", () => {
   expect(fridayAfternoon.getDay()).toBe(5);
   expect(mondayMorning.getDay()).toBe(1);
 
-  expect(possibleGreetings("Jan", fridayAfternoon)).toContain("Happy Friday, Jan");
-  expect(possibleGreetings("Jan", mondayMorning)).not.toContain("Happy Friday, Jan");
+  expect(possibleGreetings("Jan", fridayAfternoon)).toContain(
+    "Happy Friday, Jan",
+  );
+  expect(possibleGreetings("Jan", mondayMorning)).not.toContain(
+    "Happy Friday, Jan",
+  );
 });
 
 test("without a name, only nameless greetings are used and no placeholder leaks", () => {

@@ -8,6 +8,9 @@ export function replaceThreadById(current: Thread[], thread: Thread): Thread[] {
   return current.map((item) => (item.id === thread.id ? thread : item));
 }
 
-export function removeThreadsById(current: Thread[], threadIds: Set<string>): Thread[] {
+export function removeThreadsById(
+  current: Thread[],
+  threadIds: Set<string>,
+): Thread[] {
   return current.filter((thread) => !threadIds.has(thread.id));
 }

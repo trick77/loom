@@ -189,7 +189,8 @@ export type Document = {
   filename: string;
   mimeType: string;
   sizeBytes: number;
-  status: "pending" | "extracting" | "embedding" | "embedded" | "stale" | "error";
+  status:
+    "pending" | "extracting" | "embedding" | "embedded" | "stale" | "error";
   error?: string;
   projectId?: string;
   artifactId?: string;

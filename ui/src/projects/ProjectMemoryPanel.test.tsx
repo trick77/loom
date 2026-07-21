@@ -17,16 +17,24 @@ vi.mock("../api", async () => {
 const getProjectMemoryMock = vi.mocked(api.getProjectMemory);
 
 test("shows the empty state when there is no memory yet", async () => {
-  getProjectMemoryMock.mockResolvedValue({ projectId: "p1", content: "", updatedAt: null });
+  getProjectMemoryMock.mockResolvedValue({
+    projectId: "p1",
+    content: "",
+    updatedAt: null,
+  });
 
   render(<ProjectMemoryPanel projectId="p1" />);
 
-  expect(screen.getByRole("region", { name: "Project memory" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("region", { name: "Project memory" }),
+  ).toBeInTheDocument();
   const heading = screen.getByRole("heading", { name: "Project memory" });
   expect(heading).toBeInTheDocument();
   expect(heading).toHaveTextContent(ICONS.memory);
   expect(
-    await screen.findByText(/Project memory will show here after a few threads/),
+    await screen.findByText(
+      /Project memory will show here after a few threads/,
+    ),
   ).toHaveClass("h-[490px]");
 });
 
@@ -45,9 +53,10 @@ test("renders memory content when present", async () => {
 test("bounds memory content in a flush sidebar-styled scroll region", async () => {
   getProjectMemoryMock.mockResolvedValue({
     projectId: "p1",
-    content: Array.from({ length: 80 }, (_, index) => `- Important project fact ${index + 1}`).join(
-      "\n",
-    ),
+    content: Array.from(
+      { length: 80 },
+      (_, index) => `- Important project fact ${index + 1}`,
+    ).join("\n"),
     updatedAt: "2026-06-11T00:00:00Z",
   });
 
@@ -60,7 +69,9 @@ test("bounds memory content in a flush sidebar-styled scroll region", async () =
   expect(memory).toHaveClass("h-[490px]");
   const scroll = screen.getByTestId("project-memory-scroll");
   expect(scroll).toHaveClass("ui-sidebar-scroll", "overflow-y-auto");
-  expect(screen.getByTestId("project-memory-bottom-fade")).toHaveClass("pointer-events-none");
+  expect(screen.getByTestId("project-memory-bottom-fade")).toHaveClass(
+    "pointer-events-none",
+  );
 });
 
 test("renders markdown content instead of raw syntax", async () => {

@@ -56,7 +56,9 @@ export function setLanguage(language: UiLanguage): void {
 // A pinned profile language (`en`/`de`) is authoritative; an unset/unknown value
 // leaves the browser-locale choice in place (the caller seeds it — see
 // seedLanguageFor).
-export function applyUserLanguage(responseLanguage: string | undefined | null): void {
+export function applyUserLanguage(
+  responseLanguage: string | undefined | null,
+): void {
   if (isSupported(responseLanguage)) {
     setLanguage(responseLanguage);
   }
@@ -66,7 +68,9 @@ export function applyUserLanguage(responseLanguage: string | undefined | null): 
 // supported language yet (empty/unset, or a legacy `auto`), or null when the
 // profile is already pinned to `en`/`de`. The caller persists the result to the
 // profile so the language stops being unset.
-export function seedLanguageFor(responseLanguage: string | undefined | null): UiLanguage | null {
+export function seedLanguageFor(
+  responseLanguage: string | undefined | null,
+): UiLanguage | null {
   return isSupported(responseLanguage) ? null : browserLanguage();
 }
 

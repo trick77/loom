@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { ATTACHMENT_ACCEPT } from "../api";
@@ -17,7 +23,10 @@ import { MODEL_LABEL, type ReasoningEffort } from "./reasoning";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
 import { PastedTextCard } from "./PastedTextCard";
 import { shouldCollapsePaste, type PastedText } from "./pastedText";
-import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
+import {
+  isImageAttachment,
+  type ComposerAttachment,
+} from "./useDocumentAttachments";
 
 export function Composer({
   variant,
@@ -89,12 +98,15 @@ export function Composer({
   const activeIndex = selectedIndex < suggestions.length ? selectedIndex : 0;
   useEffect(() => {
     // Keep the highlighted item in range as the draft narrows the matches.
-    setSelectedIndex((current) => (current >= suggestions.length ? 0 : current));
+    setSelectedIndex((current) =>
+      current >= suggestions.length ? 0 : current,
+    );
   }, [suggestions.length]);
   // Base (empty) height per variant, preserved as the textarea's min-height so
   // the composer keeps its current look before any auto-grow kicks in.
   const textareaMinH = variant === "start" ? "min-h-[76px]" : "min-h-[56px]";
-  const sendIconClass = variant === "thread" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
+  const sendIconClass =
+    variant === "thread" ? "h-4 w-4 -translate-y-px" : "h-4 w-4";
   const padX = "px-6";
   // A paste-only message (empty textarea but a staged "Pasted" chip) is sendable.
   const hasContent = draft.trim() !== "" || pastedTexts.length > 0;
@@ -168,12 +180,20 @@ export function Composer({
     >
       {hasStagedRow && (
         <div
-          aria-label={attachments.length > 0 ? t("composer.attachments") : t("composer.pastedText")}
+          aria-label={
+            attachments.length > 0
+              ? t("composer.attachments")
+              : t("composer.pastedText")
+          }
           className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[164px]`}
         >
           <div className="flex flex-wrap gap-2">
             {pastedTexts.map((pasted) => (
-              <PastedTextPill key={pasted.id} pasted={pasted} onRemove={onRemovePastedText} />
+              <PastedTextPill
+                key={pasted.id}
+                pasted={pasted}
+                onRemove={onRemovePastedText}
+              />
             ))}
             {attachments.map((attachment) => (
               <AttachmentPill
@@ -228,7 +248,8 @@ export function Composer({
           const target = event.currentTarget;
           const start = target.selectionStart ?? 0;
           const end = target.selectionEnd ?? 0;
-          if (end > start) onDraftChange(draft.slice(0, start) + draft.slice(end));
+          if (end > start)
+            onDraftChange(draft.slice(0, start) + draft.slice(end));
           onAddPastedText(text);
         }}
         onChange={(event) => {
@@ -245,7 +266,10 @@ export function Composer({
             }
             if (event.key === "ArrowUp") {
               event.preventDefault();
-              setSelectedIndex((current) => (current - 1 + suggestions.length) % suggestions.length);
+              setSelectedIndex(
+                (current) =>
+                  (current - 1 + suggestions.length) % suggestions.length,
+              );
               return;
             }
             if (event.key === "Escape") {
@@ -290,13 +314,19 @@ export function Composer({
                 index === activeIndex ? "bg-[#3a3a37]" : ""
               }`}
             >
-              <span className="font-mono text-sm text-[#f3f0e8]">/{command.name}</span>
-              <span className="truncate text-xs text-[#aaa79e]">{t(command.description)}</span>
+              <span className="font-mono text-sm text-[#f3f0e8]">
+                /{command.name}
+              </span>
+              <span className="truncate text-xs text-[#aaa79e]">
+                {t(command.description)}
+              </span>
             </button>
           ))}
         </div>
       )}
-      <div className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}>
+      <div
+        className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}
+      >
         {incognito ? (
           // Uploads persist (indexing / artifact rows), so they are unavailable in an
           // ephemeral incognito thread — the attach affordance is omitted entirely. The
@@ -331,20 +361,37 @@ export function Composer({
               picker. Hidden on the narrowest widths so the reasoning control and
               send button always fit. No trailing gap here: the reasoning trigger's
               own left padding is the single word-space before it. */}
-          <span className="hidden select-none text-[13px] leading-none text-[#aaa79e] sm:inline">{MODEL_LABEL}</span>
-          <ReasoningMenu value={reasoningEffort} onChange={onReasoningEffortChange} />
+          <span className="hidden select-none text-[13px] leading-none text-[#aaa79e] sm:inline">
+            {MODEL_LABEL}
+          </span>
+          <ReasoningMenu
+            value={reasoningEffort}
+            onChange={onReasoningEffortChange}
+          />
           <button
             className={`ui-composer-send ml-2 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
             disabled={!isSending && !canSend}
             type="submit"
-            aria-label={isSending ? t("composer.stopResponse") : t("composer.sendMessage")}
+            aria-label={
+              isSending ? t("composer.stopResponse") : t("composer.sendMessage")
+            }
           >
             {isSending ? (
-              <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+              <svg
+                className={sendIconClass}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                fill="currentColor"
+              >
                 <rect x="5.5" y="5.5" width="13" height="13" rx="2" />
               </svg>
             ) : (
-              <svg className={sendIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+              <svg
+                className={sendIconClass}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                fill="none"
+              >
                 <path
                   d="M12 19V5M6.5 10.5 12 5l5.5 5.5"
                   stroke="currentColor"
@@ -361,7 +408,13 @@ export function Composer({
   );
 }
 
-function AttachmentRemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
+function AttachmentRemoveButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <button
       className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-[#64615a] bg-[#343432] text-[#d8d4ca] opacity-95 transition-colors hover:bg-[#44423d] hover:text-[#f3f0e8]"
@@ -377,7 +430,13 @@ function AttachmentRemoveButton({ label, onClick }: { label: string; onClick: ()
 // A large paste, rendered as a compact 120×120 "Pasted" chip echoing claude.ai
 // (see PastedTextCard). Removable here in the composer; the same card renders
 // statically in the sent message bubble (messages.tsx).
-function PastedTextPill({ pasted, onRemove }: { pasted: PastedText; onRemove?: (id: string) => void }) {
+function PastedTextPill({
+  pasted,
+  onRemove,
+}: {
+  pasted: PastedText;
+  onRemove?: (id: string) => void;
+}) {
   return (
     <PastedTextCard
       text={pasted.text}
@@ -426,7 +485,9 @@ function AttachmentPill({
         )}
         {onRemove !== undefined && (
           <AttachmentRemoveButton
-            label={t("composer.removeAttachment", { filename: attachment.filename })}
+            label={t("composer.removeAttachment", {
+              filename: attachment.filename,
+            })}
             onClick={() => onRemove(attachment.id)}
           />
         )}
@@ -457,7 +518,9 @@ function AttachmentPill({
       </div>
       {onRemove !== undefined && (
         <AttachmentRemoveButton
-          label={t("composer.removeAttachment", { filename: attachment.filename })}
+          label={t("composer.removeAttachment", {
+            filename: attachment.filename,
+          })}
           onClick={() => onRemove(attachment.id)}
         />
       )}
@@ -469,6 +532,7 @@ function attachmentStatusLabel(attachment: ComposerAttachment): string {
   if (attachment.status === "queued") return i18n.t("composer.attached");
   if (attachment.status === "uploading") return i18n.t("composer.uploading");
   if (attachment.status === "processing") return i18n.t("composer.processing");
-  if (attachment.status === "ready") return formatAttachmentSize(attachment.sizeBytes);
+  if (attachment.status === "ready")
+    return formatAttachmentSize(attachment.sizeBytes);
   return attachment.error ?? i18n.t("composer.uploadFailed");
 }

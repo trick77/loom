@@ -1,17 +1,22 @@
 import { AuthExpiredError, expectJSON } from "./http";
 import type { Page, Thread, ThreadContentHit, ThreadResponse } from "./types";
 
-export async function listThreads(params: {
-  projectId?: string | null;
-  starred?: boolean;
-  archived?: boolean;
-  search?: string;
-  limit?: number;
-  cursor?: string | null;
-} = {}): Promise<Page<Thread>> {
+export async function listThreads(
+  params: {
+    projectId?: string | null;
+    starred?: boolean;
+    archived?: boolean;
+    search?: string;
+    limit?: number;
+    cursor?: string | null;
+  } = {},
+): Promise<Page<Thread>> {
   const query = new URLSearchParams();
   if (params.projectId !== undefined) {
-    query.set("projectId", params.projectId === null ? "null" : params.projectId);
+    query.set(
+      "projectId",
+      params.projectId === null ? "null" : params.projectId,
+    );
   }
   if (params.starred !== undefined) {
     query.set("starred", String(params.starred));
@@ -25,7 +30,11 @@ export async function listThreads(params: {
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
   }
-  if (params.cursor !== undefined && params.cursor !== null && params.cursor !== "") {
+  if (
+    params.cursor !== undefined &&
+    params.cursor !== null &&
+    params.cursor !== ""
+  ) {
     query.set("cursor", params.cursor);
   }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
@@ -36,7 +45,9 @@ export async function listThreads(params: {
 // listThreadIds returns the ids of every thread matching the search, with no
 // pagination — used by "select all matches" so the client can act on threads
 // it has not loaded into the list.
-export async function listThreadIds(params: { search?: string } = {}): Promise<string[]> {
+export async function listThreadIds(
+  params: { search?: string } = {},
+): Promise<string[]> {
   const query = new URLSearchParams();
   if (params.search !== undefined && params.search !== "") {
     query.set("search", params.search);
@@ -60,7 +71,11 @@ export async function searchThreadContent(params: {
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
   }
-  if (params.projectId !== undefined && params.projectId !== null && params.projectId !== "") {
+  if (
+    params.projectId !== undefined &&
+    params.projectId !== null &&
+    params.projectId !== ""
+  ) {
     query.set("projectId", params.projectId);
   }
   const response = await fetch(`/api/threads/search?${query.toString()}`);
@@ -71,7 +86,9 @@ export async function searchThreadContent(params: {
   return body.items.map(({ snippet, ...thread }) => ({ thread, snippet }));
 }
 
-export async function createThread(input: { projectId?: string | null; title?: string } = {}): Promise<Thread> {
+export async function createThread(
+  input: { projectId?: string | null; title?: string } = {},
+): Promise<Thread> {
   const response = await fetch("/api/threads", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -85,11 +102,17 @@ export async function getThread(threadId: string): Promise<ThreadResponse> {
   return expectJSON<ThreadResponse>(response, "failed to load thread");
 }
 
-export async function setThreadStarred(threadId: string, starred: boolean): Promise<Thread> {
+export async function setThreadStarred(
+  threadId: string,
+  starred: boolean,
+): Promise<Thread> {
   const action = starred ? "star" : "unstar";
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/${action}`, {
-    method: "POST",
-  });
+  const response = await fetch(
+    `/api/threads/${encodeURIComponent(threadId)}/${action}`,
+    {
+      method: "POST",
+    },
+  );
   return expectJSON<Thread>(response, "failed to update thread");
 }
 
@@ -117,7 +140,9 @@ export async function deleteThread(threadId: string): Promise<void> {
   }
 }
 
-export async function bulkDeleteThreads(threadIds: string[]): Promise<{ deleted: number }> {
+export async function bulkDeleteThreads(
+  threadIds: string[],
+): Promise<{ deleted: number }> {
   const response = await fetch("/api/threads:delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -136,12 +161,18 @@ const stopMessageTimeoutMs = 4000;
 // backend can attribute the cancellation in its logs. Callers should await this
 // before aborting the stream fetch so the stop cause wins the server-side cancel
 // race over the raw request-context drop.
-export async function stopMessage(threadId: string, source?: string): Promise<void> {
+export async function stopMessage(
+  threadId: string,
+  source?: string,
+): Promise<void> {
   const query = source ? `?source=${encodeURIComponent(source)}` : "";
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stop${query}`, {
-    method: "POST",
-    signal: AbortSignal.timeout(stopMessageTimeoutMs),
-  });
+  const response = await fetch(
+    `/api/threads/${encodeURIComponent(threadId)}/messages:stop${query}`,
+    {
+      method: "POST",
+      signal: AbortSignal.timeout(stopMessageTimeoutMs),
+    },
+  );
   if (response.status === 401) {
     throw new AuthExpiredError();
   }

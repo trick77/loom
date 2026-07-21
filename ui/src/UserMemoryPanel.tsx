@@ -75,7 +75,10 @@ export function UserMemoryPanel() {
         {loading ? (
           <p className="mt-3 text-sm text-[#807d74]">{t("memory.loading")}</p>
         ) : hasContent ? (
-          <div className="mt-3 text-base text-[#f3f0e8]" data-user-memory-content>
+          <div
+            className="mt-3 text-base text-[#f3f0e8]"
+            data-user-memory-content
+          >
             <MemoryMarkdown content={content} />
           </div>
         ) : (
@@ -105,7 +108,9 @@ export function UserMemoryPanel() {
                 key={directive.id}
                 className="flex gap-2 text-base leading-6 text-[#f3f0e8]"
               >
-                <span aria-hidden className="select-none text-[#807d74]">•</span>
+                <span aria-hidden className="select-none text-[#807d74]">
+                  •
+                </span>
                 <span>{directive.content}</span>
               </li>
             ))}

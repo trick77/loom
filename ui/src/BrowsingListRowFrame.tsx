@@ -54,7 +54,10 @@ export const BrowsingListRowFrame = forwardRef<
     >
       <div
         aria-label={surfaceAriaLabel}
-        className={classNames(surfaceClassName, active && surfaceActiveClassName)}
+        className={classNames(
+          surfaceClassName,
+          active && surfaceActiveClassName,
+        )}
         onClick={onSurfaceClick}
         onKeyDown={onSurfaceKeyDown}
         role={surfaceRole}

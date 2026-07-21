@@ -26,7 +26,9 @@ test("copies the code text to the clipboard and shows feedback", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
 
   expect(writeText).toHaveBeenCalledWith("const answer = 42;\n");
-  await waitFor(() => expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument(),
+  );
 
   vi.unstubAllGlobals();
 });
@@ -34,11 +36,17 @@ test("copies the code text to the clipboard and shows feedback", async () => {
 test("drops inline images with an unresolvable bare-filename src", () => {
   // The model sometimes re-embeds a generated image by its bare filename; that
   // can never resolve, so it must not render a broken-image placeholder.
-  const { container } = render(<ProseMarkdown>{"![Lego Set](lego-selfie-set.png)"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"![Lego Set](lego-selfie-set.png)"}</ProseMarkdown>,
+  );
   expect(container.querySelector("img")).toBeNull();
 });
 
 test("renders inline images with an absolute http(s) src", () => {
-  const { container } = render(<ProseMarkdown>{"![x](https://example.com/img.png)"}</ProseMarkdown>);
-  expect(container.querySelector('img[src="https://example.com/img.png"]')).not.toBeNull();
+  const { container } = render(
+    <ProseMarkdown>{"![x](https://example.com/img.png)"}</ProseMarkdown>,
+  );
+  expect(
+    container.querySelector('img[src="https://example.com/img.png"]'),
+  ).not.toBeNull();
 });

@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { ArtifactsPage } from "./ArtifactsPage";
@@ -20,7 +26,9 @@ const downloadArtifactMock = vi.mocked(api.downloadArtifact);
 
 // Captures the live IntersectionObserver callbacks so tests can simulate the
 // sentinel scrolling into view and triggering a "load more".
-let intersectionCallbacks: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = [];
+let intersectionCallbacks: Array<
+  (entries: Array<{ isIntersecting: boolean }>) => void
+> = [];
 
 class MockIntersectionObserver {
   constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) {
@@ -40,7 +48,10 @@ function triggerIntersection() {
   }
 }
 
-function page(items: Artifact[], nextCursor: string | null = null): Page<Artifact> {
+function page(
+  items: Artifact[],
+  nextCursor: string | null = null,
+): Page<Artifact> {
   return { items, nextCursor };
 }
 
@@ -99,7 +110,9 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => "blob:mock");
   URL.revokeObjectURL = vi.fn();
   listArtifactsMock.mockResolvedValue(page([robot, artifact({})]));
-  downloadArtifactMock.mockResolvedValue(new Blob(["image-bytes"], { type: "image/png" }));
+  downloadArtifactMock.mockResolvedValue(
+    new Blob(["image-bytes"], { type: "image/png" }),
+  );
 });
 
 afterEach(() => {
@@ -110,9 +123,16 @@ afterEach(() => {
 test("renders artifacts with chats-page controls and default modified descending sort", async () => {
   renderPage();
 
-  expect(await screen.findByRole("heading", { name: "Artifacts" })).toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Search filenames" })).toHaveClass("ui-composer-text");
-  expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+  expect(
+    await screen.findByRole("heading", { name: "Artifacts" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Search filenames" })).toHaveClass(
+    "ui-composer-text",
+  );
+  expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   expect(screen.getByText("robot.png")).toBeInTheDocument();
   expect(screen.getByText("842 KB")).toBeInTheDocument();
   expect(screen.getByText("1.3 MB")).toBeInTheDocument();
@@ -133,7 +153,11 @@ test("requests the right server-side filter/sort/search params", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Images" }));
   await waitFor(() => {
     expect(listArtifactsMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ type: "images", sort: "modified", order: "desc" }),
+      expect.objectContaining({
+        type: "images",
+        sort: "modified",
+        order: "desc",
+      }),
     );
   });
 
@@ -148,7 +172,9 @@ test("requests the right server-side filter/sort/search params", async () => {
     target: { value: "robot" },
   });
   await waitFor(() => {
-    expect(listArtifactsMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: "robot" }));
+    expect(listArtifactsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "robot" }),
+    );
   });
 });
 
@@ -164,7 +190,9 @@ test("renders rows in the order the server returns (no client re-sort)", async (
     const items = [robot, alpha];
     if (params?.sort === "name") {
       return page(
-        [...items].sort((a, b) => a.displayFilename.localeCompare(b.displayFilename)),
+        [...items].sort((a, b) =>
+          a.displayFilename.localeCompare(b.displayFilename),
+        ),
       );
     }
     return page(items);
@@ -175,7 +203,9 @@ test("renders rows in the order the server returns (no client re-sort)", async (
   fireEvent.click(screen.getByRole("button", { name: "Name" }));
 
   await waitFor(() => {
-    const rowText = [...document.querySelectorAll("li")].map((row) => row.textContent ?? "");
+    const rowText = [...document.querySelectorAll("li")].map(
+      (row) => row.textContent ?? "",
+    );
     expect(rowText[0]).toContain("alpha.pdf");
     expect(rowText[1]).toContain("robot.png");
   });
@@ -213,13 +243,25 @@ test("keeps row metadata on the filename line", async () => {
 
   const row = screen.getByText("notes.txt").closest("li");
   expect(row).not.toBeNull();
-  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent("notes.txt");
+  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(
+    "notes.txt",
+  );
   // Relative timestamps are clock-dependent; assert a relative label is present.
-  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(/ago/);
-  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent("1.3 MB");
-  expect(row?.querySelector(".ui-artifacts-row-secondary")).toHaveTextContent("text/plain");
-  expect(row?.querySelector(".ui-artifacts-row-secondary")).not.toHaveClass("mt-0.5");
-  expect(within(row!).getByRole("button", { name: "Download notes.txt" })).toHaveClass("items-start");
+  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(
+    /ago/,
+  );
+  expect(row?.querySelector(".ui-artifacts-row-primary")).toHaveTextContent(
+    "1.3 MB",
+  );
+  expect(row?.querySelector(".ui-artifacts-row-secondary")).toHaveTextContent(
+    "text/plain",
+  );
+  expect(row?.querySelector(".ui-artifacts-row-secondary")).not.toHaveClass(
+    "mt-0.5",
+  );
+  expect(
+    within(row!).getByRole("button", { name: "Download notes.txt" }),
+  ).toHaveClass("items-start");
 });
 
 test("artifact rows fade dividers behind the rounded hover surface", async () => {
@@ -293,17 +335,22 @@ test("opens image previews and downloads file rows", async () => {
   expect(downloadArtifactMock).not.toHaveBeenCalled();
 
   // ...while the opened lightbox shows the full-resolution original.
-  fireEvent.click(await screen.findByRole("button", { name: "Preview robot.png" }));
-  const dialog = await screen.findByRole("dialog", { name: "Preview robot.png" });
-  expect(within(dialog).getByRole("img", { name: "robot.png" })).toHaveAttribute(
-    "src",
-    "/api/artifacts/art_image/download",
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Preview robot.png" }),
   );
+  const dialog = await screen.findByRole("dialog", {
+    name: "Preview robot.png",
+  });
+  expect(
+    within(dialog).getByRole("img", { name: "robot.png" }),
+  ).toHaveAttribute("src", "/api/artifacts/art_image/download");
 
   // A plain file (not an image or PDF) downloads on click.
   fireEvent.click(screen.getByRole("button", { name: "Download notes.txt" }));
   await waitFor(() => {
-    expect(downloadArtifactMock).toHaveBeenCalledWith("/api/artifacts/art_text/download");
+    expect(downloadArtifactMock).toHaveBeenCalledWith(
+      "/api/artifacts/art_text/download",
+    );
   });
 });
 
@@ -312,13 +359,19 @@ test("opens an inline preview when clicking a PDF row", async () => {
   await screen.findByText("quarterly-board-update.pdf");
 
   // The PDF row previews on click instead of downloading.
-  fireEvent.click(screen.getByRole("button", { name: "Preview quarterly-board-update.pdf" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Preview quarterly-board-update.pdf" }),
+  );
   expect(
-    await screen.findByRole("dialog", { name: "Preview quarterly-board-update.pdf" }),
+    await screen.findByRole("dialog", {
+      name: "Preview quarterly-board-update.pdf",
+    }),
   ).toBeInTheDocument();
   // The preview is rendered from the fetched blob, not the attachment-disposition URL.
   await waitFor(() => {
-    expect(downloadArtifactMock).toHaveBeenCalledWith("/api/artifacts/art_file/download");
+    expect(downloadArtifactMock).toHaveBeenCalledWith(
+      "/api/artifacts/art_file/download",
+    );
   });
 });
 
@@ -326,57 +379,83 @@ test("downloads an artifact from the row actions menu", async () => {
   renderPage();
   await screen.findByText("quarterly-board-update.pdf");
 
-  fireEvent.click(screen.getByRole("button", { name: "Actions for quarterly-board-update.pdf" }));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Actions for quarterly-board-update.pdf",
+    }),
+  );
   const items = screen.getAllByRole("menuitem");
   // "Download" is the first menu entry.
   expect(items[0]).toHaveTextContent("Download");
 
   fireEvent.click(items[0]);
   await waitFor(() => {
-    expect(downloadArtifactMock).toHaveBeenCalledWith("/api/artifacts/art_file/download");
+    expect(downloadArtifactMock).toHaveBeenCalledWith(
+      "/api/artifacts/art_file/download",
+    );
   });
 });
 
 test("opens image previews when clicking empty row space", async () => {
   renderPage();
 
-  expect(await screen.findByRole("img", { name: "robot.png thumbnail" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("img", { name: "robot.png thumbnail" }),
+  ).toBeInTheDocument();
   const row = screen.getByText("robot.png").closest("li");
   expect(row).not.toBeNull();
   const rowSurface = row?.querySelector(".ui-artifacts-row-surface");
   expect(rowSurface).not.toBeNull();
   fireEvent.click(rowSurface!);
 
-  expect(await screen.findByRole("dialog", { name: "Preview robot.png" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("dialog", { name: "Preview robot.png" }),
+  ).toBeInTheDocument();
 });
 
-test("offers \"Use in thread\" for an image artifact and reports the chosen artifact", async () => {
+test('offers "Use in thread" for an image artifact and reports the chosen artifact', async () => {
   const props = renderPage();
   await screen.findByText("robot.png");
 
-  fireEvent.click(screen.getByRole("button", { name: "Actions for robot.png" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Actions for robot.png" }),
+  );
   const useInThread = screen.getByRole("menuitem", { name: "Use in thread" });
   expect(useInThread).toBeInTheDocument();
 
   fireEvent.click(useInThread);
   expect(props.onUseInThread).toHaveBeenCalledTimes(1);
-  expect(props.onUseInThread).toHaveBeenCalledWith(expect.objectContaining({ id: "art_image" }));
+  expect(props.onUseInThread).toHaveBeenCalledWith(
+    expect.objectContaining({ id: "art_image" }),
+  );
 });
 
-test("hides \"Use in thread\" for a non-image file artifact", async () => {
+test('hides "Use in thread" for a non-image file artifact', async () => {
   renderPage();
   await screen.findByText("quarterly-board-update.pdf");
 
-  fireEvent.click(screen.getByRole("button", { name: "Actions for quarterly-board-update.pdf" }));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Actions for quarterly-board-update.pdf",
+    }),
+  );
   expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
-  expect(screen.queryByRole("menuitem", { name: "Use in thread" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("menuitem", { name: "Use in thread" }),
+  ).not.toBeInTheDocument();
 });
 
-test("hides \"Use in thread\" for a deleted image artifact", async () => {
-  listArtifactsMock.mockResolvedValue(page([artifact({ ...robot, deleted: true })]));
+test('hides "Use in thread" for a deleted image artifact', async () => {
+  listArtifactsMock.mockResolvedValue(
+    page([artifact({ ...robot, deleted: true })]),
+  );
   renderPage();
   await screen.findByText("robot.png");
 
-  fireEvent.click(screen.getByRole("button", { name: "Actions for robot.png" }));
-  expect(screen.queryByRole("menuitem", { name: "Use in thread" })).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Actions for robot.png" }),
+  );
+  expect(
+    screen.queryByRole("menuitem", { name: "Use in thread" }),
+  ).not.toBeInTheDocument();
 });

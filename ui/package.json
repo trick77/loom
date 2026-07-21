@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "format": "prettier --write 'src/**/*.{ts,tsx,css}'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,css}'"
   },
   "keywords": [],
   "author": "",
@@ -37,6 +39,7 @@
     "@vitest/coverage-v8": "^4.1.8",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.15",
+    "prettier": "3.9.5",
     "tailwindcss": "^4.3.0",
     "typescript": "^7.0.2",
     "vite": "^8.0.16",

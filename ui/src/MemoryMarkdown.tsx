@@ -1,7 +1,11 @@
 import { useMemo } from "react";
 import Markdown from "react-markdown";
 
-import { markdownRemarkPlugins, normalizeMathDelimiters, rehypeKatexPlugin } from "./chat/markdownConfig";
+import {
+  markdownRemarkPlugins,
+  normalizeMathDelimiters,
+  rehypeKatexPlugin,
+} from "./chat/markdownConfig";
 
 /**
  * MemoryMarkdown renders a stored memory string as markdown. Both the user and
@@ -10,10 +14,20 @@ import { markdownRemarkPlugins, normalizeMathDelimiters, rehypeKatexPlugin } fro
  * show as distinct labeled sections rather than literal text. Links open in a new tab.
  * Styling comes from the `.ui-memory-markdown` rules in index.css.
  */
-export function MemoryMarkdown({ content, className }: { content: string; className?: string }) {
+export function MemoryMarkdown({
+  content,
+  className,
+}: {
+  content: string;
+  className?: string;
+}) {
   const normalized = useMemo(() => normalizeMathDelimiters(content), [content]);
   return (
-    <div className={className ? `ui-memory-markdown ${className}` : "ui-memory-markdown"}>
+    <div
+      className={
+        className ? `ui-memory-markdown ${className}` : "ui-memory-markdown"
+      }
+    >
       <Markdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={[rehypeKatexPlugin]}

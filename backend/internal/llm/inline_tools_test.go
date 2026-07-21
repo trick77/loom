@@ -249,9 +249,9 @@ func TestParseInlineToolCalls_ToolInvocationMalformedArgsNotDegraded(t *testing.
 		// tag close and produced a call with empty {} args plus leftover residue.
 		"truncated with inner >": `<tool_invocation name="generate_image" arguments={"prompt": "a > b"`,
 		// JS-style single quotes: not valid JSON.
-		"single-quoted":          `<tool_invocation name="generate_image" arguments={'prompt': 'fox'} />`,
+		"single-quoted": `<tool_invocation name="generate_image" arguments={'prompt': 'fox'} />`,
 		// Trailing junk after a closed object is still a malformed object scan target.
-		"non-object value":       `<tool_invocation name="generate_image" arguments=oops />`,
+		"non-object value": `<tool_invocation name="generate_image" arguments=oops />`,
 	}
 	for label, content := range cases {
 		t.Run(label, func(t *testing.T) {

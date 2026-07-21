@@ -166,7 +166,8 @@ export const en = {
     unsupportedImageFormat: "Unsupported image format",
     fileTooLarge: "Files must be 25 MB or smaller.",
     tooManyAttachments_one: "A thread can have up to {{count}} attached file.",
-    tooManyAttachments_other: "A thread can have up to {{count}} attached files.",
+    tooManyAttachments_other:
+      "A thread can have up to {{count}} attached files.",
     threadDataLoadFailed: "Thread data failed to load.",
     threadLoadFailed: "Thread failed to load.",
     projectThreadsLoadFailed: "Project threads failed to load.",
@@ -247,7 +248,8 @@ export const en = {
     down: "down",
   },
   incognito: {
-    notice: "Incognito threads aren't saved, added to memory, or used to train models.",
+    notice:
+      "Incognito threads aren't saved, added to memory, or used to train models.",
     placeholder: "Message incognito...",
     headerLabel: "Incognito thread header",
     title: "Incognito thread",
@@ -323,7 +325,8 @@ export const en = {
       composerPlaceholder: "How can I help you today?",
       summarizeThreads: "Summarize threads",
       surfaceGaps: "Surface gaps",
-      summarizePrompt: "Summarize the threads in this project, pulling out key facts and takeaways.",
+      summarizePrompt:
+        "Summarize the threads in this project, pulling out key facts and takeaways.",
       openQuestionsPrompt:
         "What's still open in this project? List the open questions, unresolved decisions, and next steps across its threads.",
       noThreads: "No threads in this project yet.",
@@ -368,7 +371,8 @@ export const en = {
     },
     knowledge: {
       label: "Knowledge",
-      description: "Upload documents so every thread in this project can search and cite them.",
+      description:
+        "Upload documents so every thread in this project can search and cite them.",
       loading: "Loading…",
       addLabel: "Add documents to knowledge",
       dropzone: "Drag documents here or tap to upload",
@@ -427,7 +431,8 @@ export const en = {
     messagesCapturedValue: "{{captured}} of {{total}}",
     nextRefresh: "Next refresh",
     otherInstructions: "Other instructions",
-    otherInstructionsValue: "{{directives}} ({{len}} / {{max}} chars, {{pct}}%)",
+    otherInstructionsValue:
+      "{{directives}} ({{len}} / {{max}} chars, {{pct}}%)",
     groupMemory: "Memory",
     groupTokens: "Tokens",
     groupEmbeddings: "Embeddings",
@@ -452,8 +457,10 @@ export const en = {
     bulkDelete: {
       title_one: "Delete thread",
       title_other: "Delete {{count}} threads",
-      confirm_one: "Are you sure you want to delete this thread? This cannot be undone.",
-      confirm_other: "Are you sure you want to delete these {{count}} threads? This cannot be undone.",
+      confirm_one:
+        "Are you sure you want to delete this thread? This cannot be undone.",
+      confirm_other:
+        "Are you sure you want to delete these {{count}} threads? This cannot be undone.",
     },
     selectedCount_one: "{{count}} selected",
     selectedCount_other: "{{count}} selected",
@@ -518,10 +525,12 @@ export const en = {
     createPublicLinkSub: "Anyone with the link can view",
     copied: "Copied",
     copyLink: "Copy link",
-    disclaimer: "Don’t share personal information or third-party content without permission.",
+    disclaimer:
+      "Don’t share personal information or third-party content without permission.",
     createShareLink: "Create share link",
     loading: "Loading…",
-    notAvailable: "This conversation isn’t available. The link may have been disabled or removed.",
+    notAvailable:
+      "This conversation isn’t available. The link may have been disabled or removed.",
     loadError: "Something went wrong loading this conversation.",
     sharedConversation: "Shared conversation",
     sharedBy: "Shared by {{author}}",
@@ -563,30 +572,63 @@ export const en = {
     returns: { named: "{{name}} returns!" },
     backAtIt: { named: "Back at it, {{name}}", unnamed: "Back at it!" },
     heyThere: { named: "Hey there, {{name}}", unnamed: "Hey there" },
-    howAreYou: { named: "Hi {{name}}, how are you?", unnamed: "Hi, how are you?" },
-    howWasDay: { named: "How was your day, {{name}}?", unnamed: "How was your day?" },
-    howsItGoing: { named: "How's it going, {{name}}?", unnamed: "How's it going?" },
+    howAreYou: {
+      named: "Hi {{name}}, how are you?",
+      unnamed: "Hi, how are you?",
+    },
+    howWasDay: {
+      named: "How was your day, {{name}}?",
+      unnamed: "How was your day?",
+    },
+    howsItGoing: {
+      named: "How's it going, {{name}}?",
+      unnamed: "How's it going?",
+    },
     welcome: { named: "Welcome, {{name}}", unnamed: "Welcome" },
     whatsNew: { named: "What's new, {{name}}?", unnamed: "What's new?" },
     goodMorning: { named: "Good morning, {{name}}", unnamed: "Good morning" },
     morning: { named: "Morning, {{name}}" },
     coffee: { unnamed: "Coffee and Loom time?" },
-    goodAfternoon: { named: "Good afternoon, {{name}}", unnamed: "Good afternoon" },
+    goodAfternoon: {
+      named: "Good afternoon, {{name}}",
+      unnamed: "Good afternoon",
+    },
     afternoon: { named: "Afternoon, {{name}}" },
     goodEvening: { named: "Good evening, {{name}}", unnamed: "Good evening" },
     evening: { named: "Evening, {{name}}", unnamed: "Evening" },
     nightOwl: { unnamed: "Hello, night owl" },
     upLate: { named: "Up late, {{name}}?" },
     happyMonday: { named: "Happy Monday, {{name}}", unnamed: "Happy Monday" },
-    happyTuesday: { named: "Happy Tuesday, {{name}}", unnamed: "Happy Tuesday" },
-    happyWednesday: { named: "Happy Wednesday, {{name}}", unnamed: "Happy Wednesday" },
-    happyThursday: { named: "Happy Thursday, {{name}}", unnamed: "Happy Thursday" },
+    happyTuesday: {
+      named: "Happy Tuesday, {{name}}",
+      unnamed: "Happy Tuesday",
+    },
+    happyWednesday: {
+      named: "Happy Wednesday, {{name}}",
+      unnamed: "Happy Wednesday",
+    },
+    happyThursday: {
+      named: "Happy Thursday, {{name}}",
+      unnamed: "Happy Thursday",
+    },
     happyFriday: { named: "Happy Friday, {{name}}", unnamed: "Happy Friday" },
-    fridayFeeling: { named: "That Friday feeling, {{name}}", unnamed: "That Friday feeling" },
-    happySaturday: { named: "Happy Saturday, {{name}}", unnamed: "Happy Saturday!" },
+    fridayFeeling: {
+      named: "That Friday feeling, {{name}}",
+      unnamed: "That Friday feeling",
+    },
+    happySaturday: {
+      named: "Happy Saturday, {{name}}",
+      unnamed: "Happy Saturday!",
+    },
     happySunday: { named: "Happy Sunday, {{name}}", unnamed: "Happy Sunday" },
-    sundaySession: { named: "Sunday session, {{name}}?", unnamed: "Sunday session?" },
-    weekend: { named: "Welcome to the weekend, {{name}}", unnamed: "Welcome to the weekend" },
+    sundaySession: {
+      named: "Sunday session, {{name}}?",
+      unnamed: "Sunday session?",
+    },
+    weekend: {
+      named: "Welcome to the weekend, {{name}}",
+      unnamed: "Welcome to the weekend",
+    },
   },
 };
 

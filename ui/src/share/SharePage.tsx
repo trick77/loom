@@ -83,7 +83,11 @@ export function SharePage({ shareId }: { shareId: string }) {
           <ShareNotice />
           {share.messages.map((message) => (
             <div key={message.id} className="space-y-6">
-              <MessageBubble message={toRenderMessage(message)} retryMessage={null} publicView />
+              <MessageBubble
+                message={toRenderMessage(message)}
+                retryMessage={null}
+                publicView
+              />
             </div>
           ))}
         </div>
@@ -120,7 +124,9 @@ function CenteredNotice({ children }: { children: React.ReactNode }) {
 // toRenderMessage adapts a sanitized snapshot message to the shape MessageBubble
 // renders. Fields the public snapshot omits (attachments, citations, tokens) are
 // simply absent; publicView mode never reads them.
-function toRenderMessage(message: PublicShareMessage): Message & { hadAttachment?: boolean } {
+function toRenderMessage(
+  message: PublicShareMessage,
+): Message & { hadAttachment?: boolean } {
   return {
     id: message.id,
     threadId: "",

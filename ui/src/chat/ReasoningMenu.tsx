@@ -33,7 +33,10 @@ export function ReasoningMenu({
     // Pointerdown (not click) so a press anywhere outside dismisses before it can
     // steal focus or trigger another control.
     function onPointerDown(event: PointerEvent) {
-      if (rootRef.current !== null && !rootRef.current.contains(event.target as Node)) {
+      if (
+        rootRef.current !== null &&
+        !rootRef.current.contains(event.target as Node)
+      ) {
         setOpen(false);
       }
     }
@@ -62,7 +65,9 @@ export function ReasoningMenu({
         <span
           aria-hidden
           className={`ml-0.5 inline-block border-solid border-[#aaa79e] border-b-[1.5px] border-r-[1.5px] p-[0.15rem] transition-transform ${
-            open ? "translate-y-px rotate-[-135deg]" : "-translate-y-px rotate-45"
+            open
+              ? "translate-y-px rotate-[-135deg]"
+              : "-translate-y-px rotate-45"
           }`}
         />
       </button>
@@ -91,7 +96,9 @@ export function ReasoningMenu({
               >
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className="text-[13px] font-medium text-[#f3f0e8]">{t(`composer.reasoning.${option.value}`)}</span>
+                    <span className="text-[13px] font-medium text-[#f3f0e8]">
+                      {t(`composer.reasoning.${option.value}`)}
+                    </span>
                     {option.default === true && (
                       <span className="rounded-[5px] bg-[#4a4741] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[#d8d4ca]">
                         {t("composer.reasoning.default")}
@@ -104,7 +111,13 @@ export function ReasoningMenu({
                 </span>
                 {/* Blue right-side checkmark for the active level, matching the
                     language switcher in UserMenu. */}
-                {selected && <Icon name="check" size="17px" className="ml-2 mt-0.5 shrink-0 text-[#5599e7]" />}
+                {selected && (
+                  <Icon
+                    name="check"
+                    size="17px"
+                    className="ml-2 mt-0.5 shrink-0 text-[#5599e7]"
+                  />
+                )}
               </button>
             );
           })}

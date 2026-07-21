@@ -21,7 +21,9 @@ export function ProjectDialog({
   const [name, setName] = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
   const isCreate = project === null;
-  const title = isCreate ? t("projects.dialog.createTitle") : t("projects.actions.editDetails");
+  const title = isCreate
+    ? t("projects.dialog.createTitle")
+    : t("projects.actions.editDetails");
 
   useEffect(() => {
     setName(project?.name ?? "");
@@ -37,11 +39,14 @@ export function ProjectDialog({
         onSubmit={(event) => {
           event.preventDefault();
           const trimmed = name.trim();
-          if (trimmed !== "") onSubmit({ name: trimmed, description: description.trim() });
+          if (trimmed !== "")
+            onSubmit({ name: trimmed, description: description.trim() });
         }}
       >
         <div className="flex items-center justify-between gap-4">
-          <h2 className="font-sans text-[22px] font-semibold text-[#f4f0e8]">{title}</h2>
+          <h2 className="font-sans text-[22px] font-semibold text-[#f4f0e8]">
+            {title}
+          </h2>
           <button
             className="leading-none text-[#d5d2c9] hover:text-white"
             type="button"
@@ -52,7 +57,9 @@ export function ProjectDialog({
           </button>
         </div>
         <label className="mt-4 block text-sm text-[#f4f0e8]">
-          {isCreate ? t("projects.dialog.workingOnLabel") : t("projects.dialog.nameLabel")}
+          {isCreate
+            ? t("projects.dialog.workingOnLabel")
+            : t("projects.dialog.nameLabel")}
           <input
             className="mt-2 h-9 w-full rounded-md border border-transparent bg-[#555550] px-3 text-sm text-white outline-none focus:border-[#8d897f]"
             placeholder={t("projects.dialog.namePlaceholder")}
@@ -62,7 +69,9 @@ export function ProjectDialog({
           />
         </label>
         <label className="mt-4 block text-sm text-[#f4f0e8]">
-          {isCreate ? t("projects.dialog.achieveLabel") : t("projects.dialog.descriptionLabel")}
+          {isCreate
+            ? t("projects.dialog.achieveLabel")
+            : t("projects.dialog.descriptionLabel")}
           <textarea
             className="mt-2 min-h-[136px] w-full resize-none rounded-md border border-transparent bg-[#555550] px-3 py-3 text-sm text-white outline-none focus:border-[#8d897f] disabled:cursor-not-allowed disabled:opacity-60"
             placeholder={

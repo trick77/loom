@@ -29,13 +29,29 @@ type Badge = { label: string; icon: IconName; className: string };
 function statusBadge(doc: Document, t: TFunction): Badge {
   switch (doc.status) {
     case "embedded":
-      return { label: t("projects.knowledge.status.ready"), icon: "checkCircle", className: "text-[#8fbf7f]" };
+      return {
+        label: t("projects.knowledge.status.ready"),
+        icon: "checkCircle",
+        className: "text-[#8fbf7f]",
+      };
     case "error":
-      return { label: t("projects.knowledge.status.error"), icon: "alertCircle", className: "text-accent" };
+      return {
+        label: t("projects.knowledge.status.error"),
+        icon: "alertCircle",
+        className: "text-accent",
+      };
     case "stale":
-      return { label: t("projects.knowledge.status.stale"), icon: "warning", className: "text-[#c9a227]" };
+      return {
+        label: t("projects.knowledge.status.stale"),
+        icon: "warning",
+        className: "text-[#c9a227]",
+      };
     default:
-      return { label: t("projects.knowledge.status.indexing"), icon: "spinner", className: "text-[#8f8b82]" };
+      return {
+        label: t("projects.knowledge.status.indexing"),
+        icon: "spinner",
+        className: "text-[#8f8b82]",
+      };
   }
 }
 
@@ -95,7 +111,11 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       }
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("projects.knowledge.error.upload"));
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("projects.knowledge.error.upload"),
+      );
     } finally {
       setBusy(false);
       if (fileInputRef.current !== null) fileInputRef.current.value = "";
@@ -118,7 +138,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       setPendingDelete(null);
     } catch (err) {
       setDeleteError(
-        err instanceof Error ? err.message : t("projects.knowledge.error.remove", { filename: doc.filename }),
+        err instanceof Error
+          ? err.message
+          : t("projects.knowledge.error.remove", { filename: doc.filename }),
       );
     } finally {
       setDeleting(false);
@@ -132,7 +154,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       await refresh();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : t("projects.knowledge.error.reindex", { filename: doc.filename }),
+        err instanceof Error
+          ? err.message
+          : t("projects.knowledge.error.reindex", { filename: doc.filename }),
       );
     }
   };
@@ -208,7 +232,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
       )}
 
       {loading ? (
-        <p className="mt-3 px-5 pb-5 text-sm text-[#8f8b82]">{t("projects.knowledge.loading")}</p>
+        <p className="mt-3 px-5 pb-5 text-sm text-[#8f8b82]">
+          {t("projects.knowledge.loading")}
+        </p>
       ) : docs.length === 0 ? (
         <div className="px-5 pb-5 pt-3">
           <button
@@ -216,11 +242,15 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
             onClick={openPicker}
             aria-label={t("projects.knowledge.addLabel")}
             className={`flex w-full flex-col items-center gap-1 rounded-xl border border-dashed px-4 py-7 text-center transition-colors ${
-              dragging ? "border-accent bg-[#2a2a28]" : "border-[#3f3f3c] hover:bg-[#2a2a28]"
+              dragging
+                ? "border-accent bg-[#2a2a28]"
+                : "border-[#3f3f3c] hover:bg-[#2a2a28]"
             }`}
           >
             <Icon name="upload" size="21px" className="text-[#d5d2c9]" />
-            <span className="text-sm leading-5 text-[#c7c5bd]">{t("projects.knowledge.dropzone")}</span>
+            <span className="text-sm leading-5 text-[#c7c5bd]">
+              {t("projects.knowledge.dropzone")}
+            </span>
           </button>
         </div>
       ) : (
@@ -233,7 +263,11 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                 key={doc.id}
                 className="group flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-[#2a2a28]"
                 onPointerEnter={() => setHoveredID(doc.id)}
-                onPointerLeave={() => setHoveredID((current) => (current === doc.id ? null : current))}
+                onPointerLeave={() =>
+                  setHoveredID((current) =>
+                    current === doc.id ? null : current,
+                  )
+                }
               >
                 <AttachmentPreview
                   mimeType={doc.mimeType}
@@ -242,13 +276,18 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                   className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#3a3a37] text-[#c7c5bd]"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[15px] leading-5 text-[#ecece6]" title={doc.filename}>
+                  <div
+                    className="truncate text-[15px] leading-5 text-[#ecece6]"
+                    title={doc.filename}
+                  >
                     {doc.filename}
                   </div>
                   <div className="flex items-center gap-1.5 text-[13px] leading-5 text-[#8a887f]">
                     <span>{formatFileSize(doc.sizeBytes)}</span>
                     <span>·</span>
-                    <span className={`flex items-center gap-1 ${badge.className}`}>
+                    <span
+                      className={`flex items-center gap-1 ${badge.className}`}
+                    >
                       <Icon name={badge.icon} size="13px" />
                       {badge.label}
                     </span>
@@ -260,7 +299,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                   {(doc.status === "error" || doc.status === "stale") && (
                     <button
                       type="button"
-                      aria-label={t("projects.knowledge.reindex", { filename: doc.filename })}
+                      aria-label={t("projects.knowledge.reindex", {
+                        filename: doc.filename,
+                      })}
                       className="grid h-7 w-7 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#343432]"
                       onClick={() => void handleReindex(doc)}
                     >
@@ -269,7 +310,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                   )}
                   <button
                     type="button"
-                    aria-label={t("projects.knowledge.remove", { filename: doc.filename })}
+                    aria-label={t("projects.knowledge.remove", {
+                      filename: doc.filename,
+                    })}
                     className="grid h-7 w-7 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#343432]"
                     onClick={() => handleDeleteRequest(doc)}
                   >

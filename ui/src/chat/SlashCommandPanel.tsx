@@ -79,8 +79,16 @@ export function SlashCommandPanel({
 
 // useAsync loads data once on mount, surfacing loading / error / value so each
 // view stays a thin render.
-function useAsync<T>(load: () => Promise<T>): { loading: boolean; error: string; value: T | null } {
-  const [state, setState] = useState<{ loading: boolean; error: string; value: T | null }>({
+function useAsync<T>(load: () => Promise<T>): {
+  loading: boolean;
+  error: string;
+  value: T | null;
+} {
+  const [state, setState] = useState<{
+    loading: boolean;
+    error: string;
+    value: T | null;
+  }>({
     loading: true,
     error: "",
     value: null,
@@ -93,7 +101,10 @@ function useAsync<T>(load: () => Promise<T>): { loading: boolean; error: string;
       })
       .catch((err) => {
         if (cancelled) return;
-        const message = err instanceof AuthExpiredError ? i18n.t("slash.sessionExpired") : String(err?.message ?? err);
+        const message =
+          err instanceof AuthExpiredError
+            ? i18n.t("slash.sessionExpired")
+            : String(err?.message ?? err);
         setState({ loading: false, error: message, value: null });
       });
     return () => {
@@ -105,7 +116,15 @@ function useAsync<T>(load: () => Promise<T>): { loading: boolean; error: string;
   return state;
 }
 
-function PanelState({ loading, error, empty }: { loading: boolean; error: string; empty?: string }) {
+function PanelState({
+  loading,
+  error,
+  empty,
+}: {
+  loading: boolean;
+  error: string;
+  empty?: string;
+}) {
   const { t } = useTranslation();
   if (loading) {
     return (
@@ -125,7 +144,13 @@ function MCPServersView() {
   const { t } = useTranslation();
   const { loading, error, value } = useAsync<MCPServerStatus[]>(getMCPServers);
   if (loading || error !== "" || value === null || value.length === 0) {
-    return <PanelState loading={loading} error={error} empty={t("slash.noServers")} />;
+    return (
+      <PanelState
+        loading={loading}
+        error={error}
+        empty={t("slash.noServers")}
+      />
+    );
   }
   return (
     <table className="w-full border-collapse text-sm">
@@ -151,14 +176,24 @@ function MCPServersView() {
                 />
                 {server.active ? t("slash.up") : t("slash.down")}
               </span>
-              {!server.active && server.error !== undefined && server.error !== "" && (
-                <div className="mt-1 max-w-[220px] text-xs text-[#c98b82]">{server.error}</div>
-              )}
+              {!server.active &&
+                server.error !== undefined &&
+                server.error !== "" && (
+                  <div className="mt-1 max-w-[220px] text-xs text-[#c98b82]">
+                    {server.error}
+                  </div>
+                )}
             </td>
-            <td className="py-2.5 pr-4 text-[#c9c5bb]">{transportLabel(server.transport)}</td>
+            <td className="py-2.5 pr-4 text-[#c9c5bb]">
+              {transportLabel(server.transport)}
+            </td>
             <td className="py-2.5 pr-4 text-[#c9c5bb]">{server.origin}</td>
-            <td className="py-2.5 pr-4 tabular-nums text-[#c9c5bb]">{server.toolCount}</td>
-            <td className="py-2.5 font-mono text-xs text-[#c9c5bb]">{server.endpoint}</td>
+            <td className="py-2.5 pr-4 tabular-nums text-[#c9c5bb]">
+              {server.toolCount}
+            </td>
+            <td className="py-2.5 font-mono text-xs text-[#c9c5bb]">
+              {server.endpoint}
+            </td>
           </tr>
         ))}
       </tbody>
@@ -175,7 +210,9 @@ function ToolsView() {
   const { t } = useTranslation();
   const { loading, error, value } = useAsync<MCPToolInfo[]>(getMCPTools);
   if (loading || error !== "" || value === null || value.length === 0) {
-    return <PanelState loading={loading} error={error} empty={t("slash.noTools")} />;
+    return (
+      <PanelState loading={loading} error={error} empty={t("slash.noTools")} />
+    );
   }
   // Group by server, preserving each server's tool order.
   const groups = new Map<string, MCPToolInfo[]>();
@@ -189,18 +226,26 @@ function ToolsView() {
     <div className="flex flex-col gap-5">
       {[...groups.entries()].map(([server, tools]) => (
         <div key={server}>
-          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-[#807d74]">{server}</div>
+          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-[#807d74]">
+            {server}
+          </div>
           <div className="flex flex-col divide-y divide-[#333230] rounded-lg border border-[#333230]">
             {tools.map((tool) => (
               <div key={tool.name} className="px-3.5 py-2.5">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="font-mono text-sm text-[#e7e3d9]">{tool.name}</span>
+                  <span className="font-mono text-sm text-[#e7e3d9]">
+                    {tool.name}
+                  </span>
                   {tool.required !== null && tool.required.length > 0 && (
-                    <span className="font-mono text-xs text-[#8f8b81]">({tool.required.join(", ")})</span>
+                    <span className="font-mono text-xs text-[#8f8b81]">
+                      ({tool.required.join(", ")})
+                    </span>
                   )}
                 </div>
                 {tool.description !== "" && (
-                  <div className="mt-1 text-sm text-[#aaa79e]">{tool.description}</div>
+                  <div className="mt-1 text-sm text-[#aaa79e]">
+                    {tool.description}
+                  </div>
                 )}
               </div>
             ))}
@@ -216,9 +261,16 @@ function HelpView() {
   return (
     <div className="flex flex-col divide-y divide-[#333230] rounded-lg border border-[#333230]">
       {SLASH_COMMANDS.map((command) => (
-        <div key={command.name} className="flex items-baseline gap-3 px-3.5 py-2.5">
-          <span className="w-24 shrink-0 font-mono text-sm text-[#e7e3d9]">/{command.name}</span>
-          <span className="text-sm text-[#aaa79e]">{t(command.description)}</span>
+        <div
+          key={command.name}
+          className="flex items-baseline gap-3 px-3.5 py-2.5"
+        >
+          <span className="w-24 shrink-0 font-mono text-sm text-[#e7e3d9]">
+            /{command.name}
+          </span>
+          <span className="text-sm text-[#aaa79e]">
+            {t(command.description)}
+          </span>
         </div>
       ))}
     </div>

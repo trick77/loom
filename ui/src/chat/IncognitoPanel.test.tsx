@@ -22,7 +22,9 @@ const assistantMessage: MessageWithActivityTrace = {
   createdAt: "2026-06-28T00:00:01Z",
 };
 
-function renderPanel(overrides: Partial<Parameters<typeof IncognitoPanel>[0]> = {}) {
+function renderPanel(
+  overrides: Partial<Parameters<typeof IncognitoPanel>[0]> = {},
+) {
   const props = {
     messages: [] as MessageWithActivityTrace[],
     draft: "",
@@ -50,19 +52,29 @@ describe("IncognitoPanel", () => {
     renderPanel();
 
     expect(screen.getByText("Let's chat incognito")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Message incognito...")).toBeInTheDocument();
     expect(
-      screen.getByText("Incognito threads aren't saved, added to memory, or used to train models."),
+      screen.getByPlaceholderText("Message incognito..."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Incognito threads aren't saved, added to memory, or used to train models.",
+      ),
     ).toBeInTheDocument();
     // The transcript region only exists once there is something to show.
-    expect(screen.queryByRole("region", { name: "Incognito conversation transcript" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", {
+        name: "Incognito conversation transcript",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("switches to the transcript view once messages exist", () => {
     renderPanel({ messages: [userMessage, assistantMessage] });
 
     expect(screen.queryByText("Let's chat incognito")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Incognito conversation transcript" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Incognito conversation transcript" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Compare the gateways")).toBeInTheDocument();
     expect(screen.getByText("Here is the answer")).toBeInTheDocument();
   });
@@ -71,7 +83,9 @@ describe("IncognitoPanel", () => {
     renderPanel({ isSending: true });
 
     expect(screen.queryByText("Let's chat incognito")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Incognito conversation transcript" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Incognito conversation transcript" }),
+    ).toBeInTheDocument();
   });
 
   it("renders streaming text blocks and skips empty ones", () => {
@@ -107,7 +121,9 @@ describe("IncognitoPanel", () => {
       ],
     });
 
-    expect(screen.getByRole("status", { name: /loom activity trace/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: /loom activity trace/i }),
+    ).toBeInTheDocument();
     // The panel starts collapsed; expanding it reveals the streamed event.
     fireEvent.click(screen.getByRole("button", { name: "Show activity" }));
     expect(screen.getByText("Searching the web")).toBeInTheDocument();
@@ -203,7 +219,10 @@ describe("IncognitoPanel", () => {
   });
 
   it("ignores Escape while a response is in flight", () => {
-    const { onExit } = renderPanel({ isSending: true, messages: [userMessage] });
+    const { onExit } = renderPanel({
+      isSending: true,
+      messages: [userMessage],
+    });
 
     fireEvent.keyDown(window, { key: "Escape" });
 

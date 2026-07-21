@@ -54,10 +54,18 @@ function transform(node: HastNode): void {
   if (!node.children) return;
   const next: HastNode[] = [];
   for (const child of node.children) {
-    if (child.type === "text" && typeof child.value === "string" && child.value.trim() !== "") {
+    if (
+      child.type === "text" &&
+      typeof child.value === "string" &&
+      child.value.trim() !== ""
+    ) {
       next.push(...wrapTextNode(child.value));
     } else {
-      if (child.type === "element" && child.tagName && SKIP_TAGS.has(child.tagName)) {
+      if (
+        child.type === "element" &&
+        child.tagName &&
+        SKIP_TAGS.has(child.tagName)
+      ) {
         // code/pre/a unangetastet lassen (keine Segment-Spans, kein Flackern)
         next.push(child);
         continue;

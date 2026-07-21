@@ -36,11 +36,15 @@ describe("activity trace model", () => {
     events = upsertTraceToolCall(events, {
       id: "call_1",
       name: "search__web",
-      arguments: "{\"query\":\"agentgateway kgateway\"}",
+      arguments: '{"query":"agentgateway kgateway"}',
     });
     events = appendReasoningDelta(events, "Next thought.");
 
-    expect(events.map((event) => event.type)).toEqual(["reasoning", "tool", "reasoning"]);
+    expect(events.map((event) => event.type)).toEqual([
+      "reasoning",
+      "tool",
+      "reasoning",
+    ]);
     expect(events[2]).toMatchObject({
       id: "reasoning-2",
       type: "reasoning",
@@ -121,12 +125,15 @@ describe("activity trace model", () => {
       {
         id: "reasoning-1",
         type: "reasoning",
-        content: "I should compare the active stream state with the completed assistant message before answering.",
+        content:
+          "I should compare the active stream state with the completed assistant message before answering.",
         status: "done",
       },
     ]);
 
-    expect(summary).toBe("Compared the active stream state with the completed assistant message");
+    expect(summary).toBe(
+      "Compared the active stream state with the completed assistant message",
+    );
   });
 
   test("keeps the fetched URL on the summary and renders no result frame", () => {
@@ -134,7 +141,7 @@ describe("activity trace model", () => {
     events = upsertTraceToolCall(events, {
       id: "call_1",
       name: "fetch__fetch",
-      arguments: "{\"url\":\"https://example.com/docs\"}",
+      arguments: '{"url":"https://example.com/docs"}',
     });
     events = upsertTraceToolResult(events, {
       id: "call_1",
@@ -143,7 +150,11 @@ describe("activity trace model", () => {
     });
 
     expect(events[0]).toMatchObject({
-      summary: { kind: "fetch", title: "example.com", url: "https://example.com/docs" },
+      summary: {
+        kind: "fetch",
+        title: "example.com",
+        url: "https://example.com/docs",
+      },
       preview: { kind: "text", detail: "Example documentation page content" },
     });
   });
@@ -155,7 +166,7 @@ describe("activity trace model", () => {
         type: "tool",
         name: "acme__transmogrify_asset",
         status: "running",
-        rawArguments: "{\"asset\":\"draft.pdf\"}",
+        rawArguments: '{"asset":"draft.pdf"}',
         rawOutput: "Created draft.pdf",
       },
     ] as ActivityTraceEvent[]);
@@ -178,17 +189,25 @@ describe("activity trace model", () => {
   });
 
   test("derives tool titles from query, url, filename and readable name", () => {
-    expect(summarizeToolCall("tavily__tavily_search", "{\"query\":\"balcony glazing\"}")).toMatchObject({
+    expect(
+      summarizeToolCall("tavily__tavily_search", '{"query":"balcony glazing"}'),
+    ).toMatchObject({
       title: "Balcony glazing",
     });
-    expect(summarizeToolCall("fetch__fetch", "{\"url\":\"https://example.com\"}")).toMatchObject({
+    expect(
+      summarizeToolCall("fetch__fetch", '{"url":"https://example.com"}'),
+    ).toMatchObject({
       title: "example.com",
     });
-    expect(summarizeToolCall("generate_image", "{\"prompt\":\"a cabin\"}")).toMatchObject({
+    expect(
+      summarizeToolCall("generate_image", '{"prompt":"a cabin"}'),
+    ).toMatchObject({
       kind: "generated",
       title: "Creating image",
     });
-    expect(summarizeToolCall("create_pptx_presentation", "{\"filename\":\"deck.pptx\"}")).toMatchObject({
+    expect(
+      summarizeToolCall("create_pptx_presentation", '{"filename":"deck.pptx"}'),
+    ).toMatchObject({
       kind: "generated",
       title: "Creating presentation",
     });
@@ -202,7 +221,9 @@ describe("activity trace model", () => {
       kind: "search",
       title: "Searching the web",
     });
-    expect(summarizeToolCall("context7__resolve-library-id", "{}")).toMatchObject({
+    expect(
+      summarizeToolCall("context7__resolve-library-id", "{}"),
+    ).toMatchObject({
       kind: "search",
       title: "Searching the documentation",
     });
@@ -226,7 +247,9 @@ describe("activity trace model", () => {
       kind: "generated",
       title: "Reading project threads",
     });
-    expect(summarizeToolCall("conversation_search", '{"query":"frozen snapshots"}')).toMatchObject({
+    expect(
+      summarizeToolCall("conversation_search", '{"query":"frozen snapshots"}'),
+    ).toMatchObject({
       kind: "conversationSearch",
       title: "Frozen snapshots",
     });
@@ -234,18 +257,24 @@ describe("activity trace model", () => {
       kind: "conversationSearch",
       title: "Searching past conversations",
     });
-    expect(summarizeToolCall("read_thread", '{"thread_id":"t1"}')).toMatchObject({
+    expect(
+      summarizeToolCall("read_thread", '{"thread_id":"t1"}'),
+    ).toMatchObject({
       kind: "generated",
       title: "Reading a conversation",
     });
   });
 
   test("renders ipverse IP lookups with a loupe and explanatory title", () => {
-    expect(summarizeToolCall("ipverse__lookup", '{"ip":"3.18.101.236"}')).toMatchObject({
+    expect(
+      summarizeToolCall("ipverse__lookup", '{"ip":"3.18.101.236"}'),
+    ).toMatchObject({
       kind: "lookup",
       title: "Looking up 3.18.101.236",
     });
-    expect(summarizeToolCall("ipverse__whois", '{"query":"2607:ff10:c8:594::a"}')).toMatchObject({
+    expect(
+      summarizeToolCall("ipverse__whois", '{"query":"2607:ff10:c8:594::a"}'),
+    ).toMatchObject({
       kind: "lookup",
       title: "Looking up 2607:ff10:c8:594::a",
     });
@@ -260,13 +289,23 @@ describe("activity trace model", () => {
   });
 
   test("normalizes schemeless source URLs without accepting app-relative routes", () => {
-    expect(externalHTTPURL("www.example.com/docs")).toBe("https://www.example.com/docs");
-    expect(externalHTTPURL("example.com:8080/docs")).toBe("https://example.com:8080/docs");
-    expect(externalHTTPURL("//example.com/docs")).toBe("https://example.com/docs");
-    expect(externalHTTPURL("https://example.com/docs")).toBe("https://example.com/docs");
+    expect(externalHTTPURL("www.example.com/docs")).toBe(
+      "https://www.example.com/docs",
+    );
+    expect(externalHTTPURL("example.com:8080/docs")).toBe(
+      "https://example.com:8080/docs",
+    );
+    expect(externalHTTPURL("//example.com/docs")).toBe(
+      "https://example.com/docs",
+    );
+    expect(externalHTTPURL("https://example.com/docs")).toBe(
+      "https://example.com/docs",
+    );
     expect(externalHTTPURL("/threads/t1")).toBeUndefined();
     expect(externalHTTPURL("mailto:hello@example.com")).toBeUndefined();
-    expect(faviconURL("www.example.com/docs")).toBe("https://www.google.com/s2/favicons?domain=example.com&sz=32");
+    expect(faviconURL("www.example.com/docs")).toBe(
+      "https://www.google.com/s2/favicons?domain=example.com&sz=32",
+    );
   });
 
   test("preserves URL fallback text for search results without titles", () => {
@@ -275,12 +314,12 @@ describe("activity trace model", () => {
     events = upsertTraceToolCall(events, {
       id: "call_1",
       name: "tavily__tavily_search",
-      arguments: "{\"query\":\"example\"}",
+      arguments: '{"query":"example"}',
     });
     events = upsertTraceToolResult(events, {
       id: "call_1",
       name: "tavily__tavily_search",
-      content: "{\"results\":[{\"url\":\"https://example.com/my_page\"}]}",
+      content: '{"results":[{"url":"https://example.com/my_page"}]}',
     });
 
     expect(events[0]).toMatchObject({
@@ -306,7 +345,7 @@ describe("activity trace model", () => {
     events = upsertTraceToolCall(events, {
       id: "call_1",
       name: "tavily__tavily_search",
-      arguments: "{\"query\":\"example\"}",
+      arguments: '{"query":"example"}',
     });
     events = upsertTraceToolResult(events, {
       id: "call_1",

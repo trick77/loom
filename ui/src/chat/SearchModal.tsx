@@ -74,13 +74,17 @@ export function SearchModal({
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setSelected((current) => (results.length === 0 ? 0 : (current + 1) % results.length));
+      setSelected((current) =>
+        results.length === 0 ? 0 : (current + 1) % results.length,
+      );
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
       setSelected((current) =>
-        results.length === 0 ? 0 : (current - 1 + results.length) % results.length,
+        results.length === 0
+          ? 0
+          : (current - 1 + results.length) % results.length,
       );
       return;
     }
@@ -135,56 +139,66 @@ export function SearchModal({
           style={{ height: listHeight }}
         >
           <div ref={contentRef} className="px-1.5 py-1.5">
-          {hasQuery && (
-            <div className="ui-meta-text px-3 pb-1 pt-1.5 text-[#97958c]">{t("search.resultsHeading")}</div>
-          )}
-          {results.length === 0 ? (
-            <div className="px-3 py-6 text-center text-[14px] text-[#807d74]">
-              {hasQuery ? t("search.noMatch") : t("search.empty")}
-            </div>
-          ) : (
-            <ul>
-              {results.map((result, index) => {
-                const isSelected = index === selected;
-                const timeLabel = formatTimeAgo(
-                  result.thread.lastMessageAt ?? result.thread.updatedAt,
-                );
-                return (
-                  <li key={result.thread.id}>
-                    <button
-                      type="button"
-                      onClick={() => open(index)}
-                      onMouseMove={() => setSelected(index)}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                        isSelected ? "bg-[#3f3f3a]" : ""
-                      }`}
-                    >
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-[15px] text-[#ecece6]">
-                          {/* Clean + highlight only while searching; empty-state
+            {hasQuery && (
+              <div className="ui-meta-text px-3 pb-1 pt-1.5 text-[#97958c]">
+                {t("search.resultsHeading")}
+              </div>
+            )}
+            {results.length === 0 ? (
+              <div className="px-3 py-6 text-center text-[14px] text-[#807d74]">
+                {hasQuery ? t("search.noMatch") : t("search.empty")}
+              </div>
+            ) : (
+              <ul>
+                {results.map((result, index) => {
+                  const isSelected = index === selected;
+                  const timeLabel = formatTimeAgo(
+                    result.thread.lastMessageAt ?? result.thread.updatedAt,
+                  );
+                  return (
+                    <li key={result.thread.id}>
+                      <button
+                        type="button"
+                        onClick={() => open(index)}
+                        onMouseMove={() => setSelected(index)}
+                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                          isSelected ? "bg-[#3f3f3a]" : ""
+                        }`}
+                      >
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-[15px] text-[#ecece6]">
+                            {/* Clean + highlight only while searching; empty-state
                               recents show the raw title, matching the sidebar and
                               Threads list (which clean only during search). */}
-                          {hasQuery ? highlightTerms(result.thread.title, query) : result.thread.title}
+                            {hasQuery
+                              ? highlightTerms(result.thread.title, query)
+                              : result.thread.title}
+                          </span>
+                          {result.snippet !== undefined &&
+                            result.snippet !== "" && (
+                              <span className="truncate text-[13px] text-[#908e85]">
+                                {renderSnippet(result.snippet)}
+                              </span>
+                            )}
                         </span>
-                        {result.snippet !== undefined && result.snippet !== "" && (
-                          <span className="truncate text-[13px] text-[#908e85]">
-                            {renderSnippet(result.snippet)}
+                        {isSelected ? (
+                          <span
+                            aria-hidden="true"
+                            className="shrink-0 text-[14px] text-[#8a887f]"
+                          >
+                            ⏎
+                          </span>
+                        ) : (
+                          <span className="shrink-0 text-[13px] text-[#8a887f]">
+                            {timeLabel}
                           </span>
                         )}
-                      </span>
-                      {isSelected ? (
-                        <span aria-hidden="true" className="shrink-0 text-[14px] text-[#8a887f]">
-                          ⏎
-                        </span>
-                      ) : (
-                        <span className="shrink-0 text-[13px] text-[#8a887f]">{timeLabel}</span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </div>
       </div>

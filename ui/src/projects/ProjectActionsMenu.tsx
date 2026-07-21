@@ -3,7 +3,12 @@ import { useTranslation } from "react-i18next";
 import type { Project } from "../api";
 import { Icon } from "../chat/Icon";
 import { useMenuPlacement } from "../chat/useMenuPlacement";
-import { menuDeleteItemClass, menuIconClass, menuItemClass, TrashMenuIcon } from "../ThreadActionsMenu";
+import {
+  menuDeleteItemClass,
+  menuIconClass,
+  menuItemClass,
+  TrashMenuIcon,
+} from "../ThreadActionsMenu";
 
 export function ProjectActionsMenu({
   project,
@@ -48,7 +53,9 @@ export function ProjectActionsMenu({
         onClick={() => (archived ? onUnarchive : onArchive)(project)}
       >
         <ArchiveIcon />
-        {archived ? t("projects.actions.unarchive") : t("projects.actions.archive")}
+        {archived
+          ? t("projects.actions.unarchive")
+          : t("projects.actions.archive")}
       </button>
       <button
         className={menuDeleteItemClass}
@@ -65,7 +72,10 @@ export function ProjectActionsMenu({
 
 function EditIcon() {
   return (
-    <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+    <span
+      className={`${menuIconClass} text-[19px] leading-none`}
+      aria-hidden="true"
+    >
       <Icon name="edit" size="19px" />
     </span>
   );
@@ -73,7 +83,10 @@ function EditIcon() {
 
 export function ArchiveIcon() {
   return (
-    <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+    <span
+      className={`${menuIconClass} text-[19px] leading-none`}
+      aria-hidden="true"
+    >
       <Icon name="archived" size="19px" />
     </span>
   );

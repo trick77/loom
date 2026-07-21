@@ -140,7 +140,13 @@ export function MemoryComposer({
             {pending ? (
               <Icon name="spinner" size="18px" className="animate-spin" />
             ) : (
-              <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 256 256"
+                fill="currentColor"
+                aria-hidden="true"
+              >
                 <path d={ARROW_PATH} />
               </svg>
             )}

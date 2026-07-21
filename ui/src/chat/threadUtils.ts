@@ -8,7 +8,12 @@ import type { MessageWithActivityTrace } from "./types";
 // provides (named forms carry a `{{name}}` placeholder and need a name to
 // render), and `when` gates it to a time-of-day or weekday — entries with no
 // `when` are always eligible.
-type Greeting = { key: string; named?: boolean; unnamed?: boolean; when?: (now: Date) => boolean };
+type Greeting = {
+  key: string;
+  named?: boolean;
+  unnamed?: boolean;
+  when?: (now: Date) => boolean;
+};
 
 // Time-of-day bands (non-overlapping) and weekday helpers, keyed on local time.
 const morning = (d: Date) => d.getHours() >= 5 && d.getHours() < 12;
@@ -64,7 +69,11 @@ function firstName(fullName: string): string {
 }
 
 // greetingText resolves a localized greeting slot from the catalog.
-function greetingText(key: string, form: "named" | "unnamed", name: string): string {
+function greetingText(
+  key: string,
+  form: "named" | "unnamed",
+  name: string,
+): string {
   return i18n.t(`greetings.${key}.${form}`, { name });
 }
 
@@ -82,9 +91,17 @@ function eligibleGreetings(name: string, now: Date): Greeting[] {
 // which catalog slot and which form, plus the name to interpolate. Callers memoize
 // the pick and translate it at render time (greetingTextFor / t) so the greeting
 // re-localizes when the UI language switches instead of freezing at mount.
-export type GreetingPick = { key: string; form: "named" | "unnamed"; name: string };
+export type GreetingPick = {
+  key: string;
+  form: "named" | "unnamed";
+  name: string;
+};
 
-function chooseForm(greeting: Greeting, name: string, rand: () => number): "named" | "unnamed" {
+function chooseForm(
+  greeting: Greeting,
+  name: string,
+  rand: () => number,
+): "named" | "unnamed" {
   const canName = name !== "" && Boolean(greeting.named);
   const useNamed = canName && (!greeting.unnamed || rand() < 0.5);
   if (useNamed) return "named";
@@ -94,7 +111,11 @@ function chooseForm(greeting: Greeting, name: string, rand: () => number): "name
 
 // pickGreeting makes the time/day-appropriate random choice once. `now`/`rand` are
 // injectable so callers (and tests) can pin the moment and the choice.
-export function pickGreeting(fullName: string, now = new Date(), rand = Math.random): GreetingPick {
+export function pickGreeting(
+  fullName: string,
+  now = new Date(),
+  rand = Math.random,
+): GreetingPick {
   const name = firstName(fullName);
   const eligible = eligibleGreetings(name, now);
   const pick = eligible[Math.floor(rand() * eligible.length)] ?? eligible[0];
@@ -109,14 +130,21 @@ export function greetingTextFor(pick: GreetingPick): string {
 // greetingForNow picks and localizes in one call (kept for tests and any
 // non-reactive caller). Reactive UI should memoize pickGreeting and translate at
 // render time so a language switch takes effect.
-export function greetingForNow(fullName: string, now = new Date(), rand = Math.random): string {
+export function greetingForNow(
+  fullName: string,
+  now = new Date(),
+  rand = Math.random,
+): string {
   return greetingTextFor(pickGreeting(fullName, now, rand));
 }
 
 // possibleGreetings enumerates every string greetingForNow could return at `now`
 // for the given name — used by tests to assert membership without duplicating the
 // pool.
-export function possibleGreetings(fullName: string, now = new Date()): string[] {
+export function possibleGreetings(
+  fullName: string,
+  now = new Date(),
+): string[] {
   const name = firstName(fullName);
   const out = new Set<string>();
   for (const g of eligibleGreetings(name, now)) {
@@ -130,7 +158,10 @@ export function isNearBottom(element: HTMLElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
 }
 
-export function previousUserMessage(messages: Message[], beforeIndex: number): Message | null {
+export function previousUserMessage(
+  messages: Message[],
+  beforeIndex: number,
+): Message | null {
   for (let index = beforeIndex - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role === "user") return message;
@@ -153,7 +184,9 @@ export function reconcileUserMessage(
   confirmed: MessageWithActivityTrace,
 ): MessageWithActivityTrace[] {
   const placeholderIndex =
-    placeholderID !== null ? messages.findIndex((message) => message.id === placeholderID) : -1;
+    placeholderID !== null
+      ? messages.findIndex((message) => message.id === placeholderID)
+      : -1;
   if (placeholderIndex !== -1) {
     const reconciled: MessageWithActivityTrace = {
       ...confirmed,

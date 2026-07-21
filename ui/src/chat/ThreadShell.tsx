@@ -35,7 +35,12 @@ import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
-import { createPastedText, pastedTextFromBlock, toPastedTextBlock, type PastedText } from "./pastedText";
+import {
+  createPastedText,
+  pastedTextFromBlock,
+  toPastedTextBlock,
+  type PastedText,
+} from "./pastedText";
 import { useMediaQuery } from "./useMediaQuery";
 import {
   composerAttachmentFromArtifact,
@@ -61,7 +66,10 @@ import { ProjectDetailPage } from "../projects/ProjectDetailPage";
 import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
 import { ProjectsPage } from "../projects/ProjectsPage";
-import { replaceThreadById, upsertThreadById } from "../projects/projectMembership";
+import {
+  replaceThreadById,
+  upsertThreadById,
+} from "../projects/projectMembership";
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { DEFAULT_REASONING_EFFORT, type ReasoningEffort } from "./reasoning";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
@@ -113,7 +121,9 @@ export function ThreadShell({
   // Files attached on the new-thread start screen, held until the first send creates
   // a thread to bind them to (deferred upload — avoids orphan empty threads and
   // scopes the upload to the thread it was attached in).
-  const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<
+    ComposerAttachment[]
+  >([]);
   const [pendingAttachNote, setPendingAttachNote] = useState("");
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -135,15 +145,21 @@ export function ThreadShell({
   // lists; exiting or leaving discards it. It reuses the shared streaming state
   // (only one conversation is active at a time).
   const [incognito, setIncognito] = useState(false);
-  const [incognitoMessages, setIncognitoMessages] = useState<MessageWithActivityTrace[]>([]);
+  const [incognitoMessages, setIncognitoMessages] = useState<
+    MessageWithActivityTrace[]
+  >([]);
   // The composer's reasoning-effort choice. In-memory only — it is not persisted
   // and does not carry across threads: every new thread opens at the default
   // (navigateToNew resets it), and a manual change applies to the current thread
   // only. High is the model's own default.
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT);
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(
+    DEFAULT_REASONING_EFFORT,
+  );
   // A slash command ("/mcp", "/tools", …) opens this ephemeral overlay panel
   // instead of sending a message; null when no panel is open.
-  const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(null);
+  const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(
+    null,
+  );
   const clearStreamingBlocks = useCallback(() => {
     streamingBlocksRef.current = [];
     setStreamingBlocks([]);
@@ -153,11 +169,15 @@ export function ThreadShell({
   // send time (the thread does not exist yet when the file is picked). Its
   // attachNote carries ingestion status/errors after the start screen is gone, so
   // it is surfaced in the thread panel the user lands on.
-  const { attachNote: deferredAttachNote, uploadExistingAttachments: flushPendingAttachments } =
-    useDocumentAttachments({});
+  const {
+    attachNote: deferredAttachNote,
+    uploadExistingAttachments: flushPendingAttachments,
+  } = useDocumentAttachments({});
   const [sendError, setSendError] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [streamingThreadID, setStreamingThreadID] = useState<string | null>(null);
+  const [streamingThreadID, setStreamingThreadID] = useState<string | null>(
+    null,
+  );
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -184,7 +204,11 @@ export function ThreadShell({
         onSessionExpired();
         return;
       }
-      setError(error instanceof Error && error.message !== "" ? error.message : fallback);
+      setError(
+        error instanceof Error && error.message !== ""
+          ? error.message
+          : fallback,
+      );
     },
     [onSessionExpired],
   );
@@ -290,7 +314,10 @@ export function ThreadShell({
   // ⌘K / Ctrl-K opens the search palette from anywhere in the app.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && (event.key === "k" || event.key === "K")) {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        (event.key === "k" || event.key === "K")
+      ) {
         event.preventDefault();
         setSearchOpen(true);
       }
@@ -313,7 +340,8 @@ export function ThreadShell({
     if (route.view !== "new") {
       setPendingAttachments((current) => {
         current.forEach((attachment) => {
-          if (attachment.previewUrl !== undefined) URL.revokeObjectURL(attachment.previewUrl);
+          if (attachment.previewUrl !== undefined)
+            URL.revokeObjectURL(attachment.previewUrl);
         });
         return [];
       });
@@ -332,7 +360,9 @@ export function ThreadShell({
   const [openedProject, setOpenedProject] = useState<Project | null>(null);
   const activeProject =
     activeProjectForRoute(route) ??
-    (route.view === "project" && openedProject?.id === route.projectID ? openedProject : null);
+    (route.view === "project" && openedProject?.id === route.projectID
+      ? openedProject
+      : null);
 
   useEffect(() => {
     document.title = tabTitle(route, activeThread, activeProject);
@@ -491,7 +521,11 @@ export function ThreadShell({
     setRoute({ view: "thread", threadID });
   }
 
-  async function handleSetThreadStarred(thread: Thread, starred: boolean, menuKey?: string) {
+  async function handleSetThreadStarred(
+    thread: Thread,
+    starred: boolean,
+    menuKey?: string,
+  ) {
     if (isUpdatingStar) return;
     setIsUpdatingStar(true);
     try {
@@ -500,7 +534,9 @@ export function ThreadShell({
         setActiveThread(updatedThread);
       }
       setThreads((current) =>
-        current.map((item) => (item.id === updatedThread.id ? updatedThread : item)),
+        current.map((item) =>
+          item.id === updatedThread.id ? updatedThread : item,
+        ),
       );
       setProjectThreads((current) => replaceThreadById(current, updatedThread));
       setThreadMutationVersion((value) => value + 1);
@@ -535,13 +571,19 @@ export function ThreadShell({
     [setActiveShare, setThreads, setProjectThreads],
   );
 
-  async function handleSetProjectStarred(project: Project, starred: boolean, menuKey?: string) {
+  async function handleSetProjectStarred(
+    project: Project,
+    starred: boolean,
+    menuKey?: string,
+  ) {
     if (isUpdatingStar) return;
     setIsUpdatingStar(true);
     try {
       const updatedProject = await setProjectStarred(project.id, starred);
       setProjects((current) =>
-        current.map((item) => (item.id === updatedProject.id ? updatedProject : item)),
+        current.map((item) =>
+          item.id === updatedProject.id ? updatedProject : item,
+        ),
       );
       if (menuKey !== undefined) {
         setOpenThreadMenuID(null);
@@ -563,12 +605,16 @@ export function ThreadShell({
     setPendingAttachments((current) => {
       const remaining = DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - current.length;
       if (remaining <= 0) {
-        setPendingAttachNote(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+        setPendingAttachNote(
+          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+        );
         return current;
       }
       const accepted = sizeFiltered.slice(0, remaining);
       if (accepted.length < sizeFiltered.length) {
-        setPendingAttachNote(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+        setPendingAttachNote(
+          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+        );
       } else if (accepted.length > 0 && sizeFiltered.length === files.length) {
         setPendingAttachNote("");
       }
@@ -583,13 +629,18 @@ export function ThreadShell({
     setSendError("");
     setPendingAttachments((current) => {
       const removed = current.find((attachment) => attachment.id === id);
-      if (removed?.previewUrl !== undefined) URL.revokeObjectURL(removed.previewUrl);
+      if (removed?.previewUrl !== undefined)
+        URL.revokeObjectURL(removed.previewUrl);
       return current.filter((attachment) => attachment.id !== id);
     });
     setPendingAttachNote("");
   }
 
-  async function handleSend(attachments: ComposerAttachment[] = pendingAttachments.map(toSentAttachment)) {
+  async function handleSend(
+    attachments: ComposerAttachment[] = pendingAttachments.map(
+      toSentAttachment,
+    ),
+  ) {
     const draftText = draft.trim();
     const content = composeSendContent();
     if (content === "" || isSending) return;
@@ -626,7 +677,8 @@ export function ThreadShell({
   // as chips (not the folded inline text), so a resend keeps the same collapse.
   function handleRetry(content: string, pastedTexts?: MessagePastedText[]) {
     const blocks = pastedTexts ?? [];
-    if ((content.trim() === "" && blocks.length === 0) || activeThread === null) return;
+    if ((content.trim() === "" && blocks.length === 0) || activeThread === null)
+      return;
     setDraft(content);
     setPastedTexts(blocks.map(pastedTextFromBlock));
     setComposerFocusTick((tick) => tick + 1);
@@ -659,8 +711,12 @@ export function ThreadShell({
     // Id of the optimistic user bubble until the server confirms it; the catch reads
     // this to decide whether to drop the placeholder, so it must outlive the try block.
     let optimisticUserMessageID: string | null = null;
-    const projectIDForNewThread = route.view === "project" ? route.projectID : null;
-    const updateSentAttachmentStatus = (id: string, patch: Partial<ComposerAttachment>) => {
+    const projectIDForNewThread =
+      route.view === "project" ? route.projectID : null;
+    const updateSentAttachmentStatus = (
+      id: string,
+      patch: Partial<ComposerAttachment>,
+    ) => {
       const attachment = options.attachments.find((item) => item.id === id);
       if (attachment !== undefined) Object.assign(attachment, patch);
       setMessages((current) => updateMessageAttachment(current, id, patch));
@@ -671,7 +727,10 @@ export function ThreadShell({
         targetThread =
           projectIDForNewThread === null
             ? await createThread({ title: content })
-            : await createThread({ projectId: projectIDForNewThread, title: content });
+            : await createThread({
+                projectId: projectIDForNewThread,
+                title: content,
+              });
         createdThreadForFallback = targetThread;
         // Now that a thread exists, flush files attached on the start screen,
         // bound to it (project-less => private to this thread). Image uploads must
@@ -689,10 +748,14 @@ export function ThreadShell({
           const failedImageAttachment = options.attachments.find(
             (attachment) =>
               isImageAttachment(attachment) &&
-              (attachment.status === "error" || attachment.artifactId === undefined),
+              (attachment.status === "error" ||
+                attachment.artifactId === undefined),
           );
           if (failedImageAttachment !== undefined) {
-            throw new Error(failedImageAttachment.error ?? `Failed to upload ${failedImageAttachment.filename}.`);
+            throw new Error(
+              failedImageAttachment.error ??
+                `Failed to upload ${failedImageAttachment.filename}.`,
+            );
           }
           // Keep the object URL alive for the optimistic sent bubble.
           setPendingAttachments([]);
@@ -714,13 +777,16 @@ export function ThreadShell({
       streamAbortRef.current?.abort();
       streamAbortRef.current = abortController;
       setActiveStreamingThreadID(targetThreadID);
-      const isCurrentThread = () => activeThreadIDRef.current === targetThreadID;
+      const isCurrentThread = () =>
+        activeThreadIDRef.current === targetThreadID;
       // Accumulate this turn's ordered blocks in a closure-local array, the single
       // source of truth for the graft at turn end. The rendered state mirror is
       // kept in sync via setStreamingBlocks, but the React ref can be reset by
       // unrelated route effects mid-stream, so the graft must not depend on it.
       let liveBlocks: ContentBlock[] = [];
-      const applyBlocks = (updater: (current: ContentBlock[]) => ContentBlock[]) => {
+      const applyBlocks = (
+        updater: (current: ContentBlock[]) => ContentBlock[],
+      ) => {
         liveBlocks = updater(liveBlocks);
         streamingBlocksRef.current = liveBlocks;
         setStreamingBlocks(liveBlocks);
@@ -729,7 +795,11 @@ export function ThreadShell({
         .filter((attachment) => attachment.documentId !== undefined)
         .map((attachment) => attachment.documentId!);
       const imageAttachmentIds = options.attachments
-        .filter((attachment) => isImageAttachment(attachment) && attachment.artifactId !== undefined)
+        .filter(
+          (attachment) =>
+            isImageAttachment(attachment) &&
+            attachment.artifactId !== undefined,
+        )
         .map((attachment) => attachment.artifactId!);
       // Show the user's prompt immediately, before the stream's first event. The
       // server later echoes it as a `user_message` event, but on buffering networks
@@ -759,94 +829,114 @@ export function ThreadShell({
         };
         setMessages((current) => [...current, optimisticMessage]);
       }
-      await streamMessage(targetThreadID, content, {
-        onUserMessage: (message) => {
-          if (!isCurrentThread()) return;
-          const confirmed =
-            options.attachments.length > 0
-              ? { ...message, attachments: options.attachments.map(toSentAttachment) }
-              : message;
-          // Fold the persisted message into the list, replacing the optimistic
-          // placeholder in place (its clientKey/position survive => stable React key,
-          // no remount or scroll jump). Capture the placeholder id into a const rather
-          // than reading the outer `optimisticUserMessageID` inside the updater: the
-          // latter is reset to null synchronously below, but React may defer the
-          // updater (when its queue is non-empty mid-stream) until after that reset —
-          // reading null then would miss the placeholder, append a second bubble, and
-          // leave the orphaned optimistic one. Reset before setMessages so the catch
-          // block treats the message as confirmed and won't drop it.
-          const placeholderID = optimisticUserMessageID;
-          optimisticUserMessageID = null;
-          setMessages((current) => reconcileUserMessage(current, placeholderID, confirmed));
+      await streamMessage(
+        targetThreadID,
+        content,
+        {
+          onUserMessage: (message) => {
+            if (!isCurrentThread()) return;
+            const confirmed =
+              options.attachments.length > 0
+                ? {
+                    ...message,
+                    attachments: options.attachments.map(toSentAttachment),
+                  }
+                : message;
+            // Fold the persisted message into the list, replacing the optimistic
+            // placeholder in place (its clientKey/position survive => stable React key,
+            // no remount or scroll jump). Capture the placeholder id into a const rather
+            // than reading the outer `optimisticUserMessageID` inside the updater: the
+            // latter is reset to null synchronously below, but React may defer the
+            // updater (when its queue is non-empty mid-stream) until after that reset —
+            // reading null then would miss the placeholder, append a second bubble, and
+            // leave the orphaned optimistic one. Reset before setMessages so the catch
+            // block treats the message as confirmed and won't drop it.
+            const placeholderID = optimisticUserMessageID;
+            optimisticUserMessageID = null;
+            setMessages((current) =>
+              reconcileUserMessage(current, placeholderID, confirmed),
+            );
+          },
+          onDelta: (delta) => {
+            // Each content delta extends the trailing text block, or opens a new one
+            // when the trailing block is a trace/artifact — so prose that resumes
+            // after a tool round becomes its own block, preserving chronology.
+            applyBlocks((current) => appendTextDelta(current, delta));
+          },
+          onReasoningDelta: (delta) => {
+            applyBlocks((current) => appendReasoningDeltaBlock(current, delta));
+          },
+          onReasoningTitle: (event) => {
+            applyBlocks((current) =>
+              applyReasoningTitleBlock(current, event.id, event.title),
+            );
+          },
+          onToolPending: () => {
+            setToolPending(true);
+          },
+          onToolCall: (event) => {
+            // The pending call is now a real (running) trace event; let the trace's
+            // own running status drive the "thinking" affordance from here.
+            setToolPending(false);
+            applyBlocks((current) => upsertToolCallBlock(current, event));
+          },
+          onToolResult: (event) => {
+            applyBlocks((current) => upsertToolResultBlock(current, event));
+          },
+          onArtifact: (artifact) => {
+            applyBlocks((current) => appendArtifactBlock(current, artifact));
+          },
+          onAssistantMessage: (message) => {
+            // The persisted message may already carry the backend's ordered
+            // contentBlocks. When it doesn't (older backends / lag), graft the
+            // just-streamed blocks — settled to done — so the chronological order
+            // (and the activity panel) survives the turn settling. The final answer
+            // text can arrive only on the assistant_message (not as deltas), so
+            // ensure the message content is represented as a trailing text block
+            // when the streamed blocks carry no prose of their own.
+            if (isCurrentThread()) {
+              setMessages((current) => {
+                const grafted = graftStreamedBlocks(message, liveBlocks);
+                // Mirror the user-message dedup: if a route refresh already loaded this
+                // assistant message, replace it in place (keeping the richer grafted
+                // blocks and its clientKey) instead of appending a duplicate bubble.
+                const index = current.findIndex(
+                  (item) => item.id === grafted.id,
+                );
+                if (index === -1) return [...current, grafted];
+                const next = current.slice();
+                next[index] = {
+                  ...grafted,
+                  clientKey: current[index].clientKey,
+                };
+                return next;
+              });
+            }
+            clearStreamingBlocks();
+          },
+          onThread: (updatedThread) => {
+            receivedThreadEvent = true;
+            if (isCurrentThread()) setActiveThread(updatedThread);
+            setThreads((current) => upsertThread(current, updatedThread));
+            if (
+              route.view === "project" &&
+              updatedThread.projectId !== undefined &&
+              updatedThread.projectId === route.projectID
+            ) {
+              setProjectThreads((current) =>
+                upsertThreadById(current, updatedThread),
+              );
+            }
+          },
         },
-        onDelta: (delta) => {
-          // Each content delta extends the trailing text block, or opens a new one
-          // when the trailing block is a trace/artifact — so prose that resumes
-          // after a tool round becomes its own block, preserving chronology.
-          applyBlocks((current) => appendTextDelta(current, delta));
+        abortController.signal,
+        {
+          documentAttachmentIds,
+          imageAttachmentIds,
+          reasoningEffort,
+          pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
         },
-        onReasoningDelta: (delta) => {
-          applyBlocks((current) => appendReasoningDeltaBlock(current, delta));
-        },
-        onReasoningTitle: (event) => {
-          applyBlocks((current) => applyReasoningTitleBlock(current, event.id, event.title));
-        },
-        onToolPending: () => {
-          setToolPending(true);
-        },
-        onToolCall: (event) => {
-          // The pending call is now a real (running) trace event; let the trace's
-          // own running status drive the "thinking" affordance from here.
-          setToolPending(false);
-          applyBlocks((current) => upsertToolCallBlock(current, event));
-        },
-        onToolResult: (event) => {
-          applyBlocks((current) => upsertToolResultBlock(current, event));
-        },
-        onArtifact: (artifact) => {
-          applyBlocks((current) => appendArtifactBlock(current, artifact));
-        },
-        onAssistantMessage: (message) => {
-          // The persisted message may already carry the backend's ordered
-          // contentBlocks. When it doesn't (older backends / lag), graft the
-          // just-streamed blocks — settled to done — so the chronological order
-          // (and the activity panel) survives the turn settling. The final answer
-          // text can arrive only on the assistant_message (not as deltas), so
-          // ensure the message content is represented as a trailing text block
-          // when the streamed blocks carry no prose of their own.
-          if (isCurrentThread()) {
-            setMessages((current) => {
-              const grafted = graftStreamedBlocks(message, liveBlocks);
-              // Mirror the user-message dedup: if a route refresh already loaded this
-              // assistant message, replace it in place (keeping the richer grafted
-              // blocks and its clientKey) instead of appending a duplicate bubble.
-              const index = current.findIndex((item) => item.id === grafted.id);
-              if (index === -1) return [...current, grafted];
-              const next = current.slice();
-              next[index] = { ...grafted, clientKey: current[index].clientKey };
-              return next;
-            });
-          }
-          clearStreamingBlocks();
-        },
-        onThread: (updatedThread) => {
-          receivedThreadEvent = true;
-          if (isCurrentThread()) setActiveThread(updatedThread);
-          setThreads((current) => upsertThread(current, updatedThread));
-          if (
-            route.view === "project" &&
-            updatedThread.projectId !== undefined &&
-            updatedThread.projectId === route.projectID
-          ) {
-            setProjectThreads((current) => upsertThreadById(current, updatedThread));
-          }
-        },
-      }, abortController.signal, {
-        documentAttachmentIds,
-        imageAttachmentIds,
-        reasoningEffort,
-        pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
-      });
+      );
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
@@ -855,7 +945,9 @@ export function ThreadShell({
           fallbackThread.projectId !== undefined &&
           fallbackThread.projectId === route.projectID
         ) {
-          setProjectThreads((current) => upsertThreadById(current, fallbackThread));
+          setProjectThreads((current) =>
+            upsertThreadById(current, fallbackThread),
+          );
         }
       }
     } catch (error) {
@@ -875,13 +967,17 @@ export function ThreadShell({
       }
       if (options.restoreDraftOnError) {
         setDraft(options.restoreDraft ?? content);
-        if (options.restorePastedTexts !== undefined) setPastedTexts(options.restorePastedTexts);
+        if (options.restorePastedTexts !== undefined)
+          setPastedTexts(options.restorePastedTexts);
       }
       handleActionError(error, "Message failed to send.", setSendError);
     } finally {
       setIsSending(false);
       if (!keepFailedTurnVisible) setActiveStreamingThreadID(null);
-      if (abortController !== null && streamAbortRef.current === abortController) {
+      if (
+        abortController !== null &&
+        streamAbortRef.current === abortController
+      ) {
         streamAbortRef.current = null;
       }
     }
@@ -934,8 +1030,13 @@ export function ThreadShell({
     clearStreamingBlocks();
     setSendError("");
     const history = incognitoMessages
-      .filter((message) => message.role === "user" || message.role === "assistant")
-      .map((message) => ({ role: message.role as "user" | "assistant", content: message.content }));
+      .filter(
+        (message) => message.role === "user" || message.role === "assistant",
+      )
+      .map((message) => ({
+        role: message.role as "user" | "assistant",
+        content: message.content,
+      }));
     const tempID = `incognito-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimisticMessage: MessageWithActivityTrace = {
       id: tempID,
@@ -957,7 +1058,9 @@ export function ThreadShell({
     // Keep streamingThreadIDRef null so handleStopResponse just aborts (there is no
     // server-side stop endpoint for incognito), while still driving the live blocks.
     let liveBlocks: ContentBlock[] = [];
-    const applyBlocks = (updater: (current: ContentBlock[]) => ContentBlock[]) => {
+    const applyBlocks = (
+      updater: (current: ContentBlock[]) => ContentBlock[],
+    ) => {
       liveBlocks = updater(liveBlocks);
       streamingBlocksRef.current = liveBlocks;
       setStreamingBlocks(liveBlocks);
@@ -972,16 +1075,26 @@ export function ThreadShell({
             // The incognito endpoint does not echo the user message; the optimistic
             // bubble is the permanent one.
           },
-          onDelta: (delta) => applyBlocks((current) => appendTextDelta(current, delta)),
-          onReasoningDelta: (delta) => applyBlocks((current) => appendReasoningDeltaBlock(current, delta)),
+          onDelta: (delta) =>
+            applyBlocks((current) => appendTextDelta(current, delta)),
+          onReasoningDelta: (delta) =>
+            applyBlocks((current) => appendReasoningDeltaBlock(current, delta)),
           onReasoningTitle: (event) =>
-            applyBlocks((current) => applyReasoningTitleBlock(current, event.id, event.title)),
+            applyBlocks((current) =>
+              applyReasoningTitleBlock(current, event.id, event.title),
+            ),
           onAssistantMessage: (message) => {
             // Give each turn a unique id so React keys and per-message actions never
             // collide (the server returns a constant synthetic id).
             const uniqueID = `incognito-assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-            const grafted = graftStreamedBlocks({ ...message, id: uniqueID }, liveBlocks);
-            setIncognitoMessages((current) => [...current, { ...grafted, clientKey: uniqueID }]);
+            const grafted = graftStreamedBlocks(
+              { ...message, id: uniqueID },
+              liveBlocks,
+            );
+            setIncognitoMessages((current) => [
+              ...current,
+              { ...grafted, clientKey: uniqueID },
+            ]);
             clearStreamingBlocks();
           },
           onThread: () => {
@@ -995,7 +1108,9 @@ export function ThreadShell({
       if (error instanceof DOMException && error.name === "AbortError") return;
       keepFailedTurnVisible = true;
       // Drop the optimistic user bubble that never got a reply so the user can retry.
-      setIncognitoMessages((current) => current.filter((message) => message.id !== tempID));
+      setIncognitoMessages((current) =>
+        current.filter((message) => message.id !== tempID),
+      );
       if (restoreDraftOnError) {
         setDraft(restore?.draft ?? content);
         if (restore !== undefined) setPastedTexts(restore.pastedTexts);
@@ -1017,10 +1132,16 @@ export function ThreadShell({
     if (runSlashCommand(draftText)) return;
     const restorePastedTexts = pastedTexts;
     setPastedTexts([]);
-    await sendIncognitoContent(content, true, { draft: draftText, pastedTexts: restorePastedTexts });
+    await sendIncognitoContent(content, true, {
+      draft: draftText,
+      pastedTexts: restorePastedTexts,
+    });
   }
 
-  function handleIncognitoRetry(content: string, pastedTexts?: MessagePastedText[]) {
+  function handleIncognitoRetry(
+    content: string,
+    pastedTexts?: MessagePastedText[],
+  ) {
     const blocks = pastedTexts ?? [];
     if (content.trim() === "" && blocks.length === 0) return;
     setDraft(content);
@@ -1028,12 +1149,16 @@ export function ThreadShell({
     setComposerFocusTick((tick) => tick + 1);
   }
 
-  const activeThreadOwnsStreamState = activeThread !== null && streamingThreadID === activeThread.id;
+  const activeThreadOwnsStreamState =
+    activeThread !== null && streamingThreadID === activeThread.id;
   const activeThreadIsStreaming = isSending && activeThreadOwnsStreamState;
-  const visibleStreamingBlocks = activeThreadOwnsStreamState ? streamingBlocks : [];
+  const visibleStreamingBlocks = activeThreadOwnsStreamState
+    ? streamingBlocks
+    : [];
   const visibleToolPending = activeThreadOwnsStreamState ? toolPending : false;
   // Keep errors with the thread that owns the active or failed stream state.
-  const visibleSendError = streamingThreadID === null || activeThreadOwnsStreamState ? sendError : "";
+  const visibleSendError =
+    streamingThreadID === null || activeThreadOwnsStreamState ? sendError : "";
 
   // Incognito takes over the whole surface with no sidebar or modals — it is a
   // self-contained, ephemeral view reachable only from the /new start screen.
@@ -1061,7 +1186,10 @@ export function ThreadShell({
           />
         </main>
         {slashCommand !== null && (
-          <SlashCommandPanel command={slashCommand} onClose={() => setSlashCommand(null)} />
+          <SlashCommandPanel
+            command={slashCommand}
+            onClose={() => setSlashCommand(null)}
+          />
         )}
       </div>
     );
@@ -1070,7 +1198,9 @@ export function ThreadShell({
   return (
     <div
       className={`grid h-svh grid-rows-[minmax(0,1fr)] bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out grid-cols-[1fr] ${
-        sidebarCollapsed ? "md:grid-cols-[56px_1fr]" : "md:grid-cols-[362px_1fr]"
+        sidebarCollapsed
+          ? "md:grid-cols-[56px_1fr]"
+          : "md:grid-cols-[362px_1fr]"
       }`}
     >
       <Sidebar
@@ -1122,7 +1252,9 @@ export function ThreadShell({
           setOpenThreadMenuID(null);
         }}
         onToggleThreadMenu={(menuKey) =>
-          setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+          setOpenThreadMenuID((current) =>
+            current === menuKey ? null : menuKey,
+          )
         }
         onCloseThreadMenu={() => setOpenThreadMenuID(null)}
       />
@@ -1138,7 +1270,9 @@ export function ThreadShell({
             onSelectThread={(threadID) => void selectThread(threadID)}
             onRenameThread={openRenameModal}
             onDeleteThread={openDeleteModal}
-            onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
+            onStarThread={(thread, starred, menuKey) =>
+              void handleSetThreadStarred(thread, starred, menuKey)
+            }
             onAddThreadToProject={(thread) => {
               setMovingThreads([thread]);
               setModalError("");
@@ -1178,7 +1312,11 @@ export function ThreadShell({
           activeProject === null ? (
             <ProjectsPage
               projects={projects}
-              loadError={loadError === "" && threadDataLoaded ? "Project not found." : loadError}
+              loadError={
+                loadError === "" && threadDataLoaded
+                  ? "Project not found."
+                  : loadError
+              }
               onOpenSidebar={() => setMobileSidebarOpen(true)}
               onCreateProject={() => openProjectDialog(null)}
               onOpenProject={navigateToProject}
@@ -1212,10 +1350,16 @@ export function ThreadShell({
               onOpenThread={(threadID) => void selectThread(threadID)}
               onRenameThread={openRenameModal}
               onDeleteThread={openDeleteModal}
-              onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
-              onRemoveFromProject={(thread) => void handleRemoveThreadFromProject(thread)}
+              onStarThread={(thread, starred, menuKey) =>
+                void handleSetThreadStarred(thread, starred, menuKey)
+              }
+              onRemoveFromProject={(thread) =>
+                void handleRemoveThreadFromProject(thread)
+              }
               onToggleThreadMenu={(menuKey) =>
-                setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+                setOpenThreadMenuID((current) =>
+                  current === menuKey ? null : menuKey,
+                )
               }
               onCloseThreadMenu={() => setOpenThreadMenuID(null)}
               onEditProject={openProjectDialog}
@@ -1226,7 +1370,9 @@ export function ThreadShell({
                 setModalError("");
                 setOpenThreadMenuID(null);
               }}
-              onToggleStar={(project, starred) => void handleSetProjectStarred(project, starred)}
+              onToggleStar={(project, starred) =>
+                void handleSetProjectStarred(project, starred)
+              }
               onOpenSidebar={() => setMobileSidebarOpen(true)}
             />
           )
@@ -1290,9 +1436,13 @@ export function ThreadShell({
                     setModalError("");
                   }
             }
-            onStarThread={(thread, starred, menuKey) => void handleSetThreadStarred(thread, starred, menuKey)}
+            onStarThread={(thread, starred, menuKey) =>
+              void handleSetThreadStarred(thread, starred, menuKey)
+            }
             onToggleThreadMenu={(menuKey) =>
-              setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey))
+              setOpenThreadMenuID((current) =>
+                current === menuKey ? null : menuKey,
+              )
             }
             onCloseThreadMenu={() => setOpenThreadMenuID(null)}
           />
@@ -1350,12 +1500,17 @@ export function ThreadShell({
           error={modalError}
           disabled={isMutatingThread}
           onCancel={() => setMovingThreads([])}
-          onSelect={(project) => void handleMoveThreadsToProject(movingThreads, project)}
+          onSelect={(project) =>
+            void handleMoveThreadsToProject(movingThreads, project)
+          }
         />
       )}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {slashCommand !== null && (
-        <SlashCommandPanel command={slashCommand} onClose={() => setSlashCommand(null)} />
+        <SlashCommandPanel
+          command={slashCommand}
+          onClose={() => setSlashCommand(null)}
+        />
       )}
       {searchOpen && (
         <SearchModal

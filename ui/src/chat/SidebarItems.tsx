@@ -2,7 +2,13 @@ import { type ReactNode, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Project, Thread } from "../api";
-import { menuDeleteItemClass, menuIconClass, menuItemClass, ThreadActionsMenu, TrashMenuIcon } from "../ThreadActionsMenu";
+import {
+  menuDeleteItemClass,
+  menuIconClass,
+  menuItemClass,
+  ThreadActionsMenu,
+  TrashMenuIcon,
+} from "../ThreadActionsMenu";
 import { ArchiveIcon } from "../projects/ProjectActionsMenu";
 import { Icon } from "./Icon";
 import type { SidebarIconName } from "./types";
@@ -34,7 +40,12 @@ export function SidebarPrimaryItem({
     return <div className={className}>{content}</div>;
   }
   return (
-    <button type="button" className={className} onClick={onClick} aria-label={label}>
+    <button
+      type="button"
+      className={className}
+      onClick={onClick}
+      aria-label={label}
+    >
       {content}
     </button>
   );
@@ -142,7 +153,8 @@ function SidebarThreadItem({
     if (!menuOpen) return;
     function handlePointerDown(event: PointerEvent) {
       const target = event.target;
-      if (!(target instanceof Node) || itemRef.current?.contains(target)) return;
+      if (!(target instanceof Node) || itemRef.current?.contains(target))
+        return;
       onCloseMenu();
     }
     document.addEventListener("pointerdown", handlePointerDown);
@@ -156,10 +168,21 @@ function SidebarThreadItem({
           active ? "bg-[#10100f] text-white" : "hover:bg-[#2a2a28]"
         }`}
       >
-        <button className="relative min-w-0 flex-1 overflow-hidden text-left" onClick={() => onSelect(thread.id)} type="button">
-          <span className={`block whitespace-nowrap ${active ? "pr-7" : "truncate"}`}>{thread.title}</span>
+        <button
+          className="relative min-w-0 flex-1 overflow-hidden text-left"
+          onClick={() => onSelect(thread.id)}
+          type="button"
+        >
+          <span
+            className={`block whitespace-nowrap ${active ? "pr-7" : "truncate"}`}
+          >
+            {thread.title}
+          </span>
           {active && (
-            <span className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]" aria-hidden="true" />
+            <span
+              className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-r from-transparent to-[#10100f]"
+              aria-hidden="true"
+            />
           )}
         </button>
         <button
@@ -168,7 +191,9 @@ function SidebarThreadItem({
           // Keep inactive rows visually quiet while preserving keyboard access
           // to the thread actions.
           className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
-            active || menuOpen ? "" : "invisible group-hover:visible group-focus-within:visible [@media(hover:none)]:visible"
+            active || menuOpen
+              ? ""
+              : "invisible group-hover:visible group-focus-within:visible [@media(hover:none)]:visible"
           }`}
           onClick={(event) => {
             event.stopPropagation();
@@ -226,7 +251,8 @@ export function SidebarProjectItem({
     if (!menuOpen) return;
     function handlePointerDown(event: PointerEvent) {
       const target = event.target;
-      if (!(target instanceof Node) || itemRef.current?.contains(target)) return;
+      if (!(target instanceof Node) || itemRef.current?.contains(target))
+        return;
       onCloseMenu();
     }
     document.addEventListener("pointerdown", handlePointerDown);
@@ -240,13 +266,22 @@ export function SidebarProjectItem({
           active ? "bg-[#111110] text-white" : "hover:bg-[#2a2a28]"
         }`}
       >
-        <button className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left" onClick={() => onNavigate(project)} type="button">
+        <button
+          className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left"
+          onClick={() => onNavigate(project)}
+          type="button"
+        >
           {project.starred && (
-            <span className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[#97958c]" aria-hidden="true">
+            <span
+              className="grid h-[21px] w-[21px] shrink-0 place-items-center text-[#97958c]"
+              aria-hidden="true"
+            >
               <Icon name="archive" size="21px" />
             </span>
           )}
-          <span className="min-w-0 flex-1 truncate whitespace-nowrap">{project.name}</span>
+          <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+            {project.name}
+          </span>
         </button>
         <button
           aria-expanded={menuOpen}
@@ -254,7 +289,9 @@ export function SidebarProjectItem({
           // Keep inactive rows visually quiet while preserving keyboard access
           // to the project actions.
           className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#d8d4ca] transition-colors hover:bg-[#2a2a28] hover:text-white ${
-            active || menuOpen ? "" : "invisible group-hover:visible group-focus-within:visible [@media(hover:none)]:visible"
+            active || menuOpen
+              ? ""
+              : "invisible group-hover:visible group-focus-within:visible [@media(hover:none)]:visible"
           }`}
           onClick={(event) => {
             event.stopPropagation();
@@ -269,7 +306,9 @@ export function SidebarProjectItem({
         <ProjectSidebarMenu
           project={project}
           className="right-4 left-auto"
-          onStarChange={(target, starred) => onStarChange(target, starred, menuKey)}
+          onStarChange={(target, starred) =>
+            onStarChange(target, starred, menuKey)
+          }
           onEdit={onEdit}
           onArchive={onArchive}
           onDelete={onDelete}
@@ -309,7 +348,10 @@ function ProjectSidebarMenu({
         type="button"
         onClick={() => onStarChange(project, !project.starred)}
       >
-        <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+        <span
+          className={`${menuIconClass} text-[19px] leading-none`}
+          aria-hidden="true"
+        >
           <Icon name={project.starred ? "starOff" : "star"} size="19px" />
         </span>
         {project.starred ? t("sidebar.unstar") : t("sidebar.star")}
@@ -320,7 +362,10 @@ function ProjectSidebarMenu({
         type="button"
         onClick={() => onEdit(project)}
       >
-        <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+        <span
+          className={`${menuIconClass} text-[19px] leading-none`}
+          aria-hidden="true"
+        >
           <Icon name="edit" size="19px" />
         </span>
         {t("sidebar.editDetails")}

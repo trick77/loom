@@ -70,7 +70,9 @@ export function ThreadRow({
   const timeLabel = formatTimeAgo(thread.lastMessageAt ?? thread.updatedAt);
   const hasSnippet = snippet !== undefined && snippet !== "";
   const titleNode =
-    searchQuery !== undefined && searchQuery !== "" ? highlightTerms(thread.title, searchQuery) : thread.title;
+    searchQuery !== undefined && searchQuery !== ""
+      ? highlightTerms(thread.title, searchQuery)
+      : thread.title;
   const showMenuButton = hovered || menuOpen;
   const activeSurface = hovered || selected || menuOpen;
   const actionsMenu =
@@ -128,14 +130,29 @@ export function ThreadRow({
           type="button"
           role="checkbox"
           aria-checked={selected}
-          aria-label={selected ? t("chats.deselectThread") : t("chats.selectThread")}
+          aria-label={
+            selected ? t("chats.deselectThread") : t("chats.selectThread")
+          }
           onClick={onToggleSelected}
           className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-md border transition-colors ${
-            selected ? "border-[#c6613f] bg-[#c6613f] text-white" : "border-[#56554f] text-transparent"
+            selected
+              ? "border-[#c6613f] bg-[#c6613f] text-white"
+              : "border-[#56554f] text-transparent"
           }`}
         >
-          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M5 12.5l4 4 10-10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            className="h-3 w-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M5 12.5l4 4 10-10"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       )}
@@ -146,7 +163,9 @@ export function ThreadRow({
       >
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-center gap-3">
-            <span className="min-w-0 truncate text-[15px] text-[#ecece6]">{titleNode}</span>
+            <span className="min-w-0 truncate text-[15px] text-[#ecece6]">
+              {titleNode}
+            </span>
             {thread.shared && <SharedPill />}
           </span>
           {snippet !== undefined && snippet !== "" && (
@@ -158,9 +177,7 @@ export function ThreadRow({
         <span
           className={`ml-auto shrink-0 text-[13px] text-[#8a887f] group-hover:hidden ${
             activeSurface ? "hidden" : ""
-          } ${
-            !selectMode ? "[@media(hover:none)]:hidden" : ""
-          }`}
+          } ${!selectMode ? "[@media(hover:none)]:hidden" : ""}`}
           data-thread-row-time
         >
           {timeLabel}

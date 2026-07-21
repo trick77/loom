@@ -4,13 +4,17 @@ import { clipboardImageFiles, toSupportedImageFile } from "./attachmentFiles";
 
 describe("toSupportedImageFile", () => {
   it("synthesizes a filename for a nameless PNG", () => {
-    const out = toSupportedImageFile(new File([new Uint8Array([1])], "", { type: "image/png" }));
+    const out = toSupportedImageFile(
+      new File([new Uint8Array([1])], "", { type: "image/png" }),
+    );
     expect(out?.name).toBe("pasted-image.png");
     expect(out?.type).toBe("image/png");
   });
 
   it("maps image/jpeg to a .jpg name", () => {
-    const out = toSupportedImageFile(new File([], "image", { type: "image/jpeg" }));
+    const out = toSupportedImageFile(
+      new File([], "image", { type: "image/jpeg" }),
+    );
     expect(out?.name).toBe("pasted-image.jpg");
   });
 
@@ -20,7 +24,9 @@ describe("toSupportedImageFile", () => {
   });
 
   it("returns null for an unsupported MIME type", () => {
-    expect(toSupportedImageFile(new File([], "x.bmp", { type: "image/bmp" }))).toBeNull();
+    expect(
+      toSupportedImageFile(new File([], "x.bmp", { type: "image/bmp" })),
+    ).toBeNull();
   });
 });
 

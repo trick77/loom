@@ -75,7 +75,10 @@ export function rehypeSourcePills(sources: SourceMap) {
 // collectCitedIndices returns the ordered, de-duplicated list of source indices
 // actually cited in the prose, so the cap applies per message rather than per
 // text node.
-function collectCitedIndices(children: RootContent[], sources: SourceMap): number[] {
+function collectCitedIndices(
+  children: RootContent[],
+  sources: SourceMap,
+): number[] {
   const seen = new Set<number>();
   const order: number[] = [];
   const visit = (nodes: RootContent[]) => {
@@ -138,7 +141,8 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
     const ref = ctx.sources.get(n);
     if (ref === undefined) continue; // unknown marker -> keep as literal text
     // Emit the text between the previous marker and this one.
-    if (match.index > last) out.push({ type: "text", value: value.slice(last, match.index) });
+    if (match.index > last)
+      out.push({ type: "text", value: value.slice(last, match.index) });
     last = match.index + match[0].length;
     changed = true;
     // Render a pill only for one of the first-N distinct sources, once; all other
@@ -156,13 +160,24 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
 // SourcePill renders an inline, clickable citation pill next to the prose it
 // backs. Mirrors the prompt-classifier pill styling (SharedPill / MessageMetrics)
 // but as a link. Falls back to its text if href is missing.
-export function SourcePill({ href, children }: { href?: unknown; children?: ReactNode }) {
+export function SourcePill({
+  href,
+  children,
+}: {
+  href?: unknown;
+  children?: ReactNode;
+}) {
   if (typeof href !== "string" || href === "") return <>{children}</>;
   return (
     // The color/underline live in CSS (.ui-source-pill) so they outrank the
     // ".ui-markdown a" link styling this pill renders inside; the layout utilities
     // here aren't contested by that rule.
-    <a href={href} target="_blank" rel="noreferrer noopener" className={PILL_CLASS}>
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={PILL_CLASS}
+    >
       {children}
     </a>
   );

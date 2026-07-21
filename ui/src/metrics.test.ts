@@ -1,9 +1,22 @@
 import { expect, test } from "vitest";
-import { formatDuration, buildMetricsString, formatMessageTime, hasRenderableMetrics, humanizeCategory } from "./metrics";
+import {
+  formatDuration,
+  buildMetricsString,
+  formatMessageTime,
+  hasRenderableMetrics,
+  humanizeCategory,
+} from "./metrics";
 import type { Message } from "./api";
 
 function assistant(extra: Partial<Message>): Message {
-  return { id: "m1", threadId: "t1", role: "assistant", content: "hi", createdAt: "2026-05-31T14:32:00Z", ...extra };
+  return {
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "hi",
+    createdAt: "2026-05-31T14:32:00Z",
+    ...extra,
+  };
 }
 
 test("formatDuration shows whole seconds up to 120s, then m s above", () => {
@@ -16,17 +29,47 @@ test("formatDuration shows whole seconds up to 120s, then m s above", () => {
 });
 
 test("hasRenderableMetrics requires duration and any token usage", () => {
-  expect(hasRenderableMetrics(assistant({ durationMs: 2000, completionTokens: 100 }))).toBe(true);
-  expect(hasRenderableMetrics(assistant({ durationMs: 2000, promptTokens: 900, totalTokens: 900 }))).toBe(true);
-  expect(hasRenderableMetrics(assistant({ completionTokens: 100 }))).toBe(false);
+  expect(
+    hasRenderableMetrics(
+      assistant({ durationMs: 2000, completionTokens: 100 }),
+    ),
+  ).toBe(true);
+  expect(
+    hasRenderableMetrics(
+      assistant({ durationMs: 2000, promptTokens: 900, totalTokens: 900 }),
+    ),
+  ).toBe(true);
+  expect(hasRenderableMetrics(assistant({ completionTokens: 100 }))).toBe(
+    false,
+  );
   expect(hasRenderableMetrics(assistant({ durationMs: 2000 }))).toBe(false);
-  expect(hasRenderableMetrics(assistant({ durationMs: 0, completionTokens: 100 }))).toBe(false);
-  expect(hasRenderableMetrics(assistant({ durationMs: 2000, promptTokens: 0, completionTokens: 0, totalTokens: 0 }))).toBe(false);
+  expect(
+    hasRenderableMetrics(assistant({ durationMs: 0, completionTokens: 100 })),
+  ).toBe(false);
+  expect(
+    hasRenderableMetrics(
+      assistant({
+        durationMs: 2000,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      }),
+    ),
+  ).toBe(false);
 });
 
 test("buildMetricsString omits the lead segment when the message stored no reasoning effort", () => {
   const line = buildMetricsString(
-    assistant({ model: "mimo", durationMs: 5000, promptTokens: 49498, completionTokens: 1502, totalTokens: 249000, contextTokens: 51000, cachedTokens: 38208, reasoningTokens: 205 }),
+    assistant({
+      model: "mimo",
+      durationMs: 5000,
+      promptTokens: 49498,
+      completionTokens: 1502,
+      totalTokens: 249000,
+      contextTokens: 51000,
+      cachedTokens: 38208,
+      reasoningTokens: 205,
+    }),
   );
   // The model name is never shown; with no reasoningEffort the line starts at duration.
   // The % comes from contextTokens (final call's model-reported total), NOT the
@@ -36,7 +79,15 @@ test("buildMetricsString omits the lead segment when the message stored no reaso
 
 test("buildMetricsString leads with the reasoning effort level, without the model or parentheses", () => {
   const line = buildMetricsString(
-    assistant({ model: "mimo-v2.5-pro", reasoningEffort: "high", durationMs: 5000, promptTokens: 100000, completionTokens: 4858, totalTokens: 104858, contextTokens: 104858 }),
+    assistant({
+      model: "mimo-v2.5-pro",
+      reasoningEffort: "high",
+      durationMs: 5000,
+      promptTokens: 100000,
+      completionTokens: 4858,
+      totalTokens: 104858,
+      contextTokens: 104858,
+    }),
   );
   // 104858 / 1048576 = 10.0% -> "10 %"
   expect(line).toBe("high  ·  5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10 %");
@@ -49,17 +100,33 @@ test("humanizeCategory title-cases snake_case and upper-cases the URL acronym", 
 });
 
 test("buildMetricsString renders completion-only token burn", () => {
-  const line = buildMetricsString(assistant({ durationMs: 2000, completionTokens: 100 }));
+  const line = buildMetricsString(
+    assistant({ durationMs: 2000, completionTokens: 100 }),
+  );
   expect(line).toBe("2s  ·  ↓ 100");
 });
 
 test("buildMetricsString shows prompt-only token burn", () => {
-  const line = buildMetricsString(assistant({ durationMs: 1200, promptTokens: 52429, totalTokens: 52429, contextTokens: 52429 }));
+  const line = buildMetricsString(
+    assistant({
+      durationMs: 1200,
+      promptTokens: 52429,
+      totalTokens: 52429,
+      contextTokens: 52429,
+    }),
+  );
   expect(line).toBe("1s  ·  ↑ 52 429  ·  5 %");
 });
 
 test("buildMetricsString hides zero-valued token fields", () => {
-  const line = buildMetricsString(assistant({ durationMs: 1200, promptTokens: 0, completionTokens: 100, totalTokens: 0 }));
+  const line = buildMetricsString(
+    assistant({
+      durationMs: 1200,
+      promptTokens: 0,
+      completionTokens: 100,
+      totalTokens: 0,
+    }),
+  );
   expect(line).toBe("1s  ·  ↓ 100");
 });
 
@@ -67,14 +134,27 @@ test("buildMetricsString omits the context % for messages without contextTokens"
   // Messages persisted before contextTokens existed carry only the accumulated
   // totalTokens. Show the line without a (wrong) percentage rather than dividing
   // the inflated accumulated total by the window.
-  const line = buildMetricsString(assistant({ durationMs: 5000, promptTokens: 49498, completionTokens: 1502, totalTokens: 249000 }));
+  const line = buildMetricsString(
+    assistant({
+      durationMs: 5000,
+      promptTokens: 49498,
+      completionTokens: 1502,
+      totalTokens: 249000,
+    }),
+  );
   expect(line).toBe("5s  ·  ↑ 49 498  ·  ↓ 1 502");
 });
 
 test("buildMetricsString formats context usage above 100% without clamping", () => {
   // A real single call cannot exceed the window, so this only documents the
   // formatting path: contextTokens drives the %, and it is never capped.
-  const line = buildMetricsString(assistant({ durationMs: 1000, completionTokens: 100, contextTokens: 2_000_000 }));
+  const line = buildMetricsString(
+    assistant({
+      durationMs: 1000,
+      completionTokens: 100,
+      contextTokens: 2_000_000,
+    }),
+  );
   // 2 000 000 / 1 048 576 = 190.7% -> "191 %"
   expect(line).toContain("191 %");
 });

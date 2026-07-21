@@ -12,7 +12,9 @@ const sharedInfo: api.ShareInfo = {
   snapshotAt: "2026-06-28T00:00:00Z",
 };
 
-function renderDialog(overrides: Partial<Parameters<typeof ShareDialog>[0]> = {}) {
+function renderDialog(
+  overrides: Partial<Parameters<typeof ShareDialog>[0]> = {},
+) {
   const props = {
     threadId: "th1",
     share: null,
@@ -31,21 +33,33 @@ describe("ShareDialog", () => {
   it("renders the un-shared state with the create button disabled until 'public' is chosen", () => {
     renderDialog();
 
-    expect(screen.getByRole("heading", { name: "Share chat" })).toBeInTheDocument();
-    expect(screen.getByText("Only messages up to this point will be shared.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Create share link/ })).toBeDisabled();
+    expect(
+      screen.getByRole("heading", { name: "Share chat" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Only messages up to this point will be shared."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Create share link/ }),
+    ).toBeDisabled();
     // No link row while the thread is private.
-    expect(screen.queryByRole("button", { name: "Copy link" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Copy link" }),
+    ).not.toBeInTheDocument();
   });
 
   it("creates a share when 'Create public link' is chosen and reports it upward", async () => {
-    const createShare = vi.spyOn(api, "createShare").mockResolvedValue(sharedInfo);
+    const createShare = vi
+      .spyOn(api, "createShare")
+      .mockResolvedValue(sharedInfo);
     const { onShareChange } = renderDialog();
 
     fireEvent.click(screen.getByText("Create public link"));
 
     expect(createShare).toHaveBeenCalledWith("th1");
-    await vi.waitFor(() => expect(onShareChange).toHaveBeenCalledWith(sharedInfo));
+    await vi.waitFor(() =>
+      expect(onShareChange).toHaveBeenCalledWith(sharedInfo),
+    );
   });
 
   it("shows an error when creating the share fails", async () => {
@@ -54,26 +68,40 @@ describe("ShareDialog", () => {
 
     fireEvent.click(screen.getByText("Create public link"));
 
-    expect(await screen.findByText("Something went wrong. Please try again.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Something went wrong. Please try again."),
+    ).toBeInTheDocument();
     expect(onShareChange).not.toHaveBeenCalled();
   });
 
   it("disables an active share when 'Keep private' is chosen", async () => {
-    const disableShare = vi.spyOn(api, "disableShare").mockResolvedValue(undefined);
+    const disableShare = vi
+      .spyOn(api, "disableShare")
+      .mockResolvedValue(undefined);
     const { onShareChange } = renderDialog({ share: sharedInfo });
 
-    expect(screen.getByRole("heading", { name: "Chat shared" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Chat shared" }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByText("Keep private"));
 
     expect(disableShare).toHaveBeenCalledWith("th1");
     await vi.waitFor(() =>
-      expect(onShareChange).toHaveBeenCalledWith({ ...sharedInfo, shared: false }),
+      expect(onShareChange).toHaveBeenCalledWith({
+        ...sharedInfo,
+        shared: false,
+      }),
     );
   });
 
   it("offers an Update affordance only when the thread has newer messages", async () => {
-    const refreshed: api.ShareInfo = { ...sharedInfo, snapshotAt: "2026-06-29T00:00:00Z" };
-    const updateShare = vi.spyOn(api, "updateShare").mockResolvedValue(refreshed);
+    const refreshed: api.ShareInfo = {
+      ...sharedInfo,
+      snapshotAt: "2026-06-29T00:00:00Z",
+    };
+    const updateShare = vi
+      .spyOn(api, "updateShare")
+      .mockResolvedValue(refreshed);
 
     const { rerender } = render(
       <ShareDialog
@@ -84,8 +112,12 @@ describe("ShareDialog", () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText("Future messages aren’t included.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Future messages aren’t included."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Update" }),
+    ).not.toBeInTheDocument();
 
     const onShareChange = vi.fn();
     rerender(
@@ -100,7 +132,9 @@ describe("ShareDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
     expect(updateShare).toHaveBeenCalledWith("th1");
-    await vi.waitFor(() => expect(onShareChange).toHaveBeenCalledWith(refreshed));
+    await vi.waitFor(() =>
+      expect(onShareChange).toHaveBeenCalledWith(refreshed),
+    );
   });
 
   it("copies the absolute share URL to the clipboard", async () => {
@@ -114,18 +148,24 @@ describe("ShareDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
 
     expect(writeText).toHaveBeenCalledWith(expected);
-    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Copied" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps an already-absolute share URL untouched and reports copy failures", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     Object.assign(navigator, { clipboard: { writeText } });
-    renderDialog({ share: { ...sharedInfo, shareUrl: "https://loom.example/share/tok123" } });
+    renderDialog({
+      share: { ...sharedInfo, shareUrl: "https://loom.example/share/tok123" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
 
     expect(writeText).toHaveBeenCalledWith("https://loom.example/share/tok123");
-    expect(await screen.findByText("Couldn’t copy the link.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Couldn’t copy the link."),
+    ).toBeInTheDocument();
   });
 
   it("closes on Escape, on the close button, and on a backdrop click", () => {

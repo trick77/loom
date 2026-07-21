@@ -1,6 +1,12 @@
 /// <reference types="node" />
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
@@ -26,14 +32,29 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function stubURLObjectMethods(createObjectURL: (blob: Blob | MediaSource) => string, revokeObjectURL: (url: string) => void) {
+function stubURLObjectMethods(
+  createObjectURL: (blob: Blob | MediaSource) => string,
+  revokeObjectURL: (url: string) => void,
+) {
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
-  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
-  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: createObjectURL,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: revokeObjectURL,
+  });
   restoreURLObjectMethods = () => {
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: originalCreateObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: originalRevokeObjectURL,
+    });
   };
 }
 
@@ -62,7 +83,10 @@ function memoryStorage(): Storage {
 }
 
 test("renders signed-out screen when /api/me returns 401", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 401 })),
+  );
 
   render(<App />);
 
@@ -78,7 +102,9 @@ test("renders authenticated shell for signed-in users", async () => {
 
   render(<App />);
 
-  expect(await screen.findByRole("button", { name: /new thread/i })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: /new thread/i }),
+  ).toBeInTheDocument();
   expect(await screen.findByText(greetingPattern("Jan"))).toBeInTheDocument();
   expect(screen.getByText("Jan")).toBeInTheDocument();
   expect(screen.getByText("Unlimited Plan")).toBeInTheDocument();
@@ -110,10 +136,17 @@ test("does not overwrite a profile that already has a pinned language", async ()
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url === "/api/me") {
-      return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan", responseLanguage: "en" });
+      return Response.json({
+        id: "u1",
+        username: "jan",
+        role: "user",
+        displayName: "Jan",
+        responseLanguage: "en",
+      });
     }
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+    if (url === "/api/threads?limit=30")
+      return Response.json({ items: [], nextCursor: null });
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -133,10 +166,16 @@ test("opens the artifact library from the sidebar", async () => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/me") {
-        return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
+        return Response.json({
+          id: "u1",
+          username: "jan",
+          role: "user",
+          displayName: "Jan",
+        });
       }
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
       if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
         return Response.json({
           items: [
@@ -161,7 +200,9 @@ test("opens the artifact library from the sidebar", async () => {
 
   fireEvent.click(await screen.findByRole("button", { name: "Artifacts" }));
 
-  expect(await screen.findByRole("heading", { name: "Artifacts" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Artifacts" }),
+  ).toBeInTheDocument();
   expect(await screen.findByText("robot.png")).toBeInTheDocument();
   expect(window.location.pathname).toBe("/artifacts");
 });
@@ -171,11 +212,16 @@ test("places library before projects in the primary sidebar navigation", async (
 
   render(<App />);
 
-  const artifactsButton = await screen.findByRole("button", { name: "Artifacts" });
+  const artifactsButton = await screen.findByRole("button", {
+    name: "Artifacts",
+  });
   const projectsItem = screen.getByRole("button", { name: "Projects" });
 
   expect(projectsItem).not.toBeNull();
-  expect(artifactsButton.compareDocumentPosition(projectsItem as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(
+    artifactsButton.compareDocumentPosition(projectsItem as Element) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });
 
 test("places project rows below starred chats with matching chat row sizing", async () => {
@@ -183,10 +229,14 @@ test("places project rows below starred chats with matching chat row sizing", as
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([projectFixture()]);
       if (url === "/api/threads?limit=30") {
-        return Response.json({ items: [{ ...threadFixture(), starred: true }], nextCursor: null });
+        return Response.json({
+          items: [{ ...threadFixture(), starred: true }],
+          nextCursor: null,
+        });
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -198,7 +248,10 @@ test("places project rows below starred chats with matching chat row sizing", as
   const starredHeading = screen.getByText("Starred");
   const chatRow = screen.getAllByRole("button", { name: "Existing chat" })[0];
 
-  expect(starredHeading.compareDocumentPosition(projectRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(
+    starredHeading.compareDocumentPosition(projectRow) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   const projectRowSurface = projectRow.parentElement as HTMLElement;
   expect(projectRowSurface).toHaveClass("h-7");
   expect(projectRow).not.toHaveClass("text-xs");
@@ -211,16 +264,20 @@ test("inactive sidebar project actions stay hidden until hover or keyboard focus
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([projectFixture()]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
 
   render(<App />);
 
-  const actionButton = await screen.findByRole("button", { name: "Open project actions" });
+  const actionButton = await screen.findByRole("button", {
+    name: "Open project actions",
+  });
 
   expect(actionButton).toHaveClass("invisible");
   expect(actionButton).toHaveClass("group-hover:visible");
@@ -230,7 +287,10 @@ test("inactive sidebar project actions stay hidden until hover or keyboard focus
 
 test("greets signed-in users with a night-appropriate greeting after 23:00", async () => {
   const realDate = Date;
-  type DateArgs = [] | [string | number | Date] | [number, number, number?, number?, number?, number?, number?];
+  type DateArgs =
+    | []
+    | [string | number | Date]
+    | [number, number, number?, number?, number?, number?, number?];
   class LateDate extends realDate {
     constructor(...args: DateArgs) {
       if (args.length === 0) {
@@ -260,12 +320,16 @@ test("greets signed-in users with a night-appropriate greeting after 23:00", asy
 
 test("uses Loom as the HTML title", () => {
   for (const path of ["../index.html", "../../backend/web/dist/index.html"]) {
-    expect(readFileSync(new URL(path, import.meta.url), "utf8")).toContain("<title>Loom</title>");
+    expect(readFileSync(new URL(path, import.meta.url), "utf8")).toContain(
+      "<title>Loom</title>",
+    );
   }
 });
 
 test("uses Loom as the web app manifest title", () => {
-  const manifest = JSON.parse(readFileSync("public/site.webmanifest", "utf8")) as {
+  const manifest = JSON.parse(
+    readFileSync("public/site.webmanifest", "utf8"),
+  ) as {
     name?: string;
     short_name?: string;
   };
@@ -280,22 +344,32 @@ test("bounds the active chat title in the top header", async () => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/me") {
-        return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
+        return Response.json({
+          id: "u1",
+          username: "jan",
+          role: "user",
+          displayName: "Jan",
+        });
       }
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json({ items: [
-          {
-            ...threadFixture(),
-            title: "Albert Einstein The legendary physicist who revolutionized modern physics",
-          },
-        ], nextCursor: null });
+        return Response.json({
+          items: [
+            {
+              ...threadFixture(),
+              title:
+                "Albert Einstein The legendary physicist who revolutionized modern physics",
+            },
+          ],
+          nextCursor: null,
+        });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
           thread: {
             ...threadFixture(),
-            title: "Albert Einstein The legendary physicist who revolutionized modern physics",
+            title:
+              "Albert Einstein The legendary physicist who revolutionized modern physics",
           },
           messages: [],
         });
@@ -344,12 +418,20 @@ test("renders admin user list for admin users", async () => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/me") {
-        return Response.json({ id: "u1", username: "jan", role: "admin", displayName: "Jan" });
+        return Response.json({
+          id: "u1",
+          username: "jan",
+          role: "admin",
+          displayName: "Jan",
+        });
       }
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
       if (url === "/api/admin/users") {
-        return Response.json([{ id: "u2", username: "sam", role: "user", displayName: "Sam" }]);
+        return Response.json([
+          { id: "u2", username: "sam", role: "user", displayName: "Sam" },
+        ]);
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -368,7 +450,12 @@ test("loads projects and recent threads after sign in", async () => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/me") {
-        return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
+        return Response.json({
+          id: "u1",
+          username: "jan",
+          role: "user",
+          displayName: "Jan",
+        });
       }
       if (url === "/api/projects") {
         return Response.json([
@@ -382,15 +469,18 @@ test("loads projects and recent threads after sign in", async () => {
         ]);
       }
       if (url === "/api/threads?limit=30") {
-        return Response.json({ items: [
-          {
-            id: "t1",
-            title: "Algebra",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ], nextCursor: null });
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "Algebra",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -407,36 +497,54 @@ test("shows chat data load errors", async () => {
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return new Response("", { status: 500 });
-      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
 
   render(<App />);
 
-  expect(await screen.findByText("Thread data failed to load.")).toBeInTheDocument();
+  expect(
+    await screen.findByText("Thread data failed to load."),
+  ).toBeInTheDocument();
 });
 
 test("does not expose project creation from the sidebar", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects" && init?.method === undefined) return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects" && init?.method === undefined)
+        return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
 
   await screen.findByRole("button", { name: "New thread" });
   expect(screen.getByRole("button", { name: "Memories" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument();
-  expect(screen.queryByPlaceholderText(/project name/i)).not.toBeInTheDocument();
-  expect(fetchMock).not.toHaveBeenCalledWith("/api/projects", expect.objectContaining({ method: "POST" }));
+  expect(
+    screen.queryByRole("button", { name: "Memory" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /new project/i }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByPlaceholderText(/project name/i),
+  ).not.toBeInTheDocument();
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    "/api/projects",
+    expect.objectContaining({ method: "POST" }),
+  );
 });
 
 test("opens the projects page from the sidebar without example or share affordances", async () => {
@@ -444,9 +552,11 @@ test("opens the projects page from the sidebar without example or share affordan
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([projectFixture()]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
@@ -454,10 +564,16 @@ test("opens the projects page from the sidebar without example or share affordan
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Projects" }));
 
-  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "Research" }).length).toBeGreaterThan(0);
+  expect(
+    await screen.findByRole("heading", { name: "Projects" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getAllByRole("button", { name: "Research" }).length,
+  ).toBeGreaterThan(0);
   expect(screen.queryByText("Example project")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Share" }),
+  ).not.toBeInTheDocument();
 });
 
 test("loads a project detail page and creates new chats inside the project", async () => {
@@ -474,39 +590,62 @@ test("loads a project detail page and creates new chats inside the project", asy
       controller.close();
     },
   });
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([projectFixture()]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/threads?projectId=p1&limit=1000") {
-      return Response.json({ items: [{ ...threadFixture(), id: "t-project", title: "Project chat", projectId: "p1" }], nextCursor: null });
-    }
-    if (url === "/api/threads" && init?.method === "POST") {
-      const body = JSON.parse(String(init.body)) as { title?: string };
-      return Response.json({
-        id: "t-project-new",
-        projectId: "p1",
-        title: body.title ?? "New thread",
-        starred: false,
-        createdAt: "2026-05-30T00:00:00Z",
-        updatedAt: "2026-05-30T00:00:00Z",
-      });
-    }
-    if (url === "/api/threads/t-project-new/messages:stream" && init?.method === "POST") {
-      return new Response(stream, { status: 200 });
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?projectId=p1&limit=1000") {
+        return Response.json({
+          items: [
+            {
+              ...threadFixture(),
+              id: "t-project",
+              title: "Project chat",
+              projectId: "p1",
+            },
+          ],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { title?: string };
+        return Response.json({
+          id: "t-project-new",
+          projectId: "p1",
+          title: body.title ?? "New thread",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        });
+      }
+      if (
+        url === "/api/threads/t-project-new/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
 
-  expect(await screen.findByRole("heading", { name: "Research" })).toBeInTheDocument();
-  expect(await screen.findByRole("button", { name: /Project chat/ })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Research" }),
+  ).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: /Project chat/ }),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Files")).not.toBeInTheDocument();
   expect(window.location.pathname).toBe("/projects/p1");
-  const projectComposer = screen.getByPlaceholderText("How can I help you today?");
+  const projectComposer = screen.getByPlaceholderText(
+    "How can I help you today?",
+  );
   expect(projectComposer).toHaveFocus();
   fireEvent.change(projectComposer, {
     target: { value: "Draft a brief" },
@@ -522,28 +661,43 @@ test("loads a project detail page and creates new chats inside the project", asy
       }),
     ),
   );
-  await waitFor(() => expect(window.location.pathname).toBe("/thread/t-project-new"));
+  await waitFor(() =>
+    expect(window.location.pathname).toBe("/thread/t-project-new"),
+  );
 });
 
 test("adds a single chat to a project from the chat actions menu", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([projectFixture()]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [threadFixture()], nextCursor: null });
-    if (url === "/api/threads/t1") {
-      if (init?.method === "PATCH") return Response.json({ ...threadFixture(), projectId: "p1" });
-      return Response.json({ thread: threadFixture(), messages: [] });
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [threadFixture()], nextCursor: null });
+      if (url === "/api/threads/t1") {
+        if (init?.method === "PATCH")
+          return Response.json({ ...threadFixture(), projectId: "p1" });
+        return Response.json({ thread: threadFixture(), messages: [] });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Add to project" }));
-  fireEvent.click(within(await screen.findByRole("dialog", { name: "Add to project" })).getByRole("button", { name: "Research" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open thread actions" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Add to project" }),
+  );
+  fireEvent.click(
+    within(
+      await screen.findByRole("dialog", { name: "Add to project" }),
+    ).getByRole("button", { name: "Research" }),
+  );
 
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
@@ -554,30 +708,49 @@ test("adds a single chat to a project from the chat actions menu", async () => {
       }),
     ),
   );
-  expect(screen.queryByRole("dialog", { name: "Add to project" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("dialog", { name: "Add to project" }),
+  ).not.toBeInTheDocument();
 });
 
 test("moves selected chats to a project from the chats page", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([projectFixture()]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/threads?limit=50") {
-      return Response.json({ items: [
-        { ...threadFixture(), id: "t1", title: "Loose chat one" },
-        { ...threadFixture(), id: "t2", title: "Loose chat two" },
-      ], nextCursor: null });
-    }
-    if (url === "/api/threads/ids") return Response.json(["t1", "t2"]);
-    if (url === "/api/threads/t1" && init?.method === "PATCH") {
-      return Response.json({ ...threadFixture(), id: "t1", title: "Loose chat one", projectId: "p1" });
-    }
-    if (url === "/api/threads/t2" && init?.method === "PATCH") {
-      return Response.json({ ...threadFixture(), id: "t2", title: "Loose chat two", projectId: "p1" });
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?limit=50") {
+        return Response.json({
+          items: [
+            { ...threadFixture(), id: "t1", title: "Loose chat one" },
+            { ...threadFixture(), id: "t2", title: "Loose chat two" },
+          ],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads/ids") return Response.json(["t1", "t2"]);
+      if (url === "/api/threads/t1" && init?.method === "PATCH") {
+        return Response.json({
+          ...threadFixture(),
+          id: "t1",
+          title: "Loose chat one",
+          projectId: "p1",
+        });
+      }
+      if (url === "/api/threads/t2" && init?.method === "PATCH") {
+        return Response.json({
+          ...threadFixture(),
+          id: "t2",
+          title: "Loose chat two",
+          projectId: "p1",
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
@@ -587,19 +760,31 @@ test("moves selected chats to a project from the chats page", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
   await screen.findByText("2 selected");
   fireEvent.click(screen.getByRole("button", { name: "Move to project" }));
-  fireEvent.click(within(await screen.findByRole("dialog", { name: "Move to project" })).getByRole("button", { name: "Research" }));
+  fireEvent.click(
+    within(
+      await screen.findByRole("dialog", { name: "Move to project" }),
+    ).getByRole("button", { name: "Research" }),
+  );
 
   await waitFor(() => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/threads/t1",
-      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ projectId: "p1" }) }),
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ projectId: "p1" }),
+      }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/threads/t2",
-      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ projectId: "p1" }) }),
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ projectId: "p1" }),
+      }),
     );
   });
-  expect(screen.queryByRole("dialog", { name: "Move to project" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("dialog", { name: "Move to project" }),
+  ).not.toBeInTheDocument();
 });
 
 test("renders the new-chat plus icon without a new-project sidebar control", async () => {
@@ -607,32 +792,50 @@ test("renders the new-chat plus icon without a new-project sidebar control", asy
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
 
   render(<App />);
 
-  const newChatButton = await screen.findByRole("button", { name: "New thread" });
+  const newChatButton = await screen.findByRole("button", {
+    name: "New thread",
+  });
 
   // New thread: a thin SVG plus inside a circle (no literal "+").
   expect(newChatButton.querySelector("svg")).toBeInTheDocument();
-  expect(newChatButton.querySelector("svg")).toHaveClass("h-[13px]", "w-[13px]");
+  expect(newChatButton.querySelector("svg")).toHaveClass(
+    "h-[13px]",
+    "w-[13px]",
+  );
   expect(newChatButton).not.toHaveTextContent("+");
-  expect(screen.queryByRole("button", { name: "New project" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "New project" }),
+  ).not.toBeInTheDocument();
 });
 
 test("new chat navigation does not create a thread or sidebar entry", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [{ ...threadFixture(), id: "existing", title: "Existing chat" }], nextCursor: null });
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({
+          items: [
+            { ...threadFixture(), id: "existing", title: "Existing chat" },
+          ],
+          nextCursor: null,
+        });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
@@ -642,54 +845,71 @@ test("new chat navigation does not create a thread or sidebar entry", async () =
 
   expect(await screen.findByText(greetingPattern("jan"))).toBeInTheDocument();
   expect(window.location.pathname).toBe("/new");
-  expect(await screen.findByRole("button", { name: "Existing chat" })).toBeInTheDocument();
   expect(
-    fetchMock.mock.calls.filter(([url, init]) => String(url) === "/api/threads" && init?.method === "POST"),
+    await screen.findByRole("button", { name: "Existing chat" }),
+  ).toBeInTheDocument();
+  expect(
+    fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        String(url) === "/api/threads" && init?.method === "POST",
+    ),
   ).toHaveLength(0);
 });
 
 test("inserts the titled sidebar chat before rendering the first new chat response", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
     },
   });
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/threads" && init?.method === "POST") {
-      return new Response(
-        JSON.stringify({
-          id: "t1",
-          title: "New thread",
-          starred: false,
-          createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        }),
-        { status: 201 },
-      );
-    }
-    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") return new Response(stream, { status: 200 });
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({
+            id: "t1",
+            title: "New thread",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          }),
+          { status: 201 },
+        );
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST")
+        return new Response(stream, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
-  fireEvent.change(await screen.findByPlaceholderText("How can I help you today?"), {
-    target: { value: "It is hot" },
-  });
+  fireEvent.change(
+    await screen.findByPlaceholderText("How can I help you today?"),
+    {
+      target: { value: "It is hot" },
+    },
+  );
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-    "/api/threads/t1/messages:stream",
-    expect.objectContaining({
-      method: "POST",
-      body: JSON.stringify({ content: "It is hot", reasoningEffort: "high" }),
-    }),
-  ));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stream",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "It is hot", reasoningEffort: "high" }),
+      }),
+    ),
+  );
 
   const encoder = new TextEncoder();
   streamController.current?.enqueue(
@@ -706,9 +926,14 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
   expect(await screen.findByText("It is hot")).toBeInTheDocument();
   expect(window.location.pathname).toBe("/thread/t1");
   expect(
-    within(screen.getByText("Recents").closest("section")!).queryByRole("button", { name: "New thread" }),
+    within(screen.getByText("Recents").closest("section")!).queryByRole(
+      "button",
+      { name: "New thread" },
+    ),
   ).not.toBeInTheDocument();
-  expect(await screen.findByRole("button", { name: "Weather comfort" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "Weather comfort" }),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Drink water.")).not.toBeInTheDocument();
 
   streamController.current?.enqueue(
@@ -719,7 +944,9 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
 
   expect(await screen.findByText("Drink water.")).toBeInTheDocument();
 
-  streamController.current?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+  streamController.current?.enqueue(
+    encoder.encode("event: done\ndata: {}\n\n"),
+  );
   streamController.current?.close();
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/threads",
@@ -730,43 +957,55 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
 test("shows the prompt optimistically before the server echoes the user_message", async () => {
   // Buffering proxies (e.g. corporate networks) can hold the whole SSE response until
   // the end, delaying the `user_message` event. The prompt must still appear on send.
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
     },
   });
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/threads" && init?.method === "POST") {
-      return new Response(
-        JSON.stringify({
-          id: "t1",
-          title: "New thread",
-          starred: false,
-          createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        }),
-        { status: 201 },
-      );
-    }
-    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") return new Response(stream, { status: 200 });
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({
+            id: "t1",
+            title: "New thread",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          }),
+          { status: 201 },
+        );
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST")
+        return new Response(stream, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
-  fireEvent.change(await screen.findByPlaceholderText("How can I help you today?"), {
-    target: { value: "Ping with nothing streamed back yet" },
-  });
+  fireEvent.change(
+    await screen.findByPlaceholderText("How can I help you today?"),
+    {
+      target: { value: "Ping with nothing streamed back yet" },
+    },
+  );
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
   // The prompt is rendered without ANY SSE event being delivered — proving the bubble
   // is optimistic and not gated on the server's first event.
-  expect(await screen.findByText("Ping with nothing streamed back yet")).toBeInTheDocument();
+  expect(
+    await screen.findByText("Ping with nothing streamed back yet"),
+  ).toBeInTheDocument();
 
   // When the delayed user_message finally arrives, it reconciles in place — still
   // exactly one bubble, no duplicate.
@@ -776,7 +1015,9 @@ test("shows the prompt optimistically before the server echoes the user_message"
     ),
   );
   await waitFor(() =>
-    expect(screen.getAllByText("Ping with nothing streamed back yet")).toHaveLength(1),
+    expect(
+      screen.getAllByText("Ping with nothing streamed back yet"),
+    ).toHaveLength(1),
   );
 
   streamController.current?.close();
@@ -792,7 +1033,9 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
         ),
       );
       controller.enqueue(
-        encoder.encode('event: assistant_delta\ndata: {"content":"It is a small PNG."}\n\n'),
+        encoder.encode(
+          'event: assistant_delta\ndata: {"content":"It is a small PNG."}\n\n',
+        ),
       );
       controller.enqueue(
         encoder.encode(
@@ -802,46 +1045,57 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
       controller.close();
     },
   });
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/threads" && init?.method === "POST") {
-      const body = JSON.parse(String(init.body)) as { title?: string };
-      return Response.json(
-        {
-          id: "t1",
-          title: body.title ?? "New thread",
-          starred: false,
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { title?: string };
+        return Response.json(
+          {
+            id: "t1",
+            title: body.title ?? "New thread",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }
+      if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
+        return Response.json({
+          id: "art_image",
+          threadId: "t1",
+          displayFilename: "tiny.png",
+          mimeType: "image/png",
+          sizeBytes: 68,
           createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        },
-        { status: 201 },
-      );
-    }
-    if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
-      return Response.json({
-        id: "art_image",
-        threadId: "t1",
-        displayFilename: "tiny.png",
-        mimeType: "image/png",
-        sizeBytes: 68,
-        createdAt: "2026-05-30T00:00:00Z",
-        downloadUrl: "/api/artifacts/art_image/download",
-      });
-    }
-    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") return new Response(stream, { status: 200 });
-    throw new Error(`unexpected fetch ${url}`);
-  });
+          downloadUrl: "/api/artifacts/art_image/download",
+        });
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST")
+        return new Response(stream, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
-  stubURLObjectMethods(() => "blob:tiny", () => undefined);
+  stubURLObjectMethods(
+    () => "blob:tiny",
+    () => undefined,
+  );
 
   render(<App />);
-  const textbox = await screen.findByPlaceholderText("How can I help you today?");
+  const textbox = await screen.findByPlaceholderText(
+    "How can I help you today?",
+  );
   const composer = textbox.closest("form");
   const fileInput = composer?.querySelector('input[type="file"]');
-  if (fileInput === null || fileInput === undefined) throw new Error("file input missing");
+  if (fileInput === null || fileInput === undefined)
+    throw new Error("file input missing");
   fireEvent.change(fileInput, {
     target: {
       files: [new File(["png"], "tiny.png", { type: "image/png" })],
@@ -862,7 +1116,11 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
       "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "What is this image?", imageAttachmentIds: ["art_image"], reasoningEffort: "high" }),
+        body: JSON.stringify({
+          content: "What is this image?",
+          imageAttachmentIds: ["art_image"],
+          reasoningEffort: "high",
+        }),
       }),
     ),
   );
@@ -872,14 +1130,20 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
   );
   // Once sent, the image renders from its stable artifact download URL (not the
   // ephemeral composer blob, which is revoked when the start screen is left).
-  expect(document.querySelector('img[src="/api/artifacts/art_image/download"]')).toBeInTheDocument();
+  expect(
+    document.querySelector('img[src="/api/artifacts/art_image/download"]'),
+  ).toBeInTheDocument();
   expect(screen.queryByText("tiny.png")).not.toBeInTheDocument();
-  expect(screen.queryByText("Files must be 25 MB or smaller.")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Files must be 25 MB or smaller."),
+  ).not.toBeInTheDocument();
   expect(screen.queryByText("Attached tiny.png.")).not.toBeInTheDocument();
-  expect(await screen.findByRole("button", { name: "What is this image?" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "What is this image?" }),
+  ).toBeInTheDocument();
 });
 
-test("\"Use in thread\" references an existing artifact without re-uploading it", async () => {
+test('"Use in thread" references an existing artifact without re-uploading it', async () => {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder();
@@ -897,63 +1161,81 @@ test("\"Use in thread\" references an existing artifact without re-uploading it"
     },
   });
   let imageUploadCalls = 0;
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user", displayName: "Jan" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
-      return Response.json({
-        items: [
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({
+          id: "u1",
+          username: "jan",
+          role: "user",
+          displayName: "Jan",
+        });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
+        return Response.json({
+          items: [
+            {
+              id: "art_1",
+              threadId: "t0",
+              displayFilename: "robot.png",
+              mimeType: "image/png",
+              sizeBytes: 1024,
+              modifiedAt: "2026-06-10T12:00:00Z",
+              downloadUrl: "/api/artifacts/art_1/download",
+            },
+          ],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { title?: string };
+        return Response.json(
           {
-            id: "art_1",
-            threadId: "t0",
-            displayFilename: "robot.png",
-            mimeType: "image/png",
-            sizeBytes: 1024,
-            modifiedAt: "2026-06-10T12:00:00Z",
-            downloadUrl: "/api/artifacts/art_1/download",
+            id: "t1",
+            title: body.title ?? "New thread",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
           },
-        ],
-        nextCursor: null,
-      });
-    }
-    if (url === "/api/threads" && init?.method === "POST") {
-      const body = JSON.parse(String(init.body)) as { title?: string };
-      return Response.json(
-        {
-          id: "t1",
-          title: body.title ?? "New thread",
-          starred: false,
-          createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        },
-        { status: 201 },
-      );
-    }
-    if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
-      // The artifact already exists; re-uploading here would duplicate it. This
-      // path must never be hit for a "Use in thread" hand-off.
-      imageUploadCalls += 1;
-      throw new Error("artifact was re-uploaded (duplicated)");
-    }
-    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") return new Response(stream, { status: 200 });
-    throw new Error(`unexpected fetch ${url}`);
-  });
+          { status: 201 },
+        );
+      }
+      if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
+        // The artifact already exists; re-uploading here would duplicate it. This
+        // path must never be hit for a "Use in thread" hand-off.
+        imageUploadCalls += 1;
+        throw new Error("artifact was re-uploaded (duplicated)");
+      }
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST")
+        return new Response(stream, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
 
   // Open the library and pick "Use in thread" on the existing image artifact.
   fireEvent.click(await screen.findByRole("button", { name: "Artifacts" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Actions for robot.png" }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Use in thread" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Actions for robot.png" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Use in thread" }),
+  );
 
   // Lands on the new-chat composer with the artifact pre-attached (preview points
   // at the existing download URL, not a freshly uploaded one).
-  const textbox = await screen.findByPlaceholderText("How can I help you today?");
+  const textbox = await screen.findByPlaceholderText(
+    "How can I help you today?",
+  );
   expect(window.location.pathname).toBe("/new");
-  expect(document.querySelector('img[src="/api/artifacts/art_1/download"]')).toBeInTheDocument();
+  expect(
+    document.querySelector('img[src="/api/artifacts/art_1/download"]'),
+  ).toBeInTheDocument();
 
   fireEvent.change(textbox, { target: { value: "Describe this" } });
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
@@ -964,7 +1246,11 @@ test("\"Use in thread\" references an existing artifact without re-uploading it"
       "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "Describe this", imageAttachmentIds: ["art_1"], reasoningEffort: "high" }),
+        body: JSON.stringify({
+          content: "Describe this",
+          imageAttachmentIds: ["art_1"],
+          reasoningEffort: "high",
+        }),
       }),
     ),
   );
@@ -989,53 +1275,67 @@ test("retries a failed deferred new-chat image upload before streaming", async (
       controller.close();
     },
   });
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/threads" && init?.method === "POST") {
-      createThreadCalls += 1;
-      return Response.json(
-        {
-          id: `t${createThreadCalls}`,
-          title: "What is this image?",
-          starred: false,
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        createThreadCalls += 1;
+        return Response.json(
+          {
+            id: `t${createThreadCalls}`,
+            title: "What is this image?",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }
+      if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
+        imageUploadCalls += 1;
+        if (imageUploadCalls === 1)
+          return new Response("boom", { status: 500 });
+        return Response.json({
+          id: "art_image_retry",
+          threadId: "t2",
+          displayFilename: "tiny.png",
+          mimeType: "image/png",
+          sizeBytes: 68,
           createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        },
-        { status: 201 },
-      );
-    }
-    if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
-      imageUploadCalls += 1;
-      if (imageUploadCalls === 1) return new Response("boom", { status: 500 });
-      return Response.json({
-        id: "art_image_retry",
-        threadId: "t2",
-        displayFilename: "tiny.png",
-        mimeType: "image/png",
-        sizeBytes: 68,
-        createdAt: "2026-05-30T00:00:00Z",
-        downloadUrl: "/api/artifacts/art_image_retry/download",
-      });
-    }
-    if (url === "/api/threads/t2/messages:stream" && init?.method === "POST") {
-      return new Response(stream, { status: 200 });
-    }
-    if (url.endsWith("/messages:stream") && init?.method === "POST") {
-      throw new Error(`unexpected stream ${url}`);
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  });
+          downloadUrl: "/api/artifacts/art_image_retry/download",
+        });
+      }
+      if (
+        url === "/api/threads/t2/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        return new Response(stream, { status: 200 });
+      }
+      if (url.endsWith("/messages:stream") && init?.method === "POST") {
+        throw new Error(`unexpected stream ${url}`);
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
-  stubURLObjectMethods(() => "blob:tiny", () => undefined);
+  stubURLObjectMethods(
+    () => "blob:tiny",
+    () => undefined,
+  );
 
   render(<App />);
-  const textbox = await screen.findByPlaceholderText("How can I help you today?");
+  const textbox = await screen.findByPlaceholderText(
+    "How can I help you today?",
+  );
   const composer = textbox.closest("form");
   const fileInput = composer?.querySelector('input[type="file"]');
-  if (fileInput === null || fileInput === undefined) throw new Error("file input missing");
+  if (fileInput === null || fileInput === undefined)
+    throw new Error("file input missing");
   fireEvent.change(fileInput, {
     target: {
       files: [new File(["png"], "tiny.png", { type: "image/png" })],
@@ -1050,11 +1350,19 @@ test("retries a failed deferred new-chat image upload before streaming", async (
       expect.objectContaining({ method: "POST" }),
     ),
   );
-  await waitFor(() => expect(screen.getByText("failed to upload image")).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByText("failed to upload image")).toBeInTheDocument(),
+  );
   expect(
-    fetchMock.mock.calls.some(([url, init]) => String(url) === "/api/threads/t1/messages:stream" && init?.method === "POST"),
+    fetchMock.mock.calls.some(
+      ([url, init]) =>
+        String(url) === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST",
+    ),
   ).toBe(false);
-  expect(screen.queryByText("Files must be 25 MB or smaller.")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Files must be 25 MB or smaller."),
+  ).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
@@ -1063,7 +1371,11 @@ test("retries a failed deferred new-chat image upload before streaming", async (
       "/api/threads/t2/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "What is this image?", imageAttachmentIds: ["art_image_retry"], reasoningEffort: "high" }),
+        body: JSON.stringify({
+          content: "What is this image?",
+          imageAttachmentIds: ["art_image_retry"],
+          reasoningEffort: "high",
+        }),
       }),
     ),
   );
@@ -1073,46 +1385,57 @@ test("retries a failed deferred new-chat image upload before streaming", async (
 
 test("clears a stale upload size send error when a new valid file is attached on the start screen", async () => {
   let imageUploadCalls = 0;
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
-    if (url === "/api/threads" && init?.method === "POST") {
-      return Response.json(
-        {
-          id: `t${imageUploadCalls + 1}`,
-          title: "What is this image?",
-          starred: false,
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        return Response.json(
+          {
+            id: `t${imageUploadCalls + 1}`,
+            title: "What is this image?",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }
+      if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
+        imageUploadCalls += 1;
+        if (imageUploadCalls === 1)
+          return new Response("too large", { status: 413 });
+        return Response.json({
+          id: "art_valid",
+          threadId: "t2",
+          displayFilename: "valid.png",
+          mimeType: "image/png",
+          sizeBytes: 1_400_000,
           createdAt: "2026-05-30T00:00:00Z",
-          updatedAt: "2026-05-30T00:00:00Z",
-        },
-        { status: 201 },
-      );
-    }
-    if (url === "/api/artifacts/images/upload" && init?.method === "POST") {
-      imageUploadCalls += 1;
-      if (imageUploadCalls === 1) return new Response("too large", { status: 413 });
-      return Response.json({
-        id: "art_valid",
-        threadId: "t2",
-        displayFilename: "valid.png",
-        mimeType: "image/png",
-        sizeBytes: 1_400_000,
-        createdAt: "2026-05-30T00:00:00Z",
-        downloadUrl: "/api/artifacts/art_valid/download",
-      });
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  });
+          downloadUrl: "/api/artifacts/art_valid/download",
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
-  stubURLObjectMethods(() => "blob:preview", () => undefined);
+  stubURLObjectMethods(
+    () => "blob:preview",
+    () => undefined,
+  );
 
   render(<App />);
-  const textbox = await screen.findByPlaceholderText("How can I help you today?");
+  const textbox = await screen.findByPlaceholderText(
+    "How can I help you today?",
+  );
   const composer = textbox.closest("form");
   const fileInput = composer?.querySelector('input[type="file"]');
-  if (fileInput === null || fileInput === undefined) throw new Error("file input missing");
+  if (fileInput === null || fileInput === undefined)
+    throw new Error("file input missing");
 
   fireEvent.change(fileInput, {
     target: {
@@ -1122,71 +1445,108 @@ test("clears a stale upload size send error when a new valid file is attached on
   fireEvent.change(textbox, { target: { value: "What is this image?" } });
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
-  expect(await screen.findByText("Files must be 25 MB or smaller.")).toBeInTheDocument();
+  expect(
+    await screen.findByText("Files must be 25 MB or smaller."),
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Remove first.png" }));
   fireEvent.change(fileInput, {
     target: {
-      files: [new File(["x".repeat(1_400_000)], "valid.png", { type: "image/png" })],
+      files: [
+        new File(["x".repeat(1_400_000)], "valid.png", { type: "image/png" }),
+      ],
     },
   });
 
-  expect(screen.queryByText("Files must be 25 MB or smaller.")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Files must be 25 MB or smaller."),
+  ).not.toBeInTheDocument();
   // Image attachments render as a compact thumbnail (filename in the remove
   // control's label, not as visible text), so assert via the remove button.
-  expect(screen.getByRole("button", { name: "Remove valid.png" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Remove valid.png" }),
+  ).toBeInTheDocument();
 });
 
 test("active sidebar chat shows actions menu with locked entries", async () => {
   vi.stubGlobal(
     "fetch",
-    chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]),
+    chatThreadFetch(null, [
+      { id: "m1", role: "assistant", content: "Earlier answer" },
+    ]),
   );
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open thread actions" }),
+  );
 
-  expect(await screen.findByRole("menu", { name: "Thread actions" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("menu", { name: "Thread actions" }),
+  ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: /^Star$/ })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
-  expect(screen.getByRole("menuitem", { name: "Add to project" })).toBeDisabled();
+  expect(
+    screen.getByRole("menuitem", { name: "Add to project" }),
+  ).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
 });
 
 test("active chat header chevron opens the shared chat actions menu", async () => {
   vi.stubGlobal(
     "fetch",
-    chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]),
+    chatThreadFetch(null, [
+      { id: "m1", role: "assistant", content: "Earlier answer" },
+    ]),
   );
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
   const header = await screen.findByRole("banner", { name: "Thread header" });
-  fireEvent.click(within(header).getByRole("button", { name: "Open thread actions" }));
+  fireEvent.click(
+    within(header).getByRole("button", { name: "Open thread actions" }),
+  );
 
   const menu = await screen.findByRole("menu", { name: "Thread actions" });
-  expect(within(menu).getByRole("menuitem", { name: /^Star$/ })).toBeInTheDocument();
-  expect(within(menu).getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
-  expect(within(menu).getByRole("menuitem", { name: "Add to project" })).toBeDisabled();
-  expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitem", { name: /^Star$/ }),
+  ).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Rename" }),
+  ).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Add to project" }),
+  ).toBeDisabled();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Delete" }),
+  ).toBeInTheDocument();
 
   fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename" }));
 
-  expect(await screen.findByRole("dialog", { name: "Rename thread" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("dialog", { name: "Rename thread" }),
+  ).toBeInTheDocument();
 });
 
 test("project chat header prefixes the title with a clickable project name", async () => {
   const project = { ...projectFixture(), name: "AI Gateway Comparison" };
-  const thread = { ...threadFixture(), title: "Inference Spend Statistics Access", projectId: project.id };
+  const thread = {
+    ...threadFixture(),
+    title: "Inference Spend Statistics Access",
+    projectId: project.id,
+  };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([project]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [thread], nextCursor: null });
-      if (url === "/api/threads/t1") return Response.json({ thread, messages: [] });
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [thread], nextCursor: null });
+      if (url === "/api/threads/t1")
+        return Response.json({ thread, messages: [] });
       if (url === "/api/threads?projectId=p1&limit=1000") {
         return Response.json({ items: [thread], nextCursor: null });
       }
@@ -1198,34 +1558,52 @@ test("project chat header prefixes the title with a clickable project name", asy
   );
 
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Inference Spend Statistics Access" }));
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Inference Spend Statistics Access",
+    }),
+  );
 
   const header = await screen.findByRole("banner", { name: "Thread header" });
-  const headerTitle = within(header).getByRole("heading", { name: /AI Gateway Comparison.*Inference Spend Statistics Access/ });
+  const headerTitle = within(header).getByRole("heading", {
+    name: /AI Gateway Comparison.*Inference Spend Statistics Access/,
+  });
   expect(headerTitle).toBeInTheDocument();
   expect(headerTitle).not.toHaveTextContent(">");
   expect(headerTitle).toHaveTextContent(ICONS.chevronRight);
 
-  fireEvent.click(within(header).getByRole("button", { name: "AI Gateway Comparison" }));
+  fireEvent.click(
+    within(header).getByRole("button", { name: "AI Gateway Comparison" }),
+  );
 
-  expect(await screen.findByRole("heading", { name: "AI Gateway Comparison" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "AI Gateway Comparison" }),
+  ).toBeInTheDocument();
   expect(window.location.pathname).toBe("/projects/p1");
 });
 
 test("closes the active sidebar chat menu when clicking outside it", async () => {
   vi.stubGlobal(
     "fetch",
-    chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]),
+    chatThreadFetch(null, [
+      { id: "m1", role: "assistant", content: "Earlier answer" },
+    ]),
   );
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
-  expect(await screen.findByRole("menu", { name: "Thread actions" })).toBeInTheDocument();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open thread actions" }),
+  );
+  expect(
+    await screen.findByRole("menu", { name: "Thread actions" }),
+  ).toBeInTheDocument();
 
   fireEvent.pointerDown(screen.getByRole("main"));
 
-  expect(screen.queryByRole("menu", { name: "Thread actions" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("menu", { name: "Thread actions" }),
+  ).not.toBeInTheDocument();
 });
 
 test("add to project stays disabled until projects exist", async () => {
@@ -1234,84 +1612,124 @@ test("add to project stays disabled until projects exist", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open thread actions" }),
+  );
 
-  expect(await screen.findByRole("menuitem", { name: "Add to project" })).toBeDisabled();
-  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("project"))).toHaveLength(1);
+  expect(
+    await screen.findByRole("menuitem", { name: "Add to project" }),
+  ).toBeDisabled();
+  expect(
+    fetchMock.mock.calls.filter(([url]) => String(url).includes("project")),
+  ).toHaveLength(1);
 });
 
 test("stars and unstars a chat from the sidebar action menu and closes the menu", async () => {
   let starred = false;
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [{ ...threadFixture(), starred }], nextCursor: null });
-    if (url === "/api/threads/t1") {
-      return Response.json({ thread: { ...threadFixture(), starred }, messages: [] });
-    }
-    if (url === "/api/threads/t1/star" && init?.method === "POST") {
-      starred = true;
-      return Response.json({ ...threadFixture(), starred: true });
-    }
-    if (url === "/api/threads/t1/unstar" && init?.method === "POST") {
-      starred = false;
-      return Response.json({ ...threadFixture(), starred: false });
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({
+          items: [{ ...threadFixture(), starred }],
+          nextCursor: null,
+        });
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: { ...threadFixture(), starred },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t1/star" && init?.method === "POST") {
+        starred = true;
+        return Response.json({ ...threadFixture(), starred: true });
+      }
+      if (url === "/api/threads/t1/unstar" && init?.method === "POST") {
+        starred = false;
+        return Response.json({ ...threadFixture(), starred: false });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open thread actions" }),
+  );
   fireEvent.click(await screen.findByRole("menuitem", { name: "Star" }));
   await waitFor(() =>
-    expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/star", { method: "POST" }),
+    expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/star", {
+      method: "POST",
+    }),
   );
-  expect(screen.queryByRole("menu", { name: "Thread actions" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("menu", { name: "Thread actions" }),
+  ).not.toBeInTheDocument();
 
-  fireEvent.click(screen.getAllByRole("button", { name: "Open thread actions" })[0]);
+  fireEvent.click(
+    screen.getAllByRole("button", { name: "Open thread actions" })[0],
+  );
   fireEvent.click(await screen.findByRole("menuitem", { name: "Unstar" }));
   await waitFor(() =>
-    expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", { method: "POST" }),
+    expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/unstar", {
+      method: "POST",
+    }),
   );
-  expect(screen.queryByRole("menu", { name: "Thread actions" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("menu", { name: "Thread actions" }),
+  ).not.toBeInTheDocument();
 });
 
 test("renames a chat from the sidebar menu", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") {
-      return Response.json({ items: [{ ...threadFixture(), title: "Existing chat" }], nextCursor: null });
-    }
-    if (url === "/api/threads/t1" && init?.method === "PATCH") {
-      return Response.json({ ...threadFixture(), title: "Renamed chat" });
-    }
-    if (url === "/api/threads/t1") {
-      return Response.json({
-        thread: { ...threadFixture(), title: "Existing chat" },
-        messages: [],
-      });
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({
+          items: [{ ...threadFixture(), title: "Existing chat" }],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads/t1" && init?.method === "PATCH") {
+        return Response.json({ ...threadFixture(), title: "Renamed chat" });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: { ...threadFixture(), title: "Existing chat" },
+          messages: [],
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open thread actions" }),
+  );
   fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
-  expect(await screen.findByRole("dialog", { name: "Rename thread" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("dialog", { name: "Rename thread" }),
+  ).toBeInTheDocument();
   const input = await screen.findByRole("textbox", { name: "Thread title" });
   expect(input).toHaveValue("Existing chat");
   fireEvent.change(input, { target: { value: "Renamed chat" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-  expect(await screen.findByRole("button", { name: "Renamed chat" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "Renamed chat" }),
+  ).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/threads/t1",
     expect.objectContaining({
@@ -1322,67 +1740,93 @@ test("renames a chat from the sidebar menu", async () => {
 });
 
 test("deletes the active chat from the sidebar menu after confirmation", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") {
-      return Response.json({ items: [{ ...threadFixture(), title: "Existing chat" }], nextCursor: null });
-    }
-    if (url === "/api/threads/t1" && init?.method === "DELETE") {
-      return new Response(null, { status: 204 });
-    }
-    if (url === "/api/threads/t1") {
-      return Response.json({
-        thread: { ...threadFixture(), title: "Existing chat" },
-        messages: [],
-      });
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({
+          items: [{ ...threadFixture(), title: "Existing chat" }],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads/t1" && init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: { ...threadFixture(), title: "Existing chat" },
+          messages: [],
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open thread actions" }),
+  );
   fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
-  expect(await screen.findByRole("dialog", { name: "Delete thread" })).toBeInTheDocument();
-  expect(screen.getByText("Are you sure you want to delete this thread?")).toBeInTheDocument();
+  expect(
+    await screen.findByRole("dialog", { name: "Delete thread" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Are you sure you want to delete this thread?"),
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
   await waitFor(() => expect(window.location.pathname).toBe("/new"));
-  expect(screen.queryByRole("button", { name: "Existing chat" })).not.toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", { method: "DELETE" });
+  expect(
+    screen.queryByRole("button", { name: "Existing chat" }),
+  ).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", {
+    method: "DELETE",
+  });
 });
 
 test("closes a chat modal when clicking the backdrop", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
-    if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") {
-      return Response.json({ items: [{ ...threadFixture(), title: "Existing chat" }], nextCursor: null });
-    }
-    if (url === "/api/threads/t1") {
-      return Response.json({
-        thread: { ...threadFixture(), title: "Existing chat" },
-        messages: [],
-      });
-    }
-    throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({
+          items: [{ ...threadFixture(), title: "Existing chat" }],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: { ...threadFixture(), title: "Existing chat" },
+          messages: [],
+        });
+      }
+      throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Open thread actions" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open thread actions" }),
+  );
   fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
   const dialog = await screen.findByRole("dialog", { name: "Rename thread" });
   fireEvent.click(dialog.parentElement!);
 
-  expect(screen.queryByRole("dialog", { name: "Rename thread" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("dialog", { name: "Rename thread" }),
+  ).not.toBeInTheDocument();
 });
 
 test("starting chat exits the admin panel", async () => {
@@ -1390,11 +1834,15 @@ test("starting chat exits the admin panel", async () => {
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "admin" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "admin" });
       if (url === "/api/projects") return Response.json([]);
-      if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
       if (url === "/api/admin/users") {
-        return Response.json([{ id: "u2", username: "sam", role: "user", displayName: "Sam" }]);
+        return Response.json([
+          { id: "u2", username: "sam", role: "user", displayName: "Sam" },
+        ]);
       }
       if (url === "/api/threads" && init?.method === "POST") {
         return new Response(
@@ -1431,7 +1879,9 @@ test("starting chat exits the admin panel", async () => {
   fireEvent.click(await screen.findByRole("button", { name: /new thread/i }));
 
   expect(await screen.findByText(greetingPattern("jan"))).toBeInTheDocument();
-  expect(screen.getByPlaceholderText("How can I help you today?")).toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("How can I help you today?"),
+  ).toBeInTheDocument();
 });
 
 test("renders streamed assistant response", async () => {
@@ -1443,8 +1893,12 @@ test("renders streamed assistant response", async () => {
           'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
         ),
       );
-      controller.enqueue(encoder.encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_delta\ndata: {"content":"lo"}\n\n'));
+      controller.enqueue(
+        encoder.encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'),
+      );
+      controller.enqueue(
+        encoder.encode('event: assistant_delta\ndata: {"content":"lo"}\n\n'),
+      );
       controller.enqueue(
         encoder.encode(
           'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello","createdAt":"2026-05-30T00:00:01Z"}\n\n',
@@ -1458,18 +1912,22 @@ test("renders streamed assistant response", async () => {
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json({ items: [
-          {
-            id: "t1",
-            title: "Existing chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ], nextCursor: null });
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "Existing chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
@@ -1483,7 +1941,10 @@ test("renders streamed assistant response", async () => {
           messages: [],
         });
       }
-      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
         return new Response(stream, { status: 200 });
       }
       throw new Error(`unexpected fetch ${url}`);
@@ -1492,7 +1953,9 @@ test("renders streamed assistant response", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("Hello")).toBeInTheDocument();
@@ -1504,10 +1967,14 @@ test("turns the send button into a stop button while the assistant is running", 
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
-  const stopButton = await screen.findByRole("button", { name: "Stop response" });
+  const stopButton = await screen.findByRole("button", {
+    name: "Stop response",
+  });
   expect(stopButton).toBeEnabled();
   expect(stopButton).toHaveClass("bg-[#3a3a37]");
   expect(stopButton).not.toHaveClass("bg-accent");
@@ -1531,7 +1998,9 @@ test("Escape stops the active assistant response", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
   await screen.findByRole("button", { name: "Stop response" });
@@ -1561,7 +2030,11 @@ test("renders artifact card from streamed artifact event", async () => {
           'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"make file","createdAt":"2026-06-03T00:00:00Z"}\n\n',
         ),
       );
-      controller.enqueue(encoder.encode(`event: artifact\ndata: ${JSON.stringify(artifact)}\n\n`));
+      controller.enqueue(
+        encoder.encode(
+          `event: artifact\ndata: ${JSON.stringify(artifact)}\n\n`,
+        ),
+      );
       controller.enqueue(
         encoder.encode(
           `event: assistant_message\ndata: ${JSON.stringify({
@@ -1582,11 +2055,15 @@ test("renders artifact card from streamed artifact event", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "make file" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "make file" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("notes.md")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Download notes.md" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Download notes.md" }),
+  ).toBeInTheDocument();
 });
 
 test("renders artifact card from historical assistant message", async () => {
@@ -1614,7 +2091,9 @@ test("renders artifact card from historical assistant message", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
   expect(await screen.findByText("notes.md")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Download notes.md" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Download notes.md" }),
+  ).toBeInTheDocument();
 });
 
 test("renders image artifact preview from generated artifact card", async () => {
@@ -1648,17 +2127,21 @@ test("renders image artifact preview from generated artifact card", async () => 
     />,
   );
 
-  expect(await screen.findByRole("img", { name: "robot.png" }, { timeout: 3000 })).toHaveAttribute(
-    "src",
-    objectURL,
-  );
+  expect(
+    await screen.findByRole("img", { name: "robot.png" }, { timeout: 3000 }),
+  ).toHaveAttribute("src", objectURL);
   expect(createObjectURL).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole("button", { name: "Download robot.png" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Download robot.png" }),
+  ).toBeInTheDocument();
 });
 
 test("clicking an image artifact opens a lightbox preview in the browser", async () => {
   const objectURL = "blob:ui-image-preview";
-  stubURLObjectMethods(vi.fn(() => objectURL), vi.fn());
+  stubURLObjectMethods(
+    vi.fn(() => objectURL),
+    vi.fn(),
+  );
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     if (String(input) === "/api/artifacts/art_1/download") {
       return {
@@ -1686,20 +2169,25 @@ test("clicking an image artifact opens a lightbox preview in the browser", async
   fireEvent.click(await screen.findByRole("img", { name: "robot.png" }));
 
   // The lightbox overlay appears, showing the already-downloaded blob — no host open call.
-  const dialog = await screen.findByRole("dialog", { name: "Preview robot.png" });
-  expect(within(dialog).getByRole("img", { name: "robot.png" })).toHaveAttribute(
-    "src",
-    objectURL,
-  );
+  const dialog = await screen.findByRole("dialog", {
+    name: "Preview robot.png",
+  });
+  expect(
+    within(dialog).getByRole("img", { name: "robot.png" }),
+  ).toHaveAttribute("src", objectURL);
   expect(fetchMock).not.toHaveBeenCalledWith(
     "/api/artifacts/art_1/open",
     expect.anything(),
   );
 
   // The close button dismisses the lightbox.
-  fireEvent.click(within(dialog).getByRole("button", { name: "Close preview" }));
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Close preview" }),
+  );
   await waitFor(() => {
-    expect(screen.queryByRole("dialog", { name: "Preview robot.png" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Preview robot.png" }),
+    ).not.toBeInTheDocument();
   });
 
   // Escape also closes it.
@@ -1707,7 +2195,9 @@ test("clicking an image artifact opens a lightbox preview in the browser", async
   await screen.findByRole("dialog", { name: "Preview robot.png" });
   fireEvent.keyDown(window, { key: "Escape" });
   await waitFor(() => {
-    expect(screen.queryByRole("dialog", { name: "Preview robot.png" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Preview robot.png" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -1728,12 +2218,18 @@ test("keeps just-completed reasoning trace collapsed until opened", async () => 
   expect(await screen.findByText("Answer.")).toBeInTheDocument();
   const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toBeInTheDocument();
-  expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("I checked the source first."),
+  ).not.toBeInTheDocument();
 
   fireEvent.click(toggle);
 
-  expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(
+    await screen.findByText("I checked the source first."),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /hide activity/i }),
+  ).toBeInTheDocument();
   // Reasoning row shows the clock timeline node; the turn is capped with a Done node.
   expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
   expect(screen.getByText("Done")).toBeInTheDocument();
@@ -1764,9 +2260,9 @@ test("restores persisted activity trace when reopening a chat", async () => {
             type: "tool",
             name: "search__web",
             status: "done",
-            rawArguments: "{\"query\":\"agentgateway kgateway\"}",
+            rawArguments: '{"query":"agentgateway kgateway"}',
             rawOutput:
-              "{\"results\":[{\"title\":\"Agentgateway\",\"url\":\"https://agentgateway.dev\",\"snippet\":\"Next generation proxy\"}]}",
+              '{"results":[{"title":"Agentgateway","url":"https://agentgateway.dev","snippet":"Next generation proxy"}]}',
           },
         ],
       },
@@ -1778,11 +2274,15 @@ test("restores persisted activity trace when reopening a chat", async () => {
 
   expect(await screen.findByText("I found Lume.")).toBeInTheDocument();
   const toggle = screen.getByRole("button", { name: /show activity/i });
-  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("I should search current sources."),
+  ).not.toBeInTheDocument();
 
   fireEvent.click(toggle);
 
-  expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
+  expect(
+    await screen.findByText("I should search current sources."),
+  ).toBeInTheDocument();
   expect(screen.getByText("Agentgateway kgateway")).toBeInTheDocument();
   expect(screen.getByText("Agentgateway")).toBeInTheDocument();
   // The reasoning row shows the clock timeline node.
@@ -1821,8 +2321,12 @@ test("keeps past activity traces collapsed by default, ignoring any stale stored
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
   expect(await screen.findByText("I found Lume.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /show activity/i }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("I should search current sources."),
+  ).not.toBeInTheDocument();
 });
 
 test("toggles a past activity trace without persisting the choice to localStorage", async () => {
@@ -1853,22 +2357,34 @@ test("toggles a past activity trace without persisting the choice to localStorag
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const showToggle = await screen.findByRole("button", { name: /show activity/i });
+  const showToggle = await screen.findByRole("button", {
+    name: /show activity/i,
+  });
   fireEvent.click(showToggle);
 
-  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
-  expect(window.localStorage.getItem("lume:activity-trace-expanded")).toBeNull();
+  expect(
+    screen.getByText("I should search current sources."),
+  ).toBeInTheDocument();
+  expect(
+    window.localStorage.getItem("lume:activity-trace-expanded"),
+  ).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: /hide activity/i }));
 
   await waitFor(() => {
-    expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("I should search current sources."),
+    ).not.toBeInTheDocument();
   });
-  expect(window.localStorage.getItem("lume:activity-trace-expanded")).toBeNull();
+  expect(
+    window.localStorage.getItem("lume:activity-trace-expanded"),
+  ).toBeNull();
 });
 
 test("shows only the tail dots (no activity panel) for a turn with no reasoning", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -1883,25 +2399,41 @@ test("shows only the tail dots (no activity panel) for a turn with no reasoning"
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   // Bare start of a reasoning-free turn: the tail dots are the only cue — no
   // activity panel, no "Thinking" text.
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).toBeNull();
   expect(screen.queryByText("Thinking")).toBeNull();
 
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Hel"}\n\n',
+    ),
+  );
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
   // The answer is streaming: the dots clear and there is still no activity panel.
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).toBeNull(),
+  );
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).toBeNull();
 });
 
 test("shows the reasoning abstract once its background title arrives", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -1916,34 +2448,54 @@ test("shows the reasoning abstract once its background title arrives", async () 
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   // Reasoning streams but has no background title yet: the tail dots are the only
   // cue. There is no "Thinking" label, no activity panel, and the reasoning text
   // is withheld — nothing flashes before the real abstract.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n',
+    ),
   );
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
-  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("I should search current sources."),
+  ).not.toBeInTheDocument();
 
   // The background title lands: the panel appears with the abstract, the reasoning
   // text is revealed, and — still working — the abstract shimmers while the dots
   // stay at the tail.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n',
+    ),
   );
-  expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
-  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
-  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe("Searching current sources");
+  expect(
+    await screen.findByText("Searching current sources"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("I should search current sources."),
+  ).toBeInTheDocument();
+  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe(
+    "Searching current sources",
+  );
   expect(document.querySelector(".ui-working-dots")).not.toBeNull();
 });
 
 test("auto-opens the live thinking window once, then collapses it when the answer starts", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -1958,31 +2510,51 @@ test("auto-opens the live thinking window once, then collapses it when the answe
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   // Reasoning streams and its title lands: the panel appears already open (auto-
   // opened once, no click needed) with the reasoning body shown.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n',
+    ),
   );
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n',
+    ),
   );
-  expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
+  expect(
+    await screen.findByText("I should search current sources."),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /hide activity/i }),
+  ).toBeInTheDocument();
 
   // The answer starts streaming: the window collapses on its own — it does not wait
   // for the whole answer to finish — leaving the abstract as the (now static)
   // headline. The reasoning body is hidden behind the collapsed toggle.
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Here is"}\n\n',
+    ),
+  );
   expect(await screen.findByText("Here is")).toBeInTheDocument();
-  expect(await screen.findByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: /show activity/i }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /hide activity/i }),
+  ).not.toBeInTheDocument();
 });
 
 test("keeps the activity panel hidden until the first reasoning title (dots only)", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -1997,12 +2569,18 @@ test("keeps the activity panel hidden until the first reasoning title (dots only
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   // The turn has begun but nothing has streamed: dots only, no panel.
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).toBeNull();
   // Accessibility: with no activity panel mounted yet, the dots carry a polite
   // live-region announcement so the working phase is not silent to screen readers.
   const srStatus = screen.getByText("Working");
@@ -2012,22 +2590,38 @@ test("keeps the activity panel hidden until the first reasoning title (dots only
   // Reasoning content alone (no title yet) still shows no panel — dots only, and
   // the reasoning text stays withheld.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n',
+    ),
   );
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
-  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).toBeNull();
+  expect(
+    screen.queryByText("I should search current sources."),
+  ).not.toBeInTheDocument();
 
   // The first title opens the panel — expanded, with the reasoning body revealed.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n',
+    ),
   );
-  expect(await screen.findByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(screen.getByText("I should search current sources.")).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: /hide activity/i }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("I should search current sources."),
+  ).toBeInTheDocument();
 });
 
 test("keeps the live thinking window collapsed once the user closes it mid-turn", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2042,30 +2636,50 @@ test("keeps the live thinking window collapsed once the user closes it mid-turn"
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   // Reasoning streams and its title lands, so the window auto-opens; the user then
   // closes it.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n',
+    ),
   );
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n',
+    ),
   );
-  fireEvent.click(await screen.findByRole("button", { name: /hide activity/i }));
-  expect(await screen.findByRole("button", { name: /show activity/i })).toBeInTheDocument();
+  fireEvent.click(
+    await screen.findByRole("button", { name: /hide activity/i }),
+  );
+  expect(
+    await screen.findByRole("button", { name: /show activity/i }),
+  ).toBeInTheDocument();
 
   // A later phase change (answer text) must NOT re-open it: the auto-open fires at
   // most once per turn, so the manual collapse sticks.
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Here is"}\n\n',
+    ),
+  );
   expect(await screen.findByText("Here is")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /show activity/i }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /hide activity/i }),
+  ).not.toBeInTheDocument();
 });
 
 test("keeps the generated reasoning title during later active trace updates", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2080,28 +2694,44 @@ test("keeps the generated reasoning title during later active trace updates", as
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n',
+    ),
   );
   // No title yet: dots only, no panel, no "Thinking".
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).toBeNull();
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
 
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching current sources"}\n\n',
+    ),
   );
-  expect(await screen.findByText("Searching current sources")).toBeInTheDocument();
+  expect(
+    await screen.findByText("Searching current sources"),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
 
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"https://example.com/docs\\"}"}\n\n'),
+    new TextEncoder().encode(
+      'event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"https://example.com/docs\\"}"}\n\n',
+    ),
   );
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":" Next I should read the page."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":" Next I should read the page."}\n\n',
+    ),
   );
 
   expect(screen.getByText("Searching current sources")).toBeInTheDocument();
@@ -2109,7 +2739,9 @@ test("keeps the generated reasoning title during later active trace updates", as
 });
 
 test("keeps the tail dots (still working) when pre-tool preamble streams before a pending tool call", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2124,25 +2756,39 @@ test("keeps the tail dots (still working) when pre-tool preamble streams before 
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n',
+    ),
   );
   // The model emits preamble text and then signals a pending tool call. Despite the
   // streamed text, this is not the answer phase — a tool is about to run — so the
   // tail dots must stay (still working). No "Thinking", no panel (no title yet).
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Let me search."}\n\n'));
-  streamController.current?.enqueue(new TextEncoder().encode("event: tool_pending\ndata: {}\n\n"));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Let me search."}\n\n',
+    ),
+  );
+  streamController.current?.enqueue(
+    new TextEncoder().encode("event: tool_pending\ndata: {}\n\n"),
+  );
 
   expect(await screen.findByText("Let me search.")).toBeInTheDocument();
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
   expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
 });
 
 test("keeps active activity trace visible while assistant text is streaming", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2157,47 +2803,87 @@ test("keeps active activity trace visible while assistant text is streaming", as
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"I checked the source first."}\n\n',
+    ),
   );
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Checking the source"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Checking the source"}\n\n',
+    ),
   );
-  const trace = await screen.findByRole("status", { name: /loom activity trace/i });
+  const trace = await screen.findByRole("status", {
+    name: /loom activity trace/i,
+  });
   // The title opens the window; the body is shown without a click and the abstract
   // shimmers while still working.
-  expect(await screen.findByText("I checked the source first.")).toBeInTheDocument();
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe("Checking the source");
+  expect(
+    await screen.findByText("I checked the source first."),
+  ).toBeInTheDocument();
+  expect(
+    within(trace).getByRole("button", { name: /hide activity/i }),
+  ).toBeInTheDocument();
+  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe(
+    "Checking the source",
+  );
 
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Hel"}\n\n',
+    ),
+  );
 
   expect(await screen.findByText("Hel")).toBeInTheDocument();
   // The answer has started: the window collapses on its own, the abstract stops
   // shimmering, the tail dots clear, and the reasoning body hides behind the toggle.
-  expect(await within(trace).findByRole("button", { name: /show activity/i })).toBeInTheDocument();
-  expect(within(trace).queryByRole("button", { name: /hide activity/i })).not.toBeInTheDocument();
-  await waitFor(() => expect(within(trace).queryByText("I checked the source first.")).not.toBeInTheDocument());
-  await waitFor(() => expect(document.querySelector(".ui-thinking-label-active")).toBeNull());
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
+  expect(
+    await within(trace).findByRole("button", { name: /show activity/i }),
+  ).toBeInTheDocument();
+  expect(
+    within(trace).queryByRole("button", { name: /hide activity/i }),
+  ).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      within(trace).queryByText("I checked the source first."),
+    ).not.toBeInTheDocument(),
+  );
+  await waitFor(() =>
+    expect(document.querySelector(".ui-thinking-label-active")).toBeNull(),
+  );
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).toBeNull(),
+  );
   // Reasoning rows use the clock node — no per-row completion checkmark mid-stream.
-  expect(document.querySelector(".ui-activity-trace-icon-reasoning-complete")).toBeNull();
+  expect(
+    document.querySelector(".ui-activity-trace-icon-reasoning-complete"),
+  ).toBeNull();
 
   streamController.current?.enqueue(
     new TextEncoder().encode(
       'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello.","reasoningContent":"I checked the source first.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
     ),
   );
-  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.enqueue(
+    new TextEncoder().encode("event: done\ndata: {}\n\n"),
+  );
   streamController.current?.close();
 
   expect(await screen.findByText("Hello.")).toBeInTheDocument();
   // The result is in: the thinking window collapses itself once the turn completes.
-  const completedToggle = await screen.findByRole("button", { name: /show activity/i });
-  await waitFor(() => expect(screen.queryByText("I checked the source first.")).not.toBeInTheDocument());
+  const completedToggle = await screen.findByRole("button", {
+    name: /show activity/i,
+  });
+  await waitFor(() =>
+    expect(
+      screen.queryByText("I checked the source first."),
+    ).not.toBeInTheDocument(),
+  );
   // Expanding the completed trace still reveals the clock timeline node and the Done cap.
   fireEvent.click(completedToggle);
   expect(screen.getByText("I checked the source first.")).toBeInTheDocument();
@@ -2206,7 +2892,9 @@ test("keeps active activity trace visible while assistant text is streaming", as
 });
 
 test("keeps the tail dots pinned at the bottom through the working phase, hidden while the answer streams", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2221,45 +2909,77 @@ test("keeps the tail dots pinned at the bottom through the working phase, hidden
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   // Working gap begins immediately on send: the dots show as the "still working"
   // cue, and they are the LAST element of the live rail (always at the bottom).
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
   const rail = document.querySelector(".ui-thread-rail");
-  expect(rail?.lastElementChild?.classList.contains("ui-working-dots")).toBe(true);
+  expect(rail?.lastElementChild?.classList.contains("ui-working-dots")).toBe(
+    true,
+  );
 
   // Reasoning streams and its title lands: the panel appears with the sweeping
   // title, and the dots stay pinned at the very bottom, below the panel.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"Checking the source."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"Checking the source."}\n\n',
+    ),
   );
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Checking the source"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Checking the source"}\n\n',
+    ),
   );
   expect(await screen.findByText("Checking the source")).toBeInTheDocument();
-  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe("Checking the source");
-  expect(document.querySelector(".ui-thread-rail")?.lastElementChild?.classList.contains("ui-working-dots")).toBe(true);
+  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe(
+    "Checking the source",
+  );
+  expect(
+    document
+      .querySelector(".ui-thread-rail")
+      ?.lastElementChild?.classList.contains("ui-working-dots"),
+  ).toBe(true);
 
   // Answer prose begins: the per-segment fade-in becomes the cue, so the dots
   // vanish and nothing sweeps (no double signal).
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Hel"}\n\n',
+    ),
+  );
   expect(await screen.findByText("Hel")).toBeInTheDocument();
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).toBeNull(),
+  );
   expect(document.querySelector(".ui-thinking-label-active")).toBeNull();
 
   // A second reasoning round resumes after the partial answer: a fresh trace block
   // means the earlier text is no longer the tail answer, so the dots return.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"Double-checking."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"Double-checking."}\n\n',
+    ),
   );
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
 
   // The answer resumes streaming after that round: the dots hide again.
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"lo."}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"lo."}\n\n',
+    ),
+  );
   expect(await screen.findByText("lo.")).toBeInTheDocument();
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).toBeNull(),
+  );
 
   // Turn completes: the dots stay gone.
   streamController.current?.enqueue(
@@ -2267,14 +2987,18 @@ test("keeps the tail dots pinned at the bottom through the working phase, hidden
       'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello.","reasoningContent":"Checking the source.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
     ),
   );
-  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.enqueue(
+    new TextEncoder().encode("event: done\ndata: {}\n\n"),
+  );
   streamController.current?.close();
   expect(await screen.findByText("Hello.")).toBeInTheDocument();
   expect(document.querySelector(".ui-working-dots")).toBeNull();
 });
 
 test("hides the copy action until the assistant answer finishes streaming", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2289,36 +3013,49 @@ test("hides the copy action until the assistant answer finishes streaming", asyn
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Partial"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Partial"}\n\n',
+    ),
   );
 
   expect(await screen.findByText("Partial")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Copy response" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Copy response" }),
+  ).not.toBeInTheDocument();
 
   streamController.current?.enqueue(
     new TextEncoder().encode(
       'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Partial answer.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
     ),
   );
-  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.enqueue(
+    new TextEncoder().encode("event: done\ndata: {}\n\n"),
+  );
   streamController.current?.close();
 
   expect(await screen.findByText("Partial answer.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Copy response" }),
+  ).toBeInTheDocument();
 });
 
 test("centers reasoning activity dots inside their row circles", () => {
   const css = readFileSync("src/index.css", "utf8");
   const reasoningIconRule =
-    css.match(/\.ui-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups
+      ?.body ?? "";
   const reasoningDotRule =
-    css.match(/\.ui-activity-trace-icon-reasoning::after\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-trace-icon-reasoning::after\s*\{(?<body>[^}]*)\}/)
+      ?.groups?.body ?? "";
   const reasoningParagraphRule =
-    css.match(/\.ui-activity-reasoning p\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-reasoning p\s*\{(?<body>[^}]*)\}/)?.groups?.body ??
+    "";
 
   expect(reasoningIconRule).toContain("border: 1px solid currentColor");
   expect(reasoningDotRule).toContain("display: block");
@@ -2333,11 +3070,16 @@ test("centers reasoning activity dots inside their row circles", () => {
 
 test("spaces activity trace connector lines away from adjacent icons", () => {
   const css = readFileSync("src/index.css", "utf8");
-  const iconRule = css.match(/\.ui-activity-trace-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const iconRule =
+    css.match(/\.ui-activity-trace-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ??
+    "";
   const reasoningIconRule =
-    css.match(/\.ui-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(/\.ui-activity-trace-icon-reasoning\s*\{(?<body>[^}]*)\}/)?.groups
+      ?.body ?? "";
   const connectorRule =
-    css.match(/\.ui-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+    css.match(
+      /\.ui-activity-trace-row:not\(:last-child\)::before\s*\{(?<body>[^}]*)\}/,
+    )?.groups?.body ?? "";
 
   expect(css).toContain("--ui-activity-icon-offset: 0.09rem");
   expect(iconRule).toContain("margin-top: var(--ui-activity-icon-offset)");
@@ -2345,7 +3087,9 @@ test("spaces activity trace connector lines away from adjacent icons", () => {
   expect(iconRule).not.toContain("border-radius: 9999px");
   expect(reasoningIconRule).toContain("border-radius: 9999px");
   expect(reasoningIconRule).not.toContain("margin-top:");
-  expect(connectorRule).toContain("top: calc(0.25rem + var(--ui-activity-icon-offset) + 1rem + 0.25rem)");
+  expect(connectorRule).toContain(
+    "top: calc(0.25rem + var(--ui-activity-icon-offset) + 1rem + 0.25rem)",
+  );
   expect(connectorRule).toContain("bottom: -0.225rem");
   expect(connectorRule).toContain("left: calc(0.5rem - 0.5px)");
 });
@@ -2353,18 +3097,30 @@ test("spaces activity trace connector lines away from adjacent icons", () => {
 test("keeps existing search activity icon glyph design", () => {
   const source = readFileSync("src/chat/ActivityTracePanel.tsx", "utf8");
   const css = readFileSync("src/index.css", "utf8");
-  const globeIcon = source.match(/function GlobeTraceIcon\(\) \{(?<body>[\s\S]*?)\n\}/)?.groups?.body ?? "";
-  const globeIconRule = css.match(/\.ui-activity-globe-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const fetchFaviconRule = css.match(/\.ui-activity-fetch-icon-favicon\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const toolHeaderRule = css.match(/\.ui-activity-tool-header\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const resultListRule = css.match(/\.ui-activity-result-list\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
+  const globeIcon =
+    source.match(/function GlobeTraceIcon\(\) \{(?<body>[\s\S]*?)\n\}/)?.groups
+      ?.body ?? "";
+  const globeIconRule =
+    css.match(/\.ui-activity-globe-icon\s*\{(?<body>[^}]*)\}/)?.groups?.body ??
+    "";
+  const fetchFaviconRule =
+    css.match(/\.ui-activity-fetch-icon-favicon\s*\{(?<body>[^}]*)\}/)?.groups
+      ?.body ?? "";
+  const toolHeaderRule =
+    css.match(/\.ui-activity-tool-header\s*\{(?<body>[^}]*)\}/)?.groups?.body ??
+    "";
+  const resultListRule =
+    css.match(/\.ui-activity-result-list\s*\{(?<body>[^}]*)\}/)?.groups?.body ??
+    "";
 
   // The search node now renders the Anthropicons globe glyph via <Icon> instead
   // of a hand-drawn SVG; the .ui-activity-globe-icon sizing rule is preserved.
   expect(globeIcon).toContain('name="globe"');
   expect(globeIconRule).toContain("width: 1.125rem !important");
   expect(globeIconRule).toContain("height: 1.125rem !important");
-  expect(source).not.toContain("ui-activity-trace-icon ui-activity-trace-icon-arrow");
+  expect(source).not.toContain(
+    "ui-activity-trace-icon ui-activity-trace-icon-arrow",
+  );
   expect(source).toContain("ui-activity-trace-row-reasoning");
   expect(source).toContain("ui-activity-trace-row-tool");
   expect(toolHeaderRule).toContain("transform: translateY(-1px)");
@@ -2377,9 +3133,15 @@ test("keeps existing search activity icon glyph design", () => {
 test("keeps the reasoning clamp height in sync with REASONING_CAP_PX", () => {
   const source = readFileSync("src/chat/ActivityTracePanel.tsx", "utf8");
   const css = readFileSync("src/index.css", "utf8");
-  const capPx = Number(source.match(/REASONING_CAP_PX\s*=\s*(?<px>\d+)/)?.groups?.px);
-  const clampRule = css.match(/\.ui-activity-reasoning-clamp\s*\{(?<body>[^}]*)\}/)?.groups?.body ?? "";
-  const maxHeightRem = Number(clampRule.match(/max-height:\s*(?<rem>[\d.]+)rem/)?.groups?.rem);
+  const capPx = Number(
+    source.match(/REASONING_CAP_PX\s*=\s*(?<px>\d+)/)?.groups?.px,
+  );
+  const clampRule =
+    css.match(/\.ui-activity-reasoning-clamp\s*\{(?<body>[^}]*)\}/)?.groups
+      ?.body ?? "";
+  const maxHeightRem = Number(
+    clampRule.match(/max-height:\s*(?<rem>[\d.]+)rem/)?.groups?.rem,
+  );
 
   // The JS clamp threshold (px) and the CSS max-height (rem) must describe the
   // same height, or the overflow measurement desyncs from the visual clamp/fade.
@@ -2388,7 +3150,9 @@ test("keeps the reasoning clamp height in sync with REASONING_CAP_PX", () => {
 });
 
 test("shows active activity trace with reasoning and tool activity before assistant output", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2403,26 +3167,42 @@ test("shows active activity trace with reasoning and tool activity before assist
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n',
+    ),
   );
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching sources"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Searching sources"}\n\n',
+    ),
   );
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'),
+    new TextEncoder().encode(
+      'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n',
+    ),
   );
 
-  const trace = await screen.findByRole("status", { name: /loom activity trace/i });
+  const trace = await screen.findByRole("status", {
+    name: /loom activity trace/i,
+  });
   // The title is the only thing that shimmers — never "Thinking", never the tool.
-  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe("Searching sources");
+  expect(document.querySelector(".ui-thinking-label-active")?.textContent).toBe(
+    "Searching sources",
+  );
   expect(within(trace).queryByText("Thinking")).toBeNull();
   // The window auto-opens while inference runs — no click needed.
-  expect(within(trace).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(within(trace).getByText("I should search current sources.")).toBeInTheDocument();
+  expect(
+    within(trace).getByRole("button", { name: /hide activity/i }),
+  ).toBeInTheDocument();
+  expect(
+    within(trace).getByText("I should search current sources."),
+  ).toBeInTheDocument();
   expect(within(trace).getByText("Agentgateway kgateway")).toBeInTheDocument();
   expect(within(trace).getByText("Running")).toBeInTheDocument();
   // While the turn is still active, the timeline is not yet capped with a "Done" node.
@@ -2432,7 +3212,9 @@ test("shows active activity trace with reasoning and tool activity before assist
 });
 
 test("shows no activity panel and clears the dots when the stream fails", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2447,24 +3229,40 @@ test("shows no activity panel and clears the dots when the stream fails", async 
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   // Bare start: dots only, no activity panel.
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).not.toBeNull());
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).toBeNull();
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).not.toBeNull(),
+  );
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).toBeNull();
 
-  streamController.current?.enqueue(new TextEncoder().encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: error\ndata: {"error":"llm is not configured"}\n\n',
+    ),
+  );
   streamController.current?.close();
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).not.toBeInTheDocument();
   // The dots clear on failure.
-  await waitFor(() => expect(document.querySelector(".ui-working-dots")).toBeNull());
+  await waitFor(() =>
+    expect(document.querySelector(".ui-working-dots")).toBeNull(),
+  );
 });
 
 test("keeps the transcript pinned while an assistant response streams at the bottom", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2479,11 +3277,15 @@ test("keeps the transcript pinned while an assistant response streams at the bot
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   await screen.findByText("Hi");
-  const transcript = screen.getByRole("region", { name: /conversation transcript/i });
+  const transcript = screen.getByRole("region", {
+    name: /conversation transcript/i,
+  });
   let scrollHeight = 1000;
   let scrollTop = 900;
   Object.defineProperties(transcript, {
@@ -2501,23 +3303,38 @@ test("keeps the transcript pinned while an assistant response streams at the bot
     },
   });
 
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Hel"}\n\n',
+    ),
+  );
   await screen.findByText("Hel");
   await waitFor(() => expect(scrollTop).toBe(1000));
 
   scrollHeight = 1200;
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"lo"}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"lo"}\n\n',
+    ),
+  );
   await screen.findByText("Hello");
   await waitFor(() => expect(scrollTop).toBe(1200));
 });
 
 test("shows a bottom jump control when the transcript is scrolled above the latest message", async () => {
-  vi.stubGlobal("fetch", chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]));
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [
+      { id: "m1", role: "assistant", content: "Earlier answer" },
+    ]),
+  );
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const transcript = await screen.findByRole("region", { name: /conversation transcript/i });
+  const transcript = await screen.findByRole("region", {
+    name: /conversation transcript/i,
+  });
   let scrollTop = 100;
   Object.defineProperties(transcript, {
     clientHeight: { configurable: true, value: 300 },
@@ -2533,11 +3350,17 @@ test("shows a bottom jump control when the transcript is scrolled above the late
 
   fireEvent.scroll(transcript);
 
-  const jumpButton = await screen.findByRole("button", { name: /jump to latest message/i });
+  const jumpButton = await screen.findByRole("button", {
+    name: /jump to latest message/i,
+  });
   fireEvent.click(jumpButton);
 
   expect(scrollTop).toBe(900);
-  await waitFor(() => expect(screen.queryByRole("button", { name: /jump to latest message/i })).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: /jump to latest message/i }),
+    ).not.toBeInTheDocument(),
+  );
 });
 
 test("scrolls to the latest message when sending from above the bottom", async () => {
@@ -2552,12 +3375,19 @@ test("scrolls to the latest message when sending from above the bottom", async (
       controller.close();
     },
   });
-  vi.stubGlobal("fetch", chatThreadFetch(stream, [{ id: "m1", role: "assistant", content: "Earlier answer" }]));
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(stream, [
+      { id: "m1", role: "assistant", content: "Earlier answer" },
+    ]),
+  );
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const transcript = await screen.findByRole("region", { name: /conversation transcript/i });
+  const transcript = await screen.findByRole("region", {
+    name: /conversation transcript/i,
+  });
   let scrollTop = 100;
   Object.defineProperties(transcript, {
     clientHeight: { configurable: true, value: 300 },
@@ -2572,7 +3402,9 @@ test("scrolls to the latest message when sending from above the bottom", async (
   });
   fireEvent.scroll(transcript);
 
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Continue" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Continue" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   await screen.findByText("Continue");
@@ -2581,7 +3413,12 @@ test("scrolls to the latest message when sending from above the bottom", async (
 });
 
 test("masks transcript content behind the overlaid composer dock", async () => {
-  vi.stubGlobal("fetch", chatThreadFetch(null, [{ id: "m1", role: "assistant", content: "Earlier answer" }]));
+  vi.stubGlobal(
+    "fetch",
+    chatThreadFetch(null, [
+      { id: "m1", role: "assistant", content: "Earlier answer" },
+    ]),
+  );
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
@@ -2599,16 +3436,32 @@ function mcpStreamFetch(streamBody: string) {
   });
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/me")
+      return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json({ items: [
-        { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
-      ], nextCursor: null });
+      return Response.json({
+        items: [
+          {
+            id: "t1",
+            title: "Existing chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+        ],
+        nextCursor: null,
+      });
     }
     if (url === "/api/threads/t1") {
       return Response.json({
-        thread: { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+        thread: {
+          id: "t1",
+          title: "Existing chat",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        },
         messages: [],
       });
     }
@@ -2637,16 +3490,32 @@ function chatThreadFetch(
 ) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/me")
+      return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json({ items: [
-        { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
-      ], nextCursor: null });
+      return Response.json({
+        items: [
+          {
+            id: "t1",
+            title: "Existing chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+        ],
+        nextCursor: null,
+      });
     }
     if (url === "/api/threads/t1") {
       return Response.json({
-        thread: { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+        thread: {
+          id: "t1",
+          title: "Existing chat",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        },
         messages: messages.map((message, index) => ({
           ...message,
           threadId: "t1",
@@ -2654,7 +3523,11 @@ function chatThreadFetch(
         })),
       });
     }
-    if (url === "/api/threads/t1/messages:stream" && init?.method === "POST" && stream !== null) {
+    if (
+      url === "/api/threads/t1/messages:stream" &&
+      init?.method === "POST" &&
+      stream !== null
+    ) {
       return new Response(stream, { status: 200 });
     }
     throw new Error(`unexpected fetch ${url}`);
@@ -2664,10 +3537,13 @@ function chatThreadFetch(
 function stoppingChatFetch() {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/me")
+      return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [threadFixture()], nextCursor: null });
-    if (url === "/api/threads/t1") return Response.json({ thread: threadFixture(), messages: [] });
+    if (url === "/api/threads?limit=30")
+      return Response.json({ items: [threadFixture()], nextCursor: null });
+    if (url === "/api/threads/t1")
+      return Response.json({ thread: threadFixture(), messages: [] });
     if (url === "/api/threads/t1/messages:stop" && init?.method === "POST") {
       return new Response("", { status: 204 });
     }
@@ -2696,16 +3572,32 @@ function persistedMarkdownChatFetch() {
     "event: done\ndata: {}\n\n";
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/me")
+      return Response.json({ id: "u1", username: "jan", role: "user" });
     if (url === "/api/projects") return Response.json([]);
     if (url === "/api/threads?limit=30") {
-      return Response.json({ items: [
-        { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
-      ], nextCursor: null });
+      return Response.json({
+        items: [
+          {
+            id: "t1",
+            title: "Existing chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+        ],
+        nextCursor: null,
+      });
     }
     if (url === "/api/threads/t1") {
       return Response.json({
-        thread: { id: "t1", title: "Existing chat", starred: false, createdAt: "2026-05-30T00:00:00Z", updatedAt: "2026-05-30T00:00:00Z" },
+        thread: {
+          id: "t1",
+          title: "Existing chat",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        },
         messages: [
           {
             id: "m1",
@@ -2752,12 +3644,15 @@ function assistantEventForContent(content: string) {
 async function sendMessageInExistingChat() {
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 }
 
 test("renders assistant markdown without rendering raw HTML", async () => {
-  const content = "# Overview\\n\\nA **classic** film.\\n\\n- AI\\n- Control\\n\\n<div>raw html</div>";
+  const content =
+    "# Overview\\n\\nA **classic** film.\\n\\n- AI\\n- Control\\n\\n<div>raw html</div>";
   const event =
     `event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"${content}","createdAt":"2026-05-30T00:00:01Z"}\n\n` +
     "event: done\ndata: {}\n\n";
@@ -2765,13 +3660,19 @@ test("renders assistant markdown without rendering raw HTML", async () => {
 
   await sendMessageInExistingChat();
 
-  expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Overview" }),
+  ).toBeInTheDocument();
   expect(screen.getByText("classic").tagName).toBe("STRONG");
   expect(screen.getByRole("list")).toBeInTheDocument();
   expect(screen.getByText(/<div>raw html<\/div>/)).toBeInTheDocument();
   expect(document.querySelector(".ui-markdown div")).toBeNull();
-  expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Download response" })).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Copy response" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Download response" }),
+  ).not.toBeInTheDocument();
 });
 
 test("shows copy and retry actions for saved markdown assistant responses", async () => {
@@ -2781,10 +3682,18 @@ test("shows copy and retry actions for saved markdown assistant responses", asyn
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Copy response" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Retry response" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Download response" })).not.toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Overview" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Copy response" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Retry response" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Download response" }),
+  ).not.toBeInTheDocument();
 });
 
 test("aligns chat messages and composer to the same readable rail", async () => {
@@ -2793,7 +3702,9 @@ test("aligns chat messages and composer to the same readable rail", async () => 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
 
-  const transcript = await screen.findByRole("region", { name: "Conversation transcript" });
+  const transcript = await screen.findByRole("region", {
+    name: "Conversation transcript",
+  });
   const composerDock = screen.getByLabelText("Message composer dock");
 
   expect(transcript.querySelector(".ui-thread-rail")).toBeInTheDocument();
@@ -2832,10 +3743,14 @@ test("retrying a markdown assistant response loads the previous user message int
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Retry response" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Retry response" }),
+  );
 
   // Retry now populates the composer for manual editing instead of re-sending.
-  const composer = (await screen.findByPlaceholderText("Write a message...")) as HTMLTextAreaElement;
+  const composer = (await screen.findByPlaceholderText(
+    "Write a message...",
+  )) as HTMLTextAreaElement;
   expect(composer.value).toBe("Make a short report");
   expect(fetchMock).not.toHaveBeenCalledWith(
     "/api/threads/t1/messages:stream",
@@ -2856,7 +3771,9 @@ test("user message actions copy and retry the selected prompt", async () => {
 
   expect(writeText).toHaveBeenCalledWith("Make a short report");
   // Retry loads the prompt into the composer rather than re-sending it.
-  const composer = (await screen.findByPlaceholderText("Write a message...")) as HTMLTextAreaElement;
+  const composer = (await screen.findByPlaceholderText(
+    "Write a message...",
+  )) as HTMLTextAreaElement;
   expect(composer.value).toBe("Make a short report");
   expect(fetchMock).not.toHaveBeenCalledWith(
     "/api/threads/t1/messages:stream",
@@ -2866,7 +3783,12 @@ test("user message actions copy and retry the selected prompt", async () => {
 
 test("renders raw file-like assistant output inline", async () => {
   const content = "<!doctype html>\n<html><body><h1>Report</h1></body></html>";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
@@ -2880,12 +3802,19 @@ test("renders raw file-like assistant output inline", async () => {
   ).toBeInTheDocument();
   expect(screen.getByText(/<html><body><h1>Report/)).toBeInTheDocument();
   expect(screen.queryByText("HTML response")).not.toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Report" }),
+  ).not.toBeInTheDocument();
 });
 
 test("renders raw generated data output inline", async () => {
   const content = "name,score\nAda,42\nGrace,37";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
@@ -2895,21 +3824,34 @@ test("renders raw generated data output inline", async () => {
 });
 
 test("shows fenced file-like assistant output as a dedicated download response", async () => {
-  const content = "```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  const content =
+    "```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("HTML response")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Download HTML response" }),
+  ).toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Report" }),
+  ).not.toBeInTheDocument();
 });
 
 test("does not render partial streamed HTML artifact content inline", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const encoder = new TextEncoder();
-  const content = "```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
+  const content =
+    "```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -2918,7 +3860,11 @@ test("does not render partial streamed HTML artifact content inline", async () =
           'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
         ),
       );
-      controller.enqueue(encoder.encode('event: assistant_delta\ndata: {"content":"```html\\n<!doctype html>\\n<html>"}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_delta\ndata: {"content":"```html\\n<!doctype html>\\n<html>"}\n\n',
+        ),
+      );
     },
   });
   vi.stubGlobal("fetch", chatThreadFetch(stream));
@@ -2926,7 +3872,9 @@ test("does not render partial streamed HTML artifact content inline", async () =
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("HTML response")).toBeInTheDocument();
-  expect(screen.getByText(/Receiving file\.\.\. \d+\.\d KB received/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Receiving file\.\.\. \d+\.\d KB received/),
+  ).toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
 
   streamController.current?.enqueue(
@@ -2940,16 +3888,22 @@ test("does not render partial streamed HTML artifact content inline", async () =
       })}\n\n`,
     ),
   );
-  streamController.current?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+  streamController.current?.enqueue(
+    encoder.encode("event: done\ndata: {}\n\n"),
+  );
   streamController.current?.close();
 
-  expect(await screen.findByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "Download HTML response" }),
+  ).toBeInTheDocument();
   expect(screen.queryByText(/Receiving file/)).not.toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
 });
 
 test("shows received KB while a fenced HTML artifact is streaming", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const encoder = new TextEncoder();
   const htmlChunk = "<!doctype html>\n" + "a".repeat(1536);
   const stream = new ReadableStream<Uint8Array>({
@@ -2961,7 +3915,9 @@ test("shows received KB while a fenced HTML artifact is streaming", async () => 
         ),
       );
       controller.enqueue(
-        encoder.encode(`event: assistant_delta\ndata: ${JSON.stringify({ content: `\`\`\`html\n${htmlChunk}` })}\n\n`),
+        encoder.encode(
+          `event: assistant_delta\ndata: ${JSON.stringify({ content: `\`\`\`html\n${htmlChunk}` })}\n\n`,
+        ),
       );
     },
   });
@@ -2970,13 +3926,17 @@ test("shows received KB while a fenced HTML artifact is streaming", async () => 
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("HTML response")).toBeInTheDocument();
-  expect(screen.getByText("Receiving file... 1.5 KB received")).toBeInTheDocument();
+  expect(
+    screen.getByText("Receiving file... 1.5 KB received"),
+  ).toBeInTheDocument();
 
   streamController.current?.close();
 });
 
 test("shows received KB while a fenced PDF artifact is streaming", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const encoder = new TextEncoder();
   const pdfChunk = "%PDF-1.7\n" + "a".repeat(1536);
   const content = `\`\`\`pdf\n${pdfChunk}\n\`\`\``;
@@ -2989,7 +3949,9 @@ test("shows received KB while a fenced PDF artifact is streaming", async () => {
         ),
       );
       controller.enqueue(
-        encoder.encode(`event: assistant_delta\ndata: ${JSON.stringify({ content: `\`\`\`pdf\n${pdfChunk}` })}\n\n`),
+        encoder.encode(
+          `event: assistant_delta\ndata: ${JSON.stringify({ content: `\`\`\`pdf\n${pdfChunk}` })}\n\n`,
+        ),
       );
     },
   });
@@ -2998,7 +3960,9 @@ test("shows received KB while a fenced PDF artifact is streaming", async () => {
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("PDF response")).toBeInTheDocument();
-  expect(screen.getByText("Receiving file... 1.5 KB received")).toBeInTheDocument();
+  expect(
+    screen.getByText("Receiving file... 1.5 KB received"),
+  ).toBeInTheDocument();
   expect(screen.queryByText(/%PDF-1\.7/)).not.toBeInTheDocument();
 
   streamController.current?.enqueue(
@@ -3012,30 +3976,50 @@ test("shows received KB while a fenced PDF artifact is streaming", async () => {
       })}\n\n`,
     ),
   );
-  streamController.current?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+  streamController.current?.enqueue(
+    encoder.encode("event: done\ndata: {}\n\n"),
+  );
   streamController.current?.close();
 
-  expect(await screen.findByRole("button", { name: "Download PDF response" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "Download PDF response" }),
+  ).toBeInTheDocument();
   expect(screen.queryByText(/Receiving file/)).not.toBeInTheDocument();
   expect(screen.queryByText(/%PDF-1\.7/)).not.toBeInTheDocument();
 });
 
 test("shows a fenced HTML artifact as a download while keeping the surrounding prose", async () => {
-  const content = "Here is the HTML:\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  const content =
+    "Here is the HTML:\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```";
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("HTML response")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Download HTML response" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Download HTML response" }),
+  ).toBeInTheDocument();
   expect(screen.getByText(/Here is the HTML/i)).toBeInTheDocument();
   expect(screen.queryByText(/doctype html/i)).not.toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "Report" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Report" }),
+  ).not.toBeInTheDocument();
 });
 
 test("keeps prose before and after a fenced artifact around the download card", async () => {
-  const content = "Intro line.\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```\n\nClosing remark.";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  const content =
+    "Intro line.\n\n```html\n<!doctype html>\n<html><body><h1>Report</h1></body></html>\n```\n\nClosing remark.";
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
@@ -3046,19 +4030,32 @@ test("keeps prose before and after a fenced artifact around the download card", 
 });
 
 test("renders inline triple backticks without treating them as a download fence", async () => {
-  const content = "Keep this inline: ```html\n<strong>not an artifact</strong>\n```";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  const content =
+    "Keep this inline: ```html\n<strong>not an artifact</strong>\n```";
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
   expect(await screen.findByText(/Keep this inline/)).toBeInTheDocument();
   expect(screen.queryByText("HTML response")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Download HTML response" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Download HTML response" }),
+  ).not.toBeInTheDocument();
 });
 
 test("renders small fenced YAML inline instead of as a download", async () => {
   const content = "```yaml\nname: lume\nmode: local\n```";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
@@ -3071,7 +4068,9 @@ test("renders small fenced YAML inline instead of as a download", async () => {
     ),
   ).toBeInTheDocument();
   expect(screen.queryByText("YAML response")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Download YAML response" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Download YAML response" }),
+  ).not.toBeInTheDocument();
 });
 
 test("downloads fenced generated data without markdown fences", async () => {
@@ -3084,13 +4083,22 @@ test("downloads fenced generated data without markdown fences", async () => {
   const revokeObjectURL = vi.fn();
   vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
   // CSV renders inline below 16 KB, so use a payload above the threshold to exercise download.
-  const rows = Array.from({ length: 4000 }, (_, index) => `Ada,${index}`).join("\n");
+  const rows = Array.from({ length: 4000 }, (_, index) => `Ada,${index}`).join(
+    "\n",
+  );
   const body = `name,score\n${rows}`;
   const content = "```csv\n" + body + "\n```";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
-  fireEvent.click(await screen.findByRole("button", { name: "Download CSV response" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Download CSV response" }),
+  );
 
   expect(createObjectURL).toHaveBeenCalledTimes(1);
   expect(revokeObjectURL).toHaveBeenCalledWith(objectURL);
@@ -3102,7 +4110,12 @@ test("downloads fenced generated data without markdown fences", async () => {
 
 test("renders invalid streaming data URLs inline until they can be decoded", async () => {
   const content = "data:text/html;base64,%%%";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
@@ -3113,17 +4126,26 @@ test("renders invalid streaming data URLs inline until they can be decoded", asy
 test("shows generated office artifacts as a dedicated download response", async () => {
   const content =
     "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,UEsDBAo=";
-  vi.stubGlobal("fetch", mcpStreamFetch(assistantEventForContent(content) + "event: done\ndata: {}\n\n"));
+  vi.stubGlobal(
+    "fetch",
+    mcpStreamFetch(
+      assistantEventForContent(content) + "event: done\ndata: {}\n\n",
+    ),
+  );
 
   await sendMessageInExistingChat();
 
   expect(await screen.findByText("XLSX response")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Download XLSX response" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Download XLSX response" }),
+  ).toBeInTheDocument();
   expect(screen.queryByText(/openxmlformats/)).not.toBeInTheDocument();
 });
 
 test("ignores stream events after switching threads", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
@@ -3133,25 +4155,29 @@ test("ignores stream events after switching threads", async () => {
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json({ items: [
-          {
-            id: "t1",
-            title: "First chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-          {
-            id: "t2",
-            title: "Second chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ], nextCursor: null });
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "First chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+            {
+              id: "t2",
+              title: "Second chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
@@ -3177,7 +4203,10 @@ test("ignores stream events after switching threads", async () => {
           messages: [],
         });
       }
-      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
         return new Response(stream, { status: 200 });
       }
       throw new Error(`unexpected fetch ${url}`);
@@ -3186,7 +4215,9 @@ test("ignores stream events after switching threads", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
   fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
   const encoder = new TextEncoder();
@@ -3197,12 +4228,16 @@ test("ignores stream events after switching threads", async () => {
   );
   streamController.current?.close();
 
-  expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Second chat" }),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Wrong thread answer")).not.toBeInTheDocument();
 });
 
 test("keeps a running thread stream alive while browsing another chat", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   let streamSignalAborted = false;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -3213,25 +4248,29 @@ test("keeps a running thread stream alive while browsing another chat", async ()
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json({ items: [
-          {
-            id: "t1",
-            title: "First chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-          {
-            id: "t2",
-            title: "Second chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ], nextCursor: null });
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "First chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+            {
+              id: "t2",
+              title: "Second chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
@@ -3257,7 +4296,10 @@ test("keeps a running thread stream alive while browsing another chat", async ()
           messages: [],
         });
       }
-      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
         init.signal?.addEventListener("abort", () => {
           streamSignalAborted = true;
         });
@@ -3269,26 +4311,38 @@ test("keeps a running thread stream alive while browsing another chat", async ()
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
   await screen.findByRole("button", { name: "Stop response" });
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Already started"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Already started"}\n\n',
+    ),
   );
   expect(await screen.findByText("Already started")).toBeInTheDocument();
 
   fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
 
-  expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Second chat" }),
+  ).toBeInTheDocument();
   expect(streamSignalAborted).toBe(false);
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_delta\ndata: {"content":" while away"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":" while away"}\n\n',
+    ),
   );
-  expect(screen.queryByText("Already started while away")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Already started while away"),
+  ).not.toBeInTheDocument();
 
   fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_delta\ndata: {"content":" and back"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":" and back"}\n\n',
+    ),
   );
 
   // Streaming-Text wird beim Rendern in Segment-<span>s aufgeteilt (Fade-in),
@@ -3312,25 +4366,29 @@ test("blocks starting a second chat stream while another thread is running", asy
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json({ items: [
-          {
-            id: "t1",
-            title: "First chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-          {
-            id: "t2",
-            title: "Second chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ], nextCursor: null });
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "First chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+            {
+              id: "t2",
+              title: "Second chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
@@ -3356,10 +4414,16 @@ test("blocks starting a second chat stream while another thread is running", asy
           messages: [],
         });
       }
-      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
         return new Response(stream, { status: 200 });
       }
-      if (url === "/api/threads/t2/messages:stream" && init?.method === "POST") {
+      if (
+        url === "/api/threads/t2/messages:stream" &&
+        init?.method === "POST"
+      ) {
         secondStreamRequests += 1;
         return new Response("", { status: 500 });
       }
@@ -3369,12 +4433,16 @@ test("blocks starting a second chat stream while another thread is running", asy
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
   await screen.findByRole("button", { name: "Stop response" });
 
   fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Second" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Second" },
+  });
 
   expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
@@ -3389,25 +4457,29 @@ test("does not stop a background stream with Escape while another chat is open",
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/me") return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30") {
-        return Response.json({ items: [
-          {
-            id: "t1",
-            title: "First chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-          {
-            id: "t2",
-            title: "Second chat",
-            starred: false,
-            createdAt: "2026-05-30T00:00:00Z",
-            updatedAt: "2026-05-30T00:00:00Z",
-          },
-        ], nextCursor: null });
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "First chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+            {
+              id: "t2",
+              title: "Second chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
       }
       if (url === "/api/threads/t1") {
         return Response.json({
@@ -3433,7 +4505,10 @@ test("does not stop a background stream with Escape while another chat is open",
           messages: [],
         });
       }
-      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
         return new Response(stream, { status: 200 });
       }
       if (url === "/api/threads/t1/messages:stop" && init?.method === "POST") {
@@ -3446,12 +4521,16 @@ test("does not stop a background stream with Escape while another chat is open",
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
   await screen.findByRole("button", { name: "Stop response" });
 
   fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
-  expect(await screen.findByRole("heading", { name: "Second chat" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Second chat" }),
+  ).toBeInTheDocument();
   fireEvent.keyDown(window, { key: "Escape" });
 
   expect(stopRequests).toBe(0);
@@ -3461,9 +4540,21 @@ test("surfaces the server error and keeps failed activity trace visible", async 
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway\\"}"}\n\n'));
-      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"tool failed: timeout"}\n\n'));
-      controller.enqueue(encoder.encode('event: error\ndata: {"error":"llm is not configured"}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway\\"}"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"tool failed: timeout"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: error\ndata: {"error":"llm is not configured"}\n\n',
+        ),
+      );
       controller.close();
     },
   });
@@ -3471,7 +4562,9 @@ test("surfaces the server error and keeps failed activity trace visible", async 
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("llm is not configured")).toBeInTheDocument();
@@ -3486,8 +4579,14 @@ test("surfaces the server error and keeps failed activity trace visible", async 
   if (traceToggle.getAttribute("aria-expanded") === "false") {
     fireEvent.click(traceToggle);
   }
-  expect(within(trace as HTMLElement).getByRole("button", { name: /hide activity/i })).toBeInTheDocument();
-  expect(within(trace as HTMLElement).getByText("Agentgateway")).toBeInTheDocument();
+  expect(
+    within(trace as HTMLElement).getByRole("button", {
+      name: /hide activity/i,
+    }),
+  ).toBeInTheDocument();
+  expect(
+    within(trace as HTMLElement).getByText("Agentgateway"),
+  ).toBeInTheDocument();
   expect(within(trace as HTMLElement).getByText("Failed")).toBeInTheDocument();
 });
 
@@ -3495,8 +4594,16 @@ test("renders unknown tool calls with safe fallback details", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"custom__lookup","arguments":"not-json"}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_call\ndata: {"id":"call_1","name":"custom__lookup","arguments":"not-json"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
@@ -3505,7 +4612,9 @@ test("renders unknown tool calls with safe fallback details", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("Done.")).toBeInTheDocument();
@@ -3518,17 +4627,35 @@ test("renders unknown tool calls with safe fallback details", async () => {
   expect(await screen.findByText("custom lookup")).toBeInTheDocument();
   // Both the tool status pill and the terminal timeline node read "Done".
   const doneNodes = screen.getAllByText("Done");
-  expect(doneNodes.some((node) => node.classList.contains("ui-activity-status-pill"))).toBe(true);
-  expect(doneNodes.some((node) => node.classList.contains("ui-activity-done-label"))).toBe(true);
+  expect(
+    doneNodes.some((node) =>
+      node.classList.contains("ui-activity-status-pill"),
+    ),
+  ).toBe(true);
+  expect(
+    doneNodes.some((node) => node.classList.contains("ui-activity-done-label")),
+  ).toBe(true);
 });
 
 test("renders fetch tool rows with a timeline favicon and a clickable URL", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"https://www.getmaxim.ai/bifrost/resources/governance\\"}"}\n\n'));
-      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"fetch__fetch","content":"Page content"}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"https://www.getmaxim.ai/bifrost/resources/governance\\"}"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_result\ndata: {"id":"call_1","name":"fetch__fetch","content":"Page content"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
@@ -3537,7 +4664,9 @@ test("renders fetch tool rows with a timeline favicon and a clickable URL", asyn
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("Done.")).toBeInTheDocument();
@@ -3546,12 +4675,20 @@ test("renders fetch tool rows with a timeline favicon and a clickable URL", asyn
   // The fetch timeline node uses the site's favicon instead of the old arrow glyph.
   expect(await screen.findByText("getmaxim.ai")).toBeInTheDocument();
   const favicon = document.querySelector(".ui-activity-fetch-icon-favicon");
-  expect(favicon).toHaveAttribute("src", "https://www.google.com/s2/favicons?domain=getmaxim.ai&sz=32");
+  expect(favicon).toHaveAttribute(
+    "src",
+    "https://www.google.com/s2/favicons?domain=getmaxim.ai&sz=32",
+  );
   expect(document.querySelector(".ui-activity-trace-icon-arrow")).toBeNull();
   expect(document.querySelector(".ui-activity-tool-favicon")).toBeNull();
   // The full URL is a link that opens in a new tab — no redundant result frame.
-  const link = screen.getByRole("link", { name: "https://www.getmaxim.ai/bifrost/resources/governance" });
-  expect(link).toHaveAttribute("href", "https://www.getmaxim.ai/bifrost/resources/governance");
+  const link = screen.getByRole("link", {
+    name: "https://www.getmaxim.ai/bifrost/resources/governance",
+  });
+  expect(link).toHaveAttribute(
+    "href",
+    "https://www.getmaxim.ai/bifrost/resources/governance",
+  );
   expect(link).toHaveAttribute("target", "_blank");
   expect(link).toHaveAttribute("rel", "noreferrer");
   expect(document.querySelector(".ui-activity-result-list")).toBeNull();
@@ -3561,9 +4698,21 @@ test("opens schemeless fetch tool URLs as remote links", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"www.getmaxim.ai/bifrost/resources/governance\\"}"}\n\n'));
-      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"fetch__fetch","content":"Page content"}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_call\ndata: {"id":"call_1","name":"fetch__fetch","arguments":"{\\"url\\":\\"www.getmaxim.ai/bifrost/resources/governance\\"}"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_result\ndata: {"id":"call_1","name":"fetch__fetch","content":"Page content"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Done.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
@@ -3572,14 +4721,21 @@ test("opens schemeless fetch tool URLs as remote links", async () => {
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   expect(await screen.findByText("Done.")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /show activity/i }));
 
-  const link = await screen.findByRole("link", { name: "www.getmaxim.ai/bifrost/resources/governance" });
-  expect(link).toHaveAttribute("href", "https://www.getmaxim.ai/bifrost/resources/governance");
+  const link = await screen.findByRole("link", {
+    name: "www.getmaxim.ai/bifrost/resources/governance",
+  });
+  expect(link).toHaveAttribute(
+    "href",
+    "https://www.getmaxim.ai/bifrost/resources/governance",
+  );
   expect(link).toHaveAttribute("target", "_blank");
   expect(link).toHaveAttribute("rel", "noreferrer");
 });
@@ -3588,9 +4744,21 @@ test("does not repeat the collapsed headline as the reasoning row title", async 
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"The user is asking about Einstein."}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Summarizing Einstein\'s life and contributions"}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Albert Einstein was a physicist.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_reasoning_delta\ndata: {"content":"The user is asking about Einstein."}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_reasoning_title\ndata: {"id":"reasoning-1","title":"Summarizing Einstein\'s life and contributions"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Albert Einstein was a physicist.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
@@ -3599,30 +4767,48 @@ test("does not repeat the collapsed headline as the reasoning row title", async 
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Tell me about einstein" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Tell me about einstein" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-  expect(await screen.findByText("Albert Einstein was a physicist.")).toBeInTheDocument();
+  expect(
+    await screen.findByText("Albert Einstein was a physicist."),
+  ).toBeInTheDocument();
   const toggle = screen.getByRole("button", { name: /show activity/i });
-  expect(toggle).toHaveTextContent("Summarizing Einstein's life and contributions");
+  expect(toggle).toHaveTextContent(
+    "Summarizing Einstein's life and contributions",
+  );
   fireEvent.click(toggle);
 
   // The headline appears once (the toggle); the reasoning row drops the duplicate.
-  expect(await screen.findByText("The user is asking about Einstein.")).toBeInTheDocument();
-  expect(screen.getAllByText("Summarizing Einstein's life and contributions")).toHaveLength(1);
+  expect(
+    await screen.findByText("The user is asking about Einstein."),
+  ).toBeInTheDocument();
+  expect(
+    screen.getAllByText("Summarizing Einstein's life and contributions"),
+  ).toHaveLength(1);
   // The reasoning row shows the clock timeline node; the turn ends with a Done node.
   expect(document.querySelector(".ui-activity-clock-icon")).not.toBeNull();
   expect(screen.getByText("Done")).toBeInTheDocument();
-  expect(document.querySelector(".ui-thinking-status-active, .ui-thinking-status-complete")).toBeNull();
+  expect(
+    document.querySelector(
+      ".ui-thinking-status-active, .ui-thinking-status-complete",
+    ),
+  ).toBeNull();
 });
 
 test("reveals the message action icons only after the answer settles", async () => {
-  const streamController: { current?: ReadableStreamDefaultController<Uint8Array> } = {};
+  const streamController: {
+    current?: ReadableStreamDefaultController<Uint8Array>;
+  } = {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       streamController.current = controller;
       controller.enqueue(
-        new TextEncoder().encode('event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n'),
+        new TextEncoder().encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
       );
     },
   });
@@ -3630,35 +4816,73 @@ test("reveals the message action icons only after the answer settles", async () 
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), { target: { value: "Hi" } });
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
   // While the answer streams, none of the action icons are rendered.
-  streamController.current?.enqueue(new TextEncoder().encode('event: assistant_delta\ndata: {"content":"Here is the answer."}\n\n'));
+  streamController.current?.enqueue(
+    new TextEncoder().encode(
+      'event: assistant_delta\ndata: {"content":"Here is the answer."}\n\n',
+    ),
+  );
   expect(await screen.findByText("Here is the answer.")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /read aloud/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /copy response/i })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /read aloud/i }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /copy response/i }),
+  ).not.toBeInTheDocument();
 
   // Once the message settles they appear together with the metrics footer.
   streamController.current?.enqueue(
-    new TextEncoder().encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Here is the answer.","createdAt":"2026-05-30T00:00:01Z"}\n\n'),
+    new TextEncoder().encode(
+      'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Here is the answer.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+    ),
   );
-  streamController.current?.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+  streamController.current?.enqueue(
+    new TextEncoder().encode("event: done\ndata: {}\n\n"),
+  );
   streamController.current?.close();
 
-  expect(await screen.findByRole("button", { name: /read aloud/i })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /copy response/i })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: /read aloud/i }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /copy response/i }),
+  ).toBeInTheDocument();
 });
 
 test("keeps just-completed activity trace collapsed before the assistant answer until opened", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Search for updates","createdAt":"2026-05-30T00:00:00Z"}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n'));
-      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n'));
-      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"{\\"results\\":[{\\"title\\":\\"Agentgateway\\",\\"url\\":\\"https://agentgateway.dev\\",\\"snippet\\":\\"**Next generation proxy**\\"},{\\"title\\":\\"# Our Story and Lumon Brand\\",\\"url\\":\\"lumon.com/story\\"},{\\"title\\":\\"Malformed source\\",\\"url\\":\\"not a url\\"}]}"}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"I found the update.","createdAt":"2026-05-30T00:00:01Z"}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Search for updates","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_reasoning_delta\ndata: {"content":"I should search current sources."}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{\\"query\\":\\"agentgateway kgateway\\"}"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"{\\"results\\":[{\\"title\\":\\"Agentgateway\\",\\"url\\":\\"https://agentgateway.dev\\",\\"snippet\\":\\"**Next generation proxy**\\"},{\\"title\\":\\"# Our Story and Lumon Brand\\",\\"url\\":\\"lumon.com/story\\"},{\\"title\\":\\"Malformed source\\",\\"url\\":\\"not a url\\"}]}"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"I found the update.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
@@ -3675,13 +4899,19 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   const answer = await screen.findByText("I found the update.");
   const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toHaveTextContent("Search current sources");
-  expect(screen.queryByRole("status", { name: /loom activity trace/i })).not.toBeInTheDocument();
-  expect(screen.queryByText("I should search current sources.")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("status", { name: /loom activity trace/i }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("I should search current sources."),
+  ).not.toBeInTheDocument();
   expect(screen.queryByText("Agentgateway kgateway")).not.toBeInTheDocument();
 
   fireEvent.click(toggle);
 
-  expect(await screen.findByText("I should search current sources.")).toBeInTheDocument();
+  expect(
+    await screen.findByText("I should search current sources."),
+  ).toBeInTheDocument();
   expect(screen.getByText("Agentgateway kgateway")).toBeInTheDocument();
   // Tools make this a real timeline: the turn is capped with the Done node glyph.
   expect(document.querySelector(".ui-activity-trace-icon-done")).not.toBeNull();
@@ -3691,9 +4921,15 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   expect(agentgatewayLink).toHaveAttribute("target", "_blank");
   expect(agentgatewayLink).toHaveAttribute("rel", "noreferrer");
   expect(screen.queryByText("Next generation proxy")).not.toBeInTheDocument();
-  expect(screen.queryByText("**Next generation proxy**")).not.toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /Our Story and Lumon Brand/ })).toHaveAttribute("href", "https://lumon.com/story");
-  expect(screen.queryByText("# Our Story and Lumon Brand")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("**Next generation proxy**"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: /Our Story and Lumon Brand/ }),
+  ).toHaveAttribute("href", "https://lumon.com/story");
+  expect(
+    screen.queryByText("# Our Story and Lumon Brand"),
+  ).not.toBeInTheDocument();
   expect(screen.getByText("Malformed source")).toBeInTheDocument();
   const resultList = document.querySelector(".ui-activity-result-list");
   const faviconImages = resultList?.querySelectorAll("img.ui-activity-favicon");
@@ -3706,7 +4942,9 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
     "src",
     "https://www.google.com/s2/favicons?domain=lumon.com&sz=32",
   );
-  expect(toggle.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(
+    toggle.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });
 
 function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {
@@ -3721,7 +4959,8 @@ function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {
       });
     }
     if (url === "/api/projects") return Response.json([]);
-    if (url === "/api/threads?limit=30") return Response.json({ items: [], nextCursor: null });
+    if (url === "/api/threads?limit=30")
+      return Response.json({ items: [], nextCursor: null });
     throw new Error(`unexpected fetch ${url}`);
   });
 }

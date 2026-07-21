@@ -17,7 +17,9 @@ const THIN_SPACE = " ";
 
 /** Group integer thousands with a narrow no-break space (e.g. 1234 -> "1 234"). */
 function groupThousands(value: number): string {
-  return Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, THIN_SPACE);
+  return Math.round(value)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, THIN_SPACE);
 }
 
 function hasPositiveValue(value: number | undefined): value is number {
@@ -49,11 +51,15 @@ function contextUsagePercent(contextTokens: number): string {
 }
 
 function cachedSuffix(message: Message): string {
-  return hasPositiveValue(message.cachedTokens) ? ` (${groupThousands(message.cachedTokens)}/c)` : "";
+  return hasPositiveValue(message.cachedTokens)
+    ? ` (${groupThousands(message.cachedTokens)}/c)`
+    : "";
 }
 
 function reasoningSuffix(message: Message): string {
-  return hasPositiveValue(message.reasoningTokens) ? ` (${groupThousands(message.reasoningTokens)}/r)` : "";
+  return hasPositiveValue(message.reasoningTokens)
+    ? ` (${groupThousands(message.reasoningTokens)}/r)`
+    : "";
 }
 
 /** Format a duration in milliseconds: ms / s / m s / h m s. */
@@ -77,8 +83,10 @@ export function formatDuration(ms: number): string {
 export function hasRenderableMetrics(message: Message): boolean {
   return Boolean(
     message.durationMs &&
-      message.durationMs > 0 &&
-      (hasPositiveValue(message.promptTokens) || hasPositiveValue(message.completionTokens) || hasPositiveValue(message.totalTokens)),
+    message.durationMs > 0 &&
+    (hasPositiveValue(message.promptTokens) ||
+      hasPositiveValue(message.completionTokens) ||
+      hasPositiveValue(message.totalTokens)),
   );
 }
 
@@ -96,14 +104,21 @@ export function buildMetricsString(message: Message): string | null {
     segments.push(message.reasoningEffort);
   }
   segments.push(formatDuration(durationMs));
-  if (hasPositiveValue(message.promptTokens) && hasPositiveValue(message.completionTokens)) {
+  if (
+    hasPositiveValue(message.promptTokens) &&
+    hasPositiveValue(message.completionTokens)
+  ) {
     const up = `↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cachedSuffix(message)}`;
     const down = `↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`;
     segments.push(`${up}${DOT_SEPARATOR}${down}`);
   } else if (hasPositiveValue(message.promptTokens)) {
-    segments.push(`↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cachedSuffix(message)}`);
+    segments.push(
+      `↑${THIN_SPACE}${groupThousands(message.promptTokens)}${cachedSuffix(message)}`,
+    );
   } else if (hasPositiveValue(message.completionTokens)) {
-    segments.push(`↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`);
+    segments.push(
+      `↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`,
+    );
   }
   if (hasPositiveValue(message.contextTokens)) {
     segments.push(contextUsagePercent(message.contextTokens));
@@ -118,5 +133,9 @@ export function buildMetricsString(message: Message): string | null {
 export function formatMessageTime(createdAt: string): string {
   const d = new Date(createdAt);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }

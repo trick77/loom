@@ -31,7 +31,9 @@ test("shows the empty state when there is no memory yet", async () => {
   const heading = screen.getByRole("heading", { name: "Memories" });
   expect(heading).toBeInTheDocument();
   expect(heading).toHaveTextContent(ICONS.memory);
-  expect(await screen.findByText(/Memories will show here after a few threads/)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/Memories will show here after a few threads/),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Memory")).not.toBeInTheDocument();
 });
 
@@ -53,15 +55,20 @@ test("renders a flat bullet memory as a markdown list", async () => {
 
 test("renders the Work context and Top of mind sections as distinct headings", async () => {
   getUserMemoryMock.mockResolvedValue({
-    content: "## Work context\n- Lives in Zurich\n\n## Top of mind\n- Building Loom",
+    content:
+      "## Work context\n- Lives in Zurich\n\n## Top of mind\n- Building Loom",
     updatedAt: "2026-06-11T00:00:00Z",
   });
 
   render(<UserMemoryPanel />);
 
   // The structured markdown headings render as real headings, not literal "##".
-  expect(await screen.findByRole("heading", { name: "Work context" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Top of mind" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Work context" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "Top of mind" }),
+  ).toBeInTheDocument();
   expect(screen.getByText("Lives in Zurich")).toBeInTheDocument();
   expect(screen.getByText("Building Loom")).toBeInTheDocument();
   expect(screen.queryByText(/## Work context/)).not.toBeInTheDocument();
@@ -70,7 +77,12 @@ test("renders the Work context and Top of mind sections as distinct headings", a
 test("shows the user's standing instructions read-only, with no edit controls", async () => {
   getUserMemoryMock.mockResolvedValue({ content: "", updatedAt: null });
   getUserDirectivesMock.mockResolvedValue([
-    { id: "d1", content: "Always answer in metric units", createdAt: "", updatedAt: "" },
+    {
+      id: "d1",
+      content: "Always answer in metric units",
+      createdAt: "",
+      updatedAt: "",
+    },
     { id: "d2", content: "Call me Jan", createdAt: "", updatedAt: "" },
   ]);
 
@@ -82,7 +94,9 @@ test("shows the user's standing instructions read-only, with no edit controls", 
   expect(screen.getByText("Always answer in metric units")).toBeInTheDocument();
   expect(screen.getByText("Call me Jan")).toBeInTheDocument();
   // View-only: the directives are steered via chat, so no add/edit/delete buttons.
-  expect(screen.queryByRole("button", { name: /add|edit|remove|delete/i })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /add|edit|remove|delete/i }),
+  ).not.toBeInTheDocument();
 });
 
 test("shows the directives empty state when there are none", async () => {
@@ -91,7 +105,9 @@ test("shows the directives empty state when there are none", async () => {
 
   render(<UserMemoryPanel />);
 
-  expect(await screen.findByText(/No saved instructions yet/)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/No saved instructions yet/),
+  ).toBeInTheDocument();
 });
 
 test("does not show a manual refresh action", async () => {
@@ -100,7 +116,9 @@ test("does not show a manual refresh action", async () => {
   render(<UserMemoryPanel />);
 
   await screen.findByText(/Memories will show here/);
-  expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /refresh/i }),
+  ).not.toBeInTheDocument();
 });
 
 test("does not show a manual edit composer", async () => {
@@ -114,5 +132,7 @@ test("does not show a manual edit composer", async () => {
   await screen.findByText("Works at Acme");
   // User memories are read-only — the prompt/edit affordance lives on project
   // memories only.
-  expect(screen.queryByRole("button", { name: /edit memories/i })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /edit memories/i }),
+  ).not.toBeInTheDocument();
 });

@@ -26,7 +26,9 @@ test("uses sidebar text sizing regardless of render location", () => {
     />,
   );
 
-  expect(screen.getByRole("menu", { name: "Thread actions" })).toHaveClass("ui-sidebar-text");
+  expect(screen.getByRole("menu", { name: "Thread actions" })).toHaveClass(
+    "ui-sidebar-text",
+  );
 });
 
 test("adds a divider after select when select is available", () => {
@@ -42,9 +44,19 @@ test("adds a divider after select when select is available", () => {
   );
 
   const menu = screen.getByRole("menu", { name: "Thread actions" });
-  const itemRoles = Array.from(menu.children).map((child) => child.getAttribute("role") ?? child.tagName.toLowerCase());
+  const itemRoles = Array.from(menu.children).map(
+    (child) => child.getAttribute("role") ?? child.tagName.toLowerCase(),
+  );
 
-  expect(itemRoles).toEqual(["menuitem", "separator", "menuitem", "menuitem", "menuitem", "separator", "menuitem"]);
+  expect(itemRoles).toEqual([
+    "menuitem",
+    "separator",
+    "menuitem",
+    "menuitem",
+    "menuitem",
+    "separator",
+    "menuitem",
+  ]);
 });
 
 test("uses the brighter menu divider color for separators", () => {
@@ -76,8 +88,16 @@ test("uses sidebar icon sizing for menu icons", () => {
     />,
   );
 
-  for (const label of ["Select", "Star", "Rename", "Add to project", "Delete"]) {
-    const icon = screen.getByRole("menuitem", { name: label }).querySelector("[aria-hidden='true']");
+  for (const label of [
+    "Select",
+    "Star",
+    "Rename",
+    "Add to project",
+    "Delete",
+  ]) {
+    const icon = screen
+      .getByRole("menuitem", { name: label })
+      .querySelector("[aria-hidden='true']");
 
     expect(icon).toHaveClass("h-[21px]");
     expect(icon).toHaveClass("w-[21px]");
@@ -117,7 +137,9 @@ test("shows enabled add to project for project-less chats when handler is provid
     />,
   );
 
-  expect(screen.getByRole("menuitem", { name: "Add to project" })).toBeEnabled();
+  expect(
+    screen.getByRole("menuitem", { name: "Add to project" }),
+  ).toBeEnabled();
 });
 
 test("shows remove from project for project chats when handler is provided", () => {
@@ -132,8 +154,12 @@ test("shows remove from project for project chats when handler is provided", () 
     />,
   );
 
-  expect(screen.getByRole("menuitem", { name: "Remove from project" })).toBeEnabled();
-  expect(screen.queryByRole("menuitem", { name: "Add to project" })).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("menuitem", { name: "Remove from project" }),
+  ).toBeEnabled();
+  expect(
+    screen.queryByRole("menuitem", { name: "Add to project" }),
+  ).not.toBeInTheDocument();
 });
 
 test("no longer offers archiving for chats", () => {
@@ -149,5 +175,7 @@ test("no longer offers archiving for chats", () => {
     />,
   );
 
-  expect(screen.queryByRole("menuitem", { name: "Archive" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("menuitem", { name: "Archive" }),
+  ).not.toBeInTheDocument();
 });

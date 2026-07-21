@@ -4,15 +4,15 @@ import "testing"
 
 func TestAllowedFormat_acceptsCoreFormats(t *testing.T) {
 	cases := map[string]string{
-		"report.pdf":      "application/pdf",
-		"notes.MD":        "text/markdown; charset=utf-8",
-		"data.csv":        "text/csv; charset=utf-8",
-		"sheet.xlsx":      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		"deck.pptx":       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-		"letter.docx":     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		"page.html":       "text/html; charset=utf-8",
-		"config.json":     "application/json",
-		"readme.txt":      "text/plain; charset=utf-8",
+		"report.pdf":  "application/pdf",
+		"notes.MD":    "text/markdown; charset=utf-8",
+		"data.csv":    "text/csv; charset=utf-8",
+		"sheet.xlsx":  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"deck.pptx":   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"letter.docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"page.html":   "text/html; charset=utf-8",
+		"config.json": "application/json",
+		"readme.txt":  "text/plain; charset=utf-8",
 	}
 	for name, wantMIME := range cases {
 		mime, ok := AllowedFormat(name)

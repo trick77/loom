@@ -30,7 +30,10 @@ export function UserMenu({
 }) {
   const { t, i18n } = useTranslation();
   const [showLanguages, setShowLanguages] = useState(false);
-  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const [flyoutPos, setFlyoutPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const languageButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -56,7 +59,10 @@ export function UserMenu({
       // The account menu sits at the sidebar bottom, so clamp the flyout up when
       // it would run past the viewport bottom (row height ~34px per language).
       const estimatedHeight = SUPPORTED_LANGUAGES.length * 34 + 12;
-      const top = Math.max(8, Math.min(rect.top, window.innerHeight - estimatedHeight - 8));
+      const top = Math.max(
+        8,
+        Math.min(rect.top, window.innerHeight - estimatedHeight - 8),
+      );
       setFlyoutPos({ top, left });
     }
     setShowLanguages(true);
@@ -81,7 +87,10 @@ export function UserMenu({
     "ui-sidebar-text w-[240px] overflow-hidden rounded-[10px] border border-[#454540] bg-[#363632] py-1 shadow-[0_18px_32px_rgba(0,0,0,0.38)]";
 
   return (
-    <div aria-label={t("userMenu.label")} className={`absolute z-30 ${className}`}>
+    <div
+      aria-label={t("userMenu.label")}
+      className={`absolute z-30 ${className}`}
+    >
       <div className={panelClass} role="menu">
         <button
           className={`${menuItemClass} text-[#f3f0e8]`}
@@ -108,9 +117,16 @@ export function UserMenu({
         >
           <Icon name="globe" size="19px" className={menuIconClass} />
           {t("userMenu.language")}
-          <Icon name="chevronRight" size="16px" className="ml-auto text-[#8f8b82]" />
+          <Icon
+            name="chevronRight"
+            size="16px"
+            className="ml-auto text-[#8f8b82]"
+          />
         </button>
-        <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
+        <div
+          className="mx-[14px] my-[5px] h-px bg-[#4a4741]"
+          role="separator"
+        />
         <button
           className={`${menuItemClass} text-[#f3f0e8]`}
           role="menuitem"
@@ -144,9 +160,15 @@ export function UserMenu({
                 type="button"
                 onClick={() => chooseLanguage(language)}
               >
-                <span className="min-w-0 flex-1 truncate text-left">{languageLabel[language]}</span>
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {languageLabel[language]}
+                </span>
                 {active === language && (
-                  <Icon name="check" size="17px" className="ml-2 shrink-0 text-[#5599e7]" />
+                  <Icon
+                    name="check"
+                    size="17px"
+                    className="ml-2 shrink-0 text-[#5599e7]"
+                  />
                 )}
               </button>
             ))}
@@ -159,7 +181,12 @@ export function UserMenu({
 
 function LogoutMenuIcon() {
   return (
-    <svg className={menuIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
+    <svg
+      className={menuIconClass}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+    >
       <path
         d="M14 7V5.5C14 4.7 13.3 4 12.5 4H6C5.2 4 4.5 4.7 4.5 5.5v13c0 .8.7 1.5 1.5 1.5h6.5c.8 0 1.5-.7 1.5-1.5V17"
         stroke="currentColor"
@@ -167,7 +194,13 @@ function LogoutMenuIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path d="M10 12h10m0 0-3-3m3 3-3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M10 12h10m0 0-3-3m3 3-3 3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

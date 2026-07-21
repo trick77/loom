@@ -64,7 +64,10 @@ export function ThreadsPage({
 
   // Debounce the raw input into the term that actually hits the API.
   useEffect(() => {
-    const handle = window.setTimeout(() => setSearchTerm(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    const handle = window.setTimeout(
+      () => setSearchTerm(searchInput.trim()),
+      SEARCH_DEBOUNCE_MS,
+    );
     return () => window.clearTimeout(handle);
   }, [searchInput]);
 
@@ -72,7 +75,8 @@ export function ThreadsPage({
   // or an external mutation (star/rename/single-delete from a row menu) or a bulk
   // delete bumps a token; further pages append as the sentinel scrolls into view.
   const fetchPage = useCallback(
-    (cursor: string | null) => listThreads({ search: searchTerm, limit: PAGE_SIZE, cursor }),
+    (cursor: string | null) =>
+      listThreads({ search: searchTerm, limit: PAGE_SIZE, cursor }),
     [searchTerm],
   );
   const {
@@ -102,7 +106,9 @@ export function ThreadsPage({
   const listLoaded = showingSearch ? !search.titleLoading : loaded;
   // The set the bulk actions operate on: the merged search results while
   // searching (so content-only matches are included), else the paginated list.
-  const visibleThreads = showingSearch ? rows.map((row) => row.thread) : threads;
+  const visibleThreads = showingSearch
+    ? rows.map((row) => row.thread)
+    : threads;
 
   useEffect(() => {
     if (error instanceof AuthExpiredError) {
@@ -147,7 +153,8 @@ export function ThreadsPage({
   const toggleSelectAll = useCallback(() => {
     const applyToggle = (ids: string[]) =>
       setSelectedIds((current) => {
-        const allSelected = ids.length > 0 && ids.every((id) => current.has(id));
+        const allSelected =
+          ids.length > 0 && ids.every((id) => current.has(id));
         return allSelected ? new Set() : new Set(ids);
       });
     if (showingSearch) {
@@ -183,7 +190,9 @@ export function ThreadsPage({
       // reconcile with the server in case a best-effort delete left some
       // threads behind (partial failure).
       const removed = new Set(ids);
-      setThreads((current) => current.filter((thread) => !removed.has(thread.id)));
+      setThreads((current) =>
+        current.filter((thread) => !removed.has(thread.id)),
+      );
       setConfirmingDelete(false);
       exitSelectMode();
       setReloadToken((value) => value + 1);
@@ -206,21 +215,36 @@ export function ThreadsPage({
         <SidebarOpenButton variant="floating" onClick={onOpenSidebar} />
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">{t("chats.title")}</h1>
+            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">
+              {t("chats.title")}
+            </h1>
           </div>
           {selectMode ? (
             <div className="flex flex-wrap items-center gap-2.5">
-              <span className="ui-control-text text-[#9c9a92]">{t("chats.selectedCount", { count: selectedCount })}</span>
+              <span className="ui-control-text text-[#9c9a92]">
+                {t("chats.selectedCount", { count: selectedCount })}
+              </span>
               <PillButton variant="solid" onClick={toggleSelectAll}>
                 {t("chats.selectAll")}
               </PillButton>
               <PillButton
                 variant="muted"
                 enabled={hasSelection && projectsAvailable}
-                title={projectsAvailable ? undefined : t("chats.moveToProjectHint")}
+                title={
+                  projectsAvailable ? undefined : t("chats.moveToProjectHint")
+                }
                 onClick={() => {
-                  if (!hasSelection || !projectsAvailable || onMoveSelectedToProject === undefined) return;
-                  onMoveSelectedToProject(visibleThreads.filter((thread) => selectedIds.has(thread.id)));
+                  if (
+                    !hasSelection ||
+                    !projectsAvailable ||
+                    onMoveSelectedToProject === undefined
+                  )
+                    return;
+                  onMoveSelectedToProject(
+                    visibleThreads.filter((thread) =>
+                      selectedIds.has(thread.id),
+                    ),
+                  );
                 }}
               >
                 {t("chats.moveToProject")}
@@ -276,51 +300,61 @@ export function ThreadsPage({
         )}
 
         <ul className="mt-3">
-          {rows.length === 0 && loadError === "" ? (
-            listLoaded && (
-              <li className="py-10 text-center text-[#807d74]">
-                {searchTerm === "" ? t("chats.empty") : t("chats.noMatch")}
-              </li>
-            )
-          ) : (
-            rows.map(({ thread, snippet }, index) => {
-              const nextThread = rows[index + 1]?.thread;
-              const nextActive =
-                nextThread !== undefined &&
-                (hoveredID === nextThread.id || openMenuID === nextThread.id || selectedIds.has(nextThread.id));
-              return (
-                <ThreadRow
-                  key={thread.id}
-                  thread={thread}
-                  snippet={snippet}
-                  searchQuery={showingSearch ? searchTerm : undefined}
-                  selectMode={selectMode}
-                  selected={selectedIds.has(thread.id)}
-                  menuOpen={openMenuID === thread.id}
-                  hovered={hoveredID === thread.id}
-                  hideDivider={nextActive}
-                  onHoverChange={(hovered) => setHoveredID(hovered ? thread.id : null)}
-                  onOpen={() => onSelectThread(thread.id)}
-                  onToggleSelected={() => toggleSelected(thread.id)}
-                  onToggleMenu={() =>
-                    setOpenMenuID((current) => (current === thread.id ? null : thread.id))
-                  }
-                  onCloseMenu={() => setOpenMenuID(null)}
-                  onSelectFromMenu={() => startSelectModeWith(thread)}
-                  onRename={onRenameThread}
-                  onDelete={onDeleteThread}
-                  onAddToProject={projectsAvailable ? onAddThreadToProject : undefined}
-                  onStarChange={onStarThread}
-                />
-              );
-            })
-          )}
+          {rows.length === 0 && loadError === ""
+            ? listLoaded && (
+                <li className="py-10 text-center text-[#807d74]">
+                  {searchTerm === "" ? t("chats.empty") : t("chats.noMatch")}
+                </li>
+              )
+            : rows.map(({ thread, snippet }, index) => {
+                const nextThread = rows[index + 1]?.thread;
+                const nextActive =
+                  nextThread !== undefined &&
+                  (hoveredID === nextThread.id ||
+                    openMenuID === nextThread.id ||
+                    selectedIds.has(nextThread.id));
+                return (
+                  <ThreadRow
+                    key={thread.id}
+                    thread={thread}
+                    snippet={snippet}
+                    searchQuery={showingSearch ? searchTerm : undefined}
+                    selectMode={selectMode}
+                    selected={selectedIds.has(thread.id)}
+                    menuOpen={openMenuID === thread.id}
+                    hovered={hoveredID === thread.id}
+                    hideDivider={nextActive}
+                    onHoverChange={(hovered) =>
+                      setHoveredID(hovered ? thread.id : null)
+                    }
+                    onOpen={() => onSelectThread(thread.id)}
+                    onToggleSelected={() => toggleSelected(thread.id)}
+                    onToggleMenu={() =>
+                      setOpenMenuID((current) =>
+                        current === thread.id ? null : thread.id,
+                      )
+                    }
+                    onCloseMenu={() => setOpenMenuID(null)}
+                    onSelectFromMenu={() => startSelectModeWith(thread)}
+                    onRename={onRenameThread}
+                    onDelete={onDeleteThread}
+                    onAddToProject={
+                      projectsAvailable ? onAddThreadToProject : undefined
+                    }
+                    onStarChange={onStarThread}
+                  />
+                );
+              })}
         </ul>
         {/* Sentinel observed for infinite scroll; loads the next page when in view.
             Disabled during a search, which shows a capped, non-paginated list. */}
-        {!showingSearch && <div ref={sentinelRef} aria-hidden="true" className="h-px" />}
+        {!showingSearch && (
+          <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+        )}
         {!showingSearch && loadingMore && hasMore && (
-          <div className="ui-meta-text mt-3 px-1.5 text-[#8a887f]">{t("chats.loadingMore")}</div>
+          <div className="ui-meta-text mt-3 px-1.5 text-[#8a887f]">
+            {t("chats.loadingMore")}
+          </div>
         )}
       </div>
 

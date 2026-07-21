@@ -1,7 +1,10 @@
 import { type ReactNode, useEffect, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
-import { modalCancelButtonClass, modalDangerButtonClass } from "../ThreadActionsMenu";
+import {
+  modalCancelButtonClass,
+  modalDangerButtonClass,
+} from "../ThreadActionsMenu";
 import { ErrorText } from "./ErrorText";
 
 export function RenameThreadModal({
@@ -42,7 +45,11 @@ export function RenameThreadModal({
         />
         {error !== "" && <ErrorText>{error}</ErrorText>}
         <div className="mt-4 flex justify-end gap-2">
-          <button className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]" onClick={onCancel} type="button">
+          <button
+            className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]"
+            onClick={onCancel}
+            type="button"
+          >
             {t("common.cancel")}
           </button>
           <button
@@ -72,13 +79,25 @@ export function DeleteThreadModal({
   const { t } = useTranslation();
   return (
     <ModalShell title={t("thread.deleteTitle")} onCancel={onCancel}>
-      <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">{t("thread.deleteConfirm")}</div>
+      <div className="mt-3 text-sm leading-6 text-[#d8d4ca]">
+        {t("thread.deleteConfirm")}
+      </div>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
-        <button autoFocus className={modalCancelButtonClass} onClick={onCancel} type="button">
+        <button
+          autoFocus
+          className={modalCancelButtonClass}
+          onClick={onCancel}
+          type="button"
+        >
           {t("common.cancel")}
         </button>
-        <button className={modalDangerButtonClass} disabled={disabled} onClick={onDelete} type="button">
+        <button
+          className={modalDangerButtonClass}
+          disabled={disabled}
+          onClick={onDelete}
+          type="button"
+        >
           {t("common.delete")}
         </button>
       </div>
@@ -116,7 +135,10 @@ export function ModalShell({
         className="w-full max-w-[390px] rounded-xl border border-[#4b4a46] bg-[#2a2a28] p-[18px] shadow-[0_28px_70px_rgba(0,0,0,0.55)]"
         role="dialog"
       >
-        <h2 id={titleID} className="font-sans text-[22px] font-semibold leading-7 text-[#f3f0e8]">
+        <h2
+          id={titleID}
+          className="font-sans text-[22px] font-semibold leading-7 text-[#f3f0e8]"
+        >
           {title}
         </h2>
         {children}

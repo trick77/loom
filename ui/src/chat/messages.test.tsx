@@ -24,14 +24,18 @@ test("renders sent attachments above the user message text", () => {
     ],
   };
 
-  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
+  render(
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
+  );
 
   const attachment = screen.getByText("briefing.pdf");
   const text = screen.getByText("Summarize this document");
 
   expect(attachment).toBeInTheDocument();
   expect(text).toBeInTheDocument();
-  expect(attachment.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(
+    attachment.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });
 
 test("renders sent images as compact thumbnails without file text", () => {
@@ -61,16 +65,22 @@ test("renders sent images as compact thumbnails without file text", () => {
     ],
   };
 
-  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
+  render(
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
+  );
 
   const images = document.querySelectorAll('img[src^="blob:"]');
   const text = screen.getByText("Explain these images");
 
   expect(images).toHaveLength(2);
-  expect(images[0].closest("[data-testid='sent-image-attachment']")).toHaveClass("h-[76px]", "w-[76px]");
+  expect(
+    images[0].closest("[data-testid='sent-image-attachment']"),
+  ).toHaveClass("h-[76px]", "w-[76px]");
   expect(screen.queryByText("logo.png")).not.toBeInTheDocument();
   expect(screen.queryByText("badge.webp")).not.toBeInTheDocument();
-  expect(images[0].compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(
+    images[0].compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });
 
 afterEach(() => {
@@ -89,27 +99,38 @@ test("renders a fenced SVG response inline as a sandboxed image with download an
     id: "m1",
     threadId: "t1",
     role: "assistant",
-    content: '```svg\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>\n```',
+    content:
+      '```svg\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>\n```',
     createdAt: "2026-06-14T00:00:00Z",
   };
 
-  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
+  render(
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
+  );
 
   // The SVG renders via an <img> blob URL (secure-image mode) — not inline DOM —
   // and the blob is typed image/svg+xml so the browser will actually paint it.
   const preview = document.querySelector('img[src="blob:svg-preview"]');
   expect(preview).toBeInTheDocument();
   expect(svgBlob?.type).toBe("image/svg+xml");
-  expect(screen.getByRole("button", { name: "Download SVG response" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Download SVG response" }),
+  ).toBeInTheDocument();
 
   // Clicking the preview opens the shared lightbox.
   fireEvent.click(screen.getByRole("button", { name: "Preview SVG response" }));
-  expect(screen.getByRole("dialog", { name: "Preview SVG response" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("dialog", { name: "Preview SVG response" }),
+  ).toBeInTheDocument();
 });
 
 test("revokes the SVG preview object URL when the bubble unmounts", () => {
   const revokeObjectURL = vi.fn();
-  vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => "blob:svg-preview"), revokeObjectURL });
+  vi.stubGlobal("URL", {
+    ...URL,
+    createObjectURL: vi.fn(() => "blob:svg-preview"),
+    revokeObjectURL,
+  });
 
   const message: Message = {
     id: "m1",
@@ -119,7 +140,9 @@ test("revokes the SVG preview object URL when the bubble unmounts", () => {
     createdAt: "2026-06-14T00:00:00Z",
   };
 
-  const { unmount } = render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
+  const { unmount } = render(
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
+  );
   unmount();
 
   expect(revokeObjectURL).toHaveBeenCalledWith("blob:svg-preview");
@@ -145,7 +168,9 @@ test("revokes sent attachment preview URLs when they unmount", () => {
     ],
   };
 
-  const { unmount } = render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />);
+  const { unmount } = render(
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
+  );
   unmount();
 
   expect(revoke).toHaveBeenCalledWith("blob:image-preview");
@@ -161,7 +186,12 @@ test("renders the prompt-classifier category as a humanized pill on assistant me
   };
 
   render(
-    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="knowledge_discovery" />,
+    <MessageBubble
+      message={message}
+      retryMessage={null}
+      onRetry={vi.fn()}
+      category="knowledge_discovery"
+    />,
   );
 
   expect(screen.getByText("Knowledge Discovery")).toBeInTheDocument();
@@ -176,7 +206,14 @@ test("renders the url_lookup category with the URL acronym upper-cased", () => {
     createdAt: "2026-06-14T00:00:00Z",
   };
 
-  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="url_lookup" />);
+  render(
+    <MessageBubble
+      message={message}
+      retryMessage={null}
+      onRetry={vi.fn()}
+      category="url_lookup"
+    />,
+  );
 
   expect(screen.getByText("URL Lookup")).toBeInTheDocument();
 });
@@ -190,7 +227,14 @@ test("renders no category pill when the thread is unclassified", () => {
     createdAt: "2026-06-14T00:00:00Z",
   };
 
-  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="" />);
+  render(
+    <MessageBubble
+      message={message}
+      retryMessage={null}
+      onRetry={vi.fn()}
+      category=""
+    />,
+  );
 
   expect(screen.queryByText("Knowledge Discovery")).not.toBeInTheDocument();
 });
@@ -202,13 +246,31 @@ test("renders the sources row above the metrics/status footer", () => {
     role: "assistant",
     content: "Answer with a source.",
     createdAt: "2026-06-14T00:00:00Z",
-    citations: [{ documentId: "", filename: "example.com", snippet: "", score: 0, url: "https://example.com/x", index: 1 }],
+    citations: [
+      {
+        documentId: "",
+        filename: "example.com",
+        snippet: "",
+        score: 0,
+        url: "https://example.com/x",
+        index: 1,
+      },
+    ],
   };
 
-  render(<MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} category="knowledge_discovery" />);
+  render(
+    <MessageBubble
+      message={message}
+      retryMessage={null}
+      onRetry={vi.fn()}
+      category="knowledge_discovery"
+    />,
+  );
 
   const sources = screen.getByText("Sources");
   const status = screen.getByText("Knowledge Discovery");
   // The status line must follow the sources row in document order (Sources above).
-  expect(sources.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(
+    sources.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });

@@ -3,7 +3,11 @@ import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 
-import { markdownRemarkPlugins, normalizeMathDelimiters, rehypeKatexPlugin } from "./markdownConfig";
+import {
+  markdownRemarkPlugins,
+  normalizeMathDelimiters,
+  rehypeKatexPlugin,
+} from "./markdownConfig";
 
 import {
   externalHTTPURL,
@@ -38,7 +42,8 @@ export function ActivityTracePanel({
   onExpandedChange?(expanded: boolean): void;
 }) {
   const { t } = useTranslation();
-  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(initiallyExpanded);
+  const [uncontrolledExpanded, setUncontrolledExpanded] =
+    useState(initiallyExpanded);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
   const [bodyMounted, setBodyMounted] = useState(expanded);
   useEffect(() => {
@@ -77,7 +82,11 @@ export function ActivityTracePanel({
     >
       <button
         aria-expanded={expanded}
-        aria-label={expanded ? t("activityTrace.hideActivity") : t("activityTrace.showActivity")}
+        aria-label={
+          expanded
+            ? t("activityTrace.hideActivity")
+            : t("activityTrace.showActivity")
+        }
         className="ui-activity-trace-toggle"
         disabled={!hasBody}
         type="button"
@@ -96,7 +105,14 @@ export function ActivityTracePanel({
             <span>{label}</span>
           )}
           {hasBody && (
-            <span aria-hidden="true" className={expanded ? "ui-thinking-chevron-expanded" : "ui-thinking-chevron"} />
+            <span
+              aria-hidden="true"
+              className={
+                expanded
+                  ? "ui-thinking-chevron-expanded"
+                  : "ui-thinking-chevron"
+              }
+            />
           )}
         </span>
       </button>
@@ -112,7 +128,12 @@ export function ActivityTracePanel({
           <div className="ui-activity-trace-collapsible-inner">
             <div className="ui-activity-trace-body">
               {events.map((event) => (
-                <ActivityTraceRow key={event.id} event={event} headline={label} streaming={streaming} />
+                <ActivityTraceRow
+                  key={event.id}
+                  event={event}
+                  headline={label}
+                  streaming={streaming}
+                />
               ))}
               {complete && <ActivityTraceDoneRow />}
             </div>
@@ -128,7 +149,13 @@ export function ActivityTracePanel({
 // .ui-activity-reasoning-clamp (12rem @ 16px root).
 const REASONING_CAP_PX = 192;
 
-function ReasoningContent({ content, streaming = false }: { content: string; streaming?: boolean }) {
+function ReasoningContent({
+  content,
+  streaming = false,
+}: {
+  content: string;
+  streaming?: boolean;
+}) {
   const { t } = useTranslation();
   const [showFull, setShowFull] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
@@ -147,7 +174,14 @@ function ReasoningContent({ content, streaming = false }: { content: string; str
   const normalized = useMemo(() => normalizeMathDelimiters(content), [content]);
   return (
     <>
-      <div ref={ref} className={clamped ? "ui-activity-reasoning ui-activity-reasoning-clamp" : "ui-activity-reasoning"}>
+      <div
+        ref={ref}
+        className={
+          clamped
+            ? "ui-activity-reasoning ui-activity-reasoning-clamp"
+            : "ui-activity-reasoning"
+        }
+      >
         <Markdown
           remarkPlugins={markdownRemarkPlugins}
           rehypePlugins={
@@ -160,7 +194,11 @@ function ReasoningContent({ content, streaming = false }: { content: string; str
         </Markdown>
       </div>
       {overflowing && (
-        <button className="ui-activity-reasoning-more" type="button" onClick={() => setShowFull((value) => !value)}>
+        <button
+          className="ui-activity-reasoning-more"
+          type="button"
+          onClick={() => setShowFull((value) => !value)}
+        >
           {showFull ? t("activityTrace.showLess") : t("activityTrace.showMore")}
         </button>
       )}
@@ -185,23 +223,35 @@ function ActivityTraceRow({
     // Skip the per-round title when it just repeats the collapsed headline
     // above (the common single-round case) — otherwise it reads as a duplicate.
     const title = event.title?.trim();
-    const showTitle = title !== undefined && title !== "" && title !== headline.trim();
+    const showTitle =
+      title !== undefined && title !== "" && title !== headline.trim();
     return (
       <div className="ui-activity-trace-row ui-activity-trace-row-reasoning">
-        <span className="ui-activity-trace-icon ui-activity-trace-icon-clock" aria-hidden="true">
+        <span
+          className="ui-activity-trace-icon ui-activity-trace-icon-clock"
+          aria-hidden="true"
+        >
           <ClockTraceIcon />
         </span>
         <div className="min-w-0 flex-1">
-          {showTitle && <div className="ui-activity-reasoning-title">{event.title}</div>}
-          <ReasoningContent content={event.content.trim()} streaming={streaming} />
+          {showTitle && (
+            <div className="ui-activity-reasoning-title">{event.title}</div>
+          )}
+          <ReasoningContent
+            content={event.content.trim()}
+            streaming={streaming}
+          />
         </div>
       </div>
     );
   }
   const status = activityToolStatusMeta(event);
-  const fetchUrl = event.summary.kind === "fetch" ? event.summary.url : undefined;
-  const fetchFavicon = fetchUrl === undefined ? undefined : faviconURL(fetchUrl);
-  const fetchHref = fetchUrl === undefined ? undefined : externalHTTPURL(fetchUrl);
+  const fetchUrl =
+    event.summary.kind === "fetch" ? event.summary.url : undefined;
+  const fetchFavicon =
+    fetchUrl === undefined ? undefined : faviconURL(fetchUrl);
+  const fetchHref =
+    fetchUrl === undefined ? undefined : externalHTTPURL(fetchUrl);
   // Tool-call titles never sweep: the collapsed trace label above is always
   // sweeping while the turn is active (a running tool implies active), so a
   // second shimmer here would just be redundant.
@@ -215,7 +265,11 @@ function ActivityTraceRow({
     ) : event.summary.kind === "generated" ? (
       <GeneratedTraceIcon />
     ) : fetchFavicon !== undefined ? (
-      <img className="ui-activity-fetch-icon-favicon" src={fetchFavicon} alt="" />
+      <img
+        className="ui-activity-fetch-icon-favicon"
+        src={fetchFavicon}
+        alt=""
+      />
     ) : (
       <FetchTraceIcon />
     );
@@ -231,29 +285,48 @@ function ActivityTraceRow({
               {event.summary.title}
             </span>
           </span>
-          <span className={`ui-activity-status-pill shrink-0 ${status.className}`}>{status.label}</span>
+          <span
+            className={`ui-activity-status-pill shrink-0 ${status.className}`}
+          >
+            {status.label}
+          </span>
         </div>
         {fetchUrl !== undefined &&
           (fetchHref !== undefined ? (
-            <a className="ui-activity-tool-url" href={fetchHref} target="_blank" rel="noreferrer">
+            <a
+              className="ui-activity-tool-url"
+              href={fetchHref}
+              target="_blank"
+              rel="noreferrer"
+            >
               {fetchUrl}
-              <Icon name="externalLink" size="0.8em" className="ml-1 inline-block align-[-0.1em]" />
+              <Icon
+                name="externalLink"
+                size="0.8em"
+                className="ml-1 inline-block align-[-0.1em]"
+              />
             </a>
           ) : (
             <span className="ui-activity-tool-url">{fetchUrl}</span>
           ))}
-        {event.preview?.kind === "searchResults" && event.preview.results.length > 0 && (
-          <>
-            <div className="ui-activity-result-count">
-              {t("activityTrace.results", { count: event.preview.resultCount })}
-            </div>
-            <div className="ui-activity-result-list">
-              {event.preview.results.map((result, index) => (
-                <SearchResultRow key={`${result.url ?? result.title}-${index}`} result={result} />
-              ))}
-            </div>
-          </>
-        )}
+        {event.preview?.kind === "searchResults" &&
+          event.preview.results.length > 0 && (
+            <>
+              <div className="ui-activity-result-count">
+                {t("activityTrace.results", {
+                  count: event.preview.resultCount,
+                })}
+              </div>
+              <div className="ui-activity-result-list">
+                {event.preview.results.map((result, index) => (
+                  <SearchResultRow
+                    key={`${result.url ?? result.title}-${index}`}
+                    result={result}
+                  />
+                ))}
+              </div>
+            </>
+          )}
       </div>
     </div>
   );
@@ -263,11 +336,16 @@ function ActivityTraceDoneRow() {
   const { t } = useTranslation();
   return (
     <div className="ui-activity-trace-row ui-activity-trace-row-done">
-      <span className="ui-activity-trace-icon ui-activity-trace-icon-done" aria-hidden="true">
+      <span
+        className="ui-activity-trace-icon ui-activity-trace-icon-done"
+        aria-hidden="true"
+      >
         <Icon name="checkCircle" size="1.125rem" />
       </span>
       <div className="min-w-0 flex-1">
-        <span className="ui-activity-done-label">{t("activityTrace.done")}</span>
+        <span className="ui-activity-done-label">
+          {t("activityTrace.done")}
+        </span>
       </div>
     </div>
   );
@@ -279,7 +357,8 @@ function SearchResultRow({
   result: { title: string; url?: string; domain?: string; snippet?: string };
 }) {
   const favicon = result.url === undefined ? undefined : faviconURL(result.url);
-  const href = result.url === undefined ? undefined : externalHTTPURL(result.url);
+  const href =
+    result.url === undefined ? undefined : externalHTTPURL(result.url);
   const title = <div className="ui-activity-result-title">{result.title}</div>;
   return (
     <div className="ui-activity-result-row">
@@ -294,17 +373,26 @@ function SearchResultRow({
         {href === undefined ? (
           title
         ) : (
-          <a className="ui-activity-result-link" href={href} target="_blank" rel="noreferrer">
+          <a
+            className="ui-activity-result-link"
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+          >
             {title}
           </a>
         )}
       </div>
-      {result.domain !== undefined && <div className="ui-activity-result-domain">{result.domain}</div>}
+      {result.domain !== undefined && (
+        <div className="ui-activity-result-domain">{result.domain}</div>
+      )}
     </div>
   );
 }
 
-function latestReasoningTitle(events: ActivityTraceEvent[]): string | undefined {
+function latestReasoningTitle(
+  events: ActivityTraceEvent[],
+): string | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event.type !== "reasoning") continue;
@@ -314,14 +402,30 @@ function latestReasoningTitle(events: ActivityTraceEvent[]): string | undefined 
   return undefined;
 }
 
-function activityToolStatusMeta(event: ActivityTraceToolEvent): { label: string; className: string } {
-  if (event.status === "failed") return { label: i18n.t("activityTrace.failed"), className: "ui-activity-status-failed" };
-  if (event.status === "running") return { label: i18n.t("activityTrace.running"), className: "ui-activity-status-neutral" };
-  return { label: i18n.t("activityTrace.done"), className: "ui-activity-status-neutral" };
+function activityToolStatusMeta(event: ActivityTraceToolEvent): {
+  label: string;
+  className: string;
+} {
+  if (event.status === "failed")
+    return {
+      label: i18n.t("activityTrace.failed"),
+      className: "ui-activity-status-failed",
+    };
+  if (event.status === "running")
+    return {
+      label: i18n.t("activityTrace.running"),
+      className: "ui-activity-status-neutral",
+    };
+  return {
+    label: i18n.t("activityTrace.done"),
+    className: "ui-activity-status-neutral",
+  };
 }
 
 function GlobeTraceIcon() {
-  return <Icon name="globe" size="1.125rem" className="ui-activity-globe-icon" />;
+  return (
+    <Icon name="globe" size="1.125rem" className="ui-activity-globe-icon" />
+  );
 }
 
 function ConversationSearchTraceIcon() {
@@ -338,15 +442,29 @@ function LookupTraceIcon() {
 function ClockTraceIcon() {
   // Reasoning timeline node — the Anthropicons clock-with-arc glyph (the same
   // reference design the previous hand-tuned SVG approximated).
-  return <Icon name="clock" size="1.125rem" className="ui-activity-clock-icon" />;
+  return (
+    <Icon name="clock" size="1.125rem" className="ui-activity-clock-icon" />
+  );
 }
 
 function GeneratedTraceIcon() {
-  return <Icon name="generatedArtifact" size="1rem" className="ui-activity-trace-icon-generated" />;
+  return (
+    <Icon
+      name="generatedArtifact"
+      size="1rem"
+      className="ui-activity-trace-icon-generated"
+    />
+  );
 }
 
 function FetchTraceIcon() {
-  return <Icon name="externalLink" size="1.125rem" className="ui-activity-fetch-icon" />;
+  return (
+    <Icon
+      name="externalLink"
+      size="1.125rem"
+      className="ui-activity-fetch-icon"
+    />
+  );
 }
 
 function faviconInitial(value: string): string {

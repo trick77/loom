@@ -23,7 +23,10 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const isPdf =
     !deleted &&
     !isImage &&
-    isPdfAttachment({ mimeType: artifact.mimeType, filename: artifact.displayFilename });
+    isPdfAttachment({
+      mimeType: artifact.mimeType,
+      filename: artifact.displayFilename,
+    });
   const imageStats = isImage ? buildImageStats(artifact) : null;
   const typeLabel = fileTypeLabel(artifact.displayFilename);
 
@@ -87,8 +90,12 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
             className="relative block max-h-[28rem] w-full cursor-zoom-in overflow-hidden bg-[#1f1f1d]"
             onClick={handleOpenPreview}
             type="button"
-            title={t("artifactCard.preview", { filename: artifact.displayFilename })}
-            aria-label={t("artifactCard.preview", { filename: artifact.displayFilename })}
+            title={t("artifactCard.preview", {
+              filename: artifact.displayFilename,
+            })}
+            aria-label={t("artifactCard.preview", {
+              filename: artifact.displayFilename,
+            })}
             style={{ aspectRatio: `${artifact.width} / ${artifact.height}` }}
           >
             {previewUrl !== "" && (
@@ -105,8 +112,12 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
             className="block min-h-[16rem] w-full cursor-zoom-in bg-[#1f1f1d]"
             onClick={handleOpenPreview}
             type="button"
-            title={t("artifactCard.preview", { filename: artifact.displayFilename })}
-            aria-label={t("artifactCard.preview", { filename: artifact.displayFilename })}
+            title={t("artifactCard.preview", {
+              filename: artifact.displayFilename,
+            })}
+            aria-label={t("artifactCard.preview", {
+              filename: artifact.displayFilename,
+            })}
           >
             {previewUrl !== "" && (
               <img
@@ -128,8 +139,12 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
             type="button"
             className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
             onClick={() => setPdfPreviewOpen(true)}
-            title={t("artifactCard.preview", { filename: artifact.displayFilename })}
-            aria-label={t("artifactCard.preview", { filename: artifact.displayFilename })}
+            title={t("artifactCard.preview", {
+              filename: artifact.displayFilename,
+            })}
+            aria-label={t("artifactCard.preview", {
+              filename: artifact.displayFilename,
+            })}
           >
             <ArtifactCardIcon typeLabel={typeLabel} />
             <ArtifactCardInfo
@@ -164,8 +179,12 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
             className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
             onClick={handleDownload}
             type="button"
-            title={t("artifactCard.download", { filename: artifact.displayFilename })}
-            aria-label={t("artifactCard.download", { filename: artifact.displayFilename })}
+            title={t("artifactCard.download", {
+              filename: artifact.displayFilename,
+            })}
+            aria-label={t("artifactCard.download", {
+              filename: artifact.displayFilename,
+            })}
           >
             <DownloadIcon />
           </button>
@@ -195,7 +214,10 @@ function ArtifactCardIcon({ typeLabel }: { typeLabel: string | null }) {
   return (
     <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
       {typeLabel ? (
-        <span aria-hidden="true" className="text-[10px] font-semibold uppercase leading-none tracking-tight">
+        <span
+          aria-hidden="true"
+          className="text-[10px] font-semibold uppercase leading-none tracking-tight"
+        >
           {typeLabel}
         </span>
       ) : (
@@ -221,15 +243,25 @@ function ArtifactCardInfo({
   const { t } = useTranslation();
   return (
     <div className="min-w-0 flex-1">
-      <div className={`ui-message-text truncate ${deleted ? "text-[#aaa79e] line-through" : ""}`}>
+      <div
+        className={`ui-message-text truncate ${deleted ? "text-[#aaa79e] line-through" : ""}`}
+      >
         {artifact.displayFilename}
       </div>
       <div className="ui-meta-text text-[#aaa79e]">
         {artifact.mimeType} · {formatFileSize(artifact.sizeBytes)}
       </div>
-      {imageStats !== null && <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>}
-      {deleted && <div className="ui-meta-text text-[#d09a73]">{t("artifactCard.fileWasDeleted")}</div>}
-      {error !== "" && <div className="ui-meta-text text-[#d36f67]">{error}</div>}
+      {imageStats !== null && (
+        <div className="font-mono text-xs text-[#88857d]">{imageStats}</div>
+      )}
+      {deleted && (
+        <div className="ui-meta-text text-[#d09a73]">
+          {t("artifactCard.fileWasDeleted")}
+        </div>
+      )}
+      {error !== "" && (
+        <div className="ui-meta-text text-[#d36f67]">{error}</div>
+      )}
     </div>
   );
 }

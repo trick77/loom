@@ -37,19 +37,41 @@ describe("streaming reducer", () => {
     let blocks: ContentBlock[] = [];
     blocks = appendReasoningDeltaBlock(blocks, "let me check");
     blocks = appendTextDelta(blocks, "Looking that up.");
-    blocks = upsertToolCallBlock(blocks, { id: "c1", name: "search__web", arguments: '{"query":"x"}' });
-    blocks = upsertToolResultBlock(blocks, { id: "c1", name: "search__web", content: "found it" });
+    blocks = upsertToolCallBlock(blocks, {
+      id: "c1",
+      name: "search__web",
+      arguments: '{"query":"x"}',
+    });
+    blocks = upsertToolResultBlock(blocks, {
+      id: "c1",
+      name: "search__web",
+      content: "found it",
+    });
     blocks = appendArtifactBlock(blocks, artifact);
     blocks = appendTextDelta(blocks, "Here is the result.");
 
-    expect(blocks.map((block) => block.type)).toEqual(["trace", "text", "trace", "artifact", "text"]);
+    expect(blocks.map((block) => block.type)).toEqual([
+      "trace",
+      "text",
+      "trace",
+      "artifact",
+      "text",
+    ]);
 
     const firstTrace = blocks[0];
     const secondTrace = blocks[2];
-    if (firstTrace.type !== "trace" || secondTrace.type !== "trace") throw new Error("expected trace blocks");
+    if (firstTrace.type !== "trace" || secondTrace.type !== "trace")
+      throw new Error("expected trace blocks");
     expect(firstTrace.events).toHaveLength(1);
-    expect(firstTrace.events[0]).toMatchObject({ type: "reasoning", content: "let me check" });
-    expect(secondTrace.events[0]).toMatchObject({ type: "tool", id: "c1", status: "done" });
+    expect(firstTrace.events[0]).toMatchObject({
+      type: "reasoning",
+      content: "let me check",
+    });
+    expect(secondTrace.events[0]).toMatchObject({
+      type: "tool",
+      id: "c1",
+      status: "done",
+    });
 
     expect(blocks[1]).toEqual({ type: "text", content: "Looking that up." });
     expect(blocks[4]).toEqual({ type: "text", content: "Here is the result." });
@@ -58,13 +80,25 @@ describe("streaming reducer", () => {
   test("consecutive trace events merge into one block until prose breaks the run", () => {
     let blocks: ContentBlock[] = [];
     blocks = appendReasoningDeltaBlock(blocks, "think");
-    blocks = upsertToolCallBlock(blocks, { id: "c1", name: "a", arguments: "{}" });
-    blocks = upsertToolCallBlock(blocks, { id: "c2", name: "b", arguments: "{}" });
+    blocks = upsertToolCallBlock(blocks, {
+      id: "c1",
+      name: "a",
+      arguments: "{}",
+    });
+    blocks = upsertToolCallBlock(blocks, {
+      id: "c2",
+      name: "b",
+      arguments: "{}",
+    });
 
     expect(blocks).toHaveLength(1);
     const trace = blocks[0];
     if (trace.type !== "trace") throw new Error("expected trace block");
-    expect(trace.events.map((event) => event.type)).toEqual(["reasoning", "tool", "tool"]);
+    expect(trace.events.map((event) => event.type)).toEqual([
+      "reasoning",
+      "tool",
+      "tool",
+    ]);
   });
 
   test("a reasoning title stamps the matching earlier trace block, not the trailing one", () => {
@@ -72,24 +106,43 @@ describe("streaming reducer", () => {
     blocks = appendReasoningDeltaBlock(blocks, "deliberating");
     blocks = appendTextDelta(blocks, "Answer streaming…");
     // The title arrives after prose has begun, so the trailing block is text.
-    blocks = applyReasoningTitleBlock(blocks, "reasoning-1", "Deliberated the answer");
+    blocks = applyReasoningTitleBlock(
+      blocks,
+      "reasoning-1",
+      "Deliberated the answer",
+    );
 
     expect(blocks.map((block) => block.type)).toEqual(["trace", "text"]);
     const trace = blocks[0];
     if (trace.type !== "trace") throw new Error("expected trace block");
-    expect(trace.events[0]).toMatchObject({ type: "reasoning", title: "Deliberated the answer" });
+    expect(trace.events[0]).toMatchObject({
+      type: "reasoning",
+      title: "Deliberated the answer",
+    });
   });
 
   test("a late tool result updates the tool in an earlier trace block", () => {
     let blocks: ContentBlock[] = [];
-    blocks = upsertToolCallBlock(blocks, { id: "c1", name: "search__web", arguments: "{}" });
+    blocks = upsertToolCallBlock(blocks, {
+      id: "c1",
+      name: "search__web",
+      arguments: "{}",
+    });
     blocks = appendTextDelta(blocks, "Working on it…");
-    blocks = upsertToolResultBlock(blocks, { id: "c1", name: "search__web", content: "done" });
+    blocks = upsertToolResultBlock(blocks, {
+      id: "c1",
+      name: "search__web",
+      content: "done",
+    });
 
     expect(blocks.map((block) => block.type)).toEqual(["trace", "text"]);
     const trace = blocks[0];
     if (trace.type !== "trace") throw new Error("expected trace block");
-    expect(trace.events[0]).toMatchObject({ type: "tool", id: "c1", status: "done" });
+    expect(trace.events[0]).toMatchObject({
+      type: "tool",
+      id: "c1",
+      status: "done",
+    });
   });
 });
 
@@ -97,16 +150,28 @@ describe("blocksFromLegacyMessage", () => {
   test("synthesizes trace-then-text-then-artifacts in the prior on-screen order", () => {
     const message = baseMessage({
       content: "The answer.",
-      activityTrace: [{ id: "reasoning-1", type: "reasoning", content: "thought", status: "done" }],
+      activityTrace: [
+        {
+          id: "reasoning-1",
+          type: "reasoning",
+          content: "thought",
+          status: "done",
+        },
+      ],
       artifacts: [artifact],
     });
 
-    expect(blocksFromLegacyMessage(message).map((block) => block.type)).toEqual(["trace", "text", "artifact"]);
+    expect(blocksFromLegacyMessage(message).map((block) => block.type)).toEqual(
+      ["trace", "text", "artifact"],
+    );
   });
 
   test("messageBlocks prefers persisted contentBlocks when present", () => {
     const persisted: ContentBlock[] = [{ type: "text", content: "persisted" }];
-    const message = baseMessage({ content: "legacy", contentBlocks: persisted });
+    const message = baseMessage({
+      content: "legacy",
+      contentBlocks: persisted,
+    });
     expect(messageBlocks(message)).toEqual(persisted);
   });
 
@@ -115,7 +180,15 @@ describe("blocksFromLegacyMessage", () => {
     // The renderer reads event.summary.kind, so an unnormalised event crashes.
     const rawToolBlock = {
       type: "trace",
-      events: [{ id: "c1", type: "tool", name: "search__web", status: "done", rawArguments: '{"query":"x"}' }],
+      events: [
+        {
+          id: "c1",
+          type: "tool",
+          name: "search__web",
+          status: "done",
+          rawArguments: '{"query":"x"}',
+        },
+      ],
     } as unknown as ContentBlock;
     const message = baseMessage({ contentBlocks: [rawToolBlock] });
 
@@ -132,14 +205,30 @@ describe("blocksFromLegacyMessage", () => {
 describe("graftStreamedBlocks", () => {
   test("replaces the trailing partial text block with the authoritative final answer", () => {
     const streamed: ContentBlock[] = [
-      { type: "trace", events: [{ id: "reasoning-1", type: "reasoning", content: "x", status: "running" }] },
+      {
+        type: "trace",
+        events: [
+          {
+            id: "reasoning-1",
+            type: "reasoning",
+            content: "x",
+            status: "running",
+          },
+        ],
+      },
       { type: "text", content: "Partial" },
     ];
     const message = baseMessage({ id: "m2", content: "Partial answer." });
 
     const grafted = graftStreamedBlocks(message, streamed);
-    expect(grafted.contentBlocks?.map((block) => block.type)).toEqual(["trace", "text"]);
-    expect(grafted.contentBlocks?.[1]).toEqual({ type: "text", content: "Partial answer." });
+    expect(grafted.contentBlocks?.map((block) => block.type)).toEqual([
+      "trace",
+      "text",
+    ]);
+    expect(grafted.contentBlocks?.[1]).toEqual({
+      type: "text",
+      content: "Partial answer.",
+    });
     // The running reasoning event settles to done.
     const trace = grafted.contentBlocks?.[0];
     if (trace?.type !== "trace") throw new Error("expected trace block");
@@ -151,12 +240,22 @@ describe("graftStreamedBlocks", () => {
     const message = baseMessage({ id: "m2", content: "Generated the image." });
 
     const grafted = graftStreamedBlocks(message, streamed);
-    expect(grafted.contentBlocks?.map((block) => block.type)).toEqual(["artifact", "text"]);
+    expect(grafted.contentBlocks?.map((block) => block.type)).toEqual([
+      "artifact",
+      "text",
+    ]);
   });
 
   test("leaves the message untouched when the backend already sent contentBlocks", () => {
     const persisted: ContentBlock[] = [{ type: "text", content: "backend" }];
-    const message = baseMessage({ id: "m2", content: "ignored", contentBlocks: persisted });
-    expect(graftStreamedBlocks(message, [{ type: "text", content: "streamed" }]).contentBlocks).toEqual(persisted);
+    const message = baseMessage({
+      id: "m2",
+      content: "ignored",
+      contentBlocks: persisted,
+    });
+    expect(
+      graftStreamedBlocks(message, [{ type: "text", content: "streamed" }])
+        .contentBlocks,
+    ).toEqual(persisted);
   });
 });

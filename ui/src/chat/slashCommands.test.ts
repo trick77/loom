@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { matchSlashCommand, slashSuggestions, SLASH_COMMANDS } from "./slashCommands";
+import {
+  matchSlashCommand,
+  slashSuggestions,
+  SLASH_COMMANDS,
+} from "./slashCommands";
 
 describe("matchSlashCommand", () => {
   it("resolves an exact /name to its command", () => {
@@ -37,7 +41,9 @@ describe("matchSlashCommand", () => {
 
 describe("slashSuggestions", () => {
   it("lists all commands for a lone slash", () => {
-    expect(slashSuggestions("/").map((c) => c.name)).toEqual(SLASH_COMMANDS.map((c) => c.name));
+    expect(slashSuggestions("/").map((c) => c.name)).toEqual(
+      SLASH_COMMANDS.map((c) => c.name),
+    );
   });
 
   it("prefix-filters by the typed token, case-insensitively", () => {

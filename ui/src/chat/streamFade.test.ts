@@ -24,7 +24,8 @@ test("breaks at clause punctuation", () => {
 // Kernmechanik: bereits gesetzte Segmente werden bei wachsendem Input nie
 // revidiert -> stabile Präfixe -> React reused die DOM-Nodes -> kein Re-Fade.
 test("settled segments form a stable prefix as the text grows", () => {
-  const base = "Die Geschichte des Kaffees beginnt in Äthiopien und reicht weit zurück.";
+  const base =
+    "Die Geschichte des Kaffees beginnt in Äthiopien und reicht weit zurück.";
   for (let i = 10; i < base.length; i += 7) {
     const shorter = splitIntoSegments(base.slice(0, i));
     const longer = splitIntoSegments(base.slice(0, i + 7));

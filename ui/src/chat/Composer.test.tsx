@@ -4,7 +4,10 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { UNSUPPORTED_FILE_MESSAGE } from "./attachmentFiles";
 import { Composer } from "./Composer";
-import { PASTE_AS_ATTACHMENT_LINE_THRESHOLD, PASTE_AS_ATTACHMENT_THRESHOLD } from "./pastedText";
+import {
+  PASTE_AS_ATTACHMENT_LINE_THRESHOLD,
+  PASTE_AS_ATTACHMENT_THRESHOLD,
+} from "./pastedText";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 
 afterEach(() => {
@@ -48,7 +51,9 @@ test("attaches supported picker files and reports unsupported companions", () =>
   const onAttachFiles = vi.fn();
   const onAttachError = vi.fn();
   const note = new File(["hello"], "notes.txt", { type: "text/plain" });
-  const unsupported = new File(["binary"], "installer.exe", { type: "application/octet-stream" });
+  const unsupported = new File(["binary"], "installer.exe", {
+    type: "application/octet-stream",
+  });
   render(
     <Composer
       variant="thread"
@@ -141,7 +146,9 @@ test("renders uploading attachment previews inside the composer", () => {
   expect(screen.getByText("quarterly-report.pdf")).toBeInTheDocument();
   expect(screen.getByText("PDF")).toBeInTheDocument();
   expect(screen.getByText("Uploading...")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Remove quarterly-report.pdf" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Remove quarterly-report.pdf" }),
+  ).toBeInTheDocument();
 });
 
 test("shows a thumbnail for previewable image attachments", () => {
@@ -153,7 +160,9 @@ test("shows a thumbnail for previewable image attachments", () => {
       mimeType: "image/png",
       sizeBytes: 1024,
       status: "queued",
-      previewUrl: URL.createObjectURL(new File(["png"], "screenshot.png", { type: "image/png" })),
+      previewUrl: URL.createObjectURL(
+        new File(["png"], "screenshot.png", { type: "image/png" }),
+      ),
     },
   ];
 
@@ -174,7 +183,9 @@ test("shows a thumbnail for previewable image attachments", () => {
     />,
   );
 
-  expect(document.querySelector('img[src="blob:image-preview"]')).toBeInTheDocument();
+  expect(
+    document.querySelector('img[src="blob:image-preview"]'),
+  ).toBeInTheDocument();
   // The image thumbnail carries its type as a pill badge overlaid inside the
   // image — identical to how it renders once sent, so the two read the same end
   // to end. The filename text card is dropped for images (it could be clipped).
@@ -215,7 +226,8 @@ test("keeps attachment previews above the draft text area", () => {
   const attachmentStrip = screen.getByLabelText("Message attachments");
 
   expect(
-    attachment.compareDocumentPosition(textbox) & Node.DOCUMENT_POSITION_FOLLOWING,
+    attachment.compareDocumentPosition(textbox) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
   ).not.toBe(0);
   expect(attachmentStrip).toHaveClass("flex-none", "overflow-y-auto");
 });
@@ -382,7 +394,9 @@ test("renders a pasted-text chip with a preview and badge, and removes it", () =
       onSend={() => undefined}
       onStop={() => undefined}
       onAddPastedText={vi.fn()}
-      pastedTexts={[{ id: "pasted-1", text: "first line\nsecond line", lineCount: 2 }]}
+      pastedTexts={[
+        { id: "pasted-1", text: "first line\nsecond line", lineCount: 2 },
+      ]}
       onRemovePastedText={onRemovePastedText}
     />,
   );
@@ -390,12 +404,15 @@ test("renders a pasted-text chip with a preview and badge, and removes it", () =
   expect(screen.getByText("Pasted")).toBeInTheDocument();
   expect(screen.getByText(/first line/)).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Remove pasted text, 2 lines" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove pasted text, 2 lines" }),
+  );
 
   expect(onRemovePastedText).toHaveBeenCalledWith("pasted-1");
 });
 
-const pngFile = (name: string) => new File([new Uint8Array([1])], name, { type: "image/png" });
+const pngFile = (name: string) =>
+  new File([new Uint8Array([1])], name, { type: "image/png" });
 
 test("attaches a pasted screenshot, synthesizing a filename for a nameless image", () => {
   const onAttachFiles = vi.fn();
@@ -424,7 +441,9 @@ test("attaches a pasted screenshot, synthesizing a filename for a nameless image
   expect(notCancelled).toBe(false);
   expect(onAddPastedText).not.toHaveBeenCalled();
   expect(onAttachFiles).toHaveBeenCalledTimes(1);
-  expect(onAttachFiles.mock.calls[0][0].map((f: File) => f.name)).toEqual(["pasted-image.png"]);
+  expect(onAttachFiles.mock.calls[0][0].map((f: File) => f.name)).toEqual([
+    "pasted-image.png",
+  ]);
 });
 
 test("preserves pasted text when the clipboard carries both text and an image rendering", () => {
@@ -449,7 +468,10 @@ test("preserves pasted text when the clipboard carries both text and an image re
   );
 
   const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
-    clipboardData: { getData: () => "col1\tcol2", files: [pngFile("image.png")] },
+    clipboardData: {
+      getData: () => "col1\tcol2",
+      files: [pngFile("image.png")],
+    },
   });
 
   // Native text paste proceeds; the image is ignored.
@@ -476,7 +498,9 @@ test("reports an unsupported pasted image type instead of silently ignoring it",
     />,
   );
 
-  const tiff = new File([new Uint8Array([1])], "shot.tiff", { type: "image/tiff" });
+  const tiff = new File([new Uint8Array([1])], "shot.tiff", {
+    type: "image/tiff",
+  });
   const notCancelled = fireEvent.paste(screen.getByRole("textbox"), {
     clipboardData: { getData: () => "", files: [tiff] },
   });

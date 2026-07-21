@@ -39,7 +39,11 @@ export function SourcesSidebar({
 
   return (
     <>
-      <div className="ui-drawer-backdrop fixed inset-0 z-40 bg-black/50" onClick={onClose} aria-hidden="true" />
+      <div
+        className="ui-drawer-backdrop fixed inset-0 z-40 bg-black/50"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <aside
         role="dialog"
         aria-modal="true"
@@ -47,7 +51,9 @@ export function SourcesSidebar({
         className="ui-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-full flex-col border-l border-[#343432] bg-[#1c1b18] md:w-[400px] md:max-w-[92vw]"
       >
         <div className="flex items-center justify-between border-b border-[#343432] px-4 py-3">
-          <h3 className="font-serif text-[1.15rem] font-medium text-[#f3f0e8]">{t("citations.sources")}</h3>
+          <h3 className="font-serif text-[1.15rem] font-medium text-[#f3f0e8]">
+            {t("citations.sources")}
+          </h3>
           <button
             type="button"
             onClick={onClose}
@@ -68,7 +74,10 @@ export function SourcesSidebar({
             </div>
           )}
           {rest.map((source, index) => (
-            <SourceCard key={cardKey(source, PRIMARY_COUNT + index)} citation={source} />
+            <SourceCard
+              key={cardKey(source, PRIMARY_COUNT + index)}
+              citation={source}
+            />
           ))}
         </div>
       </aside>
@@ -83,7 +92,10 @@ function cardKey(citation: Citation, index: number): string {
 function SourceCard({ citation }: { citation: Citation }) {
   const host = hostOf(citation.url);
   const site = citation.filename !== "" ? citation.filename : host;
-  const title = citation.title !== undefined && citation.title.trim() !== "" ? citation.title : citation.url ?? "";
+  const title =
+    citation.title !== undefined && citation.title.trim() !== ""
+      ? citation.title
+      : (citation.url ?? "");
   return (
     <a
       href={citation.url}
@@ -95,11 +107,18 @@ function SourceCard({ citation }: { citation: Citation }) {
         <SourceFavicon citation={citation} size={16} />
         <span className="truncate">{site}</span>
       </div>
-      <p className="mb-1 text-[15px] font-semibold leading-snug text-[#f3f0e8]">{title}</p>
+      <p className="mb-1 text-[15px] font-semibold leading-snug text-[#f3f0e8]">
+        {title}
+      </p>
       {citation.snippet !== undefined && citation.snippet !== "" && (
         <p
           className="text-[13px] leading-5 text-[#8a887f]"
-          style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
         >
           {citation.snippet}
         </p>

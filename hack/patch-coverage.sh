@@ -35,6 +35,28 @@ if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
   exit 2
 fi
 
+# Escape hatch, deliberately narrow and deliberately loud.
+#
+# Some changes cannot meet a patch bar no matter how good they are: a wholesale
+# prettier or gofmt reformat, a mechanical rename, a vendored import. None of
+# them add logic, but diff-cover counts every touched line, so what gets
+# measured is the pre-existing coverage of code the change did not write. The
+# question the gate asks is simply the wrong one for those.
+#
+# Opt out with [skip patch-coverage] in a commit message on the branch.
+#
+# This skips ONLY patch coverage. hack/coverage-gate.sh still enforces the
+# absolute floor in the same CI job, so overall coverage can never silently
+# fall — the worst this can do is let already-untested lines stay untested.
+if git log --format='%B' "$(git merge-base "$BASE_REF" HEAD)"..HEAD 2>/dev/null |
+  grep -qF '[skip patch-coverage]'; then
+  echo "::warning::patch-coverage SKIPPED — a commit on this branch carries [skip patch-coverage]."
+  echo "patch-coverage: SKIPPED by [skip patch-coverage] in a commit message." >&2
+  echo "  The absolute floor (hack/coverage-gate.sh) still applies and is" >&2
+  echo "  enforced separately, so total coverage cannot fall unnoticed." >&2
+  exit 0
+fi
+
 # diff-cover prints "No lines with coverage information" and exits 0 when none of
 # the report's paths match the diff. That is legitimate for a docs-only PR, but it
 # is also exactly what a broken path mapping looks like — and that bug has shipped

@@ -34,6 +34,18 @@ jobs:
       - run: pip install diff-cover==10.3.0
       - run: cd backend && go build ./...
       - run: cd backend && go vet ./...
+      # gofmt is not covered by `go vet`. Nine files had already drifted out of
+      # gofmt shape before this check existed, so it is worth enforcing rather
+      # than trusting editors to do it.
+      - name: gofmt
+        run: |
+          cd backend
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt'd. Run: gofmt -w ."
+            echo "$unformatted"
+            exit 1
+          fi
       - run: make backend-coverage
       - name: Fetch base ref
         # Guarantee refs/remotes/origin/<base> exists; a pull_request build
@@ -61,6 +73,7 @@ jobs:
           python-version: "3.12"
       - run: pip install diff-cover==10.3.0
       - run: cd ui && npm ci
+      - run: cd ui && npm run format:check
       - run: cd ui && npm run build # tsc --noEmit && vite build — fängt Typ-/Build-Fehler
       - run: make fe-coverage
       - name: Fetch base ref

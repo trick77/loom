@@ -26,8 +26,10 @@ const INLINE_DATA_THRESHOLD_BYTES = 16 * 1024;
 export function buildImageStats(artifact: Artifact): string | null {
   const segments: string[] = [];
   if (artifact.model) segments.push(artifact.model);
-  if (artifact.width && artifact.height) segments.push(`${artifact.width}×${artifact.height}`);
-  if (artifact.durationMs && artifact.durationMs > 0) segments.push(formatDuration(artifact.durationMs));
+  if (artifact.width && artifact.height)
+    segments.push(`${artifact.width}×${artifact.height}`);
+  if (artifact.durationMs && artifact.durationMs > 0)
+    segments.push(formatDuration(artifact.durationMs));
   return segments.length > 0 ? segments.join(" · ") : null;
 }
 
@@ -51,7 +53,11 @@ export function pendingFencedArtifact(content: string): PendingArtifact | null {
   const artifactStart = start + match[0].length;
   if (content.slice(artifactStart).includes("\n```")) return null;
   const receivedBytes = utf8ByteLength(content.slice(artifactStart));
-  if (format.inlineBelowBytes !== undefined && receivedBytes <= format.inlineBelowBytes) return null;
+  if (
+    format.inlineBelowBytes !== undefined &&
+    receivedBytes <= format.inlineBelowBytes
+  )
+    return null;
 
   return {
     label: extension.toUpperCase(),
@@ -79,7 +85,8 @@ export function fileTypeLabel(filename: string): string | null {
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
-  if (kb < 1024) return `${kb >= 10 ? Math.round(kb).toString() : kb.toFixed(1)} KB`;
+  if (kb < 1024)
+    return `${kb >= 10 ? Math.round(kb).toString() : kb.toFixed(1)} KB`;
   const mb = kb / 1024;
   return `${mb >= 10 ? Math.round(mb).toString() : mb.toFixed(1)} MB`;
 }
@@ -106,7 +113,11 @@ function utf8ByteLength(content: string): number {
 }
 
 function fencedArtifact(content: string): EmbeddedArtifact | null {
-  const matches = [...content.matchAll(/(?:^|\n)```([a-z0-9_-]+)[ \t]*\n([\s\S]*?)\n```(?=\n|$)/gi)];
+  const matches = [
+    ...content.matchAll(
+      /(?:^|\n)```([a-z0-9_-]+)[ \t]*\n([\s\S]*?)\n```(?=\n|$)/gi,
+    ),
+  ];
   const downloadable = matches.flatMap((match) => {
     const extension = extensionByLanguage.get(match[1].trim().toLowerCase());
     return extension === undefined ? [] : [{ match, extension }];
@@ -118,7 +129,11 @@ function fencedArtifact(content: string): EmbeddedArtifact | null {
   const start = match.index ?? 0;
   const body = match[2];
   const format = DOWNLOAD_FORMATS[extension];
-  if (format.inlineBelowBytes !== undefined && utf8ByteLength(body) <= format.inlineBelowBytes) return null;
+  if (
+    format.inlineBelowBytes !== undefined &&
+    utf8ByteLength(body) <= format.inlineBelowBytes
+  )
+    return null;
   return {
     artifact: {
       extension,
@@ -131,7 +146,12 @@ function fencedArtifact(content: string): EmbeddedArtifact | null {
   };
 }
 
-type DownloadFormat = { mimeType: string; languages: string[]; mimeTypes: string[]; inlineBelowBytes?: number };
+type DownloadFormat = {
+  mimeType: string;
+  languages: string[];
+  mimeTypes: string[];
+  inlineBelowBytes?: number;
+};
 
 const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
   csv: {
@@ -140,7 +160,11 @@ const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
     mimeTypes: ["text/csv"],
     inlineBelowBytes: INLINE_DATA_THRESHOLD_BYTES,
   },
-  html: { mimeType: "text/html;charset=utf-8", languages: ["html"], mimeTypes: ["text/html"] },
+  html: {
+    mimeType: "text/html;charset=utf-8",
+    languages: ["html"],
+    mimeTypes: ["text/html"],
+  },
   json: {
     mimeType: "application/json;charset=utf-8",
     languages: ["json"],
@@ -159,8 +183,16 @@ const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
     mimeTypes: ["text/markdown"],
     inlineBelowBytes: INLINE_DOWNLOAD_THRESHOLD_BYTES,
   },
-  pdf: { mimeType: "application/pdf", languages: ["pdf"], mimeTypes: ["application/pdf"] },
-  svg: { mimeType: "image/svg+xml;charset=utf-8", languages: ["svg"], mimeTypes: ["image/svg+xml"] },
+  pdf: {
+    mimeType: "application/pdf",
+    languages: ["pdf"],
+    mimeTypes: ["application/pdf"],
+  },
+  svg: {
+    mimeType: "image/svg+xml;charset=utf-8",
+    languages: ["svg"],
+    mimeTypes: ["image/svg+xml"],
+  },
   txt: {
     mimeType: "text/plain;charset=utf-8",
     languages: ["txt", "text"],
@@ -180,14 +212,20 @@ const DOWNLOAD_FORMATS: Record<string, DownloadFormat> = {
     inlineBelowBytes: INLINE_DOWNLOAD_THRESHOLD_BYTES,
   },
   pptx: {
-    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     languages: [],
-    mimeTypes: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+    mimeTypes: [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ],
   },
   xlsx: {
-    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     languages: [],
-    mimeTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+    mimeTypes: [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ],
   },
 };
 

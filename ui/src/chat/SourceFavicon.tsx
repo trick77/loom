@@ -24,10 +24,19 @@ function siteIconURL(pageURL: string): string {
 }
 
 // Deterministic muted colours for the letter-avatar fallback.
-const AVATAR_COLORS = ["#8a6d3b", "#4a7a8c", "#7a5a8c", "#5a8c6d", "#8c5a5a", "#5a6d8c", "#8c7a4a"];
+const AVATAR_COLORS = [
+  "#8a6d3b",
+  "#4a7a8c",
+  "#7a5a8c",
+  "#5a8c6d",
+  "#8c5a5a",
+  "#5a6d8c",
+  "#8c7a4a",
+];
 function colorFor(seed: string): string {
   let h = 0;
-  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < seed.length; i += 1)
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
@@ -48,7 +57,8 @@ export function SourceFavicon({
 }) {
   const host = hostOf(citation.url);
   const label = (citation.filename ?? host).trim();
-  const src = citation.url !== undefined && host !== "" ? siteIconURL(citation.url) : "";
+  const src =
+    citation.url !== undefined && host !== "" ? siteIconURL(citation.url) : "";
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const dim = { width: `${size}px`, height: `${size}px`, flex: "0 0 auto" };
@@ -59,7 +69,12 @@ export function SourceFavicon({
       <span
         aria-hidden="true"
         className={`inline-grid place-items-center rounded-full font-sans font-semibold text-white ${className}`}
-        style={{ ...dim, background: colorFor(label || "?"), fontSize: `${Math.round(size * 0.55)}px`, ...style }}
+        style={{
+          ...dim,
+          background: colorFor(label || "?"),
+          fontSize: `${Math.round(size * 0.55)}px`,
+          ...style,
+        }}
       >
         {letter}
       </span>

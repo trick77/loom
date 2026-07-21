@@ -20,7 +20,7 @@ func (g XLSXGenerator) ToolName() string { return "create_xlsx_file" }
 
 func (g XLSXGenerator) Schema() ToolSchema {
 	return ToolSchema{
-		Name:        g.ToolName(),
+		Name: g.ToolName(),
 		Description: "Create an XLSX spreadsheet. Provide exactly one of `rows` or `csvData` (if both " +
 			"are given, `rows` is used). The first row is treated as the header and frozen. Max 5000 rows." + FileToolGuardrail,
 		Parameters: map[string]any{

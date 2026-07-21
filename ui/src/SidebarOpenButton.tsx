@@ -17,7 +17,8 @@ export function SidebarOpenButton({
   variant?: "inline" | "floating";
 }) {
   const { t } = useTranslation();
-  const placement = variant === "floating" ? "absolute left-3 top-3 z-10" : "-ml-1";
+  const placement =
+    variant === "floating" ? "absolute left-3 top-3 z-10" : "-ml-1";
   return (
     <button
       type="button"
