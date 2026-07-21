@@ -19,6 +19,26 @@ describe("normalizeMathDelimiters", () => {
     expect(normalizeMathDelimiters("\\(a\\) then \\(b\\)")).toBe("$$a$$ then $$b$$");
   });
 
+  it("escapes an amount abutting the end of a formula", () => {
+    expect(normalizeMathDelimiters("cost \\(x\\)$5 total")).toBe("cost $$x$$\\$5 total");
+  });
+
+  it("escapes an amount abutting the start of a formula", () => {
+    expect(normalizeMathDelimiters("5$\\(x\\) total")).toBe("5\\$$$x$$ total");
+  });
+
+  it("leaves a dollar inside the formula body for KaTeX", () => {
+    expect(normalizeMathDelimiters("\\(a \\$ b\\)")).toBe("$$a \\$ b$$");
+  });
+
+  it("does not escape an already-escaped dollar", () => {
+    expect(normalizeMathDelimiters("cost \\$\\(x\\)")).toBe("cost \\$$$x$$");
+  });
+
+  it("leaves an amount separated by a space alone", () => {
+    expect(normalizeMathDelimiters("\\(x\\) costs $5")).toBe("$$x$$ costs $5");
+  });
+
   it("leaves currency amounts in prose untouched", () => {
     const src = "the most bearish ($63) and most bullish ($800) targets, at ~$1.77T";
     expect(normalizeMathDelimiters(src)).toBe(src);
