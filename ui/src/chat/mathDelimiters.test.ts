@@ -23,8 +23,22 @@ describe("normalizeMathDelimiters", () => {
     expect(normalizeMathDelimiters("\\[a\\] and \\[b\\]")).toBe("$$a$$ and $$b$$");
   });
 
-  it("leaves a four-space-indented formula inline, so it cannot read as code", () => {
+  it("leaves a four-space-indented formula on the inline path, unchanged from before", () => {
     expect(normalizeMathDelimiters("    \\[a\\]")).toBe("    $$a$$");
+  });
+
+  // An unclosed `\[` still gets paired with a later `\]` by the inline branch, as it always
+  // has. That stays harmless because inline `$$` cannot span a blank line, so it simply
+  // fails to parse and the prose remains readable — see the render test. What must not
+  // happen is the block branch claiming it: a `$$` fence *does* span blank lines, so it
+  // would swallow the paragraphs into the formula and lose them.
+  it("does not fence an unclosed \\[ that runs past a paragraph break", () => {
+    const src = "\\[a\n\npara one\n\npara two \\[b\\]";
+    expect(normalizeMathDelimiters(src)).not.toContain("$$\n");
+  });
+
+  it("does not double the indent when the closing delimiter is indented", () => {
+    expect(normalizeMathDelimiters("  \\[\n  a\n  \\]")).toBe("  $$\n  a\n  $$");
   });
 
   it("leaves a formula mid-sentence inline", () => {

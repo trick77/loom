@@ -40,6 +40,17 @@ test("renders \\[...\\] on its own line as display KaTeX", () => {
   expect(container.textContent).not.toContain("$$");
 });
 
+// The prose between an unclosed `\[` and a later `\]` must survive. A `$$` fence spans
+// blank lines, so if the block branch ever claimed this the paragraphs would disappear
+// into the formula.
+test("keeps prose readable when a display delimiter is never closed", () => {
+  const { container } = render(
+    <ProseMarkdown>{"\\[a\n\npara one\n\npara two \\[b\\]"}</ProseMarkdown>,
+  );
+  expect(container.textContent).toContain("para one");
+  expect(container.textContent).toContain("para two");
+});
+
 test("renders \\[...\\] mid-sentence as inline KaTeX", () => {
   const { container } = render(<ProseMarkdown>{"so \\[a + b\\] follows"}</ProseMarkdown>);
   expect(container.querySelector(".katex")).not.toBeNull();
