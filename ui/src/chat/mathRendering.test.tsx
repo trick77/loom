@@ -32,6 +32,15 @@ test("renders a $$ fence as display KaTeX", () => {
   expect(container.querySelector(".katex-display")).not.toBeNull();
 });
 
+// Regression: an amount touching the end of a formula merged into the delimiter run, so
+// neither the math nor the amount survived — the whole thing showed as raw `$$x$$$5`.
+test("renders math abutting a currency amount", () => {
+  const { container } = render(<ProseMarkdown>{"cost \\(x\\)$5 total"}</ProseMarkdown>);
+  expect(container.querySelector(".katex")).not.toBeNull();
+  expect(container.textContent).toContain("$5 total");
+  expect(container.textContent).not.toContain("$$");
+});
+
 // Regression: prose about money used to pair into an inline math span, which swallowed
 // the sentence between the two amounts and re-rendered it as italic KaTeX.
 test.each([
