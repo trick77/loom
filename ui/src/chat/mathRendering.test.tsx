@@ -32,6 +32,31 @@ test("renders a $$ fence as display KaTeX", () => {
   expect(container.querySelector(".katex-display")).not.toBeNull();
 });
 
+// Regression: `\[...\]` normalised to a one-line `$$ x $$`, which micromark reads as
+// inline math, so LaTeX-native display math never produced a centred block.
+test("renders \\[...\\] on its own line as display KaTeX", () => {
+  const { container } = render(<ProseMarkdown>{"\\[g(x) = \\frac{a}{b}\\]"}</ProseMarkdown>);
+  expect(container.querySelector(".katex-display")).not.toBeNull();
+  expect(container.textContent).not.toContain("$$");
+});
+
+// The prose between an unclosed `\[` and a later `\]` must survive. A `$$` fence spans
+// blank lines, so if the block branch ever claimed this the paragraphs would disappear
+// into the formula.
+test("keeps prose readable when a display delimiter is never closed", () => {
+  const { container } = render(
+    <ProseMarkdown>{"\\[a\n\npara one\n\npara two \\[b\\]"}</ProseMarkdown>,
+  );
+  expect(container.textContent).toContain("para one");
+  expect(container.textContent).toContain("para two");
+});
+
+test("renders \\[...\\] mid-sentence as inline KaTeX", () => {
+  const { container } = render(<ProseMarkdown>{"so \\[a + b\\] follows"}</ProseMarkdown>);
+  expect(container.querySelector(".katex")).not.toBeNull();
+  expect(container.querySelector(".katex-display")).toBeNull();
+});
+
 // Regression: an amount touching the end of a formula merged into the delimiter run, so
 // neither the math nor the amount survived — the whole thing showed as raw `$$x$$$5`.
 test("renders math abutting a currency amount", () => {
