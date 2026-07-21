@@ -7,7 +7,7 @@ import { ProseMarkdown } from "./messages";
 // End-to-end proof of the render pipeline: remark-math + rehype-katex must turn LaTeX
 // into KaTeX DOM (a `.katex` element), not leave the raw `$$`/`\(` delimiters as text.
 
-test("renders $$...$$ display math as KaTeX", () => {
+test("renders a $$...$$ formula as KaTeX", () => {
   const { container } = render(
     <ProseMarkdown>{"$$g(x) = \\frac{x^2 - 4}{x^2 - x - 2}$$"}</ProseMarkdown>,
   );
