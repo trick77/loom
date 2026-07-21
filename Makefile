@@ -8,18 +8,29 @@ test:
 
 coverage: backend-coverage fe-coverage
 
-# Enforce the gates against a base ref (default origin/master).
+# Enforce both gates. The project floor (hack/coverage-floors) is absolute and
+# per-stack; patch coverage is measured against a base ref, default origin/master.
 # Requires diff-cover: pip install diff-cover==10.3.0
 coverage-gate: coverage
-	./hack/coverage-gate.sh $(BASE_REF)
+	./hack/coverage-gate.sh backend
+	./hack/coverage-gate.sh ui
+	./hack/patch-coverage.sh $(BASE_REF)
 
 # -coverpkg=./... attributes coverage across package boundaries. Without it code
 # exercised only by another package's tests (the httpapi tests drive chat/store/llm)
 # is reported as uncovered.
+#
+# -race needs cgo, which is independent of the CGO_ENABLED=0 invariant the
+# release build relies on.
+#
+# The Cobertura conversion is what makes a LINE metric available: `go tool cover`
+# reports statements only and exposes no line percentage. It also merges the
+# duplicate blocks -coverpkg emits (one set per test binary), which a naive sum
+# over the raw profile gets badly wrong.
 backend-coverage:
 	mkdir -p coverage
-	cd backend && go test ./... -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out
-	cd backend && go tool cover -func=../coverage/backend.out
+	cd backend && CGO_ENABLED=1 go test -race ./... -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out
+	cd backend && go run github.com/boumenot/gocover-cobertura@v1.5.0 < ../coverage/backend.out > ../coverage/backend.xml
 
 fe-test:
 	cd ui && npm run test -- --run

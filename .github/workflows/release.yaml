@@ -103,10 +103,29 @@ jobs:
           cache-to: type=gha,mode=max
 
       # Tag only AFTER the image push succeeds, so a failed release never leaves
-      # an orphan git tag behind.
-      - name: Create and push tag
+      # an orphan git tag behind — the next version is derived from the newest
+      # tag, so an orphan would permanently burn that number.
+      #
+      # Create the tag via the REST API rather than `git push`. Both work; this
+      # repo pushed hundreds of tags the old way without trouble. create-ref is
+      # preferred because it needs no git credentials in the checkout and is a
+      # single atomic call that fails with a clear HTTP error. Every repo in this
+      # family uses create-ref so the release workflows stay comparable.
+      - name: Create tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.ver.outputs.version }}"
-          git push origin "${{ steps.ver.outputs.version }}"
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/${{ steps.ver.outputs.version }}" \
+            -f sha="${{ github.sha }}"
+
+      # Runs after the tag exists, so the release attaches to it rather than
+      # creating a second pointer at the same commit.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes "Container image: \`ghcr.io/${{ github.repository }}:$VERSION\`"

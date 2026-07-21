@@ -318,7 +318,9 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 		t.Fatal("release workflow must not build or publish the removed fetch image")
 	}
 
-	tagStep := strings.Index(workflow, "- name: Create and push tag")
+	// The tag is created through the REST API (create-ref) rather than
+	// `git push`, matching the sibling repos, so the step is named "Create tag".
+	tagStep := strings.Index(workflow, "- name: Create tag")
 	if tagStep < 0 {
 		t.Fatal("release workflow missing final git tag step")
 	}
@@ -358,14 +360,15 @@ func TestReleaseWorkflowBuildsProductionImages(t *testing.T) {
 func TestPRWorkflowTypechecksUI(t *testing.T) {
 	// vitest does not run tsc/vite build, so the PR test workflow must run the
 	// UI build itself to catch type/build breakage before merge.
-	data, err := os.ReadFile("../../../.github/workflows/test.yaml")
+	// Renamed from test.yaml to ci.yaml to match the sibling repos.
+	data, err := os.ReadFile("../../../.github/workflows/ci.yaml")
 	if err != nil {
-		t.Fatalf("read test workflow: %v", err)
+		t.Fatalf("read CI workflow: %v", err)
 	}
 	workflow := string(data)
 
 	if !strings.Contains(workflow, `cd ui && npm run build`) {
-		t.Fatalf("test workflow missing UI build step")
+		t.Fatalf("CI workflow missing UI build step")
 	}
 }
 
