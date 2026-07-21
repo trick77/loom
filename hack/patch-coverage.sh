@@ -41,24 +41,40 @@ fi
 # before (lcov SF: paths vs git paths). So treat the message as a failure only
 # when that stack's sources actually changed.
 assert_matched() {
-  local report="$1" label="$2" base changed
-  shift 2
+  local report="$1" label="$2" coverage="$3" strip="$4" base changed
+  shift 4
   base="$(git merge-base "$BASE_REF" HEAD)"
   # Test files are excluded from coverage reports by design, so a diff touching
   # only tests legitimately matches no coverage data — don't flag that.
-  # Count rather than `grep -qv`: under ugrep (a common macOS `grep`) the -q/-v
-  # combination returns 1 even when non-matching lines exist, which would
-  # silently disable this guard locally while it still works under GNU grep.
+  # Keep the filtered list rather than testing with `grep -qv`: under ugrep (a
+  # common macOS `grep`) the -q/-v combination returns 1 even when non-matching
+  # lines exist, which would silently disable this guard locally while it still
+  # works under GNU grep. The names are needed below anyway.
   changed="$(git diff --name-only "$base"...HEAD -- "$@" |
-    grep -cvE '(_test\.go|\.test\.tsx?)$' || true)"
+    grep -vE '(_test\.go|\.test\.tsx?)$' || true)"
 
-  if [[ "${changed:-0}" -gt 0 ]] &&
-    grep -q 'No lines with coverage information' "$report"; then
-    echo "patch-coverage: FAIL — $label sources changed but diff-cover matched" >&2
-    echo "  no coverage data. This usually means the report's paths do not" >&2
-    echo "  match git's paths." >&2
-    fail=1
-  fi
+  [[ -n "$changed" ]] || return 0
+  grep -q 'No lines with coverage information' "$report" || return 0
+
+  # Changed source lines can legitimately carry no coverage data of their own:
+  # a Go string in a package-level data table, a type-only TS change. Neither is
+  # instrumented, so diff-cover reports nothing — which looks exactly like a
+  # broken path mapping. Tell the two apart by asking whether the changed files
+  # appear in the coverage report at all. Present means the mapping works and
+  # the diff simply touched no executable line; absent is the real bug.
+  local file
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    if grep -qF "${file#"$strip"}" "$coverage"; then
+      echo "patch-coverage: $label diff touched no executable lines; n/a."
+      return 0
+    fi
+  done <<<"$changed"
+
+  echo "patch-coverage: FAIL — $label sources changed but are absent from the" >&2
+  echo "  coverage report. This usually means the report's paths do not" >&2
+  echo "  match git's paths." >&2
+  fail=1
 }
 
 # --- backend ------------------------------------------------------------------
@@ -85,7 +101,7 @@ if [[ -f coverage/backend.xml ]]; then
     --fail-under "$PATCH_MIN" \
     --format "markdown:coverage/backend-patch.md" || fail=1
   cat coverage/backend-patch.md >> "$summary" 2>/dev/null || true
-  assert_matched coverage/backend-patch.md backend "backend/*.go"
+  assert_matched coverage/backend-patch.md backend coverage/backend-rooted.xml "backend/" "backend/*.go"
 fi
 
 # --- ui -----------------------------------------------------------------------
@@ -103,7 +119,7 @@ if [[ -f coverage/ui/lcov.info ]]; then
     --fail-under "$PATCH_MIN" \
     --format "markdown:coverage/ui-patch.md" || fail=1
   cat coverage/ui-patch.md >> "$summary" 2>/dev/null || true
-  assert_matched coverage/ui-patch.md ui "ui/src/*.ts" "ui/src/*.tsx"
+  assert_matched coverage/ui-patch.md ui coverage/ui-lcov-rooted.info "" "ui/src/*.ts" "ui/src/*.tsx"
 fi
 
 # A gate that checked nothing must not report success: if neither report was

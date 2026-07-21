@@ -1,0 +1,6 @@
+# mathDelimiters.ts embeds U+0000 sentinels to mask code regions, so git guesses it is
+# binary and refuses to show a diff for it. Mark our sources as text so they stay
+# reviewable.
+*.ts diff
+*.tsx diff
+*.go diff

@@ -83,7 +83,7 @@ var catalog = []struct {
 	}},
 	{ScienceMath, entry{
 		gloss: "calculations or math/physics/science problems to solve",
-		block: "For a simple calculation, give only the final result. Otherwise show the working steps and wrap all math in LaTeX using $...$ for inline math and $$...$$ for display equations, then add the intuition behind the result and flag a common pitfall or misconception.",
+		block: "For a simple calculation, give only the final result. Otherwise show the working steps and wrap all math in LaTeX using \\(...\\) for inline math and $$...$$ for display equations, then add the intuition behind the result and flag a common pitfall or misconception.",
 	}},
 	{Coding, entry{
 		gloss: "programming, code, debugging, software questions",
