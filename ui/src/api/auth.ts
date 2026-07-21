@@ -15,7 +15,9 @@ export async function getMe(): Promise<User | null> {
 // LLM answer language: only 'en'/'de' are accepted and both pin the UI locale and
 // the default answer language (which still yields to an explicit in-message
 // request). An unset profile is seeded from the browser locale on first visit.
-export async function updateMe(patch: { responseLanguage: string }): Promise<User> {
+export async function updateMe(patch: {
+  responseLanguage: string;
+}): Promise<User> {
   const response = await fetch("/api/me", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

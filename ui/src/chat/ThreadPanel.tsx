@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ActivityTraceEvent } from "../activityTrace";
@@ -15,7 +21,12 @@ import type { MessagePastedText } from "../api";
 import { AssistantProse, MessageBubble } from "./messages";
 import type { PastedText } from "./pastedText";
 import type { ReasoningEffort } from "./reasoning";
-import { isImageAttachment, toSentAttachment, useDocumentAttachments, type ComposerAttachment } from "./useDocumentAttachments";
+import {
+  isImageAttachment,
+  toSentAttachment,
+  useDocumentAttachments,
+  type ComposerAttachment,
+} from "./useDocumentAttachments";
 import { isNearBottom, previousUserMessage } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { WindowFileDrop } from "./WindowFileDrop";
@@ -99,9 +110,11 @@ export function ThreadPanel({
   const hasNewMessagesSinceShare =
     share?.shared === true &&
     thread?.lastMessageAt !== undefined &&
-    new Date(thread.lastMessageAt).getTime() > new Date(share.snapshotAt).getTime();
+    new Date(thread.lastMessageAt).getTime() >
+      new Date(share.snapshotAt).getTime();
   const headerMenuKey = thread === null ? null : `Header:${thread.id}`;
-  const headerMenuOpen = headerMenuKey !== null && openThreadMenuID === headerMenuKey;
+  const headerMenuOpen =
+    headerMenuKey !== null && openThreadMenuID === headerMenuKey;
   // The live turn is an ordered block list (text / trace / artifact). The
   // currently-active activity panel is the LAST trace block; earlier completed
   // trace blocks render collapsed and inactive inline among the prose. The live
@@ -116,13 +129,21 @@ export function ThreadPanel({
   const activeTraceEvents: ActivityTraceEvent[] =
     lastTraceBlockIndex === -1
       ? []
-      : (streamingBlocks[lastTraceBlockIndex] as Extract<ContentBlock, { type: "trace" }>).events;
+      : (
+          streamingBlocks[lastTraceBlockIndex] as Extract<
+            ContentBlock,
+            { type: "trace" }
+          >
+        ).events;
   const hasActiveActivityTrace = activeTraceEvents.length > 0;
   // Answer prose has begun once a non-empty text block exists after the active
   // trace block (the reasoning-free turn has no trace block, so any text block
   // counts). This is the block-model analog of the former `streamingText !== ""`.
   const answerTextStreaming = streamingBlocks.some(
-    (block, index) => block.type === "text" && block.content !== "" && index > lastTraceBlockIndex,
+    (block, index) =>
+      block.type === "text" &&
+      block.content !== "" &&
+      index > lastTraceBlockIndex,
   );
   // While the turn is live, the activity panel is shown only once a real reasoning
   // title exists — before that the tail dots are the sole cue (no "Thinking"
@@ -134,7 +155,8 @@ export function ThreadPanel({
   const hasReasoningTitle = activeTraceEvents.some(
     (event) => event.type === "reasoning" && (event.title?.trim() ?? "") !== "",
   );
-  const activeTraceVisible = hasActiveActivityTrace && (hasReasoningTitle || !isSending);
+  const activeTraceVisible =
+    hasActiveActivityTrace && (hasReasoningTitle || !isSending);
   // The live thinking window manages its own open/closed state: it opens once per
   // turn when there is something to show and stays open through the answer, then
   // collapses when the turn ends. There is no persisted preference; past traces
@@ -148,14 +170,18 @@ export function ThreadPanel({
   // early. The active state also holds until the latest reasoning round's
   // background title has arrived, so the sweeping title never flips to a
   // raw-first-sentence fallback mid-stream.
-  const hasReasoning = activeTraceEvents.some((event) => event.type === "reasoning");
-  const toolRunning = activeTraceEvents.some((event) => event.type === "tool" && event.status === "running");
-  const latestReasoning = activeTraceEvents.reduce<ActivityTraceEvent | undefined>(
-    (acc, event) => (event.type === "reasoning" ? event : acc),
-    undefined,
+  const hasReasoning = activeTraceEvents.some(
+    (event) => event.type === "reasoning",
   );
+  const toolRunning = activeTraceEvents.some(
+    (event) => event.type === "tool" && event.status === "running",
+  );
+  const latestReasoning = activeTraceEvents.reduce<
+    ActivityTraceEvent | undefined
+  >((acc, event) => (event.type === "reasoning" ? event : acc), undefined);
   const latestReasoningTitled =
-    latestReasoning?.type === "reasoning" && (latestReasoning.title?.trim() ?? "") !== "";
+    latestReasoning?.type === "reasoning" &&
+    (latestReasoning.title?.trim() ?? "") !== "";
   // The final answer is streaming: prose is going into the tail with no tool
   // running or pending. Pre-tool preamble text followed by a tool call is NOT the
   // answer — the `toolPending` bridge covers the beat before the call surfaces.
@@ -173,7 +199,8 @@ export function ThreadPanel({
   // and the aria live-region), not the open/closed state: the panel stays open
   // through the answer even after the reasoning phase settles.
   const liveTraceThinking = isSending && !reasoningSettled;
-  const liveTraceHasSomethingToShow = isSending && (hasActiveActivityTrace || answerTextStreaming);
+  const liveTraceHasSomethingToShow =
+    isSending && (hasActiveActivityTrace || answerTextStreaming);
   // `working` = the turn is live and no answer prose is streaming into the tail
   // yet (thinking / running tools / between steps). It drives both the tail dots
   // and whether the reasoning-title label shimmers. The dots sit at the very
@@ -236,7 +263,8 @@ export function ThreadPanel({
       transcript.scrollTop = transcript.scrollHeight;
     };
     scroll();
-    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+    if (scrollFrameRef.current !== null)
+      window.cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = window.requestAnimationFrame(() => {
       scrollFrameRef.current = null;
       // Honour a user scroll that happened between the synchronous scroll above and this
@@ -268,12 +296,16 @@ export function ThreadPanel({
 
   const handleSendRequest = useCallback(() => {
     const sentAttachments = attachments.map(toSentAttachment);
-    if (sentAttachments.length > 0) clearAttachments({ revokePreviewUrls: false });
+    if (sentAttachments.length > 0)
+      clearAttachments({ revokePreviewUrls: false });
     pinToLatest();
     onSend(sentAttachments);
   }, [attachments, clearAttachments, onSend, pinToLatest]);
   const imageUploadPending = attachments.some(
-    (attachment) => isImageAttachment(attachment) && attachment.artifactId === undefined && attachment.status !== "error",
+    (attachment) =>
+      isImageAttachment(attachment) &&
+      attachment.artifactId === undefined &&
+      attachment.status !== "error",
   );
 
   const handleRetryRequest = useCallback(
@@ -309,7 +341,8 @@ export function ThreadPanel({
 
   useEffect(() => {
     return () => {
-      if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+      if (scrollFrameRef.current !== null)
+        window.cancelAnimationFrame(scrollFrameRef.current);
     };
   }, []);
 
@@ -317,7 +350,8 @@ export function ThreadPanel({
     if (!headerMenuOpen) return;
     function handlePointerDown(event: PointerEvent) {
       const target = event.target;
-      if (!(target instanceof Node) || headerMenuRef.current?.contains(target)) return;
+      if (!(target instanceof Node) || headerMenuRef.current?.contains(target))
+        return;
       onCloseThreadMenu();
     }
     document.addEventListener("pointerdown", handlePointerDown);
@@ -333,7 +367,10 @@ export function ThreadPanel({
       >
         <div className="flex min-w-0 items-center gap-2">
           <SidebarOpenButton onClick={onOpenSidebar} />
-          <div ref={headerMenuRef} className="relative flex min-w-0 items-center">
+          <div
+            ref={headerMenuRef}
+            className="relative flex min-w-0 items-center"
+          >
             <h1 className="flex min-w-0 max-w-[28ch] items-center gap-1 truncate font-sans font-normal sm:max-w-[48ch]">
               {threadProject !== null && thread !== null && (
                 <>
@@ -344,10 +381,16 @@ export function ThreadPanel({
                   >
                     {threadProject.name}
                   </button>
-                  <Icon name="chevronRight" size="16px" className="shrink-0 text-[#77736a]" />
+                  <Icon
+                    name="chevronRight"
+                    size="16px"
+                    className="shrink-0 text-[#77736a]"
+                  />
                 </>
               )}
-              <span className="min-w-0 truncate">{thread?.title ?? t("common.newThread")}</span>
+              <span className="min-w-0 truncate">
+                {thread?.title ?? t("common.newThread")}
+              </span>
             </h1>
             {thread !== null && headerMenuKey !== null && (
               <button
@@ -357,7 +400,10 @@ export function ThreadPanel({
                 onClick={() => onToggleThreadMenu(headerMenuKey)}
                 type="button"
               >
-                <Icon name={headerMenuOpen ? "chevronDown" : "chevronRight"} size="16px" />
+                <Icon
+                  name={headerMenuOpen ? "chevronDown" : "chevronRight"}
+                  size="16px"
+                />
               </button>
             )}
             {thread !== null && headerMenuKey !== null && headerMenuOpen && (
@@ -381,7 +427,11 @@ export function ThreadPanel({
           {thread !== null && (
             <button
               type="button"
-              aria-label={share?.shared === true ? t("thread.manageSharing") : t("thread.shareChat")}
+              aria-label={
+                share?.shared === true
+                  ? t("thread.manageSharing")
+                  : t("thread.shareChat")
+              }
               className="relative rounded-md bg-[#46453f] px-2.5 py-0.5 text-[#d6d3ca] transition-colors hover:bg-[#52514a] hover:text-[#f3f0e8]"
               onClick={() => setShareDialogOpen(true)}
             >
@@ -423,7 +473,11 @@ export function ThreadPanel({
               <div key={message.clientKey ?? message.id} className="space-y-6">
                 <MessageBubble
                   message={message}
-                  retryMessage={message.role === "assistant" ? previousUserMessage(messages, index) : null}
+                  retryMessage={
+                    message.role === "assistant"
+                      ? previousUserMessage(messages, index)
+                      : null
+                  }
                   onRetry={handleRetryRequest}
                   category={thread?.category}
                 />
@@ -449,7 +503,10 @@ export function ThreadPanel({
                 }
                 if (block.type === "artifact") {
                   elements.push(
-                    <GeneratedArtifactCard key={`stream-artifact-${block.artifact.id}`} artifact={block.artifact} />,
+                    <GeneratedArtifactCard
+                      key={`stream-artifact-${block.artifact.id}`}
+                      artifact={block.artifact}
+                    />,
                   );
                   return;
                 }
@@ -464,13 +521,19 @@ export function ThreadPanel({
                 if (isActiveTrace && !activeTraceVisible) return;
                 elements.push(
                   <ActivityTracePanel
-                    key={isActiveTrace ? "live-active-trace" : `stream-trace-${index}`}
+                    key={
+                      isActiveTrace
+                        ? "live-active-trace"
+                        : `stream-trace-${index}`
+                    }
                     events={block.events}
                     active={isActiveTrace ? liveTraceThinking : false}
                     streaming={isActiveTrace ? isSending : false}
                     sweep={isActiveTrace ? working : false}
                     expanded={isActiveTrace ? liveTraceExpanded : undefined}
-                    onExpandedChange={isActiveTrace ? setLiveTraceExpanded : undefined}
+                    onExpandedChange={
+                      isActiveTrace ? setLiveTraceExpanded : undefined
+                    }
                   />,
                 );
               });
@@ -529,7 +592,12 @@ export function ThreadPanel({
             title={t("thread.jumpToLatestTitle")}
             type="button"
           >
-            <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <svg
+              aria-hidden="true"
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
               <path
                 d="M12 5v14M6.5 13.5 12 19l5.5-5.5"
                 stroke="currentColor"

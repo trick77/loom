@@ -24,12 +24,18 @@ function thread(id: string, title: string): Thread {
 }
 
 function setResults(results: SearchResult[]) {
-  useThreadSearchMock.mockReturnValue({ results, titleLoading: false, contentLoading: false });
+  useThreadSearchMock.mockReturnValue({
+    results,
+    titleLoading: false,
+    contentLoading: false,
+  });
 }
 
 // The rows are the only <li> elements in the modal, in result order.
 function rowButtons(): HTMLElement[] {
-  return screen.getAllByRole("listitem").map((li) => within(li).getByRole("button"));
+  return screen
+    .getAllByRole("listitem")
+    .map((li) => within(li).getByRole("button"));
 }
 
 const SELECTED_CLASS = "bg-[#3f3f3a]";
@@ -75,7 +81,10 @@ describe("SearchModal", () => {
   });
 
   it("renders one row per result and selects the first by default", () => {
-    setResults([{ thread: thread("t1", "Alpha") }, { thread: thread("t2", "Beta") }]);
+    setResults([
+      { thread: thread("t1", "Alpha") },
+      { thread: thread("t2", "Beta") },
+    ]);
     render(<SearchModal onClose={vi.fn()} onSelectThread={vi.fn()} />);
 
     const rows = rowButtons();
@@ -88,7 +97,10 @@ describe("SearchModal", () => {
 
   it("renders a snippet only when the result carries one", () => {
     setResults([
-      { thread: thread("t1", "Alpha"), snippet: "packed a «kayak» for the trip" },
+      {
+        thread: thread("t1", "Alpha"),
+        snippet: "packed a «kayak» for the trip",
+      },
       { thread: thread("t2", "Beta"), snippet: "" },
     ]);
     render(<SearchModal onClose={vi.fn()} onSelectThread={vi.fn()} />);
@@ -100,7 +112,9 @@ describe("SearchModal", () => {
 
   it("highlights matching terms in titles only while a query is present", () => {
     setResults([{ thread: thread("t1", "Kayak trip") }]);
-    const { container } = render(<SearchModal onClose={vi.fn()} onSelectThread={vi.fn()} />);
+    const { container } = render(
+      <SearchModal onClose={vi.fn()} onSelectThread={vi.fn()} />,
+    );
 
     expect(container.querySelector("strong")).toBeNull();
 
@@ -112,7 +126,10 @@ describe("SearchModal", () => {
   });
 
   it("moves the selection down with ArrowDown and wraps past the last row", () => {
-    setResults([{ thread: thread("t1", "Alpha") }, { thread: thread("t2", "Beta") }]);
+    setResults([
+      { thread: thread("t1", "Alpha") },
+      { thread: thread("t2", "Beta") },
+    ]);
     render(<SearchModal onClose={vi.fn()} onSelectThread={vi.fn()} />);
     const input = screen.getByRole("textbox", { name: "Search chats" });
 
@@ -125,10 +142,15 @@ describe("SearchModal", () => {
   });
 
   it("moves the selection up with ArrowUp and wraps to the last row", () => {
-    setResults([{ thread: thread("t1", "Alpha") }, { thread: thread("t2", "Beta") }]);
+    setResults([
+      { thread: thread("t1", "Alpha") },
+      { thread: thread("t2", "Beta") },
+    ]);
     render(<SearchModal onClose={vi.fn()} onSelectThread={vi.fn()} />);
 
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), { key: "ArrowUp" });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), {
+      key: "ArrowUp",
+    });
 
     expect(rowButtons()[1]).toHaveClass(SELECTED_CLASS);
   });
@@ -144,7 +166,10 @@ describe("SearchModal", () => {
   });
 
   it("moves the selection to the hovered row", () => {
-    setResults([{ thread: thread("t1", "Alpha") }, { thread: thread("t2", "Beta") }]);
+    setResults([
+      { thread: thread("t1", "Alpha") },
+      { thread: thread("t2", "Beta") },
+    ]);
     render(<SearchModal onClose={vi.fn()} onSelectThread={vi.fn()} />);
 
     fireEvent.mouseMove(rowButtons()[1]);
@@ -153,7 +178,10 @@ describe("SearchModal", () => {
   });
 
   it("opens the selected thread on Enter and closes", () => {
-    setResults([{ thread: thread("t1", "Alpha") }, { thread: thread("t2", "Beta") }]);
+    setResults([
+      { thread: thread("t1", "Alpha") },
+      { thread: thread("t2", "Beta") },
+    ]);
     const onClose = vi.fn();
     const onSelectThread = vi.fn();
     render(<SearchModal onClose={onClose} onSelectThread={onSelectThread} />);
@@ -171,14 +199,19 @@ describe("SearchModal", () => {
     const onSelectThread = vi.fn();
     render(<SearchModal onClose={onClose} onSelectThread={onSelectThread} />);
 
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), {
+      key: "Enter",
+    });
 
     expect(onSelectThread).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it("opens a thread when its row is clicked", () => {
-    setResults([{ thread: thread("t1", "Alpha") }, { thread: thread("t2", "Beta") }]);
+    setResults([
+      { thread: thread("t1", "Alpha") },
+      { thread: thread("t2", "Beta") },
+    ]);
     const onClose = vi.fn();
     const onSelectThread = vi.fn();
     render(<SearchModal onClose={onClose} onSelectThread={onSelectThread} />);
@@ -193,7 +226,9 @@ describe("SearchModal", () => {
     const onClose = vi.fn();
     render(<SearchModal onClose={onClose} onSelectThread={vi.fn()} />);
 
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), {
+      key: "Escape",
+    });
 
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -202,7 +237,9 @@ describe("SearchModal", () => {
     const onClose = vi.fn();
     render(<SearchModal onClose={onClose} onSelectThread={vi.fn()} />);
 
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), { key: "a" });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), {
+      key: "a",
+    });
 
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -218,7 +255,9 @@ describe("SearchModal", () => {
 
   it("closes on a backdrop click but not on a click inside the dialog", () => {
     const onClose = vi.fn();
-    const { container } = render(<SearchModal onClose={onClose} onSelectThread={vi.fn()} />);
+    const { container } = render(
+      <SearchModal onClose={onClose} onSelectThread={vi.fn()} />,
+    );
 
     fireEvent.click(screen.getByRole("dialog"));
     expect(onClose).not.toHaveBeenCalled();

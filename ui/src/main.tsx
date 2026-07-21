@@ -12,7 +12,9 @@ const root = ReactDOM.createRoot(document.getElementById("root")!);
 // link must reach a standalone, read-only page with no app shell.
 const sharePath = "/share/";
 if (window.location.pathname.startsWith(sharePath)) {
-  const shareId = decodeURIComponent(window.location.pathname.slice(sharePath.length));
+  const shareId = decodeURIComponent(
+    window.location.pathname.slice(sharePath.length),
+  );
   root.render(
     <React.StrictMode>
       <SharePage shareId={shareId} />

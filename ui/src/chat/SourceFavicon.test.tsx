@@ -6,14 +6,23 @@ import type { Citation } from "../api";
 import { SourceFavicon } from "./SourceFavicon";
 
 function web(extra: Partial<Citation>): Citation {
-  return { documentId: "", filename: "Modal", snippet: "", score: 0, url: "https://modal.com", ...extra };
+  return {
+    documentId: "",
+    filename: "Modal",
+    snippet: "",
+    score: 0,
+    url: "https://modal.com",
+    ...extra,
+  };
 }
 
 describe("SourceFavicon", () => {
   it("requests the backend-resolved site icon for the source's page url", () => {
     const { container } = render(<SourceFavicon citation={web({})} />);
     const img = container.querySelector("img")!;
-    expect(img.getAttribute("src")).toBe(`/api/favicon?u=${encodeURIComponent("https://modal.com")}`);
+    expect(img.getAttribute("src")).toBe(
+      `/api/favicon?u=${encodeURIComponent("https://modal.com")}`,
+    );
     // No lazy loading (tiny, in-view) and no dark placeholder background.
     expect(img.getAttribute("loading")).toBeNull();
     expect(img.className).not.toContain("bg-[#2a2a28]");
@@ -35,7 +44,9 @@ describe("SourceFavicon", () => {
   });
 
   it("falls straight to a letter avatar when there is no url", () => {
-    const { container } = render(<SourceFavicon citation={web({ url: "", filename: "Guardian" })} />);
+    const { container } = render(
+      <SourceFavicon citation={web({ url: "", filename: "Guardian" })} />,
+    );
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getByText("G")).toBeInTheDocument();
   });

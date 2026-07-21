@@ -51,13 +51,17 @@ export type SearchResultPreview = {
   snippet?: string;
 };
 
-export function appendReasoningDelta(events: ActivityTraceEvent[], delta: string): ActivityTraceEvent[] {
+export function appendReasoningDelta(
+  events: ActivityTraceEvent[],
+  delta: string,
+): ActivityTraceEvent[] {
   if (delta === "") return events;
   const last = events[events.length - 1];
   if (last?.type === "reasoning" && last.status === "running") {
     return [...events.slice(0, -1), { ...last, content: last.content + delta }];
   }
-  const reasoningCount = events.filter((event) => event.type === "reasoning").length + 1;
+  const reasoningCount =
+    events.filter((event) => event.type === "reasoning").length + 1;
   return [
     ...events,
     {
@@ -69,7 +73,10 @@ export function appendReasoningDelta(events: ActivityTraceEvent[], delta: string
   ];
 }
 
-export function upsertTraceToolCall(events: ActivityTraceEvent[], event: ToolCallEvent): ActivityTraceEvent[] {
+export function upsertTraceToolCall(
+  events: ActivityTraceEvent[],
+  event: ToolCallEvent,
+): ActivityTraceEvent[] {
   const next = events.filter((item) => item.id !== event.id);
   return [
     ...next,
@@ -84,7 +91,10 @@ export function upsertTraceToolCall(events: ActivityTraceEvent[], event: ToolCal
   ];
 }
 
-export function upsertTraceToolResult(events: ActivityTraceEvent[], event: ToolResultEvent): ActivityTraceEvent[] {
+export function upsertTraceToolResult(
+  events: ActivityTraceEvent[],
+  event: ToolResultEvent,
+): ActivityTraceEvent[] {
   return events.map((item) => {
     if (item.type !== "tool" || item.id !== event.id) return item;
     const failed = event.content.startsWith(TOOL_FAILED_PREFIX);
@@ -97,26 +107,38 @@ export function upsertTraceToolResult(events: ActivityTraceEvent[], event: ToolR
   });
 }
 
-export function completeTrace(events: ActivityTraceEvent[]): ActivityTraceEvent[] {
+export function completeTrace(
+  events: ActivityTraceEvent[],
+): ActivityTraceEvent[] {
   return events.map((event) => {
     if (event.status !== "running") return event;
     return { ...event, status: "done" };
   });
 }
 
-export function normalizeActivityTrace(events: ActivityTraceEvent[] | null | undefined): ActivityTraceEvent[] | undefined {
+export function normalizeActivityTrace(
+  events: ActivityTraceEvent[] | null | undefined,
+): ActivityTraceEvent[] | undefined {
   // Guard null, not just undefined: the backend stores activity_trace as a
   // json.RawMessage that can serialize to JSON `null` (a persisted "null" blob),
   // and a null here would otherwise crash the whole thread load on `.length`.
   if (events == null || events.length === 0) return undefined;
   return events.map((event) => {
     if (event.type === "reasoning") {
-      return { ...event, status: event.status === "running" ? "done" : event.status };
+      return {
+        ...event,
+        status: event.status === "running" ? "done" : event.status,
+      };
     }
-    const summary = event.summary ?? summarizeToolCall(event.name, event.rawArguments ?? "{}");
+    const summary =
+      event.summary ??
+      summarizeToolCall(event.name, event.rawArguments ?? "{}");
     const normalized: ActivityTraceToolEvent = {
       ...event,
-      status: event.status === "running" && event.rawOutput !== undefined ? "done" : event.status,
+      status:
+        event.status === "running" && event.rawOutput !== undefined
+          ? "done"
+          : event.status,
       summary,
     };
     if (event.rawOutput !== undefined && event.preview === undefined) {
@@ -136,7 +158,11 @@ export function normalizeActivityTrace(events: ActivityTraceEvent[] | null | und
 export function summarizeTrace(events: ActivityTraceEvent[]): string {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    if (event.type === "reasoning" && event.title !== undefined && event.title.trim() !== "") {
+    if (
+      event.type === "reasoning" &&
+      event.title !== undefined &&
+      event.title.trim() !== ""
+    ) {
       return event.title;
     }
   }
@@ -145,38 +171,70 @@ export function summarizeTrace(events: ActivityTraceEvent[]): string {
 
 // applyReasoningTitle stamps a background-generated title onto the matching
 // reasoning event, leaving the rest of the trace untouched.
-export function applyReasoningTitle(events: ActivityTraceEvent[], id: string, title: string): ActivityTraceEvent[] {
+export function applyReasoningTitle(
+  events: ActivityTraceEvent[],
+  id: string,
+  title: string,
+): ActivityTraceEvent[] {
   return events.map((event) =>
     event.type === "reasoning" && event.id === id ? { ...event, title } : event,
   );
 }
 
-export function summarizeToolCall(name: string, rawArguments: string): ToolSummary {
+export function summarizeToolCall(
+  name: string,
+  rawArguments: string,
+): ToolSummary {
   const args = parseJSONRecord(rawArguments);
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
   if (/conversation_search/i.test(name)) {
     // Distinct kind so the trace renders a loupe (own-history search) rather than
     // the globe used for web search — see ActivityTracePanel.
-    return { kind: "conversationSearch", title: query ? capitalizeFirst(query) : i18n.t("activityTrace.trace.searchPastConversations") };
+    return {
+      kind: "conversationSearch",
+      title: query
+        ? capitalizeFirst(query)
+        : i18n.t("activityTrace.trace.searchPastConversations"),
+    };
   }
   if (/read_thread/i.test(name)) {
-    return { kind: "generated", title: i18n.t("activityTrace.trace.readingConversation") };
+    return {
+      kind: "generated",
+      title: i18n.t("activityTrace.trace.readingConversation"),
+    };
   }
   if (/ipverse/i.test(name)) {
     // IP-reputation lookups: render a loupe with explanatory text rather than a
     // bare IP under the generic external-link glyph — check before the web-search
     // branch since an IP arg may be named "query".
     const ip = ipAddressValue(args);
-    return { kind: "lookup", title: ip !== undefined ? i18n.t("activityTrace.trace.lookupIp", { ip }) : i18n.t("activityTrace.trace.lookupIpAddress") };
+    return {
+      kind: "lookup",
+      title:
+        ip !== undefined
+          ? i18n.t("activityTrace.trace.lookupIp", { ip })
+          : i18n.t("activityTrace.trace.lookupIpAddress"),
+    };
   }
   if (isSearchTool(name) || query !== undefined) {
-    return { kind: "search", title: query ? capitalizeFirst(query) : i18n.t("activityTrace.trace.searchWeb") };
+    return {
+      kind: "search",
+      title: query
+        ? capitalizeFirst(query)
+        : i18n.t("activityTrace.trace.searchWeb"),
+    };
   }
   if (isDocsTool(name)) {
-    return { kind: "search", title: i18n.t("activityTrace.trace.searchDocumentation") };
+    return {
+      kind: "search",
+      title: i18n.t("activityTrace.trace.searchDocumentation"),
+    };
   }
   if (/read_project_threads/i.test(name)) {
-    return { kind: "generated", title: i18n.t("activityTrace.trace.readingProjectThreads") };
+    return {
+      kind: "generated",
+      title: i18n.t("activityTrace.trace.readingProjectThreads"),
+    };
   }
   const url = stringValue(args, ["url", "uri", "href"]);
   if (url !== undefined) {
@@ -186,12 +244,23 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
     return { kind: "fetch", title: i18n.t("activityTrace.trace.browsingWeb") };
   }
   if (isFetchTool(name)) {
-    return { kind: "fetch", title: i18n.t("activityTrace.trace.fetchingWebPage") };
+    return {
+      kind: "fetch",
+      title: i18n.t("activityTrace.trace.fetchingWebPage"),
+    };
   }
-  const file = stringValue(args, ["filename", "file", "path", "displayFilename"]);
+  const file = stringValue(args, [
+    "filename",
+    "file",
+    "path",
+    "displayFilename",
+  ]);
   const generated = generatedToolLabel(name, file);
   if (generated !== undefined) {
-    return { kind: "generated", title: i18n.t("activityTrace.trace.creating", { name: generated }) };
+    return {
+      kind: "generated",
+      title: i18n.t("activityTrace.trace.creating", { name: generated }),
+    };
   }
   if (file !== undefined) {
     return { kind: "file", title: file };
@@ -199,7 +268,10 @@ export function summarizeToolCall(name: string, rawArguments: string): ToolSumma
   return { kind: "generic", title: readableToolName(name) };
 }
 
-export function summarizeToolResult(tool: ActivityTraceToolEvent, rawOutput: string): ToolResultPreview {
+export function summarizeToolResult(
+  tool: ActivityTraceToolEvent,
+  rawOutput: string,
+): ToolResultPreview {
   const parsed = parseJSONValue(rawOutput);
   const searchResults = extractSearchResults(parsed);
   if (searchResults.length > 0 || isSearchTool(tool.name)) {
@@ -225,7 +297,9 @@ export function domainFromURL(value: string): string | undefined {
 
 export function faviconURL(value: string): string | undefined {
   const domain = domainFromURL(value);
-  return domain === undefined ? undefined : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
+  return domain === undefined
+    ? undefined
+    : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
 }
 
 export function externalHTTPURL(value: string): string | undefined {
@@ -250,7 +324,9 @@ export function externalHTTPURL(value: string): string | undefined {
 
   try {
     const url = new URL(candidate);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : undefined;
   } catch {
     return undefined;
   }
@@ -275,17 +351,29 @@ function isFetchTool(name: string): boolean {
 function generatedToolLabel(name: string, file?: string): string | undefined {
   const normalized = name.toLowerCase();
   const extension = file?.match(/\.([a-z0-9]+)\s*$/i)?.[1]?.toLowerCase();
-  if (normalized === "generate_image" || normalized.includes("image")) return i18n.t("activityTrace.trace.gen.image");
-  if (normalized.includes("pdf") || extension === "pdf") return i18n.t("activityTrace.trace.gen.pdf");
-  if (normalized.includes("docx") || extension === "docx") return i18n.t("activityTrace.trace.gen.document");
-  if (normalized.includes("xlsx") || extension === "xlsx") return i18n.t("activityTrace.trace.gen.spreadsheet");
-  if (normalized.includes("pptx") || normalized.includes("presentation") || extension === "pptx") return i18n.t("activityTrace.trace.gen.presentation");
-  if (/^(create|generate|render|export)_/i.test(name)) return i18n.t("activityTrace.trace.gen.file");
+  if (normalized === "generate_image" || normalized.includes("image"))
+    return i18n.t("activityTrace.trace.gen.image");
+  if (normalized.includes("pdf") || extension === "pdf")
+    return i18n.t("activityTrace.trace.gen.pdf");
+  if (normalized.includes("docx") || extension === "docx")
+    return i18n.t("activityTrace.trace.gen.document");
+  if (normalized.includes("xlsx") || extension === "xlsx")
+    return i18n.t("activityTrace.trace.gen.spreadsheet");
+  if (
+    normalized.includes("pptx") ||
+    normalized.includes("presentation") ||
+    extension === "pptx"
+  )
+    return i18n.t("activityTrace.trace.gen.presentation");
+  if (/^(create|generate|render|export)_/i.test(name))
+    return i18n.t("activityTrace.trace.gen.file");
   return undefined;
 }
 
 function looksLikeDomainURL(value: string): boolean {
-  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#]|$)/i.test(value);
+  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#]|$)/i.test(
+    value,
+  );
 }
 
 function readableToolName(name: string): string {
@@ -312,7 +400,10 @@ function summarizeReasoning(events: ActivityTraceEvent[]): string {
 function stripReasoningLeadIn(value: string): string {
   return value
     .replace(/^(?:i|we)\s+should\s+compare\s+/i, "compared ")
-    .replace(/^(?:i|we)\s+(?:should|need to|will|can|must|am going to|\'ll)\s+/i, "")
+    .replace(
+      /^(?:i|we)\s+(?:should|need to|will|can|must|am going to|\'ll)\s+/i,
+      "",
+    )
     .replace(/^let(?:'s| us)\s+/i, "")
     .replace(/^thinking through\s+/i, "")
     .replace(/^checking\s+/i, "checked ");
@@ -326,7 +417,10 @@ function capitalizeFirst(value: string): string {
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
-function stringValue(record: Record<string, unknown>, keys: string[]): string | undefined {
+function stringValue(
+  record: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string" && value.trim() !== "") return value;
@@ -336,20 +430,25 @@ function stringValue(record: Record<string, unknown>, keys: string[]): string | 
 
 // Lenient — we are labeling a tool call, not validating input. Matches dotted
 // IPv4 and colon-grouped IPv6 (including "::" shorthand).
-const IP_PATTERN = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7})$/i;
+const IP_PATTERN =
+  /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7})$/i;
 
 function ipAddressValue(record: Record<string, unknown>): string | undefined {
   const preferred = stringValue(record, ["ip", "address", "query", "q"]);
-  if (preferred !== undefined && IP_PATTERN.test(preferred.trim())) return preferred.trim();
+  if (preferred !== undefined && IP_PATTERN.test(preferred.trim()))
+    return preferred.trim();
   for (const value of Object.values(record)) {
-    if (typeof value === "string" && IP_PATTERN.test(value.trim())) return value.trim();
+    if (typeof value === "string" && IP_PATTERN.test(value.trim()))
+      return value.trim();
   }
   return undefined;
 }
 
 function parseJSONRecord(value: string): Record<string, unknown> {
   const parsed = parseJSONValue(value);
-  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
 }
 
 function parseJSONValue(value: string): unknown {
@@ -363,22 +462,40 @@ function parseJSONValue(value: string): unknown {
 function extractSearchResults(value: unknown): SearchResultPreview[] {
   const candidates = Array.isArray(value)
     ? value
-    : value !== null && typeof value === "object" && Array.isArray((value as { results?: unknown }).results)
+    : value !== null &&
+        typeof value === "object" &&
+        Array.isArray((value as { results?: unknown }).results)
       ? (value as { results: unknown[] }).results
       : [];
   return candidates.flatMap((item) => {
     if (item === null || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
     const title = typeof record.title === "string" ? record.title : undefined;
-    const url = typeof record.url === "string" ? record.url : typeof record.href === "string" ? record.href : undefined;
+    const url =
+      typeof record.url === "string"
+        ? record.url
+        : typeof record.href === "string"
+          ? record.href
+          : undefined;
     if (title === undefined && url === undefined) return [];
-    const snippet = typeof record.snippet === "string" ? record.snippet : typeof record.content === "string" ? record.content : undefined;
+    const snippet =
+      typeof record.snippet === "string"
+        ? record.snippet
+        : typeof record.content === "string"
+          ? record.content
+          : undefined;
     return [
       {
-        title: title === undefined ? (url ?? "Result") : stripSearchResultMarkdown(title),
+        title:
+          title === undefined
+            ? (url ?? "Result")
+            : stripSearchResultMarkdown(title),
         url,
         domain: url !== undefined ? domainFromURL(url) : undefined,
-        snippet: snippet === undefined ? undefined : stripSearchResultMarkdown(snippet),
+        snippet:
+          snippet === undefined
+            ? undefined
+            : stripSearchResultMarkdown(snippet),
       },
     ];
   });

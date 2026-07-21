@@ -8,7 +8,10 @@ export async function getUserMemory(): Promise<UserMemory> {
 
 export async function getUserDirectives(): Promise<UserDirective[]> {
   const response = await fetch(`/api/me/directives`);
-  return expectJSON<UserDirective[]>(response, "failed to load user directives");
+  return expectJSON<UserDirective[]>(
+    response,
+    "failed to load user directives",
+  );
 }
 
 export async function getUsage(): Promise<Usage> {

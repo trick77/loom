@@ -1,13 +1,16 @@
 import { ATTACHMENT_ACCEPT, DOCUMENT_MAX_UPLOAD_BYTES } from "../api";
 
-const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",").map((ext) => ext.trim().toLowerCase());
+const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",").map((ext) =>
+  ext.trim().toLowerCase(),
+);
 const ACCEPTED_EXTENSION_LABELS = new Map(
   ACCEPTED_EXTENSIONS.map((ext) => {
     const clean = ext.replace(/^\./, "");
     return [clean, clean === "jpeg" ? "JPG" : clean.toUpperCase()];
   }),
 );
-const SUPPORTED_FILE_TYPES = "PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF";
+const SUPPORTED_FILE_TYPES =
+  "PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, JSON, HTML, PNG, JPG, WEBP, or GIF";
 
 export const UNSUPPORTED_FILE_MESSAGE = `Unsupported file type. Use ${SUPPORTED_FILE_TYPES}.`;
 
@@ -37,7 +40,8 @@ export function toSupportedImageFile(file: File): File | null {
   const ext = CLIPBOARD_IMAGE_EXTENSIONS[file.type];
   if (ext === undefined) return null;
   const name = file.name.toLowerCase();
-  if (ACCEPTED_EXTENSIONS.some((accepted) => name.endsWith(accepted))) return file;
+  if (ACCEPTED_EXTENSIONS.some((accepted) => name.endsWith(accepted)))
+    return file;
   return new File([file], `pasted-image${ext}`, { type: file.type });
 }
 
@@ -45,7 +49,9 @@ export function toSupportedImageFile(file: File): File | null {
 // clipboardData.files first (the modern surface), falling back to iterating .items
 // for browsers that only expose images there.
 export function clipboardImageFiles(data: DataTransfer): File[] {
-  const fromFiles = Array.from(data.files ?? []).filter((file) => file.type.startsWith("image/"));
+  const fromFiles = Array.from(data.files ?? []).filter((file) =>
+    file.type.startsWith("image/"),
+  );
   if (fromFiles.length > 0) return fromFiles;
   const fromItems: File[] = [];
   for (const item of Array.from(data.items ?? [])) {
@@ -57,7 +63,9 @@ export function clipboardImageFiles(data: DataTransfer): File[] {
 }
 
 export function isWithinUploadSizeLimit(file: File): boolean {
-  return typeof file.size !== "number" || file.size <= DOCUMENT_MAX_UPLOAD_BYTES;
+  return (
+    typeof file.size !== "number" || file.size <= DOCUMENT_MAX_UPLOAD_BYTES
+  );
 }
 
 export function attachmentExtensionLabel(filename: string): string | null {
@@ -91,6 +99,8 @@ export function attachAcceptedFiles({
   if (accepted.length < files.length) onAttachError?.(UNSUPPORTED_FILE_MESSAGE);
 }
 
-export function isFileDrag(event: DragEvent | { dataTransfer: DataTransfer | null }): boolean {
+export function isFileDrag(
+  event: DragEvent | { dataTransfer: DataTransfer | null },
+): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }

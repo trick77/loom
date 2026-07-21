@@ -5,7 +5,10 @@ import { attachmentExtensionLabel } from "../chat/attachmentFiles";
 import { FileIcon } from "../chat/icons";
 
 function isImageLike(mimeType: string, filename: string): boolean {
-  return mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(filename);
+  return (
+    mimeType.startsWith("image/") ||
+    /\.(png|jpe?g|webp|gif|svg)$/i.test(filename)
+  );
 }
 
 // isRevocablePreview reports whether a preview URL is a local object URL that must
@@ -13,7 +16,9 @@ function isImageLike(mimeType: string, filename: string): boolean {
 // and must NOT be revoked; only blob: URLs created via URL.createObjectURL are.
 // Centralising the rule here keeps every owner of an attachment's lifecycle
 // (composer hook, sent-message cleanup) from accidentally revoking a server URL.
-export function isRevocablePreview(previewUrl: string | undefined): previewUrl is string {
+export function isRevocablePreview(
+  previewUrl: string | undefined,
+): previewUrl is string {
   return previewUrl !== undefined && previewUrl.startsWith("blob:");
 }
 
@@ -68,7 +73,8 @@ export function AttachmentPreview({
     setBroken(false);
   }, [previewUrl]);
   const extensionLabel = attachmentExtensionLabel(filename);
-  const showImage = previewUrl !== undefined && isImageLike(mimeType, filename) && !broken;
+  const showImage =
+    previewUrl !== undefined && isImageLike(mimeType, filename) && !broken;
   return (
     <div className={`relative ${className ?? ""}`} data-testid={testId}>
       {showImage ? (
@@ -83,7 +89,9 @@ export function AttachmentPreview({
           />
           {overlayLabel && extensionLabel !== null && (
             <span className="absolute bottom-1 left-1 inline-flex items-center rounded bg-black/55 px-1.5 py-1 leading-none backdrop-blur-sm">
-              <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill>
+              <AttachmentExtensionPill>
+                {extensionLabel}
+              </AttachmentExtensionPill>
             </span>
           )}
         </>
@@ -92,8 +100,18 @@ export function AttachmentPreview({
           {/* Without a caller box, still grid-center the marker: a bare inline span
               lets the extension label's line box sit ~2px low (its caps ride the
               baseline), so a plain file list would show "PDF"/"MD" off-centre. */}
-          <span className={fallbackBoxClassName ?? "grid h-full w-full place-items-center"}>
-            {extensionLabel !== null ? <AttachmentExtensionPill>{extensionLabel}</AttachmentExtensionPill> : <FileIcon />}
+          <span
+            className={
+              fallbackBoxClassName ?? "grid h-full w-full place-items-center"
+            }
+          >
+            {extensionLabel !== null ? (
+              <AttachmentExtensionPill>
+                {extensionLabel}
+              </AttachmentExtensionPill>
+            ) : (
+              <FileIcon />
+            )}
           </span>
         </span>
       )}

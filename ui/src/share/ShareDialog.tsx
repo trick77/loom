@@ -23,7 +23,9 @@ export function ShareDialog({
 }) {
   const { t } = useTranslation();
   const isShared = share?.shared === true;
-  const [choice, setChoice] = useState<"private" | "public">(isShared ? "public" : "private");
+  const [choice, setChoice] = useState<"private" | "public">(
+    isShared ? "public" : "private",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -57,7 +59,10 @@ export function ShareDialog({
   function selectPrivate() {
     if (busy) return;
     if (isShared) {
-      void run(() => disableShare(threadId), () => onShareChange(share ? { ...share, shared: false } : null));
+      void run(
+        () => disableShare(threadId),
+        () => onShareChange(share ? { ...share, shared: false } : null),
+      );
     }
     setChoice("private");
   }
@@ -66,14 +71,17 @@ export function ShareDialog({
     if (busy) return;
     setChoice("public");
     if (!isShared) {
-      void run(() => createShare(threadId), (info) => onShareChange(info));
+      void run(
+        () => createShare(threadId),
+        (info) => onShareChange(info),
+      );
     }
   }
 
   const absoluteUrl =
     share && !share.shareUrl.startsWith("http")
       ? window.location.origin + share.shareUrl
-      : share?.shareUrl ?? "";
+      : (share?.shareUrl ?? "");
 
   async function copyLink() {
     if (!absoluteUrl) return;
@@ -111,7 +119,12 @@ export function ShareDialog({
                       type="button"
                       className="font-medium text-[#5599e7] underline underline-offset-2 transition-colors hover:text-[#6da7ec] disabled:opacity-50"
                       disabled={busy}
-                      onClick={() => void run(() => updateShare(threadId), (info) => onShareChange(info))}
+                      onClick={() =>
+                        void run(
+                          () => updateShare(threadId),
+                          (info) => onShareChange(info),
+                        )
+                      }
                     >
                       {t("share.update")}
                     </button>
@@ -161,8 +174,10 @@ export function ShareDialog({
               title={absoluteUrl}
               className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-sm text-[#cfcbc1]"
               style={{
-                WebkitMaskImage: "linear-gradient(to right, #000 calc(100% - 28px), transparent)",
-                maskImage: "linear-gradient(to right, #000 calc(100% - 28px), transparent)",
+                WebkitMaskImage:
+                  "linear-gradient(to right, #000 calc(100% - 28px), transparent)",
+                maskImage:
+                  "linear-gradient(to right, #000 calc(100% - 28px), transparent)",
               }}
             >
               {absoluteUrl}
@@ -196,7 +211,9 @@ export function ShareDialog({
           </div>
         )}
 
-        {error !== null && <p className="mt-3 text-xs text-[#d98278]">{error}</p>}
+        {error !== null && (
+          <p className="mt-3 text-xs text-[#d98278]">{error}</p>
+        )}
       </div>
     </div>
   );
@@ -230,10 +247,14 @@ function ShareOption({
         <Icon name={icon} size="18px" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-[#f4f0e8]">{title}</span>
+        <span className="block text-sm font-medium text-[#f4f0e8]">
+          {title}
+        </span>
         <span className="block text-sm text-[#a8a399]">{subtitle}</span>
       </span>
-      {selected && <Icon name="check" size="18px" className="shrink-0 text-[#5599e7]" />}
+      {selected && (
+        <Icon name="check" size="18px" className="shrink-0 text-[#5599e7]" />
+      )}
     </button>
   );
 }

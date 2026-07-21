@@ -54,7 +54,10 @@ export type StripPastedResult = {
 // edge, so a block that fails an exact match is retried trimmed before giving up. A
 // block that still cannot be located is reported as unmatched (matched[i] === false)
 // and left inline, so the caller renders it exactly once (inline, not also a chip).
-export function stripPastedBlocks(content: string, blocks: PastedTextBlock[]): StripPastedResult {
+export function stripPastedBlocks(
+  content: string,
+  blocks: PastedTextBlock[],
+): StripPastedResult {
   const matched = new Array<boolean>(blocks.length).fill(false);
   let end = content.length;
   for (let i = blocks.length - 1; i >= 0; i--) {
@@ -75,7 +78,11 @@ export function stripPastedBlocks(content: string, blocks: PastedTextBlock[]): S
 // multiple megabytes and this only feeds a threshold check / aria-label.
 export function countLines(text: string): number {
   let lineCount = 1;
-  for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", index + 1)) {
+  for (
+    let index = text.indexOf("\n");
+    index !== -1;
+    index = text.indexOf("\n", index + 1)
+  ) {
     lineCount += 1;
   }
   return lineCount;
@@ -83,7 +90,10 @@ export function countLines(text: string): number {
 
 // Whether a plain-text paste should collapse into a chip rather than insert inline.
 export function shouldCollapsePaste(text: string): boolean {
-  return text.length > PASTE_AS_ATTACHMENT_THRESHOLD || countLines(text) > PASTE_AS_ATTACHMENT_LINE_THRESHOLD;
+  return (
+    text.length > PASTE_AS_ATTACHMENT_THRESHOLD ||
+    countLines(text) > PASTE_AS_ATTACHMENT_LINE_THRESHOLD
+  );
 }
 
 export function createPastedText(text: string): PastedText {

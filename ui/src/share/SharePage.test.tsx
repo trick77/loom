@@ -11,7 +11,12 @@ const sample: api.PublicShare = {
   author: "Jan",
   sharedAt: "2026-06-28T00:00:00Z",
   messages: [
-    { id: "m1", role: "user", content: "Compare them", createdAt: "2026-06-28T00:00:00Z" },
+    {
+      id: "m1",
+      role: "user",
+      content: "Compare them",
+      createdAt: "2026-06-28T00:00:00Z",
+    },
     {
       id: "m2",
       role: "assistant",
@@ -38,7 +43,9 @@ describe("SharePage", () => {
   });
 
   it("shows a not-found notice when the share is missing or disabled", async () => {
-    vi.spyOn(api, "getPublicShare").mockRejectedValue(new api.ShareNotFoundError());
+    vi.spyOn(api, "getPublicShare").mockRejectedValue(
+      new api.ShareNotFoundError(),
+    );
     render(<SharePage shareId="gone" />);
 
     expect(await screen.findByText(/isn.t available/i)).toBeInTheDocument();

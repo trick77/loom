@@ -12,7 +12,9 @@ const DAY = 24 * HOUR;
 describe("formatTimeAgo", () => {
   it("returns 'just now' for sub-minute and future timestamps", () => {
     expect(formatTimeAgo(ago(5_000), now)).toBe("just now");
-    expect(formatTimeAgo(new Date(now.getTime() + HOUR).toISOString(), now)).toBe("just now");
+    expect(
+      formatTimeAgo(new Date(now.getTime() + HOUR).toISOString(), now),
+    ).toBe("just now");
   });
 
   it("formats minutes with singular/plural", () => {

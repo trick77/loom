@@ -41,9 +41,14 @@ function stubFetchEach(build: () => unknown) {
 
 describe("listThreads", () => {
   test("omits the query string when no params are given", async () => {
-    const fetchMock = stubFetch(Response.json({ items: [thread], nextCursor: null }));
+    const fetchMock = stubFetch(
+      Response.json({ items: [thread], nextCursor: null }),
+    );
 
-    await expect(listThreads()).resolves.toEqual({ items: [thread], nextCursor: null });
+    await expect(listThreads()).resolves.toEqual({
+      items: [thread],
+      nextCursor: null,
+    });
     expect(fetchMock).toHaveBeenCalledWith("/api/threads");
   });
 
@@ -130,7 +135,9 @@ describe("listThreadIds", () => {
 
 describe("searchThreadContent", () => {
   test("splits the snippet out of each returned thread", async () => {
-    const fetchMock = stubFetch(Response.json({ items: [{ ...thread, snippet: "…vpn…" }] }));
+    const fetchMock = stubFetch(
+      Response.json({ items: [{ ...thread, snippet: "…vpn…" }] }),
+    );
 
     await expect(searchThreadContent({ query: "vpn" })).resolves.toEqual([
       { thread, snippet: "…vpn…" },
@@ -143,7 +150,9 @@ describe("searchThreadContent", () => {
 
     await searchThreadContent({ query: "vp n", limit: 5, projectId: "p1" });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/threads/search?q=vp+n&limit=5&projectId=p1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/search?q=vp+n&limit=5&projectId=p1",
+    );
   });
 
   test.each([
@@ -160,7 +169,9 @@ describe("searchThreadContent", () => {
   test("throws on a non-ok response", async () => {
     stubFetch(new Response("", { status: 500 }));
 
-    await expect(searchThreadContent({ query: "vpn" })).rejects.toThrow("failed to search threads");
+    await expect(searchThreadContent({ query: "vpn" })).rejects.toThrow(
+      "failed to search threads",
+    );
   });
 });
 
@@ -223,14 +234,21 @@ describe("setThreadStarred", () => {
   ])("posts to the %s endpoint", async (starred, action) => {
     const fetchMock = stubFetch(Response.json({ ...thread, starred }));
 
-    await expect(setThreadStarred("t1", starred)).resolves.toEqual({ ...thread, starred });
-    expect(fetchMock).toHaveBeenCalledWith(`/api/threads/t1/${action}`, { method: "POST" });
+    await expect(setThreadStarred("t1", starred)).resolves.toEqual({
+      ...thread,
+      starred,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(`/api/threads/t1/${action}`, {
+      method: "POST",
+    });
   });
 
   test("throws on a non-ok response", async () => {
     stubFetch(new Response("", { status: 500 }));
 
-    await expect(setThreadStarred("t1", true)).rejects.toThrow("failed to update thread");
+    await expect(setThreadStarred("t1", true)).rejects.toThrow(
+      "failed to update thread",
+    );
   });
 });
 
@@ -238,13 +256,17 @@ describe("updateThread", () => {
   test("throws AuthExpiredError on 401", async () => {
     stubFetch(new Response("", { status: 401 }));
 
-    await expect(updateThread("t1", { title: "x" })).rejects.toBeInstanceOf(AuthExpiredError);
+    await expect(updateThread("t1", { title: "x" })).rejects.toBeInstanceOf(
+      AuthExpiredError,
+    );
   });
 
   test("throws on a non-ok response", async () => {
     stubFetch(new Response("", { status: 500 }));
 
-    await expect(updateThread("t1", { title: "x" })).rejects.toThrow("failed to update thread");
+    await expect(updateThread("t1", { title: "x" })).rejects.toThrow(
+      "failed to update thread",
+    );
   });
 });
 
@@ -266,7 +288,9 @@ describe("bulkDeleteThreads", () => {
   test("posts the thread ids and returns the deleted count", async () => {
     const fetchMock = stubFetch(Response.json({ deleted: 2 }));
 
-    await expect(bulkDeleteThreads(["t1", "t2"])).resolves.toEqual({ deleted: 2 });
+    await expect(bulkDeleteThreads(["t1", "t2"])).resolves.toEqual({
+      deleted: 2,
+    });
     expect(fetchMock).toHaveBeenCalledWith("/api/threads:delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -277,7 +301,9 @@ describe("bulkDeleteThreads", () => {
   test("throws on a non-ok response", async () => {
     stubFetch(new Response("", { status: 500 }));
 
-    await expect(bulkDeleteThreads(["t1"])).rejects.toThrow("failed to delete threads");
+    await expect(bulkDeleteThreads(["t1"])).rejects.toThrow(
+      "failed to delete threads",
+    );
   });
 });
 

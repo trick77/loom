@@ -29,4 +29,7 @@ export const markdownRemarkPlugins: PluggableList = [
 // throwOnError:false makes invalid or half-streamed LaTeX degrade to plain text
 // instead of a red error box — important because rehype-katex re-runs on every
 // streaming delta, when a formula is often still incomplete.
-export const rehypeKatexPlugin: PluggableList[number] = [rehypeKatex, { throwOnError: false }];
+export const rehypeKatexPlugin: PluggableList[number] = [
+  rehypeKatex,
+  { throwOnError: false },
+];

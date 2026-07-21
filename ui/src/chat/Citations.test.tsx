@@ -2,7 +2,11 @@ import "@testing-library/jest-dom/vitest";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
-import { combineLikeSources, dedupeByDomain, MessageCitations } from "./Citations";
+import {
+  combineLikeSources,
+  dedupeByDomain,
+  MessageCitations,
+} from "./Citations";
 import type { Citation } from "../api";
 
 // The backend sets filename to the registrable-domain label (its main label via
@@ -97,7 +101,13 @@ describe("MessageCitations", () => {
 
   it("labels a fully injected document 'full document' instead of an excerpt count", () => {
     const sources: Citation[] = [
-      { documentId: "d1", filename: "briefing.pdf", snippet: "whole deck", score: 1, full: true },
+      {
+        documentId: "d1",
+        filename: "briefing.pdf",
+        snippet: "whole deck",
+        score: 1,
+        full: true,
+      },
     ];
     render(<MessageCitations citations={sources} />);
     expect(screen.getByText("briefing.pdf")).toBeInTheDocument();
@@ -107,10 +117,33 @@ describe("MessageCitations", () => {
 
   it("shows a Sources button that opens the sidebar with a card per web source", () => {
     const sources: Citation[] = [
-      { documentId: "", filename: "Modal", snippet: "Modal runs Python.", score: 0, url: "https://modal.com", index: 2, title: "Modal docs" },
-      { documentId: "", filename: "Truefoundry", snippet: "Deploy on k8s.", score: 0, url: "https://truefoundry.com", index: 1, title: "TrueFoundry" },
+      {
+        documentId: "",
+        filename: "Modal",
+        snippet: "Modal runs Python.",
+        score: 0,
+        url: "https://modal.com",
+        index: 2,
+        title: "Modal docs",
+      },
+      {
+        documentId: "",
+        filename: "Truefoundry",
+        snippet: "Deploy on k8s.",
+        score: 0,
+        url: "https://truefoundry.com",
+        index: 1,
+        title: "TrueFoundry",
+      },
       // Duplicate URL collapses to one card.
-      { documentId: "", filename: "Modal", snippet: "", score: 0, url: "https://modal.com", index: 3 },
+      {
+        documentId: "",
+        filename: "Modal",
+        snippet: "",
+        score: 0,
+        url: "https://modal.com",
+        index: 3,
+      },
     ];
     render(<MessageCitations citations={sources} />);
     // Closed: the sidebar dialog is not mounted; a Sources button is shown.
@@ -146,10 +179,19 @@ describe("MessageCitations", () => {
   it("renders document chips alongside the web Sources button", () => {
     const sources: Citation[] = [
       { documentId: "d1", filename: "guide.pdf", snippet: "a", score: 0.9 },
-      { documentId: "", filename: "Modal", snippet: "", score: 0, url: "https://modal.com", index: 1 },
+      {
+        documentId: "",
+        filename: "Modal",
+        snippet: "",
+        score: 0,
+        url: "https://modal.com",
+        index: 1,
+      },
     ];
     render(<MessageCitations citations={sources} />);
     expect(screen.getByText("guide.pdf")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /sources/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /sources/i }),
+    ).toBeInTheDocument();
   });
 });

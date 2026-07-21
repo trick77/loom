@@ -118,5 +118,14 @@ export function useInfiniteList<T>(
 
   useEffect(() => () => observerRef.current?.disconnect(), []);
 
-  return { items, setItems, loaded, loadingMore, hasMore, error, sentinelRef, loadMore };
+  return {
+    items,
+    setItems,
+    loaded,
+    loadingMore,
+    hasMore,
+    error,
+    sentinelRef,
+    loadMore,
+  };
 }

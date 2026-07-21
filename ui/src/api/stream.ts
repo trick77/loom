@@ -54,12 +54,15 @@ export async function streamMessage(
   if (opts.pastedTexts && opts.pastedTexts.length > 0) {
     requestBody.pastedTexts = opts.pastedTexts;
   }
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/messages:stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(requestBody),
-    signal,
-  });
+  const response = await fetch(
+    `/api/threads/${encodeURIComponent(threadId)}/messages:stream`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+      signal,
+    },
+  );
   if (response.status === 401) {
     throw new AuthExpiredError();
   }
@@ -99,7 +102,11 @@ export async function streamIncognitoMessage(
   signal?: AbortSignal,
   opts: { reasoningEffort?: string } = {},
 ): Promise<void> {
-  const requestBody: { content: string; history: typeof history; reasoningEffort?: string } = {
+  const requestBody: {
+    content: string;
+    history: typeof history;
+    reasoningEffort?: string;
+  } = {
     content,
     history,
   };
@@ -210,7 +217,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       handlers.onArtifact?.(payload as Artifact);
       break;
     case "knowledge_sources":
-      handlers.onKnowledgeSources?.((payload as { sources: Citation[] }).sources);
+      handlers.onKnowledgeSources?.(
+        (payload as { sources: Citation[] }).sources,
+      );
       break;
     case "done":
       break;

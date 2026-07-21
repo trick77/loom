@@ -1,14 +1,22 @@
 import { AuthExpiredError, expectJSON } from "./http";
-import type { Artifact, ArtifactListType, ArtifactSort, Page, SortOrder } from "./types";
+import type {
+  Artifact,
+  ArtifactListType,
+  ArtifactSort,
+  Page,
+  SortOrder,
+} from "./types";
 
-export async function listArtifacts(params: {
-  type?: ArtifactListType;
-  sort?: ArtifactSort;
-  order?: SortOrder;
-  search?: string;
-  limit?: number;
-  cursor?: string | null;
-} = {}): Promise<Page<Artifact>> {
+export async function listArtifacts(
+  params: {
+    type?: ArtifactListType;
+    sort?: ArtifactSort;
+    order?: SortOrder;
+    search?: string;
+    limit?: number;
+    cursor?: string | null;
+  } = {},
+): Promise<Page<Artifact>> {
   const query = new URLSearchParams();
   if (params.type !== undefined) {
     query.set("type", params.type);
@@ -25,7 +33,11 @@ export async function listArtifacts(params: {
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
   }
-  if (params.cursor !== undefined && params.cursor !== null && params.cursor !== "") {
+  if (
+    params.cursor !== undefined &&
+    params.cursor !== null &&
+    params.cursor !== ""
+  ) {
     query.set("cursor", params.cursor);
   }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
@@ -49,9 +61,12 @@ export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
 // call it for artifacts the composer itself uploaded — never for re-attached
 // existing artifacts (e.g. a generated image), which must outlive the removal.
 export async function deleteArtifact(artifactId: string): Promise<void> {
-  const response = await fetch(`/api/artifacts/${encodeURIComponent(artifactId)}`, {
-    method: "DELETE",
-  });
+  const response = await fetch(
+    `/api/artifacts/${encodeURIComponent(artifactId)}`,
+    {
+      method: "DELETE",
+    },
+  );
   if (response.status === 401) {
     throw new AuthExpiredError();
   }
@@ -63,12 +78,18 @@ export async function deleteArtifact(artifactId: string): Promise<void> {
 // renameArtifact changes an artifact's display filename. The new name propagates
 // into the chat transcript where the artifact appears via the server's read-time
 // overlay, so no message rewrite is needed client-side.
-export async function renameArtifact(artifactId: string, displayFilename: string): Promise<void> {
-  const response = await fetch(`/api/artifacts/${encodeURIComponent(artifactId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ displayFilename }),
-  });
+export async function renameArtifact(
+  artifactId: string,
+  displayFilename: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/artifacts/${encodeURIComponent(artifactId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayFilename }),
+    },
+  );
   if (response.status === 401) {
     throw new AuthExpiredError();
   }

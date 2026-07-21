@@ -20,7 +20,12 @@ describe("isRevocablePreview", () => {
 describe("AttachmentPreview", () => {
   it("renders a thumbnail for an image with a preview URL", () => {
     const { container } = render(
-      <AttachmentPreview mimeType="image/png" filename="photo.png" previewUrl="blob:preview" alt="a photo" />,
+      <AttachmentPreview
+        mimeType="image/png"
+        filename="photo.png"
+        previewUrl="blob:preview"
+        alt="a photo"
+      />,
     );
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
@@ -30,7 +35,11 @@ describe("AttachmentPreview", () => {
 
   it("falls back to the typed icon when the image fails to load", () => {
     const { container } = render(
-      <AttachmentPreview mimeType="image/svg+xml" filename="diagram.svg" previewUrl="blob:broken" />,
+      <AttachmentPreview
+        mimeType="image/svg+xml"
+        filename="diagram.svg"
+        previewUrl="blob:broken"
+      />,
     );
     expect(container.querySelector("img")).not.toBeNull();
     fireEvent.error(container.querySelector("img")!);
@@ -43,12 +52,20 @@ describe("AttachmentPreview", () => {
     // Regression: a once-failed image must clear its broken state when the same
     // instance receives a new URL (blob: swapped for the stable server URL).
     const { container, rerender } = render(
-      <AttachmentPreview mimeType="image/png" filename="photo.png" previewUrl="blob:stale" />,
+      <AttachmentPreview
+        mimeType="image/png"
+        filename="photo.png"
+        previewUrl="blob:stale"
+      />,
     );
     fireEvent.error(container.querySelector("img")!);
     expect(container.querySelector("img")).toBeNull();
     rerender(
-      <AttachmentPreview mimeType="image/png" filename="photo.png" previewUrl="/api/artifacts/a1/download" />,
+      <AttachmentPreview
+        mimeType="image/png"
+        filename="photo.png"
+        previewUrl="/api/artifacts/a1/download"
+      />,
     );
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
@@ -57,16 +74,29 @@ describe("AttachmentPreview", () => {
 
   it("overlays the extension pill on an image only when overlayLabel is set", () => {
     const { container, rerender } = render(
-      <AttachmentPreview mimeType="image/png" filename="photo.png" previewUrl="blob:preview" overlayLabel />,
+      <AttachmentPreview
+        mimeType="image/png"
+        filename="photo.png"
+        previewUrl="blob:preview"
+        overlayLabel
+      />,
     );
     expect(screen.getByText("PNG")).not.toBeNull();
-    rerender(<AttachmentPreview mimeType="image/png" filename="photo.png" previewUrl="blob:preview" />);
+    rerender(
+      <AttachmentPreview
+        mimeType="image/png"
+        filename="photo.png"
+        previewUrl="blob:preview"
+      />,
+    );
     expect(container.querySelector("img")).not.toBeNull();
     expect(screen.queryByText("PNG")).toBeNull();
   });
 
   it("renders an extension pill for a recognised non-image attachment", () => {
-    const { container } = render(<AttachmentPreview mimeType="application/pdf" filename="report.pdf" />);
+    const { container } = render(
+      <AttachmentPreview mimeType="application/pdf" filename="report.pdf" />,
+    );
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getByText("PDF")).not.toBeNull();
   });
@@ -74,13 +104,20 @@ describe("AttachmentPreview", () => {
   it("grid-centres the marker when no fallback box is supplied", () => {
     // A bare inline wrapper lets the label's line box ride ~2px low; the default
     // grid wrapper keeps "PDF"/"MD" centred in plain file lists (no fallbackBoxClassName).
-    render(<AttachmentPreview mimeType="application/pdf" filename="report.pdf" />);
+    render(
+      <AttachmentPreview mimeType="application/pdf" filename="report.pdf" />,
+    );
     const wrapper = screen.getByText("PDF").parentElement;
     expect(wrapper?.className).toContain("place-items-center");
   });
 
   it("renders the generic file glyph for an unrecognised extension", () => {
-    const { container } = render(<AttachmentPreview mimeType="application/octet-stream" filename="data.bin" />);
+    const { container } = render(
+      <AttachmentPreview
+        mimeType="application/octet-stream"
+        filename="data.bin"
+      />,
+    );
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("svg")).not.toBeNull();
   });

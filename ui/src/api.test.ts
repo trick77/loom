@@ -28,7 +28,13 @@ test("listArtifacts builds query parameters", async () => {
   const fetchMock = vi.fn().mockResolvedValue(Response.json([]));
   vi.stubGlobal("fetch", fetchMock);
 
-  await listArtifacts({ type: "images", sort: "size", order: "asc", search: "robot", limit: 50 });
+  await listArtifacts({
+    type: "images",
+    sort: "size",
+    order: "asc",
+    search: "robot",
+    limit: 50,
+  });
 
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/artifacts?type=images&sort=size&order=asc&search=robot&limit=50",
@@ -36,11 +42,16 @@ test("listArtifacts builds query parameters", async () => {
 });
 
 test("uploadImageAttachment maps chat attachment limit errors", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 409 })));
-
-  await expect(uploadImageAttachment(new File(["png"], "screenshot.png", { type: "image/png" }))).rejects.toThrow(
-    "A thread can have up to 10 attached files.",
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("{}", { status: 409 })),
   );
+
+  await expect(
+    uploadImageAttachment(
+      new File(["png"], "screenshot.png", { type: "image/png" }),
+    ),
+  ).rejects.toThrow("A thread can have up to 10 attached files.");
 });
 
 test("updateThread patches the thread title", async () => {
@@ -54,7 +65,9 @@ test("updateThread patches the thread title", async () => {
   const fetchMock = vi.fn().mockResolvedValue(Response.json(updated));
   vi.stubGlobal("fetch", fetchMock);
 
-  await expect(updateThread("t1", { title: "Renamed chat" })).resolves.toEqual(updated);
+  await expect(updateThread("t1", { title: "Renamed chat" })).resolves.toEqual(
+    updated,
+  );
   expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -74,7 +87,9 @@ test("updateThread sends project membership changes", async () => {
   const fetchMock = vi.fn().mockResolvedValue(Response.json(updated));
   vi.stubGlobal("fetch", fetchMock);
 
-  await expect(updateThread("t1", { projectId: "p1" })).resolves.toEqual(updated);
+  await expect(updateThread("t1", { projectId: "p1" })).resolves.toEqual(
+    updated,
+  );
   expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -93,7 +108,9 @@ test("updateThread sends null project membership", async () => {
   const fetchMock = vi.fn().mockResolvedValue(Response.json(updated));
   vi.stubGlobal("fetch", fetchMock);
 
-  await expect(updateThread("t1", { projectId: null })).resolves.toEqual(updated);
+  await expect(updateThread("t1", { projectId: null })).resolves.toEqual(
+    updated,
+  );
   expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -126,30 +143,44 @@ test("streamMessage sends image attachment ids", async () => {
   expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/messages:stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: "describe this", imageAttachmentIds: ["art_image"] }),
+    body: JSON.stringify({
+      content: "describe this",
+      imageAttachmentIds: ["art_image"],
+    }),
     signal: undefined,
   });
 });
 
 test("deleteThread deletes a thread", async () => {
-  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(new Response(null, { status: 204 }));
   vi.stubGlobal("fetch", fetchMock);
 
   await expect(deleteThread("t1")).resolves.toBeUndefined();
-  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", { method: "DELETE" });
+  expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1", {
+    method: "DELETE",
+  });
 });
 
 test("streamMessage parses server-sent events", async () => {
   const body = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_delta\ndata: {"content":"lo"}\n\n'));
+      controller.enqueue(
+        encoder.encode('event: assistant_delta\ndata: {"content":"Hel"}\n\n'),
+      );
+      controller.enqueue(
+        encoder.encode('event: assistant_delta\ndata: {"content":"lo"}\n\n'),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
   });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(body, { status: 200 })),
+  );
   const deltas: string[] = [];
 
   await streamMessage("t1", "Hi", {
@@ -166,14 +197,29 @@ test("streamMessage parses assistant reasoning deltas", async () => {
   const body = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"I checked "}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_reasoning_delta\ndata: {"content":"first."}\n\n'));
-      controller.enqueue(encoder.encode('event: assistant_delta\ndata: {"content":"Answer."}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_reasoning_delta\ndata: {"content":"I checked "}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_reasoning_delta\ndata: {"content":"first."}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_delta\ndata: {"content":"Answer."}\n\n',
+        ),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
   });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(body, { status: 200 })),
+  );
   const reasoning: string[] = [];
   const deltas: string[] = [];
 
@@ -193,13 +239,24 @@ test("streamMessage parses tool events", async () => {
   const body = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n'));
-      controller.enqueue(encoder.encode('event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"result"}\n\n'));
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_call\ndata: {"id":"call_1","name":"search__web","arguments":"{}"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: tool_result\ndata: {"id":"call_1","name":"search__web","content":"result"}\n\n',
+        ),
+      );
       controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
   });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(body, { status: 200 })),
+  );
   const events: string[] = [];
 
   await streamMessage("t1", "Hi", {
@@ -227,7 +284,10 @@ test("streamMessage dispatches artifact events", async () => {
       controller.close();
     },
   });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(body, { status: 200 })),
+  );
   const onArtifact = vi.fn();
 
   await streamMessage("t1", "Hi", {
@@ -238,7 +298,9 @@ test("streamMessage dispatches artifact events", async () => {
     onArtifact,
   });
 
-  expect(onArtifact).toHaveBeenCalledWith(expect.objectContaining({ displayFilename: "notes.md" }));
+  expect(onArtifact).toHaveBeenCalledWith(
+    expect.objectContaining({ displayFilename: "notes.md" }),
+  );
 });
 
 test("downloadArtifact fetches the artifact blob", async () => {
@@ -253,7 +315,9 @@ test("downloadArtifact fetches the artifact blob", async () => {
   });
   vi.stubGlobal("fetch", fetchMock);
 
-  await expect(downloadArtifact("/api/artifacts/art_1/download")).resolves.toBeInstanceOf(Blob);
+  await expect(
+    downloadArtifact("/api/artifacts/art_1/download"),
+  ).resolves.toBeInstanceOf(Blob);
   expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/art_1/download");
 });
 
@@ -261,11 +325,16 @@ test("streamMessage throws server-sent error events", async () => {
   const body = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode('event: error\ndata: {"error":"stream failed"}\n\n'));
+      controller.enqueue(
+        encoder.encode('event: error\ndata: {"error":"stream failed"}\n\n'),
+      );
       controller.close();
     },
   });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(body, { status: 200 })),
+  );
 
   await expect(
     streamMessage("t1", "Hi", {
@@ -278,14 +347,19 @@ test("streamMessage throws server-sent error events", async () => {
 });
 
 test("api helpers throw AuthExpiredError on 401", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 401 })),
+  );
 
   await expect(listProjects()).rejects.toBeInstanceOf(AuthExpiredError);
 });
 
 test("streamMessage passes abort signal to fetch", async () => {
   const controller = new AbortController();
-  const fetchMock = vi.fn().mockResolvedValue(Response.json({}, { status: 503 }));
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(Response.json({}, { status: 503 }));
   vi.stubGlobal("fetch", fetchMock);
 
   await expect(
@@ -311,7 +385,11 @@ test("streamMessage passes abort signal to fetch", async () => {
 test("streamMessage surfaces the server error message on failure", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(Response.json({ error: "llm is not configured" }, { status: 503 })),
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ error: "llm is not configured" }, { status: 503 }),
+      ),
   );
 
   await expect(

@@ -23,12 +23,19 @@ test("shows a centered window overlay while files are dragged over the page", ()
     />,
   );
 
-  expect(screen.queryByText("Drop files here to add it to the conversation")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Drop files here to add it to the conversation"),
+  ).not.toBeInTheDocument();
 
-  fireEvent.dragEnter(window, windowFileDrag([new File(["hello"], "notes.txt", { type: "text/plain" })]));
+  fireEvent.dragEnter(
+    window,
+    windowFileDrag([new File(["hello"], "notes.txt", { type: "text/plain" })]),
+  );
 
   expect(screen.getByText("\ue06d")).toBeInTheDocument();
-  expect(screen.getByText("Drop files here to add it to the conversation")).toBeInTheDocument();
+  expect(
+    screen.getByText("Drop files here to add it to the conversation"),
+  ).toBeInTheDocument();
 });
 
 test("routes supported dropped files from the window and reports unsupported files", () => {
@@ -36,7 +43,9 @@ test("routes supported dropped files from the window and reports unsupported fil
   const onAttachError = vi.fn();
   const note = new File(["hello"], "notes.txt", { type: "text/plain" });
   const image = new File(["png"], "screenshot.png", { type: "image/png" });
-  const unsupported = new File(["binary"], "installer.exe", { type: "application/octet-stream" });
+  const unsupported = new File(["binary"], "installer.exe", {
+    type: "application/octet-stream",
+  });
   render(
     <WindowFileDrop
       enabled

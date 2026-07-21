@@ -75,7 +75,8 @@ export function dedupeByDomain(sources: Citation[]): Citation[] {
   const seen = new Set<string>();
   const unique: Citation[] = [];
   for (const source of sources) {
-    const key = source.filename.trim().toLowerCase() || hostOf(source.url) || source.url;
+    const key =
+      source.filename.trim().toLowerCase() || hostOf(source.url) || source.url;
     if (key === undefined || key === "" || seen.has(key)) continue;
     seen.add(key);
     unique.push(source);
@@ -138,19 +139,28 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             key={source.filename}
             type="button"
             className="inline-flex items-center gap-1 rounded-ui border border-[#4b4a46] bg-[#2a2a28] px-2 py-0.5 text-[#d8d4ca] transition-colors hover:bg-[#343432]"
-            onClick={() => setOpenFile(openFile === source.filename ? null : source.filename)}
+            onClick={() =>
+              setOpenFile(openFile === source.filename ? null : source.filename)
+            }
             title={
               source.full
                 ? t("citations.tooltipFull", { filename: source.filename })
-                : t("citations.tooltipMatches", { filename: source.filename, count: source.references })
+                : t("citations.tooltipMatches", {
+                    filename: source.filename,
+                    count: source.references,
+                  })
             }
           >
             <span className="max-w-[180px] truncate">{source.filename}</span>
             {source.full ? (
-              <span className="text-[#858178]">{t("citations.fullDocument")}</span>
+              <span className="text-[#858178]">
+                {t("citations.fullDocument")}
+              </span>
             ) : (
               source.references > 1 && (
-                <span className="text-[#858178]">{t("citations.excerpts", { count: source.references })}</span>
+                <span className="text-[#858178]">
+                  {t("citations.excerpts", { count: source.references })}
+                </span>
               )
             )}
           </button>
@@ -163,13 +173,19 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
             <span className="text-[#858178]">
               {open.full
                 ? t("citations.fullDocument")
-                : t("citations.relevance", { percent: (open.bestScore * 100).toFixed(0) })}
+                : t("citations.relevance", {
+                    percent: (open.bestScore * 100).toFixed(0),
+                  })}
             </span>
           </div>
           <p className="whitespace-pre-wrap">{open.bestSnippet}</p>
         </div>
       )}
-      <SourcesSidebar open={sourcesOpen} sources={webSources} onClose={() => setSourcesOpen(false)} />
+      <SourcesSidebar
+        open={sourcesOpen}
+        sources={webSources}
+        onClose={() => setSourcesOpen(false)}
+      />
     </div>
   );
 }

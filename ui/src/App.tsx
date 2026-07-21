@@ -14,7 +14,9 @@ export default function App() {
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
   const taglines = t("app.taglines", { returnObjects: true }) as string[];
-  const [taglineIndex] = useState(() => Math.floor(Math.random() * taglines.length));
+  const [taglineIndex] = useState(() =>
+    Math.floor(Math.random() * taglines.length),
+  );
   const tagline = taglines[taglineIndex] ?? taglines[0];
 
   useEffect(() => {
@@ -26,7 +28,9 @@ export default function App() {
         // is seeded from the browser locale once, so the language stops being
         // unset and drives the LLM answer language. Applied optimistically; the
         // PATCH is best-effort and the optimistic value stays on failure.
-        const seed = currentUser ? seedLanguageFor(currentUser.responseLanguage) : null;
+        const seed = currentUser
+          ? seedLanguageFor(currentUser.responseLanguage)
+          : null;
         if (currentUser && seed) {
           applyUserLanguage(seed);
           setUser({ ...currentUser, responseLanguage: seed });
@@ -91,9 +95,13 @@ export default function App() {
         <section className="flex w-full max-w-md flex-col items-center gap-5 text-center">
           <div className="flex items-center gap-3">
             <img src={loomLogo} alt="" aria-hidden className="h-16 w-16" />
-            <span className="font-serif font-medium leading-none text-[64px] text-[#f4f3ee]">Loom</span>
+            <span className="font-serif font-medium leading-none text-[64px] text-[#f4f3ee]">
+              Loom
+            </span>
           </div>
-          <p className="-mt-2 whitespace-nowrap font-sans text-xl text-muted">{tagline}</p>
+          <p className="-mt-2 whitespace-nowrap font-sans text-xl text-muted">
+            {tagline}
+          </p>
           <a
             href="/api/auth/login"
             className="mt-6 rounded-ui bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"
@@ -123,10 +131,15 @@ export default function App() {
       onSessionExpired={handleSessionExpired}
       adminPanel={
         <section className="h-full overflow-y-auto p-6">
-          <h1 className="font-serif text-2xl font-light tracking-tight">{t("app.admin")}</h1>
+          <h1 className="font-serif text-2xl font-light tracking-tight">
+            {t("app.admin")}
+          </h1>
           <div className="mt-4 divide-y divide-border border-y border-border">
             {adminUsers.map((adminUser) => (
-              <div key={adminUser.id} className="flex justify-between py-3 text-sm">
+              <div
+                key={adminUser.id}
+                className="flex justify-between py-3 text-sm"
+              >
                 <span>{adminUser.displayName || adminUser.username}</span>
                 <span className="text-muted capitalize">{adminUser.role}</span>
               </div>

@@ -14,12 +14,21 @@ function artifact(extra: Partial<Artifact>): Artifact {
 }
 
 test("buildImageStats joins model, resolution and duration", () => {
-  const line = buildImageStats(artifact({ model: "flux-pro-1.1", width: 1024, height: 1024, durationMs: 4200 }));
+  const line = buildImageStats(
+    artifact({
+      model: "flux-pro-1.1",
+      width: 1024,
+      height: 1024,
+      durationMs: 4200,
+    }),
+  );
   expect(line).toBe("flux-pro-1.1 · 1024×1024 · 4s");
 });
 
 test("buildImageStats omits missing or zero segments", () => {
-  expect(buildImageStats(artifact({ model: "flux-pro-1.1" }))).toBe("flux-pro-1.1");
+  expect(buildImageStats(artifact({ model: "flux-pro-1.1" }))).toBe(
+    "flux-pro-1.1",
+  );
   expect(buildImageStats(artifact({ width: 512, height: 0 }))).toBeNull();
   expect(buildImageStats(artifact({ durationMs: 0 }))).toBeNull();
 });

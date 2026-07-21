@@ -22,7 +22,9 @@ function installMatchMedia(initial: boolean) {
       return listeners.length;
     },
   };
-  window.matchMedia = vi.fn().mockReturnValue(mql) as unknown as typeof window.matchMedia;
+  window.matchMedia = vi
+    .fn()
+    .mockReturnValue(mql) as unknown as typeof window.matchMedia;
   return mql;
 }
 

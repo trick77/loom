@@ -11,25 +11,34 @@ export class ShareNotFoundError extends Error {
 
 // createShare creates (or returns the existing) public share for a thread.
 export async function createShare(threadId: string): Promise<ShareInfo> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/share`, {
-    method: "POST",
-  });
+  const response = await fetch(
+    `/api/threads/${encodeURIComponent(threadId)}/share`,
+    {
+      method: "POST",
+    },
+  );
   return expectJSON<ShareInfo>(response, "failed to create share");
 }
 
 // updateShare re-freezes the snapshot of an existing share (same link).
 export async function updateShare(threadId: string): Promise<ShareInfo> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/share:update`, {
-    method: "POST",
-  });
+  const response = await fetch(
+    `/api/threads/${encodeURIComponent(threadId)}/share:update`,
+    {
+      method: "POST",
+    },
+  );
   return expectJSON<ShareInfo>(response, "failed to update share");
 }
 
 // disableShare turns the public link off (the "Keep private" action).
 export async function disableShare(threadId: string): Promise<void> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/share`, {
-    method: "DELETE",
-  });
+  const response = await fetch(
+    `/api/threads/${encodeURIComponent(threadId)}/share`,
+    {
+      method: "DELETE",
+    },
+  );
   if (response.status === 401) {
     throw new AuthExpiredError();
   }
@@ -40,7 +49,10 @@ export async function disableShare(threadId: string): Promise<void> {
 
 export async function getMyShares(): Promise<ShareListItem[]> {
   const response = await fetch("/api/shares");
-  const page = await expectJSON<{ items: ShareListItem[] }>(response, "failed to load shares");
+  const page = await expectJSON<{ items: ShareListItem[] }>(
+    response,
+    "failed to load shares",
+  );
   return page.items ?? [];
 }
 

@@ -16,7 +16,7 @@ type Store struct {
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
 // scopeValue maps a nullable project id to the vec_chunks metadata encoding
-// ('' for user-global scope, since vec0 metadata columns are not nullable).
+// (” for user-global scope, since vec0 metadata columns are not nullable).
 func scopeValue(projectID *string) string {
 	if projectID == nil {
 		return ""
@@ -27,7 +27,7 @@ func scopeValue(projectID *string) string {
 // threadScopePrefix namespaces a thread-private scope key in the shared
 // vec_chunks.project_id metadata slot. Document/thread IDs are base64url
 // (see chat.NewIDForInternalUse), never contain ':', so the namespaces can't
-// collide with a real project id or the '' global scope.
+// collide with a real project id or the ” global scope.
 const threadScopePrefix = "thread:"
 
 // scopeKey derives the vec_chunks.project_id metadata value for a document.

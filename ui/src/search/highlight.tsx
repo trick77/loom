@@ -50,7 +50,10 @@ export function cleanResultText(text: string): string {
     // emoji: default-presentation pictographs, text-default ones forced to emoji
     // with VS16 (U+FE0F), and leftover skin-tone modifiers / ZWJ / VS16. Text-
     // presentation symbols (™ © ® ✔ ‼ →) are not pictographic emoji and stay.
-    .replace(/\p{Extended_Pictographic}️|\p{Emoji_Presentation}|[\p{Emoji_Modifier}‍️]/gu, "")
+    .replace(
+      /\p{Extended_Pictographic}️|\p{Emoji_Presentation}|[\p{Emoji_Modifier}‍️]/gu,
+      "",
+    )
     // collapse the whitespace the removals leave behind (incl. folded newlines)
     .replace(/\s+/g, " ")
     .trim();

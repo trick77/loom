@@ -3,12 +3,18 @@ import { Trans, useTranslation } from "react-i18next";
 
 import { ErrorText } from "../chat/ErrorText";
 import { ModalShell } from "../chat/threadModals";
-import { modalCancelButtonClass, modalDangerButtonClass } from "../ThreadActionsMenu";
+import {
+  modalCancelButtonClass,
+  modalDangerButtonClass,
+} from "../ThreadActionsMenu";
 
 // splitFilename separates a filename into an editable stem and a fixed extension
 // (including the dot). A leading dot (dotfiles) or no dot yields an empty
 // extension, so the whole name stays editable.
-export function splitFilename(filename: string): { stem: string; extension: string } {
+export function splitFilename(filename: string): {
+  stem: string;
+  extension: string;
+} {
   const dot = filename.lastIndexOf(".");
   if (dot <= 0) return { stem: filename, extension: "" };
   return { stem: filename.slice(0, dot), extension: filename.slice(dot) };
@@ -57,12 +63,18 @@ export function RenameArtifactModal({
             onChange={(event) => setValue(event.target.value)}
           />
           {extension !== "" && (
-            <span className="ui-control-text shrink-0 text-[#8a887f]">{extension}</span>
+            <span className="ui-control-text shrink-0 text-[#8a887f]">
+              {extension}
+            </span>
           )}
         </div>
         {error !== "" && <ErrorText>{error}</ErrorText>}
         <div className="mt-4 flex justify-end gap-2">
-          <button className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]" onClick={onCancel} type="button">
+          <button
+            className="h-8 rounded-md px-3 text-sm text-[#c7c5bd] hover:bg-[#363632]"
+            onClick={onCancel}
+            type="button"
+          >
             {t("common.cancel")}
           </button>
           <button
@@ -103,10 +115,20 @@ export function DeleteArtifactModal({
       </div>
       {error !== "" && <ErrorText>{error}</ErrorText>}
       <div className="mt-4 flex justify-end gap-2">
-        <button autoFocus className={modalCancelButtonClass} onClick={onCancel} type="button">
+        <button
+          autoFocus
+          className={modalCancelButtonClass}
+          onClick={onCancel}
+          type="button"
+        >
           {t("common.cancel")}
         </button>
-        <button className={modalDangerButtonClass} disabled={disabled} onClick={onDelete} type="button">
+        <button
+          className={modalDangerButtonClass}
+          disabled={disabled}
+          onClick={onDelete}
+          type="button"
+        >
           {t("common.delete")}
         </button>
       </div>

@@ -101,11 +101,11 @@ func TestQualifyingCodeBlocks_MultipleDistinctBlocksGetIndexedNames(t *testing.T
 
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
-		"Server Setup":          "server-setup",
-		"  Trim **Me**  ":       "trim-me",
-		"Already-slug_ok":       "already-slug-ok",
-		"###":                   "",
-		"Über Größe":            "ber-gr-e",
+		"Server Setup":    "server-setup",
+		"  Trim **Me**  ": "trim-me",
+		"Already-slug_ok": "already-slug-ok",
+		"###":             "",
+		"Über Größe":      "ber-gr-e",
 	}
 	for in, want := range cases {
 		if got := slugify(in); got != want {

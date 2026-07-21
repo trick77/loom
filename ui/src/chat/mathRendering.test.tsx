@@ -19,7 +19,9 @@ test("renders a $$...$$ formula as KaTeX", () => {
 // *inline*, and only become a display block when it starts its own line. If that ever
 // flips, inline math would break out into its own centred block.
 test("renders mid-line $$...$$ as inline, not display, KaTeX", () => {
-  const { container } = render(<ProseMarkdown>{"the value $$x^2$$ grows"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"the value $$x^2$$ grows"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex")).not.toBeNull();
   expect(container.querySelector(".katex-display")).toBeNull();
 });
@@ -35,7 +37,9 @@ test("renders a $$ fence as display KaTeX", () => {
 // Regression: `\[...\]` normalised to a one-line `$$ x $$`, which micromark reads as
 // inline math, so LaTeX-native display math never produced a centred block.
 test("renders \\[...\\] on its own line as display KaTeX", () => {
-  const { container } = render(<ProseMarkdown>{"\\[g(x) = \\frac{a}{b}\\]"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"\\[g(x) = \\frac{a}{b}\\]"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex-display")).not.toBeNull();
   expect(container.textContent).not.toContain("$$");
 });
@@ -52,7 +56,9 @@ test("keeps prose readable when a display delimiter is never closed", () => {
 });
 
 test("renders \\[...\\] mid-sentence as inline KaTeX", () => {
-  const { container } = render(<ProseMarkdown>{"so \\[a + b\\] follows"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"so \\[a + b\\] follows"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex")).not.toBeNull();
   expect(container.querySelector(".katex-display")).toBeNull();
 });
@@ -61,7 +67,9 @@ test("renders \\[...\\] mid-sentence as inline KaTeX", () => {
 // occurrence becomes `$$` in the final pass, so an unstripped pair would open and close a
 // span and hide the text between them.
 test("does not turn stray control characters into math", () => {
-  const { container } = render(<ProseMarkdown>{"a\u0001b and c\u0002d"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"a\u0001b and c\u0002d"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex")).toBeNull();
   expect(container.textContent).toContain("b and c");
 });
@@ -90,13 +98,17 @@ test("keeps a code block and following prose when a delimiter is never closed", 
 // A bare dollar at either edge of the body merges into that delimiter's run and stops the
 // span closing, so both edges have to be dealt with.
 test("renders a formula whose body starts with a bare dollar", () => {
-  const { container } = render(<ProseMarkdown>{"cost \\($x\\) total"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"cost \\($x\\) total"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex")).not.toBeNull();
   expect(container.textContent).not.toContain("$$");
 });
 
 test("renders a formula whose body ends with a bare dollar", () => {
-  const { container } = render(<ProseMarkdown>{"cost \\(x$\\) total"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"cost \\(x$\\) total"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex")).not.toBeNull();
   expect(container.textContent).not.toContain("$$");
 });
@@ -104,7 +116,9 @@ test("renders a formula whose body ends with a bare dollar", () => {
 // Regression: an amount touching the end of a formula merged into the delimiter run, so
 // neither the math nor the amount survived — the whole thing showed as raw `$$x$$$5`.
 test("renders math abutting a currency amount", () => {
-  const { container } = render(<ProseMarkdown>{"cost \\(x\\)$5 total"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"cost \\(x\\)$5 total"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex")).not.toBeNull();
   expect(container.textContent).toContain("$5 total");
   expect(container.textContent).not.toContain("$$");
@@ -113,7 +127,10 @@ test("renders math abutting a currency amount", () => {
 // Regression: prose about money used to pair into an inline math span, which swallowed
 // the sentence between the two amounts and re-rendered it as italic KaTeX.
 test.each([
-  ['~$91, arguing the IPO price "is priced for 2032, not 2026" at $1.77T market cap', ["$91", "$1.77T"]],
+  [
+    '~$91, arguing the IPO price "is priced for 2032, not 2026" at $1.77T market cap',
+    ["$91", "$1.77T"],
+  ],
   [
     "The spread between the most bearish ($63) and most bullish ($800) targets is wider than most companies' entire market caps.",
     ["$63", "$800"],
@@ -122,22 +139,29 @@ test.each([
     "Current price: ~$119.85 (last close), which is actually *below* the $135 IPO price from June 12.",
     ["$119.85", "$135", "below"],
   ],
-] as const)("leaves currency amounts in prose as plain text: %s", (prose, expected) => {
-  const { container } = render(<ProseMarkdown>{prose}</ProseMarkdown>);
-  expect(container.querySelector(".katex")).toBeNull();
-  for (const fragment of expected) {
-    expect(container.textContent).toContain(fragment);
-  }
-});
+] as const)(
+  "leaves currency amounts in prose as plain text: %s",
+  (prose, expected) => {
+    const { container } = render(<ProseMarkdown>{prose}</ProseMarkdown>);
+    expect(container.querySelector(".katex")).toBeNull();
+    for (const fragment of expected) {
+      expect(container.textContent).toContain(fragment);
+    }
+  },
+);
 
 test("renders legacy \\(...\\) delimiters as KaTeX", () => {
-  const { container } = render(<ProseMarkdown>{"the value \\(x^2\\) grows"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"the value \\(x^2\\) grows"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex")).not.toBeNull();
   expect(container.textContent).not.toContain("\\(");
 });
 
 test("leaves LaTeX inside a code fence untouched", () => {
-  const { container } = render(<ProseMarkdown>{"```\n\\[ a \\]\n```"}</ProseMarkdown>);
+  const { container } = render(
+    <ProseMarkdown>{"```\n\\[ a \\]\n```"}</ProseMarkdown>,
+  );
   expect(container.querySelector(".katex")).toBeNull();
   expect(container.querySelector("code")?.textContent).toContain("\\[ a \\]");
 });

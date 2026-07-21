@@ -12,7 +12,8 @@ import { useMenuPlacement } from "./chat/useMenuPlacement";
 // which only matches form elements — menu entries must stay `<button>`s.
 export const menuItemClass =
   "mx-1 flex min-h-[30px] w-[calc(100%-0.5rem)] items-start gap-2.5 rounded-md px-3 py-1 text-left transition-colors enabled:hover:bg-[#3f3f3a]";
-export const menuIconClass = "grid h-[21px] w-[21px] shrink-0 place-items-center";
+export const menuIconClass =
+  "grid h-[21px] w-[21px] shrink-0 place-items-center";
 // Destructive menu entry: muted red by default, solid red highlight on hover
 // (inset with rounded corners, white text/icon). Shared by every Delete menu.
 // Colors match claude.ai's delete entry exactly: resting text is its --danger-000
@@ -55,7 +56,8 @@ export function ThreadActionsMenu({
   onStarChange(thread: Thread, starred: boolean, menuKey: string): void;
 }) {
   const { t } = useTranslation();
-  const hasProject = thread.projectId !== undefined && thread.projectId !== null;
+  const hasProject =
+    thread.projectId !== undefined && thread.projectId !== null;
   const { menuRef, verticalClass } = useMenuPlacement();
   return (
     <div
@@ -84,7 +86,10 @@ export function ThreadActionsMenu({
         type="button"
         onClick={() => onStarChange(thread, !thread.starred, menuKey)}
       >
-        <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+        <span
+          className={`${menuIconClass} text-[19px] leading-none`}
+          aria-hidden="true"
+        >
           <Icon name={thread.starred ? "starOff" : "star"} size="19px" />
         </span>
         {thread.starred ? t("thread.unstar") : t("thread.star")}
@@ -95,7 +100,10 @@ export function ThreadActionsMenu({
         type="button"
         onClick={() => onRename(thread)}
       >
-        <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+        <span
+          className={`${menuIconClass} text-[19px] leading-none`}
+          aria-hidden="true"
+        >
           <Icon name="edit" size="19px" />
         </span>
         {t("thread.rename")}
@@ -107,7 +115,10 @@ export function ThreadActionsMenu({
           type="button"
           onClick={() => onShare(thread)}
         >
-          <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+          <span
+            className={`${menuIconClass} text-[19px] leading-none`}
+            aria-hidden="true"
+          >
             <Icon name="upload" size="19px" />
           </span>
           {t("thread.share")}
@@ -152,27 +163,46 @@ export function ThreadActionsMenu({
 
 export function TrashMenuIcon() {
   return (
-    <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+    <span
+      className={`${menuIconClass} text-[19px] leading-none`}
+      aria-hidden="true"
+    >
       <Icon name="trash" size="19px" />
     </span>
   );
 }
 
 function MenuSeparator() {
-  return <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />;
+  return (
+    <div className="mx-[14px] my-[5px] h-px bg-[#4a4741]" role="separator" />
+  );
 }
 
 function CheckMenuIcon() {
   return (
-    <svg className={menuIconClass} viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <path d="M5 12.5l4 4 10-10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      className={menuIconClass}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+    >
+      <path
+        d="M5 12.5l4 4 10-10"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 export function ProjectMenuIcon() {
   return (
-    <span className={`${menuIconClass} text-[19px] leading-none`} aria-hidden="true">
+    <span
+      className={`${menuIconClass} text-[19px] leading-none`}
+      aria-hidden="true"
+    >
       <Icon name="archive" size="19px" />
     </span>
   );

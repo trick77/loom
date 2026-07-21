@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { listThreads, searchThreadContent, type Thread, type ThreadContentHit } from "../api";
+import {
+  listThreads,
+  searchThreadContent,
+  type Thread,
+  type ThreadContentHit,
+} from "../api";
 
 export type SearchResult = { thread: Thread; snippet?: string };
 

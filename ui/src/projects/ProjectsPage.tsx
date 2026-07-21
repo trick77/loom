@@ -72,9 +72,14 @@ export function ProjectsPage({
   const error = tab === "active" ? loadError : archivedError;
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
-    const matches = term === "" ? source : source.filter((project) =>
-      `${project.name} ${project.description}`.toLowerCase().includes(term),
-    );
+    const matches =
+      term === ""
+        ? source
+        : source.filter((project) =>
+            `${project.name} ${project.description}`
+              .toLowerCase()
+              .includes(term),
+          );
     return [...matches].sort((a, b) => {
       if (sort === "created") return compareDatesDesc(a.createdAt, b.createdAt);
       if (sort === "edited") return compareDatesDesc(a.updatedAt, b.updatedAt);
@@ -111,7 +116,9 @@ export function ProjectsPage({
         <SidebarOpenButton variant="floating" onClick={onOpenSidebar} />
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">{t("projects.page.title")}</h1>
+            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">
+              {t("projects.page.title")}
+            </h1>
           </div>
           <div className="flex items-center gap-2.5">
             <div className="relative">
@@ -121,7 +128,10 @@ export function ProjectsPage({
                 type="button"
                 onClick={() => setSortOpen((value) => !value)}
               >
-                {t("projects.page.sortBy")} <span className="font-semibold text-white">{sortLabel(sort, t)}</span>
+                {t("projects.page.sortBy")}{" "}
+                <span className="font-semibold text-white">
+                  {sortLabel(sort, t)}
+                </span>
                 <Icon name="chevronDown" size="14px" />
               </button>
               {sortOpen && (
@@ -143,7 +153,13 @@ export function ProjectsPage({
                       }}
                     >
                       {sortLabel(option, t)}
-                      {sort === option && <Icon name="check" size="16px" className="text-[#4f8cff]" />}
+                      {sort === option && (
+                        <Icon
+                          name="check"
+                          size="16px"
+                          className="text-[#4f8cff]"
+                        />
+                      )}
                     </button>
                   ))}
                 </div>
@@ -173,14 +189,20 @@ export function ProjectsPage({
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        <div className="mt-4 flex items-center gap-1.5" role="tablist" aria-label={t("projects.page.filterLabel")}>
+        <div
+          className="mt-4 flex items-center gap-1.5"
+          role="tablist"
+          aria-label={t("projects.page.filterLabel")}
+        >
           {(["active", "archived"] as const).map((option) => (
             <button
               key={option}
               role="tab"
               aria-selected={tab === option}
               className={`ui-control-text rounded-lg px-3 py-1.5 ${
-                tab === option ? "bg-[#3a3a37] text-white" : "text-[#a8a59c] hover:text-[#d5d2c9]"
+                tab === option
+                  ? "bg-[#3a3a37] text-white"
+                  : "text-[#a8a59c] hover:text-[#d5d2c9]"
               }`}
               type="button"
               onClick={() => {
@@ -188,7 +210,9 @@ export function ProjectsPage({
                 setOpenMenuID(null);
               }}
             >
-              {option === "active" ? t("projects.page.tabActive") : t("projects.page.tabArchived")}
+              {option === "active"
+                ? t("projects.page.tabActive")
+                : t("projects.page.tabArchived")}
             </button>
           ))}
         </div>
@@ -202,73 +226,93 @@ export function ProjectsPage({
             {emptyMessage(tab, query, archivedLoading, t)}
           </div>
         ) : (
-        <div className="mt-7 grid gap-6 md:grid-cols-2">
-          {filtered.map((project) => (
-            <article
-              key={project.id}
-              className="relative min-h-[160px] cursor-pointer rounded-[10px] border border-[#343432] bg-[#181817] p-4 transition-colors hover:bg-[#2a2a28]"
-              onClick={() => onOpenProject(project)}
-            >
-              <button
-                className="flex max-w-[calc(100%-42px)] items-center gap-1.5 text-left text-sm font-semibold text-[#f4f0e8]"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpenProject(project);
-                }}
-              >
-                <span className="truncate">{project.name}</span>
-                {project.archivedAt != null && (
-                  <Icon name="archived" size="15px" label={t("projects.page.archivedBadge")} className="shrink-0 text-[#8f8b82]" />
-                )}
-              </button>
-              {project.description !== "" && (
-                <p className="mt-5 line-clamp-3 text-sm leading-5 text-[#c7c5bd]">{project.description}</p>
-              )}
-              <p className="absolute bottom-4 left-4 text-sm text-[#8f8b82]">
-                {t("projects.page.updated", { time: formatTimeAgo(project.lastActivityAt) })}
-              </p>
-              <div
-                className="absolute right-3 top-3"
-                data-project-card-menu-root
-                onClick={(event) => event.stopPropagation()}
+          <div className="mt-7 grid gap-6 md:grid-cols-2">
+            {filtered.map((project) => (
+              <article
+                key={project.id}
+                className="relative min-h-[160px] cursor-pointer rounded-[10px] border border-[#343432] bg-[#181817] p-4 transition-colors hover:bg-[#2a2a28]"
+                onClick={() => onOpenProject(project)}
               >
                 <button
-                  aria-expanded={openMenuID === project.id}
-                  aria-label={t("projects.page.openActions", { name: project.name })}
-                  className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
+                  className="flex max-w-[calc(100%-42px)] items-center gap-1.5 text-left text-sm font-semibold text-[#f4f0e8]"
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    setOpenMenuID((current) => (current === project.id ? null : project.id));
+                    onOpenProject(project);
                   }}
                 >
-                  <Icon name="moreVertical" size="18px" />
+                  <span className="truncate">{project.name}</span>
+                  {project.archivedAt != null && (
+                    <Icon
+                      name="archived"
+                      size="15px"
+                      label={t("projects.page.archivedBadge")}
+                      className="shrink-0 text-[#8f8b82]"
+                    />
+                  )}
                 </button>
-                {openMenuID === project.id && (
-                  <ProjectActionsMenu
-                    project={project}
-                    archived={tab === "archived"}
-                    onEdit={onEditProject}
-                    onArchive={onArchiveProject}
-                    onUnarchive={handleUnarchive}
-                    onDelete={onDeleteProject}
-                  />
+                {project.description !== "" && (
+                  <p className="mt-5 line-clamp-3 text-sm leading-5 text-[#c7c5bd]">
+                    {project.description}
+                  </p>
                 )}
-              </div>
-            </article>
-          ))}
-        </div>
+                <p className="absolute bottom-4 left-4 text-sm text-[#8f8b82]">
+                  {t("projects.page.updated", {
+                    time: formatTimeAgo(project.lastActivityAt),
+                  })}
+                </p>
+                <div
+                  className="absolute right-3 top-3"
+                  data-project-card-menu-root
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button
+                    aria-expanded={openMenuID === project.id}
+                    aria-label={t("projects.page.openActions", {
+                      name: project.name,
+                    })}
+                    className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setOpenMenuID((current) =>
+                        current === project.id ? null : project.id,
+                      );
+                    }}
+                  >
+                    <Icon name="moreVertical" size="18px" />
+                  </button>
+                  {openMenuID === project.id && (
+                    <ProjectActionsMenu
+                      project={project}
+                      archived={tab === "archived"}
+                      onEdit={onEditProject}
+                      onArchive={onArchiveProject}
+                      onUnarchive={handleUnarchive}
+                      onDelete={onDeleteProject}
+                    />
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function emptyMessage(tab: ProjectTab, query: string, archivedLoading: boolean, t: TFunction): string {
+function emptyMessage(
+  tab: ProjectTab,
+  query: string,
+  archivedLoading: boolean,
+  t: TFunction,
+): string {
   if (query.trim() !== "") return t("projects.page.empty.search");
   if (tab === "archived") {
-    return archivedLoading ? t("projects.page.empty.archivedLoading") : t("projects.page.empty.archived");
+    return archivedLoading
+      ? t("projects.page.empty.archivedLoading")
+      : t("projects.page.empty.archived");
   }
   return t("projects.page.empty.none");
 }

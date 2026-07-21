@@ -14,7 +14,7 @@ func (g DOCXGenerator) ToolName() string { return "create_docx_file" }
 
 func (g DOCXGenerator) Schema() ToolSchema {
 	return ToolSchema{
-		Name:        g.ToolName(),
+		Name: g.ToolName(),
 		Description: "Create a DOCX document from plain text. Blank lines separate paragraphs, and a " +
 			"line starting with `# ` becomes the document title. No other Markdown is interpreted " +
 			"(further headings, bullets, bold, tables, links are emitted as literal text)." + FileToolGuardrail,

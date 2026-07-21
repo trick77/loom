@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import { modalCancelButtonClass, modalDangerButtonClass } from "../ThreadActionsMenu";
+import {
+  modalCancelButtonClass,
+  modalDangerButtonClass,
+} from "../ThreadActionsMenu";
 
 export function BulkDeleteModal({
   count,
@@ -43,10 +46,20 @@ export function BulkDeleteModal({
           {t("chats.bulkDelete.confirm", { count })}
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <button autoFocus className={modalCancelButtonClass} onClick={onCancel} type="button">
+          <button
+            autoFocus
+            className={modalCancelButtonClass}
+            onClick={onCancel}
+            type="button"
+          >
             {t("common.cancel")}
           </button>
-          <button className={modalDangerButtonClass} disabled={disabled} onClick={onConfirm} type="button">
+          <button
+            className={modalDangerButtonClass}
+            disabled={disabled}
+            onClick={onConfirm}
+            type="button"
+          >
             {t("common.delete")}
           </button>
         </div>

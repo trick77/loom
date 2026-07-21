@@ -43,22 +43,37 @@ test("limits pending composer attachments to the per-message maximum", () => {
 
   act(() => {
     result.current.handleAttachFiles(
-      Array.from({ length: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - 1 }, (_, index) => file(`seed-${index}.txt`)),
+      Array.from(
+        { length: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - 1 },
+        (_, index) => file(`seed-${index}.txt`),
+      ),
     );
   });
   act(() => {
-    result.current.handleAttachFiles([file("extra-1.txt"), file("extra-2.txt"), file("extra-3.txt")]);
+    result.current.handleAttachFiles([
+      file("extra-1.txt"),
+      file("extra-2.txt"),
+      file("extra-3.txt"),
+    ]);
   });
 
-  expect(result.current.attachments).toHaveLength(DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE);
-  expect(result.current.attachments[result.current.attachments.length - 1]?.filename).toBe("extra-1.txt");
-  expect(result.current.attachNote).toBe(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+  expect(result.current.attachments).toHaveLength(
+    DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+  );
+  expect(
+    result.current.attachments[result.current.attachments.length - 1]?.filename,
+  ).toBe("extra-1.txt");
+  expect(result.current.attachNote).toBe(
+    `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+  );
 });
 
 test("rejects oversized pending composer attachments", () => {
   const { result } = renderHook(() => useDocumentAttachments({}));
   const oversized = new File(["x"], "large.txt", { type: "text/plain" });
-  Object.defineProperty(oversized, "size", { value: DOCUMENT_MAX_UPLOAD_BYTES + 1 });
+  Object.defineProperty(oversized, "size", {
+    value: DOCUMENT_MAX_UPLOAD_BYTES + 1,
+  });
 
   act(() => {
     result.current.handleAttachFiles([oversized]);
@@ -109,7 +124,9 @@ test("clears the composer note after a document is added to knowledge", async ()
       createdAt: "2026-06-14T00:00:00Z",
     },
   ]);
-  const { result } = renderHook(() => useDocumentAttachments({ threadId: "t1" }));
+  const { result } = renderHook(() =>
+    useDocumentAttachments({ threadId: "t1" }),
+  );
 
   await act(async () => {
     result.current.handleAttachFiles([file("notes.md")]);
@@ -190,7 +207,11 @@ test("uploadExistingAttachments awaits the document upload so its id is set befo
   };
 
   await act(async () => {
-    await result.current.uploadExistingAttachments([attachment], { threadId: "t1" }, onStatus);
+    await result.current.uploadExistingAttachments(
+      [attachment],
+      { threadId: "t1" },
+      onStatus,
+    );
   });
 
   expect(patches[attachment.id]?.documentId).toBe("doc_x");
@@ -296,10 +317,14 @@ test("removeAttachment deletes a composer-uploaded image server-side", async () 
     sizeBytes: 3,
     downloadUrl: "/api/artifacts/art_up/download",
   });
-  const { result } = renderHook(() => useDocumentAttachments({ threadId: "t1" }));
+  const { result } = renderHook(() =>
+    useDocumentAttachments({ threadId: "t1" }),
+  );
 
   await act(async () => {
-    result.current.handleAttachFiles([new File(["png"], "p.png", { type: "image/png" })]);
+    result.current.handleAttachFiles([
+      new File(["png"], "p.png", { type: "image/png" }),
+    ]);
   });
   const uploaded = result.current.attachments[0];
   expect(uploaded?.artifactId).toBe("art_up");

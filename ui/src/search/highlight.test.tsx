@@ -6,14 +6,16 @@ import { cleanResultText, highlightTerms, renderSnippet } from "./highlight";
 
 describe("cleanResultText", () => {
   test("strips bold, italic, inline-code, and strikethrough markers", () => {
-    expect(cleanResultText("a **bold** and *italic* and `code` and ~~gone~~")).toBe(
-      "a bold and italic and code and gone",
-    );
+    expect(
+      cleanResultText("a **bold** and *italic* and `code` and ~~gone~~"),
+    ).toBe("a bold and italic and code and gone");
   });
 
   test("strips truncated/unpaired emphasis markers from snippet windows", () => {
     // FTS returns a cut-off window, so the closing ** is often out of view.
-    expect(cleanResultText("providers still need **re")).toBe("providers still need re");
+    expect(cleanResultText("providers still need **re")).toBe(
+      "providers still need re",
+    );
     expect(cleanResultText("…the **bold")).toBe("…the bold");
     expect(cleanResultText("run `npm tes")).toBe("run npm tes");
   });
@@ -73,13 +75,17 @@ describe("cleanResultText", () => {
   });
 
   test("preserves « » FTS match markers even inside a link URL", () => {
-    expect(cleanResultText("[label](http://«ex».com) x")).toBe("[label](http://«ex».com) x");
+    expect(cleanResultText("[label](http://«ex».com) x")).toBe(
+      "[label](http://«ex».com) x",
+    );
   });
 });
 
 describe("renderSnippet", () => {
   test("bolds the « » match and strips surrounding markdown noise", () => {
-    const { container } = render(<>{renderSnippet("…use **«VPC»** endpoints…")}</>);
+    const { container } = render(
+      <>{renderSnippet("…use **«VPC»** endpoints…")}</>,
+    );
     const strong = container.querySelector("strong");
     expect(strong).toHaveTextContent("VPC");
     // The ** markers around the match are gone; a short lead (under budget) is kept.
@@ -108,7 +114,9 @@ describe("renderSnippet", () => {
     // lands exactly on the cut; the guard must skip it rather than emit U+FFFD.
     const tail = "x".repeat(31); // 31 single-unit chars between the astral char and «
     // firstMark = 2 (astral) + 31 = 33; cut = 33 − 32 = 1 = the low surrogate.
-    const { container } = render(<>{renderSnippet(`𝕏${tail}«match» trailing context here`)}</>);
+    const { container } = render(
+      <>{renderSnippet(`𝕏${tail}«match» trailing context here`)}</>,
+    );
     expect(container.querySelector("strong")).toHaveTextContent("match");
     expect(container.textContent).not.toContain("�");
     // The astral char straddling the cut is dropped cleanly; the kept lead is the
@@ -117,7 +125,9 @@ describe("renderSnippet", () => {
   });
 
   test("leaves a match that already leads the snippet untouched", () => {
-    const { container } = render(<>{renderSnippet("«VPS»; it provisions workspaces…")}</>);
+    const { container } = render(
+      <>{renderSnippet("«VPS»; it provisions workspaces…")}</>,
+    );
     expect(container.textContent).toBe("VPS; it provisions workspaces…");
   });
 });

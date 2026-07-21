@@ -26,17 +26,17 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 
 func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	items := startupCapabilities(config.Config{
-		AuthMode:       config.AuthModeDev,
-		ChatBaseURL:    "https://chat.example/v1",
-		EmbedBaseURL:   "https://api.openai.com/v1",
-		EmbedAPIKey:    "embed-key",
-		EmbedModel:     "text-embedding-3-small",
-		TikaURL:        "http://tika:9998",
-		UsersDir:       "/data/users",
-		TavilyAPIKey:   "tavily-key",
-		BFLAPIKey:      "bfl-key",
-		BFLModel:       "flux-2-klein-4b",
-		ChatLogDir:     "logs/llm-responses",
+		AuthMode:     config.AuthModeDev,
+		ChatBaseURL:  "https://chat.example/v1",
+		EmbedBaseURL: "https://api.openai.com/v1",
+		EmbedAPIKey:  "embed-key",
+		EmbedModel:   "text-embedding-3-small",
+		TikaURL:      "http://tika:9998",
+		UsersDir:     "/data/users",
+		TavilyAPIKey: "tavily-key",
+		BFLAPIKey:    "bfl-key",
+		BFLModel:     "flux-2-klein-4b",
+		ChatLogDir:   "logs/llm-responses",
 	}, mcp.Config{Servers: map[string]mcp.ServerConfig{
 		"fetch": {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
 	}}, startupRuntime{DocToolCount: 5, ImageToolCount: 1, DiscoveredToolCount: 3})

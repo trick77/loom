@@ -5,7 +5,11 @@ import i18n from "../i18n";
 import { UserMenu } from "./UserMenu";
 import { Icon } from "./Icon";
 import type { RouteState } from "./routing";
-import { SidebarPrimaryItem, SidebarProjectItem, SidebarSection } from "./SidebarItems";
+import {
+  SidebarPrimaryItem,
+  SidebarProjectItem,
+  SidebarSection,
+} from "./SidebarItems";
 
 export function Sidebar({
   user,
@@ -103,8 +107,14 @@ export function Sidebar({
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className={`flex h-11 items-center px-3 ${railCollapsed ? "justify-center" : "justify-between"}`}>
-          {!railCollapsed && <div className="ui-wordmark font-serif font-medium text-[#f4f0e8]">Loom</div>}
+        <div
+          className={`flex h-11 items-center px-3 ${railCollapsed ? "justify-center" : "justify-between"}`}
+        >
+          {!railCollapsed && (
+            <div className="ui-wordmark font-serif font-medium text-[#f4f0e8]">
+              Loom
+            </div>
+          )}
           <div className="flex items-center gap-3 text-[#aaa79e]">
             {!railCollapsed && (
               <button
@@ -118,9 +128,15 @@ export function Sidebar({
             )}
             <button
               type="button"
-              aria-label={!isMobile && sidebarCollapsed ? t("sidebar.showSidebar") : t("sidebar.hideSidebar")}
+              aria-label={
+                !isMobile && sidebarCollapsed
+                  ? t("sidebar.showSidebar")
+                  : t("sidebar.hideSidebar")
+              }
               aria-expanded={isMobile ? mobileSidebarOpen : !sidebarCollapsed}
-              onClick={() => (isMobile ? onCloseMobileSidebar() : onToggleDesktopCollapsed())}
+              onClick={() =>
+                isMobile ? onCloseMobileSidebar() : onToggleDesktopCollapsed()
+              }
               className="ui-sidebar-btn grid place-items-center rounded transition-colors hover:text-white"
             >
               <Icon name="sidebar" size="18px" className="ui-sidebar-icon" />
@@ -137,8 +153,18 @@ export function Sidebar({
             aria-label={t("common.newThread")}
           >
             <span className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full bg-[hsl(180deg_3%_19%)] text-[hsl(55deg_9%_74%)]">
-              <svg className="h-[13px] w-[13px]" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-                <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <svg
+                className="h-[13px] w-[13px]"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                fill="none"
+              >
+                <path
+                  d="M12 4v16M4 12h16"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
               </svg>
             </span>
             {!railCollapsed && <span>{t("common.newThread")}</span>}
@@ -161,7 +187,10 @@ export function Sidebar({
             label={t("sidebar.projects")}
             icon="projects"
             collapsed={railCollapsed}
-            active={(route.view === "projects" || route.view === "project") && !showAdmin}
+            active={
+              (route.view === "projects" || route.view === "project") &&
+              !showAdmin
+            }
             onClick={onProjects}
           />
           <SidebarPrimaryItem
@@ -195,8 +224,12 @@ export function Sidebar({
                     key={project.id}
                     menuKey={`StarredProject:${project.id}`}
                     project={project}
-                    active={route.view === "project" && route.projectID === project.id}
-                    menuOpen={openThreadMenuID === `StarredProject:${project.id}`}
+                    active={
+                      route.view === "project" && route.projectID === project.id
+                    }
+                    menuOpen={
+                      openThreadMenuID === `StarredProject:${project.id}`
+                    }
                     onNavigate={onNavigateProject}
                     onStarChange={onStarProject}
                     onEdit={onEditProject}
@@ -217,8 +250,13 @@ export function Sidebar({
                       key={project.id}
                       menuKey={`SidebarProject:${project.id}`}
                       project={project}
-                      active={route.view === "project" && route.projectID === project.id}
-                      menuOpen={openThreadMenuID === `SidebarProject:${project.id}`}
+                      active={
+                        route.view === "project" &&
+                        route.projectID === project.id
+                      }
+                      menuOpen={
+                        openThreadMenuID === `SidebarProject:${project.id}`
+                      }
                       onNavigate={onNavigateProject}
                       onStarChange={onStarProject}
                       onEdit={onEditProject}
@@ -250,7 +288,11 @@ export function Sidebar({
                   onClick={onThreads}
                   aria-label={t("sidebar.allThreads")}
                 >
-                  <Icon name="allThreads" size="21px" className="h-[21px] w-[21px] shrink-0 text-[#f0eee7]" />
+                  <Icon
+                    name="allThreads"
+                    size="21px"
+                    className="h-[21px] w-[21px] shrink-0 text-[#f0eee7]"
+                  />
                   <span className="truncate">{t("sidebar.allThreads")}</span>
                 </button>
               )}
@@ -286,13 +328,19 @@ export function Sidebar({
             {!railCollapsed && (
               <div className="min-w-0 flex-1 text-left">
                 <div className="truncate text-[#c7c5bd]">{displayName}</div>
-                <div className="truncate font-normal text-[#8f8b82]">{roleLabel(user.role)}</div>
+                <div className="truncate font-normal text-[#8f8b82]">
+                  {roleLabel(user.role)}
+                </div>
               </div>
             )}
           </button>
           {userMenuOpen && (
             <>
-              <div className="fixed inset-0 z-20" aria-hidden="true" onClick={onCloseUserMenu} />
+              <div
+                className="fixed inset-0 z-20"
+                aria-hidden="true"
+                onClick={onCloseUserMenu}
+              />
               <UserMenu
                 className="bottom-full left-3 mb-2"
                 onClose={onCloseUserMenu}
@@ -304,7 +352,11 @@ export function Sidebar({
         </div>
       </aside>
       {mobileSidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={onCloseMobileSidebar} aria-hidden="true" />
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={onCloseMobileSidebar}
+          aria-hidden="true"
+        />
       )}
     </>
   );

@@ -26,7 +26,11 @@ export function useThreadData({
 }: {
   activeThreadIDRef: React.MutableRefObject<string | null>;
   clearStreamingBlocks(): void;
-  handleActionError(error: unknown, fallback: string, setError: (message: string) => void): void;
+  handleActionError(
+    error: unknown,
+    fallback: string,
+    setError: (message: string) => void,
+  ): void;
   onSessionExpired(): void;
   streamAbortRef: React.MutableRefObject<AbortController | null>;
   streamingThreadIDRef: React.MutableRefObject<string | null>;
@@ -65,68 +69,91 @@ export function useThreadData({
     };
   }, [onSessionExpired, streamAbortRef]);
 
-  const loadRoute = useCallback((route: RouteState) => {
-    if (route.view !== "thread") {
-      activeThreadIDRef.current = null;
-      setActiveThread(null);
-      setActiveShare(null);
-      setMessages([]);
-      if (streamingThreadIDRef.current === null) {
-        clearStreamingBlocks();
-      }
-      return;
-    }
-    if (activeThreadIDRef.current === route.threadID) return;
-    let active = true;
-    getThread(route.threadID)
-      .then((response) => {
-        if (!active) return;
-        setActiveThread(response.thread);
-        setActiveShare(response.share ?? null);
-        activeThreadIDRef.current = response.thread.id;
-        setMessages(response.messages.map(rehydrateLoadedMessage));
+  const loadRoute = useCallback(
+    (route: RouteState) => {
+      if (route.view !== "thread") {
+        activeThreadIDRef.current = null;
+        setActiveThread(null);
+        setActiveShare(null);
+        setMessages([]);
         if (streamingThreadIDRef.current === null) {
           clearStreamingBlocks();
         }
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        handleActionError(error, i18n.t("errors.threadLoadFailed"), setLoadError);
-      });
-    return () => {
-      active = false;
-    };
-  }, [
-    activeThreadIDRef,
-    clearStreamingBlocks,
-    handleActionError,
-    streamingThreadIDRef,
-  ]);
+        return;
+      }
+      if (activeThreadIDRef.current === route.threadID) return;
+      let active = true;
+      getThread(route.threadID)
+        .then((response) => {
+          if (!active) return;
+          setActiveThread(response.thread);
+          setActiveShare(response.share ?? null);
+          activeThreadIDRef.current = response.thread.id;
+          setMessages(response.messages.map(rehydrateLoadedMessage));
+          if (streamingThreadIDRef.current === null) {
+            clearStreamingBlocks();
+          }
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          handleActionError(
+            error,
+            i18n.t("errors.threadLoadFailed"),
+            setLoadError,
+          );
+        });
+      return () => {
+        active = false;
+      };
+    },
+    [
+      activeThreadIDRef,
+      clearStreamingBlocks,
+      handleActionError,
+      streamingThreadIDRef,
+    ],
+  );
 
-  const loadProjectThreads = useCallback((route: RouteState) => {
-    if (route.view !== "project") {
-      setProjectThreads([]);
-      return;
-    }
-    let active = true;
-    listThreads({ projectId: route.projectID, limit: 1000 })
-      .then((nextThreads) => {
-        if (!active) return;
-        setProjectThreads(nextThreads.items);
-        setLoadError("");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        handleActionError(error, i18n.t("errors.projectThreadsLoadFailed"), setLoadError);
-      });
-    return () => {
-      active = false;
-    };
-  }, [handleActionError]);
+  const loadProjectThreads = useCallback(
+    (route: RouteState) => {
+      if (route.view !== "project") {
+        setProjectThreads([]);
+        return;
+      }
+      let active = true;
+      listThreads({ projectId: route.projectID, limit: 1000 })
+        .then((nextThreads) => {
+          if (!active) return;
+          setProjectThreads(nextThreads.items);
+          setLoadError("");
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          handleActionError(
+            error,
+            i18n.t("errors.projectThreadsLoadFailed"),
+            setLoadError,
+          );
+        });
+      return () => {
+        active = false;
+      };
+    },
+    [handleActionError],
+  );
 
-  const starredThreads = useMemo(() => threads.filter((thread) => thread.starred), [threads]);
-  const recentThreads = useMemo(() => threads.filter((thread) => !thread.starred), [threads]);
-  const starredProjects = useMemo(() => projects.filter((project) => project.starred), [projects]);
+  const starredThreads = useMemo(
+    () => threads.filter((thread) => thread.starred),
+    [threads],
+  );
+  const recentThreads = useMemo(
+    () => threads.filter((thread) => !thread.starred),
+    [threads],
+  );
+  const starredProjects = useMemo(
+    () => projects.filter((project) => project.starred),
+    [projects],
+  );
   const unstarredProjects = useMemo(
     () => projects.filter((project) => !project.starred),
     [projects],
@@ -139,7 +166,9 @@ export function useThreadData({
 
   const activeThreadProject = useMemo(() => {
     if (activeThread?.projectId === undefined) return null;
-    return projects.find((project) => project.id === activeThread.projectId) ?? null;
+    return (
+      projects.find((project) => project.id === activeThread.projectId) ?? null
+    );
   }, [activeThread?.projectId, projects]);
 
   return {
@@ -173,7 +202,9 @@ export function useThreadData({
 // persisted attachments (MessageAttachment[]) into the ComposerAttachment[] the
 // sent-message renderer expects, so a reloaded message's previews look identical
 // to one that was just sent.
-function rehydrateLoadedMessage(message: LoadedMessage): MessageWithActivityTrace {
+function rehydrateLoadedMessage(
+  message: LoadedMessage,
+): MessageWithActivityTrace {
   return {
     ...message,
     activityTrace: normalizeActivityTrace(message.activityTrace),

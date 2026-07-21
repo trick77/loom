@@ -73,11 +73,19 @@ export function PdfLightbox({
         onClick={(event) => event.stopPropagation()}
       >
         {error ? (
-          <div className="ui-meta-text px-4 text-[#d36f67]">{t("media.previewFailed")}</div>
+          <div className="ui-meta-text px-4 text-[#d36f67]">
+            {t("media.previewFailed")}
+          </div>
         ) : objectUrl === "" ? (
-          <div className="ui-meta-text px-4 text-[#aaa79e]">{t("media.loadingPreview")}</div>
+          <div className="ui-meta-text px-4 text-[#aaa79e]">
+            {t("media.loadingPreview")}
+          </div>
         ) : (
-          <iframe className="h-full w-full border-0" src={objectUrl} title={filename} />
+          <iframe
+            className="h-full w-full border-0"
+            src={objectUrl}
+            title={filename}
+          />
         )}
       </div>
     </div>

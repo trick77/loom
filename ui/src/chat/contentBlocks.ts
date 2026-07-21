@@ -7,7 +7,12 @@ import {
   upsertTraceToolResult,
   type ActivityTraceEvent,
 } from "../activityTrace";
-import type { ContentBlock, Message, ToolCallEvent, ToolResultEvent } from "../api";
+import type {
+  ContentBlock,
+  Message,
+  ToolCallEvent,
+  ToolResultEvent,
+} from "../api";
 
 // blocksFromLegacyMessage synthesizes an ordered ContentBlock[] for a persisted
 // message that predates the contentBlocks wire field. It reproduces TODAY's
@@ -38,7 +43,10 @@ export function blocksFromLegacyMessage(message: Message): ContentBlock[] {
 function legacyTraceEvents(message: Message): ActivityTraceEvent[] | undefined {
   const normalized = normalizeActivityTrace(message.activityTrace);
   if (normalized !== undefined && normalized.length > 0) return normalized;
-  if (message.reasoningContent !== undefined && message.reasoningContent !== "") {
+  if (
+    message.reasoningContent !== undefined &&
+    message.reasoningContent !== ""
+  ) {
     return [
       {
         id: `${message.id}-reasoning`,
@@ -59,7 +67,12 @@ export function messageBlocks(message: Message): ContentBlock[] {
     // so normalise each persisted trace block — exactly as the legacy path does —
     // to compute the summary/preview the renderer reads via event.summary.kind.
     return message.contentBlocks.map((block) =>
-      block.type === "trace" ? { type: "trace", events: normalizeActivityTrace(block.events) ?? block.events } : block,
+      block.type === "trace"
+        ? {
+            type: "trace",
+            events: normalizeActivityTrace(block.events) ?? block.events,
+          }
+        : block,
     );
   }
   return blocksFromLegacyMessage(message);
@@ -72,11 +85,17 @@ export function messageBlocks(message: Message): ContentBlock[] {
 
 // appendTextDelta extends the trailing text block, or starts a new one when the
 // trailing block is not text.
-export function appendTextDelta(blocks: ContentBlock[], delta: string): ContentBlock[] {
+export function appendTextDelta(
+  blocks: ContentBlock[],
+  delta: string,
+): ContentBlock[] {
   if (delta === "") return blocks;
   const last = blocks[blocks.length - 1];
   if (last?.type === "text") {
-    return [...blocks.slice(0, -1), { type: "text", content: last.content + delta }];
+    return [
+      ...blocks.slice(0, -1),
+      { type: "text", content: last.content + delta },
+    ];
   }
   return [...blocks, { type: "text", content: delta }];
 }
@@ -90,17 +109,30 @@ function updateTraceBlock(
 ): ContentBlock[] {
   const last = blocks[blocks.length - 1];
   if (last?.type === "trace") {
-    return [...blocks.slice(0, -1), { type: "trace", events: update(last.events) }];
+    return [
+      ...blocks.slice(0, -1),
+      { type: "trace", events: update(last.events) },
+    ];
   }
   return [...blocks, { type: "trace", events: update([]) }];
 }
 
-export function appendReasoningDeltaBlock(blocks: ContentBlock[], delta: string): ContentBlock[] {
-  return updateTraceBlock(blocks, (events) => appendReasoningDelta(events, delta));
+export function appendReasoningDeltaBlock(
+  blocks: ContentBlock[],
+  delta: string,
+): ContentBlock[] {
+  return updateTraceBlock(blocks, (events) =>
+    appendReasoningDelta(events, delta),
+  );
 }
 
-export function upsertToolCallBlock(blocks: ContentBlock[], event: ToolCallEvent): ContentBlock[] {
-  return updateTraceBlock(blocks, (events) => upsertTraceToolCall(events, event));
+export function upsertToolCallBlock(
+  blocks: ContentBlock[],
+  event: ToolCallEvent,
+): ContentBlock[] {
+  return updateTraceBlock(blocks, (events) =>
+    upsertTraceToolCall(events, event),
+  );
 }
 
 // A background reasoning title and a late tool result arrive after the answer
@@ -108,15 +140,26 @@ export function upsertToolCallBlock(blocks: ContentBlock[], event: ToolCallEvent
 // belong to. Target the event by id across EVERY trace block instead: the
 // matching block updates, the rest pass through unchanged (the underlying
 // helpers no-op when the id is absent).
-export function applyReasoningTitleBlock(blocks: ContentBlock[], id: string, title: string): ContentBlock[] {
+export function applyReasoningTitleBlock(
+  blocks: ContentBlock[],
+  id: string,
+  title: string,
+): ContentBlock[] {
   return blocks.map((block) =>
-    block.type === "trace" ? { type: "trace", events: applyReasoningTitle(block.events, id, title) } : block,
+    block.type === "trace"
+      ? { type: "trace", events: applyReasoningTitle(block.events, id, title) }
+      : block,
   );
 }
 
-export function upsertToolResultBlock(blocks: ContentBlock[], event: ToolResultEvent): ContentBlock[] {
+export function upsertToolResultBlock(
+  blocks: ContentBlock[],
+  event: ToolResultEvent,
+): ContentBlock[] {
   return blocks.map((block) =>
-    block.type === "trace" ? { type: "trace", events: upsertTraceToolResult(block.events, event) } : block,
+    block.type === "trace"
+      ? { type: "trace", events: upsertTraceToolResult(block.events, event) }
+      : block,
   );
 }
 
@@ -125,7 +168,10 @@ export function appendArtifactBlock(
   artifact: Extract<ContentBlock, { type: "artifact" }>["artifact"],
 ): ContentBlock[] {
   return [
-    ...blocks.filter((block) => !(block.type === "artifact" && block.artifact.id === artifact.id)),
+    ...blocks.filter(
+      (block) =>
+        !(block.type === "artifact" && block.artifact.id === artifact.id),
+    ),
     { type: "artifact", artifact },
   ];
 }
@@ -135,7 +181,9 @@ export function appendArtifactBlock(
 // contentBlocks (so the just-streamed order is grafted onto the message).
 export function completeBlocks(blocks: ContentBlock[]): ContentBlock[] {
   return blocks.map((block) =>
-    block.type === "trace" ? { type: "trace", events: completeTrace(block.events) } : block,
+    block.type === "trace"
+      ? { type: "trace", events: completeTrace(block.events) }
+      : block,
   );
 }
 
@@ -146,8 +194,12 @@ export function completeBlocks(blocks: ContentBlock[]): ContentBlock[] {
 // when the answer text arrived only on the assistant_message itself (not as
 // streamed deltas, so the streamed blocks carry no prose) the message content is
 // appended as a trailing text block so it still renders.
-export function graftStreamedBlocks(message: Message, streamedBlocks: ContentBlock[]): Message {
-  if (message.contentBlocks !== undefined && message.contentBlocks.length > 0) return message;
+export function graftStreamedBlocks(
+  message: Message,
+  streamedBlocks: ContentBlock[],
+): Message {
+  if (message.contentBlocks !== undefined && message.contentBlocks.length > 0)
+    return message;
   if (streamedBlocks.length === 0) return message;
   const completed = completeBlocks(streamedBlocks);
   // The authoritative final answer text lives on the settled message, not the

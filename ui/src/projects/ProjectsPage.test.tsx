@@ -66,17 +66,23 @@ test("ProjectsPage renders projects without reference-only controls", () => {
 
   expect(screen.getByRole("heading", { name: "Projects" })).toBeInTheDocument();
   expect(screen.getByPlaceholderText("Search projects...")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "New project" }),
+  ).toBeInTheDocument();
   expect(screen.getByText("Research")).toBeInTheDocument();
   expect(screen.getByText("Paper notes")).toBeInTheDocument();
   expect(screen.getByText("Updated 3 hours ago")).toHaveClass("text-sm");
   expect(screen.getByText("Updated 3 hours ago")).not.toHaveClass("text-xs");
-  expect(screen.getByRole("button", { name: "Sort by Recent activity" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Open project actions for Research" })).toHaveTextContent(
-    ICONS.moreVertical,
-  );
+  expect(
+    screen.getByRole("button", { name: "Sort by Recent activity" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Open project actions for Research" }),
+  ).toHaveTextContent(ICONS.moreVertical);
   expect(screen.queryByText("Example project")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Share" }),
+  ).not.toBeInTheDocument();
 });
 
 test("ProjectsPage shows archived projects only under the Archived tab", async () => {
@@ -110,7 +116,9 @@ test("ProjectsPage shows archived projects only under the Archived tab", async (
   // and an active project (archivedAt: null) carries no badge (C7 regression).
   expect(screen.getByText("Research")).toBeInTheDocument();
   expect(screen.queryByText("Old initiative")).not.toBeInTheDocument();
-  expect(screen.queryByRole("img", { name: "Archived" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("img", { name: "Archived" }),
+  ).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: "Archived" }));
 
@@ -119,13 +127,23 @@ test("ProjectsPage shows archived projects only under the Archived tab", async (
   expect(screen.queryByText("Research")).not.toBeInTheDocument();
   expect(api.listProjects).toHaveBeenCalledWith(true);
   const card = screen.getByText("Old initiative").closest("article");
-  expect(within(card!).getByRole("img", { name: "Archived" })).toBeInTheDocument();
+  expect(
+    within(card!).getByRole("img", { name: "Archived" }),
+  ).toBeInTheDocument();
 
   // The archived card's action menu offers Unarchive instead of Archive.
-  fireEvent.click(screen.getByRole("button", { name: "Open project actions for Old initiative" }));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Open project actions for Old initiative",
+    }),
+  );
   const menu = screen.getByRole("menu", { name: "Project actions" });
-  expect(within(menu).getByRole("menuitem", { name: "Unarchive" })).toBeInTheDocument();
-  expect(within(menu).queryByRole("menuitem", { name: "Archive" })).not.toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Unarchive" }),
+  ).toBeInTheDocument();
+  expect(
+    within(menu).queryByRole("menuitem", { name: "Archive" }),
+  ).not.toBeInTheDocument();
 });
 
 test("ProjectsPage opens the sort dropdown with project sort options", () => {
@@ -143,15 +161,20 @@ test("ProjectsPage opens the sort dropdown with project sort options", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Sort by Recent activity" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Sort by Recent activity" }),
+  );
 
   const menu = screen.getByRole("menu", { name: "Project sort options" });
-  expect(within(menu).getByRole("menuitemradio", { name: "Recent activity" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  expect(within(menu).getByRole("menuitemradio", { name: "Last edited" })).toBeInTheDocument();
-  expect(within(menu).getByRole("menuitemradio", { name: "Date created" })).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitemradio", { name: "Recent activity" }),
+  ).toHaveAttribute("aria-checked", "true");
+  expect(
+    within(menu).getByRole("menuitemradio", { name: "Last edited" }),
+  ).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitemradio", { name: "Date created" }),
+  ).toBeInTheDocument();
 });
 
 test("ProjectsPage sort options each produce a distinct ordering", () => {
@@ -205,7 +228,9 @@ test("ProjectsPage sort options each produce a distinct ordering", () => {
   );
 
   const names = () =>
-    screen.getAllByRole("article").map((card) => within(card).getByText(/Alpha|Bravo|Charlie/).textContent);
+    screen
+      .getAllByRole("article")
+      .map((card) => within(card).getByText(/Alpha|Bravo|Charlie/).textContent);
 
   // Default sort is Recent activity → by lastActivityAt desc.
   expect(names()).toEqual(["Charlie", "Alpha", "Bravo"]);
@@ -276,16 +301,25 @@ test("ProjectDetailPage renders project chats and project chat menu", () => {
     />,
   );
 
-  expect(screen.getByRole("button", { name: "All projects" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "All projects" }),
+  ).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Research" })).toBeInTheDocument();
   expect(screen.getByText("Paper notes")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Literature review/ })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /Literature review/ }),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Example project")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Share" }),
+  ).not.toBeInTheDocument();
 });
 
 test("ProjectDetailPage offers Unarchive for an archived project", () => {
-  const archivedProject: Project = { ...projects[0], archivedAt: "2026-06-01T00:00:00Z" };
+  const archivedProject: Project = {
+    ...projects[0],
+    archivedAt: "2026-06-01T00:00:00Z",
+  };
   render(
     <ProjectDetailPage
       project={archivedProject}
@@ -320,10 +354,16 @@ test("ProjectDetailPage offers Unarchive for an archived project", () => {
   );
 
   // Its chats stay visible (C5) and the menu offers Unarchive, not Archive.
-  expect(screen.getByRole("button", { name: /Literature review/ })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /Literature review/ }),
+  ).toBeInTheDocument();
   const menu = screen.getByRole("menu", { name: "Project actions" });
-  expect(within(menu).getByRole("menuitem", { name: "Unarchive" })).toBeInTheDocument();
-  expect(within(menu).queryByRole("menuitem", { name: "Archive" })).not.toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Unarchive" }),
+  ).toBeInTheDocument();
+  expect(
+    within(menu).queryByRole("menuitem", { name: "Archive" }),
+  ).not.toBeInTheDocument();
 });
 
 test("ProjectDetailPage renders project chats with the shared chats-list row", () => {
@@ -377,7 +417,9 @@ test("ProjectDetailPage renders project chats with the shared chats-list row", (
   expect(timeLabel).toHaveClass("ml-auto");
   expect(timeLabel).toHaveClass("group-hover:hidden");
   expect(timeLabel).toHaveClass("[@media(hover:none)]:hidden");
-  const actionButton = within(rowSurface!).getByRole("button", { name: "Open thread actions" });
+  const actionButton = within(rowSurface!).getByRole("button", {
+    name: "Open thread actions",
+  });
   expect(actionButton).toHaveClass("absolute");
   expect(actionButton).toHaveClass("right-3");
   expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
@@ -422,7 +464,9 @@ test("ProjectDetailPage uses the same composer surface as new chat", () => {
 
   expect(composerText.closest("form")).toHaveClass("ui-composer");
   expect(composerText).toHaveClass("ui-composer-text");
-  expect(screen.getByRole("button", { name: "Add attachment" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Add attachment" }),
+  ).toBeInTheDocument();
   expect(sendButton).toHaveClass("ui-composer-send");
 });
 
@@ -441,11 +485,19 @@ test("project action menus expose edit archive delete", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Open project actions for Research" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open project actions for Research" }),
+  );
   const menu = screen.getByRole("menu", { name: "Project actions" });
-  expect(within(menu).getByRole("menuitem", { name: "Edit details" })).toBeInTheDocument();
-  expect(within(menu).getByRole("menuitem", { name: "Archive" })).toBeInTheDocument();
-  expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Edit details" }),
+  ).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Archive" }),
+  ).toBeInTheDocument();
+  expect(
+    within(menu).getByRole("menuitem", { name: "Delete" }),
+  ).toBeInTheDocument();
 });
 
 test("project action menu icons align with the first line of wrapping action text", () => {
@@ -463,8 +515,12 @@ test("project action menu icons align with the first line of wrapping action tex
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Open project actions for Research" }));
-  const item = within(screen.getByRole("menu", { name: "Project actions" })).getByRole("menuitem", {
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open project actions for Research" }),
+  );
+  const item = within(
+    screen.getByRole("menu", { name: "Project actions" }),
+  ).getByRole("menuitem", {
     name: "Edit details",
   });
   const icon = item.querySelector("[aria-hidden='true']");
@@ -490,12 +546,18 @@ test("ProjectsPage closes project action menu when clicking outside", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Open project actions for Research" }));
-  expect(screen.getByRole("menu", { name: "Project actions" })).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open project actions for Research" }),
+  );
+  expect(
+    screen.getByRole("menu", { name: "Project actions" }),
+  ).toBeInTheDocument();
 
   fireEvent.pointerDown(document.body);
 
-  expect(screen.queryByRole("menu", { name: "Project actions" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("menu", { name: "Project actions" }),
+  ).not.toBeInTheDocument();
 });
 
 test("project action triggers use vertical overflow icons", () => {
@@ -532,8 +594,12 @@ test("project action triggers use vertical overflow icons", () => {
     />,
   );
 
-  expect(screen.getByRole("button", { name: "Open project actions" })).toHaveTextContent(ICONS.moreVertical);
-  expect(screen.getByRole("button", { name: "Open thread actions" })).toHaveTextContent(ICONS.moreVertical);
+  expect(
+    screen.getByRole("button", { name: "Open project actions" }),
+  ).toHaveTextContent(ICONS.moreVertical);
+  expect(
+    screen.getByRole("button", { name: "Open thread actions" }),
+  ).toHaveTextContent(ICONS.moreVertical);
 });
 
 test("ProjectDialog uses the verified close icon glyph", () => {
@@ -547,7 +613,9 @@ test("ProjectDialog uses the verified close icon glyph", () => {
     />,
   );
 
-  expect(screen.getByRole("button", { name: "Close" })).toHaveTextContent(String.fromCodePoint(0xe10f));
+  expect(screen.getByRole("button", { name: "Close" })).toHaveTextContent(
+    String.fromCodePoint(0xe10f),
+  );
   expect(ICONS.close).toBe(String.fromCodePoint(0xe10f));
 });
 
@@ -566,11 +634,11 @@ test("ProjectDetailPage thread menu items remain clickable after pointerdown", (
         openThreadMenuID={openMenuID}
         onBack={vi.fn()}
         reasoningEffort="high"
-      onReasoningEffortChange={vi.fn()}
-      onDraftChange={vi.fn()}
-      pastedTexts={[]}
-      onAddPastedText={vi.fn()}
-      onRemovePastedText={vi.fn()}
+        onReasoningEffortChange={vi.fn()}
+        onDraftChange={vi.fn()}
+        pastedTexts={[]}
+        onAddPastedText={vi.fn()}
+        onRemovePastedText={vi.fn()}
         onSend={vi.fn()}
         onStop={vi.fn()}
         onOpenThread={vi.fn()}
@@ -578,7 +646,9 @@ test("ProjectDetailPage thread menu items remain clickable after pointerdown", (
         onDeleteThread={vi.fn()}
         onStarThread={vi.fn()}
         onRemoveFromProject={onRemoveFromProject}
-        onToggleThreadMenu={(menuKey) => setOpenMenuID((current) => (current === menuKey ? null : menuKey))}
+        onToggleThreadMenu={(menuKey) =>
+          setOpenMenuID((current) => (current === menuKey ? null : menuKey))
+        }
         onCloseThreadMenu={() => setOpenMenuID(null)}
         onEditProject={vi.fn()}
         onArchiveProject={vi.fn()}
@@ -592,7 +662,9 @@ test("ProjectDetailPage thread menu items remain clickable after pointerdown", (
 
   render(<Harness />);
 
-  const removeItem = screen.getByRole("menuitem", { name: "Remove from project" });
+  const removeItem = screen.getByRole("menuitem", {
+    name: "Remove from project",
+  });
   fireEvent.pointerDown(removeItem);
   fireEvent.click(removeItem);
 

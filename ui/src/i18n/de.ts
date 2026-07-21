@@ -167,22 +167,28 @@ export const de = {
     unsupportedDocumentFormat: "Nicht unterstütztes Dokumentformat",
     unsupportedImageFormat: "Nicht unterstütztes Bildformat",
     fileTooLarge: "Dateien dürfen höchstens 25 MB gross sein.",
-    tooManyAttachments_one: "Ein Thread kann bis zu {{count}} angehängte Datei haben.",
-    tooManyAttachments_other: "Ein Thread kann bis zu {{count}} angehängte Dateien haben.",
+    tooManyAttachments_one:
+      "Ein Thread kann bis zu {{count}} angehängte Datei haben.",
+    tooManyAttachments_other:
+      "Ein Thread kann bis zu {{count}} angehängte Dateien haben.",
     threadDataLoadFailed: "Thread-Daten konnten nicht geladen werden.",
     threadLoadFailed: "Thread konnte nicht geladen werden.",
     projectThreadsLoadFailed: "Projekt-Threads konnten nicht geladen werden.",
     projectSaveFailed: "Projekt konnte nicht gespeichert werden.",
     projectArchiveFailed: "Projekt konnte nicht archiviert werden.",
-    projectUnarchiveFailed: "Projekt konnte nicht aus dem Archiv geholt werden.",
+    projectUnarchiveFailed:
+      "Projekt konnte nicht aus dem Archiv geholt werden.",
     projectDeleteFailed: "Projekt konnte nicht gelöscht werden.",
     threadRenameFailed: "Thread konnte nicht umbenannt werden.",
     threadDeleteFailed: "Thread konnte nicht gelöscht werden.",
     noThreadsMoved: "Keine Threads verschoben.",
     threadsMoveFailed: "Threads konnten nicht verschoben werden.",
-    threadsFailedToMoveCount_one: "{{count}} Thread konnte nicht verschoben werden.",
-    threadsFailedToMoveCount_other: "{{count}} Threads konnten nicht verschoben werden.",
-    threadRemoveFromProjectFailed: "Thread konnte nicht aus dem Projekt entfernt werden.",
+    threadsFailedToMoveCount_one:
+      "{{count}} Thread konnte nicht verschoben werden.",
+    threadsFailedToMoveCount_other:
+      "{{count}} Threads konnten nicht verschoben werden.",
+    threadRemoveFromProjectFailed:
+      "Thread konnte nicht aus dem Projekt entfernt werden.",
   },
   messages: {
     copyMessage: "Nachricht kopieren",
@@ -233,7 +239,8 @@ export const de = {
       usage: "Deine Token- und Kontingentnutzung",
       help: "Verfügbare Slash-Befehle anzeigen",
     },
-    sessionExpired: "Deine Sitzung ist abgelaufen. Lade neu, um dich anzumelden.",
+    sessionExpired:
+      "Deine Sitzung ist abgelaufen. Lade neu, um dich anzumelden.",
     loading: "Lädt…",
     noServers: "Keine MCP-Server konfiguriert.",
     noTools: "Keine Tools verfügbar.",
@@ -249,7 +256,8 @@ export const de = {
     down: "inaktiv",
   },
   incognito: {
-    notice: "Inkognito-Threads werden nicht gespeichert, nicht zum Gedächtnis hinzugefügt und nicht zum Training von Modellen verwendet.",
+    notice:
+      "Inkognito-Threads werden nicht gespeichert, nicht zum Gedächtnis hinzugefügt und nicht zum Training von Modellen verwendet.",
     placeholder: "Inkognito-Nachricht...",
     headerLabel: "Inkognito-Kopfzeile",
     title: "Inkognito-Thread",
@@ -371,7 +379,8 @@ export const de = {
     },
     knowledge: {
       label: "Wissen",
-      description: "Lade Dokumente hoch, damit jeder Thread in diesem Projekt sie durchsuchen und zitieren kann.",
+      description:
+        "Lade Dokumente hoch, damit jeder Thread in diesem Projekt sie durchsuchen und zitieren kann.",
       loading: "Lädt…",
       addLabel: "Dokumente zum Wissen hinzufügen",
       dropzone: "Dokumente hierher ziehen oder zum Hochladen tippen",
@@ -396,7 +405,8 @@ export const de = {
         "Eine Zusammenfassung dessen, was deine Threads in diesem Projekt behandelt haben, damit jeder neue dort anknüpft, wo die anderen aufgehört haben.",
       loading: "Lädt…",
       empty: "Das Projektgedächtnis erscheint hier nach ein paar Threads.",
-      editError: "Das konnte nicht angewendet werden — bitte versuche es erneut.",
+      editError:
+        "Das konnte nicht angewendet werden — bitte versuche es erneut.",
     },
   },
   settings: {
@@ -430,7 +440,8 @@ export const de = {
     messagesCapturedValue: "{{captured}} von {{total}}",
     nextRefresh: "Nächste Aktualisierung",
     otherInstructions: "Weitere Anweisungen",
-    otherInstructionsValue: "{{directives}} ({{len}} / {{max}} Zeichen, {{pct}}%)",
+    otherInstructionsValue:
+      "{{directives}} ({{len}} / {{max}} Zeichen, {{pct}}%)",
     groupMemory: "Erinnerungen",
     groupTokens: "Tokens",
     groupEmbeddings: "Embeddings",
@@ -455,8 +466,10 @@ export const de = {
     bulkDelete: {
       title_one: "Thread löschen",
       title_other: "{{count}} Threads löschen",
-      confirm_one: "Möchtest du diesen Thread wirklich löschen? Das kann nicht rückgängig gemacht werden.",
-      confirm_other: "Möchtest du diese {{count}} Threads wirklich löschen? Das kann nicht rückgängig gemacht werden.",
+      confirm_one:
+        "Möchtest du diesen Thread wirklich löschen? Das kann nicht rückgängig gemacht werden.",
+      confirm_other:
+        "Möchtest du diese {{count}} Threads wirklich löschen? Das kann nicht rückgängig gemacht werden.",
     },
     selectedCount_one: "{{count}} ausgewählt",
     selectedCount_other: "{{count}} ausgewählt",
@@ -521,10 +534,12 @@ export const de = {
     createPublicLinkSub: "Jeder mit dem Link kann ihn ansehen",
     copied: "Kopiert",
     copyLink: "Link kopieren",
-    disclaimer: "Teile keine persönlichen Informationen oder fremde Inhalte ohne Erlaubnis.",
+    disclaimer:
+      "Teile keine persönlichen Informationen oder fremde Inhalte ohne Erlaubnis.",
     createShareLink: "Freigabelink erstellen",
     loading: "Wird geladen…",
-    notAvailable: "Dieses Gespräch ist nicht verfügbar. Der Link wurde möglicherweise deaktiviert oder entfernt.",
+    notAvailable:
+      "Dieses Gespräch ist nicht verfügbar. Der Link wurde möglicherweise deaktiviert oder entfernt.",
     loadError: "Beim Laden dieses Gesprächs ist etwas schiefgelaufen.",
     sharedConversation: "Geteiltes Gespräch",
     sharedBy: "Geteilt von {{author}}",
@@ -563,29 +578,71 @@ export const de = {
     returns: { named: "{{name}} ist zurück!" },
     backAtIt: { named: "Weiter geht's, {{name}}", unnamed: "Weiter geht's!" },
     heyThere: { named: "Hallo, {{name}}", unnamed: "Hallo" },
-    howAreYou: { named: "Hi {{name}}, wie geht's?", unnamed: "Hi, wie geht's?" },
-    howWasDay: { named: "Wie war dein Tag, {{name}}?", unnamed: "Wie war dein Tag?" },
+    howAreYou: {
+      named: "Hi {{name}}, wie geht's?",
+      unnamed: "Hi, wie geht's?",
+    },
+    howWasDay: {
+      named: "Wie war dein Tag, {{name}}?",
+      unnamed: "Wie war dein Tag?",
+    },
     howsItGoing: { named: "Wie läuft's, {{name}}?", unnamed: "Wie läuft's?" },
     welcome: { named: "Willkommen, {{name}}", unnamed: "Willkommen" },
-    whatsNew: { named: "Was gibt's Neues, {{name}}?", unnamed: "Was gibt's Neues?" },
+    whatsNew: {
+      named: "Was gibt's Neues, {{name}}?",
+      unnamed: "Was gibt's Neues?",
+    },
     goodMorning: { named: "Guten Morgen, {{name}}", unnamed: "Guten Morgen" },
     morning: { named: "Morgen, {{name}}" },
     coffee: { unnamed: "Zeit für Kaffee und Loom?" },
-    goodAfternoon: { named: "Guten Nachmittag, {{name}}", unnamed: "Guten Nachmittag" },
+    goodAfternoon: {
+      named: "Guten Nachmittag, {{name}}",
+      unnamed: "Guten Nachmittag",
+    },
     afternoon: { named: "Schönen Nachmittag, {{name}}" },
     goodEvening: { named: "Guten Abend, {{name}}", unnamed: "Guten Abend" },
     evening: { named: "Abend, {{name}}", unnamed: "Abend" },
     nightOwl: { unnamed: "Hallo, Nachtschwärmer" },
     upLate: { named: "Noch spät auf, {{name}}?" },
-    happyMonday: { named: "Schönen Montag, {{name}}", unnamed: "Schönen Montag" },
-    happyTuesday: { named: "Schönen Dienstag, {{name}}", unnamed: "Schönen Dienstag" },
-    happyWednesday: { named: "Schönen Mittwoch, {{name}}", unnamed: "Schönen Mittwoch" },
-    happyThursday: { named: "Schönen Donnerstag, {{name}}", unnamed: "Schönen Donnerstag" },
-    happyFriday: { named: "Schönen Freitag, {{name}}", unnamed: "Schönen Freitag" },
-    fridayFeeling: { named: "Dieses Freitagsgefühl, {{name}}", unnamed: "Dieses Freitagsgefühl" },
-    happySaturday: { named: "Schönen Samstag, {{name}}", unnamed: "Schönen Samstag!" },
-    happySunday: { named: "Schönen Sonntag, {{name}}", unnamed: "Schönen Sonntag" },
-    sundaySession: { named: "Sonntags-Session, {{name}}?", unnamed: "Sonntags-Session?" },
-    weekend: { named: "Willkommen am Wochenende, {{name}}", unnamed: "Willkommen am Wochenende" },
+    happyMonday: {
+      named: "Schönen Montag, {{name}}",
+      unnamed: "Schönen Montag",
+    },
+    happyTuesday: {
+      named: "Schönen Dienstag, {{name}}",
+      unnamed: "Schönen Dienstag",
+    },
+    happyWednesday: {
+      named: "Schönen Mittwoch, {{name}}",
+      unnamed: "Schönen Mittwoch",
+    },
+    happyThursday: {
+      named: "Schönen Donnerstag, {{name}}",
+      unnamed: "Schönen Donnerstag",
+    },
+    happyFriday: {
+      named: "Schönen Freitag, {{name}}",
+      unnamed: "Schönen Freitag",
+    },
+    fridayFeeling: {
+      named: "Dieses Freitagsgefühl, {{name}}",
+      unnamed: "Dieses Freitagsgefühl",
+    },
+    happySaturday: {
+      named: "Schönen Samstag, {{name}}",
+      unnamed: "Schönen Samstag!",
+    },
+    happySunday: {
+      named: "Schönen Sonntag, {{name}}",
+      unnamed: "Schönen Sonntag",
+    },
+    sundaySession: {
+      named: "Sonntags-Session, {{name}}?",
+      unnamed: "Sonntags-Session?",
+    },
+    weekend: {
+      named: "Willkommen am Wochenende, {{name}}",
+      unnamed: "Willkommen am Wochenende",
+    },
   },
 } satisfies Catalog;

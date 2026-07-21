@@ -9,7 +9,13 @@ import { buildMetricsString, humanizeCategory } from "./metrics";
  * prompt-classifier category, a pill with the humanized label sits to the left of
  * the metrics. The pill can show on its own before token metrics exist (line may be null).
  */
-export function MessageMetrics({ message, category }: { message: Message; category?: string }) {
+export function MessageMetrics({
+  message,
+  category,
+}: {
+  message: Message;
+  category?: string;
+}) {
   const line = buildMetricsString(message);
   const pill =
     category !== undefined && category !== "" ? (
@@ -26,7 +32,9 @@ export function MessageMetrics({ message, category }: { message: Message; catego
     <span className="ml-auto flex items-center gap-2">
       {pill}
       {line !== null && (
-        <span className="font-sans text-[0.75rem] leading-[1.45rem] text-[#858178]">{line}</span>
+        <span className="font-sans text-[0.75rem] leading-[1.45rem] text-[#858178]">
+          {line}
+        </span>
       )}
     </span>
   );

@@ -54,6 +54,8 @@ describe("UsagePanel", () => {
     vi.spyOn(api, "getUsage").mockRejectedValue(new Error("boom"));
     render(<UsagePanel />);
 
-    expect(await screen.findByText("Failed to load usage.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Failed to load usage."),
+    ).toBeInTheDocument();
   });
 });

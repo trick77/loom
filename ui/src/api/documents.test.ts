@@ -72,31 +72,41 @@ describe("uploadDocument", () => {
   test("throws AuthExpiredError on 401", async () => {
     stubFetch(new Response("", { status: 401 }));
 
-    await expect(uploadDocument(pdf())).rejects.toBeInstanceOf(AuthExpiredError);
+    await expect(uploadDocument(pdf())).rejects.toBeInstanceOf(
+      AuthExpiredError,
+    );
   });
 
   test("maps 415 to an unsupported format error", async () => {
     stubFetch(new Response("", { status: 415 }));
 
-    await expect(uploadDocument(pdf())).rejects.toThrow("Unsupported document format");
+    await expect(uploadDocument(pdf())).rejects.toThrow(
+      "Unsupported document format",
+    );
   });
 
   test("maps 409 to the attachment limit error", async () => {
     stubFetch(new Response("", { status: 409 }));
 
-    await expect(uploadDocument(pdf())).rejects.toThrow("A thread can have up to 10 attached files.");
+    await expect(uploadDocument(pdf())).rejects.toThrow(
+      "A thread can have up to 10 attached files.",
+    );
   });
 
   test("maps 413 to a file size error", async () => {
     stubFetch(new Response("", { status: 413 }));
 
-    await expect(uploadDocument(pdf())).rejects.toThrow("Files must be 25 MB or smaller.");
+    await expect(uploadDocument(pdf())).rejects.toThrow(
+      "Files must be 25 MB or smaller.",
+    );
   });
 
   test("throws a generic error on other failures", async () => {
     stubFetch(new Response("", { status: 500 }));
 
-    await expect(uploadDocument(pdf())).rejects.toThrow("failed to upload document");
+    await expect(uploadDocument(pdf())).rejects.toThrow(
+      "failed to upload document",
+    );
   });
 });
 
@@ -125,25 +135,33 @@ describe("uploadImageAttachment", () => {
   test("throws AuthExpiredError on 401", async () => {
     stubFetch(new Response("", { status: 401 }));
 
-    await expect(uploadImageAttachment(png())).rejects.toBeInstanceOf(AuthExpiredError);
+    await expect(uploadImageAttachment(png())).rejects.toBeInstanceOf(
+      AuthExpiredError,
+    );
   });
 
   test("maps 415 to an unsupported image format error", async () => {
     stubFetch(new Response("", { status: 415 }));
 
-    await expect(uploadImageAttachment(png())).rejects.toThrow("Unsupported image format");
+    await expect(uploadImageAttachment(png())).rejects.toThrow(
+      "Unsupported image format",
+    );
   });
 
   test("maps 413 to a file size error", async () => {
     stubFetch(new Response("", { status: 413 }));
 
-    await expect(uploadImageAttachment(png())).rejects.toThrow("Files must be 25 MB or smaller.");
+    await expect(uploadImageAttachment(png())).rejects.toThrow(
+      "Files must be 25 MB or smaller.",
+    );
   });
 
   test("throws a generic error on other failures", async () => {
     stubFetch(new Response("", { status: 500 }));
 
-    await expect(uploadImageAttachment(png())).rejects.toThrow("failed to upload image");
+    await expect(uploadImageAttachment(png())).rejects.toThrow(
+      "failed to upload image",
+    );
   });
 });
 
@@ -160,7 +178,9 @@ describe("listDocuments", () => {
 
     await listDocuments("p 1/x");
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/documents?projectId=p%201%2Fx");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/documents?projectId=p%201%2Fx",
+    );
   });
 
   test("returns an empty list when the body has no items", async () => {
@@ -186,20 +206,29 @@ describe("indexDocument", () => {
   test("posts to the index endpoint and returns the document", async () => {
     const fetchMock = stubFetch(Response.json({ ...document, indexed: true }));
 
-    await expect(indexDocument("doc 1")).resolves.toEqual({ ...document, indexed: true });
-    expect(fetchMock).toHaveBeenCalledWith("/api/documents/doc%201/index", { method: "POST" });
+    await expect(indexDocument("doc 1")).resolves.toEqual({
+      ...document,
+      indexed: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/documents/doc%201/index", {
+      method: "POST",
+    });
   });
 
   test("throws AuthExpiredError on 401", async () => {
     stubFetch(new Response("", { status: 401 }));
 
-    await expect(indexDocument("doc_1")).rejects.toBeInstanceOf(AuthExpiredError);
+    await expect(indexDocument("doc_1")).rejects.toBeInstanceOf(
+      AuthExpiredError,
+    );
   });
 
   test("throws on a non-ok response", async () => {
     stubFetch(new Response("", { status: 500 }));
 
-    await expect(indexDocument("doc_1")).rejects.toThrow("failed to index document");
+    await expect(indexDocument("doc_1")).rejects.toThrow(
+      "failed to index document",
+    );
   });
 });
 
@@ -208,19 +237,25 @@ describe("unindexDocument", () => {
     const fetchMock = stubFetch(new Response(null, { status: 204 }));
 
     await expect(unindexDocument("doc_1")).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith("/api/documents/doc_1/unindex", { method: "POST" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/documents/doc_1/unindex", {
+      method: "POST",
+    });
   });
 
   test("throws AuthExpiredError on 401", async () => {
     stubFetch(new Response("", { status: 401 }));
 
-    await expect(unindexDocument("doc_1")).rejects.toBeInstanceOf(AuthExpiredError);
+    await expect(unindexDocument("doc_1")).rejects.toBeInstanceOf(
+      AuthExpiredError,
+    );
   });
 
   test("throws on a non-ok response", async () => {
     stubFetch(new Response("", { status: 500 }));
 
-    await expect(unindexDocument("doc_1")).rejects.toThrow("failed to unindex document");
+    await expect(unindexDocument("doc_1")).rejects.toThrow(
+      "failed to unindex document",
+    );
   });
 });
 
@@ -229,18 +264,24 @@ describe("deleteDocument", () => {
     const fetchMock = stubFetch(new Response(null, { status: 204 }));
 
     await expect(deleteDocument("doc 1")).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith("/api/documents/doc%201", { method: "DELETE" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/documents/doc%201", {
+      method: "DELETE",
+    });
   });
 
   test("throws AuthExpiredError on 401", async () => {
     stubFetch(new Response("", { status: 401 }));
 
-    await expect(deleteDocument("doc_1")).rejects.toBeInstanceOf(AuthExpiredError);
+    await expect(deleteDocument("doc_1")).rejects.toBeInstanceOf(
+      AuthExpiredError,
+    );
   });
 
   test("throws on a non-ok response", async () => {
     stubFetch(new Response("", { status: 409 }));
 
-    await expect(deleteDocument("doc_1")).rejects.toThrow("failed to delete document");
+    await expect(deleteDocument("doc_1")).rejects.toThrow(
+      "failed to delete document",
+    );
   });
 });

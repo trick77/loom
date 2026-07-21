@@ -33,7 +33,8 @@ export function pathForRoute(route: RouteState): string {
   if (route.view === "artifacts") return "/artifacts";
   if (route.view === "memory") return "/memory";
   if (route.view === "projects") return "/projects";
-  if (route.view === "project") return `/projects/${encodeURIComponent(route.projectID)}`;
+  if (route.view === "project")
+    return `/projects/${encodeURIComponent(route.projectID)}`;
   return `/thread/${encodeURIComponent(route.threadID)}`;
 }
 

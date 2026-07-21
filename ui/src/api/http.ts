@@ -9,7 +9,10 @@ export class AuthExpiredError extends Error {
 // expectJSON is the shared success/JSON path for authenticated endpoints: it
 // maps a 401 to AuthExpiredError, any other non-2xx to the caller's message,
 // and otherwise decodes the JSON body.
-export async function expectJSON<T>(response: Response, errorMessage: string): Promise<T> {
+export async function expectJSON<T>(
+  response: Response,
+  errorMessage: string,
+): Promise<T> {
   if (response.status === 401) {
     throw new AuthExpiredError();
   }

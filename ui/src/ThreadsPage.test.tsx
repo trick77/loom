@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { ThreadsPage } from "./ThreadsPage";
@@ -32,9 +38,15 @@ function thread(id: string, title: string): Thread {
   };
 }
 
-const FIXTURES = [thread("t1", "Greeting"), thread("t2", "Morning greeting"), thread("t3", "Apps and websites")];
+const FIXTURES = [
+  thread("t1", "Greeting"),
+  thread("t2", "Morning greeting"),
+  thread("t3", "Apps and websites"),
+];
 
-function renderPage(overrides: Partial<Parameters<typeof ThreadsPage>[0]> = {}) {
+function renderPage(
+  overrides: Partial<Parameters<typeof ThreadsPage>[0]> = {},
+) {
   const props = {
     mutationVersion: 0,
     onOpenSidebar: vi.fn(),
@@ -102,7 +114,9 @@ test("chat rows use the sidebar hover surface", async () => {
   expect(timeLabel).toHaveClass("ml-auto");
   expect(timeLabel).toHaveClass("group-hover:hidden");
   expect(timeLabel).toHaveClass("[@media(hover:none)]:hidden");
-  const actionButton = within(rowSurface!).getByRole("button", { name: "Open thread actions" });
+  const actionButton = within(rowSurface!).getByRole("button", {
+    name: "Open thread actions",
+  });
   expect(actionButton).toHaveClass("absolute");
   expect(actionButton).toHaveClass("right-3");
   expect(actionButton).toHaveClass("[@media(hover:none)]:visible");
@@ -125,7 +139,9 @@ test("chat rows fade adjacent dividers behind the rounded hover surface", async 
 test("search input uses the standard input text size", async () => {
   renderPage();
 
-  const searchInput = await screen.findByRole("textbox", { name: "Search threads" });
+  const searchInput = await screen.findByRole("textbox", {
+    name: "Search threads",
+  });
 
   expect(searchInput).toHaveClass("ui-composer-text");
   expect(searchInput).not.toHaveClass("ui-control-text");
@@ -135,7 +151,9 @@ test("search filters by title (debounced)", async () => {
   renderPage();
   await screen.findByText("Apps and websites");
 
-  fireEvent.change(screen.getByLabelText("Search threads"), { target: { value: "greet" } });
+  fireEvent.change(screen.getByLabelText("Search threads"), {
+    target: { value: "greet" },
+  });
 
   await waitFor(() => {
     expect(screen.queryByText("Apps and websites")).not.toBeInTheDocument();
@@ -144,7 +162,9 @@ test("search filters by title (debounced)", async () => {
     expect(titleSpan("Greeting")).toBeInTheDocument();
   });
   expect(titleSpan("Morning greeting")).toBeInTheDocument();
-  expect(listThreadsMock).toHaveBeenCalledWith(expect.objectContaining({ search: "greet" }));
+  expect(listThreadsMock).toHaveBeenCalledWith(
+    expect.objectContaining({ search: "greet" }),
+  );
 });
 
 // Matches the title span by its full textContent, since an active search bolds
@@ -161,13 +181,18 @@ test("search surfaces full-text matches and Select all includes them", async () 
   // A thread whose title does NOT match the query — it only matches on content,
   // so it arrives via searchThreadContent, not the title list.
   searchThreadContentMock.mockResolvedValue([
-    { thread: thread("t4", "Deployment notes"), snippet: "…we «greet» the operator…" },
+    {
+      thread: thread("t4", "Deployment notes"),
+      snippet: "…we «greet» the operator…",
+    },
   ]);
 
   renderPage();
   await screen.findByText("Apps and websites");
 
-  fireEvent.change(screen.getByLabelText("Search threads"), { target: { value: "greet" } });
+  fireEvent.change(screen.getByLabelText("Search threads"), {
+    target: { value: "greet" },
+  });
 
   // The content-only row renders once the full-text search resolves.
   await waitFor(() => {

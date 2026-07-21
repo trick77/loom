@@ -21,23 +21,42 @@ function fmt(n: number): string {
 function nextRefreshLabel(u: Usage, pending: number, t: TFunction): string {
   if (pending === 0) return t("settings.upToDate");
   const note = t("settings.pendingNote", { formatted: fmt(pending) });
-  if (u.userMemoryUpdatedAt === null) return t("settings.eligibleNow", { note });
+  if (u.userMemoryUpdatedAt === null)
+    return t("settings.eligibleNow", { note });
   const windowMs = u.userMemoryRefreshWindowHours * 3_600_000;
-  const remainingMs = windowMs - (Date.now() - new Date(u.userMemoryUpdatedAt).getTime());
+  const remainingMs =
+    windowMs - (Date.now() - new Date(u.userMemoryUpdatedAt).getTime());
   if (remainingMs <= 0) return t("settings.eligibleNow", { note });
-  return t("settings.eligibleInHours", { hours: Math.ceil(remainingMs / 3_600_000), note });
+  return t("settings.eligibleInHours", {
+    hours: Math.ceil(remainingMs / 3_600_000),
+    note,
+  });
 }
 
 function memoryRows(u: Usage, t: TFunction): Row[] {
-  const pct = u.userMemoryMax > 0 ? Math.round((u.userMemoryLength / u.userMemoryMax) * 100) : 0;
-  const pending = Math.max(u.userMemoryTotalMessages - u.userMemorySourceMessages, 0);
+  const pct =
+    u.userMemoryMax > 0
+      ? Math.round((u.userMemoryLength / u.userMemoryMax) * 100)
+      : 0;
+  const pending = Math.max(
+    u.userMemoryTotalMessages - u.userMemorySourceMessages,
+    0,
+  );
   const directivesPct =
-    u.userDirectivesMax > 0 ? Math.round((u.userDirectivesLength / u.userDirectivesMax) * 100) : 0;
+    u.userDirectivesMax > 0
+      ? Math.round((u.userDirectivesLength / u.userDirectivesMax) * 100)
+      : 0;
   return [
-    { label: t("settings.memoryLength"), value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)} (${pct}%)` },
+    {
+      label: t("settings.memoryLength"),
+      value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)} (${pct}%)`,
+    },
     {
       label: t("settings.lastUpdated"),
-      value: u.userMemoryUpdatedAt === null ? t("settings.never") : formatTimeAgo(u.userMemoryUpdatedAt),
+      value:
+        u.userMemoryUpdatedAt === null
+          ? t("settings.never")
+          : formatTimeAgo(u.userMemoryUpdatedAt),
     },
     {
       label: t("settings.messagesCaptured"),
@@ -46,7 +65,10 @@ function memoryRows(u: Usage, t: TFunction): Row[] {
         total: fmt(u.userMemoryTotalMessages),
       }),
     },
-    { label: t("settings.nextRefresh"), value: nextRefreshLabel(u, pending, t) },
+    {
+      label: t("settings.nextRefresh"),
+      value: nextRefreshLabel(u, pending, t),
+    },
     {
       label: t("settings.otherInstructions"),
       value: t("settings.otherInstructionsValue", {
@@ -79,7 +101,10 @@ function sectionsFor(u: Usage, t: TFunction): { group: string; rows: Row[] }[] {
       group: t("settings.groupEmbeddings"),
       rows: [
         { label: t("settings.embeddingTokens"), value: fmt(u.embeddingTokens) },
-        { label: t("settings.embeddingRequests"), value: fmt(u.embeddingRequests) },
+        {
+          label: t("settings.embeddingRequests"),
+          value: fmt(u.embeddingRequests),
+        },
       ],
     },
     {
@@ -130,7 +155,9 @@ export function UsagePanel() {
       ) : (
         sectionsFor(usage, t).map((section) => (
           <div key={section.group} className="flex flex-col gap-1.5">
-            <div className="text-sm font-medium text-[#8f8b82]">{section.group}</div>
+            <div className="text-sm font-medium text-[#8f8b82]">
+              {section.group}
+            </div>
             {section.rows.map((row) => (
               <div
                 key={row.label}

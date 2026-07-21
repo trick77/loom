@@ -1,13 +1,12 @@
 import { useState } from "react";
 
-import {
-  deleteThread,
-  updateThread,
-  type Project,
-  type Thread,
-} from "../api";
+import { deleteThread, updateThread, type Project, type Thread } from "../api";
 import i18n from "../i18n";
-import { removeThreadsById, replaceThreadById, upsertThreadById } from "../projects/projectMembership";
+import {
+  removeThreadsById,
+  replaceThreadById,
+  upsertThreadById,
+} from "../projects/projectMembership";
 import type { RouteState } from "./routing";
 
 export function useThreadActions({
@@ -32,7 +31,11 @@ export function useThreadActions({
   setProjectThreads(update: (current: Thread[]) => Thread[]): void;
   setThreadMutationVersion(update: (value: number) => number): void;
   setThreads(update: (current: Thread[]) => Thread[]): void;
-  handleActionError(error: unknown, fallback: string, setError: (message: string) => void): void;
+  handleActionError(
+    error: unknown,
+    fallback: string,
+    setError: (message: string) => void,
+  ): void;
   onActiveThreadArchived(): void;
   onOpenThreadModal(): void;
   route: RouteState;
@@ -65,7 +68,11 @@ export function useThreadActions({
     setIsMutatingThread(true);
     try {
       const updatedThread = await updateThread(renamingThread.id, { title });
-      setThreads((current) => current.map((item) => (item.id === updatedThread.id ? updatedThread : item)));
+      setThreads((current) =>
+        current.map((item) =>
+          item.id === updatedThread.id ? updatedThread : item,
+        ),
+      );
       setProjectThreads((current) => replaceThreadById(current, updatedThread));
       if (activeThreadIDRef.current === updatedThread.id) {
         setActiveThread(updatedThread);
@@ -74,7 +81,11 @@ export function useThreadActions({
       setRenamingThread(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, i18n.t("errors.threadRenameFailed"), setModalError);
+      handleActionError(
+        error,
+        i18n.t("errors.threadRenameFailed"),
+        setModalError,
+      );
     } finally {
       setIsMutatingThread(false);
     }
@@ -87,7 +98,9 @@ export function useThreadActions({
     try {
       await deleteThread(thread.id);
       setThreads((current) => current.filter((item) => item.id !== thread.id));
-      setProjectThreads((current) => current.filter((item) => item.id !== thread.id));
+      setProjectThreads((current) =>
+        current.filter((item) => item.id !== thread.id),
+      );
       setThreadMutationVersion((value) => value + 1);
       if (activeThreadIDRef.current === thread.id) {
         onActiveThreadArchived();
@@ -95,13 +108,20 @@ export function useThreadActions({
       setDeletingThread(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, i18n.t("errors.threadDeleteFailed"), setModalError);
+      handleActionError(
+        error,
+        i18n.t("errors.threadDeleteFailed"),
+        setModalError,
+      );
     } finally {
       setIsMutatingThread(false);
     }
   }
 
-  async function handleMoveThreadsToProject(targetThreads: Thread[], project: Project) {
+  async function handleMoveThreadsToProject(
+    targetThreads: Thread[],
+    project: Project,
+  ) {
     if (isMutatingThread || targetThreads.length === 0) return;
     setIsMutatingThread(true);
     try {
@@ -112,17 +132,30 @@ export function useThreadActions({
         })),
       );
       const updatedThreads = results
-        .filter((result): result is PromiseFulfilledResult<{ original: Thread; updated: Thread }> => result.status === "fulfilled")
+        .filter(
+          (
+            result,
+          ): result is PromiseFulfilledResult<{
+            original: Thread;
+            updated: Thread;
+          }> => result.status === "fulfilled",
+        )
         .map((result) => result.value.updated);
       if (updatedThreads.length === 0) {
         throw new Error(i18n.t("errors.noThreadsMoved"));
       }
       const failedThreads = results
-        .map((result, index) => (result.status === "rejected" ? targetThreads[index] : null))
+        .map((result, index) =>
+          result.status === "rejected" ? targetThreads[index] : null,
+        )
         .filter((thread): thread is Thread => thread !== null);
       const updatedIDs = new Set(updatedThreads.map((thread) => thread.id));
       setThreads((current) =>
-        current.map((thread) => updatedThreads.find((updated) => updated.id === thread.id) ?? thread),
+        current.map(
+          (thread) =>
+            updatedThreads.find((updated) => updated.id === thread.id) ??
+            thread,
+        ),
       );
       setProjectThreads((current) => {
         let next = current;
@@ -137,15 +170,25 @@ export function useThreadActions({
         return next;
       });
       if (activeThread !== null) {
-        const updatedActive = updatedThreads.find((thread) => thread.id === activeThread.id);
+        const updatedActive = updatedThreads.find(
+          (thread) => thread.id === activeThread.id,
+        );
         if (updatedActive !== undefined) setActiveThread(updatedActive);
       }
       setMovingThreads(failedThreads);
       setThreadMutationVersion((value) => value + 1);
       const failedCount = failedThreads.length;
-      setModalError(failedCount > 0 ? i18n.t("errors.threadsFailedToMoveCount", { count: failedCount }) : "");
+      setModalError(
+        failedCount > 0
+          ? i18n.t("errors.threadsFailedToMoveCount", { count: failedCount })
+          : "",
+      );
     } catch (error) {
-      handleActionError(error, i18n.t("errors.threadsMoveFailed"), setModalError);
+      handleActionError(
+        error,
+        i18n.t("errors.threadsMoveFailed"),
+        setModalError,
+      );
     } finally {
       setIsMutatingThread(false);
     }
@@ -157,7 +200,9 @@ export function useThreadActions({
     try {
       const updatedThread = await updateThread(thread.id, { projectId: null });
       setThreads((current) => replaceThreadById(current, updatedThread));
-      setProjectThreads((current) => current.filter((item) => item.id !== updatedThread.id));
+      setProjectThreads((current) =>
+        current.filter((item) => item.id !== updatedThread.id),
+      );
       if (activeThreadIDRef.current === updatedThread.id) {
         setActiveThread(updatedThread);
       }
@@ -165,7 +210,11 @@ export function useThreadActions({
       setOpenThreadMenuID(null);
       setModalError("");
     } catch (error) {
-      handleActionError(error, i18n.t("errors.threadRemoveFromProjectFailed"), setModalError);
+      handleActionError(
+        error,
+        i18n.t("errors.threadRemoveFromProjectFailed"),
+        setModalError,
+      );
     } finally {
       setIsMutatingThread(false);
     }

@@ -13,9 +13,17 @@ import Markdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import rehypeHighlight from "rehype-highlight";
 
-import { markdownRemarkPlugins, normalizeMathDelimiters, rehypeKatexPlugin } from "./markdownConfig";
+import {
+  markdownRemarkPlugins,
+  normalizeMathDelimiters,
+  rehypeKatexPlugin,
+} from "./markdownConfig";
 
-import { type ContentBlock, type Message, type MessagePastedText } from "../api";
+import {
+  type ContentBlock,
+  type Message,
+  type MessagePastedText,
+} from "../api";
 import i18n from "../i18n";
 import { MessageMetrics } from "../MessageMetrics";
 import { formatMessageTime } from "../metrics";
@@ -30,7 +38,10 @@ import {
 import { messageBlocks } from "./contentBlocks";
 import { PastedTextCard } from "./PastedTextCard";
 import { stripPastedBlocks } from "./pastedText";
-import { AttachmentPreview, isRevocablePreview } from "../components/AttachmentPreview";
+import {
+  AttachmentPreview,
+  isRevocablePreview,
+} from "../components/AttachmentPreview";
 import { formatAttachmentSize } from "./attachmentFiles";
 import { MessageCitations } from "./Citations";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
@@ -38,8 +49,17 @@ import { CheckIcon, DownloadIcon } from "./icons";
 import { Icon } from "./Icon";
 import { ImageLightbox } from "./ImageLightbox";
 import { rehypeStreamFade } from "./streamFade";
-import { rehypeSourcePills, SourcePill, SOURCE_PILL_TAG, webSourceMap, type SourceMap } from "./sourcePills";
-import { isImageAttachment, type ComposerAttachment } from "./useDocumentAttachments";
+import {
+  rehypeSourcePills,
+  SourcePill,
+  SOURCE_PILL_TAG,
+  webSourceMap,
+  type SourceMap,
+} from "./sourcePills";
+import {
+  isImageAttachment,
+  type ComposerAttachment,
+} from "./useDocumentAttachments";
 
 export function MessageBubble({
   message,
@@ -48,7 +68,10 @@ export function MessageBubble({
   category,
   publicView = false,
 }: {
-  message: Message & { attachments?: ComposerAttachment[]; hadAttachment?: boolean };
+  message: Message & {
+    attachments?: ComposerAttachment[];
+    hadAttachment?: boolean;
+  };
   // The message a retry re-loads into the composer (the previous user message for an
   // assistant bubble). Carries its pasted blocks so retry re-stages chips rather than
   // flooding the composer with the folded inline paste.
@@ -76,9 +99,10 @@ export function MessageBubble({
     const pastedTexts = message.pastedTexts ?? [];
     return (
       <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
-        {message.attachments !== undefined && message.attachments.length > 0 && (
-          <SentAttachments attachments={message.attachments} />
-        )}
+        {message.attachments !== undefined &&
+          message.attachments.length > 0 && (
+            <SentAttachments attachments={message.attachments} />
+          )}
         {pastedMatched.some(Boolean) && (
           <div className="mt-2 flex flex-wrap justify-end gap-2">
             {pastedTexts.map((pasted, index) =>
@@ -97,7 +121,9 @@ export function MessageBubble({
             {displayContent}
           </div>
         )}
-        {publicView && message.hadAttachment === true && <AttachmentNotShared />}
+        {publicView && message.hadAttachment === true && (
+          <AttachmentNotShared />
+        )}
         {!publicView && (
           <MessageActions
             copyLabel={t("messages.copyMessage")}
@@ -121,18 +147,28 @@ export function MessageBubble({
   // inactive.
   const blocks = messageBlocks(message);
   const proseText = blocks
-    .filter((block): block is Extract<ContentBlock, { type: "text" }> => block.type === "text")
+    .filter(
+      (block): block is Extract<ContentBlock, { type: "text" }> =>
+        block.type === "text",
+    )
     .map((block) => block.content)
     .join("\n\n");
   // Build the [n] -> web-source map once per message so inline citation markers in
   // any text block resolve to source pills. Memoized so its identity is stable
   // across re-renders — a fresh Map each render would force react-markdown to
   // re-run the rehype pass on every streamed token.
-  const sources = useMemo(() => webSourceMap(message.citations), [message.citations]);
+  const sources = useMemo(
+    () => webSourceMap(message.citations),
+    [message.citations],
+  );
   return (
     <div className="max-w-[46rem] space-y-3">
       {blocks.map((block, index) => (
-        <AssistantBlock key={`${message.id}-block-${index}`} block={block} sources={sources} />
+        <AssistantBlock
+          key={`${message.id}-block-${index}`}
+          block={block}
+          sources={sources}
+        />
       ))}
       {/* Sources sit directly under the answer text, on their own line, above the
           copy/retry/TTS + metrics footer. Citations only exist on the persisted
@@ -148,7 +184,10 @@ export function MessageBubble({
               ? undefined
               : () => {
                   const blocks = retryMessage.pastedTexts ?? [];
-                  onRetry?.(stripPastedBlocks(retryMessage.content, blocks).text, retryMessage.pastedTexts);
+                  onRetry?.(
+                    stripPastedBlocks(retryMessage.content, blocks).text,
+                    retryMessage.pastedTexts,
+                  );
                 }
           }
           metricsMessage={message}
@@ -178,7 +217,13 @@ function AttachmentNotShared() {
 // collapsed, inactive activity panel; text blocks render prose (with
 // downloadable/pending-fenced-artifact detection); artifact blocks render the
 // generated-artifact card.
-function AssistantBlock({ block, sources }: { block: ContentBlock; sources?: SourceMap }) {
+function AssistantBlock({
+  block,
+  sources,
+}: {
+  block: ContentBlock;
+  sources?: SourceMap;
+}) {
   if (block.type === "trace") {
     return <ActivityTracePanel events={block.events} active={false} />;
   }
@@ -188,9 +233,15 @@ function AssistantBlock({ block, sources }: { block: ContentBlock; sources?: Sou
   return <AssistantProse sources={sources}>{block.content}</AssistantProse>;
 }
 
-function SentAttachments({ attachments }: { attachments: ComposerAttachment[] }) {
+function SentAttachments({
+  attachments,
+}: {
+  attachments: ComposerAttachment[];
+}) {
   const imageAttachments = attachments.filter(isImageAttachment);
-  const fileAttachments = attachments.filter((attachment) => !isImageAttachment(attachment));
+  const fileAttachments = attachments.filter(
+    (attachment) => !isImageAttachment(attachment),
+  );
   return (
     <div className="mb-2 space-y-2">
       {imageAttachments.length > 0 && (
@@ -215,12 +266,17 @@ function useRevokeSentPreview(previewUrl: string | undefined) {
   useEffect(() => {
     const currentPreviewUrl = previewUrl;
     return () => {
-      if (isRevocablePreview(currentPreviewUrl)) URL.revokeObjectURL(currentPreviewUrl);
+      if (isRevocablePreview(currentPreviewUrl))
+        URL.revokeObjectURL(currentPreviewUrl);
     };
   }, [previewUrl]);
 }
 
-function SentImageAttachment({ attachment }: { attachment: ComposerAttachment }) {
+function SentImageAttachment({
+  attachment,
+}: {
+  attachment: ComposerAttachment;
+}) {
   useRevokeSentPreview(attachment.previewUrl);
 
   // Once sent, the image lives on the server as an artifact. Prefer the stable
@@ -231,7 +287,8 @@ function SentImageAttachment({ attachment }: { attachment: ComposerAttachment })
   // the preview is still a revocable blob (a freshly-sent image whose row hasn't
   // been rehydrated), fall back to the artifact's download URL by id.
   const src =
-    attachment.previewUrl !== undefined && !isRevocablePreview(attachment.previewUrl)
+    attachment.previewUrl !== undefined &&
+    !isRevocablePreview(attachment.previewUrl)
       ? attachment.previewUrl
       : attachment.artifactId !== undefined
         ? `/api/artifacts/${encodeURIComponent(attachment.artifactId)}/download`
@@ -249,7 +306,11 @@ function SentImageAttachment({ attachment }: { attachment: ComposerAttachment })
   );
 }
 
-function SentFileAttachment({ attachment }: { attachment: ComposerAttachment }) {
+function SentFileAttachment({
+  attachment,
+}: {
+  attachment: ComposerAttachment;
+}) {
   useRevokeSentPreview(attachment.previewUrl);
 
   return (
@@ -262,8 +323,12 @@ function SentFileAttachment({ attachment }: { attachment: ComposerAttachment }) 
         fallbackBoxClassName="grid h-11 w-11 place-items-center rounded-md border border-[#55534d] bg-[#30302d]"
       />
       <div className="min-w-0 flex-1 px-3 py-2.5">
-        <div className="ui-message-text truncate text-sm">{attachment.filename}</div>
-        <div className="ui-meta-text mt-2 truncate text-[#aaa79e]">{sentAttachmentStatus(attachment)}</div>
+        <div className="ui-message-text truncate text-sm">
+          {attachment.filename}
+        </div>
+        <div className="ui-meta-text mt-2 truncate text-[#aaa79e]">
+          {sentAttachmentStatus(attachment)}
+        </div>
       </div>
     </div>
   );
@@ -273,11 +338,16 @@ function sentAttachmentStatus(attachment: ComposerAttachment): string {
   if (attachment.status === "queued") return i18n.t("messages.attached");
   if (attachment.status === "uploading") return i18n.t("messages.uploading");
   if (attachment.status === "processing") return i18n.t("messages.processing");
-  if (attachment.status === "error") return attachment.error ?? i18n.t("messages.uploadFailed");
+  if (attachment.status === "error")
+    return attachment.error ?? i18n.t("messages.uploadFailed");
   return formatAttachmentSize(attachment.sizeBytes);
 }
 
-function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
+function CodeBlock({
+  children,
+  node: _node,
+  ...props
+}: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
   const { t } = useTranslation();
   const preRef = useRef<HTMLPreElement | null>(null);
   const [copied, setCopied] = useState(false);
@@ -306,7 +376,11 @@ function CodeBlock({ children, node: _node, ...props }: ComponentPropsWithoutRef
         aria-label={copied ? t("messages.copied") : t("messages.copyCode")}
         title={copied ? t("messages.copied") : t("messages.copyCode")}
       >
-        {copied ? <CheckIcon className="h-4 w-4" /> : <Icon name="copy" size="1rem" />}
+        {copied ? (
+          <CheckIcon className="h-4 w-4" />
+        ) : (
+          <Icon name="copy" size="1rem" />
+        )}
       </button>
       <pre ref={preRef} {...props}>
         {children}
@@ -330,37 +404,47 @@ export function ProseMarkdown({
   if (streaming) rehypePlugins.push(rehypeStreamFade);
   if (sources !== undefined) rehypePlugins.push([rehypeSourcePills, sources]);
   // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses.
-  const normalized = useMemo(() => normalizeMathDelimiters(children), [children]);
+  const normalized = useMemo(
+    () => normalizeMathDelimiters(children),
+    [children],
+  );
   return (
     <div className="ui-message-text ui-markdown text-[#f3f0e8]">
       <Markdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={rehypePlugins}
-        components={{
-          a({ children, ...props }) {
-            return (
-              <a {...props} target="_blank" rel="noreferrer">
-                {children}
-              </a>
-            );
-          },
-          // Custom element emitted by rehypeSourcePills for each [n] citation.
-          // Cast: react-markdown's Components type is keyed by HTML tag names, so a
-          // custom element name isn't in the type — the runtime maps it fine.
-          [SOURCE_PILL_TAG]: ({ href, children }: { href?: unknown; children?: ReactNode }) => (
-            <SourcePill href={href}>{children}</SourcePill>
-          ),
-          img({ src, ...props }) {
-            // Only render images whose src is an absolute, loadable URL. The model
-            // sometimes embeds a generated image by its bare filename (e.g.
-            // `![Lego Set](lego-selfie-set.png)`), which can never resolve — the
-            // real image is already shown as an artifact card — so drop it instead
-            // of rendering a broken-image placeholder.
-            const ok = typeof src === "string" && /^(https?:|data:)/i.test(src);
-            return ok ? <img src={src} {...props} /> : null;
-          },
-          pre: CodeBlock,
-        } as Components}
+        components={
+          {
+            a({ children, ...props }) {
+              return (
+                <a {...props} target="_blank" rel="noreferrer">
+                  {children}
+                </a>
+              );
+            },
+            // Custom element emitted by rehypeSourcePills for each [n] citation.
+            // Cast: react-markdown's Components type is keyed by HTML tag names, so a
+            // custom element name isn't in the type — the runtime maps it fine.
+            [SOURCE_PILL_TAG]: ({
+              href,
+              children,
+            }: {
+              href?: unknown;
+              children?: ReactNode;
+            }) => <SourcePill href={href}>{children}</SourcePill>,
+            img({ src, ...props }) {
+              // Only render images whose src is an absolute, loadable URL. The model
+              // sometimes embeds a generated image by its bare filename (e.g.
+              // `![Lego Set](lego-selfie-set.png)`), which can never resolve — the
+              // real image is already shown as an artifact card — so drop it instead
+              // of rendering a broken-image placeholder.
+              const ok =
+                typeof src === "string" && /^(https?:|data:)/i.test(src);
+              return ok ? <img src={src} {...props} /> : null;
+            },
+            pre: CodeBlock,
+          } as Components
+        }
       >
         {normalized}
       </Markdown>
@@ -386,22 +470,37 @@ export function AssistantProse({
   // re-renders. SvgResponseBubble's blob effect keys on artifact.content; for a
   // data-URL SVG that content is a freshly-allocated buffer each parse, so without
   // this the effect would revoke + recreate the object URL on every parent render.
-  const downloadable = useMemo(() => downloadableResponse(children), [children]);
-  const pendingArtifact = useMemo(() => pendingFencedArtifact(children), [children]);
+  const downloadable = useMemo(
+    () => downloadableResponse(children),
+    [children],
+  );
+  const pendingArtifact = useMemo(
+    () => pendingFencedArtifact(children),
+    [children],
+  );
 
   if (downloadable !== null) {
     const { artifact, before, after } = downloadable;
     // SVG renders inline like a raster image; every other downloadable format
     // shows the plain download card.
-    const Bubble = artifact.extension === "svg" ? SvgResponseBubble : DownloadResponseBubble;
+    const Bubble =
+      artifact.extension === "svg" ? SvgResponseBubble : DownloadResponseBubble;
     if (before === "" && after === "") {
       return <Bubble artifact={artifact} />;
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
-        {before !== "" && <ProseMarkdown streaming={streaming} sources={sources}>{before}</ProseMarkdown>}
+        {before !== "" && (
+          <ProseMarkdown streaming={streaming} sources={sources}>
+            {before}
+          </ProseMarkdown>
+        )}
         <Bubble artifact={artifact} />
-        {after !== "" && <ProseMarkdown streaming={streaming} sources={sources}>{after}</ProseMarkdown>}
+        {after !== "" && (
+          <ProseMarkdown streaming={streaming} sources={sources}>
+            {after}
+          </ProseMarkdown>
+        )}
       </div>
     );
   }
@@ -409,19 +508,31 @@ export function AssistantProse({
   if (pendingArtifact !== null) {
     const { before, label, receivedBytes } = pendingArtifact;
     if (before === "") {
-      return <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />;
+      return (
+        <PendingDownloadResponseBubble
+          label={label}
+          receivedBytes={receivedBytes}
+        />
+      );
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
-        <ProseMarkdown streaming={streaming} sources={sources}>{before}</ProseMarkdown>
-        <PendingDownloadResponseBubble label={label} receivedBytes={receivedBytes} />
+        <ProseMarkdown streaming={streaming} sources={sources}>
+          {before}
+        </ProseMarkdown>
+        <PendingDownloadResponseBubble
+          label={label}
+          receivedBytes={receivedBytes}
+        />
       </div>
     );
   }
 
   return (
     <div className="ui-assistant-message group w-full">
-      <ProseMarkdown streaming={streaming} sources={sources}>{children}</ProseMarkdown>
+      <ProseMarkdown streaming={streaming} sources={sources}>
+        {children}
+      </ProseMarkdown>
     </div>
   );
 }
@@ -454,7 +565,10 @@ function MessageActions({
   speakingRef.current = speaking;
 
   // Stop any in-progress narration started here when the bubble unmounts.
-  useEffect(() => () => void (speakingRef.current && window.speechSynthesis?.cancel()), []);
+  useEffect(
+    () => () => void (speakingRef.current && window.speechSynthesis?.cancel()),
+    [],
+  );
 
   async function handleCopy() {
     await copyResponse(copyText);
@@ -499,7 +613,11 @@ function MessageActions({
       title={t("messages.copy")}
       aria-label={copyLabel}
     >
-      {copied ? <CheckIcon className="h-[1rem] w-[1rem]" /> : <Icon name="copy" size="1rem" />}
+      {copied ? (
+        <CheckIcon className="h-[1rem] w-[1rem]" />
+      ) : (
+        <Icon name="copy" size="1rem" />
+      )}
     </button>
   );
   const retryButton =
@@ -522,7 +640,9 @@ function MessageActions({
       onClick={handleSpeak}
       type="button"
       title={speaking ? t("messages.stop") : t("messages.readAloud")}
-      aria-label={speaking ? t("messages.stopReading") : t("messages.readAloud")}
+      aria-label={
+        speaking ? t("messages.stopReading") : t("messages.readAloud")
+      }
     >
       <Icon name="volume" size="1rem" />
     </button>
@@ -532,11 +652,15 @@ function MessageActions({
   // copy (copy furthest right). User messages carry no token metrics, so only the
   // message time shows — rendered as a plain span, no pill.
   if (alignRight) {
-    const time = metricsMessage ? formatMessageTime(metricsMessage.createdAt) : "";
+    const time = metricsMessage
+      ? formatMessageTime(metricsMessage.createdAt)
+      : "";
     return (
       <div className="mt-2 flex items-center justify-end gap-0.5">
         {time !== "" && (
-          <span className="mr-1 font-sans text-[0.75rem] leading-[1.45rem] text-[#858178]">{time}</span>
+          <span className="mr-1 font-sans text-[0.75rem] leading-[1.45rem] text-[#858178]">
+            {time}
+          </span>
         )}
         {retryButton}
         {copyButton}
@@ -551,27 +675,42 @@ function MessageActions({
       {copyButton}
       {volumeButton}
       {retryButton}
-      {metricsMessage && <MessageMetrics message={metricsMessage} category={category} />}
+      {metricsMessage && (
+        <MessageMetrics message={metricsMessage} category={category} />
+      )}
     </div>
   );
 }
 
-function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string; receivedBytes: number }) {
+function PendingDownloadResponseBubble({
+  label,
+  receivedBytes,
+}: {
+  label: string;
+  receivedBytes: number;
+}) {
   const { t } = useTranslation();
   const progressText =
     receivedBytes > 0
-      ? t("messages.receivingFileProgress", { received: formatReceivedKB(receivedBytes) })
+      ? t("messages.receivingFileProgress", {
+          received: formatReceivedKB(receivedBytes),
+        })
       : t("messages.receivingFile");
   return (
     <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
       <div className="flex items-center gap-3">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-          <span aria-hidden="true" className="text-[10px] font-semibold uppercase leading-none tracking-tight">
+          <span
+            aria-hidden="true"
+            className="text-[10px] font-semibold uppercase leading-none tracking-tight"
+          >
             {label}
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">{t("messages.labelResponse", { label })}</div>
+          <div className="ui-message-text truncate">
+            {t("messages.labelResponse", { label })}
+          </div>
           <div className="ui-meta-text text-[#aaa79e]">{progressText}</div>
         </div>
       </div>
@@ -579,19 +718,30 @@ function PendingDownloadResponseBubble({ label, receivedBytes }: { label: string
   );
 }
 
-function DownloadResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
+function DownloadResponseBubble({
+  artifact,
+}: {
+  artifact: DownloadableResponse;
+}) {
   const { t } = useTranslation();
   return (
     <div className="max-w-[26rem] rounded-lg border border-[#3e3d39] bg-[#282826] px-4 py-3 text-[#f3f0e8]">
       <div className="flex items-center gap-3">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]">
-          <span aria-hidden="true" className="text-[10px] font-semibold uppercase leading-none tracking-tight">
+          <span
+            aria-hidden="true"
+            className="text-[10px] font-semibold uppercase leading-none tracking-tight"
+          >
             {artifact.label}
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="ui-message-text truncate">{t("messages.labelResponse", { label: artifact.label })}</div>
-          <div className="ui-meta-text text-[#aaa79e]">{t("messages.readyToDownload")}</div>
+          <div className="ui-message-text truncate">
+            {t("messages.labelResponse", { label: artifact.label })}
+          </div>
+          <div className="ui-meta-text text-[#aaa79e]">
+            {t("messages.readyToDownload")}
+          </div>
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
@@ -621,14 +771,18 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
-    const url = URL.createObjectURL(new Blob([artifact.content], { type: "image/svg+xml" }));
+    const url = URL.createObjectURL(
+      new Blob([artifact.content], { type: "image/svg+xml" }),
+    );
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [artifact.content]);
 
   const altText = t("messages.labelResponse", { label: artifact.label });
   const previewLabel = t("messages.previewResponse", { label: artifact.label });
-  const downloadLabel = t("messages.downloadResponse", { label: artifact.label });
+  const downloadLabel = t("messages.downloadResponse", {
+    label: artifact.label,
+  });
 
   return (
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
@@ -640,13 +794,20 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
         aria-label={previewLabel}
       >
         {previewUrl !== "" && (
-          <img className="block max-h-[28rem] w-full object-contain" src={previewUrl} alt={altText} loading="lazy" />
+          <img
+            className="block max-h-[28rem] w-full object-contain"
+            src={previewUrl}
+            alt={altText}
+            loading="lazy"
+          />
         )}
       </button>
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="ui-message-text truncate">{altText}</div>
-          <div className="ui-meta-text text-[#aaa79e]">{t("messages.readyToDownload")}</div>
+          <div className="ui-meta-text text-[#aaa79e]">
+            {t("messages.readyToDownload")}
+          </div>
         </div>
         <button
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd] transition-colors hover:bg-[#454540] hover:text-[#f3f0e8]"
@@ -659,7 +820,12 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
         </button>
       </div>
       {lightboxOpen && previewUrl !== "" && (
-        <ImageLightbox src={previewUrl} alt={altText} onClose={() => setLightboxOpen(false)} fill />
+        <ImageLightbox
+          src={previewUrl}
+          alt={altText}
+          onClose={() => setLightboxOpen(false)}
+          fill
+        />
       )}
     </div>
   );
@@ -670,7 +836,9 @@ async function copyResponse(content: string) {
 }
 
 function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
-  const url = URL.createObjectURL(new Blob([artifact.content], { type: artifact.mimeType }));
+  const url = URL.createObjectURL(
+    new Blob([artifact.content], { type: artifact.mimeType }),
+  );
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = `ui-response.${artifact.extension}`;

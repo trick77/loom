@@ -19,10 +19,13 @@ export function ProjectPickerDialog({
   onSelect(project: Project): void;
 }) {
   const { t } = useTranslation();
-  const title = threads.length === 1 ? t("projects.picker.addTitle") : t("projects.picker.moveTitle");
+  const title =
+    threads.length === 1
+      ? t("projects.picker.addTitle")
+      : t("projects.picker.moveTitle");
   const subtitle =
     threads.length === 1
-      ? threads[0]?.title ?? ""
+      ? (threads[0]?.title ?? "")
       : t("projects.picker.selectedCount", { count: threads.length });
 
   return (
@@ -33,7 +36,9 @@ export function ProjectPickerDialog({
         role="dialog"
       >
         <div className="flex items-center justify-between gap-4">
-          <h2 className="font-sans text-[20px] font-semibold text-[#f4f0e8]">{title}</h2>
+          <h2 className="font-sans text-[20px] font-semibold text-[#f4f0e8]">
+            {title}
+          </h2>
           <button
             className="leading-none text-[#d5d2c9] hover:text-white"
             type="button"
@@ -46,7 +51,9 @@ export function ProjectPickerDialog({
         <p className="mt-2 truncate text-sm text-[#aaa79e]">{subtitle}</p>
         <div className="mt-4 max-h-[260px] overflow-y-auto">
           {projects.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[#807d74]">{t("projects.picker.empty")}</p>
+            <p className="py-6 text-center text-sm text-[#807d74]">
+              {t("projects.picker.empty")}
+            </p>
           ) : (
             projects.map((project) => (
               <button
@@ -59,7 +66,9 @@ export function ProjectPickerDialog({
               >
                 <span className="text-sm text-[#f4f0e8]">{project.name}</span>
                 {project.description !== "" && (
-                  <span className="mt-1 truncate text-xs text-[#aaa79e]">{project.description}</span>
+                  <span className="mt-1 truncate text-xs text-[#aaa79e]">
+                    {project.description}
+                  </span>
                 )}
               </button>
             ))

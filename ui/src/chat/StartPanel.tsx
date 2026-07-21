@@ -63,7 +63,9 @@ export function StartPanel({
   // at render time — so switching the UI language re-localizes the greeting instead
   // of leaving the mount-time language frozen in.
   const [greetingPick] = useState(() => pickGreeting(displayName));
-  const greeting = t(`greetings.${greetingPick.key}.${greetingPick.form}`, { name: greetingPick.name });
+  const greeting = t(`greetings.${greetingPick.key}.${greetingPick.form}`, {
+    name: greetingPick.name,
+  });
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
@@ -86,11 +88,20 @@ export function StartPanel({
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
         <h2 className="ui-greeting-text mb-8 flex items-center gap-2.5 font-serif">
-          <img src={loomLogo} alt="" aria-hidden className="h-10 w-10 -translate-y-1" />
+          <img
+            src={loomLogo}
+            alt=""
+            aria-hidden
+            className="h-10 w-10 -translate-y-1"
+          />
           <span className="-translate-y-0.5">{greeting}</span>
         </h2>
         <div className="w-full max-w-[674px]">
-          <WindowFileDrop enabled onAttachFiles={onAttachFiles} onAttachError={onAttachError} />
+          <WindowFileDrop
+            enabled
+            onAttachFiles={onAttachFiles}
+            onAttachError={onAttachError}
+          />
           <Composer
             variant="start"
             autoFocus
@@ -112,13 +123,17 @@ export function StartPanel({
             onRemoveAttachment={onRemoveAttachment}
           />
           {attachNote !== "" && (
-            <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
+            <div className="ui-meta-text mt-2 text-center text-[#858178]">
+              {attachNote}
+            </div>
           )}
           {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           {/* Hide the generic prompt starters once an attachment is staged (e.g.
               "Use in thread" pre-attaches an artifact) — they don't apply when the
               user is already working from a specific file. */}
-          {draft.trim() === "" && attachments.length === 0 && <PromptStarters onPick={onDraftChange} />}
+          {draft.trim() === "" && attachments.length === 0 && (
+            <PromptStarters onPick={onDraftChange} />
+          )}
         </div>
       </div>
     </section>

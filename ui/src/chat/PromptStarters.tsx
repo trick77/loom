@@ -18,11 +18,18 @@ type PromptCategory = {
 type PromptData = {
   template: string;
   sampleSize: number;
-  categories: { key: string; label: string; icon: string; suggestions: string[] }[];
+  categories: {
+    key: string;
+    label: string;
+    icon: string;
+    suggestions: string[];
+  }[];
 };
 
 function datasetFor(language: string): PromptData {
-  return (language.startsWith("de") ? promptStartersDe : promptStartersEn) as PromptData;
+  return (
+    language.startsWith("de") ? promptStartersDe : promptStartersEn
+  ) as PromptData;
 }
 
 /** Validates a glyph name from the JSON against the icon font at load time, so a
@@ -64,7 +71,10 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
       })),
     [data],
   );
-  const [open, setOpen] = useState<{ category: PromptCategory; suggestions: string[] } | null>(null);
+  const [open, setOpen] = useState<{
+    category: PromptCategory;
+    suggestions: string[];
+  } | null>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const headerRef = useRef<HTMLButtonElement>(null);
   const lastOpenedKey = useRef<string | null>(null);
@@ -73,7 +83,10 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
     setOpen((current) =>
       current?.category.key === category.key
         ? null
-        : { category, suggestions: randomSample(category.suggestions, data.sampleSize) },
+        : {
+            category,
+            suggestions: randomSample(category.suggestions, data.sampleSize),
+          },
     );
   }
 
@@ -94,7 +107,10 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
 
   if (open === null) {
     return (
-      <ul aria-label={t("messages.promptStarters.categories")} className="mt-4 flex flex-wrap justify-center gap-2">
+      <ul
+        aria-label={t("messages.promptStarters.categories")}
+        className="mt-4 flex flex-wrap justify-center gap-2"
+      >
         {categories.map((category, index) => (
           <li
             key={category.key}
@@ -110,7 +126,11 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
               type="button"
               onClick={() => toggle(category)}
             >
-              <Icon className="text-[#97958c]" name={category.icon} size="1.3rem" />
+              <Icon
+                className="text-[#97958c]"
+                name={category.icon}
+                size="1.3rem"
+              />
               {category.label}
             </button>
           </li>
@@ -124,7 +144,9 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
       <div className="overflow-hidden rounded-2xl border border-[rgba(226,225,218,0.15)] bg-[#2c2c2a] p-2 shadow-[0_1px_2px_rgba(11,11,11,0.06),0_2px_8px_rgba(0,0,0,0.24)]">
         <button
           ref={headerRef}
-          aria-label={t("messages.promptStarters.closeSuggestions", { label: open.category.label })}
+          aria-label={t("messages.promptStarters.closeSuggestions", {
+            label: open.category.label,
+          })}
           className="group ui-meta-text flex w-full items-center gap-2 px-2 py-1 text-left text-[#97958c]"
           type="button"
           onClick={() => toggle(open.category)}
@@ -135,7 +157,12 @@ export function PromptStarters({ onPick }: { onPick(prompt: string): void }) {
             <Icon name="close" size="0.95rem" />
           </span>
         </button>
-        <ul aria-label={t("messages.promptStarters.suggestions", { label: open.category.label })} className="mt-1 flex flex-col">
+        <ul
+          aria-label={t("messages.promptStarters.suggestions", {
+            label: open.category.label,
+          })}
+          className="mt-1 flex flex-col"
+        >
           {open.suggestions.map((suggestion) => (
             <li key={suggestion} className="ui-prompt-option">
               <button

@@ -21,7 +21,9 @@ vi.mock("../settings/UsagePanel", () => ({
 const getMCPServersMock = vi.mocked(api.getMCPServers);
 const getMCPToolsMock = vi.mocked(api.getMCPTools);
 
-function server(overrides: Partial<api.MCPServerStatus> = {}): api.MCPServerStatus {
+function server(
+  overrides: Partial<api.MCPServerStatus> = {},
+): api.MCPServerStatus {
   return {
     name: "files",
     active: true,
@@ -64,7 +66,9 @@ describe("SlashCommandPanel", () => {
 
     it("closes on Escape and stops listening once unmounted", () => {
       const onClose = vi.fn();
-      const { unmount } = render(<SlashCommandPanel command="help" onClose={onClose} />);
+      const { unmount } = render(
+        <SlashCommandPanel command="help" onClose={onClose} />,
+      );
 
       fireEvent.keyDown(document.body, { key: "Escape" });
       expect(onClose).toHaveBeenCalledOnce();
@@ -103,7 +107,9 @@ describe("SlashCommandPanel", () => {
       expect(screen.getByText("/tools")).toBeInTheDocument();
       expect(screen.getByText("/usage")).toBeInTheDocument();
       expect(screen.getByText("MCP server status")).toBeInTheDocument();
-      expect(screen.getByText("List the available slash commands")).toBeInTheDocument();
+      expect(
+        screen.getByText("List the available slash commands"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -126,12 +132,18 @@ describe("SlashCommandPanel", () => {
     it("shows the empty state when no servers are configured", async () => {
       render(<SlashCommandPanel command="mcp" onClose={vi.fn()} />);
 
-      expect(await screen.findByText("No MCP servers configured.")).toBeInTheDocument();
+      expect(
+        await screen.findByText("No MCP servers configured."),
+      ).toBeInTheDocument();
     });
 
     it("renders a row per server with its status and normalised transport", async () => {
       getMCPServersMock.mockResolvedValue([
-        server({ name: "files", transport: "streamable-http", endpoint: "http://files" }),
+        server({
+          name: "files",
+          transport: "streamable-http",
+          endpoint: "http://files",
+        }),
         server({
           name: "search",
           active: false,
@@ -183,14 +195,26 @@ describe("SlashCommandPanel", () => {
     it("shows the empty state when no tools are exposed", async () => {
       render(<SlashCommandPanel command="tools" onClose={vi.fn()} />);
 
-      expect(await screen.findByText("No tools are currently exposed.")).toBeInTheDocument();
+      expect(
+        await screen.findByText("No tools are currently exposed."),
+      ).toBeInTheDocument();
     });
 
     it("groups tools by server and renders required args and descriptions", async () => {
       getMCPToolsMock.mockResolvedValue([
-        { name: "read_file", server: "files", description: "Read a file", required: ["path"] },
+        {
+          name: "read_file",
+          server: "files",
+          description: "Read a file",
+          required: ["path"],
+        },
         { name: "write_file", server: "files", description: "", required: [] },
-        { name: "ping", server: "", description: "Ping the host", required: null },
+        {
+          name: "ping",
+          server: "",
+          description: "Ping the host",
+          required: null,
+        },
       ]);
       render(<SlashCommandPanel command="tools" onClose={vi.fn()} />);
 

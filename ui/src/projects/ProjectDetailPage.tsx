@@ -84,16 +84,26 @@ export function ProjectDetailPage({
   const projectMenuKey = `Project:${project.id}`;
   const [hoveredThreadID, setHoveredThreadID] = useState<string | null>(null);
   // Composer uploads are scoped to this project's knowledge.
-  const { attachNote, attachments, clearAttachments, handleAttachError, handleAttachFiles, removeAttachment } =
-    useDocumentAttachments({
-      projectId: project.id,
-    });
+  const {
+    attachNote,
+    attachments,
+    clearAttachments,
+    handleAttachError,
+    handleAttachFiles,
+    removeAttachment,
+  } = useDocumentAttachments({
+    projectId: project.id,
+  });
   const imageUploadPending = attachments.some(
-    (attachment) => isImageAttachment(attachment) && attachment.artifactId === undefined && attachment.status !== "error",
+    (attachment) =>
+      isImageAttachment(attachment) &&
+      attachment.artifactId === undefined &&
+      attachment.status !== "error",
   );
   const handleSendRequest = () => {
     const sentAttachments = attachments.map(toSentAttachment);
-    if (sentAttachments.length > 0) clearAttachments({ revokePreviewUrls: false });
+    if (sentAttachments.length > 0)
+      clearAttachments({ revokePreviewUrls: false });
     onSend(sentAttachments);
   };
 
@@ -168,18 +178,29 @@ export function ProjectDetailPage({
                   )}
                 </div>
                 <button
-                  aria-label={project.starred ? t("projects.detail.unstar") : t("projects.detail.star")}
+                  aria-label={
+                    project.starred
+                      ? t("projects.detail.unstar")
+                      : t("projects.detail.star")
+                  }
                   aria-pressed={project.starred}
                   className="grid h-8 w-8 place-items-center rounded-md text-[#d5d2c9] hover:bg-[#2a2a28]"
                   type="button"
                   onClick={() => onToggleStar(project, !project.starred)}
                 >
-                  <Icon name={project.starred ? "starFilled" : "star"} size="18px" />
+                  <Icon
+                    name={project.starred ? "starFilled" : "star"}
+                    size="18px"
+                  />
                 </button>
               </div>
             </header>
             <div className="mt-10">
-              <WindowFileDrop enabled onAttachFiles={handleAttachFiles} onAttachError={handleAttachError} />
+              <WindowFileDrop
+                enabled
+                onAttachFiles={handleAttachFiles}
+                onAttachError={handleAttachError}
+              />
               <Composer
                 variant="start"
                 draft={draft}
@@ -210,30 +231,46 @@ export function ProjectDetailPage({
                 prompt — the user steers the emphasis, then sends. The staggered
                 prompt-pop-in matches the /new prompt starters (and respects
                 prefers-reduced-motion). */}
-            {draft.trim() === "" && attachments.length === 0 && threads.length >= 2 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="prompt-pop-in ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
-                  style={{ animationDelay: "0ms" }}
-                  onClick={() => onDraftChange(t("projects.detail.summarizePrompt"))}
-                >
-                  <Icon className="text-[#97958c]" name="projectSummary" size="1.3rem" />
-                  {t("projects.detail.summarizeThreads")}
-                </button>
-                <button
-                  type="button"
-                  className="prompt-pop-in ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
-                  style={{ animationDelay: "50ms" }}
-                  onClick={() => onDraftChange(t("projects.detail.openQuestionsPrompt"))}
-                >
-                  <Icon className="text-[#97958c]" name="openItems" size="1.3rem" />
-                  {t("projects.detail.surfaceGaps")}
-                </button>
-              </div>
-            )}
+            {draft.trim() === "" &&
+              attachments.length === 0 &&
+              threads.length >= 2 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="prompt-pop-in ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
+                    style={{ animationDelay: "0ms" }}
+                    onClick={() =>
+                      onDraftChange(t("projects.detail.summarizePrompt"))
+                    }
+                  >
+                    <Icon
+                      className="text-[#97958c]"
+                      name="projectSummary"
+                      size="1.3rem"
+                    />
+                    {t("projects.detail.summarizeThreads")}
+                  </button>
+                  <button
+                    type="button"
+                    className="prompt-pop-in ui-control-text flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 font-normal text-white transition-colors hover:bg-[rgba(255,255,255,0.16)]"
+                    style={{ animationDelay: "50ms" }}
+                    onClick={() =>
+                      onDraftChange(t("projects.detail.openQuestionsPrompt"))
+                    }
+                  >
+                    <Icon
+                      className="text-[#97958c]"
+                      name="openItems"
+                      size="1.3rem"
+                    />
+                    {t("projects.detail.surfaceGaps")}
+                  </button>
+                </div>
+              )}
             {attachNote !== "" && (
-              <div className="ui-meta-text mt-2 text-center text-[#858178]">{attachNote}</div>
+              <div className="ui-meta-text mt-2 text-center text-[#858178]">
+                {attachNote}
+              </div>
             )}
             {sendError !== "" && (
               <div className="ui-meta-text mt-3 rounded-md border border-accent px-3 py-2 text-accent">
@@ -242,13 +279,16 @@ export function ProjectDetailPage({
             )}
             <ul className="mt-6">
               {threads.length === 0 ? (
-                <li className="py-10 text-center text-[#807d74]">{t("projects.detail.noThreads")}</li>
+                <li className="py-10 text-center text-[#807d74]">
+                  {t("projects.detail.noThreads")}
+                </li>
               ) : (
                 threads.map((thread, index) => {
                   const nextThread = threads[index + 1];
                   const nextActive =
                     nextThread !== undefined &&
-                    (hoveredThreadID === nextThread.id || openThreadMenuID === nextThread.id);
+                    (hoveredThreadID === nextThread.id ||
+                      openThreadMenuID === nextThread.id);
                   return (
                     <ThreadRow
                       key={thread.id}
@@ -258,7 +298,9 @@ export function ProjectDetailPage({
                       menuOpen={openThreadMenuID === thread.id}
                       hovered={hoveredThreadID === thread.id}
                       hideDivider={nextActive}
-                      onHoverChange={(hovered) => setHoveredThreadID(hovered ? thread.id : null)}
+                      onHoverChange={(hovered) =>
+                        setHoveredThreadID(hovered ? thread.id : null)
+                      }
                       onOpen={() => onOpenThread(thread.id)}
                       onToggleSelected={() => undefined}
                       onToggleMenu={() => onToggleThreadMenu(thread.id)}

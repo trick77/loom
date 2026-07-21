@@ -152,8 +152,15 @@ export function IncognitoPanel({
         {isEmpty ? (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 pb-[8vh] sm:px-8">
             <h2 className="ui-greeting-text mb-8 flex items-center gap-2.5 font-serif">
-              <img src={loomLogo} alt="" aria-hidden className="h-10 w-10 -translate-y-1" />
-              <span className="-translate-y-0.5">{t("incognito.greeting")}</span>
+              <img
+                src={loomLogo}
+                alt=""
+                aria-hidden
+                className="h-10 w-10 -translate-y-1"
+              />
+              <span className="-translate-y-0.5">
+                {t("incognito.greeting")}
+              </span>
             </h2>
             <div className="w-full max-w-[674px]">
               {composer}
@@ -170,11 +177,16 @@ export function IncognitoPanel({
           >
             <div className="mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
               {messages.map((message, index) => (
-                <div key={message.clientKey ?? message.id} className="space-y-6">
+                <div
+                  key={message.clientKey ?? message.id}
+                  className="space-y-6"
+                >
                   <MessageBubble
                     message={message}
                     retryMessage={
-                      message.role === "assistant" ? previousUserMessage(messages, index) : null
+                      message.role === "assistant"
+                        ? previousUserMessage(messages, index)
+                        : null
                     }
                     onRetry={onRetry}
                   />

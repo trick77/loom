@@ -5,14 +5,23 @@ import { stripPastedBlocks, type PastedTextBlock } from "./pastedText";
 // Mirror composeSendContent (ThreadShell): draft first, then each block, joined by
 // "\n\n", empties filtered. The store trims the whole string on insert.
 function fold(draft: string, blocks: PastedTextBlock[]): string {
-  return [draft.trim(), ...blocks.map((b) => b.text)].filter((p) => p !== "").join("\n\n").trim();
+  return [draft.trim(), ...blocks.map((b) => b.text)]
+    .filter((p) => p !== "")
+    .join("\n\n")
+    .trim();
 }
 
-const block = (text: string): PastedTextBlock => ({ text, lineCount: text.split("\n").length });
+const block = (text: string): PastedTextBlock => ({
+  text,
+  lineCount: text.split("\n").length,
+});
 
 describe("stripPastedBlocks", () => {
   it("returns content unchanged when there are no blocks", () => {
-    expect(stripPastedBlocks("hello world", [])).toEqual({ text: "hello world", matched: [] });
+    expect(stripPastedBlocks("hello world", [])).toEqual({
+      text: "hello world",
+      matched: [],
+    });
   });
 
   it("strips a single block, leaving the typed draft", () => {

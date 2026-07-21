@@ -83,7 +83,9 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
         </p>
 
         {loading ? (
-          <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">{t("projects.memory.loading")}</p>
+          <p className="mt-2 h-[490px] px-5 pb-5 text-sm text-[#8f8b82]">
+            {t("projects.memory.loading")}
+          </p>
         ) : hasContent ? (
           <div
             className="relative mt-2 h-[490px] text-base text-[#f3f0e8]"
@@ -107,7 +109,6 @@ export function ProjectMemoryPanel({ projectId }: { projectId: string }) {
             {t("projects.memory.empty")}
           </p>
         )}
-
       </section>
       <MemoryComposer
         open={composerOpen}

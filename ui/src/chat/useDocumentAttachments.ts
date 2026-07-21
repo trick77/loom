@@ -12,7 +12,8 @@ import {
 import { isRevocablePreview } from "../components/AttachmentPreview";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
-export type ComposerAttachmentStatus = "queued" | "uploading" | "processing" | "ready" | "error";
+export type ComposerAttachmentStatus =
+  "queued" | "uploading" | "processing" | "ready" | "error";
 
 export type ComposerAttachment = {
   id: string;
@@ -34,7 +35,10 @@ export type ComposerAttachment = {
 
 let nextAttachmentID = 0;
 
-export function createComposerAttachment(file: File, status: ComposerAttachmentStatus = "uploading"): ComposerAttachment {
+export function createComposerAttachment(
+  file: File,
+  status: ComposerAttachmentStatus = "uploading",
+): ComposerAttachment {
   nextAttachmentID += 1;
   const previewUrl =
     file.type.startsWith("image/") && typeof URL.createObjectURL === "function"
@@ -52,7 +56,9 @@ export function createComposerAttachment(file: File, status: ComposerAttachmentS
   };
 }
 
-export function toSentAttachment(attachment: ComposerAttachment): ComposerAttachment {
+export function toSentAttachment(
+  attachment: ComposerAttachment,
+): ComposerAttachment {
   const { file: _file, ...sent } = attachment;
   return sent;
 }
@@ -102,8 +108,11 @@ export function composerAttachmentFromArtifact(artifact: {
 // to a freshly sent one. It carries no File and is already "ready"; the artifact
 // download URL doubles as the image thumbnail source (documents have none yet).
 // The id is the stable artifact/document id so it is a stable React key.
-export function composerAttachmentFromMessageAttachment(attachment: MessageAttachment): ComposerAttachment {
-  const id = attachment.artifactId ?? attachment.documentId ?? attachment.filename;
+export function composerAttachmentFromMessageAttachment(
+  attachment: MessageAttachment,
+): ComposerAttachment {
+  const id =
+    attachment.artifactId ?? attachment.documentId ?? attachment.filename;
   return {
     id: `sent-${id}`,
     filename: attachment.filename,
@@ -116,17 +125,30 @@ export function composerAttachmentFromMessageAttachment(attachment: MessageAttac
   };
 }
 
-export function isImageAttachment(attachment: Pick<ComposerAttachment, "mimeType" | "filename">): boolean {
-  return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(attachment.filename);
+export function isImageAttachment(
+  attachment: Pick<ComposerAttachment, "mimeType" | "filename">,
+): boolean {
+  return (
+    attachment.mimeType.startsWith("image/") ||
+    /\.(png|jpe?g|webp|gif|svg)$/i.test(attachment.filename)
+  );
 }
 
 // PDFs get an inline preview modal instead of a download-on-click; gate on either
 // the MIME type or a .pdf filename, mirroring isImageAttachment's dual signal.
-export function isPdfAttachment(attachment: Pick<ComposerAttachment, "mimeType" | "filename">): boolean {
-  return attachment.mimeType === "application/pdf" || /\.pdf$/i.test(attachment.filename);
+export function isPdfAttachment(
+  attachment: Pick<ComposerAttachment, "mimeType" | "filename">,
+): boolean {
+  return (
+    attachment.mimeType === "application/pdf" ||
+    /\.pdf$/i.test(attachment.filename)
+  );
 }
 
-type AttachmentStatusHandler = (id: string, patch: Partial<ComposerAttachment>) => void;
+type AttachmentStatusHandler = (
+  id: string,
+  patch: Partial<ComposerAttachment>,
+) => void;
 
 // Shared "+" composer attachment flow: upload a picked file, add it to knowledge,
 // and surface ingestion progress via attachNote. Scope decides where the document
@@ -134,40 +156,55 @@ type AttachmentStatusHandler = (id: string, patch: Partial<ComposerAttachment>) 
 // with a threadId is private to that one thread; without either it is user-global.
 // The scope can be overridden per call (used by the new-thread deferred upload,
 // which only knows the freshly created thread id at send time).
-export function useDocumentAttachments(scope: { threadId?: string; projectId?: string }) {
+export function useDocumentAttachments(scope: {
+  threadId?: string;
+  projectId?: string;
+}) {
   const [attachNote, setAttachNote] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
 
-  const updateAttachment = useCallback((id: string, patch: Partial<ComposerAttachment>) => {
-    setAttachments((current) =>
-      current.map((attachment) => (attachment.id === id ? { ...attachment, ...patch } : attachment)),
-    );
-  }, []);
+  const updateAttachment = useCallback(
+    (id: string, patch: Partial<ComposerAttachment>) => {
+      setAttachments((current) =>
+        current.map((attachment) =>
+          attachment.id === id ? { ...attachment, ...patch } : attachment,
+        ),
+      );
+    },
+    [],
+  );
 
   const removeAttachment = useCallback(
     (id: string) => {
       const removed = attachments.find((attachment) => attachment.id === id);
-      if (isRevocablePreview(removed?.previewUrl)) URL.revokeObjectURL(removed.previewUrl);
+      if (isRevocablePreview(removed?.previewUrl))
+        URL.revokeObjectURL(removed.previewUrl);
       // Delete it server-side too (only if the composer uploaded it), so removing
       // it leaves no orphan; done outside the state updater to avoid a double
       // request under React StrictMode's double-invoked updaters.
       if (removed !== undefined) deleteUploadedAttachment(removed);
-      setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+      setAttachments((current) =>
+        current.filter((attachment) => attachment.id !== id),
+      );
     },
     [attachments],
   );
 
-  const clearAttachments = useCallback((options: { revokePreviewUrls?: boolean } = {}) => {
-    const revokePreviewUrls = options.revokePreviewUrls ?? true;
-    setAttachments((current) => {
-      if (revokePreviewUrls) {
-        current.forEach((attachment) => {
-          if (isRevocablePreview(attachment.previewUrl)) URL.revokeObjectURL(attachment.previewUrl);
-        });
-      }
-      return [];
-    });
-  }, []);
+  const clearAttachments = useCallback(
+    (options: { revokePreviewUrls?: boolean } = {}) => {
+      const revokePreviewUrls = options.revokePreviewUrls ?? true;
+      setAttachments((current) => {
+        if (revokePreviewUrls) {
+          current.forEach((attachment) => {
+            if (isRevocablePreview(attachment.previewUrl))
+              URL.revokeObjectURL(attachment.previewUrl);
+          });
+        }
+        return [];
+      });
+    },
+    [],
+  );
 
   const handleAttachFiles = useCallback(
     (files: File[], override?: { threadId?: string; projectId?: string }) => {
@@ -177,22 +214,37 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
       if (sizeFiltered.length < files.length) {
         setAttachNote("Files must be 25 MB or smaller.");
       }
-      const remaining = DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - attachments.length;
+      const remaining =
+        DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - attachments.length;
       if (remaining <= 0) {
-        setAttachNote(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+        setAttachNote(
+          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+        );
         return;
       }
       const accepted = sizeFiltered.slice(0, remaining);
       if (accepted.length < sizeFiltered.length) {
-        setAttachNote(`You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+        setAttachNote(
+          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+        );
       }
       if (accepted.length === 0) return;
       const pending = accepted.map((file) =>
-        createComposerAttachment(file, threadId === undefined && projectId === undefined ? "queued" : "uploading"),
+        createComposerAttachment(
+          file,
+          threadId === undefined && projectId === undefined
+            ? "queued"
+            : "uploading",
+        ),
       );
       setAttachments((current) => [...current, ...pending]);
       if (threadId !== undefined || projectId !== undefined) {
-        void uploadAttachments(pending, { threadId, projectId }, updateAttachment, setAttachNote);
+        void uploadAttachments(
+          pending,
+          { threadId, projectId },
+          updateAttachment,
+          setAttachNote,
+        );
       }
     },
     [attachments.length, scope.threadId, scope.projectId, updateAttachment],
@@ -204,7 +256,12 @@ export function useDocumentAttachments(scope: { threadId?: string; projectId?: s
       override: { threadId?: string; projectId?: string },
       onStatus: AttachmentStatusHandler,
     ) => {
-      return uploadAttachments(existingAttachments, override, onStatus, setAttachNote);
+      return uploadAttachments(
+        existingAttachments,
+        override,
+        onStatus,
+        setAttachNote,
+      );
     },
     [],
   );
@@ -237,7 +294,10 @@ async function uploadAttachments(
     setAttachNote(`Uploading ${attachment.filename}…`);
     onStatus(attachment.id, { status: "uploading" });
     try {
-      const doc = await uploadDocument(attachment.file, { threadId, projectId });
+      const doc = await uploadDocument(attachment.file, {
+        threadId,
+        projectId,
+      });
       // The document is usable inline as soon as it is uploaded — its full text is
       // injected into the prompt on send — so don't block sending on embedding.
       // Mark ready immediately, then index in the background so the large-document
@@ -252,14 +312,18 @@ async function uploadAttachments(
         // Best-effort: inline full-text still works even if background indexing fails.
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : `Failed to upload ${attachment.filename}.`;
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Failed to upload ${attachment.filename}.`;
       onStatus(attachment.id, { status: "error", error: message });
       setAttachNote(message);
     }
   };
 
   for (const attachment of attachments) {
-    if (attachment.file === undefined || attachment.artifactId !== undefined) continue;
+    if (attachment.file === undefined || attachment.artifactId !== undefined)
+      continue;
     if (threadId === undefined && projectId === undefined) {
       setAttachNote(`${attachment.filename} will upload when you send.`);
       continue;
@@ -268,11 +332,17 @@ async function uploadAttachments(
       setAttachNote(`Uploading ${attachment.filename}…`);
       onStatus(attachment.id, { status: "uploading" });
       try {
-        const image = await uploadImageAttachment(attachment.file, { threadId, projectId });
+        const image = await uploadImageAttachment(attachment.file, {
+          threadId,
+          projectId,
+        });
         onStatus(attachment.id, { status: "ready", artifactId: image.id });
         setAttachNote("");
       } catch (error) {
-        const message = error instanceof Error ? error.message : `Failed to upload ${attachment.filename}.`;
+        const message =
+          error instanceof Error
+            ? error.message
+            : `Failed to upload ${attachment.filename}.`;
         onStatus(attachment.id, { status: "error", error: message });
         setAttachNote(message);
       }

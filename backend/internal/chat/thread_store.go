@@ -335,7 +335,7 @@ WHERE user_id = ? AND id = ?`,
 
 // SetThreadImageModelIfEmpty locks the image-generation model for a thread on the
 // first image generated in it: it writes image_model only while the column is
-// still empty (WHERE ... AND image_model = ''), so the choice is made exactly once
+// still empty (WHERE ... AND image_model = ”), so the choice is made exactly once
 // and every later image in the thread reuses it (no mid-conversation flip-flop).
 // A subsequent call with a different model is a no-op. It always returns the
 // current (locked) thread; an empty model argument is a read-only no-op.

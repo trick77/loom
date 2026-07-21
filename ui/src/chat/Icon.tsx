@@ -94,7 +94,10 @@ export type IconName = keyof typeof CODEPOINTS;
 
 /** Name → Glyph-String (für direkte Verwendung in content/CSS, falls nötig). */
 export const ICONS = Object.fromEntries(
-  Object.entries(CODEPOINTS).map(([name, cp]) => [name, String.fromCodePoint(cp)]),
+  Object.entries(CODEPOINTS).map(([name, cp]) => [
+    name,
+    String.fromCodePoint(cp),
+  ]),
 ) as Record<IconName, string>;
 
 export function Icon({

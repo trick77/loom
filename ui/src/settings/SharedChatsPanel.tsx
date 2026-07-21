@@ -26,7 +26,9 @@ export function SharedChatsPanel() {
     try {
       await disableShare(item.threadId);
       setShares((current) =>
-        (current ?? []).map((s) => (s.threadId === item.threadId ? { ...s, shared: false } : s)),
+        (current ?? []).map((s) =>
+          s.threadId === item.threadId ? { ...s, shared: false } : s,
+        ),
       );
     } catch {
       setError(t("settings.disableLinkFailed"));
@@ -40,7 +42,10 @@ export function SharedChatsPanel() {
     try {
       await navigator.clipboard.writeText(url);
       setCopiedId(item.shareId);
-      window.setTimeout(() => setCopiedId((id) => (id === item.shareId ? null : id)), 1500);
+      window.setTimeout(
+        () => setCopiedId((id) => (id === item.shareId ? null : id)),
+        1500,
+      );
     } catch {
       setError(t("settings.copyLinkFailed"));
     }
@@ -48,7 +53,9 @@ export function SharedChatsPanel() {
 
   return (
     <section>
-      <h1 className="font-serif text-2xl font-light tracking-tight text-[#f4f0e8]">{t("settings.sharedChats")}</h1>
+      <h1 className="font-serif text-2xl font-light tracking-tight text-[#f4f0e8]">
+        {t("settings.sharedChats")}
+      </h1>
       <p className="mt-1 text-sm text-[#a8a399]">
         {t("settings.sharedChatsDescription")}
       </p>
@@ -56,17 +63,29 @@ export function SharedChatsPanel() {
       {error !== null && <p className="mt-4 text-sm text-[#d98278]">{error}</p>}
 
       {shares !== null && shares.length === 0 && (
-        <p className="mt-6 text-sm text-[#807d74]">{t("settings.noSharedChats")}</p>
+        <p className="mt-6 text-sm text-[#807d74]">
+          {t("settings.noSharedChats")}
+        </p>
       )}
 
       <div className="mt-4 divide-y divide-[#343432] border-y border-[#343432]">
         {(shares ?? []).map((item) => (
           <div key={item.shareId} className="flex items-center gap-3 py-3">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm text-[#f3f0e8]">{item.title || t("settings.untitled")}</div>
+              <div className="truncate text-sm text-[#f3f0e8]">
+                {item.title || t("settings.untitled")}
+              </div>
               <div className="mt-0.5 flex items-center gap-2 text-xs text-[#807d74]">
-                <span>{t("settings.snapshot", { date: formatDate(item.snapshotAt) })}</span>
-                {!item.shared && <span className="text-[#9a8a6a]">{t("settings.disabledSuffix")}</span>}
+                <span>
+                  {t("settings.snapshot", {
+                    date: formatDate(item.snapshotAt),
+                  })}
+                </span>
+                {!item.shared && (
+                  <span className="text-[#9a8a6a]">
+                    {t("settings.disabledSuffix")}
+                  </span>
+                )}
               </div>
             </div>
             {item.shared && (
@@ -75,7 +94,9 @@ export function SharedChatsPanel() {
                 className="shrink-0 rounded-md border border-[#3a3a36] px-2.5 py-1 text-xs text-[#d5d2c9] transition-colors hover:bg-[#2a2a28]"
                 onClick={() => void copy(item)}
               >
-                {copiedId === item.shareId ? t("settings.copied") : t("settings.copyLink")}
+                {copiedId === item.shareId
+                  ? t("settings.copied")
+                  : t("settings.copyLink")}
               </button>
             )}
             {item.shared && (
@@ -101,5 +122,9 @@ export function SharedChatsPanel() {
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
