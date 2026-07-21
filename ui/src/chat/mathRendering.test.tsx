@@ -57,6 +57,50 @@ test("renders \\[...\\] mid-sentence as inline KaTeX", () => {
   expect(container.querySelector(".katex-display")).toBeNull();
 });
 
+// A message carrying the placeholder control characters must not sprout delimiters: every
+// occurrence becomes `$$` in the final pass, so an unstripped pair would open and close a
+// span and hide the text between them.
+test("does not turn stray control characters into math", () => {
+  const { container } = render(<ProseMarkdown>{"a\u0001b and c\u0002d"}</ProseMarkdown>);
+  expect(container.querySelector(".katex")).toBeNull();
+  expect(container.textContent).toContain("b and c");
+});
+
+// The CRLF twin of the unclosed-delimiter case. DISPLAY_BLOCK's anchors match at a `\r`,
+// so this reaches the block branch where the LF version does not; if the paragraph guard
+// misses it, the fence spans the blank lines and the prose is typeset as math.
+test("keeps CRLF prose readable when a display delimiter is never closed", () => {
+  const src = "\\[a\r\n\r\npara one\r\n\r\npara two \\[b\\]";
+  const { container } = render(<ProseMarkdown>{src}</ProseMarkdown>);
+  expect(container.querySelector(".katex-display")).toBeNull();
+  expect(container.textContent).toContain("para one");
+  expect(container.textContent).toContain("para two");
+});
+
+// Masking replaces a whole code block with a one-line sentinel, so its blank lines are
+// invisible to the paragraph guard. Without a guard of its own the block branch would
+// fence this and swallow both the code and the prose after it.
+test("keeps a code block and following prose when a delimiter is never closed", () => {
+  const src = "\\[a\n```js\nx\n\ny\n```\nmore prose\nend\\]";
+  const { container } = render(<ProseMarkdown>{src}</ProseMarkdown>);
+  expect(container.querySelector(".katex-display")).toBeNull();
+  expect(container.textContent).toContain("more prose");
+});
+
+// A bare dollar at either edge of the body merges into that delimiter's run and stops the
+// span closing, so both edges have to be dealt with.
+test("renders a formula whose body starts with a bare dollar", () => {
+  const { container } = render(<ProseMarkdown>{"cost \\($x\\) total"}</ProseMarkdown>);
+  expect(container.querySelector(".katex")).not.toBeNull();
+  expect(container.textContent).not.toContain("$$");
+});
+
+test("renders a formula whose body ends with a bare dollar", () => {
+  const { container } = render(<ProseMarkdown>{"cost \\(x$\\) total"}</ProseMarkdown>);
+  expect(container.querySelector(".katex")).not.toBeNull();
+  expect(container.textContent).not.toContain("$$");
+});
+
 // Regression: an amount touching the end of a formula merged into the delimiter run, so
 // neither the math nor the amount survived — the whole thing showed as raw `$$x$$$5`.
 test("renders math abutting a currency amount", () => {
