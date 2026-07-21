@@ -1,11 +1,22 @@
-name: Tests
+name: CI
 
+# Tests run on pull requests (feature branches). Master does not run tests — it
+# builds and pushes the image (see release.yaml). No image build happens here.
 on:
   pull_request:
     branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
+    name: Backend (build + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -13,22 +24,28 @@ jobs:
           fetch-depth: 0 # diff-cover needs history to diff against the base ref
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          # Read the version from go.mod rather than pinning it here, so the
+          # toolchain cannot drift from what the module actually declares.
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install diff-cover==10.3.0
+      - run: cd backend && go build ./...
       - run: cd backend && go vet ./...
       - run: make backend-coverage
       - name: Fetch base ref
         # Guarantee refs/remotes/origin/<base> exists; a pull_request build
         # checks out the merge ref, not the base branch.
         run: git fetch --no-tags origin +refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
-      - name: Coverage gate
-        run: ./hack/coverage-gate.sh origin/${{ github.base_ref }}
+      - name: Project floor
+        run: ./hack/coverage-gate.sh backend
+      - name: Patch coverage
+        run: ./hack/patch-coverage.sh origin/${{ github.base_ref }}
 
   ui:
+    name: UI (build + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -39,16 +56,18 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install diff-cover==10.3.0
       - run: cd ui && npm ci
       - run: cd ui && npm run build # tsc --noEmit && vite build — fängt Typ-/Build-Fehler
-      - run: make fe-coverage # also enforces the project line floor via vitest thresholds
+      - run: make fe-coverage
       - name: Fetch base ref
         # Guarantee refs/remotes/origin/<base> exists; a pull_request build
         # checks out the merge ref, not the base branch.
         run: git fetch --no-tags origin +refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
-      - name: Coverage gate
-        run: ./hack/coverage-gate.sh origin/${{ github.base_ref }}
+      - name: Project floor
+        run: ./hack/coverage-gate.sh ui
+      - name: Patch coverage
+        run: ./hack/patch-coverage.sh origin/${{ github.base_ref }}

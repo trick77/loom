@@ -27,7 +27,24 @@ jobs:
       # including orphaned untagged versions. v3.1.0+ automatically protects
       # multi-arch / attestation child manifests of the kept images, so the
       # provenance manifests produced by the release build are never broken.
-      - uses: snok/container-retention-policy@v3.1.0
+      # container-retention-policy panics rather than no-op'ing when the package
+      # does not exist, so check first. loom has published images for a while and
+      # this is currently always true — it is here so this workflow stays
+      # copy-pasteable to a repo that has not cut its first release yet.
+      - id: package-check
+        name: Check whether the loom package exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "users/${{ github.repository_owner }}/packages/container/loom" --silent 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No loom container package yet — nothing to clean." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.package-check.outputs.exists == 'true'
+        uses: snok/container-retention-policy@v3.1.0
         with:
           account: user
           token: ${{ secrets.GITHUB_TOKEN }}
