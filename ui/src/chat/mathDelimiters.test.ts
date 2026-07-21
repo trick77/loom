@@ -7,6 +7,36 @@ describe("normalizeMathDelimiters", () => {
     expect(normalizeMathDelimiters("the value \\(x^2\\) grows")).toBe("the value $$x^2$$ grows");
   });
 
+  it("strips stray placeholder control characters from the input", () => {
+    expect(normalizeMathDelimiters("a\u0001b and c\u0002d")).toBe("ab and cd");
+  });
+
+  it("does not fence an unclosed \\[ across a CRLF paragraph break", () => {
+    const src = "\\[a\r\n\r\npara one\r\n\r\npara two \\[b\\]";
+    expect(normalizeMathDelimiters(src)).not.toContain("$$\n");
+  });
+
+  it("does not fence a body whose blank line is hidden inside a code block", () => {
+    const src = "\\[a\n```js\nx\n\ny\n```\nmore prose\nend\\]";
+    expect(normalizeMathDelimiters(src)).not.toContain("$$\n");
+  });
+
+  it("escapes a bare dollar at the start of a formula body", () => {
+    expect(normalizeMathDelimiters("cost \\($x\\) total")).toBe("cost $$\\$x$$ total");
+  });
+
+  it("parts a bare dollar at the end of a formula from the closing delimiter", () => {
+    expect(normalizeMathDelimiters("cost \\(x$\\) total")).toBe("cost $$x\\$ $$ total");
+  });
+
+  it("leaves a dollar mid-body alone, since it cannot lengthen a delimiter run", () => {
+    expect(normalizeMathDelimiters("\\(a$b\\)")).toBe("$$a$b$$");
+  });
+
+  it("leaves a tab-indented formula on the inline path", () => {
+    expect(normalizeMathDelimiters("\t\\[a\\]")).toBe("\t$$a$$");
+  });
+
   it("converts display \\[...\\] to a $$ fence", () => {
     expect(normalizeMathDelimiters("\\[g(x) = \\frac{a}{b}\\]")).toBe(
       "$$\ng(x) = \\frac{a}{b}\n$$",
