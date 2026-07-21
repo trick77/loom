@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { normalizeMathDelimiters } from "./mathDelimiters";
 
 describe("normalizeMathDelimiters", () => {
-  it("converts inline \\(...\\) to $...$", () => {
-    expect(normalizeMathDelimiters("the value \\(x^2\\) grows")).toBe("the value $x^2$ grows");
+  it("converts inline \\(...\\) to $$...$$", () => {
+    expect(normalizeMathDelimiters("the value \\(x^2\\) grows")).toBe("the value $$x^2$$ grows");
   });
 
   it("converts display \\[...\\] to $$...$$", () => {
@@ -16,7 +16,12 @@ describe("normalizeMathDelimiters", () => {
   });
 
   it("handles multiple math spans in one string", () => {
-    expect(normalizeMathDelimiters("\\(a\\) then \\(b\\)")).toBe("$a$ then $b$");
+    expect(normalizeMathDelimiters("\\(a\\) then \\(b\\)")).toBe("$$a$$ then $$b$$");
+  });
+
+  it("leaves currency amounts in prose untouched", () => {
+    const src = "the most bearish ($63) and most bullish ($800) targets, at ~$1.77T";
+    expect(normalizeMathDelimiters(src)).toBe(src);
   });
 
   it("leaves existing $ and $$ delimiters untouched", () => {
@@ -39,7 +44,7 @@ describe("normalizeMathDelimiters", () => {
 
   it("converts prose math while preserving an adjacent code fence", () => {
     const src = "Formula \\(a\\):\n\n```\n\\[ literal \\]\n```";
-    expect(normalizeMathDelimiters(src)).toBe("Formula $a$:\n\n```\n\\[ literal \\]\n```");
+    expect(normalizeMathDelimiters(src)).toBe("Formula $$a$$:\n\n```\n\\[ literal \\]\n```");
   });
 
   it("preserves a tilde-fenced block", () => {
@@ -49,6 +54,6 @@ describe("normalizeMathDelimiters", () => {
 
   it("handles a multi-backtick inline span containing a backtick", () => {
     const src = "``code with ` tick and \\(x\\)`` then \\(y\\)";
-    expect(normalizeMathDelimiters(src)).toBe("``code with ` tick and \\(x\\)`` then $y$");
+    expect(normalizeMathDelimiters(src)).toBe("``code with ` tick and \\(x\\)`` then $$y$$");
   });
 });
