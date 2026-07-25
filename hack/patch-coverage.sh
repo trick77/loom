@@ -103,6 +103,29 @@ assert_matched() {
     fi
   done <<<"$changed"
 
+  # Nothing changed is in the report. That is the broken-mapping symptom, but
+  # it is ALSO what a whole-module type-only change looks like: a .ts file
+  # holding only `export type` emits no runtime code, so it is absent from the
+  # report entirely rather than present with zero hits. The loop above cannot
+  # tell them apart, and only got away with it while such a file happened to be
+  # accompanied by an instrumented one — any one match short-circuits it.
+  #
+  # So prove the mapping independently of the diff: if the report's OWN paths
+  # resolve to files that exist here, the mapping is fine and this diff simply
+  # touched nothing instrumented. A genuinely broken mapping still fails,
+  # because then none of its paths would resolve.
+  local reported
+  reported="$(sed -nE 's/^SF:(.*)$/\1/p; s/.*filename="([^"]*)".*/\1/p' "$coverage" | head -100)"
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    if [[ -e "${strip}${file}" ]]; then
+      echo "patch-coverage: $label diff touched no instrumented lines; n/a."
+      echo "  (report paths resolve, so the mapping is sound — the change is" \
+        "type-only or otherwise not executable.)"
+      return 0
+    fi
+  done <<<"$reported"
+
   echo "patch-coverage: FAIL — $label sources changed but are absent from the" >&2
   echo "  coverage report. This usually means the report's paths do not" >&2
   echo "  match git's paths." >&2
@@ -115,6 +138,23 @@ assert_matched() {
 if [[ -f coverage/backend.xml ]]; then
   checked=1
   echo "== backend patch coverage (>= ${PATCH_MIN}%) =="
+  # Where the Go module lives, relative to the repo root. Repos with a UI keep
+  # the module under backend/; Go-only repos have go.mod at the root. Detect it
+  # rather than hardcoding, so this script stays byte-identical everywhere —
+  # forking it per layout is exactly the drift this file exists to avoid.
+  if [[ -f backend/go.mod ]]; then
+    MODULE_DIR="backend"
+    MODULE_PREFIX="backend/"
+    MODULE_GLOB="backend/*.go"
+  elif [[ -f go.mod ]]; then
+    MODULE_DIR="."
+    MODULE_PREFIX=""
+    MODULE_GLOB="*.go"
+  else
+    echo "patch-coverage: no go.mod at backend/ or the repo root." >&2
+    exit 2
+  fi
+
   # gocover-cobertura writes an ABSOLUTE path into <sources>, e.g.
   # /home/runner/work/peeq/peeq/backend. diff-cover joins that with each
   # class's module-relative filename, producing an absolute path that never
@@ -125,15 +165,34 @@ if [[ -f coverage/backend.xml ]]; then
   # the element to a repo-relative path is what actually makes the match work.
   # Verified: with the absolute path diff-cover reports 0 matched lines; with
   # the rewrite it correctly reports the changed lines and their coverage.
-  sed 's|<source>.*</source>|<source>backend</source>|' \
+  sed "s|<source>.*</source>|<source>${MODULE_DIR}</source>|" \
     coverage/backend.xml > coverage/backend-rooted.xml
 
-  diff-cover coverage/backend-rooted.xml \
+  # Comments are not code, and must never be counted.
+  #
+  # Go's coverprofile records BLOCKS — "lines A..B hold N statements" — and
+  # never says WHICH lines in the block are statements. gocover-cobertura
+  # expands each block into one <line> per line of that range, so every comment
+  # and blank line inside a function body reaches the report as hits="0".
+  # diff-cover then holds them against the diff, and a well-explained change
+  # fails the gate on its prose — with no test anyone could write that would
+  # turn those lines green. The only way to raise that number is to delete the
+  # explanation, which inverts what the gate is for.
+  #
+  # strip-comment-lines.go drops a <line> only where go/scanner proves the line
+  # carries no non-comment token, so a trailing `// why` and a string holding
+  # "http://x" both stay counted. It is deliberately conservative: a file it
+  # cannot read or parse keeps every line it had.
+  go run hack/strip-comment-lines.go "$MODULE_DIR" \
+    < coverage/backend-rooted.xml > coverage/backend-code-only.xml
+
+  diff-cover coverage/backend-code-only.xml \
     --compare-branch "$BASE_REF" \
     --fail-under "$PATCH_MIN" \
     --format "markdown:coverage/backend-patch.md" || fail=1
   cat coverage/backend-patch.md >> "$summary" 2>/dev/null || true
-  assert_matched coverage/backend-patch.md backend coverage/backend-rooted.xml "backend/" "backend/*.go"
+  assert_matched coverage/backend-patch.md backend coverage/backend-code-only.xml \
+    "$MODULE_PREFIX" "$MODULE_GLOB"
 fi
 
 # --- ui -----------------------------------------------------------------------
