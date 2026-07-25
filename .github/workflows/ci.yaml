@@ -28,7 +28,7 @@ jobs:
           # toolchain cannot drift from what the module actually declares.
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install diff-cover==10.3.0
@@ -68,7 +68,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install diff-cover==10.3.0
