@@ -39,7 +39,7 @@
     "@vitest/coverage-v8": "^4.1.8",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.15",
-    "prettier": "3.9.5",
+    "prettier": "3.9.6",
     "tailwindcss": "^4.3.0",
     "typescript": "^7.0.2",
     "vite": "^8.0.16",
