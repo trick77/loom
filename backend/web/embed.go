@@ -57,6 +57,15 @@ func spaHandler(fsys fs.FS) http.Handler {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
+		// The site icon is an SVG, so dist ships no favicon.ico — but crawlers,
+		// chat unfurlers and feed readers probe /favicon.ico blindly without
+		// parsing HTML, and the SPA fallback below would hand them index.html
+		// with a 200: an HTML page masquerading as an icon. 404 is the honest
+		// answer. Sits after the Stat branch so a re-added icon still serves.
+		if r.URL.Path == "/favicon.ico" {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Cache-Control", "no-cache")
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/"
