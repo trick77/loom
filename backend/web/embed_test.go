@@ -18,6 +18,23 @@ func TestSPAHandler_servesIndexFallback(t *testing.T) {
 	}
 }
 
+func TestSpaHandler_faviconICOReturns404(t *testing.T) {
+	fsys := fstest.MapFS{"index.html": {Data: []byte("INDEX")}}
+	h := spaHandler(fsys)
+
+	// /favicon.ico must 404, not fall through to index.html: unfurlers and feed
+	// readers probe it without parsing HTML, so a 200 of markup is worse than a
+	// clean miss.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("/favicon.ico status = %d, want 404", rec.Code)
+	}
+	if rec.Body.String() == "INDEX" {
+		t.Error("/favicon.ico served index.html, want 404 body")
+	}
+}
+
 func TestSpaHandler_directoryPathFallsBackToIndex(t *testing.T) {
 	fsys := fstest.MapFS{
 		"index.html":    {Data: []byte("INDEX")},

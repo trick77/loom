@@ -45,6 +45,14 @@ func spaHandler(fsys fs.FS) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/share/") {
 			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		}
+		// The site icon is an SVG; there is no favicon.ico to serve. Crawlers,
+		// chat unfurlers and feed readers still probe /favicon.ico blindly, and
+		// the SPA fallback below would hand them index.html with a 200 — an HTML
+		// page masquerading as an icon. 404 is the honest answer.
+		if r.URL.Path == "/favicon.ico" {
+			http.NotFound(w, r)
+			return
+		}
 		if info, err := fs.Stat(fsys, trimLeadingSlash(r.URL.Path)); err == nil && !info.IsDir() {
 			// Vite emits content-hashed bundles under /assets/, so they can be cached
 			// forever; index.html (and the SPA fallback below) must not, or clients
