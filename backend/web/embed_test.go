@@ -33,6 +33,18 @@ func TestSpaHandler_faviconICOReturns404(t *testing.T) {
 	if rec.Body.String() == "INDEX" {
 		t.Error("/favicon.ico served index.html, want 404 body")
 	}
+
+	// The guard must not shadow a real file: if an icon is ever restored to
+	// ui/public, it is served normally rather than permanently 404ing.
+	withICO := spaHandler(fstest.MapFS{
+		"index.html":  {Data: []byte("INDEX")},
+		"favicon.ico": {Data: []byte("ICO")},
+	})
+	rec2 := httptest.NewRecorder()
+	withICO.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
+	if rec2.Code != http.StatusOK || rec2.Body.String() != "ICO" {
+		t.Errorf("/favicon.ico with file present = %d %q, want 200 ICO", rec2.Code, rec2.Body.String())
+	}
 }
 
 func TestSpaHandler_directoryPathFallsBackToIndex(t *testing.T) {
