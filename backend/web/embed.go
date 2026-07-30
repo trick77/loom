@@ -57,12 +57,17 @@ func spaHandler(fsys fs.FS) http.Handler {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		// The site icon is an SVG, so dist ships no favicon.ico — but crawlers,
-		// chat unfurlers and feed readers probe /favicon.ico blindly without
-		// parsing HTML, and the SPA fallback below would hand them index.html
-		// with a 200: an HTML page masquerading as an icon. 404 is the honest
-		// answer. Sits after the Stat branch so a re-added icon still serves.
-		if r.URL.Path == "/favicon.ico" {
+		// Every site icon is now an SVG, so dist ships none of the raster icons
+		// below — but crawlers, chat unfurlers and feed readers probe
+		// /favicon.ico blindly without parsing HTML, and a stale installed PWA
+		// still requests the old manifest icons by their pinned paths. The SPA
+		// fallback below would hand all of them index.html with a 200: an HTML
+		// page masquerading as an icon. 404 is the honest answer. Sits after the
+		// Stat branch so a re-added icon still serves.
+		switch r.URL.Path {
+		case "/favicon.ico",
+			"/web-app-manifest-192x192.png",
+			"/web-app-manifest-512x512.png":
 			http.NotFound(w, r)
 			return
 		}
