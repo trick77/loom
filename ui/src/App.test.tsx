@@ -338,6 +338,20 @@ test("uses Loom as the web app manifest title", () => {
   expect(manifest.short_name).toBe("Loom");
 });
 
+test("declares only SVG icons in the web app manifest", () => {
+  const manifest = JSON.parse(
+    readFileSync("public/site.webmanifest", "utf8"),
+  ) as { icons?: { src?: string; type?: string }[] };
+
+  // The site ships a single SVG icon; any raster entry re-added here would give
+  // browsers a PNG to prefer for the tab, which is what we deliberately dropped.
+  expect(manifest.icons?.length).toBeGreaterThan(0);
+  for (const icon of manifest.icons ?? []) {
+    expect(icon.type).toBe("image/svg+xml");
+    expect(icon.src).toMatch(/\.svg$/);
+  }
+});
+
 test("bounds the active chat title in the top header", async () => {
   vi.stubGlobal(
     "fetch",

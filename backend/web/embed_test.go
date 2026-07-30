@@ -18,32 +18,42 @@ func TestSPAHandler_servesIndexFallback(t *testing.T) {
 	}
 }
 
-func TestSpaHandler_faviconICOReturns404(t *testing.T) {
-	fsys := fstest.MapFS{"index.html": {Data: []byte("INDEX")}}
-	h := spaHandler(fsys)
-
-	// /favicon.ico must 404, not fall through to index.html: unfurlers and feed
-	// readers probe it without parsing HTML, so a 200 of markup is worse than a
-	// clean miss.
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("/favicon.ico status = %d, want 404", rec.Code)
+func TestSpaHandler_rasterIconPathsReturn404(t *testing.T) {
+	// The dropped raster icons: /favicon.ico is probed blindly by unfurlers and
+	// feed readers, and the manifest PNGs by already-installed PWAs holding the
+	// old paths. None of them parse HTML first, so a 200 of markup is worse than
+	// a clean miss.
+	paths := []string{
+		"/favicon.ico",
+		"/web-app-manifest-192x192.png",
+		"/web-app-manifest-512x512.png",
 	}
-	if rec.Body.String() == "INDEX" {
-		t.Error("/favicon.ico served index.html, want 404 body")
+
+	h := spaHandler(fstest.MapFS{"index.html": {Data: []byte("INDEX")}})
+	for _, path := range paths {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s status = %d, want 404", path, rec.Code)
+		}
+		if rec.Body.String() == "INDEX" {
+			t.Errorf("%s served index.html, want 404 body", path)
+		}
 	}
 
 	// The guard must not shadow a real file: if an icon is ever restored to
 	// ui/public, it is served normally rather than permanently 404ing.
-	withICO := spaHandler(fstest.MapFS{
-		"index.html":  {Data: []byte("INDEX")},
-		"favicon.ico": {Data: []byte("ICO")},
-	})
-	rec2 := httptest.NewRecorder()
-	withICO.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
-	if rec2.Code != http.StatusOK || rec2.Body.String() != "ICO" {
-		t.Errorf("/favicon.ico with file present = %d %q, want 200 ICO", rec2.Code, rec2.Body.String())
+	for _, path := range paths {
+		name := trimLeadingSlash(path)
+		withIcon := spaHandler(fstest.MapFS{
+			"index.html": {Data: []byte("INDEX")},
+			name:         {Data: []byte("ICON")},
+		})
+		rec := httptest.NewRecorder()
+		withIcon.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK || rec.Body.String() != "ICON" {
+			t.Errorf("%s with file present = %d %q, want 200 ICON", path, rec.Code, rec.Body.String())
+		}
 	}
 }
 
