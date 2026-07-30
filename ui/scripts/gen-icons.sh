@@ -29,11 +29,16 @@ for bin in rsvg-convert magick; do
 	fi
 done
 
-tmp="$(mktemp -t gen-icons.XXXXXX).png"
-trap 'rm -f "$tmp"' EXIT
+tmpdir="$(mktemp -d -t gen-icons.XXXXXX)"
+trap 'rm -rf "$tmpdir"' EXIT
+tmp="$tmpdir/glyph.png"
 
+# -strip and the excluded date chunks keep the output byte-reproducible: without
+# them ImageMagick stamps the current time into the PNG, so re-running this on an
+# unchanged favicon.svg would still show up as a binary diff in git.
 rsvg-convert --width "$GLYPH" --height "$GLYPH" --output "$tmp" "$src"
 magick -size "${SIZE}x${SIZE}" "xc:$BG" "$tmp" -gravity center -composite \
-	-alpha remove -alpha off "$out"
+	-alpha remove -alpha off -strip \
+	-define png:exclude-chunk=date,time "$out"
 
 echo "wrote $out (${SIZE}x${SIZE}, opaque $BG)"
