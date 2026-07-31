@@ -2,52 +2,44 @@
   Source for public/icon.svg — the browser tab icon, and nothing else.
   ui/scripts/gen-icons.sh ships it as-is; no raster is rendered from it.
 
-  It is a copy of icon.svg beside it with two changes: a ground rect, and the
-  spiral inset to sit inside it. The path, the stroke and the bbox measurement
-  are that file's and are documented there.
+  Loom's spiral set in the same rounded frame music and peeq use, with the
+  frame's interior filled: a chip, not a tile. The canvas corners stay
+  transparent, so what lands in a tab is the rounded silhouette rather than a
+  square. All three apps now read as one family in a tab bar.
 
   WHY THIS EXISTS AS ITS OWN SOURCE. icon.svg still renders icon-192, icon-512
   and apple-touch-icon.png, and those stay transparent for the reasons it gives.
-  The tab icon has the opposite need, so the two cannot share a file.
+  The tab icon has the opposite need, so the two cannot share a file. icon.svg's
+  "do not put the rect back" stands for the file it is written in: its reasons —
+  Safari's Start Page tile, and iPad — are about the rasters drawn LARGE, and
+  this one is only ever drawn at tab size.
 
-  WHY IT HAS A GROUND, given that icon.svg says in as many words not to put the
-  rect back. That instruction stands for the file it is written in, and the
-  reasons behind it — a hard dark square in Safari's Start Page tile, a worse
-  mark on iPad — are about the rasters drawn LARGE. This file is only ever
-  drawn at tab size. The measurement the earlier pass was missing: Safari draws
-  favicons on a light rgb(192,192,192) plate in its favourites and bookmarks
-  bars, on a bar that is rgb(29,29,28) in dark appearance, and a transparent
-  mark lands on that as an orange scribble on a white card.
+  THE SPIRAL IS TRUNCATED TO TWO TURNS, and that is the whole reason this icon
+  works. The full mark has THREE nested revolutions. Inside a 96% frame at 16px
+  the interior is about 8px across, so three turns get ~2.5px each and merge
+  into a smudge — no stroke weight fixes it, and heavier weights make it worse
+  by closing the gaps sooner. The path here is the master's first six segments;
+  the outer extent is identical either way, so dropping the inner turns costs
+  nothing in placement. This is a favicon-only reduction: ui/src/LoomMark.tsx
+  and icon.svg keep all three turns, and should.
 
-  WHY A TILE HERE AND A CHIP IN THE SIBLING APPS. music and peeq fill the
-  interior of a frame their mark already draws, so their ground is the mark.
-  Loom's spiral is a single open path enclosing nothing — there is no interior
-  to fill, so the ground has to be a shape of its own. It is a rounded rect at
-  96% with radius 6, which is the silhouette the other two get from their
-  frame, so the three apps read as one family in a tab bar.
+  THE FRAME IS 1.75, NOT THE 2.5 MUSIC AND PEEQ USE. Their glyphs are two or
+  three strokes and can spare the room; a spiral cannot. A thinner frame widens
+  the interior, which is what lets the spiral run to 12.8 units here. Chosen off
+  a 16/32/64 render of frame 2.5/2.0/1.75 against 2/1.75/1.5 turns.
 
-  The spiral insets to 84% BECAUSE the tile is now visible. icon.svg runs its
-  glyph to 96% precisely because it has no ground to breathe against; here it
-  does. 84% was chosen off a 16/32/64 render of 70/78/84/90: below it the spiral
-  reads as a blob at tab size, since this mark is a 1.5-unit open curve with no
-  frame to hold it, and above it the curve starts touching the tile's edge.
+  Sized off the frame's TRUE bbox — 18 grown by the stroke to 19.75, centred on
+  (12,12) — not the nominal 24x24 box. That bbox spans 96% of the canvas.
 
-  #33312c is loom's #1f1e1b surface lightened the same way music lightens its
-  own: at 16px the base surface reads as a black square, which is the look this
-  is meant to avoid. Change it and gen-icons.sh's ground assertion moves too.
+  #33312c is loom's #1f1e1b surface lightened the way music lightens its own: at
+  16px the base surface reads as a black square, which is the look this avoids.
+  Change it and gen-icons.sh's ground assertion has to move with it.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect x="1.2800" y="1.2800" width="61.4400" height="61.4400" rx="6.0" fill="#33312c"/>
-  <g
-    transform="translate(2.0162 2.0162) scale(2.49861)"
-    fill="none"
-    stroke="#c15f3c"
-    stroke-width="1.5"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path
-      d="M11.9532 2.00004C17.5019 2.00004 22 6.47719 22 12C22 17.5229 17.5019 22 11.9532 22C-0.631103 22 -1.82658 4.01759 11.4985 5.00004C14.8499 5.24714 18.0289 8.41019 18.0289 12C18.0289 16.5 15.2348 18.5 11.4985 18.5C4.5 18.5 3.19042 8.46695 11.0021 9.00004C12.508 9.1028 14.0162 10.3432 14.0162 12C14.0162 13.9279 13 15 11.1211 15"
-    />
+  <g transform="translate(-5.3306 -5.3306) scale(3.11089)" fill="none" stroke="#c15f3c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" fill="#33312c"/>
+    <g transform="translate(4.8558 4.8558) scale(0.59535)" stroke-width="2.8">
+      <path d="M11.9532 2.00004C17.5019 2.00004 22 6.47719 22 12C22 17.5229 17.5019 22 11.9532 22C-0.631103 22 -1.82658 4.01759 11.4985 5.00004C14.8499 5.24714 18.0289 8.41019 18.0289 12C18.0289 16.5 15.2348 18.5 11.4985 18.5C4.5 18.5 3.19042 8.46695 11.0021 9.00004"/>
+    </g>
   </g>
 </svg>

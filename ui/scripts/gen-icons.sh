@@ -93,8 +93,9 @@ check_alpha "$OUT/icon-maskable-512.png" false
 
 # icon.svg ships as SVG, so there is no raster to read — render one here just to
 # assert it. Two samples, because it has to be a rounded tile and not a square:
-# the canvas corner transparent, and a point on the tile clear of the spiral
-# filled with $TAB.
+# the canvas corner transparent, and a point inside the frame clear of the
+# spiral filled with $TAB. The sample sits high in the frame's interior because
+# the spiral now fills most of it — re-probe if the glyph grows.
 #
 # -alpha on before both reads. Without it a fully opaque image carries no alpha
 # channel, and then %[hex:...] returns six digits instead of eight and
@@ -103,13 +104,13 @@ check_alpha "$OUT/icon-maskable-512.png" false
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 rsvg-convert -b none -w 512 -h 512 "$OUT/icon.svg" -o "$TMP/icon-favicon.png"
 fav_corner="$(magick "$TMP/icon-favicon.png" -alpha on -format '%[fx:p{0,0}.a]' info:)"
-fav_ground="$(magick "$TMP/icon-favicon.png" -alpha on -format '%[hex:p{256,40}]' info: | tr '[:upper:]' '[:lower:]')"
+fav_ground="$(magick "$TMP/icon-favicon.png" -alpha on -format '%[hex:p{256,64}]' info: | tr '[:upper:]' '[:lower:]')"
 if [[ "$fav_corner" != "0" ]]; then
 	echo "gen-icons: icon.svg's canvas corner has alpha $fav_corner, expected 0" >&2
 	fail=1
 fi
 if [[ "$fav_ground" != "${TAB#\#}ff" ]]; then
-	echo "gen-icons: icon.svg's tile is #$fav_ground, expected ${TAB}ff" >&2
+	echo "gen-icons: icon.svg's frame is #$fav_ground, expected ${TAB}ff" >&2
 	fail=1
 fi
 
