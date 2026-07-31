@@ -1,44 +1,82 @@
 #!/usr/bin/env bash
-# Regenerates ui/public/apple-touch-icon.png from ui/public/favicon.svg.
+# Renders every favicon raster from the three SVG sources. Run it by hand after
+# editing any of them and commit what it writes.
 #
-# Run this by hand and commit the result — it is deliberately NOT wired into
-# `npm run build` or CI, which have neither rsvg-convert nor ImageMagick.
+# The outputs are COMMITTED rather than generated during the build, so neither
+# `npm run build` nor CI needs an image toolchain. That is the whole reason this
+# is not a package.json script.
 #
-# The background must be opaque: iOS/iPadOS flattens an apple-touch-icon's alpha
-# channel onto white, which is where the white plate behind the tab icon on iPad
-# came from. #1f1e1b is the <meta name="theme-color"> value in ui/index.html.
+# librsvg does the rasterising, not ImageMagick's own SVG support. ImageMagick is
+# used only to re-read the results and assert their grounds. It is not used to
+# composite anything: an earlier version of this script built the touch icon by
+# laying a transparent glyph over an ImageMagick-generated tile, which is why it
+# needed -strip and png:exclude-chunk=date,time (ImageMagick stamps the current
+# time into its output; librsvg does not). The grounds now come from the sources
+# themselves, so rsvg-convert writes each file directly and its output is already
+# byte-identical run to run.
 #
-# favicon.svg's path runs to the edge of its 0 0 24 24 viewBox, so the glyph is
-# rendered at GLYPH px and centred on a SIZE px tile rather than scaled straight
-# to full bleed.
+# There is no favicon.ico here. Loom declares an SVG icon in <head>, and the
+# clients that go looking for a bare /favicon.ico are RSS readers, Windows
+# bookmark thumbnails and old IE — none of which loom targets. backend/web
+# answers that path with a 404 instead, along with /favicon.svg and the two
+# web-app-manifest-*.png paths this icon set has moved away from.
 set -euo pipefail
 
-SIZE=180
-GLYPH=144 # ~80% of SIZE, leaving an even margin
-BG="#1f1e1b"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SRC="$ROOT/icons"
+OUT="$ROOT/public"
+MASTER="$OUT/icon.svg" # the master ships as-is; it is not a copy
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-public="$here/../public"
-src="$public/favicon.svg"
-out="$public/apple-touch-icon.png"
-
-for bin in rsvg-convert magick; do
-	if ! command -v "$bin" >/dev/null 2>&1; then
-		echo "error: $bin not found. Install both: brew install librsvg imagemagick" >&2
+for tool in rsvg-convert magick; do
+	if ! command -v "$tool" >/dev/null 2>&1; then
+		echo "gen-icons: $tool not found — brew install librsvg imagemagick" >&2
 		exit 1
 	fi
 done
 
-tmpdir="$(mktemp -d -t gen-icons.XXXXXX)"
-trap 'rm -rf "$tmpdir"' EXIT
-tmp="$tmpdir/glyph.png"
+# --- from the master ---------------------------------------------------------
+# -b none stays even though these come out opaque: the ground is the master's own
+# background rect, not something the renderer supplies. Keeping the renderer out
+# of it is what lets the check below catch a master that lost that rect.
+rsvg-convert -b none -w 192 -h 192 "$MASTER" -o "$OUT/icon-192.png"
+rsvg-convert -b none -w 512 -h 512 "$MASTER" -o "$OUT/icon-512.png"
 
-# -strip and the excluded date chunks keep the output byte-reproducible: without
-# them ImageMagick stamps the current time into the PNG, so re-running this on an
-# unchanged favicon.svg would still show up as a binary diff in git.
-rsvg-convert --width "$GLYPH" --height "$GLYPH" --output "$tmp" "$src"
-magick -size "${SIZE}x${SIZE}" "xc:$BG" "$tmp" -gravity center -composite \
-	-alpha remove -alpha off -strip \
-	-define png:exclude-chunk=date,time "$out"
+# --- from the tiled sources --------------------------------------------------
+# These two inset their glyph (60% and 46% vs the master's 96%) because the tile
+# itself is visible: iOS masks it behind a superellipse, and Android crops the
+# maskable one to a shape of the launcher's choosing, guaranteeing only the
+# central 80% circle.
+rsvg-convert -w 180 -h 180 "$SRC/icon-tile.svg" -o "$OUT/apple-touch-icon.png"
+rsvg-convert -w 512 -h 512 "$SRC/icon-maskable.svg" -o "$OUT/icon-maskable-512.png"
 
-echo "wrote $out (${SIZE}x${SIZE}, opaque $BG)"
+# --- verify the grounds survived ---------------------------------------------
+# Rendering can succeed and still produce the wrong thing — most plausibly a
+# source that lost its background rect, which yields a touch icon iOS flattens
+# onto black, or a favicon whose corners leak the tab bar's white. That fails
+# silently in a viewer and only shows up on a real device, so assert every
+# ground here instead.
+#
+# ALL FOUR are opaque. icon-192/512 were expected transparent back when
+# ui/public/icon.svg let the browser composite the mark onto the tab; that is
+# what put white in the favicon's corners on a light tab bar, so the master
+# carries its own #1f1e1b now. If either of those two goes back to opaque=false,
+# the master has lost its background rect — do not "fix" it by relaxing the
+# check.
+fail=0
+check_alpha() { # <file> <expected true|false>
+	local got
+	# ImageMagick 7 prints "True"/"False"; 6 printed "true"/"false". Fold the
+	# case so this script is not pinned to one major version.
+	got="$(magick identify -format '%[opaque]' "$1" | tr '[:upper:]' '[:lower:]')"
+	if [[ "$got" != "$2" ]]; then
+		echo "gen-icons: $(basename "$1") is opaque=$got, expected $2" >&2
+		fail=1
+	fi
+}
+check_alpha "$OUT/icon-192.png" true
+check_alpha "$OUT/icon-512.png" true
+check_alpha "$OUT/apple-touch-icon.png" true
+check_alpha "$OUT/icon-maskable-512.png" true
+
+[[ "$fail" == 0 ]] || exit 1
+echo "gen-icons: wrote $(cd "$OUT" && ls icon-*.png apple-touch-icon.png | tr '\n' ' ')"

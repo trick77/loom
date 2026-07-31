@@ -57,15 +57,22 @@ func spaHandler(fsys fs.FS) http.Handler {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		// Every site icon is now an SVG, so dist ships none of the raster icons
-		// below — but crawlers, chat unfurlers and feed readers probe
-		// /favicon.ico blindly without parsing HTML, and a stale installed PWA
-		// still requests the old manifest icons by their pinned paths. The SPA
-		// fallback below would hand all of them index.html with a 200: an HTML
-		// page masquerading as an icon. 404 is the honest answer. Sits after the
-		// Stat branch so a re-added icon still serves.
+		// dist ships none of the icon paths below — but crawlers, chat unfurlers
+		// and feed readers probe /favicon.ico blindly without parsing HTML, and a
+		// stale installed PWA still requests the icons it was installed with by
+		// their pinned paths. The SPA fallback below would hand all of them
+		// index.html with a 200: an HTML page masquerading as an icon. 404 is the
+		// honest answer. Sits after the Stat branch so a re-added icon still
+		// serves.
+		//
+		// /favicon.svg is here because the master was renamed to /icon.svg when
+		// loom picked up peeq's icon mechanism; the manifest icons are the two
+		// rasters that predated it. The current set (icon.svg, icon-192.png,
+		// icon-512.png, icon-maskable-512.png, apple-touch-icon.png) all ship, so
+		// none of them belong in this list.
 		switch r.URL.Path {
 		case "/favicon.ico",
+			"/favicon.svg",
 			"/web-app-manifest-192x192.png",
 			"/web-app-manifest-512x512.png":
 			http.NotFound(w, r)

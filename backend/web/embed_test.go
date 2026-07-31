@@ -18,13 +18,15 @@ func TestSPAHandler_servesIndexFallback(t *testing.T) {
 	}
 }
 
-func TestSpaHandler_rasterIconPathsReturn404(t *testing.T) {
-	// The dropped raster icons: /favicon.ico is probed blindly by unfurlers and
-	// feed readers, and the manifest PNGs by already-installed PWAs holding the
-	// old paths. None of them parse HTML first, so a 200 of markup is worse than
-	// a clean miss.
+func TestSpaHandler_retiredIconPathsReturn404(t *testing.T) {
+	// The icon paths loom no longer serves: /favicon.ico is probed blindly by
+	// unfurlers and feed readers, /favicon.svg was the master before it was
+	// renamed to /icon.svg, and the manifest PNGs are held by already-installed
+	// PWAs. None of them parse HTML first, so a 200 of markup is worse than a
+	// clean miss.
 	paths := []string{
 		"/favicon.ico",
+		"/favicon.svg",
 		"/web-app-manifest-192x192.png",
 		"/web-app-manifest-512x512.png",
 	}
