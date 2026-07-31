@@ -1,45 +1,65 @@
 <!--
-  Source for public/icon.svg — the browser tab icon, and nothing else.
-  ui/scripts/gen-icons.sh ships it as-is; no raster is rendered from it.
+  Loom's icon: the spiral mark, the same single path ui/src/assets/loom-logo.svg
+  and ui/src/LoomMark.tsx draw. Copied rather than imported — nothing loads a
+  React component to produce a static asset. Stroke is 1.5 in glyph units, so it
+  scales with the glyph and stays proportional across all three sources here.
 
-  Loom's spiral set in the same rounded frame music and peeq use, with the
-  frame's interior filled: a chip, not a tile. The canvas corners stay
-  transparent, so what lands in a tab is the rounded silhouette rather than a
-  square. All three apps now read as one family in a tab bar.
+  Sized off the mark's TRUE bbox, not the nominal 24x24 viewBox the path only
+  partly fills. Measured by rendering at 1024 and trimming: the ink is a square
+  21.516 units on a side at offset 1.2422 — centred, so no optical nudge is
+  needed. Scaling by the nominal box instead is what makes a glyph read as a dot
+  at favicon sizes. The transform below puts that bbox at 96% of the 64-unit
+  tile, near enough edge to edge: a tab already sets the icon in padding of its
+  own, so a margin inside the tile only shrinks the mark for nothing.
 
-  WHY THIS EXISTS AS ITS OWN SOURCE. icon.svg still renders icon-192, icon-512
-  and apple-touch-icon.png, and those stay transparent for the reasons it gives.
-  The tab icon has the opposite need, so the two cannot share a file. icon.svg's
-  "do not put the rect back" stands for the file it is written in: its reasons —
-  Safari's Start Page tile, and iPad — are about the rasters drawn LARGE, and
-  this one is only ever drawn at tab size.
+  ui/icons/icon-maskable.svg insets its glyph to 46% instead, because Android
+  crops an adaptive icon and its tile really is visible. Nothing else needs a
+  separate source: this file drives the tab icon, both PWA rasters and the iOS
+  touch icon.
 
-  THE SPIRAL IS TRUNCATED TO TWO TURNS, and that is the whole reason this icon
-  works. The full mark has THREE nested revolutions. Inside a 96% frame at 16px
-  the interior is about 8px across, so three turns get ~2.5px each and merge
-  into a smudge — no stroke weight fixes it, and heavier weights make it worse
-  by closing the gaps sooner. The path here is the master's first six segments;
-  the outer extent is identical either way, so dropping the inner turns costs
-  nothing in placement. This is a favicon-only reduction: ui/src/LoomMark.tsx
-  and icon.svg keep all three turns, and should.
+  THIS FILE IS TRANSPARENT, and it stays that way. It briefly carried an opaque
+  #1f1e1b canvas, on the reasoning that anything outside the mark is otherwise
+  the client's to paint and Safari's light tab bar would show white in the
+  corners. That is true, and it is not worth what it costs: a hard dark square
+  in every context that draws the icon large — Safari's Start Page tile most
+  visibly — and, on iPad, a mark that plainly looks better without it.
 
-  THE FRAME IS 1.75, NOT THE 2.5 MUSIC AND PEEQ USE. Their glyphs are two or
-  three strokes and can spare the room; a spiral cannot. A thinner frame widens
-  the interior, which is what lets the spiral run to 12.8 units here. Chosen off
-  a 16/32/64 render of frame 2.5/2.0/1.75 against 2/1.75/1.5 turns.
+  So the client composites, and on Safari desktop it composites onto white.
+  Accepted deliberately. Do not "fix" it by putting the rect back; that trade
+  has been made and reverted TWICE.
 
-  Sized off the frame's TRUE bbox — 18 grown by the stroke to 19.75, centred on
-  (12,12) — not the nominal 24x24 box. That bbox spans 96% of the canvas.
+  THE SECOND TIME went further: a separate ui/icons/icon-favicon.svg source gave
+  the tab icon a ground of its own (#514), then a rounded frame with a filled
+  interior and the spiral truncated to two turns so it would survive inside that
+  frame (#515) — a chip matching music's and peeq's tab icons. Reverted on the
+  same grounds as the first attempt, and one more: what a tab shows should be
+  the mark, not the mark in a box. The full three-turn spiral on nothing is what
+  loom wants there, whatever it costs in legibility at 16px and however the
+  sibling apps set theirs. Family resemblance in a tab bar is not worth a frame.
+  If the case for a chip comes back, it needs a new argument, not these ones.
 
-  #33312c is loom's #1f1e1b surface lightened the way music lightens its own: at
-  16px the base surface reads as a black square, which is the look this avoids.
-  Change it and gen-icons.sh's ground assertion has to move with it.
+  The glyph runs to 96% of the tile in every raster this file produces,
+  including apple-touch-icon.png. There is no inset version: an inset only earns
+  its keep when a tile is visible behind the mark, and with no ground there is
+  no tile. iOS's superellipse mask is not a reason either — the spiral is round,
+  so the corners the mask cuts hold no ink.
+
+  Every SVG and PNG icon loom ships is transparent — including the maskable one,
+  which trades a launcher-supplied colour for the same reason. ui/scripts/
+  gen-icons.sh asserts that on all four rasters. Regenerate them with that
+  script after touching this file.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <g transform="translate(-5.3306 -5.3306) scale(3.11089)" fill="none" stroke="#c15f3c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" fill="#33312c"/>
-    <g transform="translate(4.8558 4.8558) scale(0.59535)" stroke-width="2.8">
-      <path d="M11.9532 2.00004C17.5019 2.00004 22 6.47719 22 12C22 17.5229 17.5019 22 11.9532 22C-0.631103 22 -1.82658 4.01759 11.4985 5.00004C14.8499 5.24714 18.0289 8.41019 18.0289 12C18.0289 16.5 15.2348 18.5 11.4985 18.5C4.5 18.5 3.19042 8.46695 11.0021 9.00004"/>
-    </g>
+  <g
+    transform="translate(-2.2668 -2.2668) scale(2.8556)"
+    fill="none"
+    stroke="#c15f3c"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path
+      d="M11.9532 2.00004C17.5019 2.00004 22 6.47719 22 12C22 17.5229 17.5019 22 11.9532 22C-0.631103 22 -1.82658 4.01759 11.4985 5.00004C14.8499 5.24714 18.0289 8.41019 18.0289 12C18.0289 16.5 15.2348 18.5 11.4985 18.5C4.5 18.5 3.19042 8.46695 11.0021 9.00004C12.508 9.1028 14.0162 10.3432 14.0162 12C14.0162 13.9279 13 15 11.1211 15"
+    />
   </g>
 </svg>
