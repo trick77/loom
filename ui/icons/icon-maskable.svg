@@ -10,16 +10,25 @@
   with the glyph at 46%: its bbox corner then sits at 0.46/2 * sqrt(2) = 32.5%
   from centre, comfortably inside the 40% safe radius.
 
-  Opaque #1f1e1b edge to edge, square corners: the launcher supplies the mask
-  and the rounding, and anything transparent here is filled with the launcher's
-  own colour rather than loom's.
+  TRANSPARENT, like every other icon loom ships, and square-cornered: the
+  launcher supplies the mask and the rounding, so rounding them here would
+  double-round them.
+
+  Transparency means Android fills everything outside the mark with a colour of
+  its own choosing rather than loom's #1f1e1b. That is the same trade
+  ui/public/icon.svg makes with Safari's white tab bar, taken deliberately and
+  applied to the whole icon set: every SVG and PNG icon here has a transparent
+  background. Do not reintroduce a ground rect on the grounds that a maskable
+  icon "should" have one.
+
+  The 46% inset is NOT part of that trade and must stay. It is what survives the
+  crop; without it Android clips the mark, transparent or not.
 
   Same path, same 1.5 stroke and the same true-bbox centring — see
   ui/public/icon.svg for all of it. The stroke is in glyph units, so at 46% the
   frame thins with the glyph and the weight stays proportional.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" fill="#1f1e1b" />
   <g
     transform="translate(15.5803 15.5803) scale(1.3683)"
     fill="none"

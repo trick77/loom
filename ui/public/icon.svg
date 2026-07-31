@@ -12,33 +12,34 @@
   tile, near enough edge to edge: a tab already sets the icon in padding of its
   own, so a margin inside the tile only shrinks the mark for nothing.
 
-  The two sources in ui/icons/ inset their glyph instead — 60% for iOS, 46% for
-  the Android maskable crop — because there the tile itself is visible.
+  ui/icons/icon-maskable.svg insets its glyph to 46% instead, because Android
+  crops an adaptive icon and its tile really is visible. Nothing else needs a
+  separate source: this file drives the tab icon, both PWA rasters and the iOS
+  touch icon.
 
-  THIS FILE IS NOT TRANSPARENT, and that is the point. It used to be, on the
-  reasoning that a browser composites the icon onto the tab and should be
-  allowed to. But anything outside the mark is then the client's to paint, and
-  Safari's tab bar is light: the corners come out white. The ground therefore
-  goes under the whole 64x64 canvas — the same #1f1e1b the two tiled sources and
-  index.html's theme-color already carry — so the icon reads the same on a light
-  tab, a dark tab and a white bookmark card.
+  THIS FILE IS TRANSPARENT, and it stays that way. It briefly carried an opaque
+  #1f1e1b canvas, on the reasoning that anything outside the mark is otherwise
+  the client's to paint and Safari's light tab bar would show white in the
+  corners. That is true, and it is not worth what it costs: a hard dark square
+  in every context that draws the icon large — Safari's Start Page tile most
+  visibly — and, on iPad, a mark that plainly looks better without it.
 
-  The trade is deliberate: the silhouette is a square. That is the cost of not
-  letting the client choose what shows through.
+  So the client composites, and on Safari desktop it composites onto white.
+  Accepted deliberately. Do not "fix" it by putting the rect back; that trade
+  has been made and reverted once already.
 
-  Note for anyone porting further from peeq, where this approach came from: its
-  master ALSO fills its glyph's interior, because its mark is lucide's closed
-  "square-play" frame and the area it encloses would otherwise leak the tab
-  bar's white too. Loom's spiral is an OPEN path — it encloses nothing — so
-  there is no interior fill to port here, only the canvas rect. Do not "restore"
-  a fill that has no target.
+  The glyph runs to 96% of the tile in every raster this file produces,
+  including apple-touch-icon.png. There is no inset version: an inset only earns
+  its keep when a tile is visible behind the mark, and with no ground there is
+  no tile. iOS's superellipse mask is not a reason either — the spiral is round,
+  so the corners the mask cuts hold no ink.
 
-  With no alpha left, all four rasters are opaque and ui/scripts/gen-icons.sh
-  asserts exactly that. Regenerate them with that script after touching this
-  file.
+  Every SVG and PNG icon loom ships is transparent — including the maskable one,
+  which trades a launcher-supplied colour for the same reason. ui/scripts/
+  gen-icons.sh asserts that on all four rasters. Regenerate them with that
+  script after touching this file.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" fill="#1f1e1b" />
   <g
     transform="translate(-2.2668 -2.2668) scale(2.8556)"
     fill="none"
