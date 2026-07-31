@@ -30,12 +30,19 @@
   the rasters drawn large — Safari's Start Page tile, and iPad.
 
   THE TAB ICON NO LONGER COMES FROM THIS FILE. It moved to icon-favicon.svg
-  beside this one, which is this file on a rounded tile with the spiral inset.
-  The reason is a surface this note never measured: Safari draws favicons on a
-  light rgb(192,192,192) plate in its favourites and bookmarks bars, where a
-  transparent mark is an orange scribble on a white card. Nothing above changes
-  for what this file still renders — icon-192, icon-512 and apple-touch-icon.png
-  — which is why it is kept rather than rewritten.
+  beside this one, which sets the spiral in the same rounded frame music and
+  peeq use and fills the frame's interior. The reason is a surface this note
+  never measured: Safari draws favicons on a light rgb(192,192,192) plate in its
+  favourites and bookmarks bars, where a transparent mark is an orange scribble
+  on a white card. Nothing above changes for what this file still renders —
+  icon-192, icon-512 and apple-touch-icon.png — which is why it is kept rather
+  than rewritten.
+
+  That file also TRUNCATES the spiral to two turns. Three nested revolutions
+  inside a frame at 16px get about 2.5px each and merge into a smudge. The
+  reduction is the favicon's alone: this file and ui/src/LoomMark.tsx keep all
+  three turns, and should — the argument is about 16px and nothing else is drawn
+  there.
 
   The glyph runs to 96% of the tile in every raster this file produces,
   including apple-touch-icon.png. There is no inset version: an inset only earns
