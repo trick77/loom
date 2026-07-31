@@ -34,9 +34,10 @@
   no tile. iOS's superellipse mask is not a reason either — the spiral is round,
   so the corners the mask cuts hold no ink.
 
-  Three of the four rasters are therefore transparent, and ui/scripts/
-  gen-icons.sh asserts exactly that. Regenerate them with that script after
-  touching this file.
+  Every SVG and PNG icon loom ships is transparent — including the maskable one,
+  which trades a launcher-supplied colour for the same reason. ui/scripts/
+  gen-icons.sh asserts that on all four rasters. Regenerate them with that
+  script after touching this file.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <g
