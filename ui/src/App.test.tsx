@@ -338,17 +338,30 @@ test("uses Loom as the web app manifest title", () => {
   expect(manifest.short_name).toBe("Loom");
 });
 
-test("declares only SVG icons in the web app manifest", () => {
+test("declares the SVG, both PWA rasters and one maskable icon in the manifest", () => {
   const manifest = JSON.parse(
     readFileSync("public/site.webmanifest", "utf8"),
-  ) as { icons?: { src?: string; type?: string }[] };
+  ) as { icons?: { src?: string; type?: string; purpose?: string }[] };
+  const icons = manifest.icons ?? [];
 
-  // The site ships a single SVG icon; any raster entry re-added here would give
-  // browsers a PNG to prefer for the tab, which is what we deliberately dropped.
-  expect(manifest.icons?.length).toBeGreaterThan(0);
-  for (const icon of manifest.icons ?? []) {
-    expect(icon.type).toBe("image/svg+xml");
-    expect(icon.src).toMatch(/\.svg$/);
+  // An earlier version of this test allowed ONLY SVG entries, on the reasoning
+  // that a PNG here gives browsers a raster to prefer for the tab. The rasters
+  // are back because an install needs them: Android has no SVG path for the
+  // launcher icon, and it CROPS a maskable one to the central 80% circle. The
+  // mark runs to 96% of its tile, so a dedicated 46% source (ui/icons/
+  // icon-maskable.svg) is what makes that safe — it did not exist before, which
+  // is why dropping the rasters looked free at the time. Do not re-delete them.
+  expect(icons.map((i) => i.src)).toEqual([
+    "/icon.svg",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/icon-maskable-512.png",
+  ]);
+  expect(icons.filter((i) => i.purpose === "maskable")).toHaveLength(1);
+  for (const icon of icons) {
+    expect(icon.type).toBe(
+      icon.src?.endsWith(".svg") ? "image/svg+xml" : "image/png",
+    );
   }
 });
 

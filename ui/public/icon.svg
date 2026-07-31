@@ -1,0 +1,54 @@
+<!--
+  Loom's icon: the spiral mark, the same single path ui/src/assets/loom-logo.svg
+  and ui/src/LoomMark.tsx draw. Copied rather than imported — nothing loads a
+  React component to produce a static asset. Stroke is 1.5 in glyph units, so it
+  scales with the glyph and stays proportional across all three sources here.
+
+  Sized off the mark's TRUE bbox, not the nominal 24x24 viewBox the path only
+  partly fills. Measured by rendering at 1024 and trimming: the ink is a square
+  21.516 units on a side at offset 1.2422 — centred, so no optical nudge is
+  needed. Scaling by the nominal box instead is what makes a glyph read as a dot
+  at favicon sizes. The transform below puts that bbox at 96% of the 64-unit
+  tile, near enough edge to edge: a tab already sets the icon in padding of its
+  own, so a margin inside the tile only shrinks the mark for nothing.
+
+  The two sources in ui/icons/ inset their glyph instead — 60% for iOS, 46% for
+  the Android maskable crop — because there the tile itself is visible.
+
+  THIS FILE IS NOT TRANSPARENT, and that is the point. It used to be, on the
+  reasoning that a browser composites the icon onto the tab and should be
+  allowed to. But anything outside the mark is then the client's to paint, and
+  Safari's tab bar is light: the corners come out white. The ground therefore
+  goes under the whole 64x64 canvas — the same #1f1e1b the two tiled sources and
+  index.html's theme-color already carry — so the icon reads the same on a light
+  tab, a dark tab and a white bookmark card.
+
+  The trade is deliberate: the silhouette is a square. That is the cost of not
+  letting the client choose what shows through.
+
+  Note for anyone porting further from peeq, where this approach came from: its
+  master ALSO fills its glyph's interior, because its mark is lucide's closed
+  "square-play" frame and the area it encloses would otherwise leak the tab
+  bar's white too. Loom's spiral is an OPEN path — it encloses nothing — so
+  there is no interior fill to port here, only the canvas rect. Do not "restore"
+  a fill that has no target.
+
+  With no alpha left, all four rasters are opaque and ui/scripts/gen-icons.sh
+  asserts exactly that. Regenerate them with that script after touching this
+  file.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" fill="#1f1e1b" />
+  <g
+    transform="translate(-2.2668 -2.2668) scale(2.8556)"
+    fill="none"
+    stroke="#c15f3c"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path
+      d="M11.9532 2.00004C17.5019 2.00004 22 6.47719 22 12C22 17.5229 17.5019 22 11.9532 22C-0.631103 22 -1.82658 4.01759 11.4985 5.00004C14.8499 5.24714 18.0289 8.41019 18.0289 12C18.0289 16.5 15.2348 18.5 11.4985 18.5C4.5 18.5 3.19042 8.46695 11.0021 9.00004C12.508 9.1028 14.0162 10.3432 14.0162 12C14.0162 13.9279 13 15 11.1211 15"
+    />
+  </g>
+</svg>
