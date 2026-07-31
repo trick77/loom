@@ -14,6 +14,13 @@
   and the rounding, and anything transparent here is filled with the launcher's
   own colour rather than loom's.
 
+  This is the ONE source that keeps its ground. ui/public/icon.svg dropped its
+  own, deliberately, so the client composites the mark — but a maskable icon has
+  no client to composite it in the honest sense: Android crops it and fills what
+  is left with a launcher colour it picks. A transparent maskable is not "the
+  platform's choice showing through", it is a broken adaptive icon. Different
+  problem, different answer.
+
   Same path, same 1.5 stroke and the same true-bbox centring — see
   ui/public/icon.svg for all of it. The stroke is in glyph units, so at 46% the
   frame thins with the glyph and the weight stays proportional.
