@@ -203,6 +203,25 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 				Content:    output,
 			})
 		}
+		// Push the sources gathered so far so the browser can resolve [n] markers
+		// while the next round's answer streams, instead of waiting for the settled
+		// message. A full snapshot, not a delta: idempotent, and the frontend just
+		// replaces its list.
+		//
+		// Emitted every round rather than only when reg.len() grows — addDetailed
+		// backfills an already-registered URL's title/snippet/favicon without changing
+		// the length, so a page first seen bare via fetch and later enriched by Tavily
+		// would otherwise keep showing degraded sidebar data.
+		//
+		// Ordering is what makes this correct: the model can only cite [n] after
+		// seeing it in a tool result, the registry assigns that index while processing
+		// the result (above), and sse.Writer.Send is sequential — so the snapshot
+		// always reaches the browser before the deltas that reference it.
+		if reg.len() > 0 {
+			if err := sendSSEJSON(stream, "web_sources", webSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
+				return assistantLoopResult{}, err
+			}
+		}
 		toolRan = true
 		if round == maxToolRounds {
 			slog.Info("forcing final answer", "reason", "rounds_exhausted", "round", round)
@@ -222,7 +241,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		// budget. Kept language-neutral so the model answers in the user's language.
 		extraDirective = "Some requested items could not be processed within this turn's tool limit; briefly tell the user that not everything was processed and offer to continue if they'd like the rest."
 	}
-	finalHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, extraDirective)
+	finalHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, extraDirective, reg.all())
 	if !ok {
 		// No gathered notes (should not happen once tools ran) — fall back to the full
 		// history with a plain, tool-free directive.
@@ -242,7 +261,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	// fall back to a fixed message — anything but persisting an empty turn.
 	if err == nil && strings.TrimSpace(result.Content) == "" {
 		slog.Info("retrying empty final answer", "reason", "empty_synthesis", "round", maxToolRounds+1)
-		retryHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, "Answer in plain prose now. Do not emit any tool call or any tool-call markup.")
+		retryHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, "Answer in plain prose now. Do not emit any tool call or any tool-call markup.", reg.all())
 		if !ok {
 			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}

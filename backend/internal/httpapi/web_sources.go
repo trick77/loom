@@ -279,7 +279,9 @@ func relabelTavilyResult(raw string, reg *webSourceRegistry) string {
 			return "Web sources (cite with [n]):\n" + b.String() + "\n" + raw
 		}
 	}
-	// 3) Last resort: sweep any URLs out of the text and append a numbered index.
+	// 3) Last resort: sweep any URLs out of the text and prepend a numbered index.
+	// Prepended, not appended: capToolOutput trims this result to 32 KB *after*
+	// relabeling, so an index at the end is exactly what an oversized sweep loses.
 	var b strings.Builder
 	for _, u := range urlPattern.FindAllString(raw, -1) {
 		if idx, ok := reg.add(u); ok {
@@ -289,7 +291,7 @@ func relabelTavilyResult(raw string, reg *webSourceRegistry) string {
 	if b.Len() == 0 {
 		return raw
 	}
-	return raw + "\n\nWeb sources (cite with [n]):\n" + b.String()
+	return "Web sources (cite with [n]):\n" + b.String() + "\n" + raw
 }
 
 // relabelTavilyText handles the Tavily MCP server's formatted-text output. It

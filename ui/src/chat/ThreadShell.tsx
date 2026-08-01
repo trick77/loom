@@ -11,6 +11,7 @@ import {
   streamMessage,
   streamIncognitoMessage,
   type Artifact,
+  type Citation,
   type ContentBlock,
   type MessagePastedText,
   type Project,
@@ -139,6 +140,11 @@ export function ThreadShell({
   // running trace event surfaces, driving the live "thinking" affordance.
   const [streamingBlocks, setStreamingBlocks] = useState<ContentBlock[]>([]);
   const streamingBlocksRef = useRef<ContentBlock[]>([]);
+  // Sources gathered so far in the running turn, pushed by the backend after every
+  // tool round. They arrive ahead of the deltas that cite them, so inline [n]
+  // markers resolve to numbered links while the answer is still being written
+  // rather than popping in once the message settles.
+  const [streamingSources, setStreamingSources] = useState<Citation[]>([]);
   const [toolPending, setToolPending] = useState(false);
   // Incognito mode is a standalone, ephemeral chat reachable only from /new. Its
   // transcript lives entirely here and is never persisted or added to the thread
@@ -164,6 +170,9 @@ export function ThreadShell({
     streamingBlocksRef.current = [];
     setStreamingBlocks([]);
     setToolPending(false);
+    // The settled message carries its own citations, so the live list is only ever
+    // for the turn in flight.
+    setStreamingSources([]);
   }, []);
   // Flush hook for the deferred new-thread upload: the scope is supplied per call at
   // send time (the thread does not exist yet when the file is picked). Its
@@ -886,6 +895,14 @@ export function ThreadShell({
           onArtifact: (artifact) => {
             applyBlocks((current) => appendArtifactBlock(current, artifact));
           },
+          // Full snapshots, so replace rather than merge. Knowledge (RAG) sources
+          // arrive once before the model runs; web sources after each tool round.
+          onWebSources: (sources) => {
+            if (isCurrentThread()) setStreamingSources(sources);
+          },
+          onKnowledgeSources: (sources) => {
+            if (isCurrentThread()) setStreamingSources(sources);
+          },
           onAssistantMessage: (message) => {
             // The persisted message may already carry the backend's ordered
             // contentBlocks. When it doesn't (older backends / lag), graft the
@@ -1156,6 +1173,9 @@ export function ThreadShell({
     ? streamingBlocks
     : [];
   const visibleToolPending = activeThreadOwnsStreamState ? toolPending : false;
+  const visibleStreamingSources = activeThreadOwnsStreamState
+    ? streamingSources
+    : [];
   // Keep errors with the thread that owns the active or failed stream state.
   const visibleSendError =
     streamingThreadID === null || activeThreadOwnsStreamState ? sendError : "";
@@ -1410,6 +1430,7 @@ export function ThreadShell({
             messages={messages}
             draft={draft}
             streamingBlocks={visibleStreamingBlocks}
+            streamingSources={visibleStreamingSources}
             toolPending={visibleToolPending}
             sendError={visibleSendError}
             isSending={activeThreadIsStreaming}

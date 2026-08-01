@@ -110,7 +110,39 @@ func TestRelabelTavilyURLSweepFallback(t *testing.T) {
 		t.Fatalf("expected 2 swept sources, got %d", reg.len())
 	}
 	if !strings.Contains(out, "Web sources (cite with [n]):") {
-		t.Errorf("expected appended source list, got:\n%s", out)
+		t.Errorf("expected source list, got:\n%s", out)
+	}
+	// The index must lead, not trail: capToolOutput trims this result to 32 KB
+	// *after* relabeling, so a trailing index is exactly what an oversized sweep
+	// loses — stranding every marker in the note.
+	if !strings.HasPrefix(out, "Web sources (cite with [n]):") {
+		t.Errorf("source index must be prepended so the output cap cannot cut it, got:\n%s", out)
+	}
+}
+
+// The web_sources SSE snapshot is re-sent after every tool round rather than only
+// when the source count grows, because a second tool can enrich an already-known
+// URL in place. This pins the reason: the citation payload changes while len() does
+// not, so a length-gated emit would leave the sidebar showing degraded data.
+func TestWebSourceCitationsReflectBackfillWithoutLengthChange(t *testing.T) {
+	reg := newWebSourceRegistry()
+	// First seen as a bare fetch: no title, no favicon.
+	reg.addDetailed("https://truefoundry.com/blog", "", "", "")
+	before := webSourceCitations(reg.all())
+	lenBefore := reg.len()
+
+	// Tavily later returns the same page with full detail.
+	reg.addDetailed("https://truefoundry.com/blog", "Serving LLMs", "A guide.", "https://truefoundry.com/fav.ico")
+
+	if reg.len() != lenBefore {
+		t.Fatalf("reg.len() = %d, want unchanged %d — the premise of this test is that backfill does not grow the registry", reg.len(), lenBefore)
+	}
+	after := webSourceCitations(reg.all())
+	if before[0].Title != "" {
+		t.Fatalf("precondition failed: title was already set: %+v", before[0])
+	}
+	if after[0].Title != "Serving LLMs" || after[0].Favicon == "" {
+		t.Errorf("backfilled citation = %+v, want title and favicon populated", after[0])
 	}
 }
 

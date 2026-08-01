@@ -2,13 +2,20 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ActivityTraceEvent } from "../activityTrace";
-import type { ContentBlock, Project, ShareInfo, Thread } from "../api";
+import type {
+  Citation,
+  ContentBlock,
+  Project,
+  ShareInfo,
+  Thread,
+} from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ShareDialog } from "../share/ShareDialog";
@@ -19,6 +26,9 @@ import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import type { MessagePastedText } from "../api";
 import { AssistantProse, MessageBubble } from "./messages";
+import { MessageCitations } from "./Citations";
+import { webSourceMap } from "./sourcePills";
+import { assignDisplayNumbers } from "./sourceNumbering";
 import type { PastedText } from "./pastedText";
 import type { ReasoningEffort } from "./reasoning";
 import {
@@ -41,6 +51,7 @@ export function ThreadPanel({
   messages,
   draft,
   streamingBlocks,
+  streamingSources,
   toolPending,
   sendError,
   isSending,
@@ -73,6 +84,8 @@ export function ThreadPanel({
   messages: MessageWithActivityTrace[];
   draft: string;
   streamingBlocks: ContentBlock[];
+  /** Web/RAG sources gathered so far in the live turn, pushed as the tools run. */
+  streamingSources: Citation[];
   toolPending: boolean;
   sendError: string;
   isSending: boolean;
@@ -136,6 +149,31 @@ export function ThreadPanel({
           >
         ).events;
   const hasActiveActivityTrace = activeTraceEvents.length > 0;
+  // Resolve inline [n] markers against the sources delivered so far. Memoized on
+  // the source list so the map identity is stable across token deltas — a fresh Map
+  // each render would re-run the rehype pass on every delta.
+  const streamingSourceMap = useMemo(
+    () => webSourceMap(streamingSources),
+    [streamingSources],
+  );
+  // Numbering is derived from the streamed prose, which grows once per token. The
+  // scan is O(text) per render, but assignDisplayNumbers is append-only, so numbers
+  // already on screen never change — only new ones are appended.
+  const streamingProse = useMemo(
+    () =>
+      streamingBlocks
+        .filter(
+          (block): block is Extract<ContentBlock, { type: "text" }> =>
+            block.type === "text",
+        )
+        .map((block) => block.content)
+        .join("\n\n"),
+    [streamingBlocks],
+  );
+  const streamingNumbering = useMemo(
+    () => assignDisplayNumbers(streamingProse, streamingSources),
+    [streamingProse, streamingSources],
+  );
   // Answer prose has begun once a non-empty text block exists after the active
   // trace block (the reasoning-free turn has no trace block, so any text block
   // counts). This is the block-model analog of the former `streamingText !== ""`.
@@ -495,7 +533,12 @@ export function ThreadPanel({
                 if (block.type === "text") {
                   if (block.content === "") return;
                   elements.push(
-                    <AssistantProse key={`stream-text-${index}`} streaming>
+                    <AssistantProse
+                      key={`stream-text-${index}`}
+                      streaming
+                      sources={streamingSourceMap}
+                      display={streamingNumbering.display}
+                    >
                       {block.content}
                     </AssistantProse>,
                   );
@@ -539,6 +582,12 @@ export function ThreadPanel({
               });
               return elements;
             })()}
+            {/* The numbered sources list, live. Without it the prose would carry
+                numbered markers with nothing to match them against until the turn
+                settled. Append-only, so the pile grows without reshuffling. */}
+            {streamingNumbering.ordered.length > 0 && (
+              <MessageCitations citations={streamingNumbering.ordered} />
+            )}
             {working && <WorkingDot />}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
