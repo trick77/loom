@@ -994,10 +994,11 @@ a.ui-activity-tool-url:hover {
   background: rgba(217, 119, 87, 0.15);
   border: 0;
   border-radius: 4px;
-  padding: 0.15em 0.3em;
-  /* Just enough to keep the plate off the glyph it follows; the space that used to
-     sit in front of a marker is trimmed away in rehypeSourcePills. */
-  margin-left: 0.12em;
+  /* The left inset is smaller than the right: the marker should sit close to the
+     word it backs — the space that used to precede it is trimmed away in
+     rehypeSourcePills — while still keeping air before whatever follows. */
+  padding: 0.15em 0.3em 0.15em 0.22em;
+  margin-left: -0.02em;
   text-decoration: none;
   cursor: pointer;
   position: static;
@@ -1008,14 +1009,17 @@ a.ui-activity-tool-url:hover {
 }
 
 /* A marker that follows a period or comma. Those glyphs sit on the baseline and
-   leave the top half of their advance empty, so the marker's normal left margin
-   reads as a hole between the punctuation and the plate; against a letter the same
-   margin is exactly right. Not applied after "!" or "?", which are full-height and
-   already fill that space. */
+   leave the top half of their advance empty, so the plate can tuck into it — the
+   spacing that reads right against a letter opens a visible hole here. Not applied
+   after "!" or "?", which are full-height and already fill that space, nor after
+   ";" or ":", which carry an upper mark for the same reason.
+
+   The negative margin is what does the work: it pulls the plate over the empty part
+   of the punctuation's advance, which no padding change can reach. */
 .ui-markdown a.ui-source-pill-tight,
 .ui-source-pill-tight {
-  margin-left: 0;
-  padding-left: 0.22em;
+  margin-left: -0.12em;
+  padding-left: 0.18em;
 }
 
 .ui-markdown a.ui-source-pill:hover,
