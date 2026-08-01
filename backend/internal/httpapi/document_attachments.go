@@ -85,10 +85,14 @@ func (s *server) documentInlineContext(ctx context.Context, userID string, threa
 			continue
 		}
 
-		idx := docIdx.index(id)
+		// Peek at the marker to build the header for the budget checks below, and
+		// only commit it on a path that actually writes the document — a document
+		// skipped for lack of budget must not burn a number and leave a hole.
+		idx := docIdx.peek(id)
 		header := "\n[" + strconv.Itoa(idx) + "] " + doc.Filename + "\n"
 		full := header + text + "\n"
 		if b.Len()+len(full)+len(inlineDocsClosingTag) <= inlineDocByteBudget {
+			docIdx.index(id)
 			b.WriteString(full)
 			inlinedInFull[id] = true
 			citations = append(citations, citation{
@@ -109,9 +113,11 @@ func (s *server) documentInlineContext(ctx context.Context, userID string, threa
 		avail := inlineDocByteBudget - b.Len() - len(header) - len(inlineTruncationMarker) - len(inlineDocsClosingTag)
 		head := truncateBytesOnRuneBoundary(text, avail)
 		if head == "" {
-			// The budget is already exhausted by earlier documents; skip this one.
+			// The budget is already exhausted by earlier documents; skip this one
+			// without taking its marker.
 			continue
 		}
+		docIdx.index(id)
 		b.WriteString(header)
 		b.WriteString(head)
 		b.WriteString(inlineTruncationMarker)

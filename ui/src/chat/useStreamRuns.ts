@@ -10,6 +10,7 @@ import { useCallback, useRef, useState } from "react";
 
 import {
   beginRun,
+  EMPTY_RUN,
   endRun,
   patchRun,
   rekeyRun,
@@ -38,9 +39,21 @@ export function useStreamRuns() {
     [commit],
   );
 
+  // `next` may be a function so a caller can derive the patch from the run's
+  // current state — needed where a patch merges rather than replaces (the two
+  // source snapshots each carry only their own kind; see mergeSourceSnapshot).
   const patch = useCallback(
-    (key: RunKey, next: Partial<RunState>) => {
-      commit((current) => patchRun(current, key, next));
+    (
+      key: RunKey,
+      next: Partial<RunState> | ((run: RunState) => Partial<RunState>),
+    ) => {
+      commit((current) =>
+        patchRun(
+          current,
+          key,
+          typeof next === "function" ? next(current[key] ?? EMPTY_RUN) : next,
+        ),
+      );
     },
     [commit],
   );

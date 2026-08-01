@@ -58,6 +58,17 @@ type docIndexer struct {
 
 func newDocIndexer() *docIndexer { return &docIndexer{byDoc: map[string]int{}, next: 1} }
 
+// peek returns the marker docID *would* get without assigning it, so a caller can
+// render the header it needs for a budget check before committing. Pair it with
+// index() on the paths that actually write: taking a number for a document that is
+// then skipped burns it and leaves a hole in the sequence.
+func (d *docIndexer) peek(docID string) int {
+	if n, ok := d.byDoc[docID]; ok {
+		return n
+	}
+	return d.next
+}
+
 // index returns docID's marker, assigning the next one if it is new.
 func (d *docIndexer) index(docID string) int {
 	if n, ok := d.byDoc[docID]; ok {

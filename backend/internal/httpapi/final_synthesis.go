@@ -45,9 +45,11 @@ func buildFinalSynthesisHistory(history []llm.Message, baseLen int, extraDirecti
 	// match loomSystemPrompt and kept language-neutral (the answer may be DE/FR/IT).
 	if len(sources) > 0 {
 		instruction += " The sources are labeled with bracketed numbers like [1] or [2]." +
-			" Whenever a sentence in your answer draws on one of these web sources, append its marker" +
-			" at the end of that sentence — [1], or several like [1][3]. Use only numbers listed above;" +
-			" never invent a citation number." +
+			" Whenever a sentence in your answer draws on one of these sources, append its marker" +
+			" at the end of that sentence — [1], or several like [1][3]. The web sources listed above" +
+			" continue one numbering sequence that starts with the user's uploaded documents earlier in" +
+			" this conversation; cite those by their own numbers in exactly the same way. Use only" +
+			" numbers that were given to you as a numbered source; never invent a citation number." +
 			// Left to itself the model closes with its own "Sources:" list of bare URLs.
 			// The interface already renders every cited source as a numbered, linked list
 			// under the answer, so that block is pure duplication — and a wall of raw

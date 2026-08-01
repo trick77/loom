@@ -164,3 +164,35 @@ func TestDocumentInlineContextNumbersAndCitesAttachments(t *testing.T) {
 		t.Errorf("docIdx.count() = %d, want 2 (the offset web sources start after)", got)
 	}
 }
+
+// A document skipped because the budget is already spent must not consume a marker.
+// If it did, the sequence would carry a hole — [2] labelled nothing, yet counted, so
+// the web sources start at [3] and the model can cite a number nothing backs.
+func TestDocumentInlineContextSkippedDocTakesNoNumber(t *testing.T) {
+	stub := &inlineStub{
+		docs: map[string]rag.Document{
+			"d1": {ID: "d1", Filename: "huge.txt", ThreadID: strPtr("t1")},
+			"d2": {ID: "d2", Filename: "starved.md", ThreadID: strPtr("t1")},
+		},
+		texts: map[string]string{
+			// d1 alone consumes the whole budget, leaving d2 no room at all.
+			"d1": strings.Repeat("x", inlineDocByteBudget*2),
+			"d2": "Never makes it in.",
+		},
+	}
+	s := &server{documents: stub}
+	docIdx := newDocIndexer()
+
+	block, _, citations := s.documentInlineContext(context.Background(), "u1",
+		chat.Thread{ID: "t1"}, []string{"d1", "d2"}, docIdx)
+
+	if strings.Contains(block, "starved.md") {
+		t.Fatalf("d2 should not have fit in the budget:\n%s", block[:200])
+	}
+	if len(citations) != 1 || citations[0].Index != 1 {
+		t.Fatalf("citations = %+v, want only d1 at [1]", citations)
+	}
+	if got := docIdx.count(); got != 1 {
+		t.Errorf("docIdx.count() = %d, want 1 — the skipped document must not burn a marker", got)
+	}
+}

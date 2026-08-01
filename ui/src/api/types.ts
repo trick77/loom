@@ -171,10 +171,12 @@ export type Citation = {
   // full marks a source whose entire document was injected (not a retrieved
   // excerpt), so the UI labels it "full document" instead of "N excerpts".
   full?: boolean;
-  // url and index are set for web-search citations (Tavily/fetch/obscura): url is
-  // the source link, index is the [n] marker the model cites inline. RAG document
-  // citations leave both undefined; the UI treats a citation with a url as a web
-  // source and (for those) uses filename as the display label (the site name).
+  // index is the [n] marker the model cites inline, carried by both kinds of
+  // source: uploaded documents take [1]..[k] and web sources continue after them,
+  // one sequence. url is the source link and is set only for web-search citations
+  // (Tavily/fetch/obscura) — the UI treats a citation with a url as a web source
+  // and (for those) uses filename as the display label (the site name). Documents
+  // persisted before they were numbered leave index undefined.
   url?: string;
   index?: number;
   // title (article/page title) and favicon (source-provided icon url) feed the
