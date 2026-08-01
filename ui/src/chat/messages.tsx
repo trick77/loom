@@ -460,18 +460,10 @@ export function ProseMarkdown({
             // Custom element emitted by rehypeSourcePills for each [n] citation.
             // Cast: react-markdown's Components type is keyed by HTML tag names, so a
             // custom element name isn't in the type — the runtime maps it fine.
-            [SOURCE_PILL_TAG]: ({
-              href,
-              title,
-              children,
-            }: {
-              href?: unknown;
-              title?: unknown;
-              children?: ReactNode;
-            }) => (
-              <SourcePill href={href} title={title}>
-                {children}
-              </SourcePill>
+            // Spread rather than pick: the plugin also sets data attributes on the
+            // node (data-tight), and a hand-listed prop set silently drops them.
+            [SOURCE_PILL_TAG]: (props: Record<string, unknown>) => (
+              <SourcePill {...props} />
             ),
             img({ src, ...props }) {
               // Only render images whose src is an absolute, loadable URL. The model
