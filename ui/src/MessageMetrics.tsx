@@ -8,6 +8,8 @@ import { buildMetricsString, humanizeCategory } from "./metrics";
  * instead (see the alignRight branch in MessageActions). When the thread has a
  * prompt-classifier category, a pill with the humanized label sits to the left of
  * the metrics. The pill can show on its own before token metrics exist (line may be null).
+ * The metrics line itself is desktop-only (`md` and up): on mobile it wraps and dominates
+ * the action row, so it is hidden there while the pill keeps showing at every width.
  */
 export function MessageMetrics({
   message,
@@ -32,7 +34,7 @@ export function MessageMetrics({
     <span className="ml-auto flex items-center gap-2">
       {pill}
       {line !== null && (
-        <span className="font-sans text-[0.75rem] leading-[1.45rem] text-[#858178]">
+        <span className="hidden font-sans text-[0.75rem] leading-[1.45rem] text-[#858178] md:inline">
           {line}
         </span>
       )}
