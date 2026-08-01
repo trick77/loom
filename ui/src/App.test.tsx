@@ -4386,8 +4386,9 @@ test("keeps a running thread stream alive while browsing another chat", async ()
   ).toBeInTheDocument();
 });
 
-test("blocks starting a second chat stream while another thread is running", async () => {
+test("starts a second chat stream while another thread is still running", async () => {
   const stream = new ReadableStream<Uint8Array>({ start() {} });
+  const secondStream = new ReadableStream<Uint8Array>({ start() {} });
   let secondStreamRequests = 0;
   vi.stubGlobal(
     "fetch",
@@ -4452,7 +4453,7 @@ test("blocks starting a second chat stream while another thread is running", asy
         init?.method === "POST"
       ) {
         secondStreamRequests += 1;
-        return new Response("", { status: 500 });
+        return new Response(secondStream, { status: 200 });
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -4467,14 +4468,92 @@ test("blocks starting a second chat stream while another thread is running", asy
   await screen.findByRole("button", { name: "Stop response" });
 
   fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
-  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
-    target: { value: "Second" },
-  });
+  const secondComposer = await screen.findByPlaceholderText(/message/i);
+  // The first chat's draft stayed with the first chat.
+  expect(secondComposer).toHaveValue("");
+  fireEvent.change(secondComposer, { target: { value: "Second" } });
 
-  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
-  expect(secondStreamRequests).toBe(0);
+  // Both turns are now in flight, and this thread has its own Stop control.
+  await waitFor(() => expect(secondStreamRequests).toBe(1));
+  await screen.findByRole("button", { name: "Stop response" });
+});
+
+test("keeps an unsent draft with the chat it was typed in", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "First chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+            {
+              id: "t2",
+              title: "Second chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads/t1" || url === "/api/threads/t2") {
+        const id = url.endsWith("t1") ? "t1" : "t2";
+        return Response.json({
+          thread: {
+            id,
+            title: id === "t1" ? "First chat" : "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "half a question" },
+  });
+
+  // Another chat gets its own empty composer …
+  fireEvent.click(screen.getByRole("button", { name: "Second chat" }));
+  await waitFor(() =>
+    expect(screen.getByPlaceholderText(/message/i)).toHaveValue(""),
+  );
+
+  // … as does the start screen …
+  fireEvent.click(screen.getByRole("button", { name: "New thread" }));
+  await waitFor(() =>
+    expect(
+      screen.getByPlaceholderText("How can I help you today?"),
+    ).toHaveValue(""),
+  );
+
+  // … and the draft is still waiting where it was typed.
+  fireEvent.click(screen.getByRole("button", { name: "First chat" }));
+  await waitFor(() =>
+    expect(screen.getByPlaceholderText(/message/i)).toHaveValue(
+      "half a question",
+    ),
+  );
 });
 
 test("does not stop a background stream with Escape while another chat is open", async () => {
