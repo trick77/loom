@@ -142,6 +142,39 @@ describe("ProseMarkdown inline source pills", () => {
     expect(container.textContent).toContain("[7].");
   });
 
+  // A period leaves the top half of its advance empty, so the marker's normal left
+  // margin reads as a hole; "!" and "?" fill that space themselves.
+  it("tightens a marker that follows a period or comma", () => {
+    const { container } = renderProse(
+      "Models are cheap [1], and serving is not [2].",
+      citations,
+    );
+
+    const pills = container.querySelectorAll(".ui-source-pill");
+    expect(pills).toHaveLength(2);
+    for (const pill of pills) expect(pill).toHaveClass("ui-source-pill-tight");
+  });
+
+  it("does not tighten after an exclamation or question mark", () => {
+    const { container } = renderProse(
+      "Cheap, really [1]! But is it [2]?",
+      citations,
+    );
+
+    for (const pill of container.querySelectorAll(".ui-source-pill"))
+      expect(pill).not.toHaveClass("ui-source-pill-tight");
+  });
+
+  it("does not tighten a marker that follows a word", () => {
+    const { container } = renderProse(
+      "TrueFoundry deploys models [1] and Modal runs Python [2] daily.",
+      citations,
+    );
+
+    for (const pill of container.querySelectorAll(".ui-source-pill"))
+      expect(pill).not.toHaveClass("ui-source-pill-tight");
+  });
+
   // A citation's destination is the source list, not a new tab: the drawer holds
   // every source with its title and snippet, and losing the answer to a page load
   // is the wrong trade for one click.

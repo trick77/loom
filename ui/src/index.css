@@ -1007,6 +1007,17 @@ a.ui-activity-tool-url:hover {
     color 0.12s;
 }
 
+/* A marker that follows a period or comma. Those glyphs sit on the baseline and
+   leave the top half of their advance empty, so the marker's normal left margin
+   reads as a hole between the punctuation and the plate; against a letter the same
+   margin is exactly right. Not applied after "!" or "?", which are full-height and
+   already fill that space. */
+.ui-markdown a.ui-source-pill-tight,
+.ui-source-pill-tight {
+  margin-left: 0;
+  padding-left: 0.22em;
+}
+
 .ui-markdown a.ui-source-pill:hover,
 .ui-source-pill:hover {
   background: rgba(217, 119, 87, 0.28);

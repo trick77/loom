@@ -80,11 +80,27 @@ export function rehypeSourcePills(sources: SourceMap, display: DisplayMap) {
   };
 }
 
-function pillElement(ref: WebSourceRef, shown: number): ElementContent {
+// The punctuation a marker may be tightened against, once hoistPunctuation has moved
+// it in front. A period or comma sits on the baseline and leaves the whole upper half
+// of its advance empty, so the marker's normal left margin reads as a hole between
+// the two. Deliberately not "!" or "?" — those are full-height and already fill that
+// space, and pulling a plate against them crowds the line. ";" and ":" carry an
+// upper mark for the same reason and are left out too.
+const TIGHTENABLE_PUNCTUATION = /[.,]$/;
+
+function pillElement(
+  ref: WebSourceRef,
+  shown: number,
+  tight: boolean,
+): ElementContent {
   return {
     type: "element",
     tagName: SOURCE_PILL_TAG,
     properties: {
+      // A data attribute, because react-markdown normalizes properties through
+      // property-information: a bespoke "tight" prop is dropped on the way to the
+      // component, and className is owned by the renderer.
+      dataTight: tight ? "true" : undefined,
       // Absent for an uploaded document: SourcePill then renders the number as
       // plain (non-link) text rather than a dead anchor.
       href: ref.url,
@@ -201,9 +217,13 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
     // Emit the text between the previous marker and this one.
     if (match.index > last)
       out.push({ type: "text", value: value.slice(last, match.index) });
+    // Whether the marker lands directly behind clause punctuation ("benchmarks.²").
+    const afterPunctuation = TIGHTENABLE_PUNCTUATION.test(
+      value.slice(0, match.index),
+    );
     last = match.index + match[0].length;
     changed = true;
-    if (!repeat) out.push(pillElement(ref, shown));
+    if (!repeat) out.push(pillElement(ref, shown, afterPunctuation));
     previousIndex = n;
     previousWasMarker = true;
   }
@@ -239,20 +259,27 @@ export function SourcePill({
   href,
   title,
   children,
+  ...rest
 }: {
   href?: unknown;
   title?: unknown;
   children?: ReactNode;
+  "data-tight"?: unknown;
 }) {
   const openSources = useContext(SourcesOpener);
   const label = typeof title === "string" && title !== "" ? title : undefined;
+  // Set by the plugin when the marker sits directly behind a period or comma.
+  const className =
+    rest["data-tight"] === undefined
+      ? PILL_CLASS
+      : `${PILL_CLASS} ui-source-pill-tight`;
   const shown = Number(String(children ?? ""));
 
   if (openSources !== null)
     return (
       <button
         type="button"
-        className={PILL_CLASS}
+        className={className}
         title={label}
         aria-label={label}
         onClick={() => openSources(Number.isNaN(shown) ? undefined : shown)}
@@ -266,7 +293,7 @@ export function SourcePill({
   // same marker styling so it reads identically.
   if (typeof href !== "string" || href === "")
     return (
-      <span className={PILL_CLASS} title={label} aria-label={label}>
+      <span className={className} title={label} aria-label={label}>
         {children}
       </span>
     );
@@ -277,7 +304,7 @@ export function SourcePill({
       rel="noreferrer noopener"
       title={label}
       aria-label={label}
-      className={PILL_CLASS}
+      className={className}
     >
       {children}
     </a>
