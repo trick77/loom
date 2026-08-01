@@ -171,6 +171,56 @@ describe("MessageCitations", () => {
     expect(within(dialog).getByText("Modal runs Python.")).toBeInTheDocument();
   });
 
+  // Regression: messages persisted before documents were numbered carry no index at
+  // all. Deriving the displayed list from the numbering dropped them entirely, so a
+  // pure-RAG answer from before that change lost its whole Sources row.
+  it("still shows documents from messages persisted before they were numbered", () => {
+    const legacy: Citation[] = [
+      { documentId: "d1", filename: "report.pdf", snippet: "a", score: 0.4 },
+      { documentId: "d1", filename: "report.pdf", snippet: "b", score: 0.95 },
+    ];
+
+    render(<MessageCitations citations={legacy} display={new Map()} />);
+
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByText("2 excerpts")).toBeInTheDocument();
+  });
+
+  // combineLikeSources counts excerpts and picks the best-scoring snippet. Both are
+  // unreachable if the list is collapsed to one entry per [n] before it runs, which
+  // is why MessageCitations takes the full citation list rather than the numbering.
+  it("counts every chunk of a cited document and shows its best snippet", () => {
+    const chunks: Citation[] = [
+      {
+        documentId: "d1",
+        filename: "report.pdf",
+        snippet: "middling",
+        score: 0.4,
+        index: 1,
+      },
+      {
+        documentId: "d1",
+        filename: "report.pdf",
+        snippet: "the best match",
+        score: 0.95,
+        index: 1,
+      },
+      {
+        documentId: "d1",
+        filename: "report.pdf",
+        snippet: "weakest",
+        score: 0.3,
+        index: 1,
+      },
+    ];
+
+    render(<MessageCitations citations={chunks} display={new Map([[1, 1]])} />);
+
+    expect(screen.getByText("3 excerpts")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /report\.pdf/ }));
+    expect(screen.getByText("the best match")).toBeInTheDocument();
+  });
+
   // Documents are numbered in the same sequence as web sources, so the chip has to
   // show its marker for the reader to match it to the [n] in the prose.
   it("shows the citation number on a document chip", () => {
@@ -228,7 +278,7 @@ describe("MessageCitations", () => {
   // While streaming, the list also carries sources gathered but not yet cited.
   // Those have no marker in the prose, so numbering them by row position would
   // point the reader at a citation that does not exist.
-  it("leaves sources with no display number unnumbered", () => {
+  it("drops web sources the answer never cited", () => {
     const sources: Citation[] = [
       {
         documentId: "",
@@ -249,15 +299,17 @@ describe("MessageCitations", () => {
         title: "TrueFoundry",
       },
     ];
-    // Only Modal has been cited so far.
+    // Only Modal is cited. Truefoundry was gathered and passed over, so listing it
+    // would imply an attribution the answer never makes.
     render(
       <MessageCitations citations={sources} display={new Map([[2, 1]])} />,
     );
     fireEvent.click(screen.getByRole("button", { name: /sources/i }));
     const links = within(screen.getByRole("dialog")).getAllByRole("link");
 
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveTextContent("Modal docs");
     expect(links[0]).toHaveTextContent("1");
-    expect(links[1]).not.toHaveTextContent("2");
   });
 
   it("splits the sidebar with a More divider past the first four sources", () => {

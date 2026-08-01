@@ -51,8 +51,6 @@ const PILL_CLASS =
 type Ctx = {
   sources: SourceMap;
   display: DisplayMap;
-  last: number | null; // previous emitted index, for immediate-repeat dedupe
-  lastWasPill: boolean; // previous emitted node was a marker (no prose since)
 };
 
 // DisplayMap maps a persisted citation index to the number shown to the reader —
@@ -67,14 +65,16 @@ export type DisplayMap = Map<number, number>;
 // Immediately repeated markers for the same source collapse to one. Repeats
 // elsewhere in the message are kept: the same source legitimately backs several
 // different claims, and per-sentence attribution is the whole point.
+//
+// "Immediately" means within one text node. Adjacency is not tracked across nodes:
+// markdown splits "[1]**bold**[2]" into three, and carrying the state across made
+// the second marker look like it abutted the first — emitting a stray separator
+// there, and silently deleting the marker in "[1]**bold**[1]", where the two back
+// genuinely different claims. The same applied across paragraphs, list items and
+// table cells.
 export function rehypeSourcePills(sources: SourceMap, display: DisplayMap) {
   return (tree: Root) => {
-    walk(tree.children, {
-      sources,
-      display,
-      last: null,
-      lastWasPill: false,
-    });
+    walk(tree.children, { sources, display });
   };
 }
 
@@ -130,6 +130,9 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
   const out: ElementContent[] = [];
   let last = 0;
   let changed = false;
+  // Adjacency state is per node — see rehypeSourcePills.
+  let previousIndex: number | null = null;
+  let previousWasMarker = false;
   let match: RegExpExecArray | null;
   while ((match = MARKER.exec(value)) !== null) {
     const n = Number(match[1]);
@@ -140,12 +143,12 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
     if (ref === undefined || shown === undefined) continue;
     // Whether this marker directly abuts the previous one ("[1][2]" with nothing
     // between), as opposed to being separated by prose.
-    const abuts = match.index === last && ctx.lastWasPill;
+    const abuts = match.index === last && previousWasMarker;
     // A repeat collapses only when it abuts: the model writes "[1][1]" for a single
     // claim, which should read as one number. Once any prose intervenes the repeat
     // backs a separate claim, and dropping it would strip that sentence of its
     // attribution.
-    const repeat = abuts && ctx.last === n;
+    const repeat = abuts && previousIndex === n;
     // Emit the text between the previous marker and this one.
     if (match.index > last)
       out.push({ type: "text", value: value.slice(last, match.index) });
@@ -157,16 +160,11 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
       if (abuts) out.push(separatorElement());
       out.push(pillElement(ref, shown));
     }
-    ctx.last = n;
-    ctx.lastWasPill = true;
+    previousIndex = n;
+    previousWasMarker = true;
   }
   if (!changed) return null;
-  if (last < value.length) {
-    out.push({ type: "text", value: value.slice(last) });
-    // Prose after the final marker: a marker opening the *next* text node (markers
-    // can straddle nodes when the model bolds around them) is no longer adjacent.
-    ctx.lastWasPill = false;
-  }
+  if (last < value.length) out.push({ type: "text", value: value.slice(last) });
   return out;
 }
 

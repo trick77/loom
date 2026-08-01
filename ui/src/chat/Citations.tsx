@@ -54,13 +54,20 @@ function isWebSource(citation: Citation): boolean {
 }
 
 // combineWebSources deduplicates web citations by URL, so the "Sources" row lists
-// each distinct page once. filename holds the site-name label.
+// each distinct page once, and orders them the way the answer cites them.
 //
-// Input order is preserved deliberately: callers pass the list already ordered by
-// first citation (assignDisplayNumbers), and the sidebar derives each card's number
-// from its position. Re-sorting by the persisted citation.index here would restore
-// Tavily arrival order and desync the cards from the inline [n] markers.
-function combineWebSources(sources: Citation[]): Citation[] {
+// Uncited web sources are dropped: the model searched them and moved on, and
+// listing them would imply an attribution the prose never makes. When the answer
+// cites nothing at all — around half of them — the whole gathered set is shown
+// instead, so the row never collapses to nothing and the user can still see what
+// was searched.
+//
+// Documents are NOT filtered this way (see MessageCitations): the user uploaded
+// them, so they stay visible whether or not a sentence happened to cite one.
+function combineWebSources(
+  sources: Citation[],
+  display?: DisplayMap,
+): Citation[] {
   const seen = new Set<string>();
   const unique: Citation[] = [];
   for (const source of sources) {
@@ -68,7 +75,12 @@ function combineWebSources(sources: Citation[]): Citation[] {
     seen.add(source.url);
     unique.push(source);
   }
-  return unique;
+  const cited = unique.filter((s) => display?.get(s.index ?? 0) !== undefined);
+  if (cited.length === 0) return unique;
+  return cited.sort(
+    (a, b) =>
+      (display?.get(a.index ?? 0) ?? 0) - (display?.get(b.index ?? 0) ?? 0),
+  );
 }
 
 // dedupeByDomain keeps the first web source per registrable domain so the favicon
@@ -109,8 +121,11 @@ export function MessageCitations({
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   if (citations === undefined || citations.length === 0) return null;
+  // combineLikeSources gets EVERY document chunk, not one per document: counting
+  // excerpts and picking the best-scoring snippet are its whole job, and both are
+  // unreachable if the list has already been collapsed to one entry per [n].
   const combined = combineLikeSources(citations.filter((c) => !isWebSource(c)));
-  const webSources = combineWebSources(citations.filter(isWebSource));
+  const webSources = combineWebSources(citations.filter(isWebSource), display);
   // The pile is a per-site visual summary, so collapse to one favicon per site;
   // the sidebar still lists every distinct page from `webSources`.
   const faviconSources = dedupeByDomain(webSources);

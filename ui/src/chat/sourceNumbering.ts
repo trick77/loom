@@ -1,9 +1,9 @@
 import type { Citation } from "../api";
 
-// The backend stamps every gathered URL with a stable [n] at fetch time, in Tavily
-// arrival order, and that is the number the model sees and emits. It is a poor
-// *display* number: the model typically cites 4 of 10 gathered sources, so an
-// answer can open with [3] while sources it never used sit at the top of the list.
+// The backend stamps every source with a stable [n] — documents first, then web
+// pages continuing the same sequence — and that is the number the model sees and
+// emits. It is a poor *display* number: the model typically cites 4 of 10 gathered
+// sources, so an answer can open with [3] while sources it never used sit on top.
 //
 // assignDisplayNumbers derives a presentation numbering from the answer text:
 // 1, 2, 3… in the order the model first cites each source. The persisted
@@ -13,31 +13,46 @@ import type { Citation } from "../api";
 //
 // The mapping is append-only: a display number, once assigned, never changes as
 // more text arrives. That is what makes it safe to run against a partial answer
-// mid-stream — pills and sidebar rows never reshuffle, they only get appended to.
+// mid-stream — pills never reshuffle, they only get appended to.
+//
+// This module answers only "what number does each cited source show?". Which
+// sources appear under the answer is MessageCitations' job — it needs the full
+// citation list (every RAG chunk, not one per document) to count excerpts.
 
 export type DisplayNumbering = {
   // persisted citation.index -> display number
   display: Map<number, number>;
-  // the citations to show, in display order
-  ordered: Citation[];
 };
 
 const MARKER = /\[(\d+)\]/g;
-// A fenced block, then an inline span. Markers inside code are array indices
-// (arr[0], argv[2]), not citations — mirrors the code/pre skipping in
-// rehypeSourcePills, which never turns those into pills either.
-const FENCED = /```[\s\S]*?(?:```|$)/g;
-const INLINE_CODE = /`[^`\n]*`/g;
+// Code regions, in the order they must be removed. Markers inside code are array
+// indices (arr[0], argv[2]), not citations. This has to agree with the pill
+// plugin's SKIP_TAGS (code/pre) or the two disagree about what is a citation:
+// a marker counted here but not pilled still consumes a display number, so the
+// genuinely cited source renders under the wrong one. Hence indented blocks and
+// ~~~ fences, which markdown also renders as <pre>/<code>.
+const CODE_REGIONS: RegExp[] = [
+  /^( {4}|\t)[^\n]*$/gm, // indented code block lines
+  /```[\s\S]*?(?:```|$)/g, // ``` fence (closed or still streaming)
+  /~~~[\s\S]*?(?:~~~|$)/g, // ~~~ fence
+  /(`+)[^\n]*?\1/g, // inline span, any backtick run length
+  /`+[^\n]*$/gm, // unclosed inline span (mid-stream)
+];
 
-// stripCode blanks out code regions while preserving the surrounding text, so
-// marker order and position are unaffected by the removal.
+// stripCode blanks out code regions, replacing each with spaces of the same length
+// so the surrounding text keeps its offsets. Only marker *order* is used today,
+// but preserving position keeps the function honest if that changes.
 function stripCode(content: string): string {
-  return content.replace(FENCED, " ").replace(INLINE_CODE, " ");
+  let out = content;
+  for (const region of CODE_REGIONS) {
+    out = out.replace(region, (match) => " ".repeat(match.length));
+  }
+  return out;
 }
 
-// webCitations keeps the citations that carry a usable [n] marker, first one wins
-// per index (the backend can emit one citation per RAG chunk, but web sources are
-// already unique per index).
+// indexCitations maps each [n] to a representative citation. First wins per index:
+// several RAG chunks of one document share its marker, and any of them identifies
+// the source for numbering purposes.
 function indexCitations(citations: Citation[]): Map<number, Citation> {
   const byIndex = new Map<number, Citation>();
   for (const citation of citations) {
@@ -51,50 +66,21 @@ export function assignDisplayNumbers(
   content: string,
   citations?: Citation[],
 ): DisplayNumbering {
-  const empty: DisplayNumbering = { display: new Map(), ordered: [] };
-  if (citations === undefined || citations.length === 0) return empty;
+  const display = new Map<number, number>();
+  if (citations === undefined || citations.length === 0) return { display };
 
   const byIndex = indexCitations(citations);
-  if (byIndex.size === 0) return empty;
+  if (byIndex.size === 0) return { display };
 
-  const display = new Map<number, number>();
-  const ordered: Citation[] = [];
   const text = stripCode(content);
-
   MARKER.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = MARKER.exec(text)) !== null) {
     const index = Number(match[1]);
     // An unknown marker (out of range, or a source not yet delivered) consumes no
     // display number — it stays inert text and cannot shift the numbering.
-    const citation = byIndex.get(index);
-    if (citation === undefined || display.has(index)) continue;
+    if (!byIndex.has(index) || display.has(index)) continue;
     display.set(index, display.size + 1);
-    ordered.push(citation);
   }
-
-  // Nothing cited: fall back to every gathered source, in discovery order. Without
-  // this the Sources row would vanish on the ~half of answers that cite nothing,
-  // losing all visibility into what was searched.
-  if (ordered.length === 0) {
-    const all = [...byIndex.values()].sort(
-      (a, b) => (a.index ?? 0) - (b.index ?? 0),
-    );
-    return { display: new Map(), ordered: all };
-  }
-
-  // Uncited *web* sources are dropped — the model searched them and moved on, and
-  // listing them would imply an attribution the prose never makes. Uncited
-  // *documents* are kept: the user uploaded them and needs to see they were
-  // consulted, whether or not a sentence happened to cite one. They carry no
-  // display number, so they render unnumbered.
-  const uncitedDocuments = [...byIndex.values()]
-    .filter(
-      (citation) =>
-        !display.has(citation.index ?? 0) &&
-        (citation.url === undefined || citation.url === ""),
-    )
-    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-
-  return { display, ordered: [...ordered, ...uncitedDocuments] };
+  return { display };
 }
