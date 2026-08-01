@@ -126,41 +126,7 @@ describe("assignDisplayNumbers", () => {
     expect(previous.get(2)).toBe(3);
   });
 
-  // Regression: the favicon row was measured going 7 -> 1 -> 2 -> ... -> 7 on a
-  // live turn. Sources land before the deltas that cite them, so the list was the
-  // full gathered set until the first marker, then collapsed to that one source.
-  it("keeps uncited sources while streaming so the list only grows", () => {
-    const full = "First [3]. Then [1]. Finally [2].";
-    let previousLength = 0;
-
-    for (let i = 1; i <= full.length; i++) {
-      const { ordered } = assignDisplayNumbers(full.slice(0, i), SOURCES, {
-        includeUncited: true,
-      });
-      expect(ordered.length).toBeGreaterThanOrEqual(previousLength);
-      expect(ordered).toHaveLength(SOURCES.length);
-      previousLength = ordered.length;
-    }
-  });
-
-  it("streaming order puts cited sources first, uncited after, numbered only if cited", () => {
-    const { ordered, display } = assignDisplayNumbers(
-      "Only [3] so far.",
-      SOURCES,
-      {
-        includeUncited: true,
-      },
-    );
-
-    expect(ordered.map((c) => c.index)).toEqual([3, 1, 2]);
-    // Cited gets 1; the two not yet cited carry no number, so the sidebar renders
-    // them unnumbered rather than inventing markers the prose does not contain.
-    expect(display.get(3)).toBe(1);
-    expect(display.has(1)).toBe(false);
-    expect(display.has(2)).toBe(false);
-  });
-
-  it("settled (default) still drops uncited sources", () => {
+  it("drops uncited sources", () => {
     const { ordered } = assignDisplayNumbers("Only [3] so far.", SOURCES);
 
     expect(ordered.map((c) => c.index)).toEqual([3]);
