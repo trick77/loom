@@ -65,17 +65,16 @@ export function useStreamRuns() {
         controller?: AbortController | null;
       },
     ) => {
-      // Only drop the controller if it is still ours. A superseded run's `finally`
-      // can land after the replacement has already registered under the same key,
-      // and deleting then would leave the live run unstoppable.
+      // Only end the run if it is still ours. A superseded run's `finally` can land
+      // after the replacement has already registered under the same key: dropping
+      // the controller then would leave the live run unstoppable, and ending its
+      // state would make it invisible for the rest of the turn (patchRun drops
+      // every later patch for a key with no run).
       const controller = options.controller ?? null;
       const stored = abortsRef.current.get(key);
-      if (
-        stored !== undefined &&
-        (controller === null || stored === controller)
-      ) {
-        abortsRef.current.delete(key);
-      }
+      if (controller !== null && stored !== undefined && stored !== controller)
+        return;
+      if (stored !== undefined) abortsRef.current.delete(key);
       commit((current) =>
         endRun(current, key, {
           keepFailedTurnVisible: options.keepFailedTurnVisible,

@@ -181,9 +181,6 @@ export function ThreadShell({
   const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(
     null,
   );
-  // The composer surface currently on screen, and the draft that belongs to it.
-  const draftScope = draftScopeKey(route, incognito);
-  const draft = getDraft(drafts, draftScope);
   function setDraftText(scope: DraftScope, text: string) {
     setDrafts((current) => setScopedDraftText(current, scope, text));
   }
@@ -282,6 +279,20 @@ export function ThreadShell({
     handleActionError,
     onSessionExpired,
   });
+
+  // The composer surface currently on screen, and the draft that belongs to it.
+  // Keyed off `activeThread`, not `route`: the route flips the instant a thread is
+  // clicked while `activeThread` (and so the panel, its messages and the send
+  // target) only follows once the fetch resolves. Reading the route here would
+  // show the next thread's draft over the previous thread's transcript, and a send
+  // in that window would post the next thread's draft to the previous thread.
+  const draftScope = draftScopeKey(
+    route.view === "thread" && activeThread !== null
+      ? { view: "thread", threadID: activeThread.id }
+      : route,
+    incognito,
+  );
+  const draft = getDraft(drafts, draftScope);
 
   // The run the visible composer controls. Null on the start screen and on the
   // project page: a turn launched from either is rekeyed onto its new thread and
@@ -825,9 +836,18 @@ export function ThreadShell({
         // bound to it (project-less => private to this thread). Image uploads must
         // finish before the first model request so their artifact ids can be sent
         // as multimodal inputs; document indexing still continues in the background.
-        if (pendingAttachments.length > 0) {
+        const attachmentsToFlush = pendingAttachments;
+        if (attachmentsToFlush.length > 0) {
+          // Take the staged files off the start screen *before* the await, not
+          // after: the start screen stays interactive for the whole (multi-second)
+          // creation window now that sending no longer disables it, and a second
+          // send from there would otherwise re-read this list and flush the same
+          // files into its own thread — with updateSentAttachmentStatus rewriting
+          // the shared attachment objects' artifact ids under this send's feet.
+          // Not revoked, so the object URLs stay alive for the optimistic bubble.
+          setPendingAttachments([]);
           await flushPendingAttachments(
-            pendingAttachments,
+            attachmentsToFlush,
             {
               threadId: targetThread.id,
               projectId: projectIDForNewThread ?? undefined,
@@ -841,13 +861,14 @@ export function ThreadShell({
                 attachment.artifactId === undefined),
           );
           if (failedImageAttachment !== undefined) {
+            // The send stops here with the start screen still on show, so put the
+            // files back rather than making the user pick them again.
+            setPendingAttachments(attachmentsToFlush);
             throw new Error(
               failedImageAttachment.error ??
                 `Failed to upload ${failedImageAttachment.filename}.`,
             );
           }
-          // Keep the object URL alive for the optimistic sent bubble.
-          setPendingAttachments([]);
         }
         setActiveThread(targetThread);
         activeThreadIDRef.current = targetThread.id;

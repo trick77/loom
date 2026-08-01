@@ -4556,6 +4556,91 @@ test("keeps an unsent draft with the chat it was typed in", async () => {
   );
 });
 
+test("shows the open chat's draft while the next chat is still loading", async () => {
+  // The route flips the instant a sidebar entry is clicked, but the panel keeps
+  // rendering the previous chat until its replacement's fetch resolves. Keying the
+  // composer off the route would put the next chat's draft over the previous
+  // chat's transcript — and a send in that window would post it to the wrong one.
+  let releaseSecondThread: (() => void) | null = null;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "First chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+            {
+              id: "t2",
+              title: "Second chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            id: "t1",
+            title: "First chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (url === "/api/threads/t2") {
+        // Hold the second chat's load open so the in-between state is observable.
+        await new Promise<void>((resolve) => {
+          releaseSecondThread = resolve;
+        });
+        return Response.json({
+          thread: {
+            id: "t2",
+            title: "Second chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "First chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "belongs to the first chat" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Second chat" }));
+  await waitFor(() => expect(releaseSecondThread).not.toBeNull());
+  // Still the first chat on screen, so still its draft.
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue(
+    "belongs to the first chat",
+  );
+
+  releaseSecondThread!();
+  await waitFor(() =>
+    expect(screen.getByPlaceholderText(/message/i)).toHaveValue(""),
+  );
+});
+
 test("does not stop a background stream with Escape while another chat is open", async () => {
   const stream = new ReadableStream<Uint8Array>({ start() {} });
   let stopRequests = 0;
