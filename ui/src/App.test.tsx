@@ -3223,9 +3223,10 @@ test("shows active activity trace with reasoning and tool activity before assist
     "Searching sources",
   );
   expect(within(trace).queryByText("Thinking")).toBeNull();
-  // The window auto-opens while inference runs — no click needed.
+  // The window auto-opens while inference runs — no click needed. The open state
+  // is applied by an effect, so it lands one render after the trace itself.
   expect(
-    within(trace).getByRole("button", { name: /hide activity/i }),
+    await within(trace).findByRole("button", { name: /hide activity/i }),
   ).toBeInTheDocument();
   expect(
     within(trace).getByText("I should search current sources."),
