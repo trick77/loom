@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   deleteArtifact,
@@ -205,6 +205,16 @@ export function useDocumentAttachments(scope: {
     },
     [],
   );
+
+  // Staged-but-unsent attachments belong to the thread they were picked in. The
+  // hosting panel is not remounted on a thread switch (giving it a key would throw
+  // away scroll position and the sources sidebar), so without this they would
+  // follow the user to the next thread and bind to it on send.
+  const threadScopeId = scope.threadId;
+  useEffect(() => {
+    clearAttachments();
+    setAttachNote("");
+  }, [clearAttachments, threadScopeId]);
 
   const handleAttachFiles = useCallback(
     (files: File[], override?: { threadId?: string; projectId?: string }) => {

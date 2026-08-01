@@ -17,23 +17,21 @@ import { composerAttachmentFromMessageAttachment } from "./useDocumentAttachment
 import type { MessageWithActivityTrace } from "./types";
 
 export function useThreadData({
+  abortAllStreamRuns,
   activeThreadIDRef,
-  clearStreamingBlocks,
   handleActionError,
   onSessionExpired,
-  streamAbortRef,
-  streamingThreadIDRef,
 }: {
+  // Only ever called on unmount: route changes deliberately leave running turns
+  // alone, so switching threads no longer touches stream state at all.
+  abortAllStreamRuns(): void;
   activeThreadIDRef: React.MutableRefObject<string | null>;
-  clearStreamingBlocks(): void;
   handleActionError(
     error: unknown,
     fallback: string,
     setError: (message: string) => void,
   ): void;
   onSessionExpired(): void;
-  streamAbortRef: React.MutableRefObject<AbortController | null>;
-  streamingThreadIDRef: React.MutableRefObject<string | null>;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -65,9 +63,9 @@ export function useThreadData({
       });
     return () => {
       active = false;
-      streamAbortRef.current?.abort();
+      abortAllStreamRuns();
     };
-  }, [onSessionExpired, streamAbortRef]);
+  }, [abortAllStreamRuns, onSessionExpired]);
 
   const loadRoute = useCallback(
     (route: RouteState) => {
@@ -76,9 +74,6 @@ export function useThreadData({
         setActiveThread(null);
         setActiveShare(null);
         setMessages([]);
-        if (streamingThreadIDRef.current === null) {
-          clearStreamingBlocks();
-        }
         return;
       }
       if (activeThreadIDRef.current === route.threadID) return;
@@ -90,9 +85,6 @@ export function useThreadData({
           setActiveShare(response.share ?? null);
           activeThreadIDRef.current = response.thread.id;
           setMessages(response.messages.map(rehydrateLoadedMessage));
-          if (streamingThreadIDRef.current === null) {
-            clearStreamingBlocks();
-          }
         })
         .catch((error: unknown) => {
           if (!active) return;
@@ -106,12 +98,7 @@ export function useThreadData({
         active = false;
       };
     },
-    [
-      activeThreadIDRef,
-      clearStreamingBlocks,
-      handleActionError,
-      streamingThreadIDRef,
-    ],
+    [activeThreadIDRef, handleActionError],
   );
 
   const loadProjectThreads = useCallback(

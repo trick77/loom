@@ -11,7 +11,6 @@ import {
   streamMessage,
   streamIncognitoMessage,
   type Artifact,
-  type Citation,
   type ContentBlock,
   type MessagePastedText,
   type Project,
@@ -42,6 +41,27 @@ import {
   toPastedTextBlock,
   type PastedText,
 } from "./pastedText";
+import {
+  clearDraft,
+  composeContent,
+  INCOGNITO_DRAFT_SCOPE,
+  draftScopeKey,
+  getDraft,
+  setDraft as setScopedDraft,
+  setDraftPastedTexts as setScopedPastedTexts,
+  setDraftText as setScopedDraftText,
+  threadDraftScope,
+  type ComposerDrafts,
+  type DraftScope,
+} from "./composerDrafts";
+import {
+  INCOGNITO_RUN_KEY,
+  isStreaming,
+  selectRun,
+  threadRunKey,
+  type RunKey,
+} from "./streamRuns";
+import { useStreamRuns } from "./useStreamRuns";
 import { useMediaQuery } from "./useMediaQuery";
 import {
   composerAttachmentFromArtifact,
@@ -100,25 +120,14 @@ export function ThreadShell({
 }: ThreadShellProps) {
   const { t, i18n } = useTranslation();
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
-  const [draft, setDraft] = useState("");
+  // The textarea contents and the staged "Pasted" chips, keyed by the surface that
+  // owns them (see composerDrafts.ts). They belong to the thread they were typed
+  // in: leaving that thread must not carry them into the next one, and must not
+  // throw them away either.
+  const [drafts, setDrafts] = useState<ComposerDrafts>({});
   // Bumped whenever a retry loads a message back into the composer, to focus the
   // textarea and move the caret to the end (see Composer's focusSignal).
   const [composerFocusTick, setComposerFocusTick] = useState(0);
-  // Large pastes collapsed into removable "Pasted" chips shown above the textarea.
-  // Folded back into the outgoing message content on send (never uploaded/indexed).
-  const [pastedTexts, setPastedTexts] = useState<PastedText[]>([]);
-  function handleAddPastedText(text: string) {
-    setPastedTexts((current) => [...current, createPastedText(text)]);
-  }
-  function handleRemovePastedText(id: string) {
-    setPastedTexts((current) => current.filter((pasted) => pasted.id !== id));
-  }
-  // Merge the trimmed draft with any staged pasted blocks into the message content.
-  function composeSendContent(): string {
-    return [draft.trim(), ...pastedTexts.map((pasted) => pasted.text)]
-      .filter((part) => part !== "")
-      .join("\n\n");
-  }
   // Files attached on the new-thread start screen, held until the first send creates
   // a thread to bind them to (deferred upload — avoids orphan empty threads and
   // scopes the upload to the thread it was attached in).
@@ -131,25 +140,31 @@ export function ThreadShell({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [modalError, setModalError] = useState("");
-  // Each assistant turn is reconstructed live as a single ordered ContentBlock[]
-  // (text / trace / artifact) mirroring the order the SSE events arrive, so the
-  // transcript renders text, tool activity and images in true chronological
-  // order. The ref mirrors the state so the streaming closures can read the
-  // current blocks synchronously (e.g. to graft the completed turn onto the
-  // committed message). `toolPending` bridges a model-yielded tool call until its
-  // running trace event surfaces, driving the live "thinking" affordance.
-  const [streamingBlocks, setStreamingBlocks] = useState<ContentBlock[]>([]);
-  const streamingBlocksRef = useRef<ContentBlock[]>([]);
-  // Sources gathered so far in the running turn, pushed by the backend after every
-  // tool round. They arrive ahead of the deltas that cite them, so inline [n]
-  // markers resolve to numbered links while the answer is still being written
-  // rather than popping in once the message settles.
-  const [streamingSources, setStreamingSources] = useState<Citation[]>([]);
-  const [toolPending, setToolPending] = useState(false);
+  // Every assistant turn in flight, keyed by the thread that owns it (see
+  // streamRuns.ts). Each run reconstructs its turn as a single ordered
+  // ContentBlock[] (text / trace / artifact) mirroring the order the SSE events
+  // arrive, so the transcript renders text, tool activity and images in true
+  // chronological order; `sources` are the citations gathered so far, pushed
+  // ahead of the deltas that cite them so inline [n] markers resolve while the
+  // answer is still being written; `toolPending` bridges a model-yielded tool call
+  // until its running trace event surfaces, driving the live "thinking"
+  // affordance. Runs are independent, so several threads can stream at once — the
+  // server has always allowed it (activeStreamRegistry is keyed by user+thread and
+  // preempts rather than serializes), it was this state that did not.
+  const {
+    runs,
+    begin: beginStreamRun,
+    patch: patchStreamRun,
+    rekey: rekeyStreamRun,
+    end: endStreamRun,
+    abort: abortStreamRun,
+    abortAll: abortAllStreamRuns,
+    nextProvisionalKey,
+  } = useStreamRuns();
   // Incognito mode is a standalone, ephemeral chat reachable only from /new. Its
   // transcript lives entirely here and is never persisted or added to the thread
-  // lists; exiting or leaving discards it. It reuses the shared streaming state
-  // (only one conversation is active at a time).
+  // lists; exiting or leaving discards it. Its turn is just another run, under a
+  // reserved key.
   const [incognito, setIncognito] = useState(false);
   const [incognitoMessages, setIncognitoMessages] = useState<
     MessageWithActivityTrace[]
@@ -166,14 +181,30 @@ export function ThreadShell({
   const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(
     null,
   );
-  const clearStreamingBlocks = useCallback(() => {
-    streamingBlocksRef.current = [];
-    setStreamingBlocks([]);
-    setToolPending(false);
-    // The settled message carries its own citations, so the live list is only ever
-    // for the turn in flight.
-    setStreamingSources([]);
-  }, []);
+  function setDraftText(scope: DraftScope, text: string) {
+    setDrafts((current) => setScopedDraftText(current, scope, text));
+  }
+  // Large pastes collapsed into removable "Pasted" chips shown above the textarea.
+  // Folded back into the outgoing message content on send (never uploaded/indexed).
+  function handleAddPastedText(text: string) {
+    setDrafts((current) =>
+      setScopedPastedTexts(current, draftScope, [
+        ...getDraft(current, draftScope).pastedTexts,
+        createPastedText(text),
+      ]),
+    );
+  }
+  function handleRemovePastedText(id: string) {
+    setDrafts((current) =>
+      setScopedPastedTexts(
+        current,
+        draftScope,
+        getDraft(current, draftScope).pastedTexts.filter(
+          (pasted) => pasted.id !== id,
+        ),
+      ),
+    );
+  }
   // Flush hook for the deferred new-thread upload: the scope is supplied per call at
   // send time (the thread does not exist yet when the file is picked). Its
   // attachNote carries ingestion status/errors after the start screen is gone, so
@@ -182,11 +213,10 @@ export function ThreadShell({
     attachNote: deferredAttachNote,
     uploadExistingAttachments: flushPendingAttachments,
   } = useDocumentAttachments({});
+  // Errors that belong to the shell rather than to a turn (starring, attaching,
+  // thread loading). A failed turn's own error lives on its run, so it stays with
+  // the thread that failed.
   const [sendError, setSendError] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [streamingThreadID, setStreamingThreadID] = useState<string | null>(
-    null,
-  );
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -204,8 +234,6 @@ export function ThreadShell({
   }, [mobileSidebarOpen]);
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
-  const streamAbortRef = useRef<AbortController | null>(null);
-  const streamingThreadIDRef = useRef<string | null>(null);
 
   const handleActionError = useCallback(
     (error: unknown, fallback: string, setError: (message: string) => void) => {
@@ -221,11 +249,6 @@ export function ThreadShell({
     },
     [onSessionExpired],
   );
-
-  const setActiveStreamingThreadID = useCallback((threadID: string | null) => {
-    streamingThreadIDRef.current = threadID;
-    setStreamingThreadID(threadID);
-  }, []);
 
   const {
     activeProject: activeProjectForRoute,
@@ -251,20 +274,49 @@ export function ThreadShell({
     threads,
     unstarredProjects,
   } = useThreadData({
+    abortAllStreamRuns,
     activeThreadIDRef,
-    clearStreamingBlocks,
     handleActionError,
     onSessionExpired,
-    streamAbortRef,
-    streamingThreadIDRef,
   });
 
+  // The composer surface currently on screen, and the draft that belongs to it.
+  // Keyed off `activeThread`, not `route`: the route flips the instant a thread is
+  // clicked while `activeThread` (and so the panel, its messages and the send
+  // target) only follows once the fetch resolves. Reading the route here would
+  // show the next thread's draft over the previous thread's transcript, and a send
+  // in that window would post the next thread's draft to the previous thread.
+  const draftScope = draftScopeKey(
+    route.view === "thread" && activeThread !== null
+      ? { view: "thread", threadID: activeThread.id }
+      : route,
+    incognito,
+  );
+  const draft = getDraft(drafts, draftScope);
+
+  // The run the visible composer controls. Null on the start screen and on the
+  // project page: a turn launched from either is rekeyed onto its new thread and
+  // navigated to, so by the time there is something to stop, there is a thread.
+  const activeRunKey: RunKey | null = incognito
+    ? INCOGNITO_RUN_KEY
+    : activeThread !== null
+      ? threadRunKey(activeThread.id)
+      : null;
+  const activeRun = selectRun(runs, activeRunKey);
+  const activeThreadIsStreaming = isStreaming(runs, activeRunKey);
+
+  // Deliberately not gated on `runs`: that record changes on every delta, and a
+  // dependency on it would re-create this callback — and so tear down and re-add
+  // the Escape listener below — once per streamed token, per running thread.
+  // Every caller already gates on the Stop control being rendered, and aborting a
+  // key with no run is a no-op.
   const handleStopResponse = useCallback(
     (source = "stop_button") => {
-      if (!isSending) return;
-      const threadID = streamingThreadIDRef.current;
-      const abort = () => streamAbortRef.current?.abort();
-      if (threadID === null) {
+      if (activeRunKey === null) return;
+      const abort = () => abortStreamRun(activeRunKey);
+      // Incognito has no server-side stop endpoint — dropping the fetch is the
+      // whole mechanism there.
+      if (incognito || activeThread === null) {
         abort();
         return;
       }
@@ -272,13 +324,20 @@ export function ThreadShell({
       // fetch once that stop request has been sent. Aborting first would drop the
       // connection and make the server log the generic request-context cancel
       // instead of this attributed one (the cancel cause is first-writer-wins).
-      void stopMessage(threadID, source)
+      void stopMessage(activeThread.id, source)
         .catch((error: unknown) => {
           handleActionError(error, t("thread.stopFailed"), setSendError);
         })
         .finally(abort);
     },
-    [handleActionError, isSending],
+    [
+      abortStreamRun,
+      activeRunKey,
+      activeThread,
+      handleActionError,
+      incognito,
+      t,
+    ],
   );
 
   useEffect(() => {
@@ -306,11 +365,12 @@ export function ThreadShell({
     };
   }, [openThreadMenuID]);
 
+  // Escape stops the turn on the thread you are looking at. Runs on other threads
+  // keep going — you stop those by opening them.
   useEffect(() => {
-    if (!isSending) return;
+    if (!activeThreadIsStreaming) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      if (activeThreadIDRef.current !== streamingThreadIDRef.current) return;
       event.preventDefault();
       handleStopResponse("escape");
     }
@@ -318,7 +378,7 @@ export function ThreadShell({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleStopResponse, isSending]);
+  }, [activeThreadIsStreaming, handleStopResponse]);
 
   // ⌘K / Ctrl-K opens the search palette from anywhere in the app.
   useEffect(() => {
@@ -383,16 +443,13 @@ export function ThreadShell({
     activeThreadIDRef.current = null;
     setActiveThread(null);
     setMessages([]);
-    if (streamingThreadIDRef.current === null) {
-      clearStreamingBlocks();
-    }
     setSendError("");
     // Every new thread starts at the default reasoning effort; the previous
     // thread's choice does not carry over (it is never persisted).
     setReasoningEffort(DEFAULT_REASONING_EFFORT);
     navigate({ view: "new" });
     setRoute({ view: "new" });
-  }, [clearStreamingBlocks, onThread]);
+  }, [onThread]);
 
   // "Use in thread" from the Artifacts library: open the new-chat screen with the
   // artifact pre-attached so the user can prompt against it. navigateToNew() nulls
@@ -650,22 +707,28 @@ export function ThreadShell({
       toSentAttachment,
     ),
   ) {
-    const draftText = draft.trim();
-    const content = composeSendContent();
-    if (content === "" || isSending) return;
+    const draftText = draft.text.trim();
+    const content = composeContent(draft);
+    if (content === "") return;
+    // Only this thread's own turn blocks a new send. Other threads streaming is
+    // exactly what is now allowed.
+    if (
+      activeThread !== null &&
+      isStreaming(runs, threadRunKey(activeThread.id))
+    )
+      return;
     // Slash command detection is the draft alone (the popover keys off it too); it
     // clears any staged chips along with the draft.
     if (runSlashCommand(draftText)) return;
-    // Clear chips optimistically; on a send error sendContent restores the chips
-    // and the draft-only text (not the merged content) for retry.
-    const restorePastedTexts = pastedTexts;
-    setPastedTexts([]);
+    // sendContent clears this scope's draft and chips; on a send error it restores
+    // the chips and the draft-only text (not the merged content) for retry.
     await sendContent(content, {
       restoreDraftOnError: true,
       attachments,
       restoreDraft: draftText,
-      restorePastedTexts,
-      pastedTexts: restorePastedTexts,
+      restorePastedTexts: draft.pastedTexts,
+      pastedTexts: draft.pastedTexts,
+      draftScope,
     });
   }
 
@@ -675,8 +738,7 @@ export function ThreadShell({
   function runSlashCommand(content: string): boolean {
     const command = matchSlashCommand(content);
     if (command === null) return false;
-    setDraft("");
-    setPastedTexts([]);
+    setDrafts((current) => clearDraft(current, draftScope));
     setSlashCommand(command.name);
     return true;
   }
@@ -688,8 +750,12 @@ export function ThreadShell({
     const blocks = pastedTexts ?? [];
     if ((content.trim() === "" && blocks.length === 0) || activeThread === null)
       return;
-    setDraft(content);
-    setPastedTexts(blocks.map(pastedTextFromBlock));
+    setDrafts((current) =>
+      setScopedDraft(current, draftScope, {
+        text: content,
+        pastedTexts: blocks.map(pastedTextFromBlock),
+      }),
+    );
     setComposerFocusTick((tick) => tick + 1);
   }
 
@@ -707,19 +773,44 @@ export function ThreadShell({
       // for the model, and carried alongside so the sent bubble renders "Pasted"
       // chips instead of the inline wall of text (persisted server-side).
       pastedTexts?: PastedText[];
+      // The composer this send came from. Its draft is cleared now and restored
+      // here on error — see restoreScope below for the one case they differ.
+      draftScope: DraftScope;
     },
   ) {
-    setDraft("");
-    setIsSending(true);
-    clearStreamingBlocks();
+    // A turn on an existing thread is keyed by that thread. A turn started before
+    // the thread exists takes a provisional key of its own, so a second send while
+    // createThread (and possibly an image-upload flush) is still in flight cannot
+    // land on the first one's run.
+    let runKey: RunKey =
+      activeThread !== null
+        ? threadRunKey(activeThread.id)
+        : nextProvisionalKey();
+    // Where a failure puts the draft back: the thread that failed, not whichever
+    // one happens to be on screen by then. A send that creates a thread retargets
+    // this to the thread it landed on.
+    let restoreScope: DraftScope = options.draftScope;
+    setDrafts((current) => clearDraft(current, options.draftScope));
     setSendError("");
-    let abortController: AbortController | null = null;
+    const abortController = new AbortController();
+    beginStreamRun(runKey, abortController);
     let createdThreadForFallback: Thread | null = null;
     let receivedThreadEvent = false;
     let keepFailedTurnVisible = false;
     // Id of the optimistic user bubble until the server confirms it; the catch reads
     // this to decide whether to drop the placeholder, so it must outlive the try block.
     let optimisticUserMessageID: string | null = null;
+    // The thread this run belongs to, known up front for an existing thread and
+    // filled in below for one created by this send. Whether the user is still
+    // looking at it decides the writes into `messages`, which is a single array
+    // for the thread on screen — run state is keyed and needs no such guard. A run
+    // that settles while the user is elsewhere is picked up by loadRoute's refetch
+    // on the way back.
+    let targetThreadID: string | null = activeThread?.id ?? null;
+    const isCurrentThread = () =>
+      targetThreadID !== null && activeThreadIDRef.current === targetThreadID;
+    // Captured once: the run outlives navigation, so a live `route` read inside
+    // the stream callbacks would go stale.
     const projectIDForNewThread =
       route.view === "project" ? route.projectID : null;
     const updateSentAttachmentStatus = (
@@ -745,9 +836,18 @@ export function ThreadShell({
         // bound to it (project-less => private to this thread). Image uploads must
         // finish before the first model request so their artifact ids can be sent
         // as multimodal inputs; document indexing still continues in the background.
-        if (pendingAttachments.length > 0) {
+        const attachmentsToFlush = pendingAttachments;
+        if (attachmentsToFlush.length > 0) {
+          // Take the staged files off the start screen *before* the await, not
+          // after: the start screen stays interactive for the whole (multi-second)
+          // creation window now that sending no longer disables it, and a second
+          // send from there would otherwise re-read this list and flush the same
+          // files into its own thread — with updateSentAttachmentStatus rewriting
+          // the shared attachment objects' artifact ids under this send's feet.
+          // Not revoked, so the object URLs stay alive for the optimistic bubble.
+          setPendingAttachments([]);
           await flushPendingAttachments(
-            pendingAttachments,
+            attachmentsToFlush,
             {
               threadId: targetThread.id,
               projectId: projectIDForNewThread ?? undefined,
@@ -761,44 +861,41 @@ export function ThreadShell({
                 attachment.artifactId === undefined),
           );
           if (failedImageAttachment !== undefined) {
+            // The send stops here with the start screen still on show, so put the
+            // files back rather than making the user pick them again.
+            setPendingAttachments(attachmentsToFlush);
             throw new Error(
               failedImageAttachment.error ??
                 `Failed to upload ${failedImageAttachment.filename}.`,
             );
           }
-          // Keep the object URL alive for the optimistic sent bubble.
-          setPendingAttachments([]);
         }
         setActiveThread(targetThread);
         activeThreadIDRef.current = targetThread.id;
         setMessages([]);
+        // The run now belongs to a real thread. Rekeying in the same tick as the
+        // route switch is what lets the thread we are about to land on pick the
+        // turn up mid-flight.
+        const createdRunKey = threadRunKey(targetThread.id);
+        rekeyStreamRun(runKey, createdRunKey);
+        runKey = createdRunKey;
+        restoreScope = threadDraftScope(targetThread.id);
         navigate({ view: "thread", threadID: targetThread.id });
         setRoute({ view: "thread", threadID: targetThread.id });
       }
-      const targetThreadID = targetThread.id;
+      targetThreadID = targetThread.id;
       activeThreadIDRef.current = targetThreadID;
-      abortController = new AbortController();
-      // A new turn can only start once the previous one settled (send gates on
-      // isSending, which clears streamAbortRef in the same tick), so there is
-      // normally nothing to abort here. Should two streams ever overlap via a
-      // race, the server attributes the older one as superseded_stream when the
-      // new request registers — no client-side stop call is needed.
-      streamAbortRef.current?.abort();
-      streamAbortRef.current = abortController;
-      setActiveStreamingThreadID(targetThreadID);
-      const isCurrentThread = () =>
-        activeThreadIDRef.current === targetThreadID;
+      const threadIDForRun = targetThreadID;
       // Accumulate this turn's ordered blocks in a closure-local array, the single
-      // source of truth for the graft at turn end. The rendered state mirror is
-      // kept in sync via setStreamingBlocks, but the React ref can be reset by
-      // unrelated route effects mid-stream, so the graft must not depend on it.
+      // source of truth for the graft at turn end. The rendered copy lives on the
+      // run, but a run can be ended (or superseded) from elsewhere, so the graft
+      // must not depend on reading it back.
       let liveBlocks: ContentBlock[] = [];
       const applyBlocks = (
         updater: (current: ContentBlock[]) => ContentBlock[],
       ) => {
         liveBlocks = updater(liveBlocks);
-        streamingBlocksRef.current = liveBlocks;
-        setStreamingBlocks(liveBlocks);
+        patchStreamRun(runKey, { blocks: liveBlocks });
       };
       const documentAttachmentIds = options.attachments
         .filter((attachment) => attachment.documentId !== undefined)
@@ -825,7 +922,7 @@ export function ThreadShell({
         const optimisticMessage: MessageWithActivityTrace = {
           id: tempID,
           clientKey: tempID,
-          threadId: targetThreadID,
+          threadId: threadIDForRun,
           role: "user",
           content,
           createdAt: new Date().toISOString(),
@@ -839,7 +936,7 @@ export function ThreadShell({
         setMessages((current) => [...current, optimisticMessage]);
       }
       await streamMessage(
-        targetThreadID,
+        threadIDForRun,
         content,
         {
           onUserMessage: (message) => {
@@ -881,12 +978,12 @@ export function ThreadShell({
             );
           },
           onToolPending: () => {
-            setToolPending(true);
+            patchStreamRun(runKey, { toolPending: true });
           },
           onToolCall: (event) => {
             // The pending call is now a real (running) trace event; let the trace's
             // own running status drive the "thinking" affordance from here.
-            setToolPending(false);
+            patchStreamRun(runKey, { toolPending: false });
             applyBlocks((current) => upsertToolCallBlock(current, event));
           },
           onToolResult: (event) => {
@@ -898,10 +995,10 @@ export function ThreadShell({
           // Full snapshots, so replace rather than merge. Knowledge (RAG) sources
           // arrive once before the model runs; web sources after each tool round.
           onWebSources: (sources) => {
-            if (isCurrentThread()) setStreamingSources(sources);
+            patchStreamRun(runKey, { sources });
           },
           onKnowledgeSources: (sources) => {
-            if (isCurrentThread()) setStreamingSources(sources);
+            patchStreamRun(runKey, { sources });
           },
           onAssistantMessage: (message) => {
             // The persisted message may already carry the backend's ordered
@@ -929,16 +1026,25 @@ export function ThreadShell({
                 return next;
               });
             }
-            clearStreamingBlocks();
+            // The settled message carries its own citations and blocks, so drop the
+            // live copies now rather than at endRun — the stream reader yields
+            // between chunks, so waiting would flash the turn twice.
+            patchStreamRun(runKey, {
+              blocks: [],
+              sources: [],
+              toolPending: false,
+            });
           },
           onThread: (updatedThread) => {
             receivedThreadEvent = true;
             if (isCurrentThread()) setActiveThread(updatedThread);
             setThreads((current) => upsertThread(current, updatedThread));
+            // Compare against the project captured when this send started, never a
+            // live `route` read: a run outlives navigation now.
             if (
-              route.view === "project" &&
+              projectIDForNewThread !== null &&
               updatedThread.projectId !== undefined &&
-              updatedThread.projectId === route.projectID
+              updatedThread.projectId === projectIDForNewThread
             ) {
               setProjectThreads((current) =>
                 upsertThreadById(current, updatedThread),
@@ -958,9 +1064,9 @@ export function ThreadShell({
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
         if (
-          route.view === "project" &&
+          projectIDForNewThread !== null &&
           fallbackThread.projectId !== undefined &&
-          fallbackThread.projectId === route.projectID
+          fallbackThread.projectId === projectIDForNewThread
         ) {
           setProjectThreads((current) =>
             upsertThreadById(current, fallbackThread),
@@ -978,58 +1084,60 @@ export function ThreadShell({
       // can retry, and a lingering sent-bubble with no reply would be misleading. A
       // placeholder already reconciled to a persisted message keeps its real id and
       // is left in place as part of the failed-but-visible turn.
-      if (optimisticUserMessageID !== null) {
+      // Guarded on the active thread for the same reason the placeholder was only
+      // added there: `messages` holds whichever thread is on screen.
+      if (optimisticUserMessageID !== null && isCurrentThread()) {
         const staleID = optimisticUserMessageID;
         setMessages((current) => current.filter((item) => item.id !== staleID));
       }
       if (options.restoreDraftOnError) {
-        setDraft(options.restoreDraft ?? content);
-        if (options.restorePastedTexts !== undefined)
-          setPastedTexts(options.restorePastedTexts);
+        setDrafts((current) =>
+          setScopedDraft(current, restoreScope, {
+            text: options.restoreDraft ?? content,
+            pastedTexts: options.restorePastedTexts ?? [],
+          }),
+        );
       }
-      handleActionError(error, "Message failed to send.", setSendError);
+      // A turn that reached a thread keeps its error on that thread, so it is
+      // still there when you come back to it. One that failed before the thread
+      // existed (createThread itself, or the deferred upload flush) has no thread
+      // to pin it to and no surface showing that run — it belongs to the shell,
+      // which is the start screen the user is still looking at.
+      handleActionError(error, "Message failed to send.", (message) => {
+        if (targetThreadID === null) setSendError(message);
+        else patchStreamRun(runKey, { error: message });
+      });
     } finally {
-      setIsSending(false);
-      if (!keepFailedTurnVisible) setActiveStreamingThreadID(null);
-      if (
-        abortController !== null &&
-        streamAbortRef.current === abortController
-      ) {
-        streamAbortRef.current = null;
-      }
+      endStreamRun(runKey, {
+        keepFailedTurnVisible: keepFailedTurnVisible && targetThreadID !== null,
+        controller: abortController,
+      });
     }
   }
 
   const enterIncognito = useCallback(() => {
-    // Leaving the /new draft behind: incognito starts clean. Abort any in-flight
-    // stream from the (now hidden) normal view first, and fully reset the shared
-    // stream state — including streamingThreadIDRef and isSending — so a stale ref
-    // from a prior (e.g. failed) normal turn can't misdirect the incognito Stop
-    // button at an unrelated thread.
-    streamAbortRef.current?.abort();
-    setDraft("");
-    setPastedTexts([]);
+    // Incognito starts clean: it takes over the whole surface, so it gets its own
+    // draft scope and its own run key rather than borrowing the start screen's.
+    // Normal threads keep streaming behind it — they are separate runs, and
+    // nothing about them is visible or reachable from here.
+    abortStreamRun(INCOGNITO_RUN_KEY);
+    endStreamRun(INCOGNITO_RUN_KEY, { keepFailedTurnVisible: false });
+    setDrafts((current) => clearDraft(current, INCOGNITO_DRAFT_SCOPE));
     setSendError("");
-    clearStreamingBlocks();
-    setIsSending(false);
-    setActiveStreamingThreadID(null);
     setIncognitoMessages([]);
     setIncognito(true);
-  }, [clearStreamingBlocks, setActiveStreamingThreadID]);
+  }, [abortStreamRun, endStreamRun]);
 
   const exitIncognito = useCallback(() => {
     // Discard the ephemeral transcript — nothing was ever written, so there is
     // nothing to clean up server-side.
-    streamAbortRef.current?.abort();
+    abortStreamRun(INCOGNITO_RUN_KEY);
+    endStreamRun(INCOGNITO_RUN_KEY, { keepFailedTurnVisible: false });
     setIncognito(false);
     setIncognitoMessages([]);
-    setDraft("");
-    setPastedTexts([]);
+    setDrafts((current) => clearDraft(current, INCOGNITO_DRAFT_SCOPE));
     setSendError("");
-    clearStreamingBlocks();
-    setIsSending(false);
-    setActiveStreamingThreadID(null);
-  }, [clearStreamingBlocks, setActiveStreamingThreadID]);
+  }, [abortStreamRun, endStreamRun]);
 
   // sendIncognitoContent mirrors sendContent's live-block accumulation but routes
   // to the stateless endpoint: no thread is created, no navigation happens, and the
@@ -1042,9 +1150,7 @@ export function ThreadShell({
     // blocks) and re-stage restore.pastedTexts. Defaults to the full `content`.
     restore?: { draft: string; pastedTexts: PastedText[] },
   ) {
-    setDraft("");
-    setIsSending(true);
-    clearStreamingBlocks();
+    setDrafts((current) => clearDraft(current, INCOGNITO_DRAFT_SCOPE));
     setSendError("");
     const history = incognitoMessages
       .filter(
@@ -1070,17 +1176,13 @@ export function ThreadShell({
     };
     setIncognitoMessages((current) => [...current, optimisticMessage]);
     const abortController = new AbortController();
-    streamAbortRef.current?.abort();
-    streamAbortRef.current = abortController;
-    // Keep streamingThreadIDRef null so handleStopResponse just aborts (there is no
-    // server-side stop endpoint for incognito), while still driving the live blocks.
+    beginStreamRun(INCOGNITO_RUN_KEY, abortController);
     let liveBlocks: ContentBlock[] = [];
     const applyBlocks = (
       updater: (current: ContentBlock[]) => ContentBlock[],
     ) => {
       liveBlocks = updater(liveBlocks);
-      streamingBlocksRef.current = liveBlocks;
-      setStreamingBlocks(liveBlocks);
+      patchStreamRun(INCOGNITO_RUN_KEY, { blocks: liveBlocks });
     };
     let keepFailedTurnVisible = false;
     try {
@@ -1112,7 +1214,11 @@ export function ThreadShell({
               ...current,
               { ...grafted, clientKey: uniqueID },
             ]);
-            clearStreamingBlocks();
+            patchStreamRun(INCOGNITO_RUN_KEY, {
+              blocks: [],
+              sources: [],
+              toolPending: false,
+            });
           },
           onThread: () => {
             // Incognito never emits a thread event; nothing to reconcile.
@@ -1129,29 +1235,32 @@ export function ThreadShell({
         current.filter((message) => message.id !== tempID),
       );
       if (restoreDraftOnError) {
-        setDraft(restore?.draft ?? content);
-        if (restore !== undefined) setPastedTexts(restore.pastedTexts);
+        setDrafts((current) =>
+          setScopedDraft(current, INCOGNITO_DRAFT_SCOPE, {
+            text: restore?.draft ?? content,
+            pastedTexts: restore?.pastedTexts ?? [],
+          }),
+        );
       }
-      handleActionError(error, "Message failed to send.", setSendError);
+      handleActionError(error, "Message failed to send.", (message) =>
+        patchStreamRun(INCOGNITO_RUN_KEY, { error: message }),
+      );
     } finally {
-      setIsSending(false);
-      if (!keepFailedTurnVisible) clearStreamingBlocks();
-      if (streamAbortRef.current === abortController) {
-        streamAbortRef.current = null;
-      }
+      endStreamRun(INCOGNITO_RUN_KEY, {
+        keepFailedTurnVisible,
+        controller: abortController,
+      });
     }
   }
 
   async function handleIncognitoSend() {
-    const draftText = draft.trim();
-    const content = composeSendContent();
-    if (content === "" || isSending) return;
+    const draftText = draft.text.trim();
+    const content = composeContent(draft);
+    if (content === "" || isStreaming(runs, INCOGNITO_RUN_KEY)) return;
     if (runSlashCommand(draftText)) return;
-    const restorePastedTexts = pastedTexts;
-    setPastedTexts([]);
     await sendIncognitoContent(content, true, {
       draft: draftText,
-      pastedTexts: restorePastedTexts,
+      pastedTexts: draft.pastedTexts,
     });
   }
 
@@ -1161,24 +1270,18 @@ export function ThreadShell({
   ) {
     const blocks = pastedTexts ?? [];
     if (content.trim() === "" && blocks.length === 0) return;
-    setDraft(content);
-    setPastedTexts(blocks.map(pastedTextFromBlock));
+    setDrafts((current) =>
+      setScopedDraft(current, INCOGNITO_DRAFT_SCOPE, {
+        text: content,
+        pastedTexts: blocks.map(pastedTextFromBlock),
+      }),
+    );
     setComposerFocusTick((tick) => tick + 1);
   }
 
-  const activeThreadOwnsStreamState =
-    activeThread !== null && streamingThreadID === activeThread.id;
-  const activeThreadIsStreaming = isSending && activeThreadOwnsStreamState;
-  const visibleStreamingBlocks = activeThreadOwnsStreamState
-    ? streamingBlocks
-    : [];
-  const visibleToolPending = activeThreadOwnsStreamState ? toolPending : false;
-  const visibleStreamingSources = activeThreadOwnsStreamState
-    ? streamingSources
-    : [];
-  // Keep errors with the thread that owns the active or failed stream state.
-  const visibleSendError =
-    streamingThreadID === null || activeThreadOwnsStreamState ? sendError : "";
+  // A failed turn's error belongs to its own thread; everything else (starring,
+  // attaching, loading) belongs to the shell and shows wherever you are.
+  const visibleSendError = activeRun.error !== "" ? activeRun.error : sendError;
 
   // Incognito takes over the whole surface with no sidebar or modals — it is a
   // self-contained, ephemeral view reachable only from the /new start screen.
@@ -1188,14 +1291,14 @@ export function ThreadShell({
         <main className="min-h-0 min-w-0 overflow-hidden bg-bg">
           <IncognitoPanel
             messages={incognitoMessages}
-            draft={draft}
-            streamingBlocks={streamingBlocks}
-            isSending={isSending}
-            sendError={sendError}
+            draft={draft.text}
+            streamingBlocks={activeRun.blocks}
+            isSending={activeThreadIsStreaming}
+            sendError={visibleSendError}
             reasoningEffort={reasoningEffort}
             onReasoningEffortChange={setReasoningEffort}
-            onDraftChange={setDraft}
-            pastedTexts={pastedTexts}
+            onDraftChange={(text) => setDraftText(draftScope, text)}
+            pastedTexts={draft.pastedTexts}
             onAddPastedText={handleAddPastedText}
             onRemovePastedText={handleRemovePastedText}
             onSend={() => void handleIncognitoSend()}
@@ -1353,16 +1456,16 @@ export function ThreadShell({
             <ProjectDetailPage
               project={activeProject}
               threads={projectThreads}
-              draft={draft}
-              sendError={sendError}
+              draft={draft.text}
+              sendError={visibleSendError}
               isSending={false}
-              sendDisabled={isSending}
+              sendDisabled={false}
               openThreadMenuID={openThreadMenuID}
               reasoningEffort={reasoningEffort}
               onReasoningEffortChange={setReasoningEffort}
               onBack={navigateToProjects}
-              onDraftChange={setDraft}
-              pastedTexts={pastedTexts}
+              onDraftChange={(text) => setDraftText(draftScope, text)}
+              pastedTexts={draft.pastedTexts}
               onAddPastedText={handleAddPastedText}
               onRemovePastedText={handleRemovePastedText}
               onSend={handleSend}
@@ -1399,17 +1502,17 @@ export function ThreadShell({
         ) : route.view === "new" ? (
           <StartPanel
             displayName={displayName}
-            draft={draft}
+            draft={draft.text}
             isSending={false}
-            sendDisabled={isSending}
-            sendError={sendError}
+            sendDisabled={false}
+            sendError={visibleSendError}
             attachments={pendingAttachments}
             attachNote={pendingAttachNote}
             reasoningEffort={reasoningEffort}
             onReasoningEffortChange={setReasoningEffort}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
-            onDraftChange={setDraft}
-            pastedTexts={pastedTexts}
+            onDraftChange={(text) => setDraftText(draftScope, text)}
+            pastedTexts={draft.pastedTexts}
             onAddPastedText={handleAddPastedText}
             onRemovePastedText={handleRemovePastedText}
             onSend={handleSend}
@@ -1428,18 +1531,18 @@ export function ThreadShell({
             deferredAttachNote={deferredAttachNote}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             messages={messages}
-            draft={draft}
-            streamingBlocks={visibleStreamingBlocks}
-            streamingSources={visibleStreamingSources}
-            toolPending={visibleToolPending}
+            draft={draft.text}
+            streamingBlocks={activeRun.blocks}
+            streamingSources={activeRun.sources}
+            toolPending={activeRun.toolPending}
             sendError={visibleSendError}
             isSending={activeThreadIsStreaming}
-            sendDisabled={isSending && !activeThreadIsStreaming}
+            sendDisabled={false}
             openThreadMenuID={openThreadMenuID}
             reasoningEffort={reasoningEffort}
             onReasoningEffortChange={setReasoningEffort}
-            onDraftChange={setDraft}
-            pastedTexts={pastedTexts}
+            onDraftChange={(text) => setDraftText(draftScope, text)}
+            pastedTexts={draft.pastedTexts}
             onAddPastedText={handleAddPastedText}
             onRemovePastedText={handleRemovePastedText}
             onSend={handleSend}
