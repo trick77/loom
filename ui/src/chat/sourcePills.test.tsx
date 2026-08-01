@@ -115,6 +115,29 @@ describe("ProseMarkdown inline source pills", () => {
     expect(screen.getByText(/\[1\]/)).toBeInTheDocument();
   });
 
+  it("separates abutting markers so multi-digit numbers do not merge", () => {
+    const many: Citation[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(
+      (index) => ({
+        documentId: "",
+        filename: `Site${index}`,
+        snippet: "",
+        score: 0,
+        url: `https://site${index}.com`,
+        index,
+      }),
+    );
+    // Cite 1..11 first so the abutting pair at the end gets two-digit display
+    // numbers — without a separator "[12][13]" renders as "1213", read as one
+    // number rather than two citations.
+    const lead = Array.from({ length: 11 }, (_, i) => `Claim ${i}. [${i + 1}]`).join(" ");
+    const { container } = renderProse(`${lead} Finally [12][13].`, many);
+
+    expect(container.textContent).toContain("12,13");
+    expect(container.textContent).not.toContain("1213");
+    expect(screen.getByRole("link", { name: "Site12" })).toHaveTextContent("12");
+    expect(screen.getByRole("link", { name: "Site13" })).toHaveTextContent("13");
+  });
+
   it("collapses an immediately repeated same-source marker", () => {
     renderProse("Repeated cite [1][1] here.", citations);
 

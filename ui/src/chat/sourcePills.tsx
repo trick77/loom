@@ -52,6 +52,7 @@ type Ctx = {
   sources: SourceMap;
   display: DisplayMap;
   last: number | null; // previous emitted index, for immediate-repeat dedupe
+  lastWasPill: boolean; // previous emitted node was a marker (no prose since)
 };
 
 // DisplayMap maps a persisted citation index to the number shown to the reader —
@@ -68,7 +69,24 @@ export type DisplayMap = Map<number, number>;
 // different claims, and per-sentence attribution is the whole point.
 export function rehypeSourcePills(sources: SourceMap, display: DisplayMap) {
   return (tree: Root) => {
-    walk(tree.children, { sources, display, last: null });
+    walk(tree.children, {
+      sources,
+      display,
+      last: null,
+      lastWasPill: false,
+    });
+  };
+}
+
+// separatorElement is the thin comma between two abutting markers. Rendered with
+// the pill tag (but no href, so SourcePill emits plain text) to share the raised
+// baseline and size rather than dropping to the text baseline.
+function separatorElement(): ElementContent {
+  return {
+    type: "element",
+    tagName: SOURCE_PILL_TAG,
+    properties: {},
+    children: [{ type: "text", value: "," }],
   };
 }
 
@@ -118,21 +136,35 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
     // Unknown marker, or a source carrying no display number (never counted as
     // cited) -> keep the literal text rather than mis-linking it.
     if (ref === undefined || shown === undefined) continue;
-    // A repeat collapses only when it directly abuts the previous marker: the
-    // model writes "[1][1]" for one claim, which should read as one number. Once
-    // any prose intervenes the repeat is backing a separate claim, and dropping it
-    // would strip that sentence of its attribution.
-    const adjacent = ctx.last === n && match.index === last;
+    // Whether this marker directly abuts the previous one ("[1][2]" with nothing
+    // between), as opposed to being separated by prose.
+    const abuts = match.index === last && ctx.lastWasPill;
+    // A repeat collapses only when it abuts: the model writes "[1][1]" for a single
+    // claim, which should read as one number. Once any prose intervenes the repeat
+    // backs a separate claim, and dropping it would strip that sentence of its
+    // attribution.
+    const repeat = abuts && ctx.last === n;
     // Emit the text between the previous marker and this one.
     if (match.index > last)
       out.push({ type: "text", value: value.slice(last, match.index) });
     last = match.index + match[0].length;
     changed = true;
-    if (!adjacent) out.push(pillElement(ref, shown));
+    if (!repeat) {
+      // Without a separator, adjacent multi-digit markers run together: [13][12]
+      // renders as "1312", which reads as one number rather than two citations.
+      if (abuts) out.push(separatorElement());
+      out.push(pillElement(ref, shown));
+    }
     ctx.last = n;
+    ctx.lastWasPill = true;
   }
   if (!changed) return null;
-  if (last < value.length) out.push({ type: "text", value: value.slice(last) });
+  if (last < value.length) {
+    out.push({ type: "text", value: value.slice(last) });
+    // Prose after the final marker: a marker opening the *next* text node (markers
+    // can straddle nodes when the model bolds around them) is no longer adjacent.
+    ctx.lastWasPill = false;
+  }
   return out;
 }
 
@@ -148,7 +180,11 @@ export function SourcePill({
   title?: unknown;
   children?: ReactNode;
 }) {
-  if (typeof href !== "string" || href === "") return <>{children}</>;
+  // The separator between two abutting markers carries no href; render it with the
+  // marker styling so it keeps the raised baseline instead of dropping to the text
+  // baseline. Also the safe fallback for a marker whose url went missing.
+  if (typeof href !== "string" || href === "")
+    return <span className={PILL_CLASS}>{children}</span>;
   const label = typeof title === "string" && title !== "" ? title : undefined;
   return (
     // The color/underline live in CSS (.ui-source-pill) so they outrank the
