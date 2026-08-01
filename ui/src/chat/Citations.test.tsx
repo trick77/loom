@@ -151,11 +151,19 @@ describe("MessageCitations", () => {
     fireEvent.click(screen.getByRole("button", { name: /sources/i }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toBeInTheDocument();
-    // One card per distinct source, ordered by index (Truefoundry #1 before Modal #2).
+    // One card per distinct source, in the order given. The caller supplies the
+    // list already ordered by first citation (assignDisplayNumbers), and each card
+    // is numbered by its position — re-sorting on the persisted citation.index here
+    // would restore Tavily arrival order and desync the cards from the [n] markers
+    // in the prose.
     const links = within(dialog).getAllByRole("link");
     expect(links).toHaveLength(2);
-    expect(links[0]).toHaveTextContent("TrueFoundry");
-    expect(links[0]).toHaveAttribute("href", "https://truefoundry.com");
+    expect(links[0]).toHaveTextContent("Modal docs");
+    expect(links[0]).toHaveAttribute("href", "https://modal.com");
+    expect(links[1]).toHaveTextContent("TrueFoundry");
+    // The card's visible number is its row position, matching the inline marker.
+    expect(links[0]).toHaveTextContent("1");
+    expect(links[1]).toHaveTextContent("2");
     expect(within(dialog).getByText("Modal runs Python.")).toBeInTheDocument();
   });
 

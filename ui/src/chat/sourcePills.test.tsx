@@ -5,6 +5,20 @@ import { describe, expect, it } from "vitest";
 import type { Citation } from "../api";
 import { ProseMarkdown } from "./messages";
 import { webSourceMap } from "./sourcePills";
+import { assignDisplayNumbers } from "./sourceNumbering";
+
+// The pill plugin needs both the [n] -> source map and the persisted-index ->
+// display-number map; in the app both come off the same citation list.
+function renderProse(content: string, citations: Citation[]) {
+  return render(
+    <ProseMarkdown
+      sources={webSourceMap(citations)}
+      display={assignDisplayNumbers(content, citations).display}
+    >
+      {content}
+    </ProseMarkdown>,
+  );
+}
 
 describe("webSourceMap", () => {
   it("collects web citations (url + index) and ignores RAG doc citations", () => {
@@ -48,7 +62,7 @@ describe("webSourceMap", () => {
 });
 
 describe("ProseMarkdown inline source pills", () => {
-  const sources = webSourceMap([
+  const citations: Citation[] = [
     {
       documentId: "",
       filename: "Truefoundry",
@@ -65,29 +79,32 @@ describe("ProseMarkdown inline source pills", () => {
       url: "https://modal.com",
       index: 2,
     },
-  ]);
+  ];
 
-  it("replaces [n] markers with clickable source pills linking to the URL", () => {
-    render(
-      <ProseMarkdown sources={sources}>
-        {"TrueFoundry deploys models [1]. Modal runs Python [2]."}
-      </ProseMarkdown>,
-    );
-    const pill = screen.getByRole("link", { name: "Truefoundry" });
-    expect(pill).toHaveAttribute("href", "https://truefoundry.com");
-    expect(pill).toHaveAttribute("target", "_blank");
-    expect(screen.getByRole("link", { name: "Modal" })).toHaveAttribute(
-      "href",
-      "https://modal.com",
+  it("renders the display number, linked, with the site name as its label", () => {
+    renderProse("TrueFoundry deploys models [1]. Modal runs Python [2].", citations);
+
+    const first = screen.getByRole("link", { name: "Truefoundry" });
+    expect(first).toHaveAttribute("href", "https://truefoundry.com");
+    expect(first).toHaveAttribute("target", "_blank");
+    // The marker shows a number now; the site name moved to the accessible label.
+    expect(first).toHaveTextContent("1");
+    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent("2");
+  });
+
+  it("numbers by citation order, not by the persisted index", () => {
+    // Modal is [2] to the model but is cited first, so the reader sees 1.
+    renderProse("Modal first [2]. Truefoundry second [1].", citations);
+
+    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent("1");
+    expect(screen.getByRole("link", { name: "Truefoundry" })).toHaveTextContent(
+      "2",
     );
   });
 
   it("leaves unknown markers as literal text", () => {
-    render(
-      <ProseMarkdown sources={sources}>
-        {"An out-of-range marker [7] stays as text."}
-      </ProseMarkdown>,
-    );
+    renderProse("An out-of-range marker [7] stays as text.", citations);
+
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.getByText(/\[7\]/)).toBeInTheDocument();
   });
@@ -98,73 +115,36 @@ describe("ProseMarkdown inline source pills", () => {
     expect(screen.getByText(/\[1\]/)).toBeInTheDocument();
   });
 
-  it("collapses a repeated same-source cluster into one pill", () => {
-    render(
-      <ProseMarkdown sources={sources}>
-        {"Repeated cite [1][1] here."}
-      </ProseMarkdown>,
-    );
-    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(
-      1,
-    );
+  it("collapses an immediately repeated same-source marker", () => {
+    renderProse("Repeated cite [1][1] here.", citations);
+
+    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(1);
   });
 
-  it("caps inline pills at 3 distinct sources and drops the rest", () => {
-    const many = webSourceMap([
-      {
-        documentId: "",
-        filename: "One",
-        snippet: "",
-        score: 0,
-        url: "https://one.com",
-        index: 1,
-      },
-      {
-        documentId: "",
-        filename: "Two",
-        snippet: "",
-        score: 0,
-        url: "https://two.com",
-        index: 2,
-      },
-      {
-        documentId: "",
-        filename: "Three",
-        snippet: "",
-        score: 0,
-        url: "https://three.com",
-        index: 3,
-      },
-      {
-        documentId: "",
-        filename: "Four",
-        snippet: "",
-        score: 0,
-        url: "https://four.com",
-        index: 4,
-      },
-      {
-        documentId: "",
-        filename: "Five",
-        snippet: "",
-        score: 0,
-        url: "https://five.com",
-        index: 5,
-      },
-    ]);
-    render(
-      <ProseMarkdown sources={many}>
-        {"A clustered answer [1][2][3][4][5]."}
-      </ProseMarkdown>,
-    );
-    // Only the first three distinct sources render inline.
-    expect(screen.getAllByRole("link")).toHaveLength(3);
-    expect(screen.getByRole("link", { name: "Three" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "Four" }),
-    ).not.toBeInTheDocument();
-    // Overflow markers are removed from the prose, not left as literal text.
+  it("keeps a repeat that backs a separate claim later in the answer", () => {
+    renderProse("First claim [1]. A different claim [1].", citations);
+
+    // Per-sentence attribution is the point, so a non-adjacent repeat stays.
+    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(2);
+  });
+
+  // The old per-message cap of 3 existed because label pills were visually heavy.
+  // Markers are numerals now, and measurement showed no end-clustering, so every
+  // cited source renders — dropping them would be deleting attribution.
+  it("renders every cited source, with no cap", () => {
+    const many: Citation[] = [1, 2, 3, 4, 5].map((index) => ({
+      documentId: "",
+      filename: `Site${index}`,
+      snippet: "",
+      score: 0,
+      url: `https://site${index}.com`,
+      index,
+    }));
+
+    renderProse("A well-cited answer [1][2][3][4][5].", many);
+
+    expect(screen.getAllByRole("link")).toHaveLength(5);
+    expect(screen.getByRole("link", { name: "Site5" })).toHaveTextContent("5");
     expect(screen.queryByText(/\[4\]/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\[5\]/)).not.toBeInTheDocument();
   });
 });

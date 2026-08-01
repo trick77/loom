@@ -47,9 +47,13 @@ function isWebSource(citation: Citation): boolean {
   return typeof citation.url === "string" && citation.url !== "";
 }
 
-// combineWebSources deduplicates web citations by URL and orders them by their
-// [n] index, so the "Sources" row lists each distinct page once in citation
-// order. filename holds the site-name label.
+// combineWebSources deduplicates web citations by URL, so the "Sources" row lists
+// each distinct page once. filename holds the site-name label.
+//
+// Input order is preserved deliberately: callers pass the list already ordered by
+// first citation (assignDisplayNumbers), and the sidebar derives each card's number
+// from its position. Re-sorting by the persisted citation.index here would restore
+// Tavily arrival order and desync the cards from the inline [n] markers.
 function combineWebSources(sources: Citation[]): Citation[] {
   const seen = new Set<string>();
   const unique: Citation[] = [];
@@ -58,7 +62,7 @@ function combineWebSources(sources: Citation[]): Citation[] {
     seen.add(source.url);
     unique.push(source);
   }
-  return unique.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  return unique;
 }
 
 // dedupeByDomain keeps the first web source per registrable domain so the favicon

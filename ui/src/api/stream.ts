@@ -21,6 +21,10 @@ type StreamHandlers = {
   onToolResult?(event: ToolResultEvent): void;
   onArtifact?(artifact: Artifact): void;
   onKnowledgeSources?(sources: Citation[]): void;
+  // Web sources gathered so far this turn, re-sent after every tool round so
+  // inline [n] markers resolve while the answer is still streaming. Always a full
+  // snapshot — replace, do not merge.
+  onWebSources?(sources: Citation[]): void;
 };
 
 export async function streamMessage(
@@ -220,6 +224,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       handlers.onKnowledgeSources?.(
         (payload as { sources: Citation[] }).sources,
       );
+      break;
+    case "web_sources":
+      handlers.onWebSources?.((payload as { sources: Citation[] }).sources);
       break;
     case "done":
       break;

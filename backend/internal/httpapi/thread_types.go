@@ -160,6 +160,14 @@ type toolResultResponse struct {
 	Content string `json:"content"`
 }
 
+// webSourcesResponse carries the full set of web sources gathered so far in the
+// turn, re-sent after every tool round so the browser can resolve inline [n]
+// markers while the answer is still streaming. Mirrors the knowledge_sources
+// event's shape.
+type webSourcesResponse struct {
+	Sources []citation `json:"sources"`
+}
+
 type renameArtifactRequest struct {
 	DisplayFilename string `json:"displayFilename"`
 }

@@ -37,78 +37,53 @@ const MARKER = /\[(\d+)\]/g;
 // Never rewrite markers inside code, pre or existing links — a "[1]" there is
 // code/text, not a citation.
 const SKIP_TAGS = new Set(["code", "pre", "a"]);
-// Cap how many distinct source pills render inline. MiMo tends to dump every
-// citation in one cluster at the end of the answer, so an uncapped render is a
-// wall of pills that just repeats the footer Sources row. Beyond the cap, markers
-// are dropped from the prose — every source still appears in the sidebar.
-const MAX_INLINE_PILLS = 3;
 // The custom element the plugin emits; ProseMarkdown maps it to <SourcePill>.
 export const SOURCE_PILL_TAG = "citepill";
 
+// A raised numeral rather than a chip. The chip form carried the site name, which
+// was heavy enough that only three could render before the prose became a wall of
+// pills — the reason a per-message cap used to exist. Measured marker positions
+// show no end-clustering (9% in the final fifth against 20% for a uniform spread)
+// and a median of 4 cited sources per answer, so every marker now renders.
 const PILL_CLASS =
-  "ui-source-pill mx-0.5 inline-flex items-center rounded-full bg-[#363632] px-2 py-0.5 align-baseline font-sans text-[0.75rem] leading-[1.45rem] transition-colors hover:bg-[#44443f]";
+  "ui-source-pill ml-px inline-block align-baseline font-sans text-[0.7rem] font-semibold tabular-nums transition-colors";
 
 type Ctx = {
   sources: SourceMap;
-  shown: Set<number>; // the first MAX_INLINE_PILLS distinct cited indices
-  emitted: Set<number>; // indices already rendered (dedupe across the message)
+  display: DisplayMap;
+  last: number | null; // previous emitted index, for immediate-repeat dedupe
 };
 
-// rehypeSourcePills replaces [n] citation markers in prose with inline pills for
-// the first MAX_INLINE_PILLS distinct cited sources; markers for any further
-// (or repeated) sources are dropped from the text — they remain in the sidebar.
-// Markers whose number is not a known source (out of range / hallucinated) are
-// left as plain text, and only complete "[n]" tokens are rewritten (a partial
-// "[1" streams through untouched).
-export function rehypeSourcePills(sources: SourceMap) {
+// DisplayMap maps a persisted citation index to the number shown to the reader —
+// 1, 2, 3… in order of first citation. See sourceNumbering.ts.
+export type DisplayMap = Map<number, number>;
+
+// rehypeSourcePills replaces [n] citation markers in prose with the reader-facing
+// number, linked to its source. Markers whose number is not a known source (out of
+// range, or a source not yet delivered mid-stream) are left as plain text, and only
+// complete "[n]" tokens are rewritten — a partial "[1" streams through untouched.
+//
+// Immediately repeated markers for the same source collapse to one. Repeats
+// elsewhere in the message are kept: the same source legitimately backs several
+// different claims, and per-sentence attribution is the whole point.
+export function rehypeSourcePills(sources: SourceMap, display: DisplayMap) {
   return (tree: Root) => {
-    const cited = collectCitedIndices(tree.children, sources);
-    if (cited.length === 0) return;
-    walk(tree.children, {
-      sources,
-      shown: new Set(cited.slice(0, MAX_INLINE_PILLS)),
-      emitted: new Set(),
-    });
+    walk(tree.children, { sources, display, last: null });
   };
 }
 
-// collectCitedIndices returns the ordered, de-duplicated list of source indices
-// actually cited in the prose, so the cap applies per message rather than per
-// text node.
-function collectCitedIndices(
-  children: RootContent[],
-  sources: SourceMap,
-): number[] {
-  const seen = new Set<number>();
-  const order: number[] = [];
-  const visit = (nodes: RootContent[]) => {
-    for (const child of nodes) {
-      if (child.type === "element") {
-        if (SKIP_TAGS.has(child.tagName)) continue;
-        visit(child.children);
-      } else if (child.type === "text") {
-        MARKER.lastIndex = 0;
-        let m: RegExpExecArray | null;
-        while ((m = MARKER.exec(child.value)) !== null) {
-          const n = Number(m[1]);
-          if (sources.has(n) && !seen.has(n)) {
-            seen.add(n);
-            order.push(n);
-          }
-        }
-      }
-    }
-  };
-  visit(children);
-  return order;
-}
-
-function pillElement(ref: WebSourceRef): ElementContent {
+function pillElement(ref: WebSourceRef, shown: number): ElementContent {
   return {
     type: "element",
     tagName: SOURCE_PILL_TAG,
-    properties: { href: ref.url },
-    children: [{ type: "text", value: ref.label }],
+    properties: {
+      href: ref.url,
+      // The site name left the prose when the pill became numeric; keep it here so
+      // hover and screen readers still identify the source.
+      title: ref.label,
+      "aria-label": ref.label,
+    },
+    children: [{ type: "text", value: String(shown) }],
   };
 }
 
@@ -139,35 +114,42 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
   while ((match = MARKER.exec(value)) !== null) {
     const n = Number(match[1]);
     const ref = ctx.sources.get(n);
-    if (ref === undefined) continue; // unknown marker -> keep as literal text
+    const shown = ctx.display.get(n);
+    // Unknown marker, or a source carrying no display number (never counted as
+    // cited) -> keep the literal text rather than mis-linking it.
+    if (ref === undefined || shown === undefined) continue;
+    // A repeat collapses only when it directly abuts the previous marker: the
+    // model writes "[1][1]" for one claim, which should read as one number. Once
+    // any prose intervenes the repeat is backing a separate claim, and dropping it
+    // would strip that sentence of its attribution.
+    const adjacent = ctx.last === n && match.index === last;
     // Emit the text between the previous marker and this one.
     if (match.index > last)
       out.push({ type: "text", value: value.slice(last, match.index) });
     last = match.index + match[0].length;
     changed = true;
-    // Render a pill only for one of the first-N distinct sources, once; all other
-    // markers (overflow or repeats) are removed from the prose.
-    if (ctx.shown.has(n) && !ctx.emitted.has(n)) {
-      out.push(pillElement(ref));
-      ctx.emitted.add(n);
-    }
+    if (!adjacent) out.push(pillElement(ref, shown));
+    ctx.last = n;
   }
   if (!changed) return null;
   if (last < value.length) out.push({ type: "text", value: value.slice(last) });
   return out;
 }
 
-// SourcePill renders an inline, clickable citation pill next to the prose it
-// backs. Mirrors the prompt-classifier pill styling (SharedPill / MessageMetrics)
-// but as a link. Falls back to its text if href is missing.
+// SourcePill renders the inline citation number as a link to the source it backs.
+// Falls back to its text if href is missing. `title` carries the site name, which
+// left the prose when the marker became numeric.
 export function SourcePill({
   href,
+  title,
   children,
 }: {
   href?: unknown;
+  title?: unknown;
   children?: ReactNode;
 }) {
   if (typeof href !== "string" || href === "") return <>{children}</>;
+  const label = typeof title === "string" && title !== "" ? title : undefined;
   return (
     // The color/underline live in CSS (.ui-source-pill) so they outrank the
     // ".ui-markdown a" link styling this pill renders inside; the layout utilities
@@ -176,6 +158,8 @@ export function SourcePill({
       href={href}
       target="_blank"
       rel="noreferrer noopener"
+      title={label}
+      aria-label={label}
       className={PILL_CLASS}
     >
       {children}

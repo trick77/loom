@@ -203,6 +203,25 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 				Content:    output,
 			})
 		}
+		// Push the sources gathered so far so the browser can resolve [n] markers
+		// while the next round's answer streams, instead of waiting for the settled
+		// message. A full snapshot, not a delta: idempotent, and the frontend just
+		// replaces its list.
+		//
+		// Emitted every round rather than only when reg.len() grows — addDetailed
+		// backfills an already-registered URL's title/snippet/favicon without changing
+		// the length, so a page first seen bare via fetch and later enriched by Tavily
+		// would otherwise keep showing degraded sidebar data.
+		//
+		// Ordering is what makes this correct: the model can only cite [n] after
+		// seeing it in a tool result, the registry assigns that index while processing
+		// the result (above), and sse.Writer.Send is sequential — so the snapshot
+		// always reaches the browser before the deltas that reference it.
+		if reg.len() > 0 {
+			if err := sendSSEJSON(stream, "web_sources", webSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
+				return assistantLoopResult{}, err
+			}
+		}
 		toolRan = true
 		if round == maxToolRounds {
 			slog.Info("forcing final answer", "reason", "rounds_exhausted", "round", round)

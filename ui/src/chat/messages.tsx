@@ -54,8 +54,10 @@ import {
   SourcePill,
   SOURCE_PILL_TAG,
   webSourceMap,
+  type DisplayMap,
   type SourceMap,
 } from "./sourcePills";
+import { assignDisplayNumbers } from "./sourceNumbering";
 import {
   isImageAttachment,
   type ComposerAttachment,
@@ -161,6 +163,14 @@ export function MessageBubble({
     () => webSourceMap(message.citations),
     [message.citations],
   );
+  // Number the sources by the order the answer first cites them, so the prose opens
+  // at [1] and the sidebar leads with the source actually used. `ordered` drops the
+  // gathered-but-uncited sources — except when nothing was cited at all, where it
+  // falls back to the full list rather than showing an empty Sources row.
+  const numbering = useMemo(
+    () => assignDisplayNumbers(proseText, message.citations),
+    [proseText, message.citations],
+  );
   return (
     <div className="max-w-[46rem] space-y-3">
       {blocks.map((block, index) => (
@@ -168,12 +178,12 @@ export function MessageBubble({
           key={`${message.id}-block-${index}`}
           block={block}
           sources={sources}
+          display={numbering.display}
         />
       ))}
       {/* Sources sit directly under the answer text, on their own line, above the
-          copy/retry/TTS + metrics footer. Citations only exist on the persisted
-          message, so this row appears once the answer finishes streaming. */}
-      {!publicView && <MessageCitations citations={message.citations} />}
+          copy/retry/TTS + metrics footer. */}
+      {!publicView && <MessageCitations citations={numbering.ordered} />}
       {!publicView && (
         <MessageActions
           copyLabel={t("messages.copyResponse")}
@@ -220,9 +230,11 @@ function AttachmentNotShared() {
 function AssistantBlock({
   block,
   sources,
+  display,
 }: {
   block: ContentBlock;
   sources?: SourceMap;
+  display?: DisplayMap;
 }) {
   if (block.type === "trace") {
     return <ActivityTracePanel events={block.events} active={false} />;
@@ -230,7 +242,11 @@ function AssistantBlock({
   if (block.type === "artifact") {
     return <GeneratedArtifactCard artifact={block.artifact} />;
   }
-  return <AssistantProse sources={sources}>{block.content}</AssistantProse>;
+  return (
+    <AssistantProse sources={sources} display={display}>
+      {block.content}
+    </AssistantProse>
+  );
 }
 
 function SentAttachments({
@@ -393,16 +409,20 @@ export function ProseMarkdown({
   children,
   streaming = false,
   sources,
+  display,
 }: {
   children: string;
   streaming?: boolean;
   /** Web-source registry for resolving inline [n] citation markers to pills. */
   sources?: SourceMap;
+  /** Persisted index -> reader-facing number, from assignDisplayNumbers. */
+  display?: DisplayMap;
 }) {
   // rehypeKatex first so math renders before streamFade/sourcePills post-process the tree.
   const rehypePlugins: PluggableList = [rehypeKatexPlugin, rehypeHighlight];
   if (streaming) rehypePlugins.push(rehypeStreamFade);
-  if (sources !== undefined) rehypePlugins.push([rehypeSourcePills, sources]);
+  if (sources !== undefined && display !== undefined)
+    rehypePlugins.push([rehypeSourcePills, sources, display]);
   // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses.
   const normalized = useMemo(
     () => normalizeMathDelimiters(children),
@@ -427,11 +447,17 @@ export function ProseMarkdown({
             // custom element name isn't in the type — the runtime maps it fine.
             [SOURCE_PILL_TAG]: ({
               href,
+              title,
               children,
             }: {
               href?: unknown;
+              title?: unknown;
               children?: ReactNode;
-            }) => <SourcePill href={href}>{children}</SourcePill>,
+            }) => (
+              <SourcePill href={href} title={title}>
+                {children}
+              </SourcePill>
+            ),
             img({ src, ...props }) {
               // Only render images whose src is an absolute, loadable URL. The model
               // sometimes embeds a generated image by its bare filename (e.g.
@@ -460,11 +486,14 @@ export function AssistantProse({
   children,
   streaming = false,
   sources,
+  display,
 }: {
   children: string;
   streaming?: boolean;
   /** Web-source registry for resolving inline [n] citation markers to pills. */
   sources?: SourceMap;
+  /** Persisted index -> reader-facing number, from assignDisplayNumbers. */
+  display?: DisplayMap;
 }) {
   // Memoize on the text so the parsed artifact keeps a stable identity across
   // re-renders. SvgResponseBubble's blob effect keys on artifact.content; for a
@@ -491,13 +520,13 @@ export function AssistantProse({
     return (
       <div className="ui-assistant-message group w-full space-y-3">
         {before !== "" && (
-          <ProseMarkdown streaming={streaming} sources={sources}>
+          <ProseMarkdown streaming={streaming} sources={sources} display={display}>
             {before}
           </ProseMarkdown>
         )}
         <Bubble artifact={artifact} />
         {after !== "" && (
-          <ProseMarkdown streaming={streaming} sources={sources}>
+          <ProseMarkdown streaming={streaming} sources={sources} display={display}>
             {after}
           </ProseMarkdown>
         )}
@@ -517,7 +546,7 @@ export function AssistantProse({
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
-        <ProseMarkdown streaming={streaming} sources={sources}>
+        <ProseMarkdown streaming={streaming} sources={sources} display={display}>
           {before}
         </ProseMarkdown>
         <PendingDownloadResponseBubble
@@ -530,7 +559,7 @@ export function AssistantProse({
 
   return (
     <div className="ui-assistant-message group w-full">
-      <ProseMarkdown streaming={streaming} sources={sources}>
+      <ProseMarkdown streaming={streaming} sources={sources} display={display}>
         {children}
       </ProseMarkdown>
     </div>
