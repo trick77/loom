@@ -294,9 +294,14 @@ export function ThreadShell({
   const activeRun = selectRun(runs, activeRunKey);
   const activeThreadIsStreaming = isStreaming(runs, activeRunKey);
 
+  // Deliberately not gated on `runs`: that record changes on every delta, and a
+  // dependency on it would re-create this callback — and so tear down and re-add
+  // the Escape listener below — once per streamed token, per running thread.
+  // Every caller already gates on the Stop control being rendered, and aborting a
+  // key with no run is a no-op.
   const handleStopResponse = useCallback(
     (source = "stop_button") => {
-      if (activeRunKey === null || !isStreaming(runs, activeRunKey)) return;
+      if (activeRunKey === null) return;
       const abort = () => abortStreamRun(activeRunKey);
       // Incognito has no server-side stop endpoint — dropping the fetch is the
       // whole mechanism there.
@@ -320,7 +325,6 @@ export function ThreadShell({
       activeThread,
       handleActionError,
       incognito,
-      runs,
       t,
     ],
   );

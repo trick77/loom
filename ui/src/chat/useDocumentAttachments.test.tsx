@@ -337,3 +337,30 @@ test("removeAttachment deletes a composer-uploaded image server-side", async () 
   expect(result.current.attachments).toHaveLength(0);
   expect(deleteArtifact).toHaveBeenCalledWith("art_up");
 });
+
+test("staged attachments do not follow the user to another thread", () => {
+  const { result, rerender } = renderHook(
+    ({ threadId }: { threadId: string }) =>
+      useDocumentAttachments({ threadId }),
+    { initialProps: { threadId: "t1" } },
+  );
+
+  act(() => {
+    result.current.handleAttachFiles([file("notes.txt")]);
+  });
+  expect(result.current.attachments).toHaveLength(1);
+
+  // The hosting panel is not remounted on a thread switch, so the hook has to
+  // drop the staged files itself — otherwise they bind to the next thread on send.
+  rerender({ threadId: "t2" });
+  expect(result.current.attachments).toHaveLength(0);
+
+  act(() => {
+    result.current.handleAttachFiles([file("other.txt")]);
+  });
+  expect(result.current.attachments).toHaveLength(1);
+
+  // A re-render that does not change the thread leaves the staging alone.
+  rerender({ threadId: "t2" });
+  expect(result.current.attachments).toHaveLength(1);
+});
