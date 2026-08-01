@@ -50,20 +50,6 @@ function indexCitations(citations: Citation[]): Map<number, Citation> {
 export function assignDisplayNumbers(
   content: string,
   citations?: Citation[],
-  options?: {
-    // Keep gathered-but-not-yet-cited sources in `ordered`, after the cited ones.
-    //
-    // Set this while an answer is streaming. Sources are delivered ahead of the
-    // deltas that cite them, so without it the list is the full gathered set
-    // (via the uncited fallback below) right up until the model writes its first
-    // marker — at which point it collapses to that single cited source and then
-    // grows back one icon at a time. Measured on a live turn, the favicon row went
-    // 7 → 1 → 2 → … → 7, which reads as the sources vanishing mid-answer.
-    //
-    // Keeping the uncited ones makes the streamed list grow-only. The narrowing to
-    // cited-only happens once, when the message settles.
-    includeUncited?: boolean;
-  },
 ): DisplayNumbering {
   const empty: DisplayNumbering = { display: new Map(), ordered: [] };
   if (citations === undefined || citations.length === 0) return empty;
@@ -87,19 +73,15 @@ export function assignDisplayNumbers(
     ordered.push(citation);
   }
 
-  const remaining = [...byIndex.values()]
-    .filter((citation) => !display.has(citation.index ?? 0))
-    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-
   // Nothing cited: fall back to every gathered source, in discovery order. Without
   // this the Sources row would vanish on the ~half of answers that cite nothing,
   // losing all visibility into what was searched.
-  if (ordered.length === 0) return { display: new Map(), ordered: remaining };
-
-  // Uncited sources carry no display number (nothing in the prose points at them),
-  // so they render unnumbered after the cited ones.
-  if (options?.includeUncited === true) {
-    return { display, ordered: [...ordered, ...remaining] };
+  if (ordered.length === 0) {
+    const all = [...byIndex.values()].sort(
+      (a, b) => (a.index ?? 0) - (b.index ?? 0),
+    );
+    return { display: new Map(), ordered: all };
   }
+
   return { display, ordered };
 }

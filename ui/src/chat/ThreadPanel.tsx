@@ -26,7 +26,6 @@ import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
 import type { MessagePastedText } from "../api";
 import { AssistantProse, MessageBubble } from "./messages";
-import { MessageCitations } from "./Citations";
 import { webSourceMap } from "./sourcePills";
 import { assignDisplayNumbers } from "./sourceNumbering";
 import type { PastedText } from "./pastedText";
@@ -170,15 +169,10 @@ export function ThreadPanel({
         .join("\n\n"),
     [streamingBlocks],
   );
-  // includeUncited: while the answer streams the row must only ever grow. Sources
-  // land before the deltas citing them, so narrowing to cited-only mid-answer makes
-  // the favicon row collapse the moment the first marker appears and then climb
-  // back — it reads as the sources disappearing. Narrowing happens once, at settle.
+  // Only `display` is used while streaming — it numbers the inline markers. The
+  // ordered source list is not rendered until the message settles.
   const streamingNumbering = useMemo(
-    () =>
-      assignDisplayNumbers(streamingProse, streamingSources, {
-        includeUncited: true,
-      }),
+    () => assignDisplayNumbers(streamingProse, streamingSources),
     [streamingProse, streamingSources],
   );
   // Answer prose has begun once a non-empty text block exists after the active
@@ -589,15 +583,11 @@ export function ThreadPanel({
               });
               return elements;
             })()}
-            {/* The numbered sources list, live. Without it the prose would carry
-                numbered markers with nothing to match them against until the turn
-                settled. Append-only, so the pile grows without reshuffling. */}
-            {streamingNumbering.ordered.length > 0 && (
-              <MessageCitations
-                citations={streamingNumbering.ordered}
-                display={streamingNumbering.display}
-              />
-            )}
+            {/* No Sources row while streaming: the favicon pile appearing before
+                there is an answer to attribute reads as clutter, and it shifts under
+                the reader mid-sentence. The prose still carries live numbered
+                markers, each a working link, so no source is unreachable; the row
+                and its sidebar arrive once, with the settled message. */}
             {working && <WorkingDot />}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
           </div>
