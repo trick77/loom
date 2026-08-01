@@ -123,14 +123,17 @@ function SourceCard({
       className="block rounded-[10px] px-3 py-2.5 no-underline transition-colors hover:bg-[#201f1c]"
     >
       <div className="mb-1 flex items-center gap-2 text-[13px] text-[#8a887f]">
+        {/* Same plate, family, weight and tabular figures as the inline marker it
+            pairs with — but not its superscript rise: here the number is a row
+            element, not a marker riding a text baseline. */}
         {number !== undefined && (
-          <span className="tabular-nums text-[#6f6d66]">{number}</span>
+          <span className="ui-source-number">{number}</span>
         )}
-        <SourceFavicon citation={citation} size={16} />
         <span className="truncate">{site}</span>
       </div>
-      <p className="mb-1 text-[15px] font-semibold leading-snug text-[#f3f0e8]">
-        {title}
+      <p className="mb-1 flex items-center gap-2 text-[15px] leading-snug font-semibold text-[#f3f0e8]">
+        <span>{title}</span>
+        <SourceFavicon citation={citation} size={16} />
       </p>
       {citation.snippet !== undefined && citation.snippet !== "" && (
         <p

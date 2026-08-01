@@ -52,6 +52,7 @@ import { rehypeStreamFade } from "./streamFade";
 import {
   rehypeSourcePills,
   SourcePill,
+  SourcesOpenerProvider,
   SOURCE_PILL_TAG,
   webSourceMap,
   type DisplayMap,
@@ -172,22 +173,30 @@ export function MessageBubble({
     () => assignDisplayNumbers(proseText, message.citations),
     [proseText, message.citations],
   );
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   return (
     <div className="max-w-[46rem] space-y-3">
-      {blocks.map((block, index) => (
-        <AssistantBlock
-          key={`${message.id}-block-${index}`}
-          block={block}
-          sources={sources}
-          display={numbering.display}
-        />
-      ))}
+      {/* The drawer's state lives here, above both the prose and the Sources row,
+          because either can open it: a marker in the answer and the footer row are
+          two entry points to the same list. */}
+      <SourcesOpenerProvider onOpen={() => setSourcesOpen(true)}>
+        {blocks.map((block, index) => (
+          <AssistantBlock
+            key={`${message.id}-block-${index}`}
+            block={block}
+            sources={sources}
+            display={numbering.display}
+          />
+        ))}
+      </SourcesOpenerProvider>
       {/* Sources sit directly under the answer text, on their own line, above the
           copy/retry/TTS + metrics footer. */}
       {!publicView && (
         <MessageCitations
           citations={message.citations}
           display={numbering.display}
+          sourcesOpen={sourcesOpen}
+          onSourcesOpenChange={setSourcesOpen}
         />
       )}
       {!publicView && (

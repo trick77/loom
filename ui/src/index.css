@@ -968,37 +968,72 @@ a.ui-activity-tool-url:hover {
 }
 
 /* Inline web-source citation pill: overrides the prose link color/underline above
-   (higher specificity) so it reads as a pill, not a body link. */
+   (higher specificity) so it reads as a marker, not a body link. */
 /* Inline citation marker: a raised numeral, not a chip. The chip form carried a
    site name ("Truefoundry"), which is heavy enough that only a few could render
    before the prose turned into a wall of pills; a numeral is light enough to sit
    next to every claim it backs, which is the point of per-sentence attribution. */
-/* Inline citation marker: a bracketed numeral, [1]. The brackets are what make it
-   readable in flowing prose — a bare raised numeral at this size vanishes into the
-   text — and they delimit adjacent markers, so [12][13] cannot read as one number.
-   Kept slightly raised and a shade smaller than body text so a well-cited paragraph
-   still reads as prose rather than as a list of references. */
+/* Inline citation marker: a bare numeral on a faint plate in the prose-link accent.
+   Tan, unplated numerals were too close to the prose colour to find; the accent is
+   the colour a reader already reads as "this is a control".
+
+   The plate replaces the brackets that used to delimit adjacent markers — it is its
+   own delimiter, and "[" + "]" cost about 9px inside every marker, enough that a
+   run of them read as a spaced-out ribbon. Position comes from the browser's own
+   superscript metrics; the line-to-line spacing of a cited paragraph is unchanged
+   either way (measured), only the paragraph's box grows by ~2px. */
 .ui-markdown a.ui-source-pill,
 .ui-source-pill {
-  color: #b3a288;
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #e0895f;
+  background: rgba(217, 119, 87, 0.15);
+  border: 0;
+  border-radius: 4px;
+  padding: 0.15em 0.3em;
+  /* Just enough to keep the plate off the glyph it follows; the space that used to
+     sit in front of a marker is trimmed away in rehypeSourcePills. */
+  margin-left: 0.12em;
   text-decoration: none;
-  /* vertical-align: super would inflate the line box; a small negative rise gives
-     the raised position without disturbing line height in flowing prose. */
-  position: relative;
-  top: -0.15em;
-  padding-left: 0.1em;
+  cursor: pointer;
+  position: static;
+  vertical-align: super;
+  transition:
+    background-color 0.12s,
+    color 0.12s;
 }
 
 .ui-markdown a.ui-source-pill:hover,
 .ui-source-pill:hover {
-  color: #f3f0e8;
+  background: rgba(217, 119, 87, 0.28);
+  color: #f6b195;
   text-decoration: none;
 }
 
 .ui-source-pill:focus-visible {
-  outline: 2px solid #857f72;
+  outline: 2px solid #d97757;
   outline-offset: 2px;
-  border-radius: 2px;
+}
+
+/* The Sources drawer's per-row number: the same plate, family, weight and tabular
+   figures as the marker it pairs with, so the two read as one system. Deliberately
+   NOT superscripted — here the number is a standalone row element, not a marker
+   riding a text baseline. */
+.ui-source-number {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #e0895f;
+  background: rgba(217, 119, 87, 0.15);
+  border-radius: 4px;
+  padding: 0.25em 0.4em;
 }
 
 /* Sources sidebar: slide-in drawer + backdrop fade. */
