@@ -239,7 +239,8 @@ export function ThreadShell({
   } = useDocumentAttachments({});
   // Errors that belong to the shell rather than to a turn (starring, attaching,
   // thread loading). A failed turn's own error lives on its run, so it stays with
-  // the thread that failed.
+  // the thread that failed. Report these through reportShellError below, not this
+  // setter directly, so the newer of the two wins; the bare setter is for clearing.
   const [sendError, setSendError] = useState("");
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -329,6 +330,19 @@ export function ThreadShell({
   const activeRun = selectRun(runs, activeRunKey);
   const activeThreadIsStreaming = isStreaming(runs, activeRunKey);
 
+  // Newest error wins. A failed turn's error stays pinned to its own thread, which
+  // is what keeps it findable when you come back — but it has no dismissal of its
+  // own, so without this it would shadow every later star / attach / load failure
+  // on that thread indefinitely. Reporting a shell error clears it.
+  const reportShellError = useCallback(
+    (message: string) => {
+      setSendError(message);
+      if (message !== "" && activeRunKey !== null)
+        patchStreamRun(activeRunKey, { error: "" });
+    },
+    [activeRunKey, patchStreamRun],
+  );
+
   // Deliberately not gated on `runs`: that record changes on every delta, and a
   // dependency on it would re-create this callback — and so tear down and re-add
   // the Escape listener below — once per streamed token, per running thread.
@@ -350,7 +364,7 @@ export function ThreadShell({
       // instead of this attributed one (the cancel cause is first-writer-wins).
       void stopMessage(activeThread.id, source)
         .catch((error: unknown) => {
-          handleActionError(error, t("thread.stopFailed"), setSendError);
+          handleActionError(error, t("thread.stopFailed"), reportShellError);
         })
         .finally(abort);
     },
@@ -360,6 +374,7 @@ export function ThreadShell({
       activeThread,
       handleActionError,
       incognito,
+      reportShellError,
       t,
     ],
   );
@@ -635,7 +650,7 @@ export function ThreadShell({
       }
       setSendError("");
     } catch (error) {
-      handleActionError(error, t("thread.updateFailed"), setSendError);
+      handleActionError(error, t("thread.updateFailed"), reportShellError);
     } finally {
       setIsUpdatingStar(false);
     }
@@ -680,7 +695,11 @@ export function ThreadShell({
       }
       setSendError("");
     } catch (error) {
-      handleActionError(error, t("thread.projectUpdateFailed"), setSendError);
+      handleActionError(
+        error,
+        t("thread.projectUpdateFailed"),
+        reportShellError,
+      );
     } finally {
       setIsUpdatingStar(false);
     }
@@ -1132,7 +1151,7 @@ export function ThreadShell({
       // to pin it to and no surface showing that run — it belongs to the shell,
       // which is the start screen the user is still looking at.
       handleActionError(error, "Message failed to send.", (message) => {
-        if (targetThreadID === null) setSendError(message);
+        if (targetThreadID === null) reportShellError(message);
         else patchStreamRun(runKey, { error: message });
       });
     } finally {
@@ -1308,7 +1327,9 @@ export function ThreadShell({
   }
 
   // A failed turn's error belongs to its own thread; everything else (starring,
-  // attaching, loading) belongs to the shell and shows wherever you are.
+  // attaching, loading) belongs to the shell and shows wherever you are. The turn
+  // error takes precedence only because reportShellError clears it first — so what
+  // this really resolves to is whichever error happened most recently.
   const visibleSendError = activeRun.error !== "" ? activeRun.error : sendError;
 
   // Incognito takes over the whole surface with no sidebar or modals — it is a

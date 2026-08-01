@@ -1685,8 +1685,9 @@ test("stars and unstars a chat from the sidebar action menu and closes the menu"
 
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  const sidebar = screen.getByRole("complementary");
   fireEvent.click(
-    await screen.findByRole("button", { name: "Open thread actions" }),
+    within(sidebar).getByRole("button", { name: "Open thread actions" }),
   );
   fireEvent.click(await screen.findByRole("menuitem", { name: "Star" }));
   await waitFor(() =>
@@ -5184,3 +5185,78 @@ function greetingPattern(name: string) {
   const options = possibleGreetings(name).map(escapeRegExp).join("|");
   return new RegExp(`^(${options})$`);
 }
+
+test("a newer shell error replaces a failed turn's error on that thread", async () => {
+  // A failed turn's error is pinned to its own thread and has no dismissal of its
+  // own, so without the newest-wins rule it would shadow every later failure there.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30") {
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "Existing chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            id: "t1",
+            title: "Existing chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        return Response.json({ error: "the turn blew up" }, { status: 500 });
+      }
+      if (url === "/api/threads/t1/star" && init?.method === "POST") {
+        return Response.json(
+          { error: "could not star the chat" },
+          { status: 500 },
+        );
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  const turnError = await screen.findByText(/the turn blew up/i);
+  expect(turnError).toBeInTheDocument();
+
+  // Now a shell failure on the same thread: it must win, not be swallowed.
+  const sidebar = screen.getByRole("complementary");
+  fireEvent.click(
+    within(sidebar).getByRole("button", { name: "Open thread actions" }),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Star" }));
+
+  await waitFor(() =>
+    expect(screen.queryByText(/the turn blew up/i)).toBeNull(),
+  );
+  expect(screen.getByText(/failed to update thread/i)).toBeInTheDocument();
+});
