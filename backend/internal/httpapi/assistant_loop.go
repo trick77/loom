@@ -86,8 +86,10 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	lastRoundDeferred := false
 	var artifacts []artifactResponse
 	// reg accumulates web-search/fetch sources across rounds, assigning each a
-	// stable [n] index the model cites inline. The sources are persisted with the
-	// message (settled render); no live streaming event is emitted.
+	// stable [n] index the model cites inline, continuing after any documents
+	// numbered before the loop. A snapshot is pushed to the browser after every
+	// round (see the web_sources event below) so inline markers resolve while the
+	// answer streams; the same sources are also persisted with the message.
 	reg := newWebSourceRegistryAfter(sourceIndexOffset)
 	// Stamp gathered sources onto every subsequent return (natural answer, forced
 	// final, interrupted partial) in one place. The tool-less/image fast paths

@@ -148,6 +148,42 @@ describe("ProseMarkdown inline source pills", () => {
     );
   });
 
+  // Adjacency was tracked across text nodes, but markdown splits "[1]**bold**[2]"
+  // into three of them. The second marker then looked like it abutted the first.
+  it("does not treat markers separated by an element as adjacent", () => {
+    const { container } = renderProse("Claim.[1]**bold**[2] tail.", citations);
+
+    // A separator here would read as "1,2" across the bold word.
+    expect(container.textContent).not.toContain(",");
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+  });
+
+  // The same leak silently deleted the second marker, stripping that claim of its
+  // attribution entirely.
+  it("keeps a repeat of one source separated by an element", () => {
+    renderProse("Claim.[1]**bold**[1] tail.", citations);
+
+    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(
+      2,
+    );
+  });
+
+  it("keeps a repeat across paragraphs", () => {
+    renderProse("First para ends.[1]\n\n[1] Second para.", citations);
+
+    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(
+      2,
+    );
+  });
+
+  it("keeps a repeat across list items", () => {
+    renderProse("- Point one.[1]\n- [1] Point two.", citations);
+
+    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(
+      2,
+    );
+  });
+
   it("collapses an immediately repeated same-source marker", () => {
     renderProse("Repeated cite [1][1] here.", citations);
 

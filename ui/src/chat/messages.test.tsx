@@ -274,3 +274,33 @@ test("renders the sources row above the metrics/status footer", () => {
     sources.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
 });
+
+// Regression: MessageBubble derived the Sources row from the citation *numbering*,
+// which drops anything without an index. Document citations only started carrying
+// one recently, so a pure-RAG answer persisted before that lost its whole Sources
+// row — chips, excerpt count and snippet reveal all gone.
+test("shows document sources for a message persisted before documents were numbered", () => {
+  const message: Message = {
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "Revenue rose sharply last quarter.",
+    createdAt: "2026-06-14T00:00:00Z",
+    citations: [
+      { documentId: "d1", filename: "report.pdf", snippet: "low", score: 0.4 },
+      {
+        documentId: "d1",
+        filename: "report.pdf",
+        snippet: "high",
+        score: 0.95,
+      },
+    ],
+  };
+
+  render(
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
+  );
+
+  expect(screen.getByText("report.pdf")).toBeInTheDocument();
+  expect(screen.getByText("2 excerpts")).toBeInTheDocument();
+});

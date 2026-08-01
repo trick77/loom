@@ -164,9 +164,10 @@ export function MessageBubble({
     [message.citations],
   );
   // Number the sources by the order the answer first cites them, so the prose opens
-  // at [1] and the sidebar leads with the source actually used. `ordered` drops the
-  // gathered-but-uncited sources — except when nothing was cited at all, where it
-  // falls back to the full list rather than showing an empty Sources row.
+  // at [1] and the sidebar leads with the source actually used. MessageCitations
+  // gets the full citation list and decides what to show from this map — it needs
+  // every RAG chunk to count excerpts, and messages persisted before documents were
+  // numbered carry no index at all.
   const numbering = useMemo(
     () => assignDisplayNumbers(proseText, message.citations),
     [proseText, message.citations],
@@ -185,7 +186,7 @@ export function MessageBubble({
           copy/retry/TTS + metrics footer. */}
       {!publicView && (
         <MessageCitations
-          citations={numbering.ordered}
+          citations={message.citations}
           display={numbering.display}
         />
       )}
