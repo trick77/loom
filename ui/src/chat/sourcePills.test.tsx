@@ -111,11 +111,35 @@ describe("ProseMarkdown inline source pills", () => {
   // it backs.
   it("trims the space between a word and its marker", () => {
     const { container } = renderProse(
-      "TrueFoundry deploys models [1].",
+      "TrueFoundry deploys models [1] and Modal runs Python [2].",
       citations,
     );
 
     expect(container.textContent).toContain("models1");
+  });
+
+  // The model writes "benchmarks [2]." — without hoisting, the marker lands between
+  // the last word and the full stop and the sentence reads as unfinished.
+  it("moves clause punctuation in front of the marker", () => {
+    const { container } = renderProse(
+      "TrueFoundry deploys models [1]. Modal runs Python [2], reliably.",
+      citations,
+    );
+
+    expect(container.textContent).toContain("models.1");
+    expect(container.textContent).toContain("Python,2");
+  });
+
+  it("moves punctuation in front of a whole run of markers", () => {
+    const { container } = renderProse("Both vendors agree [1][2].", citations);
+
+    expect(container.textContent).toContain("agree.12");
+  });
+
+  it("leaves punctuation alone when a marker in the run is unknown", () => {
+    const { container } = renderProse("An out-of-range marker [7].", citations);
+
+    expect(container.textContent).toContain("[7].");
   });
 
   // A citation's destination is the source list, not a new tab: the drawer holds

@@ -147,8 +147,33 @@ function lastTextNode(node: RootContent | ElementContent): Text | null {
   return null;
 }
 
+// A run of markers, optionally spaced, followed by the punctuation that closes the
+// clause: "[1][2]." or "[1] ,". Captured as one unit so the punctuation can move in
+// front of the whole run rather than in front of its last marker.
+const MARKER_RUN_BEFORE_PUNCTUATION = /((?:[ \t]*\[\d+\])+)[ \t]*([.,;:!?])/g;
+
+// hoistPunctuation moves clause punctuation ahead of the markers that precede it.
+// The model writes "on most benchmarks [2]." — the marker lands between the last
+// word and the full stop, which leaves the sentence visibly unfinished and the
+// period orphaned after a raised plate. Readers expect "benchmarks.²", the
+// convention every print citation style uses.
+//
+// Only runs whose every marker resolves to a cited source are moved: an unknown
+// "[7]" stays literal text, and rewriting the prose around it would corrupt a
+// sentence the plugin has decided not to touch.
+function hoistPunctuation(value: string, ctx: Ctx): string {
+  return value.replace(
+    MARKER_RUN_BEFORE_PUNCTUATION,
+    (whole, run: string, punctuation: string) => {
+      const numbers = run.match(/\d+/g) ?? [];
+      const known = numbers.every((n) => ctx.display.has(Number(n)));
+      return known ? `${punctuation}${run.trimStart()}` : whole;
+    },
+  );
+}
+
 function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
-  const value = node.value;
+  const value = hoistPunctuation(node.value, ctx);
   if (!value.includes("[")) return null;
   MARKER.lastIndex = 0;
   const out: ElementContent[] = [];
