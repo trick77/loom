@@ -339,6 +339,9 @@ test("removeAttachment deletes a composer-uploaded image server-side", async () 
 });
 
 test("staged attachments do not follow the user to another thread", () => {
+  // Nothing resets the module mocks between tests in this file, and an earlier one
+  // deletes an attachment — clear so the assertions below mean what they say.
+  vi.clearAllMocks();
   const { result, rerender } = renderHook(
     ({ threadId }: { threadId: string }) =>
       useDocumentAttachments({ threadId }),
@@ -351,7 +354,7 @@ test("staged attachments do not follow the user to another thread", () => {
   expect(result.current.attachments).toHaveLength(1);
 
   // The hosting panel is not remounted on a thread switch, so the hook has to
-  // drop the staged files itself — otherwise they bind to the next thread on send.
+  // scope the staged files itself — otherwise they bind to the next thread on send.
   rerender({ threadId: "t2" });
   expect(result.current.attachments).toHaveLength(0);
 
@@ -359,8 +362,55 @@ test("staged attachments do not follow the user to another thread", () => {
     result.current.handleAttachFiles([file("other.txt")]);
   });
   expect(result.current.attachments).toHaveLength(1);
+  expect(result.current.attachments[0]?.filename).toBe("other.txt");
 
   // A re-render that does not change the thread leaves the staging alone.
   rerender({ threadId: "t2" });
+  expect(result.current.attachments).toHaveLength(1);
+
+  // Going back finds the first thread's file still staged — it was set aside, not
+  // thrown away, so nothing was silently deleted or left orphaned server-side.
+  rerender({ threadId: "t1" });
+  expect(result.current.attachments).toHaveLength(1);
+  expect(result.current.attachments[0]?.filename).toBe("notes.txt");
+  expect(deleteDocument).not.toHaveBeenCalled();
+  expect(deleteArtifact).not.toHaveBeenCalled();
+});
+
+test("staged attachments do not follow the user to another project", () => {
+  const { result, rerender } = renderHook(
+    ({ projectId }: { projectId: string }) =>
+      useDocumentAttachments({ projectId }),
+    { initialProps: { projectId: "p1" } },
+  );
+
+  act(() => {
+    result.current.handleAttachFiles([file("spec.txt")]);
+  });
+  expect(result.current.attachments).toHaveLength(1);
+
+  rerender({ projectId: "p2" });
+  expect(result.current.attachments).toHaveLength(0);
+
+  rerender({ projectId: "p1" });
+  expect(result.current.attachments).toHaveLength(1);
+});
+
+test("a thread's staging survives its project id resolving after mount", () => {
+  // ThreadPanel passes projectId: threadProject?.id, which goes undefined →
+  // defined a beat after mount. Scoping by thread first means that transition is
+  // not a scope change, so files picked in the meantime are not swept away.
+  const { result, rerender } = renderHook(
+    ({ projectId }: { projectId?: string }) =>
+      useDocumentAttachments({ threadId: "t1", projectId }),
+    { initialProps: {} as { projectId?: string } },
+  );
+
+  act(() => {
+    result.current.handleAttachFiles([file("early.txt")]);
+  });
+  expect(result.current.attachments).toHaveLength(1);
+
+  rerender({ projectId: "p1" });
   expect(result.current.attachments).toHaveLength(1);
 });

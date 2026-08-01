@@ -150,6 +150,15 @@ type AttachmentStatusHandler = (
   patch: Partial<ComposerAttachment>,
 ) => void;
 
+// The bucket for a hook with neither a thread nor a project — the deferred
+// start-screen flush, which only ever uploads and never stages.
+const GLOBAL_ATTACHMENT_SCOPE = "global";
+// Shared identity for "nothing staged here", so a scope with no files does not
+// hand out a fresh array on every render.
+const NO_ATTACHMENTS: ComposerAttachment[] = Object.freeze(
+  [],
+) as unknown as ComposerAttachment[];
+
 // Shared "+" composer attachment flow: upload a picked file, add it to knowledge,
 // and surface ingestion progress via attachNote. Scope decides where the document
 // lands for retrieval: a projectId scopes it to a project; a project-less upload
@@ -161,15 +170,64 @@ export function useDocumentAttachments(scope: {
   projectId?: string;
 }) {
   const [attachNote, setAttachNote] = useState("");
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  // Staged files are held per scope, not in one list, for the same reason drafts
+  // are (see composerDrafts.ts): the hosting panel is not remounted when you move
+  // between threads or projects, so a single list would follow you and bind to
+  // whatever you send next. Keying by thread first means ThreadPanel's scope is
+  // stable even though it passes a `projectId` that resolves a beat after mount.
+  const scopeKey =
+    scope.threadId !== undefined
+      ? `thread:${scope.threadId}`
+      : scope.projectId !== undefined
+        ? `project:${scope.projectId}`
+        : GLOBAL_ATTACHMENT_SCOPE;
+  const [attachmentsByScope, setAttachmentsByScope] = useState<
+    Record<string, ComposerAttachment[]>
+  >({});
+  const attachments = attachmentsByScope[scopeKey] ?? NO_ATTACHMENTS;
 
+  const setScopeAttachments = useCallback(
+    (
+      key: string,
+      next: (current: ComposerAttachment[]) => ComposerAttachment[],
+    ) => {
+      setAttachmentsByScope((current) => {
+        const updated = next(current[key] ?? NO_ATTACHMENTS);
+        // Prune rather than keep an empty list, so moving through threads does not
+        // leave an entry behind for every one visited.
+        if (updated.length === 0) {
+          if (!(key in current)) return current;
+          const pruned = { ...current };
+          delete pruned[key];
+          return pruned;
+        }
+        return { ...current, [key]: updated };
+      });
+    },
+    [],
+  );
+
+  // Deliberately searches every scope rather than the current one: an upload
+  // started in thread A must still mark A's chip ready if it lands after the user
+  // has moved to thread B. Attachment ids are unique per pick, so this cannot hit
+  // the wrong chip.
   const updateAttachment = useCallback(
     (id: string, patch: Partial<ComposerAttachment>) => {
-      setAttachments((current) =>
-        current.map((attachment) =>
-          attachment.id === id ? { ...attachment, ...patch } : attachment,
-        ),
-      );
+      setAttachmentsByScope((current) => {
+        let changed = false;
+        const next: Record<string, ComposerAttachment[]> = {};
+        for (const [key, list] of Object.entries(current)) {
+          if (!list.some((attachment) => attachment.id === id)) {
+            next[key] = list;
+            continue;
+          }
+          changed = true;
+          next[key] = list.map((attachment) =>
+            attachment.id === id ? { ...attachment, ...patch } : attachment,
+          );
+        }
+        return changed ? next : current;
+      });
     },
     [],
   );
@@ -183,17 +241,17 @@ export function useDocumentAttachments(scope: {
       // it leaves no orphan; done outside the state updater to avoid a double
       // request under React StrictMode's double-invoked updaters.
       if (removed !== undefined) deleteUploadedAttachment(removed);
-      setAttachments((current) =>
+      setScopeAttachments(scopeKey, (current) =>
         current.filter((attachment) => attachment.id !== id),
       );
     },
-    [attachments],
+    [attachments, scopeKey, setScopeAttachments],
   );
 
   const clearAttachments = useCallback(
     (options: { revokePreviewUrls?: boolean } = {}) => {
       const revokePreviewUrls = options.revokePreviewUrls ?? true;
-      setAttachments((current) => {
+      setScopeAttachments(scopeKey, (current) => {
         if (revokePreviewUrls) {
           current.forEach((attachment) => {
             if (isRevocablePreview(attachment.previewUrl))
@@ -203,18 +261,16 @@ export function useDocumentAttachments(scope: {
         return [];
       });
     },
-    [],
+    [scopeKey, setScopeAttachments],
   );
 
-  // Staged-but-unsent attachments belong to the thread they were picked in. The
-  // hosting panel is not remounted on a thread switch (giving it a key would throw
-  // away scroll position and the sources sidebar), so without this they would
-  // follow the user to the next thread and bind to it on send.
-  const threadScopeId = scope.threadId;
+  // The note is per-hook rather than per-scope, so drop it when the scope changes:
+  // "Uploading report.pdf…" from the thread you just left has nothing to say about
+  // the one you are looking at. A chip's own status carries the real state, and
+  // survives the move.
   useEffect(() => {
-    clearAttachments();
     setAttachNote("");
-  }, [clearAttachments, threadScopeId]);
+  }, [scopeKey]);
 
   const handleAttachFiles = useCallback(
     (files: File[], override?: { threadId?: string; projectId?: string }) => {
@@ -247,7 +303,7 @@ export function useDocumentAttachments(scope: {
             : "uploading",
         ),
       );
-      setAttachments((current) => [...current, ...pending]);
+      setScopeAttachments(scopeKey, (current) => [...current, ...pending]);
       if (threadId !== undefined || projectId !== undefined) {
         void uploadAttachments(
           pending,
@@ -257,7 +313,14 @@ export function useDocumentAttachments(scope: {
         );
       }
     },
-    [attachments.length, scope.threadId, scope.projectId, updateAttachment],
+    [
+      attachments.length,
+      scope.threadId,
+      scope.projectId,
+      scopeKey,
+      setScopeAttachments,
+      updateAttachment,
+    ],
   );
 
   const uploadExistingAttachments = useCallback(
