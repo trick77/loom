@@ -11,6 +11,7 @@ import {
   streamMessage,
   streamIncognitoMessage,
   type Artifact,
+  type Citation,
   type ContentBlock,
   type MessagePastedText,
   type Project,
@@ -98,6 +99,29 @@ import { isWithinUploadSizeLimit } from "./attachmentFiles";
 export { buildImageStats } from "./artifacts";
 export { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 export { ProseMarkdown } from "./messages";
+
+// Each sources event is a full snapshot of *its own kind* only: knowledge_sources
+// carries the user's numbered documents (no url) once before the model runs,
+// web_sources carries the gathered pages (url) after every tool round. Replacing
+// the whole list on either would drop the other kind — since documents became
+// citable, the first search result would unresolve every document [n] pill
+// mid-answer and shift the display numbering that is meant to be append-only.
+// So each event replaces only its own kind. Documents lead: they hold the low
+// indices, numbered before the tool loop.
+function isWebCitation(citation: Citation): boolean {
+  return typeof citation.url === "string" && citation.url !== "";
+}
+
+export function mergeSourceSnapshot(
+  previous: Citation[],
+  incoming: Citation[],
+  incomingAreWeb: boolean,
+): Citation[] {
+  const kept = previous.filter(
+    (citation) => isWebCitation(citation) !== incomingAreWeb,
+  );
+  return incomingAreWeb ? [...kept, ...incoming] : [...incoming, ...kept];
+}
 
 type ThreadShellProps = {
   user: User;
@@ -992,13 +1016,17 @@ export function ThreadShell({
           onArtifact: (artifact) => {
             applyBlocks((current) => appendArtifactBlock(current, artifact));
           },
-          // Full snapshots, so replace rather than merge. Knowledge (RAG) sources
-          // arrive once before the model runs; web sources after each tool round.
+          // Each event is a full snapshot of one kind of source, so it replaces
+          // that kind and leaves the other in place (see mergeSourceSnapshot).
           onWebSources: (sources) => {
-            patchStreamRun(runKey, { sources });
+            patchStreamRun(runKey, (run) => ({
+              sources: mergeSourceSnapshot(run.sources, sources, true),
+            }));
           },
           onKnowledgeSources: (sources) => {
-            patchStreamRun(runKey, { sources });
+            patchStreamRun(runKey, (run) => ({
+              sources: mergeSourceSnapshot(run.sources, sources, false),
+            }));
           },
           onAssistantMessage: (message) => {
             // The persisted message may already carry the backend's ordered

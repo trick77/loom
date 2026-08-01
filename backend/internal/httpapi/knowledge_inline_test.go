@@ -24,7 +24,7 @@ func TestKnowledgeInlineContext_injectsWholeWhenUnderBudget(t *testing.T) {
 		knowledgeInlineTokenBudget: 1000,
 	}
 
-	block, inlinedIDs, citations, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil)
+	block, inlinedIDs, citations, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, newDocIndexer())
 
 	if !strings.Contains(block, "briefing.pdf") || !strings.Contains(block, "the preparation task is to review measures.") {
 		t.Errorf("block missing full document text: %q", block)
@@ -55,7 +55,7 @@ func TestKnowledgeInlineContext_leavesOversizeForRAG(t *testing.T) {
 		knowledgeInlineTokenBudget: 1000,
 	}
 
-	block, inlinedIDs, _, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil)
+	block, inlinedIDs, _, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, newDocIndexer())
 
 	if !inlinedIDs["small"] {
 		t.Error("the small doc should be inlined")
@@ -79,7 +79,7 @@ func TestKnowledgeInlineContext_disabledWhenBudgetZero(t *testing.T) {
 		},
 		knowledgeInlineTokenBudget: 0,
 	}
-	block, inlinedIDs, citations, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil)
+	block, inlinedIDs, citations, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, newDocIndexer())
 	if block != "" || inlinedIDs != nil || citations != nil || inlinedAll {
 		t.Errorf("budget 0 should disable inlining, got block=%q ids=%v inlinedAll=%v", block, inlinedIDs, inlinedAll)
 	}
@@ -94,7 +94,7 @@ func TestKnowledgeInlineContext_skipsAlreadyAttachedDoc(t *testing.T) {
 		knowledgeInlineTokenBudget: 1000,
 	}
 	// d1 was already inlined this turn as an explicit attachment.
-	block, inlinedIDs, _, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, map[string]bool{"d1": true})
+	block, inlinedIDs, _, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, map[string]bool{"d1": true}, newDocIndexer())
 	if strings.Contains(block, "already attached in full") {
 		t.Errorf("a doc inlined as an attachment must not be re-injected here: %q", block)
 	}
@@ -115,7 +115,7 @@ func TestKnowledgeInlineContext_skipsDocWithNoExtractableText(t *testing.T) {
 		},
 		knowledgeInlineTokenBudget: 1000,
 	}
-	block, inlinedIDs, citations, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil)
+	block, inlinedIDs, citations, inlinedAll := s.knowledgeInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, newDocIndexer())
 	if block != "" || len(inlinedIDs) != 0 || citations != nil {
 		t.Errorf("a doc with no extractable text must not be inlined, got block=%q ids=%v", block, inlinedIDs)
 	}

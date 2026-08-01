@@ -171,6 +171,60 @@ describe("MessageCitations", () => {
     expect(within(dialog).getByText("Modal runs Python.")).toBeInTheDocument();
   });
 
+  // Documents are numbered in the same sequence as web sources, so the chip has to
+  // show its marker for the reader to match it to the [n] in the prose.
+  it("shows the citation number on a document chip", () => {
+    const doc: Citation = {
+      documentId: "d1",
+      filename: "runbook.md",
+      snippet: "Retention is 45 days.",
+      score: 1,
+      index: 1,
+      full: true,
+    };
+
+    render(<MessageCitations citations={[doc]} display={new Map([[1, 1]])} />);
+
+    const chip = screen.getByRole("button", { name: /runbook\.md/ });
+    expect(chip).toHaveTextContent("1");
+    expect(chip).toHaveTextContent("runbook.md");
+  });
+
+  it("reveals the matched snippet when a document chip is clicked", () => {
+    const doc: Citation = {
+      documentId: "d1",
+      filename: "runbook.md",
+      snippet: "Retention is 45 days.",
+      score: 1,
+      index: 1,
+    };
+    render(<MessageCitations citations={[doc]} display={new Map([[1, 1]])} />);
+
+    expect(screen.queryByText("Retention is 45 days.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /runbook\.md/ }));
+    expect(screen.getByText("Retention is 45 days.")).toBeInTheDocument();
+
+    // Clicking the same chip again collapses it.
+    fireEvent.click(screen.getByRole("button", { name: /runbook\.md/ }));
+    expect(screen.queryByText("Retention is 45 days.")).not.toBeInTheDocument();
+  });
+
+  it("omits the number on a document that was not cited", () => {
+    const doc: Citation = {
+      documentId: "d1",
+      filename: "runbook.md",
+      snippet: "x",
+      score: 1,
+      index: 4,
+    };
+
+    render(<MessageCitations citations={[doc]} display={new Map()} />);
+
+    expect(
+      screen.getByRole("button", { name: /runbook\.md/ }),
+    ).not.toHaveTextContent("4");
+  });
+
   // While streaming, the list also carries sources gathered but not yet cited.
   // Those have no marker in the prose, so numbering them by row position would
   // point the reader at a citation that does not exist.

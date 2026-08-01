@@ -47,7 +47,7 @@ func TestKnowledgeContext_buildsBlockAndSources(t *testing.T) {
 	}}}
 	thread := chat.Thread{ID: "t1"}
 
-	block, citations := s.knowledgeContextForThread(context.Background(), "u1", thread, "how do I build", nil)
+	block, citations := s.knowledgeContextForThread(context.Background(), "u1", thread, "how do I build", nil, newDocIndexer())
 	if !strings.Contains(block, "guide.pdf") || !strings.Contains(block, "Install with make build.") {
 		t.Errorf("knowledge block missing content: %q", block)
 	}
@@ -68,7 +68,7 @@ func TestKnowledgeContext_passesProjectScope(t *testing.T) {
 	s := &server{documents: stub}
 	pid := "p1"
 	thread := chat.Thread{ID: "t1", ProjectID: &pid}
-	s.knowledgeContextForThread(context.Background(), "u1", thread, "q", nil)
+	s.knowledgeContextForThread(context.Background(), "u1", thread, "q", nil, newDocIndexer())
 	if stub.gotPID == nil || *stub.gotPID != "p1" {
 		t.Errorf("retrieve project scope = %v, want p1", stub.gotPID)
 	}
@@ -76,7 +76,7 @@ func TestKnowledgeContext_passesProjectScope(t *testing.T) {
 
 func TestKnowledgeContext_bestEffortOnError(t *testing.T) {
 	s := &server{documents: &stubDocs{err: errors.New("embed down")}}
-	block, sources := s.knowledgeContextForThread(context.Background(), "u1", chat.Thread{ID: "t1"}, "q", nil)
+	block, sources := s.knowledgeContextForThread(context.Background(), "u1", chat.Thread{ID: "t1"}, "q", nil, newDocIndexer())
 	if block != "" || sources != nil {
 		t.Errorf("on error want empty block/sources, got %q / %v", block, sources)
 	}
@@ -84,7 +84,78 @@ func TestKnowledgeContext_bestEffortOnError(t *testing.T) {
 
 func TestKnowledgeContext_disabledWhenNoService(t *testing.T) {
 	s := &server{}
-	if block, sources := s.knowledgeContextForThread(context.Background(), "u1", chat.Thread{ID: "t1"}, "q", nil); block != "" || sources != nil {
+	if block, sources := s.knowledgeContextForThread(context.Background(), "u1", chat.Thread{ID: "t1"}, "q", nil, newDocIndexer()); block != "" || sources != nil {
 		t.Errorf("want empty when documents disabled, got %q / %v", block, sources)
+	}
+}
+
+// Documents are numbered per document, not per chunk: several excerpts of one file
+// share its marker, matching how the UI groups them.
+func TestKnowledgeContextNumbersPerDocumentNotPerChunk(t *testing.T) {
+	s := &server{documents: &stubDocs{chunks: []rag.RetrievedChunk{
+		{DocumentID: "d1", Filename: "guide.pdf", Text: "first chunk"},
+		{DocumentID: "d1", Filename: "guide.pdf", Text: "second chunk"},
+		{DocumentID: "d2", Filename: "notes.md", Text: "other doc"},
+	}}}
+
+	block, citations := s.knowledgeContextForThread(context.Background(), "u1",
+		chat.Thread{ID: "t1"}, "q", nil, newDocIndexer())
+
+	if !strings.Contains(block, "[1] guide.pdf") || !strings.Contains(block, "[2] notes.md") {
+		t.Errorf("block should label each document with its marker:\n%s", block)
+	}
+	if strings.Contains(block, "[3]") {
+		t.Errorf("a second chunk of d1 must reuse [1], not take a new number:\n%s", block)
+	}
+	got := []int{citations[0].Index, citations[1].Index, citations[2].Index}
+	want := []int{1, 1, 2}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("citation indices = %v, want %v (both d1 chunks share [1])", got, want)
+		}
+	}
+}
+
+// Documents number 1..k before the tool loop, so web sources must continue after
+// them — otherwise a [1] in the answer could mean either a document or a web page.
+func TestWebSourceRegistryContinuesAfterDocuments(t *testing.T) {
+	docs := newDocIndexer()
+	docs.index("d1")
+	docs.index("d2")
+
+	reg := newWebSourceRegistryAfter(docs.count())
+	first, ok := reg.add("https://example.com/a")
+	if !ok || first != 3 {
+		t.Fatalf("first web source index = %d, want 3 (after two documents)", first)
+	}
+	second, _ := reg.add("https://example.com/b")
+	if second != 4 {
+		t.Errorf("second web source index = %d, want 4", second)
+	}
+	// A repeat URL still resolves to its original index through the offset.
+	again, _ := reg.add("https://example.com/a")
+	if again != 3 {
+		t.Errorf("repeat URL index = %d, want 3", again)
+	}
+	if cits := webSourceCitations(reg.all()); cits[0].Index != 3 || cits[1].Index != 4 {
+		t.Errorf("citation indices = %d,%d, want 3,4", cits[0].Index, cits[1].Index)
+	}
+}
+
+// The offset must not corrupt the backfill path, which indexes into the slice.
+func TestOffsetRegistryBackfillsDetail(t *testing.T) {
+	reg := newWebSourceRegistryAfter(5)
+	reg.addDetailed("https://example.com/a", "", "", "")
+	reg.addDetailed("https://example.com/a", "A Title", "A snippet.", "https://example.com/f.ico")
+
+	all := reg.all()
+	if len(all) != 1 {
+		t.Fatalf("registry length = %d, want 1", len(all))
+	}
+	if all[0].Index != 6 {
+		t.Errorf("index = %d, want 6", all[0].Index)
+	}
+	if all[0].Title != "A Title" || all[0].Favicon == "" {
+		t.Errorf("backfill failed through the offset: %+v", all[0])
 	}
 }

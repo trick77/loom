@@ -132,12 +132,82 @@ describe("assignDisplayNumbers", () => {
     expect(ordered.map((c) => c.index)).toEqual([3]);
   });
 
+  // A document the user uploaded was genuinely consulted whether or not a sentence
+  // cites it, so it stays in the row (unnumbered). An uncited *web* source is
+  // dropped — showing it would imply an attribution the prose never made.
+  it("keeps uncited documents but drops uncited web sources", () => {
+    const doc: Citation = {
+      documentId: "d1",
+      filename: "guide.pdf",
+      snippet: "x",
+      score: 1,
+      index: 1,
+    };
+    const cited = web(2, "kubernetes.io");
+    const uncitedWeb = web(3, "reddit.com");
+
+    const { ordered, display } = assignDisplayNumbers("Only [2] here.", [
+      doc,
+      cited,
+      uncitedWeb,
+    ]);
+
+    expect(ordered.map((c) => c.index)).toEqual([2, 1]);
+    expect(display.get(2)).toBe(1);
+    expect(display.has(1)).toBe(false);
+  });
+
+  // Two uncited documents exercise the ordering: they trail the cited sources in
+  // their own index order, not in whatever order the citations arrived.
+  it("orders several uncited documents by index", () => {
+    const docA: Citation = {
+      documentId: "d3",
+      filename: "c.md",
+      snippet: "x",
+      score: 1,
+      index: 3,
+    };
+    const docB: Citation = {
+      documentId: "d1",
+      filename: "a.md",
+      snippet: "x",
+      score: 1,
+      index: 1,
+    };
+
+    const { ordered } = assignDisplayNumbers("Only [2] cited.", [
+      docA,
+      docB,
+      web(2, "kubernetes.io"),
+    ]);
+
+    expect(ordered.map((c) => c.index)).toEqual([2, 1, 3]);
+  });
+
+  it("numbers a cited document like any other source", () => {
+    const doc: Citation = {
+      documentId: "d1",
+      filename: "guide.pdf",
+      snippet: "x",
+      score: 1,
+      index: 1,
+    };
+    const { display, ordered } = assignDisplayNumbers("Per the guide [1].", [
+      doc,
+      web(2, "kubernetes.io"),
+    ]);
+
+    expect(display.get(1)).toBe(1);
+    expect(ordered[0].filename).toBe("guide.pdf");
+  });
+
   it("returns an empty numbering when there are no citations", () => {
     expect(assignDisplayNumbers("Text [1].", []).ordered).toEqual([]);
     expect(assignDisplayNumbers("Text [1].", undefined).ordered).toEqual([]);
   });
 
-  it("ignores citations without a usable index (RAG document chunks)", () => {
+  // Documents from before they were numbered carry no index and cannot be cited.
+  it("ignores citations without a usable index (legacy document chunks)", () => {
     const doc: Citation = {
       documentId: "d1",
       filename: "guide.pdf",

@@ -83,5 +83,18 @@ export function assignDisplayNumbers(
     return { display: new Map(), ordered: all };
   }
 
-  return { display, ordered };
+  // Uncited *web* sources are dropped — the model searched them and moved on, and
+  // listing them would imply an attribution the prose never makes. Uncited
+  // *documents* are kept: the user uploaded them and needs to see they were
+  // consulted, whether or not a sentence happened to cite one. They carry no
+  // display number, so they render unnumbered.
+  const uncitedDocuments = [...byIndex.values()]
+    .filter(
+      (citation) =>
+        !display.has(citation.index ?? 0) &&
+        (citation.url === undefined || citation.url === ""),
+    )
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+
+  return { display, ordered: [...ordered, ...uncitedDocuments] };
 }

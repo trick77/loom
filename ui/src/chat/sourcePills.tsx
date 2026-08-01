@@ -3,32 +3,32 @@ import type { ElementContent, Root, RootContent, Text } from "hast";
 
 import type { Citation } from "../api";
 
-// WebSourceRef is one citable web source: the link and its display label (the
-// site name derived by the backend, e.g. "Truefoundry").
-export type WebSourceRef = { url: string; label: string };
+// WebSourceRef is one citable source: its display label, plus a link when the
+// source is a web page. Uploaded documents carry a marker but no url — they are
+// cited the same way, and render as a marker that is not a link.
+export type WebSourceRef = { url?: string; label: string };
 
 // SourceMap maps a [n] citation index to its web source, built from a message's
 // persisted citations. Used only for the inline pills; the sidebar reads the full
 // citation records directly.
 export type SourceMap = Map<number, WebSourceRef>;
 
-// webSourceMap collects the web-search citations (those carrying a url + index)
-// into an index -> source map, so inline [n] markers can resolve to pills.
-// Returns undefined when there are no web sources, so callers can cheaply skip
-// the rehype pass for answers that used no web tools.
+// webSourceMap collects every citation carrying an [n] marker into an
+// index -> source map, so inline markers can resolve. Both web pages and uploaded
+// documents are numbered from one sequence by the backend; a document simply has
+// no url. Returns undefined when nothing is numbered, so callers can cheaply skip
+// the rehype pass for answers that cited nothing.
 export function webSourceMap(citations?: Citation[]): SourceMap | undefined {
   if (citations === undefined || citations.length === 0) return undefined;
   const map: SourceMap = new Map();
   for (const citation of citations) {
-    if (
-      typeof citation.url === "string" &&
-      citation.url !== "" &&
-      typeof citation.index === "number" &&
-      citation.index > 0 &&
-      !map.has(citation.index)
-    ) {
-      map.set(citation.index, { url: citation.url, label: citation.filename });
-    }
+    if (typeof citation.index !== "number" || citation.index <= 0) continue;
+    if (map.has(citation.index)) continue;
+    const url =
+      typeof citation.url === "string" && citation.url !== ""
+        ? citation.url
+        : undefined;
+    map.set(citation.index, { url, label: citation.filename });
   }
   return map.size > 0 ? map : undefined;
 }
@@ -95,6 +95,8 @@ function pillElement(ref: WebSourceRef, shown: number): ElementContent {
     type: "element",
     tagName: SOURCE_PILL_TAG,
     properties: {
+      // Absent for an uploaded document: SourcePill then renders the number as
+      // plain (non-link) text rather than a dead anchor.
       href: ref.url,
       // The site name left the prose when the pill became numeric; keep it here so
       // hover and screen readers still identify the source.
@@ -180,12 +182,17 @@ export function SourcePill({
   title?: unknown;
   children?: ReactNode;
 }) {
-  // The separator between two abutting markers carries no href; render it with the
-  // marker styling so it keeps the raised baseline instead of dropping to the text
-  // baseline. Also the safe fallback for a marker whose url went missing.
-  if (typeof href !== "string" || href === "")
-    return <span className={PILL_CLASS}>{children}</span>;
   const label = typeof title === "string" && title !== "" ? title : undefined;
+  // No href means either the separator between two abutting markers, or a citation
+  // of an uploaded document (numbered like a web source, but nothing to link to).
+  // Render with the marker styling either way so it keeps the raised baseline
+  // instead of dropping to the text baseline.
+  if (typeof href !== "string" || href === "")
+    return (
+      <span className={PILL_CLASS} title={label} aria-label={label}>
+        {children}
+      </span>
+    );
   return (
     // The color/underline live in CSS (.ui-source-pill) so they outrank the
     // ".ui-markdown a" link styling this pill renders inside; the layout utilities
