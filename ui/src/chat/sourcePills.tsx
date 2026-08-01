@@ -40,13 +40,17 @@ const SKIP_TAGS = new Set(["code", "pre", "a"]);
 // The custom element the plugin emits; ProseMarkdown maps it to <SourcePill>.
 export const SOURCE_PILL_TAG = "citepill";
 
-// A raised numeral rather than a chip. The chip form carried the site name, which
-// was heavy enough that only three could render before the prose became a wall of
-// pills — the reason a per-message cap used to exist. Measured marker positions
-// show no end-clustering (9% in the final fifth against 20% for a uniform spread)
-// and a median of 4 cited sources per answer, so every marker now renders.
+// A bracketed numeral — [1] — rather than a chip or a bare superscript. The chip
+// carried the site name, heavy enough that only three could render before the prose
+// became a wall of pills (the reason a per-message cap used to exist). A bare
+// raised numeral fixed the weight but went too far the other way: at 0.7rem and
+// unpunctuated it disappears into the text.
+//
+// Brackets also remove a real ambiguity. Adjacent bare numerals ran together —
+// "[12][13]" rendered as "1213", one number — which needed a separator comma
+// spliced between them. Brackets delimit themselves, so that hack is gone.
 const PILL_CLASS =
-  "ui-source-pill ml-px inline-block align-baseline font-sans text-[0.7rem] font-semibold tabular-nums transition-colors";
+  "ui-source-pill inline-block align-baseline font-sans text-[0.78rem] font-semibold tabular-nums transition-colors";
 
 type Ctx = {
   sources: SourceMap;
@@ -68,25 +72,12 @@ export type DisplayMap = Map<number, number>;
 //
 // "Immediately" means within one text node. Adjacency is not tracked across nodes:
 // markdown splits "[1]**bold**[2]" into three, and carrying the state across made
-// the second marker look like it abutted the first — emitting a stray separator
-// there, and silently deleting the marker in "[1]**bold**[1]", where the two back
-// genuinely different claims. The same applied across paragraphs, list items and
-// table cells.
+// the second marker look like it abutted the first — silently deleting the marker
+// in "[1]**bold**[1]", where the two back genuinely different claims. The same
+// applied across paragraphs, list items and table cells.
 export function rehypeSourcePills(sources: SourceMap, display: DisplayMap) {
   return (tree: Root) => {
     walk(tree.children, { sources, display });
-  };
-}
-
-// separatorElement is the thin comma between two abutting markers. Rendered with
-// the pill tag (but no href, so SourcePill emits plain text) to share the raised
-// baseline and size rather than dropping to the text baseline.
-function separatorElement(): ElementContent {
-  return {
-    type: "element",
-    tagName: SOURCE_PILL_TAG,
-    properties: {},
-    children: [{ type: "text", value: "," }],
   };
 }
 
@@ -103,7 +94,7 @@ function pillElement(ref: WebSourceRef, shown: number): ElementContent {
       title: ref.label,
       "aria-label": ref.label,
     },
-    children: [{ type: "text", value: String(shown) }],
+    children: [{ type: "text", value: `[${shown}]` }],
   };
 }
 
@@ -154,12 +145,7 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
       out.push({ type: "text", value: value.slice(last, match.index) });
     last = match.index + match[0].length;
     changed = true;
-    if (!repeat) {
-      // Without a separator, adjacent multi-digit markers run together: [13][12]
-      // renders as "1312", which reads as one number rather than two citations.
-      if (abuts) out.push(separatorElement());
-      out.push(pillElement(ref, shown));
-    }
+    if (!repeat) out.push(pillElement(ref, shown));
     previousIndex = n;
     previousWasMarker = true;
   }
@@ -181,10 +167,9 @@ export function SourcePill({
   children?: ReactNode;
 }) {
   const label = typeof title === "string" && title !== "" ? title : undefined;
-  // No href means either the separator between two abutting markers, or a citation
-  // of an uploaded document (numbered like a web source, but nothing to link to).
-  // Render with the marker styling either way so it keeps the raised baseline
-  // instead of dropping to the text baseline.
+  // No href means a citation of an uploaded document — numbered like a web source,
+  // but with nothing to link to. Render it with the same marker styling so it reads
+  // identically to a web citation.
   if (typeof href !== "string" || href === "")
     return (
       <span className={PILL_CLASS} title={label} aria-label={label}>

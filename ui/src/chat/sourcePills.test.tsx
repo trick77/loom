@@ -91,17 +91,21 @@ describe("ProseMarkdown inline source pills", () => {
     expect(first).toHaveAttribute("href", "https://truefoundry.com");
     expect(first).toHaveAttribute("target", "_blank");
     // The marker shows a number now; the site name moved to the accessible label.
-    expect(first).toHaveTextContent("1");
-    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent("2");
+    expect(first).toHaveTextContent("[1]");
+    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent(
+      "[2]",
+    );
   });
 
   it("numbers by citation order, not by the persisted index", () => {
     // Modal is [2] to the model but is cited first, so the reader sees 1.
     renderProse("Modal first [2]. Truefoundry second [1].", citations);
 
-    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent("1");
+    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent(
+      "[1]",
+    );
     expect(screen.getByRole("link", { name: "Truefoundry" })).toHaveTextContent(
-      "2",
+      "[2]",
     );
   });
 
@@ -118,7 +122,9 @@ describe("ProseMarkdown inline source pills", () => {
     expect(screen.getByText(/\[1\]/)).toBeInTheDocument();
   });
 
-  it("separates abutting markers so multi-digit numbers do not merge", () => {
+  // Brackets delimit adjacent markers themselves — "[12][13]" cannot read as one
+  // number the way bare superscripts "1213" could, so no separator is needed.
+  it("keeps adjacent multi-digit markers legible", () => {
     const many: Citation[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(
       (index) => ({
         documentId: "",
@@ -129,37 +135,32 @@ describe("ProseMarkdown inline source pills", () => {
         index,
       }),
     );
-    // Cite 1..11 first so the abutting pair at the end gets two-digit display
-    // numbers — without a separator "[12][13]" renders as "1213", read as one
-    // number rather than two citations.
     const lead = Array.from(
       { length: 11 },
       (_, i) => `Claim ${i}. [${i + 1}]`,
     ).join(" ");
+
     const { container } = renderProse(`${lead} Finally [12][13].`, many);
 
-    expect(container.textContent).toContain("12,13");
+    expect(container.textContent).toContain("[12][13]");
     expect(container.textContent).not.toContain("1213");
     expect(screen.getByRole("link", { name: "Site12" })).toHaveTextContent(
-      "12",
+      "[12]",
     );
     expect(screen.getByRole("link", { name: "Site13" })).toHaveTextContent(
-      "13",
+      "[13]",
     );
   });
 
   // Adjacency was tracked across text nodes, but markdown splits "[1]**bold**[2]"
-  // into three of them. The second marker then looked like it abutted the first.
-  it("does not treat markers separated by an element as adjacent", () => {
-    const { container } = renderProse("Claim.[1]**bold**[2] tail.", citations);
+  // into three of them. The second marker then looked like it abutted the first,
+  // and a same-source repeat was silently deleted.
+  it("keeps both markers when an element separates them", () => {
+    renderProse("Claim.[1]**bold**[2] tail.", citations);
 
-    // A separator here would read as "1,2" across the bold word.
-    expect(container.textContent).not.toContain(",");
     expect(screen.getAllByRole("link")).toHaveLength(2);
   });
 
-  // The same leak silently deleted the second marker, stripping that claim of its
-  // attribution entirely.
   it("keeps a repeat of one source separated by an element", () => {
     renderProse("Claim.[1]**bold**[1] tail.", citations);
 
@@ -217,7 +218,8 @@ describe("ProseMarkdown inline source pills", () => {
     renderProse("A well-cited answer [1][2][3][4][5].", many);
 
     expect(screen.getAllByRole("link")).toHaveLength(5);
-    expect(screen.getByRole("link", { name: "Site5" })).toHaveTextContent("5");
-    expect(screen.queryByText(/\[4\]/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Site5" })).toHaveTextContent(
+      "[5]",
+    );
   });
 });
