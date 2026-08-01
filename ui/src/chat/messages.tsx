@@ -183,7 +183,12 @@ export function MessageBubble({
       ))}
       {/* Sources sit directly under the answer text, on their own line, above the
           copy/retry/TTS + metrics footer. */}
-      {!publicView && <MessageCitations citations={numbering.ordered} />}
+      {!publicView && (
+        <MessageCitations
+          citations={numbering.ordered}
+          display={numbering.display}
+        />
+      )}
       {!publicView && (
         <MessageActions
           copyLabel={t("messages.copyResponse")}

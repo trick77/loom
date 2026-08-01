@@ -145,26 +145,65 @@ describe("MessageCitations", () => {
         index: 3,
       },
     ];
-    render(<MessageCitations citations={sources} />);
+    // Modal is [2] to the model but cited first, so it displays as 1.
+    const display = new Map([
+      [2, 1],
+      [1, 2],
+    ]);
+    render(<MessageCitations citations={sources} display={display} />);
     // Closed: the sidebar dialog is not mounted; a Sources button is shown.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /sources/i }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toBeInTheDocument();
     // One card per distinct source, in the order given. The caller supplies the
-    // list already ordered by first citation (assignDisplayNumbers), and each card
-    // is numbered by its position — re-sorting on the persisted citation.index here
-    // would restore Tavily arrival order and desync the cards from the [n] markers
-    // in the prose.
+    // list already ordered by first citation (assignDisplayNumbers); re-sorting on
+    // the persisted citation.index here would restore Tavily arrival order and
+    // desync the cards from the [n] markers in the prose.
     const links = within(dialog).getAllByRole("link");
     expect(links).toHaveLength(2);
     expect(links[0]).toHaveTextContent("Modal docs");
     expect(links[0]).toHaveAttribute("href", "https://modal.com");
     expect(links[1]).toHaveTextContent("TrueFoundry");
-    // The card's visible number is its row position, matching the inline marker.
+    // The number comes from the display map, matching the inline marker.
     expect(links[0]).toHaveTextContent("1");
     expect(links[1]).toHaveTextContent("2");
     expect(within(dialog).getByText("Modal runs Python.")).toBeInTheDocument();
+  });
+
+  // While streaming, the list also carries sources gathered but not yet cited.
+  // Those have no marker in the prose, so numbering them by row position would
+  // point the reader at a citation that does not exist.
+  it("leaves sources with no display number unnumbered", () => {
+    const sources: Citation[] = [
+      {
+        documentId: "",
+        filename: "Modal",
+        snippet: "",
+        score: 0,
+        url: "https://modal.com",
+        index: 2,
+        title: "Modal docs",
+      },
+      {
+        documentId: "",
+        filename: "Truefoundry",
+        snippet: "",
+        score: 0,
+        url: "https://truefoundry.com",
+        index: 1,
+        title: "TrueFoundry",
+      },
+    ];
+    // Only Modal has been cited so far.
+    render(
+      <MessageCitations citations={sources} display={new Map([[2, 1]])} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /sources/i }));
+    const links = within(screen.getByRole("dialog")).getAllByRole("link");
+
+    expect(links[0]).toHaveTextContent("1");
+    expect(links[1]).not.toHaveTextContent("2");
   });
 
   it("splits the sidebar with a More divider past the first four sources", () => {
