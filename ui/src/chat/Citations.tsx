@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Citation } from "../api";
+import type { DisplayMap } from "./sourcePills";
 import { hostOf, SourceFavicon } from "./SourceFavicon";
 import { SourcesSidebar } from "./SourcesSidebar";
 
@@ -91,7 +92,14 @@ export function dedupeByDomain(sources: Citation[]): Citation[] {
 // MessageCitations renders the sources that informed an assistant answer as a
 // "Sources" row of chips. Document sources reveal their matched snippet on click;
 // web sources link out to the page.
-export function MessageCitations({ citations }: { citations?: Citation[] }) {
+export function MessageCitations({
+  citations,
+  display,
+}: {
+  citations?: Citation[];
+  /** Persisted index -> the number shown in the prose. Absent = not cited. */
+  display?: DisplayMap;
+}) {
   const { t } = useTranslation();
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -188,6 +196,7 @@ export function MessageCitations({ citations }: { citations?: Citation[] }) {
       <SourcesSidebar
         open={sourcesOpen}
         sources={webSources}
+        display={display}
         onClose={() => setSourcesOpen(false)}
       />
     </div>

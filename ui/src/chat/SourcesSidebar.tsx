@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Citation } from "../api";
+import type { DisplayMap } from "./sourcePills";
 import { Icon } from "./Icon";
 import { hostOf, SourceFavicon } from "./SourceFavicon";
 
@@ -16,10 +17,13 @@ const PRIMARY_COUNT = 4;
 export function SourcesSidebar({
   open,
   sources,
+  display,
   onClose,
 }: {
   open: boolean;
   sources: Citation[];
+  /** Persisted index -> the number shown in the prose. Absent = not cited. */
+  display?: DisplayMap;
   onClose(): void;
 }) {
   const { t } = useTranslation();
@@ -68,7 +72,7 @@ export function SourcesSidebar({
             <SourceCard
               key={cardKey(source, index)}
               citation={source}
-              number={index + 1}
+              number={display?.get(source.index ?? 0)}
             />
           ))}
           {rest.length > 0 && (
@@ -81,7 +85,7 @@ export function SourcesSidebar({
             <SourceCard
               key={cardKey(source, PRIMARY_COUNT + index)}
               citation={source}
-              number={PRIMARY_COUNT + index + 1}
+              number={display?.get(source.index ?? 0)}
             />
           ))}
         </div>
@@ -94,17 +98,16 @@ function cardKey(citation: Citation, index: number): string {
   return `${citation.index ?? index}-${citation.url ?? ""}`;
 }
 
-// number is the reader-facing citation number — the row's position in the
-// already-ordered list, which is what the inline [n] markers point at. Sources
-// arrive here sorted by first citation (see assignDisplayNumbers), so position and
-// marker always agree; deriving it from the position rather than citation.index
-// keeps the two from drifting apart.
+// number is the reader-facing citation number, taken from the display map rather
+// than the row's position: while an answer streams the list also carries sources
+// that have not been cited yet, and those have no number at all. Using the position
+// would hand them one, pointing at a marker that does not exist in the prose.
 function SourceCard({
   citation,
   number,
 }: {
   citation: Citation;
-  number: number;
+  number?: number;
 }) {
   const host = hostOf(citation.url);
   const site = citation.filename !== "" ? citation.filename : host;
@@ -120,7 +123,9 @@ function SourceCard({
       className="block rounded-[10px] px-3 py-2.5 no-underline transition-colors hover:bg-[#201f1c]"
     >
       <div className="mb-1 flex items-center gap-2 text-[13px] text-[#8a887f]">
-        <span className="tabular-nums text-[#6f6d66]">{number}</span>
+        {number !== undefined && (
+          <span className="tabular-nums text-[#6f6d66]">{number}</span>
+        )}
         <SourceFavicon citation={citation} size={16} />
         <span className="truncate">{site}</span>
       </div>

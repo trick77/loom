@@ -170,8 +170,15 @@ export function ThreadPanel({
         .join("\n\n"),
     [streamingBlocks],
   );
+  // includeUncited: while the answer streams the row must only ever grow. Sources
+  // land before the deltas citing them, so narrowing to cited-only mid-answer makes
+  // the favicon row collapse the moment the first marker appears and then climb
+  // back — it reads as the sources disappearing. Narrowing happens once, at settle.
   const streamingNumbering = useMemo(
-    () => assignDisplayNumbers(streamingProse, streamingSources),
+    () =>
+      assignDisplayNumbers(streamingProse, streamingSources, {
+        includeUncited: true,
+      }),
     [streamingProse, streamingSources],
   );
   // Answer prose has begun once a non-empty text block exists after the active
@@ -586,7 +593,10 @@ export function ThreadPanel({
                 numbered markers with nothing to match them against until the turn
                 settled. Append-only, so the pile grows without reshuffling. */}
             {streamingNumbering.ordered.length > 0 && (
-              <MessageCitations citations={streamingNumbering.ordered} />
+              <MessageCitations
+                citations={streamingNumbering.ordered}
+                display={streamingNumbering.display}
+              />
             )}
             {working && <WorkingDot />}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
