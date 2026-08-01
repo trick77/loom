@@ -112,14 +112,28 @@ export function dedupeByDomain(sources: Citation[]): Citation[] {
 export function MessageCitations({
   citations,
   display,
+  sourcesOpen: controlledOpen,
+  onSourcesOpenChange,
 }: {
   citations?: Citation[];
   /** Persisted index -> the number shown in the prose. Absent = not cited. */
   display?: DisplayMap;
+  /**
+   * Drawer state, when the caller owns it — an inline citation marker opens the
+   * same drawer as the footer row, and the marker is rendered far away inside the
+   * prose. Left undefined, the row keeps its own state.
+   */
+  sourcesOpen?: boolean;
+  onSourcesOpenChange?(open: boolean): void;
 }) {
   const { t } = useTranslation();
   const [openFile, setOpenFile] = useState<string | null>(null);
-  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const sourcesOpen = controlledOpen ?? uncontrolledOpen;
+  const setSourcesOpen = (open: boolean) => {
+    setUncontrolledOpen(open);
+    onSourcesOpenChange?.(open);
+  };
   if (citations === undefined || citations.length === 0) return null;
   // combineLikeSources gets EVERY document chunk, not one per document: counting
   // excerpts and picking the best-scoring snippet are its whole job, and both are

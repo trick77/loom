@@ -1,10 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Citation } from "../api";
 import { ProseMarkdown } from "./messages";
-import { webSourceMap } from "./sourcePills";
+import { SourcesOpenerProvider, webSourceMap } from "./sourcePills";
 import { assignDisplayNumbers } from "./sourceNumbering";
 
 // The pill plugin needs both the [n] -> source map and the persisted-index ->
@@ -90,23 +90,57 @@ describe("ProseMarkdown inline source pills", () => {
     const first = screen.getByRole("link", { name: "Truefoundry" });
     expect(first).toHaveAttribute("href", "https://truefoundry.com");
     expect(first).toHaveAttribute("target", "_blank");
-    // The marker shows a number now; the site name moved to the accessible label.
-    expect(first).toHaveTextContent("[1]");
-    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent(
-      "[2]",
-    );
+    // The marker shows a bare number now — the plate delimits it, so the brackets
+    // are gone — and the site name moved to the accessible label.
+    expect(first).toHaveTextContent("1");
+    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent("2");
   });
 
   it("numbers by citation order, not by the persisted index", () => {
     // Modal is [2] to the model but is cited first, so the reader sees 1.
     renderProse("Modal first [2]. Truefoundry second [1].", citations);
 
-    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent(
-      "[1]",
-    );
+    expect(screen.getByRole("link", { name: "Modal" })).toHaveTextContent("1");
     expect(screen.getByRole("link", { name: "Truefoundry" })).toHaveTextContent(
-      "[2]",
+      "2",
     );
+  });
+
+  // The model writes "deploys models [1]", and only "[1]" is replaced — without
+  // trimming, the space in front survives and the marker floats away from the word
+  // it backs.
+  it("trims the space between a word and its marker", () => {
+    const { container } = renderProse(
+      "TrueFoundry deploys models [1].",
+      citations,
+    );
+
+    expect(container.textContent).toContain("models1");
+  });
+
+  // A citation's destination is the source list, not a new tab: the drawer holds
+  // every source with its title and snippet, and losing the answer to a page load
+  // is the wrong trade for one click.
+  it("opens the sources drawer instead of navigating, when one exists", () => {
+    const onOpen = vi.fn();
+    render(
+      <SourcesOpenerProvider onOpen={onOpen}>
+        <ProseMarkdown
+          sources={webSourceMap(citations)}
+          display={
+            assignDisplayNumbers("Modal runs Python [2].", citations).display
+          }
+        >
+          {"Modal runs Python [2]."}
+        </ProseMarkdown>
+      </SourcesOpenerProvider>,
+    );
+
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Modal" }));
+
+    // The display number is handed over so the drawer can scroll to that source.
+    expect(onOpen).toHaveBeenCalledWith(1);
   });
 
   it("leaves unknown markers as literal text", () => {
@@ -122,8 +156,10 @@ describe("ProseMarkdown inline source pills", () => {
     expect(screen.getByText(/\[1\]/)).toBeInTheDocument();
   });
 
-  // Brackets delimit adjacent markers themselves — "[12][13]" cannot read as one
-  // number the way bare superscripts "1213" could, so no separator is needed.
+  // Adjacent multi-digit markers used to need brackets so "[12][13]" could not read
+  // as "1213". The numerals are bare again, but each sits on its own plate, so the
+  // delimiting is visual: what the DOM must guarantee is two separate elements, each
+  // carrying its own whole number.
   it("keeps adjacent multi-digit markers legible", () => {
     const many: Citation[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(
       (index) => ({
@@ -142,14 +178,13 @@ describe("ProseMarkdown inline source pills", () => {
 
     const { container } = renderProse(`${lead} Finally [12][13].`, many);
 
-    expect(container.textContent).toContain("[12][13]");
-    expect(container.textContent).not.toContain("1213");
-    expect(screen.getByRole("link", { name: "Site12" })).toHaveTextContent(
-      "[12]",
-    );
-    expect(screen.getByRole("link", { name: "Site13" })).toHaveTextContent(
-      "[13]",
-    );
+    const twelve = screen.getByRole("link", { name: "Site12" });
+    const thirteen = screen.getByRole("link", { name: "Site13" });
+    expect(twelve).toHaveTextContent(/^12$/);
+    expect(thirteen).toHaveTextContent(/^13$/);
+    // Two elements, not one run of text: nothing in the DOM can read as "1213".
+    expect(twelve).not.toBe(thirteen);
+    expect(container.querySelectorAll(".ui-source-pill")).toHaveLength(13);
   });
 
   // Adjacency was tracked across text nodes, but markdown splits "[1]**bold**[2]"
@@ -218,8 +253,6 @@ describe("ProseMarkdown inline source pills", () => {
     renderProse("A well-cited answer [1][2][3][4][5].", many);
 
     expect(screen.getAllByRole("link")).toHaveLength(5);
-    expect(screen.getByRole("link", { name: "Site5" })).toHaveTextContent(
-      "[5]",
-    );
+    expect(screen.getByRole("link", { name: "Site5" })).toHaveTextContent("5");
   });
 });

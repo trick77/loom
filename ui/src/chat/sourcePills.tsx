@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import type { ElementContent, Root, RootContent, Text } from "hast";
 
 import type { Citation } from "../api";
@@ -40,17 +40,16 @@ const SKIP_TAGS = new Set(["code", "pre", "a"]);
 // The custom element the plugin emits; ProseMarkdown maps it to <SourcePill>.
 export const SOURCE_PILL_TAG = "citepill";
 
-// A bracketed numeral — [1] — rather than a chip or a bare superscript. The chip
-// carried the site name, heavy enough that only three could render before the prose
-// became a wall of pills (the reason a per-message cap used to exist). A bare
-// raised numeral fixed the weight but went too far the other way: at 0.7rem and
-// unpunctuated it disappears into the text.
+// A bare numeral on a tinted plate — see .ui-source-pill in index.css, which owns
+// every visual property so the marker and the sidebar's matching number cannot
+// drift apart.
 //
-// Brackets also remove a real ambiguity. Adjacent bare numerals ran together —
-// "[12][13]" rendered as "1213", one number — which needed a separator comma
-// spliced between them. Brackets delimit themselves, so that hack is gone.
-const PILL_CLASS =
-  "ui-source-pill inline-block align-baseline font-sans text-[0.78rem] font-semibold tabular-nums transition-colors";
+// The plate is what makes the numeral bare. Brackets were carrying two jobs: they
+// kept a raised numeral visible, and they delimited adjacent markers so "[12][13]"
+// could not read as "1213". The plate does both — it is its own delimiter, and it
+// is visible without punctuation — while "[" and "]" cost ~9px inside every marker,
+// enough that a run of them read as a spaced-out ribbon rather than as prose.
+const PILL_CLASS = "ui-source-pill";
 
 type Ctx = {
   sources: SourceMap;
@@ -94,7 +93,7 @@ function pillElement(ref: WebSourceRef, shown: number): ElementContent {
       title: ref.label,
       "aria-label": ref.label,
     },
-    children: [{ type: "text", value: `[${shown}]` }],
+    children: [{ type: "text", value: String(shown) }],
   };
 }
 
@@ -108,10 +107,44 @@ function walk(children: RootContent[], ctx: Ctx): void {
       const replaced = splitMarkers(child, ctx);
       if (replaced !== null) {
         children.splice(i, 1, ...replaced);
+        // A marker has to hug the word it backs. The model writes "domain data [1]",
+        // and only "[1]" is replaced — the space in front survives and reads as a
+        // gap between the word and its marker.
+        for (let j = 0; j < replaced.length; j++) {
+          if (isPill(replaced[j])) trimBefore(children, i + j);
+        }
         i += replaced.length - 1;
       }
     }
   }
+}
+
+function isPill(node: RootContent | ElementContent): boolean {
+  return node.type === "element" && node.tagName === SOURCE_PILL_TAG;
+}
+
+// trimBefore removes the whitespace directly in front of the marker at `index`.
+// The text ahead of it is usually the sibling text node, but while an answer
+// streams rehypeStreamFade has already split the prose into <span> segments that
+// keep their trailing space — so the space can also be the tail of the previous
+// element. Descending into that element's last text node is what keeps the marker
+// from jumping sideways when streaming ends and the segments disappear.
+function trimBefore(children: RootContent[], index: number): void {
+  const previous = children[index - 1];
+  if (previous === undefined) return;
+  const text = lastTextNode(previous);
+  if (text === null) return;
+  text.value = text.value.replace(/[ \t]+$/, "");
+}
+
+function lastTextNode(node: RootContent | ElementContent): Text | null {
+  if (node.type === "text") return node;
+  if (node.type !== "element" || SKIP_TAGS.has(node.tagName)) return null;
+  for (let i = node.children.length - 1; i >= 0; i--) {
+    const found = lastTextNode(node.children[i]);
+    if (found !== null) return found;
+  }
+  return null;
 }
 
 function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
@@ -154,9 +187,29 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
   return out;
 }
 
-// SourcePill renders the inline citation number as a link to the source it backs.
-// Falls back to its text if href is missing. `title` carries the site name, which
-// left the prose when the marker became numeric.
+// SourcesOpener carries the "open the Sources drawer" callback down to the markers
+// embedded in the prose. The drawer's state belongs to the message (AssistantMessage
+// owns it, MessageCitations renders it), and the markers are rendered by
+// react-markdown several levels below with no prop path to it.
+//
+// A surface that has no drawer simply provides nothing: the public share view skips
+// MessageCitations entirely, so its markers fall back to linking out.
+const SourcesOpener = createContext<((index?: number) => void) | null>(null);
+
+export function SourcesOpenerProvider({
+  onOpen,
+  children,
+}: {
+  onOpen(index?: number): void;
+  children: ReactNode;
+}) {
+  return <SourcesOpener value={onOpen}>{children}</SourcesOpener>;
+}
+
+// SourcePill renders the inline citation number. Where a Sources drawer exists the
+// marker is a button that opens it — a citation's destination is the source list,
+// not a new tab, so a click never navigates away from the answer. `title` carries
+// the site name, which left the prose when the marker became numeric.
 export function SourcePill({
   href,
   title,
@@ -166,10 +219,26 @@ export function SourcePill({
   title?: unknown;
   children?: ReactNode;
 }) {
+  const openSources = useContext(SourcesOpener);
   const label = typeof title === "string" && title !== "" ? title : undefined;
-  // No href means a citation of an uploaded document — numbered like a web source,
-  // but with nothing to link to. Render it with the same marker styling so it reads
-  // identically to a web citation.
+  const shown = Number(String(children ?? ""));
+
+  if (openSources !== null)
+    return (
+      <button
+        type="button"
+        className={PILL_CLASS}
+        title={label}
+        aria-label={label}
+        onClick={() => openSources(Number.isNaN(shown) ? undefined : shown)}
+      >
+        {children}
+      </button>
+    );
+
+  // No drawer on this surface. A web source still has somewhere to go; a citation of
+  // an uploaded document (no href) has nothing, and renders as plain text with the
+  // same marker styling so it reads identically.
   if (typeof href !== "string" || href === "")
     return (
       <span className={PILL_CLASS} title={label} aria-label={label}>
@@ -177,9 +246,6 @@ export function SourcePill({
       </span>
     );
   return (
-    // The color/underline live in CSS (.ui-source-pill) so they outrank the
-    // ".ui-markdown a" link styling this pill renders inside; the layout utilities
-    // here aren't contested by that rule.
     <a
       href={href}
       target="_blank"
