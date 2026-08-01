@@ -44,7 +44,7 @@ func buildFinalSynthesisHistory(history []llm.Message, baseLen int, extraDirecti
 	// and this turn produces most answers that follow a research round. Worded to
 	// match loomSystemPrompt and kept language-neutral (the answer may be DE/FR/IT).
 	if len(sources) > 0 {
-		instruction += " The research notes are labeled with bracketed numbers like [1] or [2]." +
+		instruction += " The sources are labeled with bracketed numbers like [1] or [2]." +
 			" Whenever a sentence in your answer draws on one of these web sources, append its marker" +
 			" at the end of that sentence — [1], or several like [1][3]. Use only numbers listed above;" +
 			" never invent a citation number." +

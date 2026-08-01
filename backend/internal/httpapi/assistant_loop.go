@@ -55,7 +55,7 @@ type assistantLoopResult struct {
 	WebSources []webSource
 }
 
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool) (out assistantLoopResult, outErr error) {
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool, sourceIndexOffset int) (out assistantLoopResult, outErr error) {
 	tools := s.availableTools(thread, gate)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -88,7 +88,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	// reg accumulates web-search/fetch sources across rounds, assigning each a
 	// stable [n] index the model cites inline. The sources are persisted with the
 	// message (settled render); no live streaming event is emitted.
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(sourceIndexOffset)
 	// Stamp gathered sources onto every subsequent return (natural answer, forced
 	// final, interrupted partial) in one place. The tool-less/image fast paths
 	// return above this and never gather web sources.

@@ -37,14 +37,27 @@ const maxSourceSnippetChars = 240
 // browser_snapshot (which carries no URL of its own) can inherit that source's
 // marker.
 type webSourceRegistry struct {
-	sources      []webSource
-	byKey        map[string]int
+	sources []webSource
+	byKey   map[string]int
+	// offset is how many markers were already handed out before the tool loop ran —
+	// the user's uploaded documents, numbered while the knowledge context was built.
+	// Web sources continue after them so both kinds share one numbering space and a
+	// marker in the answer is never ambiguous.
+	offset       int
 	obscuraNavHd string // header line to prepend to the next obscura snapshot
 	obscuraNavID int    // registry index of the last obscura navigation (0 = none)
 }
 
 func newWebSourceRegistry() *webSourceRegistry {
-	return &webSourceRegistry{byKey: map[string]int{}}
+	return newWebSourceRegistryAfter(0)
+}
+
+// newWebSourceRegistryAfter starts numbering at offset+1.
+func newWebSourceRegistryAfter(offset int) *webSourceRegistry {
+	if offset < 0 {
+		offset = 0
+	}
+	return &webSourceRegistry{byKey: map[string]int{}, offset: offset}
 }
 
 // add registers rawURL (no sidebar detail) and returns its index.
@@ -66,7 +79,7 @@ func (r *webSourceRegistry) addDetailed(rawURL, title, snippet, favicon string) 
 	snippet = snippetFromText(snippet)
 	favicon = strings.TrimSpace(favicon)
 	if idx, seen := r.byKey[key]; seen {
-		src := &r.sources[idx-1]
+		src := &r.sources[idx-r.offset-1]
 		if src.Title == "" {
 			src.Title = title
 		}
@@ -78,7 +91,7 @@ func (r *webSourceRegistry) addDetailed(rawURL, title, snippet, favicon string) 
 		}
 		return idx, true
 	}
-	idx := len(r.sources) + 1
+	idx := r.offset + len(r.sources) + 1
 	r.byKey[key] = idx
 	r.sources = append(r.sources, webSource{
 		Index:   idx,
@@ -205,8 +218,8 @@ func (s *server) relabelWebToolOutput(toolName string, arguments map[string]any,
 			return output
 		}
 		// Backfill the navigated source's snippet from the rendered page text.
-		if reg.obscuraNavID > 0 && reg.obscuraNavID <= len(reg.sources) {
-			if src := &reg.sources[reg.obscuraNavID-1]; src.Snippet == "" {
+		if pos := reg.obscuraNavID - reg.offset - 1; pos >= 0 && pos < len(reg.sources) {
+			if src := &reg.sources[pos]; src.Snippet == "" {
 				src.Snippet = snippetFromText(output)
 			}
 		}

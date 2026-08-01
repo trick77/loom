@@ -12,6 +12,10 @@ type CombinedSource = {
   bestSnippet: string;
   bestScore: number;
   full: boolean;
+  // The [n] marker the answer cites this document by. Chunks of one document all
+  // share it, so the first is representative. Undefined for older messages, whose
+  // document citations were stored before documents were numbered.
+  index?: number;
 };
 
 // combineLikeSources groups per-chunk citations by document (filename), mirroring
@@ -36,6 +40,7 @@ export function combineLikeSources(sources: Citation[]): CombinedSource[] {
         bestSnippet: source.snippet,
         bestScore: source.score,
         full: source.full === true,
+        index: source.index,
       });
     }
   }
@@ -163,6 +168,11 @@ export function MessageCitations({
                   })
             }
           >
+            {display?.get(source.index ?? 0) !== undefined && (
+              <span className="tabular-nums text-[#8a887f]">
+                {display.get(source.index ?? 0)}
+              </span>
+            )}
             <span className="max-w-[180px] truncate">{source.filename}</span>
             {source.full ? (
               <span className="text-[#858178]">
