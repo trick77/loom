@@ -82,7 +82,10 @@ describe("ProseMarkdown inline source pills", () => {
   ];
 
   it("renders the display number, linked, with the site name as its label", () => {
-    renderProse("TrueFoundry deploys models [1]. Modal runs Python [2].", citations);
+    renderProse(
+      "TrueFoundry deploys models [1]. Modal runs Python [2].",
+      citations,
+    );
 
     const first = screen.getByRole("link", { name: "Truefoundry" });
     expect(first).toHaveAttribute("href", "https://truefoundry.com");
@@ -129,26 +132,37 @@ describe("ProseMarkdown inline source pills", () => {
     // Cite 1..11 first so the abutting pair at the end gets two-digit display
     // numbers — without a separator "[12][13]" renders as "1213", read as one
     // number rather than two citations.
-    const lead = Array.from({ length: 11 }, (_, i) => `Claim ${i}. [${i + 1}]`).join(" ");
+    const lead = Array.from(
+      { length: 11 },
+      (_, i) => `Claim ${i}. [${i + 1}]`,
+    ).join(" ");
     const { container } = renderProse(`${lead} Finally [12][13].`, many);
 
     expect(container.textContent).toContain("12,13");
     expect(container.textContent).not.toContain("1213");
-    expect(screen.getByRole("link", { name: "Site12" })).toHaveTextContent("12");
-    expect(screen.getByRole("link", { name: "Site13" })).toHaveTextContent("13");
+    expect(screen.getByRole("link", { name: "Site12" })).toHaveTextContent(
+      "12",
+    );
+    expect(screen.getByRole("link", { name: "Site13" })).toHaveTextContent(
+      "13",
+    );
   });
 
   it("collapses an immediately repeated same-source marker", () => {
     renderProse("Repeated cite [1][1] here.", citations);
 
-    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(
+      1,
+    );
   });
 
   it("keeps a repeat that backs a separate claim later in the answer", () => {
     renderProse("First claim [1]. A different claim [1].", citations);
 
     // Per-sentence attribution is the point, so a non-adjacent repeat stays.
-    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "Truefoundry" })).toHaveLength(
+      2,
+    );
   });
 
   // The old per-message cap of 3 existed because label pills were visually heavy.

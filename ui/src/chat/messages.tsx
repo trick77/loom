@@ -520,13 +520,21 @@ export function AssistantProse({
     return (
       <div className="ui-assistant-message group w-full space-y-3">
         {before !== "" && (
-          <ProseMarkdown streaming={streaming} sources={sources} display={display}>
+          <ProseMarkdown
+            streaming={streaming}
+            sources={sources}
+            display={display}
+          >
             {before}
           </ProseMarkdown>
         )}
         <Bubble artifact={artifact} />
         {after !== "" && (
-          <ProseMarkdown streaming={streaming} sources={sources} display={display}>
+          <ProseMarkdown
+            streaming={streaming}
+            sources={sources}
+            display={display}
+          >
             {after}
           </ProseMarkdown>
         )}
@@ -546,7 +554,11 @@ export function AssistantProse({
     }
     return (
       <div className="ui-assistant-message group w-full space-y-3">
-        <ProseMarkdown streaming={streaming} sources={sources} display={display}>
+        <ProseMarkdown
+          streaming={streaming}
+          sources={sources}
+          display={display}
+        >
           {before}
         </ProseMarkdown>
         <PendingDownloadResponseBubble

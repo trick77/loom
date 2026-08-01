@@ -14,7 +14,11 @@ function web(index: number, host: string): Citation {
   };
 }
 
-const SOURCES = [web(1, "reddit.com"), web(2, "kubernetes.io"), web(3, "truefoundry.com")];
+const SOURCES = [
+  web(1, "reddit.com"),
+  web(2, "kubernetes.io"),
+  web(3, "truefoundry.com"),
+];
 
 describe("assignDisplayNumbers", () => {
   it("numbers sources by first citation, not by discovery order", () => {
@@ -31,7 +35,10 @@ describe("assignDisplayNumbers", () => {
   });
 
   it("excludes gathered sources the answer never cites", () => {
-    const { ordered, display } = assignDisplayNumbers("Only this one [2].", SOURCES);
+    const { ordered, display } = assignDisplayNumbers(
+      "Only this one [2].",
+      SOURCES,
+    );
 
     expect(ordered).toHaveLength(1);
     expect(ordered[0].filename).toBe("kubernetes.io");
@@ -54,7 +61,10 @@ describe("assignDisplayNumbers", () => {
   // would empty the Sources row entirely on those, losing all visibility into what
   // was searched.
   it("falls back to every gathered source when nothing is cited", () => {
-    const { ordered, display } = assignDisplayNumbers("No markers here.", SOURCES);
+    const { ordered, display } = assignDisplayNumbers(
+      "No markers here.",
+      SOURCES,
+    );
 
     expect(ordered.map((c) => c.index)).toEqual([1, 2, 3]);
     expect(display.size).toBe(0);
@@ -76,13 +86,19 @@ describe("assignDisplayNumbers", () => {
   });
 
   it("an unclosed fence still suppresses its markers mid-stream", () => {
-    const { ordered } = assignDisplayNumbers("text\n```js\nconst x = arr[3];", SOURCES);
+    const { ordered } = assignDisplayNumbers(
+      "text\n```js\nconst x = arr[3];",
+      SOURCES,
+    );
 
     expect(ordered.map((c) => c.index)).toEqual([1, 2, 3]);
   });
 
   it("unknown indices consume no display number", () => {
-    const { display, ordered } = assignDisplayNumbers("Bogus [9]. Real [2].", SOURCES);
+    const { display, ordered } = assignDisplayNumbers(
+      "Bogus [9]. Real [2].",
+      SOURCES,
+    );
 
     expect(display.get(2)).toBe(1);
     expect(display.has(9)).toBe(false);
