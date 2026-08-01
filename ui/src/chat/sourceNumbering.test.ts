@@ -157,6 +157,33 @@ describe("assignDisplayNumbers", () => {
     expect(display.has(1)).toBe(false);
   });
 
+  // Two uncited documents exercise the ordering: they trail the cited sources in
+  // their own index order, not in whatever order the citations arrived.
+  it("orders several uncited documents by index", () => {
+    const docA: Citation = {
+      documentId: "d3",
+      filename: "c.md",
+      snippet: "x",
+      score: 1,
+      index: 3,
+    };
+    const docB: Citation = {
+      documentId: "d1",
+      filename: "a.md",
+      snippet: "x",
+      score: 1,
+      index: 1,
+    };
+
+    const { ordered } = assignDisplayNumbers("Only [2] cited.", [
+      docA,
+      docB,
+      web(2, "kubernetes.io"),
+    ]);
+
+    expect(ordered.map((c) => c.index)).toEqual([2, 1, 3]);
+  });
+
   it("numbers a cited document like any other source", () => {
     const doc: Citation = {
       documentId: "d1",

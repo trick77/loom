@@ -151,42 +151,47 @@ export function MessageCitations({
         ) : (
           <span className="text-[#858178]">{t("citations.sources")}</span>
         )}
-        {combined.map((source) => (
-          <button
-            key={source.filename}
-            type="button"
-            className="inline-flex items-center gap-1 rounded-ui border border-[#4b4a46] bg-[#2a2a28] px-2 py-0.5 text-[#d8d4ca] transition-colors hover:bg-[#343432]"
-            onClick={() =>
-              setOpenFile(openFile === source.filename ? null : source.filename)
-            }
-            title={
-              source.full
-                ? t("citations.tooltipFull", { filename: source.filename })
-                : t("citations.tooltipMatches", {
-                    filename: source.filename,
-                    count: source.references,
-                  })
-            }
-          >
-            {display?.get(source.index ?? 0) !== undefined && (
-              <span className="tabular-nums text-[#8a887f]">
-                {display.get(source.index ?? 0)}
-              </span>
-            )}
-            <span className="max-w-[180px] truncate">{source.filename}</span>
-            {source.full ? (
-              <span className="text-[#858178]">
-                {t("citations.fullDocument")}
-              </span>
-            ) : (
-              source.references > 1 && (
+        {combined.map((source) => {
+          // Pulled out of the JSX so the lookup is a statement: it reads better
+          // than repeating the map access twice, and it is attributable to a test.
+          const number = display?.get(source.index ?? 0);
+          return (
+            <button
+              key={source.filename}
+              type="button"
+              className="inline-flex items-center gap-1 rounded-ui border border-[#4b4a46] bg-[#2a2a28] px-2 py-0.5 text-[#d8d4ca] transition-colors hover:bg-[#343432]"
+              onClick={() =>
+                setOpenFile(
+                  openFile === source.filename ? null : source.filename,
+                )
+              }
+              title={
+                source.full
+                  ? t("citations.tooltipFull", { filename: source.filename })
+                  : t("citations.tooltipMatches", {
+                      filename: source.filename,
+                      count: source.references,
+                    })
+              }
+            >
+              {number !== undefined && (
+                <span className="tabular-nums text-[#8a887f]">{number}</span>
+              )}
+              <span className="max-w-[180px] truncate">{source.filename}</span>
+              {source.full ? (
                 <span className="text-[#858178]">
-                  {t("citations.excerpts", { count: source.references })}
+                  {t("citations.fullDocument")}
                 </span>
-              )
-            )}
-          </button>
-        ))}
+              ) : (
+                source.references > 1 && (
+                  <span className="text-[#858178]">
+                    {t("citations.excerpts", { count: source.references })}
+                  </span>
+                )
+              )}
+            </button>
+          );
+        })}
       </div>
       {open !== null && (
         <div className="rounded-ui border border-[#4b4a46] bg-[#222220] px-3 py-2 text-[#c8c4ba]">
