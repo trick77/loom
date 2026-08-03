@@ -75,6 +75,12 @@ func strPtr(value string) *string {
 func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage, categoryOverride string) (string, error) {
 	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
 	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
+	// On the first message the caller blocks on this before building the answer
+	// history, so both calls are bounded like the other turn gates: an untitled
+	// thread (the title endpoint backfills on a later turn) and a General category
+	// beat holding the answer behind a slow endpoint. See turnGateTimeout.
+	requestCtx, cancelHelpers := context.WithTimeout(requestCtx, turnGateTimeout)
+	defer cancelHelpers()
 
 	var (
 		title    string

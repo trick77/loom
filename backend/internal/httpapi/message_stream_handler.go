@@ -169,7 +169,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	turnCategory := ""
 	if !freshlyClassified && !imageArtifactRequired && !categoryGrantsCodingDocs(category) {
 		driftInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify_drift", Round: 1}
-		turnCategory, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(streamCtx, driftInference), userMessage.Content)
+		// Bounded like the image gate: the answer waits on this, and General is a
+		// fine answer when the endpoint is slow (see turnGateTimeout).
+		driftCtx, cancelDrift := context.WithTimeout(streamCtx, turnGateTimeout)
+		turnCategory, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), userMessage.Content)
+		cancelDrift()
 	}
 
 	// Gate the injected tool set (and the tool guidance that must match it) on the
