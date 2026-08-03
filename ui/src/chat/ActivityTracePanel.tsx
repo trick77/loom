@@ -285,11 +285,13 @@ function ActivityTraceRow({
               {event.summary.title}
             </span>
           </span>
-          <span
-            className={`ui-activity-status-pill shrink-0 ${status.className}`}
-          >
-            {status.label}
-          </span>
+          {status !== undefined && (
+            <span
+              className={`ui-activity-status-pill shrink-0 ${status.className}`}
+            >
+              {status.label}
+            </span>
+          )}
         </div>
         {fetchUrl !== undefined &&
           (fetchHref !== undefined ? (
@@ -402,10 +404,15 @@ function latestReasoningTitle(
   return undefined;
 }
 
-function activityToolStatusMeta(event: ActivityTraceToolEvent): {
-  label: string;
-  className: string;
-} {
+// A finished tool call carries no pill: the row itself records that the call
+// happened, and the terminal "Done" timeline node already says the turn wrapped
+// up. Only in-flight and failed calls get called out.
+function activityToolStatusMeta(event: ActivityTraceToolEvent):
+  | {
+      label: string;
+      className: string;
+    }
+  | undefined {
   if (event.status === "failed")
     return {
       label: i18n.t("activityTrace.failed"),
@@ -416,10 +423,7 @@ function activityToolStatusMeta(event: ActivityTraceToolEvent): {
       label: i18n.t("activityTrace.running"),
       className: "ui-activity-status-neutral",
     };
-  return {
-    label: i18n.t("activityTrace.done"),
-    className: "ui-activity-status-neutral",
-  };
+  return undefined;
 }
 
 function GlobeTraceIcon() {
