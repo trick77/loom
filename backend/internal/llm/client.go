@@ -225,21 +225,19 @@ func (c *Client) resolveReasoningEffort(ctx context.Context) string {
 	return c.reasoningEffort
 }
 
-// executeUtilityChatRequest runs a non-streaming secondary helper call (title or
-// reasoning-abstract generation) with thinking turned off via MiMo's native
-// {"thinking":{"type":"disabled"}}. Default thinking makes MiMo overthink a
-// trivial summarization and even echo its internal "reasoning>/response>"
-// channel format as literal text instead of a clean title — besides burning ~1k
-// reasoning tokens per call.
-func (c *Client) executeUtilityChatRequest(ctx context.Context, messages []Message) (*http.Response, error) {
-	return c.executeUtilityChatRequestWithBudget(ctx, messages, utilityMaxCompletionTokens)
-}
-
-// executeUtilityChatRequestWithBudget is executeUtilityChatRequest with a caller-chosen
-// completion-token cap. Titles/classifier fit the tiny utilityMaxCompletionTokens, but
-// the project description rides the project-memory refresh and is generated from the same
-// large transcript memory uses, so it needs real output headroom (see
-// projectDescriptionMaxCompletionTokens) to avoid a finish_reason=length truncation.
+// executeUtilityChatRequestWithBudget runs a non-streaming secondary helper call
+// on the default (Pro) model with thinking turned off via MiMo's native
+// {"thinking":{"type":"disabled"}} and a caller-chosen completion-token cap.
+// Default thinking makes MiMo overthink a trivial summarization and even echo its
+// internal "reasoning>/response>" channel format as literal text instead of a
+// clean title — besides burning ~1k reasoning tokens per call.
+//
+// Its only caller is the project description, which rides the project-memory
+// refresh and is generated from the same large transcript memory uses, so it
+// needs real output headroom (see projectDescriptionMaxCompletionTokens) to avoid
+// a finish_reason=length truncation. The short gates — which want the faster
+// non-Pro deployment, not just disabled thinking — use
+// executeNonReasoningChatRequest instead.
 func (c *Client) executeUtilityChatRequestWithBudget(ctx context.Context, messages []Message, maxCompletionTokens int) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
 		thinking:            &thinkingOption{Type: "disabled"},
