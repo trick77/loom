@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,37 @@ func TestChatSessionIDIsStablePerThread(t *testing.T) {
 func TestChatSessionIDFallsBackToProcessID(t *testing.T) {
 	if got := chatSessionID(""); got != processSessionID {
 		t.Fatalf("threadless turn used %q, want the per-process id %q", got, processSessionID)
+	}
+}
+
+// TestChatUserAgentValue pins the exact User-Agent string. The header test below
+// compares against the constant, so it would happily pass on any value; the
+// upstream cares about this specific client string, so assert the literal.
+func TestChatUserAgentValue(t *testing.T) {
+	const want = "opencode/1.18.11 ai-sdk/openai-compatible/3.0.20 ai-sdk/provider-utils/5.0.18 runtime/bun/1.3.14"
+	if chatUserAgent != want {
+		t.Fatalf("chatUserAgent = %q, want %q", chatUserAgent, want)
+	}
+}
+
+// TestChatRequestNeverSendsGoDefaultUserAgent guards the failure this whole
+// change exists to prevent: net/http silently reinstating its own UA if the
+// header is ever dropped from executeChatRequestImpl.
+func TestChatRequestNeverSendsGoDefaultUserAgent(t *testing.T) {
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{BaseURL: server.URL + "/v1"}, server.Client())
+	if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, func(string) error { return nil }); err != nil {
+		t.Fatalf("StreamChat() error: %v", err)
+	}
+	if strings.HasPrefix(got, "Go-http-client") || got == "" {
+		t.Fatalf("User-Agent = %q, want the configured client string", got)
 	}
 }
 
