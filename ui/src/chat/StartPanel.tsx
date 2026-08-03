@@ -87,14 +87,14 @@ export function StartPanel({
         </button>
       </header>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
-        <h2 className="ui-greeting-text mb-8 flex flex-col items-center gap-2 text-center font-serif sm:flex-row sm:gap-2.5 sm:text-left">
+        <h2 className="ui-greeting-text mb-8 text-center font-serif">
           <img
             src={loomLogo}
             alt=""
             aria-hidden
-            className="h-10 w-10 sm:-translate-y-1"
+            className="mr-2.5 inline-block h-10 w-10 align-middle"
           />
-          <span className="sm:-translate-y-0.5">{greeting}</span>
+          {greeting}
         </h2>
         <div className="w-full max-w-[674px]">
           <WindowFileDrop
