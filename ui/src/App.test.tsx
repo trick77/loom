@@ -4818,13 +4818,14 @@ test("renders unknown tool calls with safe fallback details", async () => {
   fireEvent.click(toggle);
 
   expect(await screen.findByText("custom lookup")).toBeInTheDocument();
-  // Both the tool status pill and the terminal timeline node read "Done".
+  // A finished tool call shows no status pill — only the terminal timeline node
+  // reads "Done".
   const doneNodes = screen.getAllByText("Done");
   expect(
     doneNodes.some((node) =>
       node.classList.contains("ui-activity-status-pill"),
     ),
-  ).toBe(true);
+  ).toBe(false);
   expect(
     doneNodes.some((node) => node.classList.contains("ui-activity-done-label")),
   ).toBe(true);
