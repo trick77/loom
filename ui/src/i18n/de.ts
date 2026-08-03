@@ -132,7 +132,6 @@ export const de = {
     showLess: "Weniger anzeigen",
     done: "Fertig",
     failed: "Fehlgeschlagen",
-    running: "Läuft",
     results_one: "{{count}} Ergebnis",
     results_other: "{{count}} Ergebnisse",
     trace: {

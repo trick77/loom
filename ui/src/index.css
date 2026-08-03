@@ -693,11 +693,6 @@ body {
   text-align: center;
 }
 
-.ui-activity-status-neutral {
-  background: #363632;
-  color: #c7c5bd;
-}
-
 .ui-activity-status-failed {
   background: #b85c52;
   color: #fffaf2;
