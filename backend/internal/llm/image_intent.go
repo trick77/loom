@@ -81,9 +81,9 @@ func (c *Client) ClassifyImageIntent(ctx context.Context, userMessage string, ha
 		{Role: "system", Content: imageIntentSystemPrompt},
 		{Role: "user", Content: framed},
 	}
-	resp, err := c.executeUtilityChatRequestWithBudget(ctx, messages, imageIntentMaxCompletionTokens)
+	resp, err := c.executeNonReasoningChatRequest(ctx, messages, imageIntentMaxCompletionTokens)
 	if err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
 		return ImageIntent{Action: ImageIntentNone}, err
 	}
 	defer resp.Body.Close()
@@ -91,15 +91,15 @@ func (c *Client) ClassifyImageIntent(ctx context.Context, userMessage string, ha
 	var completion chatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
 		err := fmt.Errorf("decode image-intent completion response: %w", err)
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
 		return ImageIntent{Action: ImageIntentNone}, err
 	}
 	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
+		observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, "")
 		return ImageIntent{Action: ImageIntentNone}, nil
 	}
 	choice := completion.Choices[0]
-	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
+	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason)
 	return parseImageIntent(choice.Message.Content), nil
 }
 

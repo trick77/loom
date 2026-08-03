@@ -75,9 +75,9 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 		{Role: "system", Content: threadClassifySystemPrompt(userMessage)},
 		{Role: "user", Content: framed},
 	}
-	resp, err := c.executeUtilityChatRequest(ctx, messages)
+	resp, err := c.executeNonReasoningChatRequest(ctx, messages, utilityMaxCompletionTokens)
 	if err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
 		return string(classifier.General), err
 	}
 	defer resp.Body.Close()
@@ -85,15 +85,15 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 	var completion chatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
 		err := fmt.Errorf("decode classify completion response: %w", err)
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
 		return string(classifier.General), err
 	}
 	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
+		observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, "")
 		return string(classifier.General), nil
 	}
 	choice := completion.Choices[0]
-	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
+	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason)
 	// Match tolerantly extracts the category from the reply (handling quotes,
 	// punctuation, or stray prose) and coerces anything unrecognized — including a
 	// truncated "length" reply — to General, so a bad reply never produces a bad

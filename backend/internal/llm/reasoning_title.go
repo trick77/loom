@@ -26,9 +26,9 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning, response
 		{Role: "system", Content: appendLanguageDirective(reasoningTitleSystemPrompt, responseLanguage)},
 		{Role: "user", Content: reasoning},
 	}
-	resp, err := c.executeUtilityChatRequest(ctx, messages)
+	resp, err := c.executeNonReasoningChatRequest(ctx, messages, utilityMaxCompletionTokens)
 	if err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
 		return "", err
 	}
 	defer resp.Body.Close()
@@ -36,15 +36,15 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning, response
 	var completion chatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
 		err := fmt.Errorf("decode reasoning title completion response: %w", err)
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
 		return "", err
 	}
 	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
+		observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, "")
 		return "", nil
 	}
 	choice := completion.Choices[0]
-	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
+	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason)
 	// A title that hit the token cap is cut mid-phrase; skip it rather than
 	// persist a half title (the caller falls back to the client-side heuristic).
 	if choice.FinishReason == "length" {
