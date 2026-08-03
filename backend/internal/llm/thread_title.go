@@ -32,9 +32,9 @@ func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistant
 		{Role: "system", Content: system},
 		{Role: "user", Content: framed},
 	}
-	resp, err := c.executeUtilityChatRequest(ctx, messages)
+	resp, err := c.executeNonReasoningChatRequest(ctx, messages, utilityMaxCompletionTokens)
 	if err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
 		return "", err
 	}
 	defer resp.Body.Close()
@@ -42,15 +42,15 @@ func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistant
 	var completion chatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
 		err := fmt.Errorf("decode title completion response: %w", err)
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
+		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
 		return "", err
 	}
 	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
+		observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, "")
 		return "New thread", nil
 	}
 	choice := completion.Choices[0]
-	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
+	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason)
 	// A title cut off at the token cap is unreliable; fall back rather than store
 	// a half phrase as the thread title.
 	if choice.FinishReason == "length" {
