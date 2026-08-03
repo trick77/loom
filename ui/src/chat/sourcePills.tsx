@@ -65,11 +65,12 @@ export type DisplayMap = Map<number, number>;
 // range, or a source not yet delivered mid-stream) are left as plain text, and only
 // complete "[n]" tokens are rewritten — a partial "[1" streams through untouched.
 //
-// Immediately repeated markers for the same source collapse to one. Repeats
-// elsewhere in the message are kept: the same source legitimately backs several
-// different claims, and per-sentence attribution is the whole point.
+// Markers standing together form a run, which renders ascending and with each
+// source once — see emitRun. Repeats elsewhere in the message are kept: the same
+// source legitimately backs several different claims, and per-sentence attribution
+// is the whole point.
 //
-// "Immediately" means within one text node. Adjacency is not tracked across nodes:
+// A run reaches only within one text node. Adjacency is not tracked across nodes:
 // markdown splits "[1]**bold**[2]" into three, and carrying the state across made
 // the second marker look like it abutted the first — silently deleting the marker
 // in "[1]**bold**[1]", where the two back genuinely different claims. The same
@@ -188,6 +189,39 @@ function hoistPunctuation(value: string, ctx: Ctx): string {
   );
 }
 
+// One marker of a run, resolved to what it renders as.
+type RunMarker = { shown: number; ref: WebSourceRef };
+
+// A run continues while the markers are separated by nothing or by blanks — the
+// same span hoistPunctuation treats as one unit, and no wider: a newline or any
+// prose ends the run, because the markers then back separate claims.
+const RUN_SEPARATOR = /^[ \t]*$/;
+
+// emitRun renders one cluster of markers: ascending by display number, each source
+// once. A cluster is a citation list, and every numbered citation style prints one
+// in order — the model emits "[3][1]" whenever it recalls the second source first,
+// and "3 1" reads as a rendering fault. Sorting is confined to the cluster, so the
+// order of the claims themselves is never touched.
+//
+// The blanks between the markers are dropped rather than re-emitted: walk() trims
+// them away in front of every marker anyway, and a deduplicated run has fewer gaps
+// than it started with.
+function emitRun(
+  out: ElementContent[],
+  run: RunMarker[],
+  tight: boolean,
+): void {
+  const ordered = [...run].sort((a, b) => a.shown - b.shown);
+  let previous: number | null = null;
+  for (const marker of ordered) {
+    // Sorting has brought any repeat of one source together: the model writes
+    // "[1][1]" for a single claim, which should read as one number.
+    if (marker.shown === previous) continue;
+    out.push(pillElement(marker.ref, marker.shown, tight && previous === null));
+    previous = marker.shown;
+  }
+}
+
 function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
   const value = hoistPunctuation(node.value, ctx);
   if (!value.includes("[")) return null;
@@ -195,38 +229,37 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
   const out: ElementContent[] = [];
   let last = 0;
   let changed = false;
-  // Adjacency state is per node — see rehypeSourcePills.
-  let previousIndex: number | null = null;
-  let previousWasMarker = false;
+  // The run being collected, and whether it opened directly behind clause
+  // punctuation ("benchmarks.²"). Run state is per node — see rehypeSourcePills.
+  let run: RunMarker[] = [];
+  let runTight = false;
+  const flush = () => {
+    if (run.length === 0) return;
+    emitRun(out, run, runTight);
+    run = [];
+  };
   let match: RegExpExecArray | null;
   while ((match = MARKER.exec(value)) !== null) {
     const n = Number(match[1]);
     const ref = ctx.sources.get(n);
     const shown = ctx.display.get(n);
     // Unknown marker, or a source carrying no display number (never counted as
-    // cited) -> keep the literal text rather than mis-linking it.
+    // cited) -> keep the literal text rather than mis-linking it. It stays in the
+    // gap ahead of the next marker, which therefore opens a new run: an unknown
+    // marker splits a cluster instead of being sorted around.
     if (ref === undefined || shown === undefined) continue;
-    // Whether this marker directly abuts the previous one ("[1][2]" with nothing
-    // between), as opposed to being separated by prose.
-    const abuts = match.index === last && previousWasMarker;
-    // A repeat collapses only when it abuts: the model writes "[1][1]" for a single
-    // claim, which should read as one number. Once any prose intervenes the repeat
-    // backs a separate claim, and dropping it would strip that sentence of its
-    // attribution.
-    const repeat = abuts && previousIndex === n;
-    // Emit the text between the previous marker and this one.
-    if (match.index > last)
-      out.push({ type: "text", value: value.slice(last, match.index) });
-    // Whether the marker lands directly behind clause punctuation ("benchmarks.²").
-    const afterPunctuation = TIGHTENABLE_PUNCTUATION.test(
-      value.slice(0, match.index),
-    );
+    const gap = value.slice(last, match.index);
+    if (run.length === 0 || !RUN_SEPARATOR.test(gap)) {
+      // Close the previous run, then emit the prose that separates it from this one.
+      flush();
+      if (gap !== "") out.push({ type: "text", value: gap });
+      runTight = TIGHTENABLE_PUNCTUATION.test(value.slice(0, match.index));
+    }
+    run.push({ shown, ref });
     last = match.index + match[0].length;
     changed = true;
-    if (!repeat) out.push(pillElement(ref, shown, afterPunctuation));
-    previousIndex = n;
-    previousWasMarker = true;
   }
+  flush();
   if (!changed) return null;
   if (last < value.length) out.push({ type: "text", value: value.slice(last) });
   return out;
