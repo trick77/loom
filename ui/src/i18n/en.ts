@@ -130,7 +130,6 @@ export const en = {
     showLess: "Show less",
     done: "Done",
     failed: "Failed",
-    running: "Running",
     results_one: "{{count}} result",
     results_other: "{{count}} results",
     trace: {

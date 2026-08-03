@@ -3233,7 +3233,8 @@ test("shows active activity trace with reasoning and tool activity before assist
     within(trace).getByText("I should search current sources."),
   ).toBeInTheDocument();
   expect(within(trace).getByText("Agentgateway kgateway")).toBeInTheDocument();
-  expect(within(trace).getByText("Running")).toBeInTheDocument();
+  // No per-row status pill while the call runs — see activityToolStatusMeta.
+  expect(within(trace).queryByText("Running")).toBeNull();
   // While the turn is still active, the timeline is not yet capped with a "Done" node.
   expect(within(trace).queryByText("Done")).toBeNull();
   // The dots stay at the tail while the tool runs.

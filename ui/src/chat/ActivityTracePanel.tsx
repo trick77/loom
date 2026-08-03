@@ -404,9 +404,11 @@ function latestReasoningTitle(
   return undefined;
 }
 
-// A finished tool call carries no pill: the row itself records that the call
-// happened, and the terminal "Done" timeline node already says the turn wrapped
-// up. Only in-flight and failed calls get called out.
+// Only a failed tool call carries a pill. A finished one needs none — the row
+// itself records that the call happened — and neither does a running one: the
+// collapsed trace label above sweeps for as long as the turn is active, which
+// already says something is in flight, so a per-row "Running" was the same
+// signal repeated once per row.
 function activityToolStatusMeta(event: ActivityTraceToolEvent):
   | {
       label: string;
@@ -417,11 +419,6 @@ function activityToolStatusMeta(event: ActivityTraceToolEvent):
     return {
       label: i18n.t("activityTrace.failed"),
       className: "ui-activity-status-failed",
-    };
-  if (event.status === "running")
-    return {
-      label: i18n.t("activityTrace.running"),
-      className: "ui-activity-status-neutral",
     };
   return undefined;
 }

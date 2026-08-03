@@ -23,7 +23,9 @@ test("renders generated tools with a creation label and artifact glyph", () => {
 
   const trace = screen.getByRole("status", { name: /loom activity trace/i });
   expect(within(trace).getByText("Creating PDF file")).toBeInTheDocument();
-  expect(within(trace).getByText("Running")).toBeInTheDocument();
+  // A running tool row carries no pill: the sweeping trace label already says
+  // the turn is in flight.
+  expect(within(trace).queryByText("Running")).toBeNull();
 
   const icon = trace.querySelector(".ui-activity-trace-icon-generated");
   expect(icon).not.toBeNull();
