@@ -294,6 +294,67 @@ describe("ProseMarkdown inline source pills", () => {
     );
   });
 
+  // A cluster of markers is a citation list, and every numbered style prints one
+  // ascending. The model emits them in whatever order it recalled the sources, so
+  // "[3][1]" arrives and used to render as "3 1".
+  describe("ordering within a run", () => {
+    const three: Citation[] = [1, 2, 3].map((index) => ({
+      documentId: "",
+      filename: `Site${index}`,
+      snippet: "",
+      score: 0,
+      url: `https://site${index}.com`,
+      index,
+    }));
+    // Cites 1, 2, 3 in order first, so display number == persisted index and the
+    // recap's expected order is unambiguous.
+    const lead = "A [1]. B [2]. C [3].";
+
+    function shownNumbers(container: HTMLElement): string[] {
+      return [...container.querySelectorAll(".ui-source-pill")].map(
+        (pill) => pill.textContent ?? "",
+      );
+    }
+
+    it("sorts an out-of-order run ascending", () => {
+      const { container } = renderProse(`${lead} Recap [3][1].`, three);
+
+      expect(shownNumbers(container)).toEqual(["1", "2", "3", "1", "3"]);
+    });
+
+    it("sorts a run whose markers are separated by spaces", () => {
+      const { container } = renderProse(`${lead} Recap [3] [1].`, three);
+
+      expect(shownNumbers(container)).toEqual(["1", "2", "3", "1", "3"]);
+    });
+
+    it("collapses a repeat inside a reordered run", () => {
+      const { container } = renderProse(`${lead} Recap [3][1][3].`, three);
+
+      expect(shownNumbers(container)).toEqual(["1", "2", "3", "1", "3"]);
+    });
+
+    // Sorting is per cluster: markers that back different claims keep the order of
+    // the claims they follow.
+    it("does not reorder markers separated by prose", () => {
+      const { container } = renderProse(
+        `${lead} C again [3] and A again [1].`,
+        three,
+      );
+
+      expect(shownNumbers(container)).toEqual(["1", "2", "3", "3", "1"]);
+    });
+
+    // An unknown marker stays literal text and breaks the run in two, exactly as it
+    // blocks punctuation hoisting.
+    it("does not sort across an unknown marker", () => {
+      const { container } = renderProse(`${lead} Recap [3][9][1].`, three);
+
+      expect(shownNumbers(container)).toEqual(["1", "2", "3", "3", "1"]);
+      expect(container.textContent).toContain("[9]");
+    });
+  });
+
   // The old per-message cap of 3 existed because label pills were visually heavy.
   // Markers are numerals now, and measurement showed no end-clustering, so every
   // cited source renders — dropping them would be deleting attribution.
