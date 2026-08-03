@@ -10,8 +10,8 @@ import (
 
 // chatUserAgent is the User-Agent sent to the MiMo endpoint. Go's default
 // "Go-http-client/1.1" identifies the caller as a bot; the upstream is happier
-// with an ordinary client string.
-const chatUserAgent = "curl/8.7.1"
+// with the client string an ordinary OpenAI-compatible SDK sends.
+const chatUserAgent = "opencode/1.18.11 ai-sdk/openai-compatible/3.0.20 ai-sdk/provider-utils/5.0.18 runtime/bun/1.3.14"
 
 // Session ids mirror the shape the upstream issues, e.g.
 //
