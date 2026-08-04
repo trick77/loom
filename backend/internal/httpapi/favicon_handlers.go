@@ -185,7 +185,13 @@ func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), faviconResolveTimeout)
 	defer cancel()
 	path, ct, err := s.resolveAndCacheIcon(ctx, key, scheme, host, raw)
-	if err != nil {
+	// Only a genuine "tried everything, nothing usable" verdict is worth remembering
+	// for faviconMissTTL. A resolve that died with its context — client disconnected
+	// (the <img> was removed on a thread switch) or faviconResolveTimeout fired on a
+	// slow site — proves nothing about the site's icons, and a cache write failure
+	// happened with a good icon already in hand; recording either would blank a
+	// perfectly good favicon for six hours.
+	if errors.Is(err, errNoUsableIcon) && ctx.Err() == nil {
 		s.writeFaviconMiss(key)
 	}
 	faviconRelease(key, gate)
@@ -202,6 +208,11 @@ func writeFaviconMissError(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", faviconMissCacheControl)
 	writeJSONError(w, http.StatusBadGateway, "favicon resolve failed")
 }
+
+// errNoUsableIcon is the verdict of a complete resolve: every candidate was tried and
+// none yielded a usable icon. It is what makes a miss worth remembering — any other
+// error (a dead context, a failed cache write) says nothing about the site.
+var errNoUsableIcon = errors.New("no usable icon")
 
 // resolveAndCacheIcon tries each candidate icon for the site (best-first) and
 // persists the first one that is a valid small raster image under the host key,
@@ -226,7 +237,7 @@ func (s *server) resolveAndCacheIcon(ctx context.Context, key, scheme, host, pag
 		}
 		return p, ct, nil
 	}
-	return "", "", errors.New("no usable icon")
+	return "", "", errNoUsableIcon
 }
 
 // fetchFaviconBytes downloads a single candidate icon URL and validates it is a
