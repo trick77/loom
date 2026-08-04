@@ -390,9 +390,14 @@ test("closing the drawer drops the selection", () => {
 });
 
 // A share has no drawer — MessageCitations is not rendered — so the markers must keep
-// their outbound links. Providing the opener there anyway turned every marker into a
-// button that reported a click nobody listened for: nothing opened, and the reader's
-// only route to the source had been taken away.
+// their outbound links. Providing the opener there anyway turns every marker into a
+// button that reports a click nobody listens for: nothing opens, and the reader's only
+// route to the source is taken away.
+//
+// The message below is hand-built with citations, which the real public snapshot never
+// carries (buildShareSnapshot drops them), so a shared answer currently renders its
+// markers as literal "[n]" text instead. This covers the publicView branch for the day
+// the snapshot does carry web sources; it is not a reproduction of today's share page.
 test("renders citation markers as outbound links in the public share view", () => {
   render(
     <MessageBubble

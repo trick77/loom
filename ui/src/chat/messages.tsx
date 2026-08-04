@@ -229,7 +229,13 @@ export function MessageBubble({
        * A share renders the prose bare. Both providers are what turn a marker into a
        * button pointing at the drawer, and the share has no drawer — MessageCitations
        * is skipped just below — so providing them there would leave every marker a
-       * button that opens nothing, with its outbound link taken away. */}
+       * button that opens nothing, with its outbound link taken away.
+       *
+       * Today a share never reaches that state: buildShareSnapshot whitelists the
+       * public blob and deliberately drops citations (they name source documents),
+       * so a shared message carries none, the rehype pass is skipped and the markers
+       * stay literal "[n]" text. This branch is the guard for the day a share does
+       * carry web sources — the drawer would still not be there. */}
       {publicView ? (
         prose
       ) : (
