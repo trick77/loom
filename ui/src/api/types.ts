@@ -259,6 +259,13 @@ export type PublicShareMessage = {
   contentBlocks?: ContentBlock[];
   /** True when the original message carried an uploaded file (stripped from the share). */
   hadAttachment?: boolean;
+  /**
+   * Web sources only, field-projected by the backend's share whitelist. RAG document
+   * citations never appear here — they name the owner's private uploads — and the
+   * markers that cited them are stripped from the prose, so every [n] that reaches a
+   * share resolves.
+   */
+  citations?: Citation[];
   createdAt: string;
 };
 

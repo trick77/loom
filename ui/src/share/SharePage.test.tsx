@@ -51,3 +51,67 @@ describe("SharePage", () => {
     expect(await screen.findByText(/isn.t available/i)).toBeInTheDocument();
   });
 });
+
+// The end of the chain the backend starts: web citations survive the share whitelist,
+// so their markers have somewhere to go. A share has no drawer, so a marker links out
+// to the page directly rather than opening a source list that is not there.
+describe("SharePage citations", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const cited: api.PublicShare = {
+    ...sample,
+    messages: [
+      {
+        id: "m1",
+        role: "assistant",
+        content: "The page agrees [2].",
+        contentBlocks: [{ type: "text", content: "The page agrees [2]." }],
+        citations: [
+          {
+            documentId: "",
+            filename: "Modal",
+            snippet: "Modal runs Python.",
+            score: 0,
+            url: "https://modal.com/docs",
+            index: 2,
+            title: "Modal docs",
+          },
+        ],
+        createdAt: "2026-06-28T00:00:01Z",
+      },
+    ],
+  };
+
+  it("renders a citation marker as an outbound link to its page", async () => {
+    vi.spyOn(api, "getPublicShare").mockResolvedValue(cited);
+    render(<SharePage shareId="tok123" />);
+
+    const marker = await screen.findByRole("link", { name: "Modal" });
+    expect(marker).toHaveClass("ui-source-pill");
+    expect(marker).toHaveAttribute("href", "https://modal.com/docs");
+    expect(marker).toHaveAttribute("target", "_blank");
+    // The marker shows the reader-facing number, and the raw "[2]" is gone.
+    expect(marker).toHaveTextContent("1");
+    expect(screen.queryByText(/\[2\]/)).not.toBeInTheDocument();
+  });
+
+  // The drawer belongs to the authed transcript: it needs the full citation list,
+  // which a share deliberately does not carry.
+  it("does not render the sources row or drawer", async () => {
+    vi.spyOn(api, "getPublicShare").mockResolvedValue(cited);
+    render(<SharePage shareId="tok123" />);
+
+    await screen.findByRole("link", { name: "Modal" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sources")).not.toBeInTheDocument();
+  });
+
+  // An older snapshot, frozen before citations were shared at all, must still render.
+  it("renders a snapshot that carries no citations", async () => {
+    vi.spyOn(api, "getPublicShare").mockResolvedValue(sample);
+    render(<SharePage shareId="tok123" />);
+
+    expect(await screen.findByText("Here is the answer")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
