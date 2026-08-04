@@ -82,9 +82,9 @@ func (c *Client) ClassifyImageIntent(ctx context.Context, userMessage string, ha
 		{Role: "system", Content: imageIntentSystemPrompt},
 		{Role: "user", Content: framed},
 	}
-	resp, err := c.executeNonReasoningChatRequest(ctx, messages, imageIntentMaxCompletionTokens)
+	resp, err := c.executeShortGateChatRequest(ctx, messages, imageIntentMaxCompletionTokens)
 	if err != nil {
-		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
+		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
 		return ImageIntent{Action: ImageIntentNone}, err
 	}
 	defer resp.Body.Close()
@@ -92,18 +92,18 @@ func (c *Client) ClassifyImageIntent(ctx context.Context, userMessage string, ha
 	var completion chatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
 		err := fmt.Errorf("decode image-intent completion response: %w", err)
-		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
+		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
 		return ImageIntent{Action: ImageIntentNone}, err
 	}
 	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, "")
+		observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, "")
 		return ImageIntent{Action: ImageIntentNone}, nil
 	}
 	choice := completion.Choices[0]
 	intent := parseImageIntent(choice.Message.Content)
 	// Log the decision, not the prompt: what the gate concluded is the one thing
 	// needed to tell a mis-route from a correct route in the logs.
-	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason,
+	observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, choice.FinishReason,
 		slog.String("intent", string(intent.Action)),
 		slog.Bool("needs_text", intent.NeedsText))
 	return intent, nil

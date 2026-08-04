@@ -76,9 +76,9 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 		{Role: "system", Content: threadClassifySystemPrompt(userMessage)},
 		{Role: "user", Content: framed},
 	}
-	resp, err := c.executeNonReasoningChatRequest(ctx, messages, utilityMaxCompletionTokens)
+	resp, err := c.executeShortGateChatRequest(ctx, messages, utilityMaxCompletionTokens)
 	if err != nil {
-		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
+		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
 		return string(classifier.General), err
 	}
 	defer resp.Body.Close()
@@ -86,11 +86,11 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 	var completion chatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
 		err := fmt.Errorf("decode classify completion response: %w", err)
-		logInferenceFailed(ctx, c.nonReasoningModel, time.Since(start), err)
+		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
 		return string(classifier.General), err
 	}
 	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, "")
+		observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, "")
 		return string(classifier.General), nil
 	}
 	choice := completion.Choices[0]
@@ -107,7 +107,7 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 	}
 	// Logged after the coercions above so the line shows the category the turn
 	// actually used, not the model's raw reply.
-	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason,
+	observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, choice.FinishReason,
 		slog.String("category", string(category)))
 	return string(category), nil
 }
