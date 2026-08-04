@@ -75,7 +75,7 @@ func (s *server) documentInlineContext(ctx context.Context, userID string, threa
 			slog.Warn("document attachment out of scope", "document_id", id, "thread_id", thread.ID)
 			continue
 		}
-		text, err := s.documents.FullText(withUserIDAttribution(ctx, userID, thread.ID), userID, id)
+		text, err := s.documents.FullText(ctx, userID, id)
 		if err != nil {
 			slog.Warn("document attachment extraction failed", "document_id", id, "err", err)
 			continue
