@@ -439,10 +439,11 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 		req.Width, req.Height = imagegen.ClampMaxSide(req.Width, req.Height, maxTypographyImageSide)
 	}
 	var buffer bytes.Buffer
-	// The tool context carries no inference metadata (it is attached around the
-	// chat calls only), so attribute the generation before handing it to the
-	// provider — otherwise the image model is the one call in a turn whose log
-	// line cannot be tied back to a user or thread.
+	// A chat turn attributes its stream context up front (handleStreamMessage), so
+	// this usually finds the attribution already in place and leaves it alone. It
+	// stays as a backstop for any dispatch path that reaches here on a context
+	// without metadata — otherwise the image model would be the one call in a turn
+	// whose log line cannot be tied back to a user or thread.
 	meta, err := generator.Generate(withUserAttribution(ctx, user, thread.ID), req, &buffer)
 	if err != nil {
 		output := capToolOutput("tool failed: " + err.Error())
