@@ -1085,13 +1085,25 @@ a.ui-activity-tool-url:hover {
 .ui-source-card-selected::before {
   opacity: 1;
 }
-/* Hover is a flat wash, selection a warm tint; a selected row under the cursor shows
-   both, so the cursor never appears to have cleared the pin. */
+/* Hover is a flat neutral wash, selection a warm tint; a selected row under the
+   cursor shows both, so the cursor never appears to have cleared the pin.
+ *
+ * The wash is the same #2a2a28 the drawer's own close button hovers to. The rows
+ * used to hover to #201f1c, four points off the #1c1b18 panel behind them — a step
+ * small enough that the rows read as inert, and the reader could not tell which one
+ * the cursor was on. Every state below is ordered so the later, equally specific
+ * rule wins: a selected row hovers warm, not neutral. */
+.ui-source-card:hover {
+  background: #2a2a28;
+}
 .ui-source-card-selected {
   background: rgba(217, 119, 87, 0.07);
 }
+/* Raised alongside the neutral wash above: at 0.13 a hovered selected row was the
+   same lightness as a hovered plain one, leaving only hue and the rail to separate
+   them. The four states now step upward — plain, selected, hovered, both. */
 .ui-source-card-selected:hover {
-  background: rgba(217, 119, 87, 0.13);
+  background: rgba(217, 119, 87, 0.2);
 }
 .ui-source-card-selected .ui-source-number {
   background: rgba(217, 119, 87, 0.32);
