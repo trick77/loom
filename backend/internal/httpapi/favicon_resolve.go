@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image/png"
 	"io"
 	"net/http"
 	"net/url"
@@ -25,8 +27,13 @@ const (
 )
 
 // googleFaviconURL returns Google's favicon service URL for host — the last-resort
-// candidate: consistently reachable and rendered on a neutral badge (so it stays
-// visible on the dark UI), though low-resolution.
+// candidate: consistently reachable, though low-resolution. It does NOT 404 when it
+// has no icon for a site it otherwise knows: it answers 200 image/png with a
+// placeholder globe drawn as a pure-black glyph on a fully transparent background,
+// which is invisible on the dark-only UI (in the Sources pile, whose favicons carry
+// a near-black ring, it reads as a plain black dot). isVisibleServiceIcon tells that
+// placeholder apart from a real icon so the caller can treat it as "not found" and
+// let the frontend draw its coloured letter avatar instead.
 func googleFaviconURL(host string) string {
 	return "https://www.google.com/s2/favicons?domain=" + url.QueryEscape(host) + "&sz=" + strconv.Itoa(faviconGoogleSize)
 }
@@ -71,6 +78,63 @@ func (s *server) faviconServiceURL(host string) string {
 		return s.faviconService(host)
 	}
 	return googleFaviconURL(host)
+}
+
+const (
+	// faviconVisibleAlpha is the 8-bit alpha at or above which a pixel counts as
+	// painted rather than (near-)transparent.
+	faviconVisibleAlpha = 128
+	// faviconBrightLuma is the relative luminance at or above which a painted pixel
+	// is bright enough to stand out against the dark UI.
+	faviconBrightLuma = 0.35
+	// faviconBrightShare is the fraction of painted pixels that must be bright for
+	// the icon to count as visible. A plain floor of 1 pixel would let a stray
+	// antialiasing artefact through.
+	faviconBrightShare = 0.01
+)
+
+// isVisibleServiceIcon reports whether bytes returned by the last-resort favicon
+// service are a real icon rather than the service's "no icon for this site"
+// placeholder. It is deliberately applied ONLY to that candidate: a blanket
+// "reject dark icons" rule would also drop the genuine, brand-faithful icons of
+// sites that ship an all-black mark, which we would rather show than replace.
+//
+// The test is "does anything in this image stay visible on a dark background":
+// count the painted pixels (alpha >= faviconVisibleAlpha) and require at least
+// faviconBrightShare of them to reach faviconBrightLuma. Measured against the real
+// responses: Google's placeholder globe is fully transparent apart from pure-black
+// strokes (peak luminance 0.17, zero bright pixels), while a real icon such as
+// github.com's is opaque with roughly half its pixels pure white.
+//
+// Anything that does not decode as PNG is accepted unchanged — the gate exists to
+// recognise one specific known payload, not to second-guess formats it cannot read.
+func isVisibleServiceIcon(body []byte) bool {
+	img, err := png.Decode(bytes.NewReader(body))
+	if err != nil {
+		return true
+	}
+	bounds := img.Bounds()
+	var painted, bright int
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := img.At(x, y).RGBA()
+			if a>>8 < faviconVisibleAlpha {
+				continue
+			}
+			painted++
+			// RGBA() is alpha-premultiplied, so dividing by alpha recovers each
+			// channel as a 0..1 fraction of full intensity. a is non-zero here.
+			af := float64(a)
+			luma := 0.2126*float64(r)/af + 0.7152*float64(g)/af + 0.0722*float64(b)/af
+			if luma >= faviconBrightLuma {
+				bright++
+			}
+		}
+	}
+	if painted == 0 {
+		return false
+	}
+	return float64(bright) >= faviconBrightShare*float64(painted)
 }
 
 // fetchPageHTML GETs pageURL and parses it as HTML, returning the parsed tree and

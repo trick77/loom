@@ -76,7 +76,7 @@ export function SourceFavicon({
           ...style,
         }}
       >
-        {letter}
+        <span className="ui-avatar-letter">{letter}</span>
       </span>
     );
   }

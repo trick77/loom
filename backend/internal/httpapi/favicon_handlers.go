@@ -34,6 +34,16 @@ const (
 	// so a slow site can't tie the request up for one 5s timeout per candidate.
 	faviconResolveTimeout = 12 * time.Second
 	faviconUserAgent      = "loom-favicon-cache/1.0"
+	// faviconMissTTL is how long a "this site has no usable icon" result is
+	// remembered. Without it every render of a thread citing such a site would redo
+	// the full resolve (a page fetch plus a probe per candidate, up to
+	// faviconResolveTimeout) — sites behind bot protection 403 every candidate and
+	// never resolve, so misses are a steady state, not a transient. The TTL is short
+	// enough that a site that later gains an icon picks it up the same day.
+	faviconMissTTL = 6 * time.Hour
+	// faviconMissCacheControl mirrors faviconMissTTL so the browser stops re-asking
+	// too; without it each <img> re-requests on every mount.
+	faviconMissCacheControl = "public, max-age=21600"
 )
 
 // faviconDefaultClient fetches favicon bytes with a short timeout and an SSRF guard
@@ -125,7 +135,8 @@ func guardPublicAddr(_, address string, _ syscall.RawConn) error {
 // resolved bytes are cached on disk keyed by host and served with a long browser
 // Cache-Control, so re-renders and reloads serve from cache instead of re-resolving
 // or re-fetching third parties. On failure it returns a non-2xx so the <img>'s
-// onError falls back to the letter avatar.
+// onError falls back to the letter avatar; that failure is itself remembered for
+// faviconMissTTL so an unresolvable site is not re-resolved on every render.
 func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("u")
 	if raw == "" {
@@ -151,6 +162,10 @@ func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 		serveFaviconFile(w, r, path, ct, etag)
 		return
 	}
+	if s.faviconMissed(key) {
+		writeFaviconMissError(w)
+		return
+	}
 
 	// Cache miss: serialize same-host resolves, then double-check the cache. The gate
 	// is released before serving so a slow client never blocks other same-host
@@ -161,16 +176,31 @@ func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 		serveFaviconFile(w, r, path, ct, etag)
 		return
 	}
+	if s.faviconMissed(key) {
+		faviconRelease(key, gate)
+		writeFaviconMissError(w)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), faviconResolveTimeout)
 	defer cancel()
 	path, ct, err := s.resolveAndCacheIcon(ctx, key, scheme, host, raw)
+	if err != nil {
+		s.writeFaviconMiss(key)
+	}
 	faviconRelease(key, gate)
 	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, "favicon resolve failed")
+		writeFaviconMissError(w)
 		return
 	}
 	serveFaviconFile(w, r, path, ct, etag)
+}
+
+// writeFaviconMissError reports "no icon for this site" as a browser-cacheable
+// non-2xx, which is what makes the frontend's <img> onError draw its letter avatar.
+func writeFaviconMissError(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", faviconMissCacheControl)
+	writeJSONError(w, http.StatusBadGateway, "favicon resolve failed")
 }
 
 // resolveAndCacheIcon tries each candidate icon for the site (best-first) and
@@ -178,9 +208,16 @@ func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 // returning its on-disk path and content-type. It errors only when no candidate
 // yields a usable icon.
 func (s *server) resolveAndCacheIcon(ctx context.Context, key, scheme, host, pageURL string) (path, contentType string, err error) {
+	serviceURL := s.faviconServiceURL(host)
 	for _, candidate := range s.resolveIconCandidates(ctx, scheme, host, pageURL) {
 		body, ct, ferr := s.fetchFaviconBytes(ctx, candidate)
 		if ferr != nil {
+			continue
+		}
+		// The last-resort service answers 200 with a placeholder globe when it has no
+		// icon for the site, so a 200 from it is not on its own an icon — see
+		// isVisibleServiceIcon. Only this candidate is screened.
+		if candidate == serviceURL && !isVisibleServiceIcon(body) {
 			continue
 		}
 		p, werr := s.writeFaviconCache(key, body, ct)
@@ -247,7 +284,35 @@ func (s *server) writeFaviconCache(key string, body []byte, contentType string) 
 	if err := faviconWriteAtomic(dataPath+".ct", []byte(contentType)); err != nil {
 		return "", err
 	}
+	// A site that failed to resolve before and resolves now must stop being reported
+	// as a miss immediately, not at the end of the marker's TTL.
+	os.Remove(dataPath + ".miss")
 	return dataPath, nil
+}
+
+// writeFaviconMiss records that no usable icon could be resolved for key. The marker
+// is empty: its modification time carries the whole result. Failure to write it is
+// not worth surfacing — the caller is already on its error path, and the only cost is
+// resolving this host again on the next request.
+func (s *server) writeFaviconMiss(key string) {
+	dir, err := s.faviconDir()
+	if err != nil {
+		return
+	}
+	_ = faviconWriteAtomic(filepath.Join(dir, key+".miss"), nil)
+}
+
+// faviconMissed reports whether key was marked unresolvable within faviconMissTTL.
+// An older marker is ignored (and simply overwritten if the retry fails again).
+func (s *server) faviconMissed(key string) bool {
+	if s.faviconCacheDir == "" {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(s.faviconCacheDir, key+".miss"))
+	if err != nil {
+		return false
+	}
+	return time.Since(info.ModTime()) < faviconMissTTL
 }
 
 // faviconCached returns the on-disk path and content-type when both the image and
