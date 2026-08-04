@@ -115,6 +115,20 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// turnStart times the full turn wall-clock for the same reason.
 	usageTotal := llm.NewUsageAccumulator()
 	streamCtx = llm.WithUsageAccumulator(streamCtx, usageTotal)
+	// Attribute the whole turn up front, so the model calls that hang off its
+	// edges — the RAG query embedding, a live vision description for an attached
+	// image, the image tool — log under the same user/thread as the chat calls.
+	// The per-call metadata attached below (purposes, rounds, reasoning effort)
+	// builds on this; without it those edge calls logged anonymously.
+	turnAttribution := llm.InferenceMetadata{
+		UserID:   user.ID,
+		Username: user.Username,
+		ThreadID: threadID,
+	}
+	streamCtx = llm.WithInferenceMetadata(streamCtx, turnAttribution)
+	// The prompt-assembly helpers below run on the request context rather than
+	// streamCtx, so they need the same attribution attached separately.
+	turnCtx := llm.WithInferenceMetadata(r.Context(), turnAttribution)
 	turnStart := time.Now()
 	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream)
 	defer unregisterStream()
@@ -139,7 +153,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// image_generation instead of letting the text classifier guess (it would
 	// mislabel and the image path discards the classifier block anyway). Computed
 	// once here and reused below.
-	imageRoute := s.classifyImageTurn(streamCtx, user.ID, threadID, body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
+	imageRoute := s.classifyImageTurn(streamCtx, user, threadID, body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
 	imageArtifactRequired := imageRoute.generate
 
 	// category drives the prompt-classifier block injected below. On the first
@@ -190,7 +204,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Inline the full text of any documents attached to this message, and exclude
 	// those documents from RAG retrieval below so the model never sees them twice.
 	docIdx := newDocIndexer()
-	documentContext, inlinedDocIDs, attachmentSources := s.documentInlineContext(r.Context(), user.ID, thread, body.DocumentAttachmentIDs, docIdx)
+	documentContext, inlinedDocIDs, attachmentSources := s.documentInlineContext(turnCtx, user.ID, thread, body.DocumentAttachmentIDs, docIdx)
 	// Adaptively inject the project's indexed knowledge in full when it fits the
 	// token budget (skipping RAG entirely in that case); otherwise fall back to RAG
 	// excerpts for whatever did not fit. Auto-inlined documents are excluded from RAG.
@@ -198,11 +212,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// take [1]..[k] above, and the web-source registry is seeded to continue at k+1
 	// (see runAssistantLoop), so a marker in the answer is unambiguous whatever kind
 	// of source it points at.
-	knowledgeInlineContext, knowledgeInlinedIDs, knowledgeSources, inlinedAll := s.knowledgeInlineContext(r.Context(), user.ID, thread, inlinedDocIDs, docIdx)
+	knowledgeInlineContext, knowledgeInlinedIDs, knowledgeSources, inlinedAll := s.knowledgeInlineContext(turnCtx, user.ID, thread, inlinedDocIDs, docIdx)
 	knowledgeContext := knowledgeInlineContext
 	if !inlinedAll {
 		ragExclude := mergeDocIDSets(inlinedDocIDs, knowledgeInlinedIDs)
-		ragContext, ragSources := s.knowledgeContextForThread(r.Context(), user.ID, thread, userMessage.Content, ragExclude, docIdx)
+		ragContext, ragSources := s.knowledgeContextForThread(turnCtx, user.ID, thread, userMessage.Content, ragExclude, docIdx)
 		knowledgeContext = joinNonEmptyBlocks(knowledgeInlineContext, ragContext)
 		knowledgeSources = append(knowledgeSources, ragSources...)
 	}

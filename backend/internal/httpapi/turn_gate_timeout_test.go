@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 )
@@ -45,7 +46,7 @@ func TestClassifyImageTurnGivesUpOnAStalledGate(t *testing.T) {
 
 	done := make(chan imageRouting, 1)
 	go func() {
-		done <- s.classifyImageTurn(context.Background(), "user-1", "thread-1", "draw a red fox", false, nil)
+		done <- s.classifyImageTurn(context.Background(), auth.User{ID: "user-1", Username: "jan"}, "thread-1", "draw a red fox", false, nil)
 	}()
 
 	select {
@@ -76,7 +77,7 @@ func TestClassifyImageTurnDoesNotOutliveTheTurn(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan imageRouting, 1)
 	go func() {
-		done <- s.classifyImageTurn(ctx, "user-1", "thread-1", "draw a red fox", false, nil)
+		done <- s.classifyImageTurn(ctx, auth.User{ID: "user-1", Username: "jan"}, "thread-1", "draw a red fox", false, nil)
 	}()
 
 	select {

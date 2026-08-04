@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/trick77/loom/internal/inference"
 )
 
 // embedBatchSize bounds how many chunks are embedded per request.
@@ -166,6 +168,9 @@ func (ing *Ingester) extract(ctx context.Context, doc Document) (string, error) 
 // embedAll embeds chunk texts in bounded batches and returns vectors aligned to
 // the chunk order.
 func (ing *Ingester) embedAll(ctx context.Context, userID string, chunks []TextChunk) ([][]float32, error) {
+	// Distinguish indexing batches from the per-turn query embedding in the logs;
+	// they have very different volumes and failure meanings.
+	ctx = inference.WithPurpose(ctx, "embed_ingest")
 	embeddings := make([][]float32, 0, len(chunks))
 	var usageTokens int
 	var usageRequests int

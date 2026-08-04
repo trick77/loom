@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 )
@@ -48,7 +49,7 @@ var turnGateTimeout = 30 * time.Second
 // imageRoutingFor. The gate is fail-safe (ImageIntentNone on any error), so a
 // classification failure — including the turnGateTimeout expiring — degrades to
 // the normal, non-image path instead of holding up the answer.
-func (s *server) classifyImageTurn(ctx context.Context, user, threadID, content string, hasAttachedImage bool, priorMessages []chat.Message) imageRouting {
+func (s *server) classifyImageTurn(ctx context.Context, user auth.User, threadID, content string, hasAttachedImage bool, priorMessages []chat.Message) imageRouting {
 	if len(s.imageTools) == 0 || s.artifacts == nil || strings.TrimSpace(s.usersDir) == "" {
 		return imageRouting{}
 	}
@@ -58,7 +59,7 @@ func (s *server) classifyImageTurn(ctx context.Context, user, threadID, content 
 		return imageRouting{}
 	}
 	threadHasImage := priorConversationHasImageArtifact(priorMessages)
-	meta := llm.InferenceMetadata{UserID: user, ThreadID: threadID, Purpose: "image_intent", Round: 1}
+	meta := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "image_intent", Round: 1}
 	gateCtx, cancel := context.WithTimeout(ctx, turnGateTimeout)
 	defer cancel()
 	started := time.Now()

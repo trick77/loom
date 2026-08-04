@@ -11,6 +11,7 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/rag"
 )
 
@@ -299,7 +300,7 @@ func (s *Service) Retrieve(ctx context.Context, userID string, projectID, thread
 	} else if !has {
 		return nil, nil
 	}
-	result, err := s.embedder.Embed(ctx, []string{query})
+	result, err := s.embedder.Embed(inference.WithPurpose(ctx, "embed_query"), []string{query})
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)
 	}

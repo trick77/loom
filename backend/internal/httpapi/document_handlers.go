@@ -174,7 +174,9 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Run ingestion off the request path; the client polls status via list/get.
-	detached := context.WithoutCancel(r.Context())
+	// Attribute the ingest's model calls (vision description, embedding batches):
+	// the detached context carries no metadata of its own.
+	detached := withUserAttribution(context.WithoutCancel(r.Context()), user, "")
 	go func() {
 		_ = s.documents.Index(detached, user.ID, docID)
 	}()

@@ -8,10 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/trick77/loom/internal/inference"
 )
 
 const (
@@ -62,28 +65,53 @@ func NewBFLClient(cfg BFLConfig) *BFLClient {
 	}
 }
 
+// Generate submits a generation, polls it to completion and downloads the
+// image. It emits one inference log line for the whole round trip (not one per
+// poll), on the success and on every failure path, so image generation is
+// accounted for in the same log stream as the chat and embedding calls. The
+// prompt is never logged — only the request shape and the resulting size.
 func (c *BFLClient) Generate(ctx context.Context, input GenerateRequest) (GenerateResult, error) {
+	ctx = inference.WithDefaultPurpose(ctx, "image_generate")
+	start := time.Now()
 	req, err := input.Normalized()
 	if err != nil {
+		inference.LogFailed(ctx, c.effectiveModel(input.Model), time.Since(start), err)
 		return GenerateResult{}, err
 	}
 	model := c.effectiveModel(req.Model)
+	shape := []slog.Attr{
+		slog.Int("width", req.Width),
+		slog.Int("height", req.Height),
+		slog.Int("input_images", len(req.InputImages)),
+	}
+	fail := func(err error) (GenerateResult, error) {
+		inference.LogFailed(ctx, model, time.Since(start), err, shape...)
+		return GenerateResult{}, err
+	}
 	submitted, err := c.submit(ctx, req, model)
 	if err != nil {
-		return GenerateResult{}, err
+		return fail(err)
 	}
 	status, err := c.poll(ctx, submitted.PollingURL)
 	if err != nil {
-		return GenerateResult{}, err
+		return fail(err)
 	}
 	imageURL := strings.TrimSpace(status.Result.Sample)
 	if imageURL == "" {
-		return GenerateResult{}, fmt.Errorf("BFL result did not include an image URL")
+		return fail(fmt.Errorf("BFL result did not include an image URL"))
 	}
 	body, contentType, err := c.download(ctx, imageURL)
 	if err != nil {
-		return GenerateResult{}, err
+		return fail(err)
 	}
+	done := append(shape,
+		slog.String("request_id", submitted.ID),
+		slog.Int("image_bytes", len(body)),
+	)
+	if submitted.Cost != nil {
+		done = append(done, slog.Float64("cost_credits", *submitted.Cost))
+	}
+	inference.LogCompleted(ctx, model, time.Since(start), done...)
 	mimeType := MIMEType(req.OutputFormat)
 	if strings.HasPrefix(contentType, "image/") {
 		mimeType = strings.Split(contentType, ";")[0]

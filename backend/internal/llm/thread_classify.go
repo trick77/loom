@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -93,7 +94,6 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 		return string(classifier.General), nil
 	}
 	choice := completion.Choices[0]
-	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason)
 	// Match tolerantly extracts the category from the reply (handling quotes,
 	// punctuation, or stray prose) and coerces anything unrecognized — including a
 	// truncated "length" reply — to General, so a bad reply never produces a bad
@@ -105,5 +105,9 @@ func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string
 	if category == classifier.URLLookup && !messageContainsURL(userMessage) {
 		category = classifier.General
 	}
+	// Logged after the coercions above so the line shows the category the turn
+	// actually used, not the model's raw reply.
+	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason,
+		slog.String("category", string(category)))
 	return string(category), nil
 }
