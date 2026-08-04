@@ -4879,9 +4879,7 @@ test("renders fetch tool rows with a timeline favicon and a clickable URL", asyn
   // And when that icon cannot be resolved, the row falls back to the arrow glyph
   // instead of being left with an empty box.
   fireEvent.error(favicon!);
-  expect(
-    document.querySelector(".ui-activity-fetch-icon-favicon"),
-  ).toBeNull();
+  expect(document.querySelector(".ui-activity-fetch-icon-favicon")).toBeNull();
   expect(document.querySelector(".ui-activity-fetch-icon")).not.toBeNull();
   // The full URL is a link that opens in a new tab — no redundant result frame.
   const link = screen.getByRole("link", {
