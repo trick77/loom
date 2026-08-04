@@ -103,11 +103,9 @@ function pillElement(
       // property-information: a bespoke "tight" prop is dropped on the way to the
       // component, and className is owned by the renderer.
       dataTight: tight ? "true" : undefined,
-      // The number this marker shows, so the drawer can light it back up while the
-      // reader hovers the matching source row.
-      dataSource: String(shown),
       // Every number of the run this marker belongs to — see emitRun. A lone marker
-      // carries just its own.
+      // carries just its own. The marker's *own* number needs no attribute: it is the
+      // element's text, which is what the hover highlight matches on.
       dataRun: run,
       // Absent for an uploaded document: SourcePill then renders the number as
       // plain (non-link) text rather than a dead anchor.
@@ -353,7 +351,6 @@ export function SourcePill({
   title?: unknown;
   children?: ReactNode;
   "data-tight"?: unknown;
-  "data-source"?: unknown;
   "data-run"?: unknown;
 }) {
   const openSources = useContext(SourcesOpener);
