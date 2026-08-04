@@ -304,7 +304,7 @@ describe("activity trace model", () => {
     expect(externalHTTPURL("/threads/t1")).toBeUndefined();
     expect(externalHTTPURL("mailto:hello@example.com")).toBeUndefined();
     expect(faviconURL("www.example.com/docs")).toBe(
-      "https://www.google.com/s2/favicons?domain=example.com&sz=32",
+      "/api/favicon?u=https%3A%2F%2Fwww.example.com%2Fdocs",
     );
   });
 
