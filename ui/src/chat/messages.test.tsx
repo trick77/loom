@@ -388,3 +388,26 @@ test("closing the drawer drops the selection", () => {
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(selectedNumbers()).toEqual([]);
 });
+
+// A share has no drawer — MessageCitations is not rendered — so the markers must keep
+// their outbound links. Providing the opener there anyway turned every marker into a
+// button that reported a click nobody listened for: nothing opened, and the reader's
+// only route to the source had been taken away.
+test("renders citation markers as outbound links in the public share view", () => {
+  render(
+    <MessageBubble
+      message={assistantWithCitations()}
+      retryMessage={null}
+      onRetry={vi.fn()}
+      publicView
+    />,
+  );
+
+  const marker = screen.getByRole("link", { name: "Alpha" });
+  expect(marker).toHaveClass("ui-source-pill");
+  expect(marker).toHaveAttribute("href", "https://alpha.example");
+  expect(marker).toHaveAttribute("target", "_blank");
+  expect(
+    screen.queryByRole("button", { name: "Alpha" }),
+  ).not.toBeInTheDocument();
+});

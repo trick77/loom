@@ -284,8 +284,11 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
 // owns it, MessageCitations renders it), and the markers are rendered by
 // react-markdown several levels below with no prop path to it.
 //
-// A surface that has no drawer simply provides nothing: the public share view skips
-// MessageCitations entirely, so its markers fall back to linking out.
+// A surface that has no drawer must provide nothing, so its markers fall back to
+// linking out. This is a rule the provider's callers have to keep — the context has
+// no way to tell whether anything downstream actually renders a drawer, and a marker
+// that reports a click nobody listens for is a dead button with its link removed.
+// MessageBubble skips both providers when publicView is set, for exactly that reason.
 const SourcesOpener = createContext<((numbers: number[]) => void) | null>(null);
 
 export function SourcesOpenerProvider({
