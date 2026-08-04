@@ -52,6 +52,7 @@ import { rehypeStreamFade } from "./streamFade";
 import {
   rehypeSourcePills,
   SourcePill,
+  PillHighlightProvider,
   SourcesOpenerProvider,
   SOURCE_PILL_TAG,
   webSourceMap,
@@ -174,20 +175,59 @@ export function MessageBubble({
     [proseText, message.citations],
   );
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  // What the reader pinned by clicking a marker, and which drawer row the cursor is
+  // on. The nonce exists because clicking the same marker twice leaves `numbers`
+  // identical — without it the drawer would not scroll back to the source the second
+  // time. Selection is a replace, never an accumulation: two clicks are two questions,
+  // not one growing one.
+  const [selection, setSelection] = useState<{
+    numbers: ReadonlySet<number>;
+    nonce: number;
+  }>({ numbers: new Set(), nonce: 0 });
+  const [hoveredSource, setHoveredSource] = useState<number | undefined>(
+    undefined,
+  );
+  // Closing the drawer drops the selection: it answers "which source backs this
+  // sentence", and that question is over. Nothing clears it on mouse movement —
+  // pinned and hovered look different, so there is nothing to disambiguate.
+  const setDrawerOpen = (open: boolean) => {
+    setSourcesOpen(open);
+    if (!open) {
+      setSelection((current) => ({
+        numbers: new Set(),
+        nonce: current.nonce,
+      }));
+      setHoveredSource(undefined);
+    }
+  };
+  const openSources = (numbers: number[]) => {
+    setSourcesOpen(true);
+    setSelection((current) => ({
+      numbers: new Set(numbers),
+      nonce: current.nonce + 1,
+    }));
+  };
+  const highlight = useMemo(
+    () => ({ selected: selection.numbers, hovered: hoveredSource }),
+    [selection.numbers, hoveredSource],
+  );
   return (
     <div className="max-w-[46rem] space-y-3">
       {/* The drawer's state lives here, above both the prose and the Sources row,
           because either can open it: a marker in the answer and the footer row are
-          two entry points to the same list. */}
-      <SourcesOpenerProvider onOpen={() => setSourcesOpen(true)}>
-        {blocks.map((block, index) => (
-          <AssistantBlock
-            key={`${message.id}-block-${index}`}
-            block={block}
-            sources={sources}
-            display={numbering.display}
-          />
-        ))}
+          two entry points to the same list. The highlight travels the other way —
+          the drawer reports what it is showing, and the markers light up to match. */}
+      <SourcesOpenerProvider onOpen={openSources}>
+        <PillHighlightProvider highlight={highlight}>
+          {blocks.map((block, index) => (
+            <AssistantBlock
+              key={`${message.id}-block-${index}`}
+              block={block}
+              sources={sources}
+              display={numbering.display}
+            />
+          ))}
+        </PillHighlightProvider>
       </SourcesOpenerProvider>
       {/* Sources sit directly under the answer text, on their own line, above the
           copy/retry/TTS + metrics footer. */}
@@ -196,7 +236,10 @@ export function MessageBubble({
           citations={message.citations}
           display={numbering.display}
           sourcesOpen={sourcesOpen}
-          onSourcesOpenChange={setSourcesOpen}
+          onSourcesOpenChange={setDrawerOpen}
+          selected={selection.numbers}
+          selectionNonce={selection.nonce}
+          onHoverSource={setHoveredSource}
         />
       )}
       {!publicView && (

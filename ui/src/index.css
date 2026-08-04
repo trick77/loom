@@ -1029,6 +1029,58 @@ a.ui-activity-tool-url:hover {
   outline-offset: 2px;
 }
 
+/* The marker's source is pinned in the drawer — the reader clicked this marker, or
+   one of the run it belongs to. Warmer than :hover so the two never read as the same
+   thing, and it survives the cursor moving away. */
+.ui-markdown .ui-source-pill-active,
+.ui-source-pill-active {
+  background: rgba(217, 119, 87, 0.34);
+  color: #ffcdb4;
+}
+
+/* The reverse direction: the drawer row for this source is under the cursor. One
+   source often backs several sentences, so this can light up markers scattered over
+   the whole answer — which is the point. The ring makes it findable while scanning. */
+.ui-markdown .ui-source-pill-linked,
+.ui-source-pill-linked {
+  background: rgba(217, 119, 87, 0.42);
+  color: #ffd9c6;
+  box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.35);
+}
+
+/* Sources drawer rows. The rail is painted at zero opacity on every card so that
+   selecting one changes no geometry — the text must not shift sideways. */
+.ui-source-card {
+  position: relative;
+}
+.ui-source-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 2px;
+  border-radius: 2px;
+  background: #d97757;
+  opacity: 0;
+  transition: opacity 0.14s;
+}
+.ui-source-card-selected::before {
+  opacity: 1;
+}
+/* Hover is a flat wash, selection a warm tint; a selected row under the cursor shows
+   both, so the cursor never appears to have cleared the pin. */
+.ui-source-card-selected {
+  background: rgba(217, 119, 87, 0.07);
+}
+.ui-source-card-selected:hover {
+  background: rgba(217, 119, 87, 0.13);
+}
+.ui-source-card-selected .ui-source-number {
+  background: rgba(217, 119, 87, 0.32);
+  color: #ffcdb4;
+}
+
 /* The Sources drawer's per-row number: the same plate, family, weight and tabular
    figures as the marker it pairs with, so the two read as one system. Deliberately
    NOT superscripted — here the number is a standalone row element, not a marker

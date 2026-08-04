@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import type { ComponentProps } from "react";
 
 import {
   combineLikeSources,
@@ -346,5 +347,75 @@ describe("MessageCitations", () => {
     expect(
       screen.getByRole("button", { name: /sources/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("SourcesSidebar selection", () => {
+  const sources: Citation[] = [
+    { ...webSource("https://modal.com", 2, "Modal"), title: "Modal docs" },
+    {
+      ...webSource("https://truefoundry.com", 1, "Truefoundry"),
+      title: "TrueFoundry",
+    },
+  ];
+  // Modal is cited first, so it shows 1; TrueFoundry shows 2.
+  const display = new Map([
+    [2, 1],
+    [1, 2],
+  ]);
+
+  function openDrawer(props: Partial<ComponentProps<typeof MessageCitations>>) {
+    return render(
+      <MessageCitations
+        citations={sources}
+        display={display}
+        sourcesOpen
+        {...props}
+      />,
+    );
+  }
+
+  it("marks only the pinned source's card", () => {
+    openDrawer({ selected: new Set([1]) });
+
+    const pinned = screen.getByRole("link", { name: /Modal docs/ });
+    const other = screen.getByRole("link", { name: /TrueFoundry/ });
+    expect(pinned).toHaveClass("ui-source-card-selected");
+    expect(pinned).toHaveAttribute("aria-current", "true");
+    expect(other).not.toHaveClass("ui-source-card-selected");
+    expect(other).not.toHaveAttribute("aria-current");
+  });
+
+  // A run of markers pins several sources at once — that is the only way more than
+  // one card is ever marked.
+  it("marks every source of a pinned run", () => {
+    openDrawer({ selected: new Set([1, 2]) });
+
+    for (const name of [/Modal docs/, /TrueFoundry/])
+      expect(screen.getByRole("link", { name })).toHaveClass(
+        "ui-source-card-selected",
+      );
+  });
+
+  it("reports the hovered card by its display number, and clears on leave", () => {
+    const onHoverSource = vi.fn();
+    openDrawer({ onHoverSource });
+
+    const card = screen.getByRole("link", { name: /TrueFoundry/ });
+    fireEvent.mouseEnter(card);
+    expect(onHoverSource).toHaveBeenCalledWith(2);
+    fireEvent.mouseLeave(card);
+    expect(onHoverSource).toHaveBeenLastCalledWith(undefined);
+  });
+
+  // Hover writes no state: it must not disturb what a marker click pinned, which is
+  // what makes clearing-on-mouse-move unnecessary.
+  it("keeps a pinned card marked while another is hovered", () => {
+    openDrawer({ selected: new Set([1]) });
+
+    fireEvent.mouseEnter(screen.getByRole("link", { name: /TrueFoundry/ }));
+    expect(screen.getByRole("link", { name: /Modal docs/ })).toHaveClass(
+      "ui-source-card-selected",
+    );
   });
 });

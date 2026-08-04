@@ -304,3 +304,87 @@ test("shows document sources for a message persisted before documents were numbe
   expect(screen.getByText("report.pdf")).toBeInTheDocument();
   expect(screen.getByText("2 excerpts")).toBeInTheDocument();
 });
+
+// The three tests below cover the wiring between an inline citation marker and the
+// Sources drawer, which lives in MessageBubble and is invisible to the unit tests of
+// either half: sourcePills only reports the click, SourcesSidebar only renders what
+// it is handed.
+function assistantWithCitations(): Message {
+  const url = (host: string) => `https://${host}.example`;
+  return {
+    id: "a1",
+    threadId: "t1",
+    role: "assistant",
+    content: "Alpha claims this [1]. Beta and gamma back that [2][3].",
+    createdAt: "2026-06-14T00:00:00Z",
+    citations: [1, 2, 3].map((index) => ({
+      documentId: "",
+      filename: ["Alpha", "Beta", "Gamma"][index - 1],
+      snippet: `snippet ${index}`,
+      score: 0.9,
+      url: url(["alpha", "beta", "gamma"][index - 1]),
+      index,
+      title: `Title ${index}`,
+    })),
+  };
+}
+
+// The card of a source, found by the number it shows — the same number as the marker.
+function selectedNumbers(): string[] {
+  return [...document.querySelectorAll(".ui-source-card-selected")].map(
+    (card) => card.querySelector(".ui-source-number")?.textContent ?? "",
+  );
+}
+
+test("clicking a citation marker opens the drawer with that source pinned", () => {
+  render(
+    <MessageBubble
+      message={assistantWithCitations()}
+      retryMessage={null}
+      onRetry={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(selectedNumbers()).toEqual(["1"]);
+});
+
+// Two clicks are two questions, not one growing one — so the second replaces the
+// first rather than adding to it. Nothing about the mouse clears a selection; only
+// another click or closing the drawer does.
+test("a second marker click replaces the pinned selection", () => {
+  render(
+    <MessageBubble
+      message={assistantWithCitations()}
+      retryMessage={null}
+      onRetry={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+  expect(selectedNumbers()).toEqual(["1"]);
+
+  // Beta and Gamma stand together, so they are one citation: clicking either pins
+  // both, and Alpha is dropped.
+  fireEvent.click(screen.getByRole("button", { name: "Beta" }));
+  expect(selectedNumbers()).toEqual(["2", "3"]);
+});
+
+test("closing the drawer drops the selection", () => {
+  render(
+    <MessageBubble
+      message={assistantWithCitations()}
+      retryMessage={null}
+      onRetry={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  fireEvent.click(screen.getByRole("button", { name: /sources/i }));
+
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(selectedNumbers()).toEqual([]);
+});
