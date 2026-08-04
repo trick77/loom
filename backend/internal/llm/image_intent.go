@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -99,8 +100,13 @@ func (c *Client) ClassifyImageIntent(ctx context.Context, userMessage string, ha
 		return ImageIntent{Action: ImageIntentNone}, nil
 	}
 	choice := completion.Choices[0]
-	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason)
-	return parseImageIntent(choice.Message.Content), nil
+	intent := parseImageIntent(choice.Message.Content)
+	// Log the decision, not the prompt: what the gate concluded is the one thing
+	// needed to tell a mis-route from a correct route in the logs.
+	observeInference(ctx, c.nonReasoningModel, time.Since(start), completion.Usage, choice.FinishReason,
+		slog.String("intent", string(intent.Action)),
+		slog.Bool("needs_text", intent.NeedsText))
+	return intent, nil
 }
 
 // parseImageIntent extracts the {"action","needs_text"} object from the model

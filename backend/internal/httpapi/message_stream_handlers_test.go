@@ -929,18 +929,18 @@ func TestClassifyImageTurnPreconditions(t *testing.T) {
 		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		llm:        fakeChatClient{imageIntent: create},
 	}
-	if got := configured.classifyImageTurn(context.Background(), "user_1", "thr_1", "zeichne mir einen Fuchs", false, nil); !got.generate {
+	if got := configured.classifyImageTurn(context.Background(), auth.User{ID: "user_1", Username: "jan"}, "thr_1", "zeichne mir einen Fuchs", false, nil); !got.generate {
 		t.Fatalf("classifyImageTurn(create intent) = %+v, want generate=true", got)
 	}
 	// Empty message never routes, even with tooling and a create-returning gate.
-	if got := configured.classifyImageTurn(context.Background(), "user_1", "thr_1", "   ", false, nil); got != (imageRouting{}) {
+	if got := configured.classifyImageTurn(context.Background(), auth.User{ID: "user_1", Username: "jan"}, "thr_1", "   ", false, nil); got != (imageRouting{}) {
 		t.Fatalf("classifyImageTurn(empty content) = %+v, want zero routing", got)
 	}
 
 	// No image tooling: never routes (and the gate must not be consulted — a nil
 	// llm would panic if it were).
 	noTools := &server{artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
-	if got := noTools.classifyImageTurn(context.Background(), "user_1", "thr_1", "zeichne mir einen Fuchs", true, nil); got != (imageRouting{}) {
+	if got := noTools.classifyImageTurn(context.Background(), auth.User{ID: "user_1", Username: "jan"}, "thr_1", "zeichne mir einen Fuchs", true, nil); got != (imageRouting{}) {
 		t.Fatalf("classifyImageTurn(no image tools) = %+v, want zero routing", got)
 	}
 }

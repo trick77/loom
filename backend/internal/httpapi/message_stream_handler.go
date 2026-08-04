@@ -139,7 +139,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// image_generation instead of letting the text classifier guess (it would
 	// mislabel and the image path discards the classifier block anyway). Computed
 	// once here and reused below.
-	imageRoute := s.classifyImageTurn(streamCtx, user.ID, threadID, body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
+	imageRoute := s.classifyImageTurn(streamCtx, user, threadID, body.Content, len(body.ImageAttachmentIDs) > 0, priorMessages)
 	imageArtifactRequired := imageRoute.generate
 
 	// category drives the prompt-classifier block injected below. On the first

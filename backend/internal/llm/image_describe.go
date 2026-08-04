@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/imagescale"
+	"github.com/trick77/loom/internal/inference"
 )
 
 // imageDescribeMaxCompletionTokens caps the vision description. With thinking
@@ -31,6 +32,10 @@ const imageDescribeInstruction = "Describe this image in detail for a search ind
 // downscaled (imagescale) before being inlined as a base64 data URL.
 func (c *Client) DescribeImage(ctx context.Context, data []byte, mime string) (string, error) {
 	start := time.Now()
+	// Tag the call even when it runs from a path that attached no metadata (a
+	// detached ingest goroutine), so the log line is never an anonymous
+	// vision-model call.
+	ctx = inference.WithDefaultPurpose(ctx, "image_describe")
 	ctx, cancel := context.WithTimeout(ctx, imageDescribeTimeout)
 	defer cancel()
 
