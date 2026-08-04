@@ -122,8 +122,13 @@ function CenteredNotice({ children }: { children: React.ReactNode }) {
 }
 
 // toRenderMessage adapts a sanitized snapshot message to the shape MessageBubble
-// renders. Fields the public snapshot omits (attachments, citations, tokens) are
-// simply absent; publicView mode never reads them.
+// renders. Fields the public snapshot omits (attachments, tokens) are simply absent;
+// publicView mode never reads them.
+//
+// citations carry through when present: they are the web sources the backend allowed
+// out, and they are what turns the [n] markers in the prose into links to the pages
+// they cite. publicView still skips MessageCitations, so a share gets linked markers
+// and no drawer.
 function toRenderMessage(
   message: PublicShareMessage,
 ): Message & { hadAttachment?: boolean } {
@@ -134,6 +139,7 @@ function toRenderMessage(
     content: message.content,
     artifacts: message.artifacts,
     contentBlocks: message.contentBlocks,
+    citations: message.citations,
     createdAt: message.createdAt,
     hadAttachment: message.hadAttachment,
   };

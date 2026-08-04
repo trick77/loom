@@ -259,6 +259,19 @@ export type PublicShareMessage = {
   contentBlocks?: ContentBlock[];
   /** True when the original message carried an uploaded file (stripped from the share). */
   hadAttachment?: boolean;
+  /**
+   * Web sources only, field-projected by the backend's share whitelist. RAG document
+   * citations never appear here — they name the owner's private uploads — and the
+   * markers that cited them are stripped from the prose, so a share shows no bracket
+   * pointing at a source it does not carry. (The strip pass skips code, including the
+   * indented-line and unclosed-backtick regions stripCode treats as code, so a marker
+   * written inside one is left alone in both directions.)
+   *
+   * documentId and score are projected away by the backend despite being required on
+   * Citation: no publicView consumer reads them (webSourceMap needs index/url/filename;
+   * MessageCitations is skipped on a share).
+   */
+  citations?: Citation[];
   createdAt: string;
 };
 

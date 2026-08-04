@@ -16,10 +16,17 @@ func formatShareTime(t time.Time) string {
 
 // The share snapshot is built by WHITELIST: a shared message carries ONLY the
 // fields below. Everything else a Message holds — reasoning, tool calls, activity
-// traces, RAG citations (which name source documents), uploaded attachments (the
-// private file), token counts, model, duration — is excluded by construction, so
-// no private data can leak into a public page and a future Message field cannot
-// silently start leaking. This is the core security boundary of the feature.
+// traces, RAG document citations (which name the owner's private uploads),
+// uploaded attachments (the private file), token counts, model, duration — is
+// excluded by construction, so no private data can leak into a public page and a
+// future Message field cannot silently start leaking. This is the core security
+// boundary of the feature.
+//
+// Citations are whitelisted twice over: only WEB citations survive (a citation
+// carrying a url — a public page the reader could have found themselves), and each
+// is projected field by field. A RAG document citation is dropped whole: its
+// filename is the name of a file the owner never shared, and its snippet is that
+// file's contents.
 
 type shareSnapshot struct {
 	Title    string         `json:"title"`
@@ -39,8 +46,12 @@ type shareMessage struct {
 	// HadAttachment is true when the original message carried an uploaded file. The
 	// file itself is never included; the viewer shows a subtle "attachment not
 	// shared" marker so an assistant reply that references it still reads sensibly.
-	HadAttachment bool   `json:"hadAttachment,omitempty"`
-	CreatedAt     string `json:"createdAt"`
+	HadAttachment bool `json:"hadAttachment,omitempty"`
+	// Citations carries the WEB sources only, field-projected — see the whitelist note
+	// above. Omitted entirely when the answer cited none, so an older snapshot and a
+	// document-only answer look the same to the viewer.
+	Citations json.RawMessage `json:"citations,omitempty"`
+	CreatedAt string          `json:"createdAt"`
 }
 
 // buildShareSnapshot turns the owner's live messages into the frozen, sanitized
@@ -70,11 +81,20 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 			continue
 		}
 
+		// Citations first: the projection decides which [n] markers still resolve, and
+		// the prose has to be stripped of the rest BEFORE it is copied into both
+		// Content and the synthesized text block, or the two disagree about the answer.
+		citations, kept := projectCitationsForShare(msg.Citations)
+		cited := citedIndices(msg.Citations)
+		content := stripDroppedMarkers(msg.Content, cited, kept)
+
 		artifacts, artIDs, err := rewriteArtifactArrayForShare(shareID, msg.Artifacts)
 		if err != nil {
 			return shareSnapshot{}, nil, fmt.Errorf("sanitize message %s artifacts: %w", msg.ID, err)
 		}
-		blocks, blockIDs, err := rewriteContentBlocksForShare(shareID, msg.ContentBlocks, msg.Content)
+		blocks, blockIDs, err := rewriteContentBlocksForShare(shareID, msg.ContentBlocks, content, func(text string) string {
+			return stripDroppedMarkers(text, cited, kept)
+		})
 		if err != nil {
 			return shareSnapshot{}, nil, fmt.Errorf("sanitize message %s content blocks: %w", msg.ID, err)
 		}
@@ -90,10 +110,11 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 		sm := shareMessage{
 			ID:            msg.ID,
 			Role:          msg.Role,
-			Content:       msg.Content,
+			Content:       content,
 			Artifacts:     artifacts,
 			ContentBlocks: blocks,
 			HadAttachment: hadAttachment,
+			Citations:     citations,
 			CreatedAt:     formatShareTime(msg.CreatedAt),
 		}
 
@@ -141,7 +162,11 @@ func rewriteArtifactArrayForShare(shareID string, raw json.RawMessage) (json.Raw
 // the message has text, it synthesizes a single text block so the viewer never
 // falls back to rebuilding a trace from reasoning/activity (which the snapshot
 // does not carry anyway, but this keeps the contract explicit).
-func rewriteContentBlocksForShare(shareID string, raw json.RawMessage, content string) (json.RawMessage, []string, error) {
+//
+// stripText is applied to every text block's own copy of the prose. A block carries
+// its own text, not a slice of Content, so stripping only Content would leave the
+// dropped markers visible in exactly the field the viewer renders.
+func rewriteContentBlocksForShare(shareID string, raw json.RawMessage, content string, stripText func(string) string) (json.RawMessage, []string, error) {
 	textBlock := func() (json.RawMessage, error) {
 		if strings.TrimSpace(content) == "" {
 			return json.RawMessage("[]"), nil
@@ -178,6 +203,18 @@ func rewriteContentBlocksForShare(shareID string, raw json.RawMessage, content s
 					return nil, nil, err
 				}
 				block["artifact"] = encoded
+			}
+			kept = append(kept, block)
+		case "text":
+			if raw, ok := block["content"]; ok {
+				var text string
+				if err := json.Unmarshal(raw, &text); err == nil {
+					encoded, err := json.Marshal(stripText(text))
+					if err != nil {
+						return nil, nil, err
+					}
+					block["content"] = encoded
+				}
 			}
 			kept = append(kept, block)
 		default:
