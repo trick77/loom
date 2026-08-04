@@ -114,10 +114,17 @@ export function MessageCitations({
   display,
   sourcesOpen: controlledOpen,
   onSourcesOpenChange,
+  selected,
+  selectionNonce,
+  onHoverSource,
 }: {
   citations?: Citation[];
   /** Persisted index -> the number shown in the prose. Absent = not cited. */
   display?: DisplayMap;
+  /** Display numbers pinned by a marker click; see SourcesSidebar. */
+  selected?: ReadonlySet<number>;
+  selectionNonce?: number;
+  onHoverSource?(number?: number): void;
   /**
    * Drawer state, when the caller owns it — an inline citation marker opens the
    * same drawer as the footer row, and the marker is rendered far away inside the
@@ -241,6 +248,9 @@ export function MessageCitations({
         open={sourcesOpen}
         sources={webSources}
         display={display}
+        selected={selected}
+        selectionNonce={selectionNonce}
+        onHoverSource={onHoverSource}
         onClose={() => setSourcesOpen(false)}
       />
     </div>

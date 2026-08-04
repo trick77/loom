@@ -4,7 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Citation } from "../api";
 import { ProseMarkdown } from "./messages";
-import { SourcesOpenerProvider, webSourceMap } from "./sourcePills";
+import {
+  PillHighlightProvider,
+  SourcesOpenerProvider,
+  webSourceMap,
+  type PillHighlight,
+} from "./sourcePills";
 import { assignDisplayNumbers } from "./sourceNumbering";
 
 // The pill plugin needs both the [n] -> source map and the persisted-index ->
@@ -197,9 +202,51 @@ describe("ProseMarkdown inline source pills", () => {
     fireEvent.click(screen.getByRole("button", { name: "Modal" }));
 
     // The display number is handed over so the drawer can scroll to that source.
-    expect(onOpen).toHaveBeenCalledWith(1);
+    expect(onOpen).toHaveBeenCalledWith([1]);
   });
 
+  // A run is one citation to the reader — "…and schedules.¹²" backs a single claim
+  // with two sources — so clicking either plate has to select both, or the drawer
+  // looks like it lost one of them.
+  it("hands over every source of a run, whichever plate is clicked", () => {
+    const onOpen = vi.fn();
+    const content = "Both back this [2][1].";
+    render(
+      <SourcesOpenerProvider onOpen={onOpen}>
+        <ProseMarkdown
+          sources={webSourceMap(citations)}
+          display={assignDisplayNumbers(content, citations).display}
+        >
+          {content}
+        </ProseMarkdown>
+      </SourcesOpenerProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Modal" }));
+    expect(onOpen).toHaveBeenCalledWith([1, 2]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Truefoundry" }));
+    expect(onOpen).toHaveBeenLastCalledWith([1, 2]);
+  });
+
+  // Two markers standing apart back different claims, so each answers for itself.
+  it("hands over one source for a marker that stands alone", () => {
+    const onOpen = vi.fn();
+    const content = "Modal runs Python [2] and TrueFoundry deploys [1].";
+    render(
+      <SourcesOpenerProvider onOpen={onOpen}>
+        <ProseMarkdown
+          sources={webSourceMap(citations)}
+          display={assignDisplayNumbers(content, citations).display}
+        >
+          {content}
+        </ProseMarkdown>
+      </SourcesOpenerProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Truefoundry" }));
+    expect(onOpen).toHaveBeenCalledWith([2]);
+  });
   it("leaves unknown markers as literal text", () => {
     renderProse("An out-of-range marker [7] stays as text.", citations);
 
@@ -372,5 +419,77 @@ describe("ProseMarkdown inline source pills", () => {
 
     expect(screen.getAllByRole("link")).toHaveLength(5);
     expect(screen.getByRole("link", { name: "Site5" })).toHaveTextContent("5");
+  });
+});
+
+describe("pill highlighting", () => {
+  const citations: Citation[] = [
+    {
+      documentId: "",
+      filename: "Truefoundry",
+      snippet: "",
+      score: 0,
+      url: "https://truefoundry.com",
+      index: 1,
+    },
+    {
+      documentId: "",
+      filename: "Modal",
+      snippet: "",
+      score: 0,
+      url: "https://modal.com",
+      index: 2,
+    },
+  ];
+  const content = "Modal runs Python [2] and again here [2], plus [1].";
+
+  function renderHighlighted(highlight: PillHighlight) {
+    return render(
+      <PillHighlightProvider highlight={highlight}>
+        <ProseMarkdown
+          sources={webSourceMap(citations)}
+          display={assignDisplayNumbers(content, citations).display}
+        >
+          {content}
+        </ProseMarkdown>
+      </PillHighlightProvider>,
+    );
+  }
+
+  it("marks every pill of a pinned source, and leaves the others alone", () => {
+    const { container } = renderHighlighted({ selected: new Set([1]) });
+
+    const pills = [...container.querySelectorAll(".ui-source-pill")];
+    expect(pills.map((pill) => pill.textContent)).toEqual(["1", "1", "2"]);
+    expect(pills[0]).toHaveClass("ui-source-pill-active");
+    expect(pills[1]).toHaveClass("ui-source-pill-active");
+    expect(pills[2]).not.toHaveClass("ui-source-pill-active");
+  });
+
+  // One source usually backs several sentences: hovering its row in the drawer has to
+  // light up all of them, which is what makes the panel read as wired to the answer.
+  it("links every pill of the source hovered in the drawer", () => {
+    const { container } = renderHighlighted({
+      selected: new Set(),
+      hovered: 1,
+    });
+
+    const pills = [...container.querySelectorAll(".ui-source-pill")];
+    expect(pills[0]).toHaveClass("ui-source-pill-linked");
+    expect(pills[1]).toHaveClass("ui-source-pill-linked");
+    expect(pills[2]).not.toHaveClass("ui-source-pill-linked");
+  });
+
+  // The whole point of giving the two states separate looks: hovering cannot appear
+  // to have cleared a pin, so nothing has to be reset when the cursor moves.
+  it("shows pinned and hovered at once on the same pill", () => {
+    const { container } = renderHighlighted({
+      selected: new Set([1]),
+      hovered: 1,
+    });
+
+    const pill = container.querySelector(".ui-source-pill");
+    expect(pill).toHaveClass("ui-source-pill-active");
+    expect(pill).toHaveClass("ui-source-pill-linked");
   });
 });

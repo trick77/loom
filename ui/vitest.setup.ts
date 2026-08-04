@@ -15,6 +15,12 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   };
 }
 
+// jsdom implements no layout, so it has no scrollIntoView at all; a no-op stub lets
+// components that scroll a selection into view mount and be asserted on.
+if (typeof Element.prototype.scrollIntoView !== "function") {
+  Element.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
 // jsdom has no IntersectionObserver; provide a no-op stub so infinite-scroll
 // sentinels mount without crashing. Tests that exercise "load more" install a
 // controllable mock of their own.

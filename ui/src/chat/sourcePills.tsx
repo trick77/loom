@@ -93,6 +93,7 @@ function pillElement(
   ref: WebSourceRef,
   shown: number,
   tight: boolean,
+  run: string,
 ): ElementContent {
   return {
     type: "element",
@@ -102,6 +103,12 @@ function pillElement(
       // property-information: a bespoke "tight" prop is dropped on the way to the
       // component, and className is owned by the renderer.
       dataTight: tight ? "true" : undefined,
+      // The number this marker shows, so the drawer can light it back up while the
+      // reader hovers the matching source row.
+      dataSource: String(shown),
+      // Every number of the run this marker belongs to — see emitRun. A lone marker
+      // carries just its own.
+      dataRun: run,
       // Absent for an uploaded document: SourcePill then renders the number as
       // plain (non-link) text rather than a dead anchor.
       href: ref.url,
@@ -206,18 +213,27 @@ const RUN_SEPARATOR = /^[ \t]*$/;
 // The blanks between the markers are dropped rather than re-emitted: walk() trims
 // them away in front of every marker anyway, and a deduplicated run has fewer gaps
 // than it started with.
+//
+// Every marker of the run is stamped with the run's full number list, because a run
+// is one citation to the reader — "…in both specifications and schedules.²⁶" cites
+// two sources for one claim, and clicking either plate has to select both. Without
+// this the run's other sources stay unmarked and the drawer looks like it missed one.
 function emitRun(
   out: ElementContent[],
   run: RunMarker[],
   tight: boolean,
 ): void {
   const ordered = [...run].sort((a, b) => a.shown - b.shown);
+  const numbers = [...new Set(ordered.map((marker) => marker.shown))];
+  const group = numbers.join(",");
   let previous: number | null = null;
   for (const marker of ordered) {
     // Sorting has brought any repeat of one source together: the model writes
     // "[1][1]" for a single claim, which should read as one number.
     if (marker.shown === previous) continue;
-    out.push(pillElement(marker.ref, marker.shown, tight && previous === null));
+    out.push(
+      pillElement(marker.ref, marker.shown, tight && previous === null, group),
+    );
     previous = marker.shown;
   }
 }
@@ -272,16 +288,55 @@ function splitMarkers(node: Text, ctx: Ctx): ElementContent[] | null {
 //
 // A surface that has no drawer simply provides nothing: the public share view skips
 // MessageCitations entirely, so its markers fall back to linking out.
-const SourcesOpener = createContext<((index?: number) => void) | null>(null);
+const SourcesOpener = createContext<((numbers: number[]) => void) | null>(null);
 
 export function SourcesOpenerProvider({
   onOpen,
   children,
 }: {
-  onOpen(index?: number): void;
+  onOpen(numbers: number[]): void;
   children: ReactNode;
 }) {
   return <SourcesOpener value={onOpen}>{children}</SourcesOpener>;
+}
+
+// PillHighlight is the drawer talking back to the prose: which sources are pinned
+// (the reader clicked a marker) and which one is under the cursor in the source
+// list. Both travel by context for the same reason the opener does — the markers
+// sit several levels down inside react-markdown's output, with no prop path.
+export type PillHighlight = {
+  /** Display numbers of the current selection. */
+  selected: ReadonlySet<number>;
+  /** The source row being hovered in the drawer, if any. */
+  hovered?: number;
+};
+
+const NOTHING_HIGHLIGHTED: PillHighlight = { selected: new Set() };
+const PillHighlightContext = createContext<PillHighlight>(NOTHING_HIGHLIGHTED);
+
+export function PillHighlightProvider({
+  highlight,
+  children,
+}: {
+  highlight: PillHighlight;
+  children: ReactNode;
+}) {
+  return (
+    <PillHighlightContext value={highlight}>{children}</PillHighlightContext>
+  );
+}
+
+// runNumbers reads the run list a marker was stamped with. A marker rendered before
+// the attribute existed — or by a surface that skips the plugin — falls back to its
+// own number, so a click still selects something.
+function runNumbers(run: unknown, shown: number): number[] {
+  if (typeof run !== "string" || run === "")
+    return Number.isNaN(shown) ? [] : [shown];
+  const numbers = run
+    .split(",")
+    .map(Number)
+    .filter((n) => !Number.isNaN(n));
+  return numbers.length > 0 ? numbers : [shown];
 }
 
 // SourcePill renders the inline citation number. Where a Sources drawer exists the
@@ -298,15 +353,21 @@ export function SourcePill({
   title?: unknown;
   children?: ReactNode;
   "data-tight"?: unknown;
+  "data-source"?: unknown;
+  "data-run"?: unknown;
 }) {
   const openSources = useContext(SourcesOpener);
+  const highlight = useContext(PillHighlightContext);
   const label = typeof title === "string" && title !== "" ? title : undefined;
-  // Set by the plugin when the marker sits directly behind a period or comma.
-  const className =
-    rest["data-tight"] === undefined
-      ? PILL_CLASS
-      : `${PILL_CLASS} ui-source-pill-tight`;
   const shown = Number(String(children ?? ""));
+  // Set by the plugin when the marker sits directly behind a period or comma.
+  const classes = [PILL_CLASS];
+  if (rest["data-tight"] !== undefined) classes.push("ui-source-pill-tight");
+  // Pinned and hovered are separate looks on purpose — see .ui-source-card-selected
+  // in index.css. A marker can be both, and neither cancels the other.
+  if (highlight.selected.has(shown)) classes.push("ui-source-pill-active");
+  if (highlight.hovered === shown) classes.push("ui-source-pill-linked");
+  const className = classes.join(" ");
 
   if (openSources !== null)
     return (
@@ -315,7 +376,7 @@ export function SourcePill({
         className={className}
         title={label}
         aria-label={label}
-        onClick={() => openSources(Number.isNaN(shown) ? undefined : shown)}
+        onClick={() => openSources(runNumbers(rest["data-run"], shown))}
       >
         {children}
       </button>
