@@ -191,7 +191,7 @@ function SourceCard({
       onFocus={() => onHoverSource?.(number)}
       onBlur={() => onHoverSource?.(undefined)}
       aria-current={isSelected ? "true" : undefined}
-      className={`ui-source-card block rounded-[10px] px-3 py-2.5 no-underline transition-colors hover:bg-[#201f1c] ${
+      className={`ui-source-card block rounded-[10px] px-3 py-2.5 no-underline transition-colors ${
         isSelected ? "ui-source-card-selected" : ""
       }`}
     >
