@@ -211,24 +211,40 @@ export function MessageBubble({
     () => ({ selected: selection.numbers, hovered: hoveredSource }),
     [selection.numbers, hoveredSource],
   );
+  const prose = blocks.map((block, index) => (
+    <AssistantBlock
+      key={`${message.id}-block-${index}`}
+      block={block}
+      sources={sources}
+      display={numbering.display}
+    />
+  ));
   return (
     <div className="max-w-[46rem] space-y-3">
       {/* The drawer's state lives here, above both the prose and the Sources row,
           because either can open it: a marker in the answer and the footer row are
           two entry points to the same list. The highlight travels the other way —
-          the drawer reports what it is showing, and the markers light up to match. */}
-      <SourcesOpenerProvider onOpen={openSources}>
-        <PillHighlightProvider highlight={highlight}>
-          {blocks.map((block, index) => (
-            <AssistantBlock
-              key={`${message.id}-block-${index}`}
-              block={block}
-              sources={sources}
-              display={numbering.display}
-            />
-          ))}
-        </PillHighlightProvider>
-      </SourcesOpenerProvider>
+          the drawer reports what it is showing, and the markers light up to match.
+       *
+       * A share renders the prose bare. Both providers are what turn a marker into a
+       * button pointing at the drawer, and the share has no drawer — MessageCitations
+       * is skipped just below — so providing them there would leave every marker a
+       * button that opens nothing, with its outbound link taken away.
+       *
+       * Today a share never reaches that state: buildShareSnapshot whitelists the
+       * public blob and deliberately drops citations (they name source documents),
+       * so a shared message carries none, the rehype pass is skipped and the markers
+       * stay literal "[n]" text. This branch is the guard for the day a share does
+       * carry web sources — the drawer would still not be there. */}
+      {publicView ? (
+        prose
+      ) : (
+        <SourcesOpenerProvider onOpen={openSources}>
+          <PillHighlightProvider highlight={highlight}>
+            {prose}
+          </PillHighlightProvider>
+        </SourcesOpenerProvider>
+      )}
       {/* Sources sit directly under the answer text, on their own line, above the
           copy/retry/TTS + metrics footer. */}
       {!publicView && (

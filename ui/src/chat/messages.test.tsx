@@ -388,3 +388,31 @@ test("closing the drawer drops the selection", () => {
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(selectedNumbers()).toEqual([]);
 });
+
+// A share has no drawer — MessageCitations is not rendered — so the markers must keep
+// their outbound links. Providing the opener there anyway turns every marker into a
+// button that reports a click nobody listens for: nothing opens, and the reader's only
+// route to the source is taken away.
+//
+// The message below is hand-built with citations, which the real public snapshot never
+// carries (buildShareSnapshot drops them), so a shared answer currently renders its
+// markers as literal "[n]" text instead. This covers the publicView branch for the day
+// the snapshot does carry web sources; it is not a reproduction of today's share page.
+test("renders citation markers as outbound links in the public share view", () => {
+  render(
+    <MessageBubble
+      message={assistantWithCitations()}
+      retryMessage={null}
+      onRetry={vi.fn()}
+      publicView
+    />,
+  );
+
+  const marker = screen.getByRole("link", { name: "Alpha" });
+  expect(marker).toHaveClass("ui-source-pill");
+  expect(marker).toHaveAttribute("href", "https://alpha.example");
+  expect(marker).toHaveAttribute("target", "_blank");
+  expect(
+    screen.queryByRole("button", { name: "Alpha" }),
+  ).not.toBeInTheDocument();
+});
