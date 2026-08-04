@@ -97,6 +97,13 @@ func TestStripDroppedMarkers(t *testing.T) {
 			want:    "See note [9] and arr[0] in prose.",
 		},
 		{
+			// The renderer's marker pattern is digits only, so "[+1]" was never a
+			// marker to it. Stripping it here would delete text the reader wrote.
+			name:    "leaves a signed number that was never a marker",
+			content: "Offset [+1] and [-1] stay [1].",
+			want:    "Offset [+1] and [-1] stay.",
+		},
+		{
 			name:    "leaves an index expression inside a fence",
 			content: "Text [1].\n\n```go\nfmt.Println(arr[1])\n```\n",
 			want:    "Text.\n\n```go\nfmt.Println(arr[1])\n```\n",
@@ -220,4 +227,49 @@ func mustJSON(t *testing.T, value string) string {
 		t.Fatalf("marshal %q: %v", value, err)
 	}
 	return string(encoded)
+}
+
+// A web citation is registered from the URL the model ASKED for, not from a page that
+// came back — and its snippet is whatever the tool returned, which for an internal
+// address is an error string or the owner's authenticated view. Neither may reach a
+// share, so the host is gated as well as the scheme.
+func TestProjectCitationsForShare_rejectsNonPublicHosts(t *testing.T) {
+	private := []string{
+		"http://localhost:8080/admin",
+		"http://127.0.0.1/admin",
+		"http://[::1]/admin",
+		"http://10.0.0.5/internal",
+		"http://192.168.1.10/router",
+		"http://172.16.4.9/app",
+		"http://169.254.169.254/latest/meta-data/",
+		"http://0.0.0.0/",
+		"http://intranet/wiki",
+		"http://nas.local/files",
+		"http://wiki.internal/page",
+		"http://box.home.arpa/",
+	}
+	for _, target := range private {
+		raw := json.RawMessage(`[{"filename":"x","snippet":"SECRET_INTERNAL_RESPONSE","url":` + mustJSON(t, target) + `,"index":1}]`)
+		projected, kept := projectCitationsForShare(raw)
+		if projected != nil {
+			t.Errorf("%s was let through: %s", target, projected)
+		}
+		if len(kept) != 0 {
+			t.Errorf("%s kept markers: %v", target, kept)
+		}
+	}
+
+	public := []string{
+		"https://modal.com/docs",
+		"http://example.org/page",
+		"https://8.8.8.8/",
+		"https://sub.example.co.uk/a?b=c",
+	}
+	for _, target := range public {
+		raw := json.RawMessage(`[{"filename":"Site","url":` + mustJSON(t, target) + `,"index":1}]`)
+		projected, _ := projectCitationsForShare(raw)
+		if projected == nil {
+			t.Errorf("%s was rejected but is public", target)
+		}
+	}
 }

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -75,6 +76,17 @@ func projectCitationsForShare(raw json.RawMessage) (json.RawMessage, map[int]boo
 // source" is the UI's rule for *display*, and it is too loose for a security boundary:
 // a document citation can carry an internal locator (doc://…, file://…) that is still
 // the name of something private. Only http and https qualify.
+//
+// The host check exists because a web citation is registered from the URL the model
+// ASKED for, not from a page that came back: relabelWebToolOutput calls addDetailed
+// with the tool argument, and the snippet is whatever the tool returned — an error
+// string on a failed fetch, or for the browser path whatever the owner's authenticated
+// session rendered. So a citation can point at http://localhost:8080/admin or a
+// private address with that response attached, and a share must not carry either.
+//
+// This is a boundary check, not a substitute for one at the registry: a private host
+// behind a public-looking name (intranet.corp) still passes here. It rules out the
+// unambiguous cases — literal private/loopback addresses and reserved internal names.
 func isPublicWebURL(raw json.RawMessage) bool {
 	if raw == nil {
 		return false
@@ -87,7 +99,38 @@ func isPublicWebURL(raw json.RawMessage) bool {
 	if err != nil {
 		return false
 	}
-	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return isPublicHost(parsed.Hostname())
+}
+
+// Reserved suffixes that never name a public site: RFC 6762 (.local), RFC 8375
+// (.home.arpa), RFC 6761 (.localhost), and the widely used .internal.
+var privateHostSuffixes = []string{".local", ".internal", ".localhost", ".home.arpa"}
+
+func isPublicHost(host string) bool {
+	if host == "" {
+		return false
+	}
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if ip := net.ParseIP(host); ip != nil {
+		// Loopback, RFC1918 / unique-local, link-local (incl. cloud metadata at
+		// 169.254.169.254), unspecified, and multicast are all unreachable to a reader.
+		return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() &&
+			!ip.IsLinkLocalMulticast() && !ip.IsUnspecified() && !ip.IsMulticast()
+	}
+	// A single-label host ("intranet", "localhost") is only resolvable inside the
+	// owner's network, so it cannot be a page a stranger could open.
+	if !strings.Contains(host, ".") {
+		return false
+	}
+	for _, suffix := range privateHostSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return false
+		}
+	}
+	return true
 }
 
 func citationIndex(obj map[string]json.RawMessage) (int, bool) {
@@ -159,8 +202,11 @@ func stripMarkersInProse(text string, drop func(int) bool) string {
 		if end > 0 {
 			digits = text[i+1 : i+end]
 		}
+		// Digits only, matching the UI's /\[(\d+)\]/ exactly. strconv.Atoi alone would
+		// also accept a sign, so "[+1]" would be stripped here while the renderer would
+		// never have treated it as a marker.
 		index, err := strconv.Atoi(digits)
-		if end < 0 || digits == "" || err != nil || !drop(index) {
+		if end < 0 || !isASCIIDigits(digits) || err != nil || !drop(index) {
 			out = append(out, text[i])
 			i++
 			continue
@@ -179,6 +225,18 @@ func stripMarkersInProse(text string, drop func(int) bool) string {
 		i += end + 1
 	}
 	return string(out)
+}
+
+func isASCIIDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 type codeSegment struct {

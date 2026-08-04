@@ -85,14 +85,15 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 		// the prose has to be stripped of the rest BEFORE it is copied into both
 		// Content and the synthesized text block, or the two disagree about the answer.
 		citations, kept := projectCitationsForShare(msg.Citations)
-		content := stripDroppedMarkers(msg.Content, citedIndices(msg.Citations), kept)
+		cited := citedIndices(msg.Citations)
+		content := stripDroppedMarkers(msg.Content, cited, kept)
 
 		artifacts, artIDs, err := rewriteArtifactArrayForShare(shareID, msg.Artifacts)
 		if err != nil {
 			return shareSnapshot{}, nil, fmt.Errorf("sanitize message %s artifacts: %w", msg.ID, err)
 		}
 		blocks, blockIDs, err := rewriteContentBlocksForShare(shareID, msg.ContentBlocks, content, func(text string) string {
-			return stripDroppedMarkers(text, citedIndices(msg.Citations), kept)
+			return stripDroppedMarkers(text, cited, kept)
 		})
 		if err != nil {
 			return shareSnapshot{}, nil, fmt.Errorf("sanitize message %s content blocks: %w", msg.ID, err)
