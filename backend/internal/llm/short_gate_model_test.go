@@ -26,7 +26,7 @@ func modelRecorder(t *testing.T, body string) (*httptest.Server, *[]string) {
 	return server, &models
 }
 
-func TestShortGatesRunOnTheNonReasoningModel(t *testing.T) {
+func TestShortGatesRunOnTheShortGateModel(t *testing.T) {
 	server, models := modelRecorder(t, `{"choices":[{"message":{"role":"assistant","content":"{\"action\":\"none\",\"needs_text\":false}"},"finish_reason":"stop"}]}`)
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())
 
@@ -44,17 +44,17 @@ func TestShortGatesRunOnTheNonReasoningModel(t *testing.T) {
 		t.Fatalf("recorded %d requests, want 3", len(*models))
 	}
 	for i, model := range *models {
-		if model != nonReasoningModel {
-			t.Fatalf("request %d used model %q, want %q", i, model, nonReasoningModel)
+		if model != shortGateModel {
+			t.Fatalf("request %d used model %q, want %q", i, model, shortGateModel)
 		}
 	}
 }
 
 // TestLongFormHelpersStayOnThePro guards the line the switch must not cross: a
-// helper that writes user-visible prose keeps the Pro model even though its
-// thinking is disabled too. "No reasoning needed" is the bar, not "thinking is
-// off" — the forced final answer disables thinking as well and must never be
-// downgraded by widening this routing.
+// helper that writes prose a reader keeps stays on the Pro model even though its
+// thinking is disabled too. The bar is what the call produces — a label or an id,
+// not prose — and not "thinking is off", which the forced final answer also does
+// and must never be downgraded by widening this routing.
 func TestLongFormHelpersStayOnThePro(t *testing.T) {
 	server, models := modelRecorder(t, `{"choices":[{"message":{"role":"assistant","content":"a description"},"finish_reason":"stop"}]}`)
 	client := NewClient(Config{BaseURL: server.URL}, server.Client())

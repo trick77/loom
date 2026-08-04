@@ -970,10 +970,10 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	if gotBody.Stream {
 		t.Fatal("stream = true, want false")
 	}
-	// Titling is a short gate, not reasoning work: it runs on the non-Pro model
-	// (see executeNonReasoningChatRequest).
-	if gotBody.Model != nonReasoningModel {
-		t.Fatalf("model = %q, want %q", gotBody.Model, nonReasoningModel)
+	// Titling is a short gate, so it runs on the non-Pro deployment, which queues
+	// less (see executeShortGateChatRequest).
+	if gotBody.Model != shortGateModel {
+		t.Fatalf("model = %q, want %q", gotBody.Model, shortGateModel)
 	}
 	// The user request and assistant reply are framed into a single user turn as
 	// material to be titled, not a turn to answer.

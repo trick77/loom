@@ -42,16 +42,21 @@ const documentToolTimeout = 5 * time.Minute
 // visionModel (the omnimodal non-Pro variant) is used only for turns that carry
 // image input — mimo-v2.5-pro is text-only and 404s on any image_url part.
 //
-// nonReasoningModel is the same non-Pro deployment, named separately because it
-// is picked for a different reason: the short gates (see
-// executeNonReasoningChatRequest) need a fast answer, not a deep one, and the
+// shortGateModel is the same non-Pro deployment, named separately because it is
+// picked for a different reason: the short gates (see
+// executeShortGateChatRequest) need a fast answer, not a deep one, and the
 // non-Pro variant responds sooner. Keeping the names apart means a future change
 // to either use — a Pro that accepts images, a dedicated small model — moves one
 // without silently moving the other.
+//
+// Not "the non-reasoning model": mimo-v2.5 is the same reasoning family as Pro
+// and thinks when asked to. The gates suppress that per request (see
+// thinkingOption) and route here because this deployment queues less, not
+// because it cannot reason.
 const (
-	textModel         = "mimo-v2.5-pro"
-	visionModel       = "mimo-v2.5"
-	nonReasoningModel = "mimo-v2.5"
+	textModel      = "mimo-v2.5-pro"
+	visionModel    = "mimo-v2.5"
+	shortGateModel = "mimo-v2.5"
 )
 
 // DefaultReasoningEffort is the reasoning depth used when a turn carries no
@@ -117,7 +122,7 @@ type Client struct {
 	apiKey              string
 	model               string
 	visionModel         string
-	nonReasoningModel   string
+	shortGateModel      string
 	reasoningEffort     string
 	maxCompletionTokens int
 	timeout             time.Duration
@@ -141,7 +146,7 @@ func NewClient(cfg Config, httpClient *http.Client) *Client {
 		apiKey:              cfg.APIKey,
 		model:               textModel,
 		visionModel:         visionModel,
-		nonReasoningModel:   nonReasoningModel,
+		shortGateModel:      shortGateModel,
 		reasoningEffort:     DefaultReasoningEffort,
 		maxCompletionTokens: maxCompletionTokens,
 		timeout:             cfg.Timeout,
@@ -237,7 +242,7 @@ func (c *Client) resolveReasoningEffort(ctx context.Context) string {
 // needs real output headroom (see projectDescriptionMaxCompletionTokens) to avoid
 // a finish_reason=length truncation. The short gates — which want the faster
 // non-Pro deployment, not just disabled thinking — use
-// executeNonReasoningChatRequest instead.
+// executeShortGateChatRequest instead.
 func (c *Client) executeUtilityChatRequestWithBudget(ctx context.Context, messages []Message, maxCompletionTokens int) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
 		thinking:            &thinkingOption{Type: "disabled"},
@@ -245,21 +250,22 @@ func (c *Client) executeUtilityChatRequestWithBudget(ctx context.Context, messag
 	})
 }
 
-// executeNonReasoningChatRequest runs a helper call that needs a fast answer
+// executeShortGateChatRequest runs a helper call that needs a fast answer
 // rather than a deep one — the short gates a turn blocks on: image intent, thread
 // classification, and the two title generators. On top of the utility path's
-// disabled thinking it also routes to nonReasoningModel, the non-Pro variant,
+// disabled thinking it also routes to shortGateModel, the non-Pro variant,
 // which responds sooner (measured against a Pro that spent 78s queueing on a
 // 64-token routing call).
 //
-// Deliberately NOT used by anything that writes user-visible prose: the forced
+// Deliberately NOT used by anything that writes prose a reader keeps: the forced
 // final answer disables thinking too (see InferenceMetadata.SuppressThinking) but
 // is a synthesis over gathered research and stays on the Pro model, as do project
-// memory and the project description. "No reasoning needed" is the bar here, not
-// "thinking happens to be off".
-func (c *Client) executeNonReasoningChatRequest(ctx context.Context, messages []Message, maxCompletionTokens int) (*http.Response, error) {
+// memory and the project description. The bar is that the answer is a label, an
+// id or a handful of words nobody reads as prose — not that the deployment
+// cannot reason, which is false; mimo-v2.5 reasons like Pro when asked to.
+func (c *Client) executeShortGateChatRequest(ctx context.Context, messages []Message, maxCompletionTokens int) (*http.Response, error) {
 	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
-		model:               c.nonReasoningModel,
+		model:               c.shortGateModel,
 		thinking:            &thinkingOption{Type: "disabled"},
 		maxCompletionTokens: maxCompletionTokens,
 	})
