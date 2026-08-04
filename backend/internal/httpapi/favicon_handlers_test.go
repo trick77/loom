@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -266,6 +267,41 @@ func TestHandleFavicon_reResolvesAfterMissExpires(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatal("a successful resolve must clear the miss marker")
+	}
+}
+
+func TestHandleFavicon_doesNotRememberACancelledResolve(t *testing.T) {
+	// Given a site that would resolve fine, but a client that goes away mid-resolve
+	// (its <img> removed on a thread switch) — every candidate fetch then fails with
+	// the dead context, exactly as an iconless site's probes do.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/favicon.ico" {
+			writePNG(w)
+			return
+		}
+		bareSite()(w, r)
+	}))
+	defer upstream.Close()
+	s := faviconServer(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/favicon?u="+url.QueryEscape(upstream.URL+"/"), nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	s.handleFavicon(rec, req)
+
+	// Then the failure is not remembered: a dead context says nothing about the
+	// site's icons, and a 6h marker would blank a good favicon for every other client.
+	if rec.Code == http.StatusOK {
+		t.Fatalf("want non-2xx for a cancelled resolve, got %d", rec.Code)
+	}
+	marker := filepath.Join(s.faviconCacheDir, faviconCacheKey(mustHost(t, upstream.URL))+".miss")
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("a cancelled resolve must not be recorded as a miss")
+	}
+	// And the next request resolves the site normally.
+	if rec := getFavicon(t, s, upstream.URL+"/", nil); rec.Code != http.StatusOK {
+		t.Fatalf("want 200 on the retry, got %d", rec.Code)
 	}
 }
 
