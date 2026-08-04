@@ -62,6 +62,9 @@ export function SourcesSidebar({
   if (!open || sources.length === 0) return null;
   const primary = sources.slice(0, PRIMARY_COUNT);
   const rest = sources.slice(PRIMARY_COUNT);
+  // Resolved once for the whole list rather than per row: the answer is the same
+  // for every card, and asking it per card re-scans `sources` each time.
+  const scrollTarget = firstSelectedSource(sources, display, selected);
 
   return (
     <>
@@ -96,11 +99,7 @@ export function SourcesSidebar({
               citation={source}
               number={display?.get(source.index ?? 0)}
               selected={selected}
-              scrollRef={
-                isScrollTarget(sources, display, selected, source)
-                  ? firstSelected
-                  : undefined
-              }
+              scrollRef={source === scrollTarget ? firstSelected : undefined}
               onHoverSource={onHoverSource}
             />
           ))}
@@ -116,11 +115,7 @@ export function SourcesSidebar({
               citation={source}
               number={display?.get(source.index ?? 0)}
               selected={selected}
-              scrollRef={
-                isScrollTarget(sources, display, selected, source)
-                  ? firstSelected
-                  : undefined
-              }
+              scrollRef={source === scrollTarget ? firstSelected : undefined}
               onHoverSource={onHoverSource}
             />
           ))}
@@ -134,22 +129,20 @@ function cardKey(citation: Citation, index: number): string {
   return `${citation.index ?? index}-${citation.url ?? ""}`;
 }
 
-// isScrollTarget reports whether `citation` is the topmost selected source, the one
-// the list scrolls to. A run of markers selects several sources at once and they can
-// straddle the "More" divider; scrolling to the first keeps the reading order of the
-// list, and the others follow it downward.
-function isScrollTarget(
+// firstSelectedSource returns the topmost selected source, the one the list scrolls
+// to. A run of markers selects several sources at once and they can straddle the
+// "More" divider; scrolling to the first keeps the reading order of the list, and the
+// others follow it downward.
+function firstSelectedSource(
   sources: Citation[],
   display: DisplayMap | undefined,
   selected: ReadonlySet<number> | undefined,
-  citation: Citation,
-): boolean {
-  if (selected === undefined || selected.size === 0) return false;
-  const first = sources.find((source) => {
+): Citation | undefined {
+  if (selected === undefined || selected.size === 0) return undefined;
+  return sources.find((source) => {
     const number = display?.get(source.index ?? 0);
     return number !== undefined && selected.has(number);
   });
-  return first === citation;
 }
 
 // number is the reader-facing citation number, taken from the display map rather
