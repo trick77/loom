@@ -295,11 +295,19 @@ export function domainFromURL(value: string): string | undefined {
   }
 }
 
+// faviconURL routes a row's page url through the backend favicon proxy — the same
+// endpoint SourceFavicon uses for citations. It replaces a direct browser call to
+// Google's favicon service, which leaked every visited domain to a third party from
+// the user's browser and answered 200 with an invisible black-on-transparent
+// placeholder for sites it had no icon for. The proxy resolves the site's own icon
+// first, screens that placeholder out, and caches the answer on disk; it needs the
+// full page url (it 400s without an http/https scheme and a host), so this passes
+// externalHTTPURL's normalised href rather than the bare domain.
 export function faviconURL(value: string): string | undefined {
-  const domain = domainFromURL(value);
-  return domain === undefined
+  const href = externalHTTPURL(value);
+  return href === undefined
     ? undefined
-    : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
+    : `/api/favicon?u=${encodeURIComponent(href)}`;
 }
 
 export function externalHTTPURL(value: string): string | undefined {

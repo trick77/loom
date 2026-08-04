@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -248,8 +255,6 @@ function ActivityTraceRow({
   const status = activityToolStatusMeta(event);
   const fetchUrl =
     event.summary.kind === "fetch" ? event.summary.url : undefined;
-  const fetchFavicon =
-    fetchUrl === undefined ? undefined : faviconURL(fetchUrl);
   const fetchHref =
     fetchUrl === undefined ? undefined : externalHTTPURL(fetchUrl);
   // Tool-call titles never sweep: the collapsed trace label above is always
@@ -264,14 +269,12 @@ function ActivityTraceRow({
       <LookupTraceIcon />
     ) : event.summary.kind === "generated" ? (
       <GeneratedTraceIcon />
-    ) : fetchFavicon !== undefined ? (
-      <img
-        className="ui-activity-fetch-icon-favicon"
-        src={fetchFavicon}
-        alt=""
-      />
     ) : (
-      <FetchTraceIcon />
+      <ActivityFavicon
+        url={fetchUrl}
+        className="ui-activity-fetch-icon-favicon"
+        fallback={<FetchTraceIcon />}
+      />
     );
   return (
     <div className="ui-activity-trace-row ui-activity-trace-row-tool">
@@ -353,6 +356,33 @@ function ActivityTraceDoneRow() {
   );
 }
 
+// ActivityFavicon shows the site icon for a trace row, falling back to `fallback`
+// when the row has no usable url AND when the icon fails to load. That second case
+// is the one that matters: the proxy answers a non-2xx for a site whose icon cannot
+// be resolved, and without onError the row was left with an empty plate where the
+// icon should be.
+function ActivityFavicon({
+  url,
+  className,
+  fallback,
+}: {
+  url: string | undefined;
+  className: string;
+  fallback: ReactNode;
+}) {
+  const [failed, setFailed] = useState(false);
+  const src = url === undefined ? undefined : faviconURL(url);
+  if (src === undefined || failed) return <>{fallback}</>;
+  return (
+    <img
+      alt=""
+      className={className}
+      src={src}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function SearchResultRow({
   result,
 }: {
@@ -364,13 +394,15 @@ function SearchResultRow({
   const title = <div className="ui-activity-result-title">{result.title}</div>;
   return (
     <div className="ui-activity-result-row">
-      {favicon !== undefined ? (
-        <img alt="" className="ui-activity-favicon" src={favicon} />
-      ) : (
-        <span className="ui-activity-favicon" aria-hidden="true">
-          {faviconInitial(result.domain ?? result.title)}
-        </span>
-      )}
+      <ActivityFavicon
+        url={result.url}
+        className="ui-activity-favicon"
+        fallback={
+          <span className="ui-activity-favicon" aria-hidden="true">
+            {faviconInitial(result.domain ?? result.title)}
+          </span>
+        }
+      />
       <div className="min-w-0">
         {href === undefined ? (
           title

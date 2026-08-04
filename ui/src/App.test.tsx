@@ -4872,10 +4872,17 @@ test("renders fetch tool rows with a timeline favicon and a clickable URL", asyn
   const favicon = document.querySelector(".ui-activity-fetch-icon-favicon");
   expect(favicon).toHaveAttribute(
     "src",
-    "https://www.google.com/s2/favicons?domain=getmaxim.ai&sz=32",
+    "/api/favicon?u=https%3A%2F%2Fwww.getmaxim.ai%2Fbifrost%2Fresources%2Fgovernance",
   );
   expect(document.querySelector(".ui-activity-trace-icon-arrow")).toBeNull();
   expect(document.querySelector(".ui-activity-tool-favicon")).toBeNull();
+  // And when that icon cannot be resolved, the row falls back to the arrow glyph
+  // instead of being left with an empty box.
+  fireEvent.error(favicon!);
+  expect(
+    document.querySelector(".ui-activity-fetch-icon-favicon"),
+  ).toBeNull();
+  expect(document.querySelector(".ui-activity-fetch-icon")).not.toBeNull();
   // The full URL is a link that opens in a new tab — no redundant result frame.
   const link = screen.getByRole("link", {
     name: "https://www.getmaxim.ai/bifrost/resources/governance",
@@ -5131,12 +5138,20 @@ test("keeps just-completed activity trace collapsed before the assistant answer 
   expect(faviconImages).toHaveLength(2);
   expect(faviconImages?.[0]).toHaveAttribute(
     "src",
-    "https://www.google.com/s2/favicons?domain=agentgateway.dev&sz=32",
+    "/api/favicon?u=https%3A%2F%2Fagentgateway.dev%2F",
   );
   expect(faviconImages?.[1]).toHaveAttribute(
     "src",
-    "https://www.google.com/s2/favicons?domain=lumon.com&sz=32",
+    "/api/favicon?u=https%3A%2F%2Flumon.com%2Fstory",
   );
+  // A result whose icon fails to load shows its initial, not an empty plate.
+  fireEvent.error(faviconImages![0]);
+  expect(resultList?.querySelectorAll("img.ui-activity-favicon")).toHaveLength(
+    1,
+  );
+  expect(
+    resultList?.querySelector("span.ui-activity-favicon")?.textContent,
+  ).toBe("A");
   expect(
     toggle.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
