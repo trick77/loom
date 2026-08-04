@@ -239,6 +239,23 @@ body {
   line-height: 1rem;
 }
 
+/*
+ * Glyph of the source letter-avatar (SourceFavicon's fallback disc). Centring the
+ * span's content centres its LINE box, not the letter: the line box carries the
+ * inherited leading plus the font's descender space, all of it below the cap, so an
+ * uppercase letter ends up measurably high in the disc (0.6px of an 18px disc, and a
+ * different amount per letter — Q's tail dragged its ink the other way). text-box
+ * trims the line box down to the cap-height..baseline edges, so what gets centred is
+ * the cap itself: measured 0.6px off before, 0.006px after, identical for every
+ * letter. It must sit on a block child — the trim has no effect on the anonymous
+ * grid item the bare text node would form. Browsers without text-box support keep
+ * the previous centring rather than breaking.
+ */
+.ui-avatar-letter {
+  display: block;
+  text-box: trim-both cap alphabetic;
+}
+
 .ui-control-text {
   font-size: 0.875rem;
   line-height: 1.25rem;
