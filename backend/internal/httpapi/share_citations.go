@@ -12,6 +12,12 @@ import (
 // tells them about the owner's retrieval setup, so it is dropped. favicon is dropped
 // too: the viewer resolves icons from the url through its own proxy.
 //
+// filename is on the list because on a WEB citation it holds the registrable-domain
+// label the backend computed ("Modal", "Github") — the site name, already implied by
+// the url beside it. The same field on a document citation is the name of a private
+// upload, which is why the scheme check in isPublicWebURL has to run first: this list
+// is only safe for rows that already passed it.
+//
 // Listed as a whitelist rather than a blocklist so a new field added to the stored
 // citation cannot start leaking by default.
 var shareCitationFields = []string{"url", "title", "filename", "snippet", "index"}
