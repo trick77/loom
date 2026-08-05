@@ -99,6 +99,51 @@ describe("normalizeMathDelimiters", () => {
     );
   });
 
+  // A `$$...$$` one-liner standing alone is the shape models emit most often for display
+  // math, and micromark reads it as *inline* math wherever it sits. Inline means textstyle,
+  // where KaTeX shrinks a fraction's numerator and denominator to script size and a nested
+  // fraction to scriptscript — small enough to be unreadable. It gets the same promotion to
+  // a fence that `\[...\]` on its own line already gets.
+  it("fences a $$...$$ one-liner standing on its own line", () => {
+    expect(normalizeMathDelimiters("$$v = \\frac{a}{1+\\frac{b}{c}}$$")).toBe(
+      "$$\nv = \\frac{a}{1+\\frac{b}{c}}\n$$",
+    );
+  });
+
+  it("fences a $$ one-liner that follows a line of prose", () => {
+    expect(normalizeMathDelimiters("Formula:\n$$a$$")).toBe(
+      "Formula:\n$$\na\n$$",
+    );
+  });
+
+  it("keeps a $$ one-liner mid-sentence inline", () => {
+    expect(normalizeMathDelimiters("so $$a + b$$ follows")).toBe(
+      "so $$a + b$$ follows",
+    );
+  });
+
+  it("keeps two $$ one-liners on one line as two inline spans", () => {
+    expect(normalizeMathDelimiters("$$a$$ and $$b$$")).toBe("$$a$$ and $$b$$");
+  });
+
+  it("indents a promoted $$ one-liner with its line, inside a list item", () => {
+    expect(normalizeMathDelimiters("- item\n\n  $$a + b$$")).toBe(
+      "- item\n\n  $$\n  a + b\n  $$",
+    );
+  });
+
+  it("leaves a four-space-indented $$ one-liner alone", () => {
+    expect(normalizeMathDelimiters("    $$a$$")).toBe("    $$a$$");
+  });
+
+  it("leaves an existing $$ fence untouched", () => {
+    expect(normalizeMathDelimiters("$$\na + b\n$$")).toBe("$$\na + b\n$$");
+  });
+
+  it("leaves a $$ one-liner inside a code fence alone", () => {
+    expect(normalizeMathDelimiters("```\n$$a$$\n```")).toBe("```\n$$a$$\n```");
+  });
+
   it("handles multiple math spans in one string", () => {
     expect(normalizeMathDelimiters("\\(a\\) then \\(b\\)")).toBe(
       "$$a$$ then $$b$$",

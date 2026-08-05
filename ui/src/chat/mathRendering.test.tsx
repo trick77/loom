@@ -169,6 +169,29 @@ test("leaves LaTeX inside a code fence untouched", () => {
   expect(container.querySelector("code")?.textContent).toContain("\\[ a \\]");
 });
 
+// Regression: a `$$...$$` one-liner alone on its line — the shape models emit most often for
+// display math — parsed as inline math, so KaTeX rendered it in textstyle with script-size
+// fraction parts (scriptscript once nested), left-aligned and roughly half the height of the
+// display form. normalizeMathDelimiters now promotes it to a fence.
+test("renders a standalone $$...$$ one-liner as display KaTeX", () => {
+  const { container } = render(
+    <ProseMarkdown>
+      {"Formula:\n\n$$v = \\frac{a}{1+\\frac{b}{c}}$$"}
+    </ProseMarkdown>,
+  );
+  expect(container.querySelector(".katex-display")).not.toBeNull();
+});
+
+// ...but only when it stands alone: mid-sentence math must stay inline, or every formula in
+// a paragraph would break out into its own centred block.
+test("keeps a mid-sentence $$...$$ one-liner inline", () => {
+  const { container } = render(
+    <ProseMarkdown>{"the value $$x^2$$ grows"}</ProseMarkdown>,
+  );
+  expect(container.querySelector(".katex")).not.toBeNull();
+  expect(container.querySelector(".katex-display")).toBeNull();
+});
+
 // The stylesheet markdownConfig.ts imports comes from the top-level `katex`, but the DOM is
 // built by whichever katex `rehype-katex` resolves. They must stay on the same minor line:
 // KaTeX 0.18 renamed the structural classes (.strut -> .katex-strut, .base -> .katex-base),
