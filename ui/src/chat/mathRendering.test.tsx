@@ -1,4 +1,7 @@
 import "@testing-library/jest-dom/vitest";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { render } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -164,4 +167,29 @@ test("leaves LaTeX inside a code fence untouched", () => {
   );
   expect(container.querySelector(".katex")).toBeNull();
   expect(container.querySelector("code")?.textContent).toContain("\\[ a \\]");
+});
+
+// The stylesheet markdownConfig.ts imports comes from the top-level `katex`, but the DOM is
+// built by whichever katex `rehype-katex` resolves. They must stay on the same minor line:
+// KaTeX 0.18 renamed the structural classes (.strut -> .katex-strut, .base -> .katex-base),
+// so a 0.18 stylesheet over 0.16 markup leaves every vlist row without a strut, collapsing
+// numerator, fraction bar and denominator on top of each other. jsdom applies no CSS, so no
+// rendering assertion in this file can see that — this comparison is the guard.
+test("KaTeX stylesheet and renderer are the same minor version", () => {
+  const require_ = createRequire(import.meta.url);
+  const minor = (spec: string, from?: string) => {
+    const path = require_.resolve(
+      spec,
+      from === undefined
+        ? undefined
+        : { paths: [dirname(require_.resolve(from))] },
+    );
+    const { version } = JSON.parse(readFileSync(path, "utf8")) as {
+      version: string;
+    };
+    return version.split(".").slice(0, 2).join(".");
+  };
+  expect(minor("katex/package.json", "rehype-katex")).toBe(
+    minor("katex/package.json"),
+  );
 });
