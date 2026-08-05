@@ -27,11 +27,13 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
-      # We only import katex for its stylesheet; the math DOM is rendered by
-      # rehype-katex's own katex, pinned to ^0.16.0. KaTeX 0.18 renamed the
-      # structural classes (.strut -> .katex-strut, .base -> .katex-base), so a
-      # newer stylesheet over 0.16 markup collapses every fraction into an
-      # unreadable overlap. Unpin only together with rehype-katex.
+      # We only import katex for its stylesheet, but the math DOM is built by the
+      # katex rehype-katex resolves — so both must stay on the range rehype-katex
+      # declares (^0.16.0), or npm nests a second copy and the two drift apart.
+      # KaTeX 0.18 renamed the structural classes (.strut -> .katex-strut,
+      # .base -> .katex-base), so a newer stylesheet over 0.16 markup collapses
+      # every fraction into an unreadable overlap. Unpin only together with
+      # rehype-katex.
       - dependency-name: katex
         versions: [">=0.17.0"]
 
