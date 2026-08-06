@@ -14,6 +14,19 @@ import (
 
 type stubUsageStore struct{ totals usage.Totals }
 
+// recordingUsageStore captures the lifetime token rollups a turn writes, so a
+// test can assert which helper calls were still inside the accumulator when it
+// was read.
+type recordingUsageStore struct {
+	stubUsageStore
+	deltas []usage.TokenDelta
+}
+
+func (s *recordingUsageStore) AddTokens(_ context.Context, _ string, delta usage.TokenDelta) error {
+	s.deltas = append(s.deltas, delta)
+	return nil
+}
+
 func (s stubUsageStore) AddTokens(context.Context, string, usage.TokenDelta) error { return nil }
 func (s stubUsageStore) AddEmbeddingUsage(context.Context, string, int, int) error { return nil }
 func (s stubUsageStore) IncWebSearch(context.Context, string) error                { return nil }

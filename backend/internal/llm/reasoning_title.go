@@ -50,7 +50,25 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning, response
 	if choice.FinishReason == "length" {
 		return "", nil
 	}
-	return cleanReasoningTitle(choice.Message.Content), nil
+	title := cleanReasoningTitle(choice.Message.Content)
+	// Same drift guard as the thread title (see GenerateThreadTitle): a title in
+	// a script the reasoning never used is the model wandering, not a summary.
+	//
+	// Only when no language is pinned. The reasoning trace is the sole source
+	// available here, and it is the model's own text, not the user's — so with a
+	// language pinned the guard would compare the title against the wrong thing
+	// and reject correct output: a user who pinned a non-Latin language gets a
+	// title in that script, an English reasoning trace shares none of it, and
+	// every reasoning title would be silently dropped. The pinned case therefore
+	// relies on the directive alone.
+	//
+	// Known limit in the unpinned case: a Chinese reasoning trace still permits a
+	// Chinese title. Closing that needs the response language's script, and
+	// callers hold only its English display name ("German"), not a tag.
+	if responseLanguage == "" && titletext.DriftsFromSourceScripts(title, reasoning) {
+		return "", nil
+	}
+	return title, nil
 }
 
 // cleanReasoningTitle strips surrounding quotes and caps the length. Unlike
