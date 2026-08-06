@@ -160,16 +160,24 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// message we classify now (synchronously, before the answer history is built)
 	// and use the fresh result; on later turns we reuse the stored category.
 	//
-	// The condition is the thread's own category being unset. It used to be
-	// shouldGenerateThreadTitle, which was a proxy for "first turn" that held only
-	// because the UI creates threads titled with the raw first message — and that
-	// leaked: a later turn whose text matched the stored title re-ran the
-	// classifier and overwrote the label. CreateThread never sets category, so an
-	// empty one is the honest "never classified" signal. Titling has moved after
-	// the answer and no longer shares this gate.
+	// The condition is this being the thread's first turn AND its category never
+	// having been set. It used to be shouldGenerateThreadTitle, a proxy for "first
+	// turn" that held only because the UI creates threads titled with the raw
+	// first message — and that leaked: a later turn whose text matched the stored
+	// title re-ran the classifier and overwrote the label. CreateThread never sets
+	// category, so an empty one is the honest "never classified" signal.
+	//
+	// Both halves are needed. Without the message check, every pre-existing thread
+	// with an unset category (there is no backfill migration) would classify on
+	// its next turn and stamp that turn's text as the thread's sticky identity —
+	// on a long thread that label is likely wrong, and freshlyClassified would
+	// suppress the per-turn drift re-classification below on the same turn. A
+	// thread's category describes what it opened with, so it is set on turn one or
+	// not at all; later drift is handled per-turn just below. Titling has moved
+	// after the answer and no longer shares this gate.
 	category := thread.Category
 	freshlyClassified := false
-	if strings.TrimSpace(category) == "" {
+	if len(priorMessages) == 0 && strings.TrimSpace(category) == "" {
 		categoryOverride := ""
 		if imageArtifactRequired {
 			categoryOverride = string(classifier.ImageGeneration)
@@ -316,7 +324,9 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 				"content_bytes", len(assistantResult.Content),
 				"reasoning_bytes", len(assistantResult.ReasoningContent),
 				"tool_calls", len(assistantResult.ToolCalls))
-			titleThread("")
+			// Whatever streamed before the cancel is still the best title source
+			// available; it is simply shorter than a completed answer.
+			titleThread(assistantResult.Content)
 			return
 		}
 		message := "stream failed"
@@ -335,7 +345,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 				"reasoning_bytes", len(assistantResult.ReasoningContent))
 		}
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
-		titleThread("")
+		titleThread(assistantResult.Content)
 		return
 	}
 	assistantContent := assistantResult.Content
@@ -350,7 +360,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			"tool_calls", len(assistantResult.ToolCalls),
 			"tool_error", assistantResult.ToolError)
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
-		titleThread("")
+		titleThread(assistantContent)
 		return
 	}
 	if strings.TrimSpace(assistantContent) == "" {
@@ -359,8 +369,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			"content_bytes", len(assistantResult.Content),
 			"reasoning_bytes", len(assistantResult.ReasoningContent),
 			"tool_calls", len(assistantResult.ToolCalls))
+		// assistantContent is empty here by definition, so this titles from the
+		// question alone — exactly what every turn did before the reordering.
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
-		titleThread("")
+		titleThread(assistantContent)
 		return
 	}
 
@@ -423,23 +435,28 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			citationsJSON = encoded
 		}
 	}
-	// Name the thread now that the answer exists. This is the whole point of the
-	// ordering: the reply supplies the facts, the correct spellings and a strong
-	// signal of the language the turn was actually conducted in — a bare question
-	// supplies none of that, and the title model used to guess from it alone.
-	// Runs before the assistant message is persisted so the title call's tokens
-	// are inside usageTotal for both the per-message stats and the lifetime
-	// rollup, the same way the reasoning-title helper is accounted for.
-	titleThread(assistantContent)
-
 	assistantMessage, err := s.thread.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
+		titleThread(assistantContent)
 		return
 	}
 	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
 		return
 	}
+
+	// Name the thread now that the answer exists. This is the whole point of the
+	// ordering: the reply supplies the facts, the correct spellings and a strong
+	// signal of the language the turn was actually conducted in — a bare question
+	// supplies none of that, and the title model used to guess from it alone.
+	//
+	// Deliberately after the answer is persisted and delivered, not before: this
+	// call is bounded by turnGateTimeout, and a slow short-gate endpoint would
+	// otherwise hold the just-streamed answer unpersisted — and the UI in its
+	// streaming state — for up to that long. The cost is that the title call's
+	// tokens miss the per-message stats; they still reach the lifetime rollup
+	// below, which is read after this.
+	titleThread(assistantContent)
 
 	// Bump the thread to the top of the sidebar live. last_message_at was just
 	// updated by the assistant message; the frontend reorders on this event

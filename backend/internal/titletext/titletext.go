@@ -100,28 +100,41 @@ func scriptGroupOf(r rune) string {
 // Only letters carry script identity, so digits, punctuation, symbols and emoji
 // are ignored. A letter in no recognized group never triggers drift: the guard
 // fires only on scripts it positively identifies, so an unforeseen script is
-// allowed through rather than guessed at. Passing no sources therefore rejects
-// every recognized script, Latin included — callers must supply their source
-// text rather than relying on an implicit default.
+// allowed through rather than guessed at.
+//
+// Sources carrying no script information at all — no sources, or only text like
+// "2+2=?" — mean the question cannot be answered rather than answered "yes", so
+// the title is allowed. Reporting drift there would reject every title on a turn
+// whose only material was symbols.
 func DriftsFromSourceScripts(title string, sources ...string) bool {
-	titleGroups := make(map[string]bool)
-	for _, r := range title {
-		if group := scriptGroupOf(r); group != "" {
-			titleGroups[group] = true
-		}
-	}
+	titleGroups := scriptGroupsIn(title)
 	if len(titleGroups) == 0 {
 		return false
 	}
+	sourceGroups := make(map[string]bool)
 	for _, source := range sources {
-		for _, r := range source {
-			if group := scriptGroupOf(r); group != "" {
-				delete(titleGroups, group)
-			}
-		}
-		if len(titleGroups) == 0 {
-			return false
+		for group := range scriptGroupsIn(source) {
+			sourceGroups[group] = true
 		}
 	}
-	return len(titleGroups) > 0
+	if len(sourceGroups) == 0 {
+		return false
+	}
+	for group := range titleGroups {
+		if !sourceGroups[group] {
+			return true
+		}
+	}
+	return false
+}
+
+// scriptGroupsIn collects the recognized script groups s is written in.
+func scriptGroupsIn(s string) map[string]bool {
+	groups := make(map[string]bool)
+	for _, r := range s {
+		if group := scriptGroupOf(r); group != "" {
+			groups[group] = true
+		}
+	}
+	return groups
 }

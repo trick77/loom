@@ -11,9 +11,13 @@ package llm
 // in the language the user writes in." for the unset case, so this mirrors it,
 // with an explicit tie-break for material whose language is genuinely unclear
 // (a bare proper noun, a code snippet).
+//
+// The wording names "the material you are given" rather than the user's message
+// because only one of the five call sites actually supplies one: the others pass
+// the model's own reasoning, thread titles, or memory notes.
 func appendLanguageDirective(systemPrompt, responseLanguage string) string {
 	if responseLanguage == "" {
-		return systemPrompt + " Always write your reply in the same language as the user's own words in the material below. If that is unclear, write it in English."
+		return systemPrompt + " Always write your reply in the same language as the material you are given. If that is unclear, write it in English."
 	}
 	return systemPrompt + " Always write your reply in this language: " + responseLanguage + "."
 }

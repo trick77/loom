@@ -95,16 +95,25 @@ func TestDriftsFromSourceScripts(t *testing.T) {
 			want:    false,
 		},
 		{
-			// With nothing to compare against, every recognized script drifts —
-			// including Latin. Callers must always pass their source text.
-			name:  "any recognized script drifts with no sources",
+			// Nothing to compare against means the question is unanswerable, not
+			// that the title is wrong.
+			name:  "no sources cannot establish drift",
 			title: "Marriage Lookup",
-			want:  true,
+			want:  false,
 		},
 		{
-			name:  "unrecognized script does not drift even with no sources",
-			title: "Բացատրություն",
-			want:  false,
+			// Same reasoning: "2+2=?" carries no script information, so a turn
+			// made of symbols must not have every title rejected.
+			name:    "letter-free sources cannot establish drift",
+			title:   "Simple Arithmetic",
+			sources: []string{"2+2=?", "   "},
+			want:    false,
+		},
+		{
+			name:    "unlisted script in the source still counts as no information",
+			title:   "婚姻查询",
+			sources: []string{"123 456"},
+			want:    false,
 		},
 		{
 			// Unrecognized scripts are allowed rather than guessed at.

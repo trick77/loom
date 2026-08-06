@@ -79,13 +79,29 @@ func TestGenerateThreadTitleRejectsScriptDrift(t *testing.T) {
 }
 
 func TestGenerateReasoningTitleRejectsScriptDrift(t *testing.T) {
+	// Unpinned language: the reasoning trace is the only signal, and a title in
+	// a script it never used is drift.
 	client := titleServer(t, "解释天空颜色")
-	got, err := client.GenerateReasoningTitle(context.Background(), "The user wants to know why the sky is blue.", "English")
+	got, err := client.GenerateReasoningTitle(context.Background(), "The user wants to know why the sky is blue.", "")
 	if err != nil {
 		t.Fatalf("GenerateReasoningTitle() error: %v", err)
 	}
 	if got != "" {
 		t.Fatalf("GenerateReasoningTitle() = %q, want %q", got, "")
+	}
+}
+
+func TestGenerateReasoningTitleSkipsGuardWhenLanguageIsPinned(t *testing.T) {
+	// A pinned language may legitimately differ in script from the model's own
+	// reasoning trace, so comparing the two would reject correct titles. Guarding
+	// here would drop every reasoning title for a non-Latin pinned language.
+	client := titleServer(t, "解释天空颜色")
+	got, err := client.GenerateReasoningTitle(context.Background(), "The user wants to know why the sky is blue.", "Chinese")
+	if err != nil {
+		t.Fatalf("GenerateReasoningTitle() error: %v", err)
+	}
+	if got != "解释天空颜色" {
+		t.Fatalf("GenerateReasoningTitle() = %q, want the model's title kept", got)
 	}
 }
 
@@ -105,7 +121,7 @@ func TestAppendLanguageDirective(t *testing.T) {
 			// choose for itself.
 			name:             "unset follows the source material",
 			responseLanguage: "",
-			want:             "Always write your reply in the same language as the user's own words in the material below. If that is unclear, write it in English.",
+			want:             "Always write your reply in the same language as the material you are given. If that is unclear, write it in English.",
 		},
 	}
 	for _, tc := range cases {

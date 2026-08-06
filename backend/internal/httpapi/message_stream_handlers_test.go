@@ -1258,8 +1258,10 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 		// Default title so the thread-title helper call fires this turn.
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
+	recorder := &recordingUsageStore{}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
+		Usage:  recorder,
 		LLM: fakeChatClient{
 			title:          "Fresh title",
 			reasoningTitle: "Explaining things",
@@ -1284,23 +1286,48 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
 	}
 	assistant := store.messages[1]
-	// 7+100+20 prompt, 3+1+4 completion, 10+101+24 total. The accumulator sums
-	// cached/reasoning detail fields too; here only the answer turn sets them in
-	// the fakes (the helpers leave them 0), so the totals stay 5 and 2 — this is
-	// the test data, not a code limitation.
+	// 7+100 prompt, 3+1 completion, 10+101 total: the answer turn plus the
+	// reasoning-title helper, which runs during the stream. The thread-title
+	// helper is NOT here — it runs after the assistant message is persisted, so
+	// that a slow title endpoint can never hold a streamed answer unpersisted.
+	// Its tokens are asserted against the lifetime rollup below instead.
+	//
+	// The accumulator sums cached/reasoning detail fields too; here only the
+	// answer turn sets them in the fakes (the helpers leave them 0), so the totals
+	// stay 5 and 2 — this is the test data, not a code limitation.
 	for _, c := range []struct {
 		name string
 		got  int
 		want int
 	}{
-		{"PromptTokens", derefInt(assistant.PromptTokens), 127},
-		{"CompletionTokens", derefInt(assistant.CompletionTokens), 8},
-		{"TotalTokens", derefInt(assistant.TotalTokens), 135},
+		{"PromptTokens", derefInt(assistant.PromptTokens), 107},
+		{"CompletionTokens", derefInt(assistant.CompletionTokens), 4},
+		{"TotalTokens", derefInt(assistant.TotalTokens), 111},
 		{"CachedTokens", derefInt(assistant.CachedTokens), 5},
 		{"ReasoningTokens", derefInt(assistant.ReasoningTokens), 2},
 	} {
 		if c.got != c.want {
 			t.Fatalf("%s = %d, want %d", c.name, c.got, c.want)
+		}
+	}
+
+	// The lifetime rollup is read after titling, so it carries every helper:
+	// 7+100+20 prompt, 3+1+4 completion, 10+101+24 total.
+	if len(recorder.deltas) != 1 {
+		t.Fatalf("AddTokens calls = %d, want 1", len(recorder.deltas))
+	}
+	delta := recorder.deltas[0]
+	for _, c := range []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"PromptTokens", delta.PromptTokens, 127},
+		{"CompletionTokens", delta.CompletionTokens, 8},
+		{"TotalTokens", delta.TotalTokens, 135},
+	} {
+		if c.got != c.want {
+			t.Fatalf("lifetime %s = %d, want %d", c.name, c.got, c.want)
 		}
 	}
 }

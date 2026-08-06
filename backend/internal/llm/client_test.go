@@ -1317,7 +1317,7 @@ func TestClient_GenerateTitleHonorsResponseLanguage(t *testing.T) {
 	if strings.Contains(got, "this language:") {
 		t.Fatalf("system prompt = %q, want no pinned-language directive when unset", got)
 	}
-	if !strings.Contains(got, "same language as the user's own words") {
+	if !strings.Contains(got, "same language as the material you are given") {
 		t.Fatalf("system prompt = %q, want source-language directive when unset", got)
 	}
 }
