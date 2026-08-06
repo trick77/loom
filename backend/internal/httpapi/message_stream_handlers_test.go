@@ -54,10 +54,13 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 			t.Fatalf("SSE body missing %q:\n%s", want, body)
 		}
 	}
+	// The title is generated from the answer, so its thread event necessarily
+	// lands after the answer has streamed. Until then the sidebar shows the title
+	// the thread was created with.
 	threadEvent := strings.Index(body, "event: thread")
 	assistantDelta := strings.Index(body, "event: assistant_delta")
-	if threadEvent < 0 || assistantDelta < 0 || threadEvent > assistantDelta {
-		t.Fatalf("thread title event index = %d, assistant delta index = %d, want title before assistant response:\n%s", threadEvent, assistantDelta, body)
+	if threadEvent < 0 || assistantDelta < 0 || threadEvent < assistantDelta {
+		t.Fatalf("thread title event index = %d, assistant delta index = %d, want title after assistant response:\n%s", threadEvent, assistantDelta, body)
 	}
 	if store.assistantContent != "Hello" {
 		t.Fatalf("assistantContent = %q, want Hello", store.assistantContent)
@@ -70,6 +73,60 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 	}
 	if store.messages[1].Role != chat.RoleAssistant || store.messages[1].Content != "Hello" {
 		t.Fatalf("second persisted message = %#v, want assistant Hello", store.messages[1])
+	}
+}
+
+func TestStreamMessageTitlesFromTheAnswer(t *testing.T) {
+	var seen string
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+	}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{title: "Greeting", titleAssistantSeen: &seen},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	// The whole point of titling after the answer: the model sees the reply, not
+	// just the question. Production passed "" here for as long as titling ran up
+	// front, which is how an English thread ended up with a Chinese title.
+	if seen != "Hello" {
+		t.Fatalf("title gate saw assistant message %q, want %q", seen, "Hello")
+	}
+}
+
+func TestStreamMessageKeepsExistingTitleWhenGenerationYieldsNothing(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+	}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		// An empty title is what the drift guard returns when the model answers in
+		// a script the turn never used.
+		LLM: fakeChatClient{title: "", category: "coding"},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	// No title write at all — the thread keeps whatever it was created with
+	// rather than being blanked to a placeholder.
+	if store.updateThreadInput.Title != nil {
+		t.Fatalf("UpdateThread title = %q, want no title write", *store.updateThreadInput.Title)
+	}
+	// The category is persisted by the pre-answer classifier and is unaffected.
+	if store.updateThreadInput.Category == nil || *store.updateThreadInput.Category != "coding" {
+		t.Fatalf("UpdateThread category = %#v, want coding", store.updateThreadInput.Category)
 	}
 }
 

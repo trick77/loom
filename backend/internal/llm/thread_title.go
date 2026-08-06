@@ -56,7 +56,18 @@ func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistant
 	if choice.FinishReason == "length" {
 		return "New thread", nil
 	}
-	return cleanThreadTitle(choice.Message.Content), nil
+	title := cleanThreadTitle(choice.Message.Content)
+	// The short-gate model sometimes answers in Chinese no matter what the
+	// language directive says (an English question once came back titled
+	// "Kasia Knez婚姻查询"). A prompt cannot fix a model that ignores it, so the
+	// output is checked instead: a title in a script neither the question nor
+	// the answer used is drift, not a translation anyone asked for. Empty means
+	// "no usable title" — the caller leaves the stored title alone rather than
+	// overwriting it with a placeholder.
+	if titletext.DriftsFromSourceScripts(title, userMessage, assistantMessage) {
+		return "", nil
+	}
+	return title, nil
 }
 
 func cleanThreadTitle(title string) string {

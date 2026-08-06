@@ -980,7 +980,8 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	if len(gotBody.Messages) != 2 {
 		t.Fatalf("len(messages) = %d, want 2", len(gotBody.Messages))
 	}
-	if gotBody.Messages[0].Role != "system" || gotBody.Messages[0].Content != threadTitleSystemPrompt {
+	// The base prompt, plus the language directive appended for the unset case.
+	if gotBody.Messages[0].Role != "system" || !strings.HasPrefix(gotBody.Messages[0].Content, threadTitleSystemPrompt) {
 		t.Fatalf("system message = %#v", gotBody.Messages[0])
 	}
 	if gotBody.Messages[1].Role != "user" || !strings.Contains(gotBody.Messages[1].Content, "Can you explain x?") || !strings.Contains(gotBody.Messages[1].Content, "Sure.") {
@@ -1310,8 +1311,13 @@ func TestClient_GenerateTitleHonorsResponseLanguage(t *testing.T) {
 	if got := captureSystem(t, "German"); !strings.Contains(got, "this language: German.") {
 		t.Fatalf("system prompt = %q, want German directive", got)
 	}
-	// The English default passes no language, so no directive is appended.
-	if got := captureSystem(t, ""); strings.Contains(got, "this language:") {
-		t.Fatalf("system prompt = %q, want no language directive for default", got)
+	// An unpinned language still gets a directive — follow the source material,
+	// English when that is unclear — so the model is never left to choose.
+	got := captureSystem(t, "")
+	if strings.Contains(got, "this language:") {
+		t.Fatalf("system prompt = %q, want no pinned-language directive when unset", got)
+	}
+	if !strings.Contains(got, "same language as the user's own words") {
+		t.Fatalf("system prompt = %q, want source-language directive when unset", got)
 	}
 }

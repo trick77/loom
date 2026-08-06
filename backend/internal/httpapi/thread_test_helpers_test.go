@@ -592,6 +592,10 @@ type fakeChatClient struct {
 	// zero value ({Action:""}) maps to ImageIntentNone, so tests that never touch
 	// images get the non-image path for free.
 	imageIntent llm.ImageIntent
+	// titleAssistantSeen, when set, captures the assistant message the title gate
+	// was given, so a test can assert the answer reaches it rather than the empty
+	// string production used to pass.
+	titleAssistantSeen *string
 }
 
 func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
@@ -618,7 +622,10 @@ func (f fakeChatClient) StreamChatResult(_ context.Context, history []llm.Messag
 	return llm.StreamResult{Content: "Hello", Usage: f.usage}, nil
 }
 
-func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, assistantMessage, _ string) (string, error) {
+	if f.titleAssistantSeen != nil {
+		*f.titleAssistantSeen = assistantMessage
+	}
 	if f.titleErr != nil {
 		return "", f.titleErr
 	}

@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
@@ -61,60 +60,85 @@ func strPtr(value string) *string {
 	return &value
 }
 
-// generateAndSendThreadTitle titles and classifies the first message, persists
-// both onto the thread, and emits the updated thread over SSE. The title and
-// category come from two separate utility calls run concurrently (added latency ≈
-// one call); classification is best-effort and falls back to General. It returns
-// the chosen category so the caller can inject the matching system-prompt block on
-// this very turn (both calls finish before the answer history is built).
+// classifyThreadForTurn classifies the first message and persists the category
+// onto the thread. It returns the chosen category so the caller can inject the
+// matching system-prompt block on this very turn, which is why it must run
+// before the answer history is built — and why it is bounded like the other turn
+// gates: a General category beats holding the answer behind a slow endpoint.
+// Classification is best-effort and falls back to General.
 //
 // When categoryOverride is non-empty the classify call is skipped entirely and
 // the override is used as the category. The caller passes this for requests it
 // has already routed deterministically (e.g. image generation), where the
 // text-classifier's guess would be both wrong and pointless.
-func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage, categoryOverride string) (string, error) {
-	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
-	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
-	// On the first message the caller blocks on this before building the answer
-	// history, so both calls are bounded like the other turn gates: an untitled
-	// thread (the title endpoint backfills on a later turn) and a General category
-	// beat holding the answer behind a slow endpoint. See turnGateTimeout.
-	requestCtx, cancelHelpers := context.WithTimeout(requestCtx, turnGateTimeout)
-	defer cancelHelpers()
-
-	var (
-		title    string
-		titleErr error
-		category = string(classifier.General)
-		wg       sync.WaitGroup
-	)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		title, titleErr = s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(requestCtx, titleInference), userMessage, assistantMessage, userResponseLanguage(user))
-	}()
+//
+// The title is deliberately NOT generated here. It used to be, purely so the two
+// utility calls could share one goroutine pair, and the cost was that the title
+// model only ever saw the bare question — production always passed an empty
+// assistant message. See generateAndSendThreadTitle, which now runs once the
+// answer exists.
+func (s *server) classifyThreadForTurn(requestCtx, persistCtx context.Context, user auth.User, threadID, userMessage, categoryOverride string) string {
 	if categoryOverride != "" {
-		category = categoryOverride
-	} else {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// ClassifyThread always returns a valid category (General on failure); the
-			// error is informational, so a failed classification never blocks the title.
-			category, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(requestCtx, classifyInference), userMessage)
-		}()
+		s.persistThreadCategory(persistCtx, user, threadID, categoryOverride)
+		return categoryOverride
 	}
-	wg.Wait()
+	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
+	requestCtx, cancelClassify := context.WithTimeout(requestCtx, turnGateTimeout)
+	defer cancelClassify()
+	// ClassifyThread always returns a valid category (General on failure); the
+	// error is informational.
+	category, _ := s.llm.ClassifyThread(llm.WithInferenceMetadata(requestCtx, classifyInference), userMessage)
+	if category == "" {
+		category = string(classifier.General)
+	}
+	s.persistThreadCategory(persistCtx, user, threadID, category)
+	return category
+}
 
-	if titleErr != nil {
-		return category, titleErr
+// persistThreadCategory stores the category without touching the title, which is
+// written later in the turn by generateAndSendThreadTitle. Best-effort: a failed
+// write costs a stored label, never the answer.
+func (s *server) persistThreadCategory(persistCtx context.Context, user auth.User, threadID, category string) {
+	_, _, _ = s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Category: &category})
+}
+
+// titleSourceLimit caps how much of the assistant answer is fed to the title
+// model. A title needs the answer's opening, not a long answer's tail, and the
+// prompt stays small enough to keep the call fast.
+const titleSourceLimit = 2000
+
+// generateAndSendThreadTitle titles the thread and emits the updated thread over
+// SSE. It runs AFTER the answer so the title model sees both the question and the
+// reply: the question carries the intent, the reply carries the facts and the
+// correct spellings, and together they pin down the language far better than a
+// directive in the system prompt does. Callers on paths that never produce an
+// answer pass an empty assistantMessage — the old input-only behavior.
+//
+// An empty title from the model means "nothing usable" (a refusal-shaped answer,
+// a truncation, or a script drift). The stored title is then left alone rather
+// than replaced by a placeholder, so the thread keeps the message it was created
+// with instead of going blank.
+func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage string) error {
+	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
+	requestCtx, cancelTitle := context.WithTimeout(requestCtx, turnGateTimeout)
+	defer cancelTitle()
+
+	if runes := []rune(assistantMessage); len(runes) > titleSourceLimit {
+		assistantMessage = string(runes[:titleSourceLimit])
 	}
-	thread, found, err := s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Title: &title, Category: &category})
+	title, err := s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(requestCtx, titleInference), userMessage, assistantMessage, userResponseLanguage(user))
 	if err != nil {
-		return category, err
+		return err
+	}
+	if strings.TrimSpace(title) == "" {
+		return nil
+	}
+	thread, found, err := s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Title: &title})
+	if err != nil {
+		return err
 	}
 	if !found {
-		return category, nil
+		return nil
 	}
 	// A newly-titled thread in a project changes the project's titled-thread set, so
 	// refresh its big-picture description (debounced/count-gated, so this is cheap and
@@ -122,7 +146,7 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	if thread.ProjectID != nil {
 		s.maybeRefreshProjectDescriptionAsync(persistCtx, user, *thread.ProjectID)
 	}
-	return category, sendSSEJSON(stream, "thread", thread)
+	return sendSSEJSON(stream, "thread", thread)
 }
 
 func buildLLMHistory(user auth.User, toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
