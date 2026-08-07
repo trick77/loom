@@ -5276,10 +5276,11 @@ test("a newer shell error replaces a failed turn's error on that thread", async 
   expect(screen.getByText(/failed to update thread/i)).toBeInTheDocument();
 });
 
-test("shows a new thread in Recents immediately, then swaps in the generated title", async () => {
+test("shows a new thread in Recents under the user's question, then swaps in the generated title", async () => {
   // The thread event now arrives only once the answer has finished — the title is
   // generated from the answer — so the sidebar must not wait for it to show the
-  // thread at all.
+  // thread at all, and while it waits the row carries the user's own question
+  // (the thread's stored title) rather than a "New thread" placeholder.
   let push: (chunk: string) => void = () => undefined;
   let close: () => void = () => undefined;
   const stream = new ReadableStream<Uint8Array>({
@@ -5328,11 +5329,16 @@ test("shows a new thread in Recents immediately, then swaps in the generated tit
   fireEvent.change(textbox, { target: { value: "Why is the sky blue?" } });
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
-  // A placeholder entry appears in Recents while the answer is still streaming,
-  // using the translated label — a German UI reads "Neuer Thread" here.
+  // The entry appears in Recents while the answer is still streaming, labeled with
+  // the question the server stored as the thread's title. The row is a button, so
+  // this does not match the same text in the header or the user's own bubble.
   await waitFor(() =>
-    expect(screen.getAllByText("New thread")).toHaveLength(2),
+    expect(
+      screen.getByRole("button", { name: "Why is the sky blue?" }),
+    ).toBeInTheDocument(),
   );
+  // No placeholder anywhere: the only "New thread" left is the sidebar's button.
+  expect(screen.getAllByText("New thread")).toHaveLength(1);
 
   push(
     'event: thread\ndata: {"id":"t1","title":"Blue Sky Explanation","starred":false,"createdAt":"2026-05-30T00:00:00Z","updatedAt":"2026-05-30T00:00:00Z"}\n\n',
@@ -5343,6 +5349,9 @@ test("shows a new thread in Recents immediately, then swaps in the generated tit
   await waitFor(() =>
     expect(screen.getAllByText("Blue Sky Explanation")).toHaveLength(2),
   );
-  // Back to just the button: the placeholder was replaced, not duplicated.
+  // Swapped in place, not added alongside: the question is gone from the sidebar.
+  expect(
+    screen.queryByRole("button", { name: "Why is the sky blue?" }),
+  ).toBeNull();
   expect(screen.getAllByText("New thread")).toHaveLength(1);
 });

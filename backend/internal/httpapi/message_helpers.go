@@ -223,7 +223,12 @@ func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 	if currentTitle == chat.DefaultThreadTitle {
 		return true
 	}
-	return currentTitle == chat.NormalizeThreadTitle(firstPrompt)
+	// Case-insensitive: titles taken from the prompt now get their first letter
+	// capitalized on write, but threads stored before that (and any the backfill
+	// migration could not touch, e.g. an accented first letter) still hold the
+	// uncapitalized form. An exact compare would read those as user-chosen titles
+	// and never generate one for them.
+	return strings.EqualFold(currentTitle, chat.NormalizeThreadTitle(firstPrompt))
 }
 
 func systemPromptForUser(user auth.User, now time.Time) string {

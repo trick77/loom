@@ -94,3 +94,26 @@ func TestSystemPromptForUser_LanguageDirective(t *testing.T) {
 		}
 	}
 }
+
+// Threads created from the user's prompt keep that prompt as their title until a
+// generated one lands, and titles are capitalized on write now. Rows written
+// before that (or ones the ASCII-only backfill could not touch) still hold the
+// uncapitalized form, and they must still be recognized as untitled — otherwise
+// they read as a user-chosen title and never get a generated one.
+func TestShouldGenerateThreadTitle_PromptTitleCaseInsensitive(t *testing.T) {
+	const prompt = "why is the sky blue?"
+
+	cases := map[string]bool{
+		"Why is the sky blue?":   true,
+		"why is the sky blue?":   true,
+		"über die wolken":        false,
+		"New thread":             true,
+		"Blue Sky Explanation":   false,
+		"A title the user chose": false,
+	}
+	for currentTitle, want := range cases {
+		if got := shouldGenerateThreadTitle(currentTitle, prompt); got != want {
+			t.Errorf("shouldGenerateThreadTitle(%q, %q) = %v, want %v", currentTitle, prompt, got, want)
+		}
+	}
+}

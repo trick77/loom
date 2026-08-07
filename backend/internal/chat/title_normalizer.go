@@ -3,6 +3,7 @@ package chat
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/trick77/loom/internal/titletext"
 )
@@ -19,7 +20,25 @@ func NormalizeThreadTitle(title string) string {
 	title = trimMarkdownTitleSyntax(title)
 	title = stripEmoji(title)
 	title = strings.Join(strings.Fields(title), " ")
+	title = capitalizeFirstRune(title)
 	return truncateThreadTitle(title)
+}
+
+// capitalizeFirstRune uppercases a leading lowercase letter, so a title taken
+// straight from the user's prompt reads "Why is the sky blue?" rather than
+// "why is the sky blue?" in the sidebar and the thread header. A second
+// uppercase rune means the lowercase first one is deliberate ("iPhone battery",
+// "eBay export"), and anything not a lowercase letter is left alone.
+func capitalizeFirstRune(title string) string {
+	runes := []rune(title)
+	if len(runes) == 0 || !unicode.IsLower(runes[0]) {
+		return title
+	}
+	if len(runes) > 1 && unicode.IsUpper(runes[1]) {
+		return title
+	}
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 
 // firstNonEmptyLine returns the first line that has non-whitespace content.
