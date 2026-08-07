@@ -20,16 +20,19 @@ func NormalizeThreadTitle(title string) string {
 	title = trimMarkdownTitleSyntax(title)
 	title = stripEmoji(title)
 	title = strings.Join(strings.Fields(title), " ")
-	title = capitalizeFirstRune(title)
 	return truncateThreadTitle(title)
 }
 
-// capitalizeFirstRune uppercases a leading lowercase letter, so a title taken
-// straight from the user's prompt reads "Why is the sky blue?" rather than
-// "why is the sky blue?" in the sidebar and the thread header. A second
-// uppercase rune means the lowercase first one is deliberate ("iPhone battery",
-// "eBay export"), and anything not a lowercase letter is left alone.
-func capitalizeFirstRune(title string) string {
+// CapitalizeThreadTitle uppercases a leading lowercase letter, so a title the
+// user never typed as a title — one taken from their prompt, or written by the
+// titling model — reads "Why is the sky blue?" rather than "why is the sky
+// blue?" in the sidebar and the thread header. A second uppercase rune means the
+// lowercase first one is deliberate ("iPhone battery", "eBay export"), and
+// anything not a lowercase letter is left alone.
+//
+// Deliberately NOT part of NormalizeThreadTitle: a title the user typed by hand
+// is theirs, and a rename to "ffmpeg notes" has to stay "ffmpeg notes".
+func CapitalizeThreadTitle(title string) string {
 	runes := []rune(title)
 	if len(runes) == 0 || !unicode.IsLower(runes[0]) {
 		return title

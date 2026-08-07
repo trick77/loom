@@ -96,16 +96,18 @@ func TestSystemPromptForUser_LanguageDirective(t *testing.T) {
 }
 
 // Threads created from the user's prompt keep that prompt as their title until a
-// generated one lands, and titles are capitalized on write now. Rows written
-// before that (or ones the ASCII-only backfill could not touch) still hold the
-// uncapitalized form, and they must still be recognized as untitled — otherwise
-// they read as a user-chosen title and never get a generated one.
-func TestShouldGenerateThreadTitle_PromptTitleCaseInsensitive(t *testing.T) {
+// generated one lands, and prompt-derived titles are capitalized on write now.
+// Rows written before that (or ones the ASCII-only backfill could not touch)
+// still hold the verbatim form, so both count as untitled — otherwise they read
+// as a user-chosen title and never get a generated one. A rename that differs
+// from the prompt in case alone is the user's, though, and must survive.
+func TestShouldGenerateThreadTitle_PromptTitleCapitalizedOrVerbatim(t *testing.T) {
 	const prompt = "why is the sky blue?"
 
 	cases := map[string]bool{
 		"Why is the sky blue?":   true,
 		"why is the sky blue?":   true,
+		"WHY IS THE SKY BLUE?":   false,
 		"über die wolken":        false,
 		"New thread":             true,
 		"Blue Sky Explanation":   false,

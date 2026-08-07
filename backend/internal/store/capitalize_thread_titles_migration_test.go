@@ -29,17 +29,27 @@ func TestMigration0025_CapitalizesExistingThreadTitles(t *testing.T) {
 	}
 
 	exec(`INSERT INTO users (id, oidc_subject, username, role) VALUES ('u1','s1','alice','user')`)
-	seeded := map[string]string{
-		"t1": "why is the sky blue?",
-		"t2": "iPhone battery drains overnight",
-		"t3": "Blue Sky Explanation",
-		"t4": "42 ways to fold a map",
+	// Every thread holds the first prompt as its own user message; the title is
+	// what differs. Threads whose title still equals that message are the
+	// prompt-derived ones the migration is allowed to rewrite.
+	seeded := []struct{ id, title, prompt string }{
+		{"t1", "why is the sky blue?", "why is the sky blue?"},
+		{"t2", "iPhone battery drains overnight", "iPhone battery drains overnight"},
+		{"t3", "Blue Sky Explanation", "why is the sky blue?"},
+		{"t4", "42 ways to fold a map", "42 ways to fold a map"},
 		// Non-ASCII first letter: SQLite's upper() cannot touch it, so the
 		// migration must leave it alone rather than corrupt the bytes.
-		"t5": "über die wolken",
+		{"t5", "über die wolken", "über die wolken"},
+		// Renamed by hand — the title is no longer the prompt, so it is the
+		// user's own text and stays exactly as they typed it.
+		{"t6", "ffmpeg notes", "how do I re-encode a mkv without re-encoding audio?"},
 	}
-	for id, title := range seeded {
-		exec(`INSERT INTO threads (id, user_id, title) VALUES (?,'u1',?)`, id, title)
+	for _, row := range seeded {
+		exec(`INSERT INTO threads (id, user_id, title) VALUES (?,'u1',?)`, row.id, row.title)
+		exec(
+			`INSERT INTO messages (id, thread_id, user_id, role, content) VALUES (?,?,'u1','user',?)`,
+			"m-"+row.id, row.id, row.prompt,
+		)
 	}
 
 	body, err := migrationsFS.ReadFile("migrations/0025_capitalize_thread_titles.sql")
@@ -56,6 +66,7 @@ func TestMigration0025_CapitalizesExistingThreadTitles(t *testing.T) {
 		"t3": "Blue Sky Explanation",
 		"t4": "42 ways to fold a map",
 		"t5": "über die wolken",
+		"t6": "ffmpeg notes",
 	}
 	for id, expected := range want {
 		var got string

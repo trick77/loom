@@ -1498,3 +1498,30 @@ func TestStore_ArchivedProjectHidesChatsFromRestingLists(t *testing.T) {
 		t.Fatalf("resting list = %#v, want to restore chat %q after unarchive", restored, thread.ID)
 	}
 }
+
+// The title a thread is created with is the user's first prompt, shown as the
+// thread's label until a generated title lands, so it is capitalized. A rename
+// is the user's own text and must come back exactly as typed.
+func TestStore_CreateCapitalizesTitleButRenameKeepsIt(t *testing.T) {
+	db := openTestDB(t)
+	store := NewStore(db)
+	ctx := context.Background()
+	userID := insertTestUser(t, db, "alice")
+
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "why is the sky blue?"})
+	if err != nil {
+		t.Fatalf("create thread: %v", err)
+	}
+	if thread.Title != "Why is the sky blue?" {
+		t.Errorf("created title = %q, want %q", thread.Title, "Why is the sky blue?")
+	}
+
+	renamed := "ffmpeg notes"
+	updated, found, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{Title: &renamed})
+	if err != nil || !found {
+		t.Fatalf("update thread: err=%v found=%v", err, found)
+	}
+	if updated.Title != renamed {
+		t.Errorf("renamed title = %q, want %q (a rename must stick)", updated.Title, renamed)
+	}
+}
