@@ -9,7 +9,11 @@ import (
 )
 
 func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThreadInput) (Thread, error) {
-	title := NormalizeThreadTitle(in.Title)
+	// A thread is created with the user's first prompt as its title (the client
+	// sends it that way), and that prompt is shown as the thread's label until a
+	// generated title replaces it — so it is capitalized like a title. A rename
+	// goes through UpdateThread, which deliberately does not do this.
+	title := CapitalizeThreadTitle(NormalizeThreadTitle(in.Title))
 	if title == "" {
 		title = DefaultThreadTitle
 	}

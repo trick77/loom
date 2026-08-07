@@ -10,6 +10,7 @@ import {
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
+import i18n from "./i18n";
 import { GeneratedArtifactCard } from "./ThreadShell";
 import { ICONS } from "./chat/Icon";
 import { possibleGreetings } from "./chat/threadUtils";
@@ -5276,10 +5277,11 @@ test("a newer shell error replaces a failed turn's error on that thread", async 
   expect(screen.getByText(/failed to update thread/i)).toBeInTheDocument();
 });
 
-test("shows a new thread in Recents immediately, then swaps in the generated title", async () => {
+test("shows a new thread in Recents under the user's question, then swaps in the generated title", async () => {
   // The thread event now arrives only once the answer has finished — the title is
   // generated from the answer — so the sidebar must not wait for it to show the
-  // thread at all.
+  // thread at all, and while it waits the row carries the user's own question
+  // (the thread's stored title) rather than a "New thread" placeholder.
   let push: (chunk: string) => void = () => undefined;
   let close: () => void = () => undefined;
   const stream = new ReadableStream<Uint8Array>({
@@ -5328,11 +5330,16 @@ test("shows a new thread in Recents immediately, then swaps in the generated tit
   fireEvent.change(textbox, { target: { value: "Why is the sky blue?" } });
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
-  // A placeholder entry appears in Recents while the answer is still streaming,
-  // using the translated label — a German UI reads "Neuer Thread" here.
+  // The entry appears in Recents while the answer is still streaming, labeled with
+  // the question the server stored as the thread's title. The row is a button, so
+  // this does not match the same text in the header or the user's own bubble.
   await waitFor(() =>
-    expect(screen.getAllByText("New thread")).toHaveLength(2),
+    expect(
+      screen.getByRole("button", { name: "Why is the sky blue?" }),
+    ).toBeInTheDocument(),
   );
+  // No placeholder anywhere: the only "New thread" left is the sidebar's button.
+  expect(screen.getAllByText("New thread")).toHaveLength(1);
 
   push(
     'event: thread\ndata: {"id":"t1","title":"Blue Sky Explanation","starred":false,"createdAt":"2026-05-30T00:00:00Z","updatedAt":"2026-05-30T00:00:00Z"}\n\n',
@@ -5343,6 +5350,76 @@ test("shows a new thread in Recents immediately, then swaps in the generated tit
   await waitFor(() =>
     expect(screen.getAllByText("Blue Sky Explanation")).toHaveLength(2),
   );
-  // Back to just the button: the placeholder was replaced, not duplicated.
+  // Swapped in place, not added alongside: the question is gone from the sidebar.
+  expect(
+    screen.queryByRole("button", { name: "Why is the sky blue?" }),
+  ).toBeNull();
   expect(screen.getAllByText("New thread")).toHaveLength(1);
+});
+
+test("translates the server's default title for a prompt that leaves none", async () => {
+  // A prompt that normalizes away to nothing (emoji only) is stored under the
+  // server's DefaultThreadTitle, which is English text in the database. A German
+  // UI must not read "New thread" in Recents while the answer streams.
+  try {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"🎉","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+          ),
+        );
+      },
+    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/me")
+          return Response.json({
+            id: "u1",
+            username: "jan",
+            role: "user",
+            responseLanguage: "de",
+          });
+        if (url === "/api/projects") return Response.json([]);
+        if (url === "/api/threads?limit=30")
+          return Response.json({ items: [], nextCursor: null });
+        if (url === "/api/threads" && init?.method === "POST")
+          return Response.json(
+            {
+              id: "t1",
+              // What the backend stores when the title normalizes away.
+              title: "New thread",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        if (
+          url === "/api/threads/t1/messages:stream" &&
+          init?.method === "POST"
+        )
+          return new Response(stream, { status: 200 });
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    const textbox = await screen.findByPlaceholderText(
+      "Wie kann ich dir heute helfen?",
+    );
+    fireEvent.change(textbox, { target: { value: "🎉" } });
+    fireEvent.click(screen.getByRole("button", { name: /nachricht senden/i }));
+
+    // Three "Neuer Thread" labels: the sidebar's button, the new row, and the
+    // thread header — nowhere does the stored English text show through.
+    await waitFor(() =>
+      expect(screen.getAllByText("Neuer Thread")).toHaveLength(3),
+    );
+    expect(screen.queryByText("New thread")).toBeNull();
+  } finally {
+    await i18n.changeLanguage("en");
+  }
 });

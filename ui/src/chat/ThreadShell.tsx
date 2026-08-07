@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AuthExpiredError,
+  DEFAULT_THREAD_TITLE,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   createThread,
   listThreads,
@@ -874,29 +875,36 @@ export function ThreadShell({
                 projectId: projectIDForNewThread,
                 title: content,
               });
-        createdThreadForFallback = targetThread;
-        // Put the thread in the sidebar the moment it exists, under a placeholder
-        // label. Otherwise Recents stays empty until the first thread event, and
-        // that event now arrives only once the answer has finished — the title is
-        // generated from the answer, so it cannot come any earlier. onThread below
-        // swaps in the real title; if no thread event ever arrives, the
-        // receivedThreadEvent fallback replaces this with the stored title.
+        // Put the thread in the sidebar the moment it exists. Otherwise Recents
+        // stays empty until the first thread event, and that event now arrives
+        // only once the answer has finished — the title is generated from the
+        // answer, so it cannot come any earlier. onThread below swaps the
+        // generated title in; if no thread event ever arrives, the
+        // receivedThreadEvent fallback upserts this same thread again.
         //
-        // Deliberately the translated label rather than thread.title (the raw
-        // prompt the thread was created with) or the server's DefaultThreadTitle
-        // constant: that constant is English text stored in the database, and a
-        // German UI must read "Neuer Thread" here.
-        const placeholderThread = {
-          ...targetThread,
-          title: t("common.newThread"),
-        };
-        setThreads((current) => upsertThread(current, placeholderThread));
+        // The interim label is the thread's stored title — the user's own
+        // question, normalized server-side with its first letter capitalized —
+        // rather than a "New thread" placeholder: while the answer streams that
+        // question is the only thing telling this row apart from any other.
+        //
+        // The one prompt that leaves no title behind is one that normalizes away
+        // to nothing (emoji-only, "###", a send that is pure attachments). The
+        // server stores its English DefaultThreadTitle for those, so translate it
+        // — a German UI has to read "Neuer Thread" here. This copy is what the
+        // sidebar, the header and the end-of-turn fallback all read from, so the
+        // label stays translated for the whole turn.
+        const createdThread =
+          targetThread.title === DEFAULT_THREAD_TITLE
+            ? { ...targetThread, title: t("common.newThread") }
+            : targetThread;
+        createdThreadForFallback = createdThread;
+        setThreads((current) => upsertThread(current, createdThread));
         if (
           projectIDForNewThread !== null &&
-          placeholderThread.projectId === projectIDForNewThread
+          createdThread.projectId === projectIDForNewThread
         ) {
           setProjectThreads((current) =>
-            upsertThreadById(current, placeholderThread),
+            upsertThreadById(current, createdThread),
           );
         }
         // Now that a thread exists, flush files attached on the start screen,
@@ -937,7 +945,7 @@ export function ThreadShell({
             );
           }
         }
-        setActiveThread(targetThread);
+        setActiveThread(createdThread);
         activeThreadIDRef.current = targetThread.id;
         setMessages([]);
         // The run now belongs to a real thread. Rekeying in the same tick as the

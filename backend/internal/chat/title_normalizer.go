@@ -3,6 +3,7 @@ package chat
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/trick77/loom/internal/titletext"
 )
@@ -20,6 +21,27 @@ func NormalizeThreadTitle(title string) string {
 	title = stripEmoji(title)
 	title = strings.Join(strings.Fields(title), " ")
 	return truncateThreadTitle(title)
+}
+
+// CapitalizeThreadTitle uppercases a leading lowercase letter, so a title the
+// user never typed as a title — one taken from their prompt, or written by the
+// titling model — reads "Why is the sky blue?" rather than "why is the sky
+// blue?" in the sidebar and the thread header. A second uppercase rune means the
+// lowercase first one is deliberate ("iPhone battery", "eBay export"), and
+// anything not a lowercase letter is left alone.
+//
+// Deliberately NOT part of NormalizeThreadTitle: a title the user typed by hand
+// is theirs, and a rename to "ffmpeg notes" has to stay "ffmpeg notes".
+func CapitalizeThreadTitle(title string) string {
+	runes := []rune(title)
+	if len(runes) == 0 || !unicode.IsLower(runes[0]) {
+		return title
+	}
+	if len(runes) > 1 && unicode.IsUpper(runes[1]) {
+		return title
+	}
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 
 // firstNonEmptyLine returns the first line that has non-whitespace content.

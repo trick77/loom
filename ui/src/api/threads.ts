@@ -86,6 +86,11 @@ export async function searchThreadContent(params: {
   return body.items.map(({ snippet, ...thread }) => ({ thread, snippet }));
 }
 
+// What the server stores when a thread's title normalizes away to nothing
+// (chat.DefaultThreadTitle). It is English text in the database, so a UI that is
+// not English swaps in its own translation before showing it.
+export const DEFAULT_THREAD_TITLE = "New thread";
+
 export async function createThread(
   input: { projectId?: string | null; title?: string } = {},
 ): Promise<Thread> {

@@ -133,6 +133,9 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	if strings.TrimSpace(title) == "" {
 		return nil
 	}
+	// Model-written, not user-written: capitalize it here, since UpdateThread
+	// leaves a title exactly as it was handed over (a rename must stick).
+	title = chat.CapitalizeThreadTitle(chat.NormalizeThreadTitle(title))
 	thread, found, err := s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Title: &title})
 	if err != nil {
 		return err
@@ -223,7 +226,15 @@ func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 	if currentTitle == chat.DefaultThreadTitle {
 		return true
 	}
-	return currentTitle == chat.NormalizeThreadTitle(firstPrompt)
+	// Both forms of a prompt-derived title count as untitled: threads created
+	// since titles are capitalized on write hold the capitalized one, older rows
+	// (and any the backfill migration could not touch, e.g. an accented first
+	// letter) still hold the verbatim one. Matching only these two exact strings
+	// rather than comparing case-insensitively keeps a deliberate rename that
+	// differs from the prompt in case alone — "WHY IS THE SKY BLUE?" — safe from
+	// being overwritten by a generated title.
+	normalized := chat.NormalizeThreadTitle(firstPrompt)
+	return currentTitle == normalized || currentTitle == chat.CapitalizeThreadTitle(normalized)
 }
 
 func systemPromptForUser(user auth.User, now time.Time) string {
