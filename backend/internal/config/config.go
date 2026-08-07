@@ -13,7 +13,13 @@ import (
 // Keep in sync with imagegen's direct-client fallback default.
 const defaultBFLPollTimeout = 1 * time.Minute
 const defaultChatMaxCompletionTokens = 2048
-const defaultChatTimeout = 2 * time.Minute
+
+// defaultChatTimeout is the coarse total wall-clock budget for a streamed chat
+// turn. It only has to backstop a connection that hangs without the idle watchdog
+// noticing, so it sits well above defaultChatIdleTimeout — the watchdog stays the
+// thing that fires on a real stall — and below documentToolTimeout (llm/client.go),
+// so timeoutForTools still widens document-generating turns to their 5m budget.
+const defaultChatTimeout = 4 * time.Minute
 
 // defaultKnowledgeInlineTokenBudget caps the total tokens of indexed knowledge
 // documents auto-injected in full per chat turn. When the in-scope knowledge fits
@@ -34,14 +40,17 @@ const defaultKnowledgeInlineTokenBudget = 24000
 // BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET once the real window is pinned.
 const defaultProjectSummaryTokenBudget = 6000
 
-// defaultChatIdleTimeout aborts a chat stream that goes silent mid-turn. Sized
-// conservatively: MiMo can stay quiet for tens of seconds inside a long reasoning
-// block, so the window must clear that to avoid killing legitimate turns, while
-// still being far below the total ChatTimeout so a true stall ends in seconds, not
-// minutes. 60s gives ~8x headroom over the worst inter-chunk gap measured against
-// real MiMo (~7.6s on a multi-minute reasoning turn). Set
-// BACKEND_CHAT_IDLE_TIMEOUT=0 to disable the watchdog.
-const defaultChatIdleTimeout = 60 * time.Second
+// defaultChatIdleTimeout aborts a chat stream that goes silent. The binding case
+// is not inter-chunk cadence (worst gap measured against real MiMo is ~7.6s on a
+// multi-minute reasoning turn) but time-to-first-token: the watchdog is armed at
+// request entry, and only a data: line resets it (see llm/stream.go), so an
+// upstream queue wait before the first data frame counts in full as idle. MiMo 2.5
+// Pro queues hard under concurrent load — 26s to first token on a round that
+// succeeded, and a round that produced no data frame at all inside 60s, killing the
+// turn. 120s roughly doubles the window over that observed stall while staying far
+// below the total ChatTimeout. Set BACKEND_CHAT_IDLE_TIMEOUT=0 to disable the
+// watchdog.
+const defaultChatIdleTimeout = 120 * time.Second
 
 // AuthMode selects how Loom signs users in.
 type AuthMode string
