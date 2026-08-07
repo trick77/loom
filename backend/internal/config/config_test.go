@@ -28,11 +28,11 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatMaxCompletionTokens != 2048 {
 		t.Errorf("ChatMaxCompletionTokens default = %d, want 2048", cfg.ChatMaxCompletionTokens)
 	}
-	if cfg.ChatTimeout != 2*time.Minute {
-		t.Errorf("ChatTimeout default = %s, want 2m0s", cfg.ChatTimeout)
+	if cfg.ChatTimeout != 4*time.Minute {
+		t.Errorf("ChatTimeout default = %s, want 4m0s", cfg.ChatTimeout)
 	}
-	if cfg.ChatIdleTimeout != 60*time.Second {
-		t.Errorf("ChatIdleTimeout default = %s, want 60s", cfg.ChatIdleTimeout)
+	if cfg.ChatIdleTimeout != 120*time.Second {
+		t.Errorf("ChatIdleTimeout default = %s, want 2m0s", cfg.ChatIdleTimeout)
 	}
 	if cfg.TavilyURL != "https://mcp.tavily.com/mcp/" {
 		t.Errorf("TavilyURL default = %q, want https://mcp.tavily.com/mcp/", cfg.TavilyURL)
