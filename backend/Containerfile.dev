@@ -12,7 +12,7 @@
 # builds the frontend and embeds the real UI, so it serves both API and SPA.
 
 # --- Stage 1: build the Go binary (pure-Go, no cgo) ---
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 ARG BACKEND_VERSION=dev
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
