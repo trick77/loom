@@ -9,7 +9,7 @@ COPY ui/ ./
 RUN npm run build
 
 # --- Stage 2: build the Go API binary (pure-Go, no cgo) with the embedded SPA ---
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 ARG BACKEND_VERSION=dev
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
