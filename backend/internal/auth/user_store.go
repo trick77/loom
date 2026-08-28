@@ -36,6 +36,12 @@ func (s *UserStore) UpsertFromClaims(ctx context.Context, claims Claims, adminGr
 	if err != nil {
 		return User{}, err
 	}
+	if !ok && claims.Email != "" && !claims.EmailUnverified {
+		existing, ok, err = s.adoptByEmail(ctx, claims.Email, claims.Subject)
+		if err != nil {
+			return User{}, err
+		}
+	}
 	if ok {
 		_, err = s.db.ExecContext(ctx, `
 UPDATE users
@@ -145,6 +151,69 @@ WHERE oidc_subject = ?`,
 		return User{}, false, nil
 	}
 	return User{}, false, fmt.Errorf("find user: %w", err)
+}
+
+// adoptByEmail re-points an existing account at a new OIDC subject.
+//
+// Users are keyed by oidc_subject alone, but a subject is only stable within one
+// identity provider: swapping providers hands every user a brand-new subject, the
+// lookup above misses, and each account is silently replaced by an empty one on
+// the owner's first login after the swap (which, thanks to the 30-day session
+// cookie, can be weeks later). Matching on the email lets the account survive.
+//
+// Only an unambiguous match is adopted - exactly one row, non-empty email. Zero
+// or several matches fall through to a fresh user, as before.
+func (s *UserStore) adoptByEmail(ctx context.Context, email, subject string) (User, bool, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, oidc_subject, username, email, display_name, role, response_language
+FROM users
+WHERE email <> '' AND lower(email) = lower(?)
+LIMIT 2`,
+		email,
+	)
+	if err != nil {
+		return User{}, false, fmt.Errorf("find user by email: %w", err)
+	}
+	defer rows.Close()
+
+	var matches []User
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage); err != nil {
+			return User{}, false, fmt.Errorf("scan user by email: %w", err)
+		}
+		matches = append(matches, user)
+	}
+	if err := rows.Err(); err != nil {
+		return User{}, false, fmt.Errorf("iterate users by email: %w", err)
+	}
+	if len(matches) != 1 {
+		return User{}, false, nil
+	}
+
+	// Guarding on the subject we selected keeps the claim atomic: a concurrent
+	// login that adopted the same row first leaves this update matching nothing,
+	// and the caller falls through to creating a user rather than handing back a
+	// row that no longer belongs to this subject.
+	user := matches[0]
+	result, err := s.db.ExecContext(ctx, `
+UPDATE users
+SET oidc_subject = ?, updated_at = datetime('now')
+WHERE id = ? AND oidc_subject = ?`,
+		subject, user.ID, user.OIDCSubject,
+	)
+	if err != nil {
+		return User{}, false, fmt.Errorf("adopt user by email: %w", err)
+	}
+	adopted, err := result.RowsAffected()
+	if err != nil {
+		return User{}, false, fmt.Errorf("count adopted user: %w", err)
+	}
+	if adopted == 0 {
+		return User{}, false, nil
+	}
+	user.OIDCSubject = subject
+	return user, true, nil
 }
 
 func contains(values []string, needle string) bool {

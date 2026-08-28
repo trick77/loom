@@ -151,6 +151,7 @@ func (b realOIDCBackend) VerifyClaims(ctx context.Context, token *oauth2.Token) 
 	var oidcClaims struct {
 		PreferredUsername string   `json:"preferred_username"`
 		Email             string   `json:"email"`
+		EmailVerified     *bool    `json:"email_verified"`
 		Name              string   `json:"name"`
 		GivenName         string   `json:"given_name"`
 		FamilyName        string   `json:"family_name"`
@@ -172,6 +173,8 @@ func (b realOIDCBackend) VerifyClaims(ctx context.Context, token *oauth2.Token) 
 			Email:    oidcClaims.Email,
 			Name:     name,
 			Groups:   oidcClaims.Groups,
+			// Absent means "not stated"; only an explicit false is a denial.
+			EmailUnverified: oidcClaims.EmailVerified != nil && !*oidcClaims.EmailVerified,
 		},
 		Nonce: idToken.Nonce,
 	}, nil
