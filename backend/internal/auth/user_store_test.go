@@ -193,13 +193,54 @@ func TestUserStore_UpsertFromClaimsDoesNotAdoptWithoutEmail(t *testing.T) {
 	}
 }
 
+func TestUserStore_UpsertFromClaimsDoesNotAdoptUnverifiedEmail(t *testing.T) {
+	db := openTestDB(t)
+	store := NewUserStore(db)
+	ctx := context.Background()
+
+	if _, err := store.UpsertFromClaims(ctx, Claims{
+		Subject:  "old-sub",
+		Username: "jan",
+		Email:    "jan@example.com",
+	}, "loom-admins"); err != nil {
+		t.Fatalf("first upsert error: %v", err)
+	}
+
+	user, err := store.UpsertFromClaims(ctx, Claims{
+		Subject:         "new-sub",
+		Username:        "jan",
+		Email:           "jan@example.com",
+		EmailUnverified: true,
+	}, "loom-admins")
+	if err != nil {
+		t.Fatalf("second upsert error: %v", err)
+	}
+	if user.OIDCSubject != "new-sub" {
+		t.Fatalf("oidc subject = %q, want a fresh new-sub row", user.OIDCSubject)
+	}
+
+	users, err := store.ListUsers(ctx)
+	if err != nil {
+		t.Fatalf("ListUsers() error: %v", err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("len(users) = %d, want 2 (unverified email cannot claim an account)", len(users))
+	}
+}
+
 // failingDB fails the statements the email lookup depends on, leaving every
 // other statement to the real database.
 type failingDB struct {
 	DBTX
 	failQuery  bool
 	failUpdate bool
+	loseRace   bool
 }
+
+// noRows is the result of an adoption update another login already won.
+type noRows struct{ sql.Result }
+
+func (noRows) RowsAffected() (int64, error) { return 0, nil }
 
 func (f failingDB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	if f.failQuery {
@@ -209,10 +250,35 @@ func (f failingDB) QueryContext(ctx context.Context, query string, args ...any) 
 }
 
 func (f failingDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	if f.failUpdate && strings.Contains(query, "SET oidc_subject") {
+	if !strings.Contains(query, "SET oidc_subject") {
+		return f.DBTX.ExecContext(ctx, query, args...)
+	}
+	if f.failUpdate {
 		return nil, errors.New("boom")
 	}
+	if f.loseRace {
+		return noRows{}, nil
+	}
 	return f.DBTX.ExecContext(ctx, query, args...)
+}
+
+func TestUserStore_UpsertFromClaimsCreatesUserWhenAdoptionIsLost(t *testing.T) {
+	ctx := context.Background()
+	db := failingDB{DBTX: openTestDB(t), loseRace: true}
+	claims := Claims{Subject: "old-sub", Username: "jan", Email: "jan@example.com"}
+
+	if _, err := NewUserStore(db.DBTX).UpsertFromClaims(ctx, claims, "loom-admins"); err != nil {
+		t.Fatalf("seed upsert error: %v", err)
+	}
+
+	claims.Subject = "new-sub"
+	user, err := NewUserStore(db).UpsertFromClaims(ctx, claims, "loom-admins")
+	if err != nil {
+		t.Fatalf("UpsertFromClaims() error: %v", err)
+	}
+	if user.OIDCSubject != "new-sub" {
+		t.Fatalf("oidc subject = %q, want a fresh new-sub row", user.OIDCSubject)
+	}
 }
 
 func TestUserStore_UpsertFromClaimsReportsAdoptionFailures(t *testing.T) {

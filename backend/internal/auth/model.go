@@ -34,6 +34,9 @@ type Claims struct {
 	Email    string
 	Name     string
 	Groups   []string
+	// EmailUnverified is set when the provider explicitly reports the email as
+	// unverified, which bars it from identifying an existing account.
+	EmailUnverified bool
 }
 
 type contextKey string
