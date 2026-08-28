@@ -27,7 +27,7 @@ export function SidebarPrimaryItem({
   active?: boolean;
   onClick?(): void;
 }) {
-  const className = `flex h-7 w-full items-center rounded-md px-1.5 text-left text-[#c7c5bd] ${
+  const className = `flex h-[26px] w-full items-center rounded-md px-1.5 text-left text-[#c7c5bd] ${
     collapsed ? "justify-center" : "gap-2.5"
   } ${active ? "bg-[#111110]" : ""} ${onClick !== undefined ? "transition-colors hover:bg-[#2a2a28]" : ""}`;
   const content = (
@@ -98,7 +98,7 @@ export function SidebarSection({
   return (
     <section className="mt-5">
       <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">{title}</div>
-      <div className="space-y-1.5">
+      <div className="space-y-0">
         {leading}
         {threads.map((thread) => (
           <SidebarThreadItem
