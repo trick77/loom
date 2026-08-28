@@ -2,7 +2,10 @@ package auth
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/trick77/loom/internal/store"
@@ -187,6 +190,51 @@ func TestUserStore_UpsertFromClaimsDoesNotAdoptWithoutEmail(t *testing.T) {
 	}
 	if len(users) != 2 {
 		t.Fatalf("len(users) = %d, want 2 (no email, no adoption)", len(users))
+	}
+}
+
+// failingDB fails the statements the email lookup depends on, leaving every
+// other statement to the real database.
+type failingDB struct {
+	DBTX
+	failQuery  bool
+	failUpdate bool
+}
+
+func (f failingDB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if f.failQuery {
+		return nil, errors.New("boom")
+	}
+	return f.DBTX.QueryContext(ctx, query, args...)
+}
+
+func (f failingDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if f.failUpdate && strings.Contains(query, "SET oidc_subject") {
+		return nil, errors.New("boom")
+	}
+	return f.DBTX.ExecContext(ctx, query, args...)
+}
+
+func TestUserStore_UpsertFromClaimsReportsAdoptionFailures(t *testing.T) {
+	ctx := context.Background()
+	claims := Claims{Subject: "old-sub", Username: "jan", Email: "jan@example.com"}
+
+	for name, db := range map[string]failingDB{
+		"lookup fails": {failQuery: true},
+		"update fails": {failUpdate: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			db.DBTX = openTestDB(t)
+			if _, err := NewUserStore(db.DBTX).UpsertFromClaims(ctx, claims, "loom-admins"); err != nil {
+				t.Fatalf("seed upsert error: %v", err)
+			}
+
+			claims := claims
+			claims.Subject = "new-sub"
+			if _, err := NewUserStore(db).UpsertFromClaims(ctx, claims, "loom-admins"); err == nil {
+				t.Fatal("UpsertFromClaims() error = nil, want the adoption failure surfaced")
+			}
+		})
 	}
 }
 
