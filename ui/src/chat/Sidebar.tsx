@@ -145,7 +145,7 @@ export function Sidebar({
         </div>
         <nav className="ui-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
           <button
-            className={`flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
+            className={`flex h-[26px] w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28] ${
               railCollapsed ? "justify-center" : "gap-2.5"
             } ${route.view === "new" && !showAdmin ? "bg-[#111110]" : ""}`}
             onClick={onNewThread}
@@ -244,7 +244,7 @@ export function Sidebar({
                 <div className="ui-meta-text mb-2 px-1.5 text-[#97958c]">
                   <span>{t("sidebar.projects")}</span>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0">
                   {unstarredProjects.map((project) => (
                     <SidebarProjectItem
                       key={project.id}
@@ -284,7 +284,7 @@ export function Sidebar({
               {recentThreads.length > 0 && (
                 <button
                   type="button"
-                  className="mt-1.5 flex h-7 w-full items-center gap-2.5 rounded-md px-1.5 text-left text-[#c7c5bd] transition-colors hover:bg-[#2a2a28]"
+                  className="mt-1.5 flex h-[26px] w-full items-center gap-2.5 rounded-md px-1.5 text-left text-[#c7c5bd] transition-colors hover:bg-[#2a2a28]"
                   onClick={onThreads}
                   aria-label={t("sidebar.allThreads")}
                 >
@@ -298,7 +298,7 @@ export function Sidebar({
               )}
               {user.role === "admin" && (
                 <button
-                  className="mt-3 flex h-7 w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28]"
+                  className="mt-3 flex h-[26px] w-full items-center rounded-md px-1.5 text-left transition-colors hover:bg-[#2a2a28]"
                   onClick={onAdmin}
                   type="button"
                 >
