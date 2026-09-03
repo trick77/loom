@@ -26,7 +26,7 @@ func TestUserStore_UpsertFromClaimsCreatesAndRefreshesRole(t *testing.T) {
 	store := NewUserStore(db)
 
 	claims := Claims{
-		Subject:  "authentik-sub-1",
+		Subject:  "oidc-sub-1",
 		Username: "jan",
 		Email:    "jan@example.com",
 		Name:     "Jan",
@@ -62,7 +62,7 @@ func TestUserStore_UpsertFromClaimsFallsBackToEmailForUsername(t *testing.T) {
 	store := NewUserStore(db)
 
 	user, err := store.UpsertFromClaims(context.Background(), Claims{
-		Subject: "authentik-sub-2",
+		Subject: "oidc-sub-2",
 		Email:   "user@example.com",
 	}, "loom-admins")
 	if err != nil {
@@ -79,7 +79,7 @@ func TestUserStore_UpsertFromClaimsAdoptsAccountWhenSubjectChanges(t *testing.T)
 	ctx := context.Background()
 
 	before, err := store.UpsertFromClaims(ctx, Claims{
-		Subject:  "authentik-sub",
+		Subject:  "oidc-sub",
 		Username: "jan",
 		Email:    "jan@example.com",
 		Name:     "Jan",

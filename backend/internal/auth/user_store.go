@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-// UserStore persists app-local users mapped from authentik OIDC identities.
+// UserStore persists app-local users mapped from OIDC identities.
 type UserStore struct {
 	db DBTX
 }

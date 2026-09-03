@@ -5,7 +5,7 @@ import (
 	"database/sql"
 )
 
-// Role is the app-local authorization role mapped from authentik groups.
+// Role is the app-local authorization role mapped from OIDC groups.
 type Role string
 
 const (
