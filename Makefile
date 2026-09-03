@@ -53,7 +53,7 @@ dev:
 refresh:
 	./hack/refresh.sh
 
-# Dockerized local dev with dev auth (no authentik). Single embedded image, UI on http://localhost:8080.
+# Dockerized local dev with dev auth (no OIDC provider). Single embedded image, UI on http://localhost:8080.
 docker-dev:
 	docker compose -f compose.dev.yaml up --build --remove-orphans
 

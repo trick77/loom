@@ -1,4 +1,4 @@
-# Local development: single embedded binary, dev auth (no authentik), host networking.
+# Local development: single embedded binary, dev auth (no OIDC provider), host networking.
 #
 #   docker compose -f compose.dev.yaml up --build --remove-orphans  # start (UI on http://localhost:8080)
 #   docker compose -f compose.dev.yaml down            # stop

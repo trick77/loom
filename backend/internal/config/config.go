@@ -104,14 +104,14 @@ type Config struct {
 	// no-op. See mcp.LoadServersFromFile.
 	MCPServersFile string
 
-	AdminInitialPassword string // legacy; authentik owns credentials in Phase 2
+	AdminInitialPassword string // legacy; the OIDC provider owns credentials in Phase 2
 	SessionSecret        string
 	AuthMode             AuthMode
 	OIDC                 OIDCConfig
 	DevUser              DevUserConfig
 }
 
-// OIDCConfig holds authentik OpenID Connect settings.
+// OIDCConfig holds OpenID Connect settings.
 type OIDCConfig struct {
 	Issuer                string
 	ClientID              string
