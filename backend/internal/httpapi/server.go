@@ -430,13 +430,15 @@ func (r *activeStreamRegistry) stop(userID, threadID string, cause error) {
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	r.mu.Lock()
 	stream := r.streams[key]
-	if stream != nil {
-		delete(r.streams, key)
-	}
 	r.mu.Unlock()
 	if stream == nil {
 		return
 	}
+	// The entry stays until the handler's unregister removes it. Dropping it here
+	// would hide a stream that is still unwinding — its uninterruptible persist
+	// block runs on a detached context — from a stopAndWait that arrives right
+	// after a stop, and that delete would then race those writes instead of
+	// waiting for them. Cancelling an already-canceled context is a no-op.
 	stream.cancel(cause)
 }
 
@@ -449,9 +451,6 @@ func (r *activeStreamRegistry) stopAndWait(userID, threadID string, cause error,
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	r.mu.Lock()
 	stream := r.streams[key]
-	if stream != nil {
-		delete(r.streams, key)
-	}
 	r.mu.Unlock()
 	if stream == nil {
 		return

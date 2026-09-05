@@ -1,10 +1,30 @@
 package httpapi
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/trick77/loom/internal/chat"
 )
+
+// stopProjectThreadStreams terminates any turn still generating on a thread of the
+// project and waits for each to unwind. Both the active and the archived listing
+// are swept: a thread archived while its turn ran still streams. Best effort — a
+// listing failure must not block the delete, it only leaves a stream running as it
+// did before.
+func (s *server) stopProjectThreadStreams(ctx context.Context, userID, projectID string) {
+	for _, archived := range []bool{false, true} {
+		ids, err := s.thread.ListThreadIDs(ctx, userID, chat.ListThreadsOptions{ProjectID: &projectID, Archived: archived})
+		if err != nil {
+			slog.Warn("list project threads for stream stop failed", "project_id", projectID, "archived", archived, "err", err)
+			continue
+		}
+		for _, threadID := range ids {
+			s.activeStreams.stopAndWait(userID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
+		}
+	}
+}
 
 func (s *server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
@@ -124,6 +144,11 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projectID := r.PathValue("projectID")
+	// Threads cascade with the project, so a turn generating on one of them has to
+	// be terminated first for the same reasons as in handleDeleteThread: it would
+	// otherwise keep calling the model, then fail its writes on the vanished rows
+	// and leave artifact files the cleanup below cannot see.
+	s.stopProjectThreadStreams(r.Context(), user.ID, projectID)
 	artifacts, err := s.artifactsForProjectCleanup(r.Context(), user.ID, projectID)
 	if err != nil {
 		serverError(w, r, err, "list project artifacts failed")

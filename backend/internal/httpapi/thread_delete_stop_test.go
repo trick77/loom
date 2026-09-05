@@ -95,6 +95,38 @@ func TestBulkDeleteThreadsCancelsActiveAssistantTurn(t *testing.T) {
 	}
 }
 
+// Threads cascade with their project, so deleting one must terminate the turns
+// running on them just like deleting a thread does.
+func TestDeleteProjectCancelsActiveAssistantTurns(t *testing.T) {
+	store := &fakeThreadStore{
+		thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		project: chat.Project{ID: "prj_1", UserID: testUser.ID, Name: "Project"},
+	}
+	llmClient := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: llmClient})
+	streamDone := startBlockedStream(t, srv, llmClient, "thr_1")
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/projects/prj_1", ""))
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case <-llmClient.done:
+	case <-time.After(time.Second):
+		t.Fatal("project delete did not cancel the llm context")
+	}
+	if !errors.Is(llmClient.cancelCause, errStreamThreadDeleted) {
+		t.Fatalf("cancel cause = %v, want %v", llmClient.cancelCause, errStreamThreadDeleted)
+	}
+	select {
+	case <-streamDone:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("project delete returned before the stream handler unwound")
+	}
+}
+
 // Titling an untitled thread runs inline on the cancel path with a detached
 // context. On a delete it is both wasted model tokens (the UpdateThread that
 // follows no-ops on the missing thread) and a multi-second stall the deleting
@@ -164,6 +196,31 @@ func TestStopAndWaitBlocksUntilTheStreamUnregisters(t *testing.T) {
 	}
 	if !errors.Is(context.Cause(ctx), errStreamThreadDeleted) {
 		t.Fatalf("cancel cause = %v, want %v", context.Cause(ctx), errStreamThreadDeleted)
+	}
+}
+
+// A stop leaves the entry registered until the handler unwinds, so a delete that
+// lands right behind it still waits. Dropping the entry on stop would let the
+// delete race the turn's uninterruptible persist block, which is exactly what the
+// wait exists to prevent.
+func TestStopAndWaitStillWaitsForAStreamAlreadyStopped(t *testing.T) {
+	var registry activeStreamRegistry
+	unregister := registry.register(testUser.ID, "thr_1", func(error) {})
+
+	registry.stop(testUser.ID, "thr_1", errStreamStopRequested)
+
+	unwound := make(chan struct{})
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		unregister()
+		close(unwound)
+	}()
+	registry.stopAndWait(testUser.ID, "thr_1", errStreamThreadDeleted, time.Second)
+
+	select {
+	case <-unwound:
+	default:
+		t.Fatal("stopAndWait returned before the stopped stream unwound")
 	}
 }
 
