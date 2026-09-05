@@ -38,6 +38,7 @@ const imageEditPromptCompilerSystemPrompt = "The latest user request edits or tr
 var (
 	errStreamStopRequested = errors.New("stream stop requested")
 	errStreamSuperseded    = errors.New("stream superseded by newer request")
+	errStreamThreadDeleted = errors.New("stream canceled: thread deleted")
 )
 
 // normalizeReasoningEffort clamps the client-supplied reasoning depth to the
@@ -301,6 +302,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// names the thread, as it did when titling ran up front.
 	titleThread := func(assistantMessage string) {
 		if !shouldGenerateThreadTitle(thread.Title, userMessage.Content) {
+			return
+		}
+		// The thread is being deleted, so there is nothing left to name: the title
+		// call would spend tokens on a model round whose UpdateThread then no-ops on
+		// the missing thread. It also runs inline on a detached context, which would
+		// hold the deleting request in its bounded wait for several seconds.
+		if errors.Is(context.Cause(streamCtx), errStreamThreadDeleted) {
 			return
 		}
 		// Derived from streamCtx, not r.Context(): streamCtx carries the turn's
@@ -571,6 +579,8 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 	switch {
 	case errors.Is(cause, errStreamStopRequested):
 		source = "stop_endpoint"
+	case errors.Is(cause, errStreamThreadDeleted):
+		source = "thread_deleted"
 	case errors.Is(cause, errStreamSuperseded):
 		source = "superseded_stream"
 	case errors.Is(cause, context.Canceled):

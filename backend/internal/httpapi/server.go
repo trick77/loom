@@ -394,11 +394,16 @@ type activeStreamKey struct {
 
 type activeStream struct {
 	cancel context.CancelCauseFunc
+	// done is closed once the stream handler has returned. stopAndWait blocks on
+	// it so a caller that needs the turn to be really finished — the thread delete
+	// path, which must not race the turn's remaining writes — can wait for it.
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func (r *activeStreamRegistry) register(userID, threadID string, cancel context.CancelCauseFunc) func() {
 	key := activeStreamKey{userID: userID, threadID: threadID}
-	stream := &activeStream{cancel: cancel}
+	stream := &activeStream{cancel: cancel, done: make(chan struct{})}
 	r.mu.Lock()
 	if r.streams == nil {
 		r.streams = make(map[activeStreamKey]*activeStream)
@@ -414,6 +419,10 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 			delete(r.streams, key)
 		}
 		r.mu.Unlock()
+		// Closed unconditionally, outside the map check: stop and stopAndWait drop
+		// the entry before the handler unwinds, so a close guarded by that check
+		// would never fire and every waiter would burn its full timeout.
+		stream.closeOnce.Do(func() { close(stream.done) })
 	}
 }
 
@@ -429,6 +438,32 @@ func (r *activeStreamRegistry) stop(userID, threadID string, cause error) {
 		return
 	}
 	stream.cancel(cause)
+}
+
+// stopAndWait cancels the user's active stream on the thread and waits for the
+// handler goroutine to unwind, bounded by timeout. The delete paths use it so a
+// canceled turn's remaining writes land before the thread rows go away, instead of
+// failing a foreign key and leaving orphaned artifact files behind. Returns at once
+// when no stream is registered for the key.
+func (r *activeStreamRegistry) stopAndWait(userID, threadID string, cause error, timeout time.Duration) {
+	key := activeStreamKey{userID: userID, threadID: threadID}
+	r.mu.Lock()
+	stream := r.streams[key]
+	if stream != nil {
+		delete(r.streams, key)
+	}
+	r.mu.Unlock()
+	if stream == nil {
+		return
+	}
+	stream.cancel(cause)
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-stream.done:
+	case <-timer.C:
+		slog.Warn("stream did not stop within the wait window", "thread_id", threadID)
+	}
 }
 
 func (s *server) requireAuth(next http.Handler) http.Handler {

@@ -5,9 +5,16 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/trick77/loom/internal/chat"
 )
+
+// threadDeleteStopTimeout bounds how long a delete waits for a canceled turn on
+// that thread to unwind. Cancellation tears down the upstream model connection
+// immediately, so the handler normally returns well inside this; on a timeout the
+// delete proceeds anyway rather than failing the user's request.
+const threadDeleteStopTimeout = 2 * time.Second
 
 func (s *server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
@@ -258,6 +265,13 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	threadID := r.PathValue("threadID")
+	// Terminate a turn still generating on this thread before anything is removed.
+	// Otherwise it keeps calling the model and its tools against a thread that no
+	// longer exists, then fails the messages/artifacts foreign key on write and
+	// leaves artifact files on the volume that the cleanup below cannot see. The
+	// registry key carries user.ID, so this can only ever reach the caller's own
+	// stream.
+	s.activeStreams.stopAndWait(user.ID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
 	artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
 	if err != nil {
 		serverError(w, r, err, "list thread artifacts failed")
@@ -302,6 +316,11 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 			continue
 		}
 		seen[threadID] = struct{}{}
+
+		// Same as the single delete: stop a turn still generating on this thread
+		// before removing it. Returns immediately for the ids with no live stream,
+		// so a large batch does not pay the wait per thread.
+		s.activeStreams.stopAndWait(user.ID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
 
 		// Best-effort: skip a thread we cannot clean up or delete rather than
 		// aborting the whole batch, which would leave it partially applied.
