@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -704,6 +705,7 @@ type blockingChatClient struct {
 	done           chan struct{}
 	partialContent string
 	cancelCause    error
+	titleCalls     atomic.Int32
 }
 
 func (f *blockingChatClient) StreamChat(ctx context.Context, _ []llm.Message, _ func(string) error) (string, error) {
@@ -729,6 +731,7 @@ func (f *blockingChatClient) StreamChatWithTools(ctx context.Context, _ []llm.Me
 }
 
 func (f *blockingChatClient) GenerateThreadTitle(context.Context, string, string, string) (string, error) {
+	f.titleCalls.Add(1)
 	return "", nil
 }
 
