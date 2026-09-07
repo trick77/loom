@@ -265,18 +265,16 @@ func TestFalClientGenerateFitsDimensionsToFalBounds(t *testing.T) {
 	}
 }
 
-func TestFalClientGenerateSendsSafetyToleranceAsString(t *testing.T) {
-	for _, tc := range []struct {
-		tolerance int
-		want      string
-		// fal's enum starts at 1, so the request's 0 clamps up to the strictest
-		// level rather than being sent as an out-of-range "0".
-	}{{0, "1"}, {1, "1"}, {2, "2"}, {5, "5"}} {
+func TestFalClientGenerateAlwaysSubmitsTheMostPermissiveSafetySettings(t *testing.T) {
+	// Every request goes out at fal's most permissive tolerance and asks for the
+	// safety checker to be off, whatever the caller asked for — the caller cannot
+	// tighten moderation back up.
+	for _, tolerance := range []int{0, 1, 2, 5} {
 		stub := newFalStub(t)
 		server := stub.start()
 		client := stub.client(server)
 
-		tolerance := tc.tolerance
+		tolerance := tolerance
 		if _, err := client.Generate(context.Background(), GenerateRequest{
 			Prompt:          "x",
 			OutputFormat:    "png",
@@ -284,13 +282,11 @@ func TestFalClientGenerateSendsSafetyToleranceAsString(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
-		if got := stub.submitted["safety_tolerance"]; got != tc.want {
-			t.Fatalf("safety_tolerance %d -> submitted %#v, want %q", tc.tolerance, got, tc.want)
+		if got := stub.submitted["safety_tolerance"]; got != "5" {
+			t.Fatalf("safety_tolerance %d -> submitted %#v, want \"5\"", tolerance, got)
 		}
-		// Turning the checker off requires an account authorization loom does not
-		// assume, so the field must never be sent.
-		if _, ok := stub.submitted["enable_safety_checker"]; ok {
-			t.Fatalf("enable_safety_checker was sent: %#v", stub.submitted["enable_safety_checker"])
+		if got, ok := stub.submitted["enable_safety_checker"]; !ok || got != false {
+			t.Fatalf("safety_tolerance %d -> enable_safety_checker = %#v (present %v), want false", tolerance, got, ok)
 		}
 	}
 }
@@ -311,6 +307,48 @@ func TestFalClientGenerateReturnsValidationError(t *testing.T) {
 	_, err := client.Generate(context.Background(), GenerateRequest{Prompt: "x"})
 	if err == nil || !strings.Contains(err.Error(), "fal submit failed") {
 		t.Fatalf("Generate() error = %v", err)
+	}
+}
+
+func TestFalClientGenerateReturnsContentPolicyErrorForHTTPRefusals(t *testing.T) {
+	// A moderation refusal can arrive as a 422 on the submit or result hop rather
+	// than on the status document. Its raw JSON body must never reach the user.
+	const refusal = `{"detail":[{"loc":["body","prompt"],"msg":"The content could not be processed because it contained material flagged by a content checker.","type":"content_policy_violation"}]}`
+	for _, refusedPath := range []string{testFalSubmitURL, "/queue/response"} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			base := "http://" + r.Host
+			if r.URL.Path == refusedPath {
+				http.Error(w, refusal, http.StatusUnprocessableEntity)
+				return
+			}
+			switch r.URL.Path {
+			case testFalSubmitURL:
+				writeJSON(t, w, map[string]any{
+					"request_id":   "req-1",
+					"status_url":   base + "/queue/status",
+					"response_url": base + "/queue/response",
+				})
+			case "/queue/status":
+				writeJSON(t, w, map[string]any{"status": "COMPLETED"})
+			}
+		}))
+
+		client := NewFalClient(FalConfig{
+			BaseURL:      server.URL,
+			APIKey:       "test-key",
+			Model:        testFalModel,
+			PollInterval: time.Millisecond,
+			HTTPClient:   server.Client(),
+		})
+		_, err := client.Generate(context.Background(), GenerateRequest{Prompt: "x"})
+		server.Close()
+
+		if err == nil || !strings.Contains(err.Error(), "content policy") {
+			t.Fatalf("%s refused -> Generate() error = %v, want a content policy error", refusedPath, err)
+		}
+		if strings.Contains(err.Error(), "content_policy_violation") {
+			t.Fatalf("%s refused -> Generate() leaked the raw body: %v", refusedPath, err)
+		}
 	}
 }
 

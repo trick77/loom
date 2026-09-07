@@ -659,18 +659,21 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 }
 
-func TestStreamMessageRequiresGenerateImageForObviousImageRequest(t *testing.T) {
+func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 	llmClient := &fakeToolChatClient{
 		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
 		results:     []llm.StreamResult{{Content: "I am a text-based AI assistant and cannot generate images."}},
+		plain:       "Created the image.",
+		titleResult: "Glass City At Sunrise",
 	}
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
+	provider := &recordingImageProvider{}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(provider)},
 		UsersDir:   t.TempDir(),
 		LLM:        llmClient,
 		MCP: fakeMCPService{tools: []llm.Tool{{
@@ -684,24 +687,31 @@ func TestStreamMessageRequiresGenerateImageForObviousImageRequest(t *testing.T) 
 	server.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `"error":"image generation was not completed"`) {
-		t.Fatalf("SSE body missing image-generation error:\n%s", body)
+	// The compiler refused, so the image is generated from the user's own words
+	// rather than the turn ending with nothing to show.
+	if !strings.Contains(body, "event: artifact") {
+		t.Fatalf("SSE body missing fallback image artifact:\n%s", body)
 	}
-	if store.assistantContent != "" {
-		t.Fatalf("assistantContent = %q, want no persisted text-only response", store.assistantContent)
+	if got := provider.request.Prompt; got != "generate an image of a glass city at sunrise" {
+		t.Fatalf("fallback prompt = %q, want the user's own message", got)
 	}
-	if len(store.messages) != 1 || store.messages[0].Role != chat.RoleUser {
-		t.Fatalf("persisted messages = %#v, want only user message", store.messages)
+	if got := provider.request.Filename; got != "generate-image-glass-city" {
+		t.Fatalf("fallback filename = %q, want one derived from the prompt", got)
 	}
-	if len(llmClient.tools) != 1 {
-		t.Fatalf("tool rounds = %d, want 1", len(llmClient.tools))
+	// The fallback leaves through the normal answered-turn path, so the thread is
+	// still named — a refusal must not cost the turn its title.
+	if store.thread.Title != "Glass City At Sunrise" {
+		t.Fatalf("thread title = %q, want the generated title", store.thread.Title)
+	}
+	if len(llmClient.tools) == 0 {
+		t.Fatal("no tool round was run")
 	}
 	offeredTools := llmClient.tools[0]
 	if len(offeredTools) != 1 || offeredTools[0].Function.Name != "generate_image" {
 		t.Fatalf("offered tools = %#v, want only generate_image", offeredTools)
 	}
-	if len(llmClient.histories) != 1 {
-		t.Fatalf("histories = %d, want 1", len(llmClient.histories))
+	if len(llmClient.histories) == 0 {
+		t.Fatal("LLM history was not captured")
 	}
 	foundDirective := false
 	for _, message := range llmClient.histories[0] {
@@ -798,7 +808,7 @@ func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T)
 	}
 }
 
-func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
+func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testing.T) {
 	textOnlyImageClaim := "Here's your trick77 logo in full cyberpunk style."
 	var history []llm.Message
 	store := &fakeThreadStore{
@@ -814,11 +824,13 @@ func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
 	capturingLLM := &fakeToolChatClient{
 		imageIntent: llm.ImageIntent{Action: llm.ImageIntentEdit},
 		results:     []llm.StreamResult{{Content: textOnlyImageClaim}},
+		plain:       "Created the image.",
 	}
+	provider := &recordingImageProvider{}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(provider)},
 		UsersDir:   t.TempDir(),
 		LLM:        capturingLLM,
 	})
@@ -828,17 +840,16 @@ func TestStreamMessageRejectsImageFollowUpWithoutArtifact(t *testing.T) {
 	server.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `"error":"image generation was not completed"`) {
-		t.Fatalf("SSE body missing image-generation error:\n%s", body)
+	// A text-only claim is never accepted as an image; the fallback generates one
+	// from the user's own words instead of persisting the claim.
+	if !strings.Contains(body, "event: artifact") {
+		t.Fatalf("SSE body missing fallback image artifact:\n%s", body)
 	}
-	if store.assistantContent != "" {
+	if strings.Contains(store.assistantContent, textOnlyImageClaim) {
 		t.Fatalf("assistantContent = %q, want no persisted text-only image claim", store.assistantContent)
 	}
-	if len(store.messages) != 2 {
-		t.Fatalf("persisted messages = %d, want prior assistant plus new user only: %#v", len(store.messages), store.messages)
-	}
-	if store.messages[1].Role != chat.RoleUser || store.messages[1].Content != "make it cyberpunk" {
-		t.Fatalf("last persisted message = %#v, want cyberpunk user message", store.messages[1])
+	if got := provider.request.Prompt; got != "make it cyberpunk" {
+		t.Fatalf("fallback prompt = %q, want the user's own message", got)
 	}
 	if len(capturingLLM.histories) == 0 {
 		t.Fatal("LLM history was not captured")
@@ -1173,6 +1184,17 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 			t.Fatalf("output = %q, want tool failed prefix", got)
 		}
 	})
+}
+
+// recordingImageProvider is fakeImageProvider that keeps the request it was
+// given, so a test can assert what the fallback actually asked the provider for.
+type recordingImageProvider struct {
+	request imagegen.GenerateRequest
+}
+
+func (p *recordingImageProvider) Generate(ctx context.Context, req imagegen.GenerateRequest) (imagegen.GenerateResult, error) {
+	p.request = req
+	return fakeImageProvider{}.Generate(ctx, req)
 }
 
 type fakeImageProvider struct{}

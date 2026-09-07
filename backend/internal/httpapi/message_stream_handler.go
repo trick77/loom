@@ -321,7 +321,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, gate, imageArtifactRequired, editSource, imageRoute.typography, docIdx.count())
+	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, history, inference, user, thread, gate, imageArtifactRequired, editSource, imageRoute.typography, userMessage.Content, docIdx.count())
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)

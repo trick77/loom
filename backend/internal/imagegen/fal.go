@@ -10,7 +10,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -168,6 +167,10 @@ const (
 	// 4,194,304 is above MaxOutputPixels, so the area is already covered.
 	falMinSide = 256
 	falMaxSide = 2560
+
+	// falMaxSafetyTolerance is the most permissive value fal's "1".."5" tolerance
+	// enum accepts. Every request goes out at it; see submit for why.
+	falMaxSafetyTolerance = "5"
 )
 
 // clampToFalBounds fits (w, h) into fal's per-side envelope, scaling down
@@ -205,12 +208,17 @@ func (c *FalClient) submit(ctx context.Context, req GenerateRequest, model strin
 			"height": req.Height,
 		},
 		"output_format": req.OutputFormat,
-		// fal takes the tolerance as a string enum over 1-5 (1 strictest), where
-		// the request carries BFL's 0-5 scale; 0 and 1 are both "as strict as the
-		// endpoint allows". enable_safety_checker is deliberately left at fal's
-		// default of true — turning it off needs an account authorization loom
-		// does not assume.
-		"safety_tolerance": strconv.Itoa(max(*req.SafetyTolerance, 1)),
+		// Moderation is pinned as far open as the provider allows, deliberately.
+		// fal takes the tolerance as a string enum over 1-5 (1 strictest), so
+		// falMaxSafetyTolerance is the most permissive value the endpoint accepts;
+		// the caller's safety_tolerance is ignored rather than allowed to tighten
+		// it back up, which is why it is not read here. enable_safety_checker is
+		// asked to be off: fal gates that on an account authorization, and an
+		// unauthorized request is checked anyway — a flagged image then comes back
+		// as a black frame, which the has_nsfw_concepts check in Generate turns
+		// into a real error instead of a blank picture.
+		"safety_tolerance":      falMaxSafetyTolerance,
+		"enable_safety_checker": false,
 	}
 	if req.Seed != nil {
 		payload["seed"] = *req.Seed
@@ -243,7 +251,7 @@ func (c *FalClient) submit(ctx context.Context, req GenerateRequest, model strin
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return falSubmitResponse{}, fmt.Errorf("fal submit failed: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return falSubmitResponse{}, falHTTPError("submit", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var out falSubmitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -297,18 +305,45 @@ func (c *FalClient) poll(ctx context.Context, statusURL string) (falStatusRespon
 	}
 }
 
+// isFalContentPolicy reports whether a fragment of a fal error — a status
+// document's error_type/detail, or a raw HTTP error body — describes a
+// moderation refusal. fal has no dedicated "moderated" status the way BFL did,
+// so the refusal is recognised by name wherever it surfaces.
+func isFalContentPolicy(text string) bool {
+	lowered := strings.ToLower(text)
+	return strings.Contains(lowered, "content_policy") ||
+		strings.Contains(lowered, "content policy") ||
+		strings.Contains(lowered, "moderat")
+}
+
+// falContentPolicyError is the single phrasing for a moderation refusal, shared
+// by every path that can carry one.
+func falContentPolicyError() error {
+	return fmt.Errorf("fal blocked the prompt (content policy); revise the prompt and try again")
+}
+
+// falHTTPError turns a non-2xx response from one of fal's queue endpoints into
+// a user-facing message. A moderation refusal can arrive here rather than on the
+// status document — as a 422 whose body carries a content_policy_violation type
+// — and would otherwise reach the user as raw JSON. Everything else keeps the
+// status and body, which is the useful detail for a real failure.
+func falHTTPError(stage string, statusCode int, body string) error {
+	if isFalContentPolicy(body) {
+		return falContentPolicyError()
+	}
+	return fmt.Errorf("fal %s failed: status %d: %s", stage, statusCode, body)
+}
+
 // falStatusError turns an error reported on the queue status document into a
-// user-facing message. fal has no dedicated "moderated" status the way BFL did,
-// so a content-policy error type is recognised by name and phrased the same way.
+// user-facing message.
 func falStatusError(status falStatusResponse) error {
-	errType := strings.ToLower(strings.TrimSpace(status.ErrorType))
+	errType := strings.TrimSpace(status.ErrorType)
 	detail := falErrorDetail(status.Error)
 	if errType == "" && detail == "" {
 		return nil
 	}
-	if strings.Contains(errType, "content_policy") || strings.Contains(errType, "moderat") ||
-		strings.Contains(strings.ToLower(detail), "content policy") {
-		return fmt.Errorf("fal blocked the prompt (content policy); revise the prompt and try again")
+	if isFalContentPolicy(errType) || isFalContentPolicy(detail) {
+		return falContentPolicyError()
 	}
 	if detail == "" {
 		detail = errType
@@ -363,7 +398,7 @@ func (c *FalClient) getJSON(ctx context.Context, endpoint, stage string) ([]byte
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("fal %s failed: status %d: %s", stage, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, falHTTPError(stage, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 }
