@@ -34,11 +34,22 @@ func TestComposePassesImageGenerationEnv(t *testing.T) {
 	}
 }
 
-// imageRefEnvVar matches the container-image override env vars that production
-// must not read (BACKEND_IMAGE, BACKEND_UI_IMAGE, ...). The trailing guard keeps
-// it off unrelated vars that merely start the same way, such as the image
-// generation settings under BACKEND_IMAGE_GEN_*.
-var imageRefEnvVar = regexp.MustCompile(`BACKEND_(?:UI_|FETCH_|OBSCURA_)?IMAGE(?:[^A-Z_]|$)`)
+// readsImageRefFromEnv reports whether a file reads a container-image ref from
+// the environment, which production must not do. It is a substring scan over
+// "BACKEND_IMAGE" and friends, so it also catches names not invented yet — but
+// BACKEND_IMAGE_GEN_* is the image *generation* config, unrelated to image refs,
+// so that prefix is removed before scanning rather than exempted by pattern
+// (an exemption written into the pattern would let a real BACKEND_IMAGE_TAG
+// override through as well).
+func readsImageRefFromEnv(content []byte) bool {
+	scan := strings.ReplaceAll(string(content), "BACKEND_IMAGE_GEN_", "")
+	for _, name := range []string{"BACKEND_IMAGE", "BACKEND_UI_IMAGE", "BACKEND_FETCH_IMAGE", "BACKEND_OBSCURA_IMAGE"} {
+		if strings.Contains(scan, name) {
+			return true
+		}
+	}
+	return false
+}
 
 func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	data, err := os.ReadFile("../../../compose.yaml")
@@ -50,7 +61,7 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if strings.Contains(compose, "\n    build:") {
 		t.Fatal("compose.yaml must use prebuilt images, not local build directives")
 	}
-	if imageRefEnvVar.MatchString(compose) {
+	if readsImageRefFromEnv(data) {
 		t.Fatal("compose.yaml must hardcode production image refs instead of reading image refs from env")
 	}
 
@@ -78,7 +89,7 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read .env.example: %v", err)
 	}
-	if imageRefEnvVar.Match(envExample) {
+	if readsImageRefFromEnv(envExample) {
 		t.Fatal(".env.example must not expose production image overrides")
 	}
 }

@@ -72,11 +72,11 @@ func (t Tool) Schema() ToolSchema {
 				},
 				"width": map[string]any{
 					"type":        "integer",
-					"description": "Output width in pixels. Defaults to 1024, minimum 64, rounded up to a multiple of 16. Width × height must not exceed 4,000,000 pixels (about 4 MP).",
+					"description": "Output width in pixels. Defaults to 1024, rounded up to a multiple of 16. Each side is fitted to 256-2560 pixels, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
 				},
 				"height": map[string]any{
 					"type":        "integer",
-					"description": "Output height in pixels. Defaults to 1024, minimum 64, rounded up to a multiple of 16. Width × height must not exceed 4,000,000 pixels (about 4 MP).",
+					"description": "Output height in pixels. Defaults to 1024, rounded up to a multiple of 16. Each side is fitted to 256-2560 pixels, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
 				},
 				"seed": map[string]any{
 					"type":        "integer",

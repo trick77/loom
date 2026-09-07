@@ -80,6 +80,7 @@ func (c *FalClient) Generate(ctx context.Context, input GenerateRequest) (Genera
 		return GenerateResult{}, err
 	}
 	model := c.effectiveModel(req.Model)
+	req.Width, req.Height = clampToFalBounds(req.Width, req.Height)
 	shape := []slog.Attr{
 		slog.Int("width", req.Width),
 		slog.Int("height", req.Height),
@@ -156,6 +157,32 @@ func (c *FalClient) effectiveModel(override string) string {
 		return m
 	}
 	return c.model
+}
+
+const (
+	// falMinSide and falMaxSide are the per-side bounds every FLUX.2 endpoint on
+	// fal declares for image_size (min_width/max_width in its OpenAPI schema).
+	// The shared request validation is looser — it allows down to 64 px and caps
+	// only the area — so dimensions are fitted here rather than sent through and
+	// bounced as a 422 the user would see as a raw tool error. fal's max_area of
+	// 4,194,304 is above MaxOutputPixels, so the area is already covered.
+	falMinSide = 256
+	falMaxSide = 2560
+)
+
+// clampToFalBounds fits (w, h) into fal's per-side envelope, scaling down
+// proportionally first (so an oversized request keeps its aspect ratio) and only
+// then raising any side still below the floor. That order matters: clamping the
+// long side first means the floor bump can never push the area back over the cap.
+func clampToFalBounds(w, h int) (int, int) {
+	w, h = ClampMaxSide(w, h, falMaxSide)
+	if w < falMinSide {
+		w = falMinSide
+	}
+	if h < falMinSide {
+		h = falMinSide
+	}
+	return align16(w), align16(h)
 }
 
 // endpoint builds the queue URL for a model. fal model ids are multi-segment

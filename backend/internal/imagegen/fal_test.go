@@ -226,6 +226,45 @@ func TestFalClientGenerateOmitsInputImagesWhenNone(t *testing.T) {
 	}
 }
 
+// fal rejects a side outside 256-2560 with a 422 the user would see as a raw
+// tool error, while the shared validation allows down to 64 px and caps only the
+// area — so the provider fits the request instead of forwarding it.
+func TestFalClientGenerateFitsDimensionsToFalBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		w, h                  int
+		wantWidth, wantHeight int
+	}{
+		{"within bounds is untouched", 1024, 1024, 1024, 1024},
+		{"tiny side is raised to the floor", 64, 64, 256, 256},
+		{"long side scales down and keeps aspect ratio", 3840, 960, 2560, 640},
+		// Scaling the long side down first is what keeps the floor bump from
+		// pushing the area back over the cap.
+		{"extreme ratio clamps both ends", 3840, 64, 2560, 256},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := newFalStub(t)
+			server := stub.start()
+			client := stub.client(server)
+
+			result, err := client.Generate(context.Background(), GenerateRequest{
+				Prompt: "x", Width: tc.w, Height: tc.h, OutputFormat: "png",
+			})
+			if err != nil {
+				t.Fatalf("Generate() error = %v", err)
+			}
+			size := stub.submitted["image_size"].(map[string]any)
+			if int(size["width"].(float64)) != tc.wantWidth || int(size["height"].(float64)) != tc.wantHeight {
+				t.Fatalf("image_size = %#v, want {width:%d, height:%d}", size, tc.wantWidth, tc.wantHeight)
+			}
+			// The reported metadata must match what was actually asked for.
+			if result.Width != tc.wantWidth || result.Height != tc.wantHeight {
+				t.Fatalf("result %dx%d, want %dx%d", result.Width, result.Height, tc.wantWidth, tc.wantHeight)
+			}
+		})
+	}
+}
+
 func TestFalClientGenerateSendsSafetyToleranceAsString(t *testing.T) {
 	for _, tc := range []struct {
 		tolerance int
