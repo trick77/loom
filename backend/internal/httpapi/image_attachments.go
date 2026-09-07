@@ -1,14 +1,9 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
-	"image"
-	_ "image/gif"  // register GIF decoder for imageDimensions
-	_ "image/jpeg" // register JPEG decoder for imageDimensions
-	_ "image/png"  // register PNG decoder for imageDimensions
 	"os"
 	"strings"
 
@@ -129,17 +124,9 @@ func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, arti
 	if len(data) > imagegen.MaxInputImageBytes {
 		return editImageSource{}, false, nil
 	}
-	width, height := imageDimensions(data)
+	// imagescale.Dimensions, not image.DecodeConfig: it registers every allowed
+	// upload format (WebP included) and corrects for EXIF orientation, which a
+	// phone photo forwarded here untouched still carries.
+	width, height := imagescale.Dimensions(data)
 	return editImageSource{Data: data, Width: width, Height: height}, true, nil
-}
-
-// imageDimensions decodes just the header of an image to read its pixel size.
-// It returns 0, 0 for anything it cannot decode; callers treat that as "unknown"
-// rather than an error, matching DownscaleForEditInput's best-effort contract.
-func imageDimensions(data []byte) (int, int) {
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil {
-		return 0, 0
-	}
-	return cfg.Width, cfg.Height
 }

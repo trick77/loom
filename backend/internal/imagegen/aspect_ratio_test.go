@@ -123,3 +123,37 @@ func TestAspectRatioForSize(t *testing.T) {
 		})
 	}
 }
+
+// A partial size must complete from the ratio. Letting the missing side fall back
+// to the 1024 square default produced a shape matching neither the request nor the
+// ratio: "800 wide, 16:9" came out 800x1024, portrait.
+func TestNormalizePartialSizeCompletesFromAspectRatio(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		w, h         int
+		ratio        string
+		wantW, wantH int
+	}{
+		{"width only", 800, 0, "16:9", 800, 464},
+		{"height only", 0, 600, "16:9", 1072, 608},
+		{"portrait width only", 600, 0, "9:16", 608, 1072},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := GenerateRequest{Prompt: "x", Width: tc.w, Height: tc.h, AspectRatio: tc.ratio}.Normalized()
+			if err != nil {
+				t.Fatalf("Normalized() error = %v", err)
+			}
+			if got.Width != tc.wantW || got.Height != tc.wantH {
+				t.Fatalf("got %dx%d, want %dx%d", got.Width, got.Height, tc.wantW, tc.wantH)
+			}
+		})
+	}
+}
+
+// An unusable ratio has to be reported even when a size is also given, so the
+// model learns the value was wrong instead of the field being quietly dropped.
+func TestNormalizeRejectsUnknownAspectRatioAlongsideExplicitSize(t *testing.T) {
+	if _, err := (GenerateRequest{Prompt: "x", AspectRatio: "21:9", Width: 512, Height: 512}).Normalized(); err == nil {
+		t.Fatal("Normalized() silently ignored an unsupported aspect ratio")
+	}
+}

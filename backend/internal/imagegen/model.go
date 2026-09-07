@@ -84,12 +84,22 @@ func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 		return GenerateRequest{}, fmt.Errorf("prompt must be at most %d characters", MaxPromptRunes)
 	}
 	out.AspectRatio = strings.TrimSpace(out.AspectRatio)
-	if out.AspectRatio != "" && out.Width == 0 && out.Height == 0 {
+	if out.AspectRatio != "" {
 		size, ok := AspectRatioSizes[out.AspectRatio]
 		if !ok {
 			return GenerateRequest{}, fmt.Errorf("aspect_ratio must be one of %s", strings.Join(AspectRatioNames(), ", "))
 		}
-		out.Width, out.Height = size[0], size[1]
+		// A partial size ("800 wide, 16:9") completes from the ratio instead of
+		// letting the missing side fall back to the square default, which would
+		// match neither what was asked for nor the ratio.
+		switch {
+		case out.Width == 0 && out.Height == 0:
+			out.Width, out.Height = size[0], size[1]
+		case out.Height == 0:
+			out.Height = out.Width * size[1] / size[0]
+		case out.Width == 0:
+			out.Width = out.Height * size[0] / size[1]
+		}
 	}
 	if out.Width == 0 {
 		out.Width = DefaultWidth
@@ -150,9 +160,10 @@ var AspectRatioSizes = map[string][2]int{
 	"2:3":  {688, 1024},
 }
 
-// AspectRatioNames lists the accepted ratios widest-first, so the tool schema
-// and the validation error read in a stable, predictable order rather than
-// Go's randomized map order.
+// AspectRatioNames lists the accepted ratios in a fixed order — the square
+// default first, then each landscape ratio beside its portrait mirror — so the
+// tool schema and the validation error read predictably rather than in Go's
+// randomized map order.
 func AspectRatioNames() []string {
 	return []string{"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}
 }
