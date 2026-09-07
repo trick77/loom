@@ -79,6 +79,11 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 // the raw bytes as base64 with no MIME prefix, so only the bytes are needed.
 type editImageSource struct {
 	Data []byte
+	// Width and Height are the source image's pixel dimensions, used to give the
+	// edit the same proportions as its source. Zero when the bytes could not be
+	// decoded, in which case the caller falls back to its usual default shape.
+	Width  int
+	Height int
 }
 
 // loadEditSourceImage reads the original full-resolution bytes of an image
@@ -119,5 +124,9 @@ func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, arti
 	if len(data) > imagegen.MaxInputImageBytes {
 		return editImageSource{}, false, nil
 	}
-	return editImageSource{Data: data}, true, nil
+	// imagescale.Dimensions, not image.DecodeConfig: it registers every allowed
+	// upload format (WebP included) and corrects for EXIF orientation, which a
+	// phone photo forwarded here untouched still carries.
+	width, height := imagescale.Dimensions(data)
+	return editImageSource{Data: data, Width: width, Height: height}, true, nil
 }

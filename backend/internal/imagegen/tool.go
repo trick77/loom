@@ -14,6 +14,7 @@ type Tool struct {
 type ToolRequest struct {
 	Prompt          string `json:"prompt"`
 	Filename        string `json:"filename,omitempty"`
+	AspectRatio     string `json:"aspect_ratio,omitempty"`
 	Width           int    `json:"width,omitempty"`
 	Height          int    `json:"height,omitempty"`
 	Seed            *int64 `json:"seed,omitempty"`
@@ -21,7 +22,7 @@ type ToolRequest struct {
 	SafetyTolerance *int   `json:"safety_tolerance,omitempty"`
 	// Model is injected by the dispatcher (never parsed from LLM tool arguments —
 	// note the json:"-") to override the provider's configured model for this
-	// request, e.g. routing typography/logo work to FLUX.2 [flex].
+	// request, e.g. routing typography/logo work to FLUX.2 [max].
 	Model string `json:"-"`
 	// InputImages is injected by the dispatcher (never parsed from LLM tool
 	// arguments — note the json:"-") to forward the user's uploaded photo for
@@ -70,13 +71,18 @@ func (t Tool) Schema() ToolSchema {
 					"type":        "string",
 					"description": "Optional output filename without path. The extension is added automatically.",
 				},
+				"aspect_ratio": map[string]any{
+					"type":        "string",
+					"enum":        AspectRatioNames(),
+					"description": "Shape of the image, chosen from what the request depicts: 16:9 or 3:2 for wide scenes, landscapes, banners and desktop wallpapers; 9:16 or 2:3 for tall subjects, posters, book covers and phone wallpapers; 4:3 or 3:4 for a mild landscape or portrait lean. Omit this parameter entirely when the request implies no particular shape, and when editing an image that should keep its own proportions — a square is what you get by default, so it never needs to be asked for. Judge this from what the user actually asks for in whatever language they write in, not from specific words.",
+				},
 				"width": map[string]any{
 					"type":        "integer",
-					"description": "Output width in pixels. Defaults to 1024, rounded up to a multiple of 16. Each side is fitted to 256-2560 pixels, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
+					"description": "Output width in pixels. Only set this when the user asks for an exact size; otherwise use aspect_ratio and leave this unset. Rounded up to a multiple of 16, fitted to 256-2560 pixels per side, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
 				},
 				"height": map[string]any{
 					"type":        "integer",
-					"description": "Output height in pixels. Defaults to 1024, rounded up to a multiple of 16. Each side is fitted to 256-2560 pixels, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
+					"description": "Output height in pixels. Only set this when the user asks for an exact size; otherwise use aspect_ratio and leave this unset. Rounded up to a multiple of 16, fitted to 256-2560 pixels per side, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
 				},
 				"seed": map[string]any{
 					"type":        "integer",
@@ -105,6 +111,7 @@ func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolM
 	result, err := t.provider.Generate(ctx, GenerateRequest{
 		Prompt:          req.Prompt,
 		Filename:        req.Filename,
+		AspectRatio:     req.AspectRatio,
 		Width:           req.Width,
 		Height:          req.Height,
 		Seed:            req.Seed,
