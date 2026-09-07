@@ -736,7 +736,7 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(errorImageProvider{err: errors.New("BFL generation timed out: context deadline exceeded")})},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(errorImageProvider{err: errors.New("fal generation timed out: context deadline exceeded")})},
 		UsersDir:   t.TempDir(),
 		LLM:        llmClient,
 	})
@@ -746,7 +746,7 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 	server.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `"error":"tool failed: BFL generation timed out: context deadline exceeded"`) {
+	if !strings.Contains(body, `"error":"tool failed: fal generation timed out: context deadline exceeded"`) {
 		t.Fatalf("SSE body missing provider failure error:\n%s", body)
 	}
 	if store.assistantContent != "" {

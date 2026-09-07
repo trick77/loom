@@ -37,16 +37,16 @@ type Deps struct {
 	MCP        ToolService
 	DocTools   []docgen.Generator
 	ImageTools []imagegen.Tool
-	// BFLDefaultModel is the configured baseline image model (e.g.
-	// "flux-2-klein-4b"); BFLTypographyModel (e.g. "flux-2-flex") is used instead
+	// ImageDefaultModel is the configured baseline image model (e.g.
+	// "flux-2-klein-4b"); ImageGenTypographyModel (e.g. "flux-2-flex") is used instead
 	// for the first image of a thread when it reads as typography/logo/text work.
-	// Empty BFLTypographyModel disables typography routing.
-	BFLDefaultModel       string
-	BFLTypographyModel    string
-	UsersDir              string
-	OIDCAdminGroup        string
-	DevAuthClaims         auth.Claims
-	PostLogoutRedirectURL string
+	// Empty ImageGenTypographyModel disables typography routing.
+	ImageDefaultModel       string
+	ImageGenTypographyModel string
+	UsersDir                string
+	OIDCAdminGroup          string
+	DevAuthClaims           auth.Claims
+	PostLogoutRedirectURL   string
 	// PublicURL is the externally reachable base URL (e.g. https://loom.example.com),
 	// used to build absolute share links. Empty in dev → callers fall back to a
 	// relative /share/<id> path.
@@ -73,8 +73,8 @@ type server struct {
 	mcp                        ToolService
 	docTools                   []docgen.Generator
 	imageTools                 []imagegen.Tool
-	bflDefaultModel            string
-	bflTypographyModel         string
+	imageDefaultModel          string
+	imageTypographyModel       string
 	usersDir                   string
 	faviconCacheDir            string
 	faviconClient              *http.Client             // nil → faviconDefaultClient (overridden in tests)
@@ -290,8 +290,8 @@ func newServer(d Deps) *server {
 		mcp:                        d.MCP,
 		docTools:                   d.DocTools,
 		imageTools:                 d.ImageTools,
-		bflDefaultModel:            d.BFLDefaultModel,
-		bflTypographyModel:         d.BFLTypographyModel,
+		imageDefaultModel:          d.ImageDefaultModel,
+		imageTypographyModel:       d.ImageGenTypographyModel,
 		usersDir:                   d.UsersDir,
 		faviconCacheDir:            faviconCacheDirFor(d.UsersDir),
 		oidcAdminGroup:             d.OIDCAdminGroup,

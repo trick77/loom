@@ -30,10 +30,10 @@ const (
 	// editMaxDimension bounds source images forwarded to the image model for
 	// direct editing/transformation. Unlike the vision-input path, detail is the
 	// whole point here, so the cap is generous — it only trims images that would
-	// breach BFL's ~20MP input envelope (a 4096-long side stays well under 20MP at
+	// breach the image model's ~20MP input envelope (a 4096-long side stays well under 20MP at
 	// common aspect ratios). Typical phone photos pass through untouched.
 	editMaxDimension = 4096
-	// editByteCap matches BFL's 20MB per-image input limit.
+	// editByteCap matches the image model's 20MB per-image input limit.
 	editByteCap = 20 << 20
 )
 
@@ -48,7 +48,7 @@ func DownscaleForModel(data []byte, mimeType string) ([]byte, string) {
 }
 
 // DownscaleForEditInput bounds a source image forwarded to the image model for
-// direct editing to BFL's input envelope, preserving as much detail as possible.
+// direct editing to the image model's input envelope, preserving as much detail as possible.
 // Like DownscaleForModel it is best-effort and returns the input unchanged when it
 // already fits or when recompression cannot decode/shrink it.
 func DownscaleForEditInput(data []byte, mimeType string) ([]byte, string) {

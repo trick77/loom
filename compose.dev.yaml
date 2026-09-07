@@ -42,9 +42,11 @@ services:
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"
       IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"
       CONTEXT7_API_KEY: "${CONTEXT7_API_KEY:-}"
-      BACKEND_BFL_BASE_URL: "${BACKEND_BFL_BASE_URL:-https://api.bfl.ai/v1}"
-      BACKEND_BFL_API_KEY: "${BACKEND_BFL_API_KEY:-}"
-      BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"
+      BACKEND_IMAGE_GEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-https://queue.fal.run}"
+      BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"
+      BACKEND_IMAGE_GEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-fal-ai/flux-2-pro}"
+      BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-fal-ai/flux-2-max}"
+      BACKEND_IMAGE_GEN_POLL_TIMEOUT: "${BACKEND_IMAGE_GEN_POLL_TIMEOUT:-1m}"
     volumes:
       - loom-dev-data:/data
       - ./conf:/conf:ro

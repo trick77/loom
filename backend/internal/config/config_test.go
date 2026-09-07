@@ -166,63 +166,66 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.BFLAPIKey != "" {
-		t.Fatal("BFLAPIKey default was not empty")
+	if cfg.ImageGenAPIKey != "" {
+		t.Fatal("ImageGenAPIKey default was not empty")
 	}
-	if cfg.BFLBaseURL != "https://api.bfl.ai/v1" {
-		t.Fatalf("BFLBaseURL = %q", cfg.BFLBaseURL)
+	if cfg.ImageGenBaseURL != "https://queue.fal.run" {
+		t.Fatalf("ImageGenBaseURL = %q", cfg.ImageGenBaseURL)
 	}
-	if cfg.BFLModel != "flux-2-klein-4b" {
-		t.Fatalf("BFLModel = %q", cfg.BFLModel)
+	if cfg.ImageGenModel != "fal-ai/flux-2-pro" {
+		t.Fatalf("ImageGenModel = %q", cfg.ImageGenModel)
 	}
-	if cfg.BFLPollTimeout != 1*time.Minute {
-		t.Fatalf("BFLPollTimeout = %s, want 1m0s", cfg.BFLPollTimeout)
+	if cfg.ImageGenTypographyModel != "fal-ai/flux-2-max" {
+		t.Fatalf("ImageGenTypographyModel = %q", cfg.ImageGenTypographyModel)
+	}
+	if cfg.ImageGenPollTimeout != 1*time.Minute {
+		t.Fatalf("ImageGenPollTimeout = %s, want 1m0s", cfg.ImageGenPollTimeout)
 	}
 }
 
-func TestLoadBFLImageRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
+func TestLoadImageGenRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "secret")
-	t.Setenv("BACKEND_BFL_API_KEY", "bfl-test")
-	t.Setenv("BACKEND_BFL_BASE_URL", "")
+	t.Setenv("BACKEND_IMAGE_GEN_API_KEY", "fal-test")
+	t.Setenv("BACKEND_IMAGE_GEN_BASE_URL", "")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "BACKEND_BFL_BASE_URL is required") {
-		t.Fatalf("Load() error = %v, want BACKEND_BFL_BASE_URL required", err)
+	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_BASE_URL is required") {
+		t.Fatalf("Load() error = %v, want BACKEND_IMAGE_GEN_BASE_URL required", err)
 	}
 }
 
-func TestLoadBFLImageConfiguredByAPIKey(t *testing.T) {
+func TestLoadImageGenConfiguredByAPIKey(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "secret")
-	t.Setenv("BACKEND_BFL_API_KEY", "bfl-test")
-	t.Setenv("BACKEND_BFL_MODEL", "flux-2-klein-9b")
+	t.Setenv("BACKEND_IMAGE_GEN_API_KEY", "fal-test")
+	t.Setenv("BACKEND_IMAGE_GEN_MODEL", "flux-2-klein-9b")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.BFLAPIKey != "bfl-test" {
-		t.Fatalf("BFLAPIKey was not loaded")
+	if cfg.ImageGenAPIKey != "fal-test" {
+		t.Fatalf("ImageGenAPIKey was not loaded")
 	}
-	if cfg.BFLModel != "flux-2-klein-9b" {
-		t.Fatalf("BFLModel = %q", cfg.BFLModel)
+	if cfg.ImageGenModel != "flux-2-klein-9b" {
+		t.Fatalf("ImageGenModel = %q", cfg.ImageGenModel)
 	}
 }
 
-func TestLoadBFLImagePollTimeoutOverride(t *testing.T) {
+func TestLoadImageGenPollTimeoutOverride(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "secret")
-	t.Setenv("BACKEND_BFL_POLL_TIMEOUT", "7m")
+	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "7m")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.BFLPollTimeout != 7*time.Minute {
-		t.Fatalf("BFLPollTimeout = %s, want 7m0s", cfg.BFLPollTimeout)
+	if cfg.ImageGenPollTimeout != 7*time.Minute {
+		t.Fatalf("ImageGenPollTimeout = %s, want 7m0s", cfg.ImageGenPollTimeout)
 	}
 }
 
-func TestLoadBFLImageRejectsInvalidPollTimeout(t *testing.T) {
+func TestLoadImageGenRejectsInvalidPollTimeout(t *testing.T) {
 	t.Setenv("BACKEND_SESSION_SECRET", "secret")
-	t.Setenv("BACKEND_BFL_POLL_TIMEOUT", "soon")
+	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "soon")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "BACKEND_BFL_POLL_TIMEOUT must be a duration") {
+	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration") {
 		t.Fatalf("Load() error = %v, want invalid poll timeout", err)
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestComposePassesBFLImageGenerationEnv(t *testing.T) {
+func TestComposePassesImageGenerationEnv(t *testing.T) {
 	for _, path := range []string{
 		"../../../compose.yaml",
 		"../../../compose.dev.yaml",
@@ -20,9 +20,11 @@ func TestComposePassesBFLImageGenerationEnv(t *testing.T) {
 			compose := string(data)
 
 			for _, want := range []string{
-				`BACKEND_BFL_BASE_URL: "${BACKEND_BFL_BASE_URL:-https://api.bfl.ai/v1}"`,
-				`BACKEND_BFL_API_KEY: "${BACKEND_BFL_API_KEY:-}"`,
-				`BACKEND_BFL_MODEL: "${BACKEND_BFL_MODEL:-flux-2-klein-4b}"`,
+				`BACKEND_IMAGE_GEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-https://queue.fal.run}"`,
+				`BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"`,
+				`BACKEND_IMAGE_GEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-fal-ai/flux-2-pro}"`,
+				`BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-fal-ai/flux-2-max}"`,
+				`BACKEND_IMAGE_GEN_POLL_TIMEOUT: "${BACKEND_IMAGE_GEN_POLL_TIMEOUT:-1m}"`,
 			} {
 				if !strings.Contains(compose, want) {
 					t.Fatalf("%s does not pass %s into the loom container", path, strings.Split(want, ":")[0])
@@ -30,6 +32,23 @@ func TestComposePassesBFLImageGenerationEnv(t *testing.T) {
 			}
 		})
 	}
+}
+
+// readsImageRefFromEnv reports whether a file reads a container-image ref from
+// the environment, which production must not do. It is a substring scan over
+// "BACKEND_IMAGE" and friends, so it also catches names not invented yet — but
+// BACKEND_IMAGE_GEN_* is the image *generation* config, unrelated to image refs,
+// so that prefix is removed before scanning rather than exempted by pattern
+// (an exemption written into the pattern would let a real BACKEND_IMAGE_TAG
+// override through as well).
+func readsImageRefFromEnv(content []byte) bool {
+	scan := strings.ReplaceAll(string(content), "BACKEND_IMAGE_GEN_", "")
+	for _, name := range []string{"BACKEND_IMAGE", "BACKEND_UI_IMAGE", "BACKEND_FETCH_IMAGE", "BACKEND_OBSCURA_IMAGE"} {
+		if strings.Contains(scan, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
@@ -42,8 +61,7 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if strings.Contains(compose, "\n    build:") {
 		t.Fatal("compose.yaml must use prebuilt images, not local build directives")
 	}
-	if strings.Contains(compose, "BACKEND_IMAGE") || strings.Contains(compose, "BACKEND_UI_IMAGE") ||
-		strings.Contains(compose, "BACKEND_FETCH_IMAGE") || strings.Contains(compose, "BACKEND_OBSCURA_IMAGE") {
+	if readsImageRefFromEnv(data) {
 		t.Fatal("compose.yaml must hardcode production image refs instead of reading image refs from env")
 	}
 
@@ -71,8 +89,7 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read .env.example: %v", err)
 	}
-	if strings.Contains(string(envExample), "BACKEND_IMAGE") || strings.Contains(string(envExample), "BACKEND_UI_IMAGE") ||
-		strings.Contains(string(envExample), "BACKEND_FETCH_IMAGE") || strings.Contains(string(envExample), "BACKEND_OBSCURA_IMAGE") {
+	if readsImageRefFromEnv(envExample) {
 		t.Fatal(".env.example must not expose production image overrides")
 	}
 }
