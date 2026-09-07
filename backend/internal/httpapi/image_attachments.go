@@ -75,7 +75,7 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 }
 
 // editImageSource carries the original bytes of an uploaded/prior image that is
-// forwarded to the image model for direct editing or transformation. BFL encodes
+// forwarded to the image model for direct editing or transformation. The provider encodes
 // the raw bytes as base64 with no MIME prefix, so only the bytes are needed.
 type editImageSource struct {
 	Data []byte
@@ -84,7 +84,7 @@ type editImageSource struct {
 // loadEditSourceImage reads the original full-resolution bytes of an image
 // artifact for direct editing. Unlike imageContentParts (which downscales hard to
 // the vision-input budget and so would reintroduce detail loss), this keeps the
-// original and only trims to BFL's input envelope. Returns ok=false when the
+// original and only trims to the image model's input envelope. Returns ok=false when the
 // artifact is missing, out of scope, or not a supported image type.
 func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, artifactID string) (editImageSource, bool, error) {
 	if s.artifacts == nil || strings.TrimSpace(artifactID) == "" {
@@ -113,7 +113,7 @@ func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, arti
 	}
 	data, _ := imagescale.DownscaleForEditInput(raw, item.MIMEType)
 	// DownscaleForEditInput is best-effort: an undecodable (e.g. corrupt) image is
-	// returned unshrunk and could still exceed BFL's input cap, which Normalized()
+	// returned unshrunk and could still exceed the image model's input cap, which Normalized()
 	// would later reject as a hard tool error. Skip it here so the turn degrades to
 	// prompt-only generation instead of failing outright.
 	if len(data) > imagegen.MaxInputImageBytes {

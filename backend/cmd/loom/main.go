@@ -187,12 +187,12 @@ func run() error {
 		docgen.PPTXGenerator{},
 	}
 	var imageTools []imagegen.Tool
-	if bflImageConfigured(cfg) {
-		imageProvider := imagegen.NewBFLClient(imagegen.BFLConfig{
-			BaseURL:     cfg.BFLBaseURL,
-			APIKey:      cfg.BFLAPIKey,
-			Model:       cfg.BFLModel,
-			PollTimeout: cfg.BFLPollTimeout,
+	if imageGenConfigured(cfg) {
+		imageProvider := imagegen.NewFalClient(imagegen.FalConfig{
+			BaseURL:     cfg.ImageGenBaseURL,
+			APIKey:      cfg.ImageGenAPIKey,
+			Model:       cfg.ImageGenModel,
+			PollTimeout: cfg.ImageGenPollTimeout,
 		})
 		imageTools = append(imageTools, imagegen.NewTool(imageProvider))
 	}
@@ -273,8 +273,8 @@ func run() error {
 		MCP:                        toolService,
 		DocTools:                   docTools,
 		ImageTools:                 imageTools,
-		BFLDefaultModel:            cfg.BFLModel,
-		BFLTypographyModel:         cfg.BFLTypographyModel,
+		ImageDefaultModel:          cfg.ImageGenModel,
+		ImageGenTypographyModel:    cfg.ImageGenTypographyModel,
 		UsersDir:                   cfg.UsersDir,
 		OIDCAdminGroup:             cfg.OIDC.AdminGroup,
 		DevAuthClaims:              devAuthClaims,
@@ -399,6 +399,6 @@ func tavilyConfigured(cfg config.Config) bool {
 	return strings.TrimSpace(cfg.TavilyAPIKey) != ""
 }
 
-func bflImageConfigured(cfg config.Config) bool {
-	return strings.TrimSpace(cfg.BFLAPIKey) != ""
+func imageGenConfigured(cfg config.Config) bool {
+	return strings.TrimSpace(cfg.ImageGenAPIKey) != ""
 }

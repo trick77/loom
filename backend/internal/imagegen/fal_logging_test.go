@@ -58,40 +58,17 @@ func captureInferenceLogs(t *testing.T) *inferenceLogCapture {
 }
 
 // Image generation is a model call and belongs in the same log stream as chat
-// and embeddings: one line for the whole submit → poll → download round trip
-// (not one per poll), carrying the request's attribution but never the prompt.
-func TestBFLClient_Generate_logsOneCompletedInferencePerCall(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1/flux-2-klein-4b":
-			writeJSON(t, w, map[string]any{
-				"id":          "task-1",
-				"polling_url": serverURL(r) + "/v1/get_result?id=task-1",
-				"cost":        1.4,
-			})
-		case "/v1/get_result":
-			writeJSON(t, w, map[string]any{
-				"id":     "task-1",
-				"status": "Ready",
-				"result": map[string]any{"sample": serverURL(r) + "/delivery/image.png"},
-			})
-		case "/delivery/image.png":
-			w.Header().Set("Content-Type", "image/png")
-			_, _ = w.Write([]byte("\x89PNG\r\n\x1a\nimage"))
-		default:
-			t.Fatalf("unexpected path %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
+// and embeddings: one line for the whole submit → poll → result → download round
+// trip (not one per poll), carrying the request's attribution but never the prompt.
+func TestFalClient_Generate_logsOneCompletedInferencePerCall(t *testing.T) {
+	stub := newFalStub(t)
+	// Sit in the queue for two polls first, so the single log line proves the
+	// round trip is logged once rather than once per poll.
+	stub.pendingPolls = 2
+	server := stub.start()
 	capture := captureInferenceLogs(t)
 
-	client := NewBFLClient(BFLConfig{
-		BaseURL:      server.URL + "/v1",
-		APIKey:       "test-key",
-		Model:        "flux-2-klein-4b",
-		PollInterval: time.Millisecond,
-		HTTPClient:   server.Client(),
-	})
+	client := stub.client(server)
 	ctx := inference.WithMetadata(context.Background(), inference.Metadata{
 		UserID: "user-1", Username: "jan", ThreadID: "thread-1",
 	})
@@ -109,8 +86,8 @@ func TestBFLClient_Generate_logsOneCompletedInferencePerCall(t *testing.T) {
 		t.Errorf("message = %q, want %q", line.message, "llm inference completed")
 	}
 	for key, want := range map[string]string{
-		"model": "flux-2-klein-4b", "user_id": "user-1", "username": "jan",
-		"thread_id": "thread-1", "purpose": "image_generate", "request_id": "task-1",
+		"model": testFalModel, "user_id": "user-1", "username": "jan",
+		"thread_id": "thread-1", "purpose": "image_generate", "request_id": "req-1",
 	} {
 		if got := line.attrs[key].String(); got != want {
 			t.Errorf("attr %s = %q, want %q", key, got, want)
@@ -128,7 +105,7 @@ func TestBFLClient_Generate_logsOneCompletedInferencePerCall(t *testing.T) {
 
 // A provider failure is exactly the case someone greps for, so it must produce a
 // failure line rather than nothing at all.
-func TestBFLClient_Generate_logsFailedInference(t *testing.T) {
+func TestFalClient_Generate_logsFailedInference(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 		_, _ = w.Write([]byte("provider down"))
@@ -136,10 +113,10 @@ func TestBFLClient_Generate_logsFailedInference(t *testing.T) {
 	defer server.Close()
 	capture := captureInferenceLogs(t)
 
-	client := NewBFLClient(BFLConfig{
-		BaseURL:      server.URL + "/v1",
+	client := NewFalClient(FalConfig{
+		BaseURL:      server.URL,
 		APIKey:       "test-key",
-		Model:        "flux-2-klein-4b",
+		Model:        testFalModel,
 		PollInterval: time.Millisecond,
 		HTTPClient:   server.Client(),
 	})

@@ -40,7 +40,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		mcpCapability(mcpConfig, runtime),
 		mcpFileCapability(cfg),
 		tavilyCapability(cfg),
-		bflImageCapability(cfg, runtime),
+		imageGenCapability(cfg, runtime),
 		responseLoggingCapability(cfg),
 	}
 }
@@ -116,11 +116,11 @@ func tavilyCapability(cfg config.Config) startupCapability {
 	return startupCapability{Name: "Tavily web search", Status: "enabled", Detail: "source=env"}
 }
 
-func bflImageCapability(cfg config.Config, runtime startupRuntime) startupCapability {
-	if !bflImageConfigured(cfg) {
-		return startupCapability{Name: "BFL image generation", Status: "disabled", Detail: "set BACKEND_BFL_API_KEY"}
+func imageGenCapability(cfg config.Config, runtime startupRuntime) startupCapability {
+	if !imageGenConfigured(cfg) {
+		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "set BACKEND_IMAGE_GEN_API_KEY"}
 	}
-	return startupCapability{Name: "BFL image generation", Status: "enabled", Detail: fmt.Sprintf("model=%s tools=%d", cfg.BFLModel, runtime.ImageToolCount)}
+	return startupCapability{Name: "Image generation", Status: "enabled", Detail: fmt.Sprintf("model=%s tools=%d", cfg.ImageGenModel, runtime.ImageToolCount)}
 }
 
 func responseLoggingCapability(cfg config.Config) startupCapability {

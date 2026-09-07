@@ -11,7 +11,7 @@ import (
 )
 
 // Keep in sync with imagegen's direct-client fallback default.
-const defaultBFLPollTimeout = 1 * time.Minute
+const defaultImageGenPollTimeout = 1 * time.Minute
 const defaultChatMaxCompletionTokens = 2048
 
 // defaultChatTimeout is the coarse total wall-clock budget for a streamed chat
@@ -83,15 +83,15 @@ type Config struct {
 	// ProjectSummaryTokenBudget bounds the cross-thread digest the
 	// read_project_threads tool returns when summarizing a project's threads.
 	ProjectSummaryTokenBudget int
-	BFLBaseURL                string
-	BFLAPIKey                 string
-	BFLModel                  string
-	// BFLTypographyModel is used instead of BFLModel for the first image of a
-	// thread when the request reads as typography/logo/text work (FLUX.2 [flex]
-	// renders legible text far better than the klein default). Empty disables
-	// typography routing — every image stays on BFLModel.
-	BFLTypographyModel string
-	BFLPollTimeout     time.Duration
+	ImageGenBaseURL           string
+	ImageGenAPIKey            string
+	ImageGenModel             string
+	// ImageGenTypographyModel is used instead of ImageGenModel for the first image
+	// of a thread when the request reads as typography/logo/text work (FLUX.2
+	// [max] renders legible text far better than the [pro] default). Empty
+	// disables typography routing — every image stays on ImageGenModel.
+	ImageGenTypographyModel string
+	ImageGenPollTimeout     time.Duration
 
 	TikaURL       string
 	GotenbergURL  string // Gotenberg (Chromium) sidecar for HTML→PDF rendering
@@ -151,10 +151,10 @@ func Load() (Config, error) {
 		EmbedBaseURL:            env("BACKEND_EMBED_BASE_URL", ""),
 		EmbedAPIKey:             env("BACKEND_EMBED_API_KEY", ""),
 		EmbedModel:              env("BACKEND_EMBED_MODEL", "text-embedding-3-small"),
-		BFLBaseURL:              env("BACKEND_BFL_BASE_URL", "https://api.bfl.ai/v1"),
-		BFLAPIKey:               env("BACKEND_BFL_API_KEY", ""),
-		BFLModel:                env("BACKEND_BFL_MODEL", "flux-2-klein-4b"),
-		BFLTypographyModel:      env("BACKEND_BFL_TYPOGRAPHY_MODEL", "flux-2-flex"),
+		ImageGenBaseURL:         env("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
+		ImageGenAPIKey:          env("BACKEND_IMAGE_GEN_API_KEY", ""),
+		ImageGenModel:           env("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),
+		ImageGenTypographyModel: env("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "fal-ai/flux-2-max"),
 		TikaURL:                 env("BACKEND_TIKA_URL", "http://tika:9998"),
 		GotenbergURL:            env("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
 		TavilyURL:               env("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
@@ -180,11 +180,11 @@ func Load() (Config, error) {
 			Role:        "admin",
 		},
 	}
-	bflPollTimeout, err := time.ParseDuration(env("BACKEND_BFL_POLL_TIMEOUT", defaultBFLPollTimeout.String()))
-	if err != nil || bflPollTimeout <= 0 {
-		return Config{}, fmt.Errorf("BACKEND_BFL_POLL_TIMEOUT must be a duration greater than 0")
+	imageGenPollTimeout, err := time.ParseDuration(env("BACKEND_IMAGE_GEN_POLL_TIMEOUT", defaultImageGenPollTimeout.String()))
+	if err != nil || imageGenPollTimeout <= 0 {
+		return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration greater than 0")
 	}
-	cfg.BFLPollTimeout = bflPollTimeout
+	cfg.ImageGenPollTimeout = imageGenPollTimeout
 	maxCompletionTokens, err := strconv.Atoi(env("BACKEND_CHAT_MAX_COMPLETION_TOKENS", strconv.Itoa(defaultChatMaxCompletionTokens)))
 	if err != nil || maxCompletionTokens <= 0 {
 		return Config{}, fmt.Errorf("BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0")
@@ -238,12 +238,12 @@ func Load() (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("BACKEND_AUTH_MODE must be one of: oidc, dev")
 	}
-	if cfg.BFLAPIKey != "" {
-		if cfg.BFLBaseURL == "" {
-			return Config{}, fmt.Errorf("BACKEND_BFL_BASE_URL is required when BACKEND_BFL_API_KEY is set")
+	if cfg.ImageGenAPIKey != "" {
+		if cfg.ImageGenBaseURL == "" {
+			return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_BASE_URL is required when BACKEND_IMAGE_GEN_API_KEY is set")
 		}
-		if cfg.BFLModel == "" {
-			return Config{}, fmt.Errorf("BACKEND_BFL_MODEL is required when BACKEND_BFL_API_KEY is set")
+		if cfg.ImageGenModel == "" {
+			return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_MODEL is required when BACKEND_IMAGE_GEN_API_KEY is set")
 		}
 	}
 	return cfg, nil

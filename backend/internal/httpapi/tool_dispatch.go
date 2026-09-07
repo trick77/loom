@@ -363,8 +363,8 @@ func (s *server) runDocGenerator(ctx context.Context, stream *sse.Writer, user a
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
 
-// maxTypographyImageSide caps typography-model (FLUX.2 [flex]) output to the same
-// ~1024 px ceiling as the klein default; flex otherwise supports up to 4 MP.
+// maxTypographyImageSide caps typography-model (FLUX.2 [max]) output to the same
+// ~1024 px ceiling as the [pro] default; max otherwise supports up to 4 MP.
 const maxTypographyImageSide = 1024
 
 // resolveThreadImageModel returns the image model to use for this thread, locking
@@ -384,8 +384,8 @@ func (s *server) resolveThreadImageModel(ctx context.Context, userID string, thr
 	if locked := strings.TrimSpace(thread.ImageModel); locked != "" {
 		return locked
 	}
-	candidate := s.bflDefaultModel
-	if tm := strings.TrimSpace(s.bflTypographyModel); tm != "" && (typography || isTypographyImageRequest(compiledPrompt)) {
+	candidate := s.imageDefaultModel
+	if tm := strings.TrimSpace(s.imageTypographyModel); tm != "" && (typography || isTypographyImageRequest(compiledPrompt)) {
 		candidate = tm
 	}
 	if updated, _, err := s.thread.SetThreadImageModelIfEmpty(ctx, userID, thread.ID, candidate); err == nil {
@@ -435,7 +435,7 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	// Pick (and lock, once per thread) the image model. When it is the typography
 	// model, clamp output to ≤1024 px/side so flex matches the klein default's size.
 	req.Model = s.resolveThreadImageModel(ctx, user.ID, thread, typography, req.Prompt)
-	if tm := strings.TrimSpace(s.bflTypographyModel); tm != "" && req.Model == tm {
+	if tm := strings.TrimSpace(s.imageTypographyModel); tm != "" && req.Model == tm {
 		req.Width, req.Height = imagegen.ClampMaxSide(req.Width, req.Height, maxTypographyImageSide)
 	}
 	var buffer bytes.Buffer

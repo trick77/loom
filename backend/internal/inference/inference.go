@@ -2,7 +2,7 @@
 // and the structured log lines every model call emits.
 //
 // It exists so the non-chat model clients — rag.EmbedClient (embeddings) and
-// imagegen.BFLClient (image generation) — can log with the same message and the
+// imagegen.FalClient (image generation) — can log with the same message and the
 // same attribution attrs as the chat client without importing package llm
 // (which they deliberately do not depend on). One ctx key, one log shape:
 // `msg="llm inference completed"` / `msg="llm inference failed"` covers every

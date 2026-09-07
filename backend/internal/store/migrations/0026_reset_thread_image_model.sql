@@ -1,0 +1,11 @@
+-- Image generation moved from Black Forest Labs' direct API to fal.ai, which
+-- addresses the same FLUX.2 family under different model ids ("fal-ai/flux-2-pro"
+-- rather than "flux-2-klein-4b"). threads.image_model locks a thread to whichever
+-- model made its first image, so every existing thread still carries a BFL id —
+-- and sending one of those to fal is a 404 on the thread's next image.
+--
+-- Clearing the column lets each thread re-lock on its next image via the same
+-- set-if-empty path that fills it for a new thread. Threads that never generated
+-- an image are already NULL and are unaffected. The model that made a past image
+-- is still recorded on the artifact itself, so nothing user-visible is lost.
+UPDATE threads SET image_model = NULL WHERE image_model IS NOT NULL;

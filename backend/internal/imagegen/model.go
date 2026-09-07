@@ -15,12 +15,12 @@ const (
 	MaxPromptRunes      = 4000
 	MaxOutputPixels     = 4_000_000
 	// MaxInputImages caps how many source images may be forwarded for editing.
-	// FLUX.2 [klein] (the default model) accepts up to 4 reference images
-	// (input_image..input_image_4); the larger [pro]/[max] tiers allow 8. The
-	// dispatcher currently sends one, so this is a guard, not a live limit — kept at
-	// the klein ceiling to match the configured model.
+	// The FLUX.2 edit endpoints accept up to 4 reference images in image_urls.
+	// The dispatcher currently sends one, so this is a guard, not a live limit.
 	MaxInputImages = 4
-	// MaxInputImageBytes guards each source image against BFL's 20MB input limit.
+	// MaxInputImageBytes guards each source image against the 20MB per-image
+	// input limit. Source images ride along as base64 data URIs, which inflates
+	// the request body by roughly a third.
 	MaxInputImageBytes = 20 << 20
 )
 
