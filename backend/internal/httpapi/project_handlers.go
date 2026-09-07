@@ -172,6 +172,6 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	s.cleanupArtifactFiles(user.ID, artifacts)
+	s.cleanupArtifactFiles(user.ID, artifacts, nil)
 	w.WriteHeader(http.StatusNoContent)
 }

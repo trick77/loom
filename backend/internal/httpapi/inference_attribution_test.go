@@ -36,10 +36,13 @@ func (s *attributionStub) FullText(ctx context.Context, _, _ string) (string, er
 	s.fullTextMetadata = inference.MetadataFromContext(ctx)
 	return "the document text", nil
 }
-func (s *attributionStub) Index(context.Context, string, string) error             { return nil }
-func (s *attributionStub) Unindex(context.Context, string, string) error           { return nil }
-func (s *attributionStub) Delete(context.Context, string, string) error            { return nil }
-func (s *attributionStub) DeleteThreadData(context.Context, string, string) error  { return nil }
+func (s *attributionStub) Index(context.Context, string, string) error            { return nil }
+func (s *attributionStub) Unindex(context.Context, string, string) error          { return nil }
+func (s *attributionStub) Delete(context.Context, string, string) error           { return nil }
+func (s *attributionStub) DeleteThreadData(context.Context, string, string) error { return nil }
+func (s *attributionStub) ArtifactIDsForThreadArtifactsInUse(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
 func (s *attributionStub) DeleteProjectData(context.Context, string, string) error { return nil }
 func (s *attributionStub) Retrieve(ctx context.Context, _ string, _, _ *string, _ string, _ int) ([]rag.RetrievedChunk, error) {
 	s.retrieveMetadata = inference.MetadataFromContext(ctx)

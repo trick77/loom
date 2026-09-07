@@ -84,6 +84,30 @@ func (s *Store) Delete(ctx context.Context, userID, artifactID string) error {
 	return nil
 }
 
+// DetachFromThread clears thread_id on the given artifacts, scoped to the user.
+// It is used right before a thread is deleted, for artifacts whose thread id is
+// only provenance and that still back a live document: with the column NULL the
+// composite FK to threads no longer matches, so the thread's ON DELETE CASCADE
+// leaves the row — and its documents.artifact_id link — intact.
+func (s *Store) DetachFromThread(ctx context.Context, userID string, artifactIDs []string) error {
+	if len(artifactIDs) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("detach artifacts from thread: %w", err)
+	}
+	defer tx.Rollback()
+	for _, id := range artifactIDs {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE artifacts SET thread_id = NULL WHERE user_id = ? AND id = ?`,
+			userID, id); err != nil {
+			return fmt.Errorf("detach artifact %s from thread: %w", id, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // Rename changes an artifact's display filename, scoped to the user. Only live
 // (non-deleted) artifacts are renamable. The caller validates the new name.
 func (s *Store) Rename(ctx context.Context, userID, artifactID, displayFilename string) error {

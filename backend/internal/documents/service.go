@@ -282,6 +282,13 @@ func (s *Service) DeleteThreadData(ctx context.Context, userID, threadID string)
 	return s.store.DeleteThreadScopeDocuments(ctx, userID, threadID)
 }
 
+// ArtifactIDsForThreadArtifactsInUse reports which of a thread's artifacts still
+// back a document that outlives the thread, so the caller can spare them from the
+// FK cascade and the volume cleanup. Call after DeleteThreadData.
+func (s *Service) ArtifactIDsForThreadArtifactsInUse(ctx context.Context, userID, threadID string) ([]string, error) {
+	return s.store.ArtifactIDsForThreadArtifactsInUse(ctx, userID, threadID)
+}
+
 // DeleteProjectData removes all RAG data scoped to a deleted project. It MUST be
 // called before chat.DeleteProject, whose FK cascade would otherwise drop the
 // chunk rows and orphan the vec0 embeddings.

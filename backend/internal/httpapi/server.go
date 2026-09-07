@@ -221,6 +221,7 @@ type ArtifactStore interface {
 	Delete(context.Context, string, string) error
 	Rename(context.Context, string, string, string) error
 	SetThumbnailRelPath(context.Context, string, string, string) error
+	DetachFromThread(context.Context, string, []string) error
 	List(context.Context, string, artifact.ListOptions) ([]artifact.Artifact, error)
 	ListForThread(context.Context, string, string) ([]artifact.Artifact, error)
 	ListForProject(context.Context, string, string) ([]artifact.Artifact, error)
