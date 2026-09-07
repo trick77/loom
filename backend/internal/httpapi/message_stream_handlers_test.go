@@ -695,8 +695,10 @@ func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 	if got := provider.request.Prompt; got != "generate an image of a glass city at sunrise" {
 		t.Fatalf("fallback prompt = %q, want the user's own message", got)
 	}
-	if got := provider.request.Filename; got != "generate-image-glass-city" {
-		t.Fatalf("fallback filename = %q, want one derived from the prompt", got)
+	// No filename is sent, leaving the provider to derive one from the prompt with
+	// a character set the artifact store can keep.
+	if got := provider.request.Filename; got != "" {
+		t.Fatalf("fallback filename = %q, want none", got)
 	}
 	// The fallback leaves through the normal answered-turn path, so the thread is
 	// still named — a refusal must not cost the turn its title.

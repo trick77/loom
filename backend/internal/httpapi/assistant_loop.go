@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
@@ -28,12 +27,8 @@ const (
 	// cheapToolCallsPerRound is the higher per-round cap for the inexpensive
 	// fetch/obscura tools: a single paste can carry a dozen links, and fetching
 	// them is essentially free, so they should not share the conservative default.
-	cheapToolCallsPerRound = 12
-	maxToolCallDuration    = 30 * time.Second
-	// fallbackFilenameWords and fallbackFilenameMaxRunes bound the filename derived
-	// from the user's own text when the prompt compiler declines to name one.
-	fallbackFilenameWords     = 4
-	fallbackFilenameMaxRunes  = 60
+	cheapToolCallsPerRound    = 12
+	maxToolCallDuration       = 30 * time.Second
 	maxToolResultContentBytes = 32 << 10
 	toolFailedPrefix          = "tool failed"
 )
@@ -321,10 +316,19 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	if err != nil {
 		return assistantLoopResult{}, err
 	}
+	// The first generate_image call wins. Only one image is generated per turn, and
+	// a compiled call — with its prompt, aspect ratio and filename — beats the raw
+	// user text the fallback would otherwise send, so extra calls alongside it are
+	// no reason to discard it.
 	var call llm.ToolCall
-	if len(result.ToolCalls) == 1 && result.ToolCalls[0].Function.Name == "generate_image" {
-		call = result.ToolCalls[0]
-	} else {
+	var compiled bool
+	for _, candidate := range result.ToolCalls {
+		if candidate.Function.Name == "generate_image" {
+			call, compiled = candidate, true
+			break
+		}
+	}
+	if !compiled {
 		fallback, ok := fallbackImageToolCall(userPrompt)
 		if !ok {
 			return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
@@ -412,12 +416,9 @@ func fallbackImageToolCall(userPrompt string) (llm.ToolCall, bool) {
 	if runes := []rune(prompt); len(runes) > imagegen.MaxPromptRunes {
 		prompt = string(runes[:imagegen.MaxPromptRunes])
 	}
-	args, err := json.Marshal(map[string]string{
-		"prompt": prompt,
-		// An empty filename is ignored by the dispatcher, which then lets the
-		// provider name the file.
-		"filename": imageFilenameFromPrompt(prompt),
-	})
+	// No filename: the provider derives one from the prompt itself, with the
+	// character set the artifact store can actually keep.
+	args, err := json.Marshal(map[string]string{"prompt": prompt})
 	if err != nil {
 		return llm.ToolCall{}, false
 	}
@@ -426,31 +427,6 @@ func fallbackImageToolCall(userPrompt string) (llm.ToolCall, bool) {
 		Type:     "function",
 		Function: llm.ToolCallFunction{Name: "generate_image", Arguments: string(args)},
 	}, true
-}
-
-// imageFilenameFromPrompt derives a short descriptive filename from prompt text,
-// mirroring what the compiler prompt asks the model for: a few lowercase
-// hyphen-separated words, no path and no extension. Very short words are skipped
-// so the name carries subject words rather than articles.
-func imageFilenameFromPrompt(prompt string) string {
-	fields := strings.FieldsFunc(strings.ToLower(prompt), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
-	words := make([]string, 0, fallbackFilenameWords)
-	for _, field := range fields {
-		if len([]rune(field)) < 3 {
-			continue
-		}
-		words = append(words, field)
-		if len(words) == fallbackFilenameWords {
-			break
-		}
-	}
-	name := strings.Join(words, "-")
-	if runes := []rune(name); len(runes) > fallbackFilenameMaxRunes {
-		name = string(runes[:fallbackFilenameMaxRunes])
-	}
-	return strings.Trim(name, "-")
 }
 
 // persistInterruptedPartial reports whether a turn that ended in an interruption —

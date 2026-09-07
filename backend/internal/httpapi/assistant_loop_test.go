@@ -16,18 +16,17 @@ func TestFallbackImageToolCallBuildsAGenerateImageCall(t *testing.T) {
 	if call.Function.Name != "generate_image" {
 		t.Fatalf("tool name = %q, want generate_image", call.Function.Name)
 	}
-	var args struct {
-		Prompt   string `json:"prompt"`
-		Filename string `json:"filename"`
-	}
+	var args map[string]string
 	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
 		t.Fatalf("unmarshal arguments: %v", err)
 	}
-	if args.Prompt != "Draw Darth Vader grocery shopping in the local deli" {
-		t.Fatalf("prompt = %q, want the trimmed user text", args.Prompt)
+	if args["prompt"] != "Draw Darth Vader grocery shopping in the local deli" {
+		t.Fatalf("prompt = %q, want the trimmed user text", args["prompt"])
 	}
-	if args.Filename != "draw-darth-vader-grocery" {
-		t.Fatalf("filename = %q, want one derived from the prompt", args.Filename)
+	// The provider derives the filename from the prompt; sending one here would
+	// bypass that and reach the artifact store with characters it cannot keep.
+	if _, ok := args["filename"]; ok {
+		t.Fatalf("arguments carry a filename: %v", args)
 	}
 }
 
@@ -54,24 +53,5 @@ func TestFallbackImageToolCallTruncatesToThePromptCap(t *testing.T) {
 	}
 	if got := len([]rune(args.Prompt)); got != imagegen.MaxPromptRunes {
 		t.Fatalf("prompt runes = %d, want %d", got, imagegen.MaxPromptRunes)
-	}
-}
-
-func TestImageFilenameFromPromptSkipsShortWordsAndBoundsLength(t *testing.T) {
-	for _, tc := range []struct {
-		prompt string
-		want   string
-	}{
-		{"a cat on an old mat", "cat-old-mat"},
-		{"!!! ???", ""},
-		{"Grosse Städte bei Nacht", "grosse-städte-bei-nacht"},
-	} {
-		if got := imageFilenameFromPrompt(tc.prompt); got != tc.want {
-			t.Fatalf("imageFilenameFromPrompt(%q) = %q, want %q", tc.prompt, got, tc.want)
-		}
-	}
-	long := imageFilenameFromPrompt(strings.Repeat("verylongword ", 4))
-	if len([]rune(long)) > fallbackFilenameMaxRunes {
-		t.Fatalf("filename = %q, want at most %d runes", long, fallbackFilenameMaxRunes)
 	}
 }
