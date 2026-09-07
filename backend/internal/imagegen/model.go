@@ -4,13 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 )
 
 const (
-	DefaultWidth        = 1024
-	DefaultHeight       = 1024
+	DefaultWidth  = 1024
+	DefaultHeight = 1024
+	// MaxDefaultSide is the longest side an aspect-ratio-derived size may use.
+	// Every ratio is fitted to this, so a non-square image is never larger than
+	// the square default — the shape changes, the pixel budget does not grow.
+	MaxDefaultSide      = 1024
 	DefaultOutputFormat = "png"
 	MaxPromptRunes      = 4000
 	MaxOutputPixels     = 4_000_000
@@ -25,8 +30,13 @@ const (
 )
 
 type GenerateRequest struct {
-	Prompt          string
-	Filename        string
+	Prompt   string
+	Filename string
+	// AspectRatio shapes the output when Width/Height are not given, e.g. "16:9"
+	// for a wide scene or "3:4" for a poster. Explicit Width/Height win over it,
+	// so a caller asking for exact pixels still gets them. See AspectRatioSizes
+	// for the accepted values and the size each one resolves to.
+	AspectRatio     string
 	Width           int
 	Height          int
 	Seed            *int64
@@ -73,6 +83,14 @@ func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 	if len([]rune(out.Prompt)) > MaxPromptRunes {
 		return GenerateRequest{}, fmt.Errorf("prompt must be at most %d characters", MaxPromptRunes)
 	}
+	out.AspectRatio = strings.TrimSpace(out.AspectRatio)
+	if out.AspectRatio != "" && out.Width == 0 && out.Height == 0 {
+		size, ok := AspectRatioSizes[out.AspectRatio]
+		if !ok {
+			return GenerateRequest{}, fmt.Errorf("aspect_ratio must be one of %s", strings.Join(AspectRatioNames(), ", "))
+		}
+		out.Width, out.Height = size[0], size[1]
+	}
 	if out.Width == 0 {
 		out.Width = DefaultWidth
 	}
@@ -118,6 +136,48 @@ func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 	return out, nil
 }
 
+// AspectRatioSizes maps each accepted aspect ratio to the exact pixel size it
+// produces. Every entry is align16 and fits inside MaxDefaultSide, so picking a
+// shape never costs more than the square default — on a per-megapixel provider
+// the wide and tall ratios are cheaper than 1:1, not dearer.
+var AspectRatioSizes = map[string][2]int{
+	"1:1":  {1024, 1024},
+	"16:9": {1024, 576},
+	"9:16": {576, 1024},
+	"4:3":  {1024, 768},
+	"3:4":  {768, 1024},
+	"3:2":  {1024, 688},
+	"2:3":  {688, 1024},
+}
+
+// AspectRatioNames lists the accepted ratios widest-first, so the tool schema
+// and the validation error read in a stable, predictable order rather than
+// Go's randomized map order.
+func AspectRatioNames() []string {
+	return []string{"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}
+}
+
+// AspectRatioForSize returns the accepted ratio closest in shape to (w, h),
+// used to carry a source image's proportions over to an edit so a wide photo
+// does not come back square. Zero or negative input falls back to "1:1".
+func AspectRatioForSize(w, h int) string {
+	if w <= 0 || h <= 0 {
+		return "1:1"
+	}
+	target := float64(w) / float64(h)
+	best, bestDelta := "1:1", math.Inf(1)
+	for _, name := range AspectRatioNames() {
+		size := AspectRatioSizes[name]
+		// Compare in log space so 16:9 and 9:16 are judged equally far from a
+		// square; a plain difference of ratios favours the landscape side.
+		delta := math.Abs(math.Log(target) - math.Log(float64(size[0])/float64(size[1])))
+		if delta < bestDelta {
+			best, bestDelta = name, delta
+		}
+	}
+	return best
+}
+
 func intPtr(value int) *int {
 	return &value
 }
@@ -132,8 +192,8 @@ func align16(v int) int {
 // ClampMaxSide scales (w, h) down proportionally so the longest side is at most
 // max, preserving aspect ratio. Dimensions already within the bound — including
 // the 0×0 "unset" case that Normalized() later defaults to 1024×1024 — are
-// returned untouched. Used to keep typography-model output (FLUX.2 [flex], which
-// supports up to 4 MP) at the same ~1024 px ceiling as the klein default. The
+// returned untouched. Used to keep typography-model output (FLUX.2 [max], which
+// supports up to 4 MP) at the same ~1024 px ceiling as the [pro] default. The
 // caller still passes the result through Normalized(), which applies align16 and
 // the 4 MP guard.
 func ClampMaxSide(w, h, max int) (int, int) {

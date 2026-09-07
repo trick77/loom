@@ -1,9 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
+	"image"
+	_ "image/gif"  // register GIF decoder for imageDimensions
+	_ "image/jpeg" // register JPEG decoder for imageDimensions
+	_ "image/png"  // register PNG decoder for imageDimensions
 	"os"
 	"strings"
 
@@ -79,6 +84,11 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 // the raw bytes as base64 with no MIME prefix, so only the bytes are needed.
 type editImageSource struct {
 	Data []byte
+	// Width and Height are the source image's pixel dimensions, used to give the
+	// edit the same proportions as its source. Zero when the bytes could not be
+	// decoded, in which case the caller falls back to its usual default shape.
+	Width  int
+	Height int
 }
 
 // loadEditSourceImage reads the original full-resolution bytes of an image
@@ -119,5 +129,17 @@ func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, arti
 	if len(data) > imagegen.MaxInputImageBytes {
 		return editImageSource{}, false, nil
 	}
-	return editImageSource{Data: data}, true, nil
+	width, height := imageDimensions(data)
+	return editImageSource{Data: data, Width: width, Height: height}, true, nil
+}
+
+// imageDimensions decodes just the header of an image to read its pixel size.
+// It returns 0, 0 for anything it cannot decode; callers treat that as "unknown"
+// rather than an error, matching DownscaleForEditInput's best-effort contract.
+func imageDimensions(data []byte) (int, int) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return 0, 0
+	}
+	return cfg.Width, cfg.Height
 }

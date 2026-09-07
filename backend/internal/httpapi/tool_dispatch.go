@@ -415,6 +415,9 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	if format, _ := args["output_format"].(string); format != "" {
 		req.OutputFormat = format
 	}
+	if aspect, _ := args["aspect_ratio"].(string); aspect != "" {
+		req.AspectRatio = aspect
+	}
 	if width, ok := numberArg(args["width"]); ok {
 		req.Width = width
 	}
@@ -431,6 +434,13 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	// instead of a lossy text re-description. Injected here (never from LLM args).
 	if editSource != nil && len(editSource.Data) > 0 {
 		req.InputImages = [][]byte{editSource.Data}
+		// An edit keeps the source image's proportions unless the turn asked for
+		// something else: restyling a 16:9 photo must not hand back a square that
+		// crops or squashes the composition. The source's own shape is known here,
+		// so nothing has to be guessed from the prompt.
+		if req.AspectRatio == "" && req.Width == 0 && req.Height == 0 && editSource.Width > 0 && editSource.Height > 0 {
+			req.AspectRatio = imagegen.AspectRatioForSize(editSource.Width, editSource.Height)
+		}
 	}
 	// Pick (and lock, once per thread) the image model. When it is the typography
 	// model, clamp output to ≤1024 px/side so flex matches the klein default's size.
