@@ -108,7 +108,7 @@ services:
     # 0.0.0.0, so no local wrapper or stdio bridge is needed.
     # Loom reaches it via BACKEND_OBSCURA_MCP_URL; tools are
     # surfaced to the LLM as obscura__<tool>.
-    image: h4ckf0r0day/obscura:0.1.8
+    image: h4ckf0r0day/obscura:0.2.2
     restart: unless-stopped
     command:
       - mcp
@@ -117,6 +117,9 @@ services:
       - 0.0.0.0
       - --port
       - "8090"
+      # The upstream image is built without the `stealth` cargo feature, so this
+      # gives tracker blocking and a consistent fingerprint, not TLS
+      # impersonation. The CLI accepts the flag either way.
       - --stealth
       # Do not add --allow-private-network: Obscura's default private/loopback
       # denylist is part of Loom's SSRF protection for browser tools.
