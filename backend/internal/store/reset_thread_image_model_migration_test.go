@@ -14,7 +14,7 @@ import (
 //
 // It opens a fully-migrated DB, seeds threads locked to the old BFL model ids,
 // then re-applies the exact bytes of the migration (it is idempotent, so running
-// it a second time is the test) and asserts the lock is cleared to the '' sentinel
+// it a second time is the test) and asserts the lock is cleared to the ” sentinel
 // SetThreadImageModelIfEmpty matches on.
 func TestMigration0026_ClearsThreadImageModel(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
