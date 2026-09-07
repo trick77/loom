@@ -328,10 +328,34 @@ func falContentPolicyError() error {
 // — and would otherwise reach the user as raw JSON. Everything else keeps the
 // status and body, which is the useful detail for a real failure.
 func falHTTPError(stage string, statusCode int, body string) error {
-	if isFalContentPolicy(body) {
+	if isFalContentPolicyBody(body) {
 		return falContentPolicyError()
 	}
 	return fmt.Errorf("fal %s failed: status %d: %s", stage, statusCode, body)
+}
+
+// isFalContentPolicyBody recognises a refusal in an HTTP error body. fal echoes
+// the whole rejected input back in these bodies, prompt included, so matching the
+// raw text would report a plain validation failure as a content block whenever
+// the user's own prompt happened to contain one of the words. The structured
+// detail entries are matched instead, and the raw text only when the body is not
+// in that shape.
+func isFalContentPolicyBody(body string) bool {
+	var parsed struct {
+		Detail []struct {
+			Type    string `json:"type"`
+			Message string `json:"msg"`
+		} `json:"detail"`
+	}
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil || len(parsed.Detail) == 0 {
+		return isFalContentPolicy(body)
+	}
+	for _, entry := range parsed.Detail {
+		if isFalContentPolicy(entry.Type) || isFalContentPolicy(entry.Message) {
+			return true
+		}
+	}
+	return false
 }
 
 // falStatusError turns an error reported on the queue status document into a

@@ -352,6 +352,16 @@ func TestFalClientGenerateReturnsContentPolicyErrorForHTTPRefusals(t *testing.T)
 	}
 }
 
+func TestFalHTTPErrorKeepsValidationFailuresWhenTheEchoedPromptMentionsModeration(t *testing.T) {
+	// fal echoes the rejected input back, so a plain validation failure carries the
+	// user's prompt — which must not be read as a refusal.
+	body := `{"detail":[{"loc":["body","image_size"],"msg":"field required","type":"value_error.missing","input":{"prompt":"a content policy moderator at his desk"}}]}`
+	err := falHTTPError("submit", 422, body)
+	if err == nil || !strings.Contains(err.Error(), "fal submit failed: status 422") {
+		t.Fatalf("falHTTPError() = %v, want the validation failure surfaced", err)
+	}
+}
+
 func TestFalClientGenerateReturnsQueueError(t *testing.T) {
 	stub := newFalStub(t)
 	stub.status = map[string]any{"status": "IN_PROGRESS", "error": "runner crashed", "error_type": "InternalError"}

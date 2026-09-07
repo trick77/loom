@@ -332,6 +332,18 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		slog.Warn("image prompt compiler produced no usable tool call; generating from the user's own text",
 			"thread_id", thread.ID, "tool_calls", len(result.ToolCalls))
 		call = fallback
+		// Nothing announced this call: it was synthesized here rather than streamed,
+		// so neither the browser nor the trace has seen it. Announce it exactly as a
+		// streamed call would be, or the tool_result below refers to a step that
+		// does not exist on either side.
+		b.addTraceEvent(toolCallEvent(call))
+		if err := sendSSEJSON(stream, "tool_call", toolCallResponse{
+			ID:        call.ID,
+			Name:      call.Function.Name,
+			Arguments: call.Function.Arguments,
+		}); err != nil {
+			return assistantLoopResult{}, err
+		}
 	}
 	history = append(compilerHistory, llm.Message{
 		Role:      "assistant",
