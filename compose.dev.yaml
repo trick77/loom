@@ -77,7 +77,7 @@ services:
     # Headless-browser MCP. Loom is host-networked here, so native MCP HTTP is
     # published on a localhost port and reached via BACKEND_OBSCURA_MCP_URL at
     # http://localhost:8090/mcp.
-    image: h4ckf0r0day/obscura:0.1.8
+    image: h4ckf0r0day/obscura:0.2.2
     command:
       - mcp
       - --http

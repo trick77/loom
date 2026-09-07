@@ -67,7 +67,7 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 
 	for _, want := range []string{
 		`image: ghcr.io/trick77/loom:latest`,
-		`image: h4ckf0r0day/obscura:0.1.8`,
+		`image: h4ckf0r0day/obscura:0.2.2`,
 	} {
 		if !strings.Contains(compose, want) {
 			t.Fatalf("compose.yaml missing production image reference %q", want)
@@ -108,7 +108,7 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 			service := composeService(t, compose, "obscura")
 
 			for _, want := range []string{
-				`image: h4ckf0r0day/obscura:0.1.8`,
+				`image: h4ckf0r0day/obscura:0.2.2`,
 				`- mcp`,
 				`- --http`,
 				`- --host`,
