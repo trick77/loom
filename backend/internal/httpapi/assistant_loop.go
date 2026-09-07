@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/sse"
 )
@@ -55,7 +57,10 @@ type assistantLoopResult struct {
 	WebSources []webSource
 }
 
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool, sourceIndexOffset int) (out assistantLoopResult, outErr error) {
+// userPrompt is the user's own message text for this turn, used only by the
+// required-image path: the last history message's Content is blanked when image
+// parts are attached, so the raw text is not recoverable from history there.
+func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool, userPrompt string, sourceIndexOffset int) (out assistantLoopResult, outErr error) {
 	tools := s.availableTools(thread, gate)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -68,7 +73,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	}
 	if imageArtifactRequired {
 		if imageTool := findGenerateImageTool(tools); imageTool != nil {
-			return s.runRequiredImageAssistantLoop(ctx, stream, titles, history, inference, user, thread, *imageTool, editSource, typography)
+			return s.runRequiredImageAssistantLoop(ctx, stream, titles, history, inference, user, thread, *imageTool, editSource, typography, userPrompt)
 		}
 		slog.Warn("image artifact required but generate_image tool is unavailable", "thread_id", thread.ID, "tools", len(tools))
 	}
@@ -289,7 +294,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 // clear message rather than an empty bubble.
 const finalAnswerFallback = "I couldn't put together a final answer from the information gathered. Please try rephrasing or narrowing your question."
 
-func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool, editSource *editImageSource, typography bool) (assistantLoopResult, error) {
+func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool, editSource *editImageSource, typography bool, userPrompt string) (assistantLoopResult, error) {
 	compilerPrompt := imagePromptCompilerSystemPrompt
 	if editSource != nil && len(editSource.Data) > 0 {
 		// The source image is forwarded to the model directly, so the compiler must
@@ -311,14 +316,42 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	if err != nil {
 		return assistantLoopResult{}, err
 	}
-	if len(result.ToolCalls) != 1 || result.ToolCalls[0].Function.Name != "generate_image" {
-		return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+	// The first generate_image call wins. Only one image is generated per turn, and
+	// a compiled call — with its prompt, aspect ratio and filename — beats the raw
+	// user text the fallback would otherwise send, so extra calls alongside it are
+	// no reason to discard it.
+	var call llm.ToolCall
+	var compiled bool
+	for _, candidate := range result.ToolCalls {
+		if candidate.Function.Name == "generate_image" {
+			call, compiled = candidate, true
+			break
+		}
 	}
-
-	call := result.ToolCalls[0]
+	if !compiled {
+		fallback, ok := fallbackImageToolCall(userPrompt)
+		if !ok {
+			return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+		}
+		slog.Warn("image prompt compiler produced no usable tool call; generating from the user's own text",
+			"thread_id", thread.ID, "tool_calls", len(result.ToolCalls))
+		call = fallback
+		// Nothing announced this call: it was synthesized here rather than streamed,
+		// so neither the browser nor the trace has seen it. Announce it exactly as a
+		// streamed call would be, or the tool_result below refers to a step that
+		// does not exist on either side.
+		b.addTraceEvent(toolCallEvent(call))
+		if err := sendSSEJSON(stream, "tool_call", toolCallResponse{
+			ID:        call.ID,
+			Name:      call.Function.Name,
+			Arguments: call.Function.Arguments,
+		}); err != nil {
+			return assistantLoopResult{}, err
+		}
+	}
 	history = append(compilerHistory, llm.Message{
 		Role:      "assistant",
-		ToolCalls: result.ToolCalls,
+		ToolCalls: []llm.ToolCall{call},
 	})
 	output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call, editSource, typography)
 	if !handled {
@@ -362,6 +395,38 @@ func fallbackImageArtifactResponse(response artifactResponse) string {
 		return "Created the image artifact."
 	}
 	return "Created " + response.DisplayFilename + "."
+}
+
+// fallbackImageToolCall builds the generate_image call the prompt compiler
+// should have made, from the user's own message text. The compiler sometimes
+// answers an image turn with reasoning and no tool call at all — a refusal on
+// content grounds, typically — which would otherwise end the turn showing
+// nothing, even though the turn was already routed as an image request and the
+// image provider runs its own moderation. Falling back loses the compiler's
+// context resolution, translation and framing, so this is a last resort rather
+// than a shortcut past it.
+//
+// Reports false when there is no user text to send, leaving the caller's
+// original empty-handed return in place.
+func fallbackImageToolCall(userPrompt string) (llm.ToolCall, bool) {
+	prompt := strings.TrimSpace(userPrompt)
+	if prompt == "" {
+		return llm.ToolCall{}, false
+	}
+	if runes := []rune(prompt); len(runes) > imagegen.MaxPromptRunes {
+		prompt = string(runes[:imagegen.MaxPromptRunes])
+	}
+	// No filename: the provider derives one from the prompt itself, with the
+	// character set the artifact store can actually keep.
+	args, err := json.Marshal(map[string]string{"prompt": prompt})
+	if err != nil {
+		return llm.ToolCall{}, false
+	}
+	return llm.ToolCall{
+		ID:       "fallback_generate_image",
+		Type:     "function",
+		Function: llm.ToolCallFunction{Name: "generate_image", Arguments: string(args)},
+	}, true
 }
 
 // persistInterruptedPartial reports whether a turn that ended in an interruption —
