@@ -24,6 +24,11 @@ type fakeDocumentService struct {
 	deletedThreadData  []string
 	deletedProjectData []string
 	deleteDataErr      error
+	// artifactsInUse is what ArtifactIDsForThreadArtifactsInUse returns, i.e. the
+	// thread artifacts that still back a surviving document.
+	artifactsInUse      []string
+	artifactsInUseErr   error
+	inUseQueriedThreads []string
 }
 
 func (f *fakeDocumentService) Upload(_ context.Context, in documents.UploadInput) (rag.Document, artifact.Artifact, error) {
@@ -48,6 +53,10 @@ func (f *fakeDocumentService) Delete(context.Context, string, string) error  { r
 func (f *fakeDocumentService) DeleteThreadData(_ context.Context, _ string, threadID string) error {
 	f.deletedThreadData = append(f.deletedThreadData, threadID)
 	return f.deleteDataErr
+}
+func (f *fakeDocumentService) ArtifactIDsForThreadArtifactsInUse(_ context.Context, _ string, threadID string) ([]string, error) {
+	f.inUseQueriedThreads = append(f.inUseQueriedThreads, threadID)
+	return f.artifactsInUse, f.artifactsInUseErr
 }
 func (f *fakeDocumentService) DeleteProjectData(_ context.Context, _ string, projectID string) error {
 	f.deletedProjectData = append(f.deletedProjectData, projectID)

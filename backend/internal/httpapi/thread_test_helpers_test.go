@@ -31,6 +31,15 @@ type fakeArtifactStore struct {
 	// deleted, when set, records the ids passed to Delete (value receiver can't
 	// mutate the slice, so deletions are tracked through this pointer instead).
 	deleted *[]string
+	// detached, when set, records the ids passed to DetachFromThread.
+	detached *[]string
+}
+
+func (f fakeArtifactStore) DetachFromThread(_ context.Context, _ string, artifactIDs []string) error {
+	if f.detached != nil {
+		*f.detached = append(*f.detached, artifactIDs...)
+	}
+	return nil
 }
 
 func (f fakeArtifactStore) Delete(_ context.Context, _ string, artifactID string) error {
@@ -148,6 +157,7 @@ type fakeThreadStore struct {
 	lastPastedTexts           json.RawMessage
 	createThreadErr           error
 	deleteThreadErr           error
+	deletedThreads            []string
 	updateThreadInput         chat.UpdateThreadInput
 	updateThreadErr           error
 	projectMemory             chat.ProjectMemory
@@ -315,10 +325,11 @@ func (f *fakeThreadStore) SetThreadArchived(context.Context, string, string, boo
 	return true, nil
 }
 
-func (f *fakeThreadStore) DeleteThread(context.Context, string, string) (bool, error) {
+func (f *fakeThreadStore) DeleteThread(_ context.Context, _ string, threadID string) (bool, error) {
 	if f.deleteThreadErr != nil {
 		return false, f.deleteThreadErr
 	}
+	f.deletedThreads = append(f.deletedThreads, threadID)
 	return true, nil
 }
 

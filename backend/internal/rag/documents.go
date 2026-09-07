@@ -89,6 +89,40 @@ func (s *Store) CountThreadDocuments(ctx context.Context, userID, threadID strin
 	return count, nil
 }
 
+// ArtifactIDsForThreadArtifactsInUse returns the ids of the thread's artifacts
+// that still back a document row. Those are project- or user-global knowledge
+// documents whose artifact only carries the thread id as provenance (see how
+// Upload records it): their file and document row must survive the thread, so
+// the delete path detaches them from it first. Letting the cascade reach such an
+// artifact does not just orphan its document — it fires documents' ON DELETE SET
+// NULL over the composite (user_id, artifact_id) key, nulling user_id too and
+// aborting the whole thread delete on its NOT NULL constraint.
+//
+// Call after DeleteThreadScopeDocuments, so the thread's own private documents
+// are already gone and cannot match here. Soft-deleted artifacts are deliberately
+// not filtered out: their row and thread_id still exist, so the cascade would
+// reach them and abort the delete just the same.
+func (s *Store) ArtifactIDsForThreadArtifactsInUse(ctx context.Context, userID, threadID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT DISTINCT d.artifact_id
+FROM documents d
+JOIN artifacts a ON a.user_id = d.user_id AND a.id = d.artifact_id
+WHERE d.user_id = ? AND a.thread_id = ?`, userID, threadID)
+	if err != nil {
+		return nil, fmt.Errorf("list in-use thread artifacts: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan in-use thread artifact: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *Store) UpdateStatus(ctx context.Context, userID, id, status, errMsg string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE documents SET status = ?, error = ? WHERE user_id = ? AND id = ?`,

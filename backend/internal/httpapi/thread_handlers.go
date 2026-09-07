@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -264,26 +265,7 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 	if !ok || !requireThreadStore(w, s) {
 		return
 	}
-	threadID := r.PathValue("threadID")
-	// Terminate a turn still generating on this thread before anything is removed.
-	// Otherwise it keeps calling the model and its tools against a thread that no
-	// longer exists, then fails the messages/artifacts foreign key on write and
-	// leaves artifact files on the volume that the cleanup below cannot see. The
-	// registry key carries user.ID, so this can only ever reach the caller's own
-	// stream.
-	s.activeStreams.stopAndWait(user.ID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
-	artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
-	if err != nil {
-		serverError(w, r, err, "list thread artifacts failed")
-		return
-	}
-	if s.documents != nil {
-		if err := s.documents.DeleteThreadData(r.Context(), user.ID, threadID); err != nil {
-			serverError(w, r, err, "delete thread knowledge failed")
-			return
-		}
-	}
-	found, err := s.thread.DeleteThread(r.Context(), user.ID, threadID)
+	found, err := s.deleteThreadWithData(r.Context(), user.ID, r.PathValue("threadID"))
 	if err != nil {
 		serverError(w, r, err, "delete thread failed")
 		return
@@ -292,8 +274,51 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	s.cleanupArtifactFiles(user.ID, artifacts)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteThreadWithData removes a thread and everything that belongs to it: the
+// turn still generating on it, its private knowledge documents, its rows (via the
+// FK cascade), and its artifact files including their sidecar thumbnails. Shared
+// by the single and the bulk delete so the two cannot drift apart.
+func (s *server) deleteThreadWithData(ctx context.Context, userID, threadID string) (bool, error) {
+	// Terminate a turn still generating on this thread before anything is removed.
+	// Otherwise it keeps calling the model and its tools against a thread that no
+	// longer exists, then fails the messages/artifacts foreign key on write and
+	// leaves artifact files on the volume that the cleanup below cannot see. The
+	// registry key carries userID, so this can only ever reach the caller's own
+	// stream. It returns immediately for the ids with no live stream, so a large
+	// bulk batch does not pay the wait per thread.
+	s.activeStreams.stopAndWait(userID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
+	// Before the artifact snapshot, so the in-use query below sees only the
+	// documents that outlive this thread.
+	if s.documents != nil {
+		if err := s.documents.DeleteThreadData(ctx, userID, threadID); err != nil {
+			return false, fmt.Errorf("delete thread knowledge: %w", err)
+		}
+	}
+	// Snapshot before the delete: the FK cascade destroys the artifact rows.
+	artifacts, err := s.artifactsForThreadCleanup(ctx, userID, threadID)
+	if err != nil {
+		return false, fmt.Errorf("list thread artifacts: %w", err)
+	}
+	// The detach commits before the thread row goes, so a DeleteThread failure
+	// leaves those artifacts unlinked from a thread that still exists — they drop
+	// out of its artifact list. The two stores hold separate handles and cannot
+	// share one transaction, and the detach cannot move after the delete (the
+	// cascade would already have fired). Retrying the delete is safe and lands the
+	// intended end state: the in-use query then returns nothing and the snapshot no
+	// longer carries the detached rows.
+	keep, err := s.detachArtifactsInUse(ctx, userID, threadID)
+	if err != nil {
+		return false, fmt.Errorf("detach in-use thread artifacts: %w", err)
+	}
+	found, err := s.thread.DeleteThread(ctx, userID, threadID)
+	if err != nil || !found {
+		return found, err
+	}
+	s.cleanupArtifactFiles(userID, artifacts, keep)
+	return true, nil
 }
 
 func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request) {
@@ -317,25 +342,10 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 		}
 		seen[threadID] = struct{}{}
 
-		// Same as the single delete: stop a turn still generating on this thread
-		// before removing it. Returns immediately for the ids with no live stream,
-		// so a large batch does not pay the wait per thread.
-		s.activeStreams.stopAndWait(user.ID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
-
 		// Best-effort: skip a thread we cannot clean up or delete rather than
 		// aborting the whole batch, which would leave it partially applied.
 		// Skips are logged so a silently-dropped thread is still traceable.
-		artifacts, err := s.artifactsForThreadCleanup(r.Context(), user.ID, threadID)
-		if err != nil {
-			slog.Warn("bulk delete: skip thread, artifact cleanup failed", "thread_id", threadID, "err", err)
-			continue
-		}
-		if s.documents != nil {
-			if err := s.documents.DeleteThreadData(r.Context(), user.ID, threadID); err != nil {
-				continue
-			}
-		}
-		found, err := s.thread.DeleteThread(r.Context(), user.ID, threadID)
+		found, err := s.deleteThreadWithData(r.Context(), user.ID, threadID)
 		if err != nil {
 			slog.Warn("bulk delete: skip thread, delete failed", "thread_id", threadID, "err", err)
 			continue
@@ -343,7 +353,6 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 		if !found {
 			continue
 		}
-		s.cleanupArtifactFiles(user.ID, artifacts)
 		deleted++
 	}
 	writeJSON(w, bulkDeleteThreadsResponse{Deleted: deleted})
