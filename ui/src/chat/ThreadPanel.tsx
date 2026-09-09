@@ -593,7 +593,7 @@ export function ThreadPanel({
           </div>
           <div
             aria-label={t("thread.composerDock")}
-            className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-5 pt-4 md:-mx-8 md:px-8"
+            className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-[14px] pt-4 md:-mx-8 md:px-8"
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
             <div className="ui-thread-rail pointer-events-auto mx-auto w-full max-w-[754px]">
@@ -627,7 +627,7 @@ export function ThreadPanel({
                   {attachNote || deferredAttachNote}
                 </div>
               )}
-              <div className="ui-meta-text mt-2 text-center text-[#858178]">
+              <div className="ui-meta-text mt-[14px] text-center text-[#858178]">
                 {t("thread.disclaimer")}
               </div>
             </div>
