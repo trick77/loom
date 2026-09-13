@@ -1299,6 +1299,9 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 			// prompt (it re-sends the whole reasoning), no reasoning tokens.
 			reasoningTitleUsage: llm.TokenUsage{PromptTokens: 100, CompletionTokens: 1, TotalTokens: 101},
 			titleUsage:          llm.TokenUsage{PromptTokens: 20, CompletionTokens: 4, TotalTokens: 24},
+			cost:                1000,
+			reasoningTitleCost:  100,
+			titleCost:           10,
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -1310,6 +1313,11 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
 	}
 	assistant := store.messages[1]
+	// Cost follows the same split as the tokens: the answer and the
+	// reasoning-title call on the message, the thread title only in the rollup.
+	if assistant.CostNanoUSD == nil || *assistant.CostNanoUSD != 1100 {
+		t.Fatalf("message CostNanoUSD = %v, want 1100", assistant.CostNanoUSD)
+	}
 	// 7+100 prompt, 3+1 completion, 10+101 total: the answer turn plus the
 	// reasoning-title helper, which runs during the stream. The thread-title
 	// helper is NOT here — it runs after the assistant message is persisted, so
@@ -1353,6 +1361,9 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 		if c.got != c.want {
 			t.Fatalf("lifetime %s = %d, want %d", c.name, c.got, c.want)
 		}
+	}
+	if delta.CostNanoUSD != 1110 {
+		t.Fatalf("lifetime CostNanoUSD = %d, want 1110 (answer, reasoning title and thread title)", delta.CostNanoUSD)
 	}
 }
 

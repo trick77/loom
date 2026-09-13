@@ -218,7 +218,7 @@ type recordingUsage struct {
 	requests int
 }
 
-func (r *recordingUsage) AddEmbeddingUsage(_ context.Context, userID string, tokens, requests int) error {
+func (r *recordingUsage) AddEmbeddingUsage(_ context.Context, userID string, tokens, requests int, _ int64) error {
 	r.userID = userID
 	r.tokens += tokens
 	r.requests += requests

@@ -1,21 +1,16 @@
 package llm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
+	"errors"
+	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
+
+	"github.com/trick77/llmwire"
+	"github.com/trick77/loom/internal/inference"
 )
 
-const maxErrorBodyBytes = 4096
 const defaultMaxCompletionTokens = 2048
 
 // documentToolMaxCompletionTokens gives document-generation tool rounds enough
@@ -34,7 +29,10 @@ const defaultMaxCompletionTokens = 2048
 const documentToolMaxCompletionTokens = 32768
 
 // documentToolTimeout gives model turns that are serializing complete document
-// payloads enough wall-clock time to reach the tool call.
+// payloads enough wall-clock time to reach the tool call. It is also the idle
+// bound once a tool call is underway on such a turn (see ChatRequest.
+// ToolCallIdleTimeout in llmwire): MiMo buffers the whole argument server-side
+// and flushes it in one burst, ~82s of silence measured for a ~10KB spec.
 const documentToolTimeout = 5 * time.Minute
 
 // Hardcoded MiMo model selection. Loom targets MiMo specifically and is no
@@ -43,16 +41,19 @@ const documentToolTimeout = 5 * time.Minute
 // image input — mimo-v2.5-pro is text-only and 404s on any image_url part.
 //
 // shortGateModel is the same non-Pro deployment, named separately because it is
-// picked for a different reason: the short gates (see
-// executeShortGateChatRequest) need a fast answer, not a deep one, and the
-// non-Pro variant responds sooner. Keeping the names apart means a future change
-// to either use — a Pro that accepts images, a dedicated small model — moves one
-// without silently moving the other.
+// picked for a different reason: the short gates (see shortGate) need a fast
+// answer, not a deep one, and the non-Pro variant responds sooner. Keeping the
+// names apart means a future change to either use — a Pro that accepts images,
+// a dedicated small model — moves one without silently moving the other.
 //
 // Not "the non-reasoning model": mimo-v2.5 is the same reasoning family as Pro
 // and thinks when asked to. The gates suppress that per request (see
-// thinkingOption) and route here because this deployment queues less, not
-// because it cannot reason.
+// llmwire.ReasoningOff) and route here because this deployment queues less,
+// not because it cannot reason.
+//
+// These are wire ids llmwire resolves against its profile registry; the
+// endpoint and key come from LLMWIRE_MIMO_BASE_URL and LLMWIRE_MIMO_API_KEY,
+// the variables the profiles' provider names.
 const (
 	textModel      = "mimo-v2.5-pro"
 	visionModel    = "mimo-v2.5"
@@ -64,108 +65,124 @@ const (
 // the llm client falls back to, keeping the default defined in exactly one place.
 const DefaultReasoningEffort = "high"
 
-// Config holds the OpenAI-compatible chat completion settings.
+// Config holds the chat client settings loom owns. The endpoint is llmwire's:
+// BaseURL is an explicit override for a test fake or a stand-in endpoint and
+// bypasses the environment entirely (no key is sent unless APIKey is set too).
 type Config struct {
 	BaseURL             string
 	APIKey              string
 	MaxCompletionTokens int
-	Timeout             time.Duration
-	// IdleTimeout aborts a stream when no chunk arrives within the window. Zero
-	// disables the watchdog (the coarse total Timeout still applies).
-	IdleTimeout    time.Duration
+	// Timeout is the whole-call cap for a streamed turn. Zero takes
+	// llmwire's default.
+	Timeout time.Duration
+	// IdleTimeout aborts a stream when no data frame arrives within the window.
+	// It also bounds the wait for response headers: MiMo Pro queues, and loom
+	// allowed this long before the first byte before the wire moved to llmwire.
+	// Zero disables the watchdog: the whole-call cap is then the only bound.
+	IdleTimeout time.Duration
+	// ResponseLogDir, when set, spools every raw response to that directory
+	// (llmwire.SpoolTransport); incognito turns are never written.
 	ResponseLogDir string
 }
 
-// Message is one OpenAI-compatible chat message.
+// Message is one chat message in loom's own shape; wire.go converts it to
+// llmwire's before a request goes out.
 type Message struct {
-	Role             string               `json:"role"`
-	Content          string               `json:"content,omitempty"`
-	ContentParts     []MessageContentPart `json:"-"`
-	ReasoningContent string               `json:"reasoning_content,omitempty"`
-	ToolCalls        []ToolCall           `json:"tool_calls,omitempty"`
-	ToolCallID       string               `json:"tool_call_id,omitempty"`
+	Role             string
+	Content          string
+	ContentParts     []MessageContentPart
+	ReasoningContent string
+	ToolCalls        []ToolCall
+	ToolCallID       string
 }
 
 type MessageContentPart struct {
-	Type     string           `json:"type"`
-	Text     string           `json:"text,omitempty"`
-	ImageURL *MessageImageURL `json:"image_url,omitempty"`
+	Type     string
+	Text     string
+	ImageURL *MessageImageURL
 }
 
 type MessageImageURL struct {
-	URL string `json:"url"`
+	URL string
 }
 
-func (m Message) MarshalJSON() ([]byte, error) {
-	type messageAlias Message
-	if len(m.ContentParts) == 0 {
-		return json.Marshal(messageAlias(m))
-	}
-	return json.Marshal(struct {
-		Role             string               `json:"role"`
-		Content          []MessageContentPart `json:"content"`
-		ReasoningContent string               `json:"reasoning_content,omitempty"`
-		ToolCalls        []ToolCall           `json:"tool_calls,omitempty"`
-		ToolCallID       string               `json:"tool_call_id,omitempty"`
-	}{
-		Role:             m.Role,
-		Content:          m.ContentParts,
-		ReasoningContent: m.ReasoningContent,
-		ToolCalls:        m.ToolCalls,
-		ToolCallID:       m.ToolCallID,
-	})
-}
-
-// Client calls an OpenAI-compatible chat completion API.
+// Client calls the MiMo chat completion endpoints through llmwire.
 type Client struct {
-	baseURL             string
-	apiKey              string
+	// wire is the one llmwire client every call goes through. One, not one per
+	// call: it presents as opencode, and that identity carries a session id
+	// llmwire mints and rotates itself.
+	wire                *llmwire.Client
 	model               string
 	visionModel         string
 	shortGateModel      string
 	reasoningEffort     string
 	maxCompletionTokens int
 	timeout             time.Duration
-	idleTimeout         time.Duration
-	httpClient          *http.Client
-	responseLogDir      string
 }
 
-var responseLogSequence uint64
-
-func NewClient(cfg Config, httpClient *http.Client) *Client {
+// NewClient builds the chat client. The error is a missing LLMWIRE_MIMO_BASE_URL
+// or LLMWIRE_MIMO_API_KEY, named, unless cfg.BaseURL wires the endpoint itself.
+func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
+	}
+	if cfg.ResponseLogDir != "" {
+		// A copy, so the spool never lands on a client shared with anything
+		// else. Incognito turns are ephemeral by contract and are skipped.
+		hc := *httpClient
+		hc.Transport = llmwire.NewSpoolTransport(cfg.ResponseLogDir, hc.Transport, func(r *http.Request) bool {
+			return inference.MetadataFromContext(r.Context()).Incognito
+		})
+		httpClient = &hc
 	}
 	maxCompletionTokens := cfg.MaxCompletionTokens
 	if maxCompletionTokens <= 0 {
 		maxCompletionTokens = defaultMaxCompletionTokens
 	}
+	callTimeout := cfg.Timeout
+	if callTimeout > 0 && callTimeout < documentToolTimeout {
+		// The document turns need the wider cap; the narrower one is applied
+		// per call in StreamChatWithTools for every other turn.
+		callTimeout = documentToolTimeout
+	}
+	idleTimeout := cfg.IdleTimeout
+	if idleTimeout <= 0 {
+		// llmwire has no off switch for its stream bounds (zero means its
+		// defaults), so "disabled" is spelled as a window as wide as the call.
+		idleTimeout = callTimeout
+		if idleTimeout <= 0 {
+			idleTimeout = llmwire.DefaultCallTimeout
+		}
+	}
+	wire, err := llmwire.FromEnv(textModel, llmwire.Config{
+		BaseURL: cfg.BaseURL,
+		APIKey:  cfg.APIKey,
+		// Presents as the opencode client: its User-Agent and the session
+		// header pair. The MiMo token plan is sold as that client's backend
+		// and treats a neutral User-Agent as a bot.
+		EmulateOpenCode: true,
+		HeaderTimeout:   idleTimeout,
+		IdleTimeout:     idleTimeout,
+		CallTimeout:     callTimeout,
+		HTTPClient:      httpClient,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &Client{
-		baseURL:             strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:              cfg.APIKey,
+		wire:                wire,
 		model:               textModel,
 		visionModel:         visionModel,
 		shortGateModel:      shortGateModel,
 		reasoningEffort:     DefaultReasoningEffort,
 		maxCompletionTokens: maxCompletionTokens,
 		timeout:             cfg.Timeout,
-		idleTimeout:         cfg.IdleTimeout,
-		httpClient:          httpClient,
-		responseLogDir:      cfg.ResponseLogDir,
-	}
+	}, nil
 }
 
 // ModelSummary describes the hardcoded chat models for the startup capability line.
 func ModelSummary() string {
 	return textModel + " (text) / " + visionModel + " (vision)"
-}
-
-// isMiMoModel reports whether the model is a MiMo variant. Both hardcoded models
-// (text and vision) are MiMo, so this is effectively always true; it is kept to
-// gate MiMo-specific stream handling (inline tool-call parsing) at the call site.
-func isMiMoModel(model string) bool {
-	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "mimo")
 }
 
 // modelForMessages selects the chat model for a request: the omnimodal vision
@@ -190,35 +207,6 @@ func (c *Client) modelForMessages(messages []Message) string {
 // still hits the cap is treated as truncated and discarded (see title decoders).
 const utilityMaxCompletionTokens = 32
 
-type chatRequestOptions struct {
-	model               string
-	tools               []Tool
-	stream              bool
-	reasoningEffort     string
-	thinking            *thinkingOption
-	maxCompletionTokens int
-}
-
-func (c *Client) executeChatRequest(ctx context.Context, messages []Message, stream bool) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
-		model:               c.modelForMessages(messages),
-		stream:              stream,
-		reasoningEffort:     c.reasoningEffort,
-		maxCompletionTokens: c.maxCompletionTokens,
-	})
-}
-
-func (c *Client) executeChatRequestWithTools(ctx context.Context, messages []Message, tools []Tool, stream bool, model, reasoningEffort string, thinking *thinkingOption, maxCompletionTokens int) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
-		model:               model,
-		tools:               tools,
-		stream:              stream,
-		reasoningEffort:     reasoningEffort,
-		thinking:            thinking,
-		maxCompletionTokens: maxCompletionTokens,
-	})
-}
-
 // resolveReasoningEffort picks the reasoning depth for a turn: the per-request
 // value carried on the context (set by the httpapi layer from the composer
 // selection) when present, else the client's configured default. Utility calls
@@ -230,32 +218,65 @@ func (c *Client) resolveReasoningEffort(ctx context.Context) string {
 	return c.reasoningEffort
 }
 
-// executeUtilityChatRequestWithBudget runs a non-streaming secondary helper call
-// on the default (Pro) model with thinking turned off via MiMo's native
-// {"thinking":{"type":"disabled"}} and a caller-chosen completion-token cap.
-// Default thinking makes MiMo overthink a trivial summarization and even echo its
-// internal "reasoning>/response>" channel format as literal text instead of a
-// clean title — besides burning ~1k reasoning tokens per call.
-//
-// Its only caller is the project description, which rides the project-memory
-// refresh and is generated from the same large transcript memory uses, so it
-// needs real output headroom (see projectDescriptionMaxCompletionTokens) to avoid
-// a finish_reason=length truncation. The short gates — which want the faster
-// non-Pro deployment, not just disabled thinking — use
-// executeShortGateChatRequest instead.
-func (c *Client) executeUtilityChatRequestWithBudget(ctx context.Context, messages []Message, maxCompletionTokens int) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
-		thinking:            &thinkingOption{Type: "disabled"},
-		maxCompletionTokens: maxCompletionTokens,
-	})
+// completion is what a non-streaming helper call returned. Empty is the
+// well-formed reply with no choices the endpoint emits when it drops a request;
+// every gate degrades to a usable value on it rather than failing the turn.
+type completion struct {
+	Content      string
+	FinishReason string
+	Usage        TokenUsage
+	Empty        bool
 }
 
-// executeShortGateChatRequest runs a helper call that needs a fast answer
-// rather than a deep one — the short gates a turn blocks on: image intent, thread
-// classification, and the two title generators. On top of the utility path's
-// disabled thinking it also routes to shortGateModel, the non-Pro variant,
-// which responds sooner (measured against a Pro that spent 78s queueing on a
-// 64-token routing call).
+// complete runs one non-streaming call with thinking turned off via MiMo's
+// native {"thinking":{"type":"disabled"}} and a caller-chosen completion-token
+// cap. Default thinking makes MiMo overthink a trivial summarization and even
+// echo its internal "reasoning>/response>" channel format as literal text
+// instead of a clean title — besides burning ~1k reasoning tokens per call.
+//
+// The logging is done here for every helper: the completed line with the
+// usage, or the failed line with the error. decided, when set, adds the
+// caller's reading of the reply to the completed line — what a gate concluded
+// is the one attribute that tells a mis-route from a correct one in the logs.
+func (c *Client) complete(ctx context.Context, model string, messages []Message, maxTokens int, decided func(completion) []slog.Attr) (completion, error) {
+	start := time.Now()
+	resp, warnings, err := c.wire.Chat(ctx, llmwire.ChatRequest{
+		Model:     model,
+		Messages:  toWireMessages(messages),
+		Reasoning: llmwire.ReasoningOff(),
+		MaxTokens: &maxTokens,
+	})
+	logWarnings(ctx, model, warnings)
+	if err != nil {
+		if errors.Is(err, llmwire.ErrResponseShape) {
+			// No choices and no error object: the endpoint dropped the request.
+			logInferenceCompleted(ctx, model, time.Since(start), TokenUsage{}, "")
+			return completion{Empty: true}, nil
+		}
+		err = chatError(err)
+		logInferenceFailed(ctx, model, time.Since(start), err)
+		return completion{}, err
+	}
+	usage := usageFromWire(resp.Usage)
+	cost, priced := costFromWire(resp.Usage)
+	if !priced {
+		noteUnpriced(ctx, model)
+	}
+	reply := completion{Content: resp.Content, FinishReason: resp.FinishReason, Usage: usage}
+	var extra []slog.Attr
+	if decided != nil {
+		extra = decided(reply)
+	}
+	observeInference(ctx, model, durationOr(resp.Timing.Total, start), usage, resp.FinishReason, extra...)
+	RecordCost(ctx, cost, priced)
+	return reply, nil
+}
+
+// shortGate runs a helper call that needs a fast answer rather than a deep one
+// — the short gates a turn blocks on: image intent, thread classification, and
+// the two title generators. On top of disabled thinking it routes to
+// shortGateModel, the non-Pro variant, which responds sooner (measured against
+// a Pro that spent 78s queueing on a 64-token routing call).
 //
 // Deliberately NOT used by anything that writes prose a reader keeps: the forced
 // final answer disables thinking too (see InferenceMetadata.SuppressThinking) but
@@ -263,69 +284,8 @@ func (c *Client) executeUtilityChatRequestWithBudget(ctx context.Context, messag
 // memory and the project description. The bar is that the answer is a label, an
 // id or a handful of words nobody reads as prose — not that the deployment
 // cannot reason, which is false; mimo-v2.5 reasons like Pro when asked to.
-func (c *Client) executeShortGateChatRequest(ctx context.Context, messages []Message, maxCompletionTokens int) (*http.Response, error) {
-	return c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
-		model:               c.shortGateModel,
-		thinking:            &thinkingOption{Type: "disabled"},
-		maxCompletionTokens: maxCompletionTokens,
-	})
-}
-
-func (c *Client) executeChatRequestImpl(ctx context.Context, messages []Message, opts chatRequestOptions) (*http.Response, error) {
-	model := opts.model
-	if model == "" {
-		model = c.model
-	}
-	requestBody := chatCompletionRequest{
-		Model:               model,
-		Messages:            messages,
-		Stream:              opts.stream,
-		Tools:               opts.tools,
-		ReasoningEffort:     opts.reasoningEffort,
-		Thinking:            opts.thinking,
-		MaxCompletionTokens: opts.maxCompletionTokens,
-	}
-	if opts.stream {
-		requestBody.StreamOptions = &streamOptions{IncludeUsage: true}
-	}
-	body, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("marshal chat completion request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create chat completion request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "*/*")
-	req.Header.Set("User-Agent", chatUserAgent)
-	// Session headers pin a conversation to one upstream node. Both names carry
-	// the same value; the upstream sends the pair too. Accept-Encoding is left
-	// unset on purpose so net/http keeps negotiating and decompressing gzip
-	// transparently (curl's --compressed equivalent) — setting it by hand would
-	// hand us a compressed body to decode ourselves.
-	sessionID := chatSessionID(inferenceMetadataFromContext(ctx).ThreadID)
-	req.Header.Set("X-Session-Id", sessionID)
-	req.Header.Set("X-Session-Affinity", sessionID)
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("chat completion request: %w", err)
-	}
-	c.wrapResponseLogger(ctx, resp)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
-		if readErr != nil {
-			return nil, fmt.Errorf("chat completion failed with status %d and unreadable body: %w", resp.StatusCode, readErr)
-		}
-		return nil, fmt.Errorf("chat completion failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	return resp, nil
+func (c *Client) shortGate(ctx context.Context, messages []Message, maxTokens int, decided func(completion) []slog.Attr) (completion, error) {
+	return c.complete(ctx, c.shortGateModel, messages, maxTokens, decided)
 }
 
 func (c *Client) maxCompletionTokensForTools(tools []Tool) int {
@@ -357,12 +317,12 @@ func (c *Client) timeoutForTools(tools []Tool) time.Duration {
 // which would falsely trip the watchdog mid-generation (measured ~82s silent for a
 // ~10KB spec). Widen to the document timeout and let the coarse total deadline
 // backstop a genuine hang. Non-document turns keep the normal window: their tool
-// arguments are small and stream promptly.
-func (c *Client) toolCallIdleTimeout(tools []Tool) time.Duration {
-	if c.idleTimeout > 0 && hasDocumentGenerationTool(tools) && documentToolTimeout > c.idleTimeout {
+// arguments are small and stream promptly. Zero means "no change" to llmwire.
+func toolCallIdleTimeout(tools []Tool) time.Duration {
+	if hasDocumentGenerationTool(tools) {
 		return documentToolTimeout
 	}
-	return c.idleTimeout
+	return 0
 }
 
 func hasDocumentGenerationTool(tools []Tool) bool {
@@ -380,67 +340,4 @@ func hasDocumentGenerationTool(tools []Tool) bool {
 		}
 	}
 	return false
-}
-
-func (c *Client) wrapResponseLogger(ctx context.Context, resp *http.Response) {
-	if c.responseLogDir == "" || resp == nil || resp.Body == nil {
-		return
-	}
-	// Incognito turns are ephemeral by contract — never spool their response body
-	// to the dev response log.
-	if inferenceMetadataFromContext(ctx).Incognito {
-		return
-	}
-	resp.Body = &responseLoggingBody{
-		ReadCloser: resp.Body,
-		resp:       resp,
-		logDir:     c.responseLogDir,
-	}
-}
-
-type responseLoggingBody struct {
-	io.ReadCloser
-	resp   *http.Response
-	logDir string
-	body   bytes.Buffer
-	once   sync.Once
-}
-
-func (b *responseLoggingBody) Read(p []byte) (int, error) {
-	n, err := b.ReadCloser.Read(p)
-	if n > 0 {
-		_, _ = b.body.Write(p[:n])
-	}
-	return n, err
-}
-
-func (b *responseLoggingBody) Close() error {
-	closeErr := b.ReadCloser.Close()
-	b.once.Do(func() {
-		if err := b.writeLog(); err != nil {
-			// Response logs are a local-dev diagnostic aid; never fail chat delivery because logging failed.
-		}
-	})
-	return closeErr
-}
-
-func (b *responseLoggingBody) writeLog() error {
-	if err := os.MkdirAll(b.logDir, 0o700); err != nil {
-		return err
-	}
-	var out bytes.Buffer
-	proto := b.resp.Proto
-	if proto == "" {
-		proto = "HTTP/1.1"
-	}
-	_, _ = fmt.Fprintf(&out, "%s %s\n", proto, b.resp.Status)
-	if err := b.resp.Header.Write(&out); err != nil {
-		return err
-	}
-	_, _ = out.WriteString("\n")
-	_, _ = b.body.WriteTo(&out)
-
-	seq := atomic.AddUint64(&responseLogSequence, 1)
-	name := fmt.Sprintf("%s-%06d.http", time.Now().UTC().Format("20060102T150405.000000000Z"), seq)
-	return os.WriteFile(filepath.Join(b.logDir, name), out.Bytes(), 0o600)
 }

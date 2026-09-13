@@ -4,7 +4,6 @@ package rag
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -15,14 +14,13 @@ import (
 // sqlite-vec KNN: it confirms the configured model returns 1536-dim vectors and
 // that a semantically related query retrieves the right chunk. Run with:
 //
-//	BACKEND_EMBED_BASE_URL=... BACKEND_EMBED_API_KEY=... BACKEND_EMBED_MODEL=... \
+//	LLMWIRE_OPENAI_BASE_URL=... LLMWIRE_OPENAI_API_KEY=... \
 //	  go test -tags liveembed -run TestLiveEmbedAndRetrieve ./internal/rag/ -v
 func TestLiveEmbedAndRetrieve(t *testing.T) {
-	emb := NewEmbedClient(EmbedConfig{
-		BaseURL: os.Getenv("BACKEND_EMBED_BASE_URL"),
-		APIKey:  os.Getenv("BACKEND_EMBED_API_KEY"),
-		Model:   os.Getenv("BACKEND_EMBED_MODEL"),
-	}, nil)
+	emb, err := NewEmbedClient(EmbedConfig{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 
 	docs := []string{
@@ -64,7 +62,7 @@ func TestLiveEmbedAndRetrieve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Embed query: %v", err)
 	}
-	res, err := s.Retrieve(ctx, "u", nil, embeddedQuery.Vectors[0], 1)
+	res, err := s.Retrieve(ctx, "u", nil, nil, embeddedQuery.Vectors[0], 1)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}

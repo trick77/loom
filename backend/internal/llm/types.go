@@ -2,58 +2,6 @@ package llm
 
 import "time"
 
-type chatCompletionRequest struct {
-	Model               string          `json:"model"`
-	Messages            []Message       `json:"messages"`
-	Stream              bool            `json:"stream"`
-	Tools               []Tool          `json:"tools,omitempty"`
-	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
-	Thinking            *thinkingOption `json:"thinking,omitempty"`
-	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
-	StreamOptions       *streamOptions  `json:"stream_options,omitempty"`
-}
-
-// thinkingOption is MiMo's native switch for chain-of-thought. {"type":"disabled"}
-// turns thinking off entirely (no reasoning_content, zero reasoning tokens).
-type thinkingOption struct {
-	Type string `json:"type"`
-}
-
-type streamOptions struct {
-	IncludeUsage bool `json:"include_usage"`
-}
-
-type chatCompletionResponse struct {
-	Choices []chatCompletionChoice `json:"choices"`
-	Usage   TokenUsage             `json:"usage"`
-}
-
-type chatCompletionChoice struct {
-	Message      chatCompletionMessage `json:"message"`
-	FinishReason string                `json:"finish_reason"`
-}
-
-type chatCompletionMessage struct {
-	Content          string `json:"content"`
-	ReasoningContent string `json:"reasoning_content"`
-}
-
-type chatCompletionChunk struct {
-	Choices []chatCompletionChunkChoice `json:"choices"`
-	Usage   TokenUsage                  `json:"usage"`
-}
-
-type chatCompletionChunkChoice struct {
-	Delta        chatCompletionDelta `json:"delta"`
-	FinishReason string              `json:"finish_reason"`
-}
-
-type chatCompletionDelta struct {
-	Content          string               `json:"content"`
-	ReasoningContent string               `json:"reasoning_content"`
-	ToolCalls        []ToolCallDeltaChunk `json:"tool_calls"`
-}
-
 type Tool struct {
 	Type     string       `json:"type"`
 	Function ToolFunction `json:"function"`
@@ -72,18 +20,6 @@ type ToolCall struct {
 }
 
 type ToolCallFunction struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-type ToolCallDeltaChunk struct {
-	Index    int               `json:"index"`
-	ID       string            `json:"id"`
-	Type     string            `json:"type"`
-	Function ToolCallDeltaFunc `json:"function"`
-}
-
-type ToolCallDeltaFunc struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
 }
@@ -108,6 +44,11 @@ type StreamResult struct {
 	Model            string
 	ReasoningEffort  string
 	FinishReason     string
+	// CostNanoUSD is llmwire's list-rate figure for this call, in nano-USD,
+	// and CostPriced says whether there was a rate at all. Unpriced is
+	// unknown, not free: it stays out of every sum.
+	CostNanoUSD int64
+	CostPriced  bool
 }
 
 type TokenUsage struct {

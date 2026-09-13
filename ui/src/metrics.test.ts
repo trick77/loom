@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   formatDuration,
   buildMetricsString,
+  formatCostNanoUsd,
   formatMessageTime,
   hasRenderableMetrics,
   humanizeCategory,
@@ -75,6 +76,29 @@ test("buildMetricsString omits the lead segment when the message stored no reaso
   // The % comes from contextTokens (final call's model-reported total), NOT the
   // accumulated totalTokens (249000): 51000 / 1048576 = 4.86% -> "5 %"
   expect(line).toBe("5s  ·  ↑ 49 498 (38 208/c)  ·  ↓ 1 502 (205/r)  ·  5 %");
+});
+
+test("formatCostNanoUsd keeps a sub-dollar figure readable and rounds a dollar figure to cents", () => {
+  expect(formatCostNanoUsd(3_141_593)).toBe("$0.0031");
+  expect(formatCostNanoUsd(12_500_000)).toBe("$0.0125");
+  expect(formatCostNanoUsd(1_237_000_000)).toBe("$1.24");
+});
+
+test("buildMetricsString ends with the cost when the turn was priced, and omits it otherwise", () => {
+  const priced = buildMetricsString(
+    assistant({
+      durationMs: 5000,
+      promptTokens: 1000,
+      completionTokens: 200,
+      contextTokens: 51000,
+      costNanoUsd: 3_141_593,
+    }),
+  );
+  expect(priced).toBe("5s  ·  ↑ 1 000  ·  ↓ 200  ·  5 %  ·  $0.0031");
+  const unpriced = buildMetricsString(
+    assistant({ durationMs: 5000, promptTokens: 1000, completionTokens: 200 }),
+  );
+  expect(unpriced).toBe("5s  ·  ↑ 1 000  ·  ↓ 200");
 });
 
 test("buildMetricsString leads with the reasoning effort level, without the model or parentheses", () => {

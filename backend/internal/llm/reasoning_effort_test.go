@@ -27,7 +27,7 @@ func captureReasoningEffort(t *testing.T, ctx context.Context) string {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, Timeout: 5 * time.Second}, server.Client())
 	if _, err := client.StreamChatWithTools(ctx, []Message{{Role: "user", Content: "hi"}}, nil, func(StreamEvent) error { return nil }); err != nil {
 		t.Fatalf("StreamChatWithTools() error: %v", err)
 	}

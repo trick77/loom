@@ -2,11 +2,8 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/trick77/loom/internal/titletext"
 )
@@ -21,36 +18,23 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning, response
 	if strings.TrimSpace(reasoning) == "" {
 		return "", nil
 	}
-	start := time.Now()
 	messages := []Message{
 		{Role: "system", Content: appendLanguageDirective(reasoningTitleSystemPrompt, responseLanguage)},
 		{Role: "user", Content: reasoning},
 	}
-	resp, err := c.executeShortGateChatRequest(ctx, messages, utilityMaxCompletionTokens)
+	reply, err := c.shortGate(ctx, messages, utilityMaxCompletionTokens, nil)
 	if err != nil {
-		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
 		return "", err
 	}
-	defer resp.Body.Close()
-
-	var completion chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
-		err := fmt.Errorf("decode reasoning title completion response: %w", err)
-		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
-		return "", err
-	}
-	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, "")
+	if reply.Empty {
 		return "", nil
 	}
-	choice := completion.Choices[0]
-	observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, choice.FinishReason)
 	// A title that hit the token cap is cut mid-phrase; skip it rather than
 	// persist a half title (the caller falls back to the client-side heuristic).
-	if choice.FinishReason == "length" {
+	if reply.FinishReason == "length" {
 		return "", nil
 	}
-	title := cleanReasoningTitle(choice.Message.Content)
+	title := cleanReasoningTitle(reply.Content)
 	// Same drift guard as the thread title (see GenerateThreadTitle): a title in
 	// a script the reasoning never used is the model wandering, not a summary.
 	//

@@ -28,7 +28,7 @@ func modelRecorder(t *testing.T, body string) (*httptest.Server, *[]string) {
 
 func TestShortGatesRunOnTheShortGateModel(t *testing.T) {
 	server, models := modelRecorder(t, `{"choices":[{"message":{"role":"assistant","content":"{\"action\":\"none\",\"needs_text\":false}"},"finish_reason":"stop"}]}`)
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	if _, err := client.ClassifyImageIntent(context.Background(), "hello", false, false); err != nil {
 		t.Fatalf("ClassifyImageIntent() error: %v", err)
@@ -57,7 +57,7 @@ func TestShortGatesRunOnTheShortGateModel(t *testing.T) {
 // and must never be downgraded by widening this routing.
 func TestLongFormHelpersStayOnThePro(t *testing.T) {
 	server, models := modelRecorder(t, `{"choices":[{"message":{"role":"assistant","content":"a description"},"finish_reason":"stop"}]}`)
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	if _, err := client.GenerateProjectDescription(context.Background(), "Project", []string{"a thread title"}, ""); err != nil {
 		t.Fatalf("GenerateProjectDescription() error: %v", err)

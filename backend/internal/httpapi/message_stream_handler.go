@@ -443,7 +443,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			citationsJSON = encoded
 		}
 	}
-	assistantMessage, err := s.thread.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
+	turnCost, turnPriced := usageTotal.Cost()
+	assistantMessage, err := s.thread.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsWithCost(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		titleThread(assistantContent)
@@ -482,6 +483,9 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// is read here after titles.wait() above so helper-call tokens are included —
 	// matching the per-message stats persisted just above.
 	turnUsage := usageTotal.Total()
+	// Re-read the cost next to the tokens: the per-message figure above was
+	// taken before the title call, whose cost belongs in the rollup too.
+	turnCost, _ = usageTotal.Cost()
 	if turnUsage.Present() {
 		s.recordUsage("tokens", func() error {
 			return s.usage.AddTokens(persistCtx, user.ID, usage.TokenDelta{
@@ -490,6 +494,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 				CachedTokens:     turnUsage.PromptTokensDetails.CachedTokens,
 				ReasoningTokens:  turnUsage.CompletionTokenDetails.ReasoningTokens,
 				TotalTokens:      turnUsage.TotalTokens,
+				CostNanoUSD:      turnCost,
 			})
 		})
 	}

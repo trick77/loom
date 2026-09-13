@@ -25,7 +25,7 @@ func gateServer(t *testing.T, status int, body string) *Client {
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(server.Close)
-	return NewClient(Config{BaseURL: server.URL}, server.Client())
+	return mustClient(t, Config{BaseURL: server.URL}, server.Client())
 }
 
 const emptyChoicesBody = `{"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":0,"total_tokens":7}}`

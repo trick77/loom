@@ -25,7 +25,7 @@ func TestClassifyImageIntent_multilingualEval(t *testing.T) {
 	if baseURL == "" {
 		t.Skip("set LOOM_IMAGE_INTENT_EVAL_BASEURL to run the live multilingual eval")
 	}
-	c := NewClient(Config{BaseURL: baseURL, APIKey: os.Getenv("LOOM_IMAGE_INTENT_EVAL_APIKEY"), Timeout: 30 * time.Second}, nil)
+	c := mustClient(t, Config{BaseURL: baseURL, APIKey: os.Getenv("LOOM_IMAGE_INTENT_EVAL_APIKEY"), Timeout: 30 * time.Second}, nil)
 
 	cases := []struct {
 		msg          string

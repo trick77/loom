@@ -5,9 +5,8 @@
 #
 # Optional chat API config for local dev:
 #
-#   BACKEND_CHAT_BASE_URL=https://your-openai-compatible-host/v1 \
-#   BACKEND_CHAT_API_KEY=your-api-key \
-#   BACKEND_CHAT_MODEL=your-model \
+#   LLMWIRE_MIMO_BASE_URL=https://your-mimo-host/v1 \
+#   LLMWIRE_MIMO_API_KEY=your-api-key \
 #   ./hack/refresh.sh
 #
 # Or place the same values in an uncommitted .env file; Docker Compose reads it

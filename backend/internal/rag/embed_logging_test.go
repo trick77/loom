@@ -75,7 +75,7 @@ func TestEmbedClient_Embed_logsCompletedInferenceWithoutInputs(t *testing.T) {
 	ctx := inference.WithMetadata(context.Background(), inference.Metadata{
 		UserID: "user-1", Username: "jan", ThreadID: "thread-1", Purpose: "embed_query",
 	})
-	client := NewEmbedClient(EmbedConfig{BaseURL: srv.URL, Model: "embed-model"}, srv.Client())
+	client := mustEmbedClient(t, EmbedConfig{BaseURL: srv.URL}, srv.Client())
 	if _, err := client.Embed(ctx, []string{"a secret document chunk"}); err != nil {
 		t.Fatalf("Embed() error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestEmbedClient_Embed_logsCompletedInferenceWithoutInputs(t *testing.T) {
 		t.Errorf("message = %q, want %q", line.message, "llm inference completed")
 	}
 	for key, want := range map[string]string{
-		"model": "embed-model", "user_id": "user-1", "username": "jan",
+		"model": EmbedModel, "user_id": "user-1", "username": "jan",
 		"thread_id": "thread-1", "purpose": "embed_query",
 	} {
 		if got := line.attrs[key].String(); got != want {
@@ -116,7 +116,7 @@ func TestEmbedClient_Embed_logsFailedInference(t *testing.T) {
 	capture := captureInferenceLogs(t)
 
 	ctx := inference.WithMetadata(context.Background(), inference.Metadata{UserID: "user-1"})
-	client := NewEmbedClient(EmbedConfig{BaseURL: srv.URL, Model: "embed-model"}, srv.Client())
+	client := mustEmbedClient(t, EmbedConfig{BaseURL: srv.URL}, srv.Client())
 	if _, err := client.Embed(ctx, []string{"chunk"}); err == nil {
 		t.Fatal("Embed() succeeded, want error")
 	}
@@ -137,7 +137,7 @@ func TestEmbedClient_Embed_logsFailedInference(t *testing.T) {
 // log line for a call that never happened.
 func TestEmbedClient_Embed_emptyInputLogsNothing(t *testing.T) {
 	capture := captureInferenceLogs(t)
-	client := NewEmbedClient(EmbedConfig{BaseURL: "http://unused", Model: "embed-model"}, nil)
+	client := mustEmbedClient(t, EmbedConfig{BaseURL: "http://unused"}, nil)
 	if _, err := client.Embed(context.Background(), nil); err != nil {
 		t.Fatalf("Embed() error: %v", err)
 	}

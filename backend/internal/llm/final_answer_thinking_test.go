@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// thinkingOption mirrors MiMo's native switch as llmwire renders it.
+type thinkingOption struct {
+	Type string `json:"type"`
+}
+
 type streamRequestFields struct {
 	Thinking            *thinkingOption `json:"thinking"`
 	ReasoningEffort     string          `json:"reasoning_effort"`
@@ -32,7 +37,7 @@ func captureStreamRequest(t *testing.T, ctx context.Context) (streamRequestField
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, Timeout: 5 * time.Second}, server.Client())
 	result, err := client.StreamChatWithTools(ctx, []Message{{Role: "user", Content: "hi"}}, nil, func(StreamEvent) error { return nil })
 	if err != nil {
 		t.Fatalf("StreamChatWithTools() error: %v", err)

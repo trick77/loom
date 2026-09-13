@@ -2,7 +2,6 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -173,27 +172,12 @@ func (c *Client) ApplyMemoryEdit(ctx context.Context, header, currentMemory, ins
 // runMemoryCompletion executes a bounded, non-thinking chat completion for the
 // memory helpers and returns the trimmed assistant content.
 func (c *Client) runMemoryCompletion(ctx context.Context, start time.Time, messages []Message) (string, error) {
-	resp, err := c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
-		thinking:            &thinkingOption{Type: "disabled"},
-		maxCompletionTokens: memoryMaxCompletionTokens,
-	})
+	reply, err := c.complete(ctx, c.model, messages, memoryMaxCompletionTokens, nil)
 	if err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
 	}
-	defer resp.Body.Close()
-
-	var completion chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
-		err := fmt.Errorf("decode memory completion response: %w", err)
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
-		return "", err
-	}
-	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
+	if reply.Empty {
 		return "", fmt.Errorf("memory completion returned no choices")
 	}
-	choice := completion.Choices[0]
-	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
-	return strings.TrimSpace(choice.Message.Content), nil
+	return strings.TrimSpace(reply.Content), nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/loom/internal/config"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/rag"
 )
 
 type startupRuntime struct {
@@ -58,16 +59,16 @@ func authCapability(cfg config.Config) startupCapability {
 
 func chatCapability(cfg config.Config) startupCapability {
 	if strings.TrimSpace(cfg.ChatBaseURL) == "" {
-		return startupCapability{Name: "chat", Status: "disabled", Detail: "set BACKEND_CHAT_BASE_URL"}
+		return startupCapability{Name: "chat", Status: "disabled", Detail: "set LLMWIRE_MIMO_BASE_URL"}
 	}
 	return startupCapability{Name: "chat", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", llm.ModelSummary(), cfg.ChatBaseURL)}
 }
 
 func embeddingsCapability(cfg config.Config) startupCapability {
-	if strings.TrimSpace(cfg.EmbedBaseURL) == "" || strings.TrimSpace(cfg.EmbedAPIKey) == "" {
-		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set BACKEND_EMBED_BASE_URL and BACKEND_EMBED_API_KEY"}
+	if strings.TrimSpace(cfg.EmbedBaseURL) == "" {
+		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set LLMWIRE_OPENAI_BASE_URL"}
 	}
-	return startupCapability{Name: "embeddings", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", cfg.EmbedModel, cfg.EmbedBaseURL)}
+	return startupCapability{Name: "embeddings", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", rag.EmbedModel, cfg.EmbedBaseURL)}
 }
 
 func tikaCapability(cfg config.Config) startupCapability {

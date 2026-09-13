@@ -95,6 +95,10 @@ export type Message = {
   // percentage. Unlike totalTokens (summed across every call in the turn), it is
   // not double-counted. Absent on messages predating the field.
   contextTokens?: number;
+  // costNanoUsd is the turn's list-rate cost in nano-USD, summed over every
+  // model call it made. Absent when unpriced or predating the column; never 0
+  // for an unknown price.
+  costNanoUsd?: number;
   durationMs?: number;
   model?: string;
   reasoningEffort?: string;
@@ -324,6 +328,9 @@ export type Usage = {
   totalTokens: number;
   embeddingTokens: number;
   embeddingRequests: number;
+  // costNanoUsd is the lifetime list-rate cost across chat and embedding calls,
+  // priced calls only, in nano-USD.
+  costNanoUsd: number;
   webSearches: number;
   webFetches: number;
   obscuraFetches: number;

@@ -2,11 +2,9 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 )
 
 const projectDescriptionSystemPrompt = "You write one concise big-picture description of a project for a chat app. You are given the project name and the titles of every conversation thread in the project. Reply with ONLY one neutral sentence fragment that captures the overall theme tying the threads together — describe the project as a whole, do not list or enumerate the threads. No markdown, no title, no quotes, no preamble. Hard limit: one sentence, at most 160 characters."
@@ -29,7 +27,6 @@ const projectDescriptionMaxChars = 160
 // meaningfully-titled, non-archived threads in the project (placeholder "New thread"
 // titles excluded by the caller).
 func (c *Client) GenerateProjectDescription(ctx context.Context, projectName string, titles []string, responseLanguage string) (string, error) {
-	start := time.Now()
 	var b strings.Builder
 	b.WriteString("Project name:\n\"\"\"\n")
 	b.WriteString(strings.TrimSpace(projectName))
@@ -49,38 +46,26 @@ func (c *Client) GenerateProjectDescription(ctx context.Context, projectName str
 		{Role: "system", Content: appendLanguageDirective(projectDescriptionSystemPrompt, responseLanguage)},
 		{Role: "user", Content: b.String()},
 	}
-	resp, err := c.executeUtilityChatRequestWithBudget(ctx, messages, projectDescriptionMaxCompletionTokens)
+	reply, err := c.complete(ctx, c.model, messages, projectDescriptionMaxCompletionTokens, nil)
 	if err != nil {
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
 		return "", err
 	}
-	defer resp.Body.Close()
-
-	var completion chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
-		err := fmt.Errorf("decode project description completion response: %w", err)
-		logInferenceFailed(ctx, c.model, time.Since(start), err)
-		return "", err
-	}
-	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.model, time.Since(start), completion.Usage, "")
+	if reply.Empty {
 		return "", fmt.Errorf("project description completion returned no choices")
 	}
-	choice := completion.Choices[0]
-	observeInference(ctx, c.model, time.Since(start), completion.Usage, choice.FinishReason)
-	if choice.FinishReason == "length" {
+	if reply.FinishReason == "length" {
 		// Truncated mid-fragment. Salvage the partial text (dropping a dangling last
 		// word) rather than discarding it: a clipped one-line description is far better
 		// than a permanently empty one, and silently discarding is exactly what let the
 		// empty-description bug persist unnoticed. Logged so a recurrence is visible.
-		salvaged := salvageTruncatedDescription(choice.Message.Content)
+		salvaged := salvageTruncatedDescription(reply.Content)
 		slog.Warn("project description truncated; salvaging partial",
-			"completion_tokens", completion.Usage.CompletionTokens,
+			"completion_tokens", reply.Usage.CompletionTokens,
 			"max_completion_tokens", projectDescriptionMaxCompletionTokens,
 			"salvaged_empty", salvaged == "")
 		return salvaged, nil
 	}
-	return cleanProjectDescription(choice.Message.Content), nil
+	return cleanProjectDescription(reply.Content), nil
 }
 
 // salvageTruncatedDescription turns a length-truncated completion into a usable

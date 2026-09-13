@@ -27,15 +27,15 @@ func (s *recordingUsageStore) AddTokens(_ context.Context, _ string, delta usage
 	return nil
 }
 
-func (s stubUsageStore) AddTokens(context.Context, string, usage.TokenDelta) error { return nil }
-func (s stubUsageStore) AddEmbeddingUsage(context.Context, string, int, int) error { return nil }
-func (s stubUsageStore) IncWebSearch(context.Context, string) error                { return nil }
-func (s stubUsageStore) IncWebFetch(context.Context, string) error                 { return nil }
-func (s stubUsageStore) IncObscuraFetch(context.Context, string) error             { return nil }
-func (s stubUsageStore) IncImageGen(context.Context, string) error                 { return nil }
-func (s stubUsageStore) IncThreadCreated(context.Context, string) error            { return nil }
-func (s stubUsageStore) IncProjectCreated(context.Context, string) error           { return nil }
-func (s stubUsageStore) Get(context.Context, string) (usage.Totals, error)         { return s.totals, nil }
+func (s stubUsageStore) AddTokens(context.Context, string, usage.TokenDelta) error        { return nil }
+func (s stubUsageStore) AddEmbeddingUsage(context.Context, string, int, int, int64) error { return nil }
+func (s stubUsageStore) IncWebSearch(context.Context, string) error                       { return nil }
+func (s stubUsageStore) IncWebFetch(context.Context, string) error                        { return nil }
+func (s stubUsageStore) IncObscuraFetch(context.Context, string) error                    { return nil }
+func (s stubUsageStore) IncImageGen(context.Context, string) error                        { return nil }
+func (s stubUsageStore) IncThreadCreated(context.Context, string) error                   { return nil }
+func (s stubUsageStore) IncProjectCreated(context.Context, string) error                  { return nil }
+func (s stubUsageStore) Get(context.Context, string) (usage.Totals, error)                { return s.totals, nil }
 
 func TestHandleGetUsage_returnsTotalsAndMemoryStats(t *testing.T) {
 	updated := time.Date(2026, 6, 26, 8, 30, 0, 0, time.UTC)

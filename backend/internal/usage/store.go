@@ -24,6 +24,8 @@ type TokenDelta struct {
 	CachedTokens     int
 	ReasoningTokens  int
 	TotalTokens      int
+	// CostNanoUSD is the turn's priced cost; 0 for a turn with no priced call.
+	CostNanoUSD int64
 }
 
 // Totals is a user's lifetime usage. JSON tags match the frontend Usage type.
@@ -39,8 +41,11 @@ type Totals struct {
 	WebFetches        int `json:"webFetches"`
 	ObscuraFetches    int `json:"obscuraFetches"`
 	ImageGens         int `json:"imageGens"`
-	ThreadsCreated    int `json:"threadsCreated"`
-	ProjectsCreated   int `json:"projectsCreated"`
+	// CostNanoUSD is the lifetime list-rate cost across chat and embedding
+	// calls, priced calls only.
+	CostNanoUSD     int64 `json:"costNanoUsd"`
+	ThreadsCreated  int   `json:"threadsCreated"`
+	ProjectsCreated int   `json:"projectsCreated"`
 }
 
 type Store struct{ db DBTX }
@@ -51,29 +56,33 @@ func NewStore(db DBTX) *Store { return &Store{db: db} }
 // the row on first use.
 func (s *Store) AddTokens(ctx context.Context, userID string, d TokenDelta) error {
 	const q = `INSERT INTO user_usage_totals
-		(user_id, prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, total_tokens)
-		VALUES (?, ?, ?, ?, ?, ?)
+		(user_id, prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, total_tokens, cost_nano_usd)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			prompt_tokens     = prompt_tokens + excluded.prompt_tokens,
 			completion_tokens = completion_tokens + excluded.completion_tokens,
 			cached_tokens     = cached_tokens + excluded.cached_tokens,
 			reasoning_tokens  = reasoning_tokens + excluded.reasoning_tokens,
 			total_tokens      = total_tokens + excluded.total_tokens,
+			cost_nano_usd     = cost_nano_usd + excluded.cost_nano_usd,
 			updated_at        = datetime('now')`
 	_, err := s.db.ExecContext(ctx, q, userID,
-		d.PromptTokens, d.CompletionTokens, d.CachedTokens, d.ReasoningTokens, d.TotalTokens)
+		d.PromptTokens, d.CompletionTokens, d.CachedTokens, d.ReasoningTokens, d.TotalTokens, d.CostNanoUSD)
 	return err
 }
 
-func (s *Store) AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int) error {
+// AddEmbeddingUsage adds one embedding call's tokens and its priced cost (0
+// when unpriced) to the user's lifetime totals.
+func (s *Store) AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int, costNanoUSD int64) error {
 	const q = `INSERT INTO user_usage_totals
-		(user_id, embedding_tokens, embedding_requests)
-		VALUES (?, ?, ?)
+		(user_id, embedding_tokens, embedding_requests, cost_nano_usd)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			embedding_tokens   = embedding_tokens + excluded.embedding_tokens,
 			embedding_requests = embedding_requests + excluded.embedding_requests,
+			cost_nano_usd      = cost_nano_usd + excluded.cost_nano_usd,
 			updated_at         = datetime('now')`
-	_, err := s.db.ExecContext(ctx, q, userID, tokens, requests)
+	_, err := s.db.ExecContext(ctx, q, userID, tokens, requests, costNanoUSD)
 	return err
 }
 
@@ -110,13 +119,15 @@ func (s *Store) bump(ctx context.Context, userID, column string) error {
 func (s *Store) Get(ctx context.Context, userID string) (Totals, error) {
 	const q = `SELECT prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, total_tokens,
 		embedding_tokens, embedding_requests,
-		web_searches, web_fetches, obscura_fetches, image_gens, chats_created, projects_created
+		web_searches, web_fetches, obscura_fetches, image_gens, chats_created, projects_created,
+		cost_nano_usd
 		FROM user_usage_totals WHERE user_id = ?`
 	var t Totals
 	err := s.db.QueryRowContext(ctx, q, userID).Scan(
 		&t.PromptTokens, &t.CompletionTokens, &t.CachedTokens, &t.ReasoningTokens, &t.TotalTokens,
 		&t.EmbeddingTokens, &t.EmbeddingRequests,
 		&t.WebSearches, &t.WebFetches, &t.ObscuraFetches, &t.ImageGens, &t.ThreadsCreated, &t.ProjectsCreated,
+		&t.CostNanoUSD,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Totals{}, nil

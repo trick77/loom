@@ -30,7 +30,7 @@ type Embedder interface {
 }
 
 type EmbeddingUsageRecorder interface {
-	AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int) error
+	AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int, costNanoUSD int64) error
 }
 
 // FileOpener opens a document's bytes from the per-user volume (sandboxed).
@@ -174,8 +174,9 @@ func (ing *Ingester) embedAll(ctx context.Context, userID string, chunks []TextC
 	embeddings := make([][]float32, 0, len(chunks))
 	var usageTokens int
 	var usageRequests int
+	var usageCost int64
 	defer func() {
-		ing.recordEmbeddingUsage(ctx, userID, usageTokens, usageRequests)
+		ing.recordEmbeddingUsage(ctx, userID, usageTokens, usageRequests, usageCost)
 	}()
 	for start := 0; start < len(chunks); start += embedBatchSize {
 		end := start + embedBatchSize
@@ -195,15 +196,18 @@ func (ing *Ingester) embedAll(ctx context.Context, userID string, chunks []TextC
 			usageTokens += result.Usage.TotalTokens
 			usageRequests++
 		}
+		if result.Usage.CostPriced {
+			usageCost += result.Usage.CostNanoUSD
+		}
 	}
 	return embeddings, nil
 }
 
-func (ing *Ingester) recordEmbeddingUsage(ctx context.Context, userID string, tokens, requests int) {
+func (ing *Ingester) recordEmbeddingUsage(ctx context.Context, userID string, tokens, requests int, costNanoUSD int64) {
 	if ing.usage == nil || tokens == 0 || requests == 0 {
 		return
 	}
-	_ = ing.usage.AddEmbeddingUsage(ctx, userID, tokens, requests)
+	_ = ing.usage.AddEmbeddingUsage(ctx, userID, tokens, requests, costNanoUSD)
 }
 
 func (ing *Ingester) fail(ctx context.Context, userID, documentID string, cause error) error {

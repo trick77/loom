@@ -23,6 +23,12 @@ import (
 // context size of that single generation, kept separate from the accumulated
 // usage so the UI can report context-window occupancy without double-counting.
 func messageMetricsFromTurn(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration) chat.MessageTokenUsage {
+	return messageMetricsWithCost(result, usage, duration, 0, false)
+}
+
+// messageMetricsWithCost is messageMetricsFromTurn plus the turn's summed cost;
+// priced false leaves it NULL rather than recording a free-looking zero.
+func messageMetricsWithCost(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration, costNanoUSD int64, priced bool) chat.MessageTokenUsage {
 	metrics := chat.MessageTokenUsage{ReasoningContent: result.ReasoningContent}
 	if result.Model != "" {
 		metrics.Model = strPtr(result.Model)
@@ -48,6 +54,9 @@ func messageMetricsFromTurn(result llm.StreamResult, usage llm.TokenUsage, durat
 	// answer call.
 	if result.Usage.TotalTokens > 0 {
 		metrics.ContextTokens = intPtr(result.Usage.TotalTokens)
+	}
+	if priced {
+		metrics.CostNanoUSD = &costNanoUSD
 	}
 	return metrics
 }

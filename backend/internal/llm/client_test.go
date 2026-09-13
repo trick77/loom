@@ -41,7 +41,7 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{
+	client := mustClient(t, Config{
 		BaseURL: server.URL + "/v1/",
 		APIKey:  "secret",
 	}, server.Client())
@@ -68,9 +68,6 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	}
 	if !gotBody.Stream {
 		t.Fatal("stream = false, want true")
-	}
-	if !gotBody.StreamOptions.IncludeUsage {
-		t.Fatal("stream_options.include_usage = false, want true")
 	}
 	if gotBody.ReasoningEffort != "high" {
 		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
@@ -106,7 +103,7 @@ func TestClient_StreamChatSendsMultimodalContentParts(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 	_, err := client.StreamChatResult(context.Background(), []Message{{
 		Role: "user",
 		ContentParts: []MessageContentPart{
@@ -120,11 +117,17 @@ func TestClient_StreamChatSendsMultimodalContentParts(t *testing.T) {
 	if len(gotBody.Messages) != 1 || gotBody.Messages[0].Role != "user" {
 		t.Fatalf("messages = %#v, want one user message", gotBody.Messages)
 	}
-	var parts []MessageContentPart
+	var parts []struct {
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		ImageURL *struct {
+			URL string `json:"url"`
+		} `json:"image_url"`
+	}
 	if err := json.Unmarshal(gotBody.Messages[0].Content, &parts); err != nil {
 		t.Fatalf("unmarshal content parts: %v; raw=%s", err, gotBody.Messages[0].Content)
 	}
-	if len(parts) != 2 || parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,abc" || parts[1].Text != "What is in this image?" {
+	if len(parts) != 2 || parts[0].Type != "image_url" || parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,abc" || parts[1].Type != "text" || parts[1].Text != "What is in this image?" {
 		t.Fatalf("content parts = %#v, want image_url then text", parts)
 	}
 }
@@ -168,7 +171,7 @@ func TestClient_RoutesImageTurnsToVisionModelAndTextTurnsToTextModel(t *testing.
 			}))
 			t.Cleanup(server.Close)
 
-			client := NewClient(Config{BaseURL: server.URL}, server.Client())
+			client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 			result, err := client.StreamChatWithTools(context.Background(), tc.messages, nil, func(StreamEvent) error { return nil })
 			if err != nil {
 				t.Fatalf("StreamChatWithTools() error: %v", err)
@@ -203,7 +206,7 @@ func TestClient_NeverSendsImagePartsToTextModel(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 	// A multi-message history where only a prior turn carries an image still routes
 	// to vision so the image part is never delivered to the text model.
 	messages := []Message{
@@ -222,35 +225,6 @@ func TestClient_NeverSendsImagePartsToTextModel(t *testing.T) {
 	}
 }
 
-// The stream can finalize two ways: on a literal `data: [DONE]` or when the
-// connection just ends (EOF) with no terminator. result.Model must reflect the
-// routed model on BOTH paths — this exercises the EOF path (no [DONE]) for an
-// image turn, which a per-path field swap can silently miss.
-func TestClient_ImageTurnReportsVisionModelOnEOFFinishPath(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		// Content only, then the handler returns → connection closes with no
-		// `data: [DONE]`, forcing the post-loop EOF finalization.
-		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
-	}))
-	t.Cleanup(server.Close)
-
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
-	result, err := client.StreamChatWithTools(context.Background(), []Message{{
-		Role: "user",
-		ContentParts: []MessageContentPart{
-			{Type: "image_url", ImageURL: &MessageImageURL{URL: "data:image/png;base64,abc"}},
-			{Type: "text", Text: "What is this?"},
-		},
-	}}, nil, func(StreamEvent) error { return nil })
-	if err != nil {
-		t.Fatalf("StreamChatWithTools() error: %v", err)
-	}
-	if result.Model != visionModel {
-		t.Fatalf("result.Model = %q, want %q on the EOF finish path", result.Model, visionModel)
-	}
-}
-
 func TestClient_StreamChatUsesConfiguredMaxCompletionTokens(t *testing.T) {
 	var gotBody struct {
 		MaxCompletionTokens int `json:"max_completion_tokens"`
@@ -265,7 +239,7 @@ func TestClient_StreamChatUsesConfiguredMaxCompletionTokens(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, MaxCompletionTokens: 4096}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, MaxCompletionTokens: 4096}, server.Client())
 	result, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
 	if err != nil {
 		t.Fatalf("StreamChatResult() error: %v", err)
@@ -289,7 +263,7 @@ func TestClient_StreamChatTimeoutCancelsPrimaryStream(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Timeout: 10 * time.Millisecond}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, Timeout: 10 * time.Millisecond}, server.Client())
 	_, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("StreamChatResult() error = %v, want context deadline exceeded", err)
@@ -305,7 +279,7 @@ func TestClient_StreamChatResultCapturesUsageTrailerChunk(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	result, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
 	if err != nil {
@@ -338,7 +312,7 @@ func TestClient_StreamChatResultCapturesModelAndReasoningEffortOnDonePath(t *tes
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	result, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
 	if err != nil {
@@ -362,7 +336,7 @@ func TestClient_StreamChatResultCapturesReasoningContent(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	var events []StreamEvent
 	result, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil, func(event StreamEvent) error {
@@ -394,7 +368,7 @@ func TestClient_StreamChatResultLeavesUsageEmptyWhenMissing(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	result, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
 	if err != nil {
@@ -423,7 +397,7 @@ func TestClient_StreamChatLogsRawResponseWhenConfigured(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, ResponseLogDir: logDir}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, ResponseLogDir: logDir}, server.Client())
 
 	for range 2 {
 		if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
@@ -477,7 +451,7 @@ func TestClient_StreamChatSendsHardcodedReasoningEffort(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	// Reasoning effort is no longer configurable: MiMo is hardcoded to "high".
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
 		t.Fatalf("StreamChat() error: %v", err)
@@ -503,7 +477,7 @@ func TestClient_StreamChatWithToolsSendsToolSchemas(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Hi"}}, []Tool{{
 		Type: "function",
@@ -539,7 +513,7 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedCompletionBudget(t *testin
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	_, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Make a PDF"}}, []Tool{{
 		Type: "function",
@@ -566,7 +540,7 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedTimeout(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Timeout: 10 * time.Millisecond}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, Timeout: 10 * time.Millisecond}, server.Client())
 
 	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Make a PDF"}}, []Tool{{
 		Type: "function",
@@ -585,7 +559,7 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedTimeout(t *testing.T) {
 }
 
 func TestClient_DocumentToolPreservesDisabledTimeout(t *testing.T) {
-	client := NewClient(Config{BaseURL: "http://example.test"}, nil)
+	client := mustClient(t, Config{BaseURL: "http://example.test"}, nil)
 
 	got := client.timeoutForTools([]Tool{{
 		Type: "function",
@@ -601,7 +575,7 @@ func TestClient_DocumentToolPreservesDisabledTimeout(t *testing.T) {
 }
 
 func TestClient_NonDocumentToolKeepsConfiguredTimeout(t *testing.T) {
-	client := NewClient(Config{BaseURL: "http://example.test", Timeout: 10 * time.Millisecond}, nil)
+	client := mustClient(t, Config{BaseURL: "http://example.test", Timeout: 10 * time.Millisecond}, nil)
 
 	got := client.timeoutForTools([]Tool{{
 		Type: "function",
@@ -616,39 +590,14 @@ func TestClient_NonDocumentToolKeepsConfiguredTimeout(t *testing.T) {
 	}
 }
 
-func TestClient_DocumentToolWidensIdleTimeout(t *testing.T) {
-	client := NewClient(Config{BaseURL: "http://example.test", IdleTimeout: 60 * time.Second}, nil)
-
-	got := client.toolCallIdleTimeout([]Tool{{
-		Type:     "function",
-		Function: ToolFunction{Name: "create_pdf_file", Parameters: map[string]any{"type": "object"}},
-	}})
-	if got != documentToolTimeout {
-		t.Fatalf("toolCallIdleTimeout() = %s, want documentToolTimeout %s", got, documentToolTimeout)
+func TestToolCallIdleTimeout_WidensOnlyForDocumentTools(t *testing.T) {
+	doc := []Tool{{Type: "function", Function: ToolFunction{Name: "create_pdf_file", Parameters: map[string]any{"type": "object"}}}}
+	if got := toolCallIdleTimeout(doc); got != documentToolTimeout {
+		t.Fatalf("toolCallIdleTimeout(doc) = %s, want %s", got, documentToolTimeout)
 	}
-}
-
-func TestClient_NonDocumentToolKeepsConfiguredIdleTimeout(t *testing.T) {
-	client := NewClient(Config{BaseURL: "http://example.test", IdleTimeout: 60 * time.Second}, nil)
-
-	got := client.toolCallIdleTimeout([]Tool{{
-		Type:     "function",
-		Function: ToolFunction{Name: "search__web", Parameters: map[string]any{"type": "object"}},
-	}})
-	if got != 60*time.Second {
-		t.Fatalf("toolCallIdleTimeout() = %s, want 60s", got)
-	}
-}
-
-func TestClient_DisabledIdleWatchdogStaysDisabledForDocumentTool(t *testing.T) {
-	client := NewClient(Config{BaseURL: "http://example.test"}, nil)
-
-	got := client.toolCallIdleTimeout([]Tool{{
-		Type:     "function",
-		Function: ToolFunction{Name: "create_pdf_file", Parameters: map[string]any{"type": "object"}},
-	}})
-	if got != 0 {
-		t.Fatalf("toolCallIdleTimeout() = %s, want 0 when watchdog disabled", got)
+	search := []Tool{{Type: "function", Function: ToolFunction{Name: "search__web", Parameters: map[string]any{"type": "object"}}}}
+	if got := toolCallIdleTimeout(search); got != 0 {
+		t.Fatalf("toolCallIdleTimeout(search) = %s, want 0 (llmwire keeps the configured bound)", got)
 	}
 }
 
@@ -686,7 +635,7 @@ func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *
 			}))
 			t.Cleanup(server.Close)
 
-			client := NewClient(Config{BaseURL: server.URL, MaxCompletionTokens: tt.configuredTokens}, server.Client())
+			client := mustClient(t, Config{BaseURL: server.URL, MaxCompletionTokens: tt.configuredTokens}, server.Client())
 
 			_, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Use a tool"}}, []Tool{{
 				Type: "function",
@@ -715,7 +664,7 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	var events []StreamEvent
 	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, nil, func(event StreamEvent) error {
@@ -761,7 +710,7 @@ func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	var events []StreamEvent
 	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
@@ -803,7 +752,7 @@ func TestClient_StreamChatWithToolsSignalsPendingBeforeInlineToolCall(t *testing
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	var events []StreamEvent
 	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
@@ -848,7 +797,7 @@ func TestClient_StreamChatWithoutToolsStripsInlineXML(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Answer"}}, nil, nil)
 	if err != nil {
@@ -870,7 +819,7 @@ func TestClient_StreamChatWithToolsDoesNotStreamMiMoInlineXML(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	var deltas string
 	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
@@ -899,7 +848,7 @@ func TestClient_StreamChatWithToolsStreamsNormalMiMoContent(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	var deltas string
 	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil, func(event StreamEvent) error {
@@ -925,7 +874,7 @@ func TestClient_StreamChatParsesDataLinesWithoutSpace(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	final, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, func(string) error {
 		return nil
@@ -960,7 +909,7 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	title, err := client.GenerateThreadTitle(context.Background(), "Can you explain x?", "Sure.", "")
 	if err != nil {
@@ -1021,7 +970,7 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 			t.Cleanup(server.Close)
 
 			// reasoning_effort high would normally apply to MiMo; utility calls must override it.
-			client := NewClient(Config{BaseURL: server.URL}, server.Client())
+			client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 			if _, err := tc.call(client); err != nil {
 				t.Fatalf("call error: %v", err)
 			}
@@ -1054,7 +1003,7 @@ func TestClient_TitlesSkippedWhenTruncatedAtTokenCap(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	if got, err := client.GenerateReasoningTitle(context.Background(), "some reasoning", ""); err != nil || got != "" {
 		t.Fatalf("reasoning title = %q, err = %v; want skipped (empty)", got, err)
@@ -1085,7 +1034,7 @@ func TestClient_ClassifyThreadParsesReply(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			client := NewClient(Config{BaseURL: server.URL}, server.Client())
+			client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 			got, err := client.ClassifyThread(context.Background(), "Write a Go function")
 			if err != nil {
 				t.Fatalf("ClassifyThread() error: %v", err)
@@ -1136,7 +1085,7 @@ func TestClient_StreamChatReturnsErrorForHTTP500(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	_, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, func(string) error {
 		return nil
@@ -1158,7 +1107,7 @@ func TestClient_StreamChatPropagatesDeltaCallbackError(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	_, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, func(string) error {
 		return sentinel
@@ -1183,7 +1132,7 @@ func TestClient_GenerateTitleOmitsEmptyAssistantMessage(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	title, err := client.GenerateThreadTitle(context.Background(), "Hi", "", "")
 	if err != nil {
@@ -1217,7 +1166,7 @@ func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	title, err := client.GenerateThreadTitle(context.Background(), `Tell me about "Lens" by IPverse`, "", "")
 	if err != nil {
@@ -1266,7 +1215,7 @@ func TestClient_GenerateTitleFramesAssistantReplyWhenPresent(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	if _, err := client.GenerateThreadTitle(context.Background(), "Hi", "Hi there", ""); err != nil {
 		t.Fatalf("GenerateThreadTitle() error: %v", err)
@@ -1300,7 +1249,7 @@ func TestClient_GenerateTitleHonorsResponseLanguage(t *testing.T) {
 		}))
 		t.Cleanup(server.Close)
 
-		client := NewClient(Config{BaseURL: server.URL}, server.Client())
+		client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 		if _, err := client.GenerateThreadTitle(context.Background(), "Hallo", "", responseLanguage); err != nil {
 			t.Fatalf("GenerateThreadTitle() error: %v", err)
 		}

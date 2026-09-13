@@ -50,6 +50,18 @@ function contextUsagePercent(contextTokens: number): string {
   return `${Math.round((contextTokens / CONTEXT_WINDOW_TOKENS) * 100)}${THIN_SPACE}%`;
 }
 
+/**
+ * Format a nano-USD figure as dollars for the metrics line. Most turns cost a
+ * fraction of a cent, so the figure keeps enough decimals to be non-zero:
+ * four for anything under a dollar ("$0.0031"), two above ("$1.24"). The
+ * amount is a list-rate equivalent, not an invoice.
+ */
+export function formatCostNanoUsd(nanoUsd: number): string {
+  const usd = nanoUsd / 1_000_000_000;
+  if (usd >= 1) return `$${usd.toFixed(2)}`;
+  return `$${usd.toFixed(4)}`;
+}
+
 function cachedSuffix(message: Message): string {
   return hasPositiveValue(message.cachedTokens)
     ? ` (${groupThousands(message.cachedTokens)}/c)`
@@ -122,6 +134,9 @@ export function buildMetricsString(message: Message): string | null {
   }
   if (hasPositiveValue(message.contextTokens)) {
     segments.push(contextUsagePercent(message.contextTokens));
+  }
+  if (hasPositiveValue(message.costNanoUsd)) {
+    segments.push(formatCostNanoUsd(message.costNanoUsd));
   }
   return segments.join(DOT_SEPARATOR);
 }

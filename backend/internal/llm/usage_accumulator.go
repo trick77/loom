@@ -16,6 +16,11 @@ type usageAccumulatorKey struct{}
 type UsageAccumulator struct {
 	mu    sync.Mutex
 	usage TokenUsage
+	// costNanoUSD sums the priced calls only; priced records whether any call
+	// was priced, so a turn whose every call was unpriced reports "unknown"
+	// rather than zero.
+	costNanoUSD int64
+	priced      bool
 }
 
 func NewUsageAccumulator() *UsageAccumulator {
@@ -33,6 +38,27 @@ func (a *UsageAccumulator) add(u TokenUsage) {
 	a.usage.TotalTokens += u.TotalTokens
 	a.usage.PromptTokensDetails.CachedTokens += u.PromptTokensDetails.CachedTokens
 	a.usage.CompletionTokenDetails.ReasoningTokens += u.CompletionTokenDetails.ReasoningTokens
+}
+
+func (a *UsageAccumulator) addCost(nanoUSD int64, priced bool) {
+	if a == nil || !priced {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.costNanoUSD += nanoUSD
+	a.priced = true
+}
+
+// Cost returns the summed cost of the priced calls so far and whether any call
+// was priced. Safe to call concurrently.
+func (a *UsageAccumulator) Cost() (nanoUSD int64, priced bool) {
+	if a == nil {
+		return 0, false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.costNanoUSD, a.priced
 }
 
 // Total returns the usage summed so far. Safe to call concurrently.
@@ -56,5 +82,13 @@ func WithUsageAccumulator(ctx context.Context, acc *UsageAccumulator) context.Co
 func RecordUsage(ctx context.Context, usage TokenUsage) {
 	if acc, _ := ctx.Value(usageAccumulatorKey{}).(*UsageAccumulator); acc != nil {
 		acc.add(usage)
+	}
+}
+
+// RecordCost adds one completed call's cost to the accumulator on ctx, if any.
+// An unpriced call adds nothing.
+func RecordCost(ctx context.Context, nanoUSD int64, priced bool) {
+	if acc, _ := ctx.Value(usageAccumulatorKey{}).(*UsageAccumulator); acc != nil {
+		acc.addCost(nanoUSD, priced)
 	}
 }

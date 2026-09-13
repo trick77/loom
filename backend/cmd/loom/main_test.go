@@ -41,7 +41,6 @@ func TestResponseLogDirForConfigOnlyEnablesDevMode(t *testing.T) {
 func TestChatClientConfigFromConfig(t *testing.T) {
 	cfg := config.Config{
 		ChatBaseURL:             "https://chat.example/v1",
-		ChatAPIKey:              "secret",
 		ChatMaxCompletionTokens: 4096,
 		ChatTimeout:             90 * time.Second,
 		ChatIdleTimeout:         60 * time.Second,
@@ -50,11 +49,9 @@ func TestChatClientConfigFromConfig(t *testing.T) {
 	}
 
 	got := chatClientConfigFromConfig(cfg)
-	if got.BaseURL != cfg.ChatBaseURL {
-		t.Fatalf("BaseURL = %q, want %q", got.BaseURL, cfg.ChatBaseURL)
-	}
-	if got.APIKey != cfg.ChatAPIKey {
-		t.Fatalf("APIKey = %q, want %q", got.APIKey, cfg.ChatAPIKey)
+	// The endpoint is llmwire's (LLMWIRE_MIMO_*), never copied through config.
+	if got.BaseURL != "" || got.APIKey != "" {
+		t.Fatalf("BaseURL/APIKey = %q/%q, want empty so llmwire reads its own variables", got.BaseURL, got.APIKey)
 	}
 	if got.MaxCompletionTokens != cfg.ChatMaxCompletionTokens {
 		t.Fatalf("MaxCompletionTokens = %d, want %d", got.MaxCompletionTokens, cfg.ChatMaxCompletionTokens)

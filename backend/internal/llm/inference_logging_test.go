@@ -72,7 +72,7 @@ func TestClassifyImageIntent_logsTheDecision(t *testing.T) {
 	srv := completionServer(t, `{"choices":[{"message":{"role":"assistant","content":"{\"action\":\"create\",\"needs_text\":true}"},"finish_reason":"stop"}]}`)
 	capture := captureAllInferenceLogs(t)
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{
 		UserID: "user-1", Username: "jan", ThreadID: "thread-1", Purpose: "image_intent", Round: 1,
 	})
@@ -106,7 +106,7 @@ func TestClassifyThread_logsTheCoercedCategory(t *testing.T) {
 	srv := completionServer(t, `{"choices":[{"message":{"role":"assistant","content":"url_lookup"},"finish_reason":"stop"}]}`)
 	capture := captureAllInferenceLogs(t)
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	category, err := c.ClassifyThread(context.Background(), "what did we decide yesterday?")
 	if err != nil {
 		t.Fatalf("ClassifyThread error = %v", err)
@@ -127,7 +127,7 @@ func TestDescribeImage_logsWithADefaultPurpose(t *testing.T) {
 	srv := completionServer(t, `{"choices":[{"message":{"role":"assistant","content":"A red bicycle."},"finish_reason":"stop"}]}`)
 	capture := captureAllInferenceLogs(t)
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	if _, err := c.DescribeImage(context.Background(), onePixelPNG(), "image/png"); err != nil {
 		t.Fatalf("DescribeImage error = %v", err)
 	}
@@ -147,7 +147,7 @@ func TestDescribeImage_keepsACallerSuppliedPurpose(t *testing.T) {
 	srv := completionServer(t, `{"choices":[{"message":{"role":"assistant","content":"A red bicycle."},"finish_reason":"stop"}]}`)
 	capture := captureAllInferenceLogs(t)
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{UserID: "user-1", Purpose: "attachment_describe"})
 	if _, err := c.DescribeImage(ctx, onePixelPNG(), "image/png"); err != nil {
 		t.Fatalf("DescribeImage error = %v", err)
