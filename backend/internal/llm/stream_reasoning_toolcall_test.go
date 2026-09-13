@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +37,7 @@ func TestClient_InlineToolCallInReasoningChannelIsParsedAndGated(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 
 	var reasoningSeen strings.Builder
 	result, err := client.StreamChatWithTools(
@@ -74,9 +75,9 @@ func TestClient_InlineToolCallInReasoningChannelIsParsedAndGated(t *testing.T) {
 }
 
 // An inline tool call recovered from a non-native channel is invisible in the
-// completion log's tool=/tool_arg_bytes fields (those read the native tool_calls
-// map only). It must therefore be logged distinctly, naming the channel it came
-// from, so the phenomenon is diagnosable from logs rather than silent.
+// completion log's tool=/tool_arg_bytes fields. llmwire reports the recovery
+// as a warning naming the channel; loom logs every wire warning, so the
+// phenomenon stays diagnosable from loom's logs rather than silent.
 func TestClient_RecoveredInlineToolCallIsLoggedWithChannel(t *testing.T) {
 	const block = "<tool_call> <function=fetch__fetch> <parameter=url>https://example.com</parameter> </function> </tool_call>"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +99,7 @@ func TestClient_RecoveredInlineToolCallIsLoggedWithChannel(t *testing.T) {
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 	if _, err := client.StreamChatWithTools(
 		context.Background(),
 		[]Message{{Role: "user", Content: "fetch example.com"}},
@@ -108,21 +109,23 @@ func TestClient_RecoveredInlineToolCallIsLoggedWithChannel(t *testing.T) {
 		t.Fatalf("StreamChatWithTools() error = %v", err)
 	}
 
-	rec, ok := capture.find("recovered inline tool calls")
+	rec, ok := capture.find("llm: wire warning")
 	if !ok {
-		t.Fatalf("no %q log line emitted; captured: %v", "recovered inline tool calls", capture.messages())
+		t.Fatalf("no %q log line emitted; captured: %v", "llm: wire warning", capture.messages())
 	}
-	if got := rec["channel"].String(); got != "reasoning" {
-		t.Fatalf("log channel = %q, want reasoning", got)
+	if got := rec["feature"].String(); got != "tool_calls" {
+		t.Fatalf("log feature = %q, want tool_calls", got)
+	}
+	if got := rec["details"].String(); !strings.Contains(got, "reasoning channel") {
+		t.Fatalf("log details = %q, want the reasoning channel named", got)
 	}
 }
 
 // jsonString renders s as a JSON string literal (with surrounding quotes) for
 // embedding in a hand-built SSE chunk.
 func jsonString(s string) string {
-	var b strings.Builder
-	writeJSONString(&b, s)
-	return b.String()
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 // recordCapture records every slog record so a test can assert a specific log

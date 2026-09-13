@@ -80,13 +80,13 @@ func TestCounters_areAdditiveAndCreateRow(t *testing.T) {
 	if err := st.AddTokens(ctx, "u1", usage.TokenDelta{PromptTokens: 10, CompletionTokens: 5, CachedTokens: 2, ReasoningTokens: 3, TotalTokens: 18}); err != nil {
 		t.Fatalf("AddTokens: %v", err)
 	}
-	if err := st.AddTokens(ctx, "u1", usage.TokenDelta{PromptTokens: 1, TotalTokens: 1}); err != nil {
+	if err := st.AddTokens(ctx, "u1", usage.TokenDelta{PromptTokens: 1, TotalTokens: 1, CostNanoUSD: 2_500_000}); err != nil {
 		t.Fatalf("AddTokens 2: %v", err)
 	}
-	if err := st.AddEmbeddingUsage(ctx, "u1", 11, 1); err != nil {
+	if err := st.AddEmbeddingUsage(ctx, "u1", 11, 1, 700); err != nil {
 		t.Fatalf("AddEmbeddingUsage: %v", err)
 	}
-	if err := st.AddEmbeddingUsage(ctx, "u1", 5, 2); err != nil {
+	if err := st.AddEmbeddingUsage(ctx, "u1", 5, 2, 300); err != nil {
 		t.Fatalf("AddEmbeddingUsage 2: %v", err)
 	}
 	for _, inc := range []func(context.Context, string) error{
@@ -104,6 +104,8 @@ func TestCounters_areAdditiveAndCreateRow(t *testing.T) {
 	want := usage.Totals{
 		PromptTokens: 11, CompletionTokens: 5, CachedTokens: 2, ReasoningTokens: 3, TotalTokens: 19,
 		EmbeddingTokens: 16, EmbeddingRequests: 3,
+		// Chat cost plus both embedding calls: 2 500 000 + 700 + 300.
+		CostNanoUSD: 2_501_000,
 		WebSearches: 1, WebFetches: 1, ObscuraFetches: 1, ImageGens: 1, ThreadsCreated: 1, ProjectsCreated: 1,
 	}
 	if got != want {

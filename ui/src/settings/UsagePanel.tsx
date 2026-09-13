@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 import { getUsage, type Usage } from "../api";
+import { formatCostNanoUsd } from "../metrics";
 import { formatTimeAgo } from "../timeago";
 
 type Row = { label: string; value: string };
@@ -95,6 +96,7 @@ function sectionsFor(u: Usage, t: TFunction): { group: string; rows: Row[] }[] {
         { label: t("settings.completion"), value: fmt(u.completionTokens) },
         { label: t("settings.cached"), value: fmt(u.cachedTokens) },
         { label: t("settings.reasoning"), value: fmt(u.reasoningTokens) },
+        { label: t("settings.cost"), value: formatCostNanoUsd(u.costNanoUsd) },
       ],
     },
     {

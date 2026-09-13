@@ -166,7 +166,11 @@ type Message struct {
 	// real context size of that single generation, the correct basis for the
 	// context-window percentage. Distinct from TotalTokens, which sums usage
 	// across every model call in the turn. Nil for messages predating this field.
-	ContextTokens   *int      `json:"contextTokens,omitempty"`
+	ContextTokens *int `json:"contextTokens,omitempty"`
+	// CostNanoUSD is the turn's list-rate cost in nano-USD summed over every
+	// model call it made (llmwire's per-call figure). Nil when unpriced or
+	// predating the column; never 0 for an unknown price.
+	CostNanoUSD     *int64    `json:"costNanoUsd,omitempty"`
 	DurationMs      *int      `json:"durationMs,omitempty"`
 	Model           *string   `json:"model,omitempty"`
 	ReasoningEffort *string   `json:"reasoningEffort,omitempty"`
@@ -217,6 +221,7 @@ type MessageTokenUsage struct {
 	// single generation's context size), persisted separately from the per-turn
 	// accumulated TotalTokens so the UI can show true context-window occupancy.
 	ContextTokens    *int
+	CostNanoUSD      *int64
 	DurationMs       *int
 	Model            *string
 	ReasoningEffort  *string

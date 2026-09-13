@@ -1,85 +1,80 @@
 package rag
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"sort"
-	"strings"
 	"time"
 
+	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/inference"
 )
 
-const (
-	defaultEmbedTimeout = 1 * time.Minute
-	maxEmbedErrorBody   = 4 << 10
-)
+// EmbedModel is the embedding model, a constant of the build: the vector
+// column width is fixed by the migration that created it (see EmbedDim), so
+// swapping the model is a re-index, not a config change. The endpoint and key
+// come from LLMWIRE_OPENAI_BASE_URL and LLMWIRE_OPENAI_API_KEY, the variables
+// the profile's provider names.
+const EmbedModel = "text-embedding-3-small"
 
-// EmbedConfig configures the OpenAI-compatible embedding client. It reuses the
-// app's BACKEND_EMBED_* settings (separate from the MiMo chat endpoint).
+const defaultEmbedTimeout = 1 * time.Minute
+
+// embedProfile is the model's llmwire profile, resolved once so a typo in the
+// constant or a model that is not an embeddings model fails at init.
+var embedProfile = mustEmbedProfile()
+
+func mustEmbedProfile() *llmwire.Profile {
+	p, err := llmwire.Default().LookupEmbedding(EmbedModel)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
+
+// EmbedDim is the vector width the model returns, from its profile. The
+// sqlite-vec column must match it; a test pins the migration DDL to this.
+func EmbedDim() int {
+	return embedProfile.Embedding.DefaultDimensions
+}
+
+// EmbedClient generates embeddings through llmwire.
+type EmbedClient struct {
+	wire *llmwire.Client
+}
+
+// EmbedConfig holds the embedding client settings loom owns. BaseURL is an
+// explicit override for a test fake and bypasses the environment.
 type EmbedConfig struct {
 	BaseURL string
 	APIKey  string
-	Model   string
 }
 
-// EmbedClient generates embeddings via an OpenAI-compatible /embeddings endpoint.
-type EmbedClient struct {
-	baseURL    string
-	apiKey     string
-	model      string
-	httpClient *http.Client
-}
-
-// NewEmbedClient builds an EmbedClient. httpClient is optional.
-func NewEmbedClient(cfg EmbedConfig, httpClient *http.Client) *EmbedClient {
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultEmbedTimeout}
+// NewEmbedClient builds an EmbedClient. httpClient is optional. The error is a
+// missing LLMWIRE_OPENAI_BASE_URL or LLMWIRE_OPENAI_API_KEY, named.
+func NewEmbedClient(cfg EmbedConfig, httpClient *http.Client) (*EmbedClient, error) {
+	wire, err := llmwire.FromEnv(EmbedModel, llmwire.Config{
+		BaseURL:     cfg.BaseURL,
+		APIKey:      cfg.APIKey,
+		HTTPClient:  httpClient,
+		CallTimeout: defaultEmbedTimeout,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return &EmbedClient{
-		baseURL:    strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:     cfg.APIKey,
-		model:      cfg.Model,
-		httpClient: httpClient,
-	}
+	return &EmbedClient{wire: wire}, nil
 }
 
-type embedRequest struct {
-	Model string   `json:"model"`
-	Input []string `json:"input"`
-}
-
-type embedResponse struct {
-	Data []struct {
-		Index     int       `json:"index"`
-		Embedding []float32 `json:"embedding"`
-	} `json:"data"`
-	Usage json.RawMessage `json:"usage"`
-}
-
+// EmbeddingUsage is one call's token accounting. Present says the endpoint
+// reported it; CostPriced says llmwire had a rate for the model, and an
+// unpriced call stays out of every sum rather than counting as free.
 type EmbeddingUsage struct {
 	PromptTokens int  `json:"prompt_tokens"`
 	TotalTokens  int  `json:"total_tokens"`
 	Present      bool `json:"-"`
-}
-
-func (u *EmbeddingUsage) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		PromptTokens int `json:"prompt_tokens"`
-		TotalTokens  int `json:"total_tokens"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	u.PromptTokens = raw.PromptTokens
-	u.TotalTokens = raw.TotalTokens
-	u.Present = true
-	return nil
+	CostNanoUSD  int64
+	CostPriced   bool
 }
 
 type EmbedResult struct {
@@ -87,19 +82,20 @@ type EmbedResult struct {
 	Usage   EmbeddingUsage
 }
 
-func parseEmbeddingUsage(raw json.RawMessage) EmbeddingUsage {
-	if len(raw) == 0 || string(raw) == "null" {
+func usageFromWire(u llmwire.Usage) EmbeddingUsage {
+	total, ok := u.Total()
+	if !ok {
 		return EmbeddingUsage{}
 	}
-	var usage EmbeddingUsage
-	if err := json.Unmarshal(raw, &usage); err != nil {
-		return EmbeddingUsage{}
+	out := EmbeddingUsage{
+		PromptTokens: int(llmwire.Tokens(u.Input.Total)),
+		TotalTokens:  int(total),
+		Present:      true,
 	}
-	if usage.PromptTokens == 0 && usage.TotalTokens == 0 {
-		return EmbeddingUsage{}
+	if u.Cost.Provenance != llmwire.Unpriced {
+		out.CostNanoUSD, out.CostPriced = u.Cost.NanoUSD, true
 	}
-	usage.Present = true
-	return usage
+	return out
 }
 
 // Embed returns one embedding vector per input, aligned to the input order.
@@ -115,49 +111,17 @@ func (c *EmbedClient) Embed(ctx context.Context, inputs []string) (EmbedResult, 
 	ctx = inference.WithDefaultPurpose(ctx, "embed")
 	start := time.Now()
 	inputCount := slog.Int("input_count", len(inputs))
-	fail := func(err error) (EmbedResult, error) {
-		inference.LogFailed(ctx, c.model, time.Since(start), err, inputCount)
+
+	resp, warnings, err := c.wire.Embed(ctx, llmwire.EmbedRequest{Model: EmbedModel, Inputs: inputs})
+	for _, w := range warnings {
+		slog.DebugContext(ctx, "embed: wire warning", slog.String("model", EmbedModel), slog.String("warning", w.String()))
+	}
+	if err != nil {
+		err = embedError(err)
+		inference.LogFailed(ctx, EmbedModel, time.Since(start), err, inputCount)
 		return EmbedResult{}, err
 	}
-
-	body, err := json.Marshal(embedRequest{Model: c.model, Input: inputs})
-	if err != nil {
-		return fail(fmt.Errorf("marshal embed request: %w", err))
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/embeddings", bytes.NewReader(body))
-	if err != nil {
-		return fail(fmt.Errorf("create embed request: %w", err))
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fail(fmt.Errorf("embed request: %w", err))
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, maxEmbedErrorBody))
-		return fail(fmt.Errorf("embedding failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(msg))))
-	}
-
-	var parsed embedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return fail(fmt.Errorf("decode embed response: %w", err))
-	}
-	if len(parsed.Data) != len(inputs) {
-		return fail(fmt.Errorf("embedding count mismatch: got %d, want %d", len(parsed.Data), len(inputs)))
-	}
-
-	// The spec allows out-of-order data; sort by index to realign to inputs.
-	sort.Slice(parsed.Data, func(i, j int) bool { return parsed.Data[i].Index < parsed.Data[j].Index })
-	out := make([][]float32, len(parsed.Data))
-	for i, d := range parsed.Data {
-		out[i] = d.Embedding
-	}
-	usage := parseEmbeddingUsage(parsed.Usage)
+	usage := usageFromWire(resp.Usage)
 	attrs := []slog.Attr{inputCount}
 	if usage.Present {
 		attrs = append(attrs,
@@ -165,6 +129,24 @@ func (c *EmbedClient) Embed(ctx context.Context, inputs []string) (EmbedResult, 
 			slog.Int("total_tokens", usage.TotalTokens),
 		)
 	}
-	inference.LogCompleted(ctx, c.model, time.Since(start), attrs...)
-	return EmbedResult{Vectors: out, Usage: usage}, nil
+	if usage.CostPriced {
+		attrs = append(attrs, slog.Int64("cost_nano_usd", usage.CostNanoUSD))
+	}
+	duration := resp.Timing.Total
+	if duration == 0 {
+		duration = time.Since(start)
+	}
+	inference.LogCompleted(ctx, EmbedModel, duration, attrs...)
+	return EmbedResult{Vectors: resp.Vectors, Usage: usage}, nil
+}
+
+// embedError phrases a wire failure the way the rest of loom reads it: a
+// status error keeps the "embedding failed with status N" wording the ingest
+// path and its tests match on; everything else keeps llmwire's own naming.
+func embedError(err error) error {
+	var apiErr *llmwire.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode != 0 {
+		return fmt.Errorf("embedding failed with status %d: %s", apiErr.StatusCode, apiErr.Message)
+	}
+	return fmt.Errorf("embed request: %w", err)
 }

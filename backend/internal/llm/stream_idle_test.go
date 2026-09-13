@@ -31,10 +31,11 @@ func (h *completedLogCapture) Handle(_ context.Context, r slog.Record) error {
 func (h *completedLogCapture) WithAttrs([]slog.Attr) slog.Handler { return h }
 func (h *completedLogCapture) WithGroup(string) slog.Handler      { return h }
 
-// max_inter_chunk_ms must exclude the first gap (connect + time-to-first-byte) that
-// max_idle_ms includes, so a stream with a slow first chunk and fast subsequent
-// chunks reports max_inter_chunk_ms well below max_idle_ms.
-func TestClient_StreamProgressSeparatesTTFBFromInterChunkGap(t *testing.T) {
+// max_idle_ms is the worst silence between data frames with the wait for the
+// first one included — the gap the idle bound races against — and
+// first_token_ms is that first wait on its own, so a slow first byte shows in
+// both and a healthy stream's margin is readable off the line.
+func TestClient_StreamProgressReportsFirstByteAndWorstGap(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
@@ -58,7 +59,7 @@ func TestClient_StreamProgressSeparatesTTFBFromInterChunkGap(t *testing.T) {
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	client := NewClient(Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
+	client := mustClient(t, Config{BaseURL: server.URL, Timeout: 5 * time.Second, IdleTimeout: 2 * time.Second}, server.Client())
 	if _, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
 		t.Fatalf("StreamChatResult() error: %v", err)
 	}
@@ -66,12 +67,15 @@ func TestClient_StreamProgressSeparatesTTFBFromInterChunkGap(t *testing.T) {
 	capture.mu.Lock()
 	defer capture.mu.Unlock()
 	idle := capture.attrs["max_idle_ms"].Int64()
-	inter := capture.attrs["max_inter_chunk_ms"].Int64()
+	first := capture.attrs["first_token_ms"].Int64()
 	if idle < 60 {
 		t.Fatalf("max_idle_ms = %d, want >= 60 (should include the ~80ms first-byte gap)", idle)
 	}
-	if inter >= idle {
-		t.Fatalf("max_inter_chunk_ms (%d) must be below max_idle_ms (%d) — first gap should be excluded", inter, idle)
+	if first < 60 {
+		t.Fatalf("first_token_ms = %d, want >= 60", first)
+	}
+	if capture.attrs["stream_bytes"].Int64() <= 0 {
+		t.Fatal("stream_bytes missing from the completed line")
 	}
 }
 
@@ -90,7 +94,7 @@ func TestClient_StreamIdleTimeoutAbortsStalledStream(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{
+	client := mustClient(t, Config{
 		BaseURL:     server.URL,
 		Timeout:     5 * time.Second, // total budget far above the idle window
 		IdleTimeout: 30 * time.Millisecond,
@@ -130,7 +134,7 @@ func TestClient_StreamIdleTimeoutResetsOnEachChunk(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{
+	client := mustClient(t, Config{
 		BaseURL:     server.URL,
 		Timeout:     5 * time.Second,
 		IdleTimeout: 80 * time.Millisecond,
@@ -173,7 +177,7 @@ func TestClient_StreamIdleTimeoutIgnoresKeepAliveComments(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{
+	client := mustClient(t, Config{
 		BaseURL:     server.URL,
 		Timeout:     5 * time.Second,
 		IdleTimeout: 60 * time.Millisecond,
@@ -198,7 +202,7 @@ func TestClient_StreamIdleTimeoutDisabled(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := NewClient(Config{
+	client := mustClient(t, Config{
 		BaseURL:     server.URL,
 		Timeout:     30 * time.Millisecond,
 		IdleTimeout: 0,

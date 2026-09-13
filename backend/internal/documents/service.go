@@ -44,7 +44,7 @@ type Indexer interface {
 }
 
 type UsageRecorder interface {
-	AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int) error
+	AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int, costNanoUSD int64) error
 }
 
 // Service ties uploads to the volume, the artifact store, the RAG store, and the
@@ -322,5 +322,9 @@ func (s *Service) recordEmbeddingUsage(ctx context.Context, userID string, u rag
 	if s.usage == nil || !u.Present {
 		return
 	}
-	_ = s.usage.AddEmbeddingUsage(ctx, userID, u.TotalTokens, 1)
+	cost := int64(0)
+	if u.CostPriced {
+		cost = u.CostNanoUSD
+	}
+	_ = s.usage.AddEmbeddingUsage(ctx, userID, u.TotalTokens, 1, cost)
 }

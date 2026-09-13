@@ -47,7 +47,10 @@ func TestRefreshProjectDescription_GeneratedThroughRealClient(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := llm.NewClient(llm.Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	client, err := llm.NewClient(llm.Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
 
 	projectID := "proj_japan"
 	store := &fakeThreadStore{

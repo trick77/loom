@@ -36,7 +36,7 @@ func TestEmbedClient_Embed_postsInputsAndReturnsVectors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewEmbedClient(EmbedConfig{BaseURL: srv.URL, APIKey: "sk-test", Model: "text-embedding-3-small"}, nil)
+	c := mustEmbedClient(t, EmbedConfig{BaseURL: srv.URL, APIKey: "sk-test"}, nil)
 	result, err := c.Embed(context.Background(), []string{"hello", "world"})
 	if err != nil {
 		t.Fatalf("Embed() error: %v", err)
@@ -64,7 +64,7 @@ func TestEmbedClient_Embed_postsInputsAndReturnsVectors(t *testing.T) {
 }
 
 func TestEmbedClient_Embed_emptyInputReturnsNothing(t *testing.T) {
-	c := NewEmbedClient(EmbedConfig{BaseURL: "http://unused", Model: "m"}, nil)
+	c := mustEmbedClient(t, EmbedConfig{BaseURL: "http://unused"}, nil)
 	result, err := c.Embed(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("Embed(nil) error: %v", err)
@@ -90,7 +90,7 @@ func TestEmbedClient_Embed_ignoresMalformedUsage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewEmbedClient(EmbedConfig{BaseURL: srv.URL, Model: "text-embedding-3-small"}, nil)
+	c := mustEmbedClient(t, EmbedConfig{BaseURL: srv.URL}, nil)
 	result, err := c.Embed(context.Background(), []string{"hello"})
 	if err != nil {
 		t.Fatalf("Embed() error = %v, want nil when only usage is malformed", err)
@@ -109,7 +109,7 @@ func TestEmbedClient_Embed_errorsOnNon2xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewEmbedClient(EmbedConfig{BaseURL: srv.URL, Model: "m"}, nil)
+	c := mustEmbedClient(t, EmbedConfig{BaseURL: srv.URL}, nil)
 	if _, err := c.Embed(context.Background(), []string{"x"}); err == nil {
 		t.Fatal("Embed() error = nil, want error on 429")
 	}

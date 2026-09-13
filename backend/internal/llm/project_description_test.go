@@ -30,7 +30,7 @@ func TestGenerateProjectDescription_usesItsOwnLargerTokenBudget(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	got, err := c.GenerateProjectDescription(context.Background(), "Japan Trip", []string{"Where to stay in Kyoto", "Bullet train passes"}, "")
 	if err != nil {
 		t.Fatalf("GenerateProjectDescription error = %v", err)
@@ -66,7 +66,7 @@ func TestGenerateProjectDescription_salvagesLengthTruncatedReply(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	got, err := c.GenerateProjectDescription(context.Background(), "Proj", []string{"hi"}, "")
 	if err != nil {
 		t.Fatalf("GenerateProjectDescription error = %v", err)
@@ -85,7 +85,7 @@ func TestGenerateProjectDescription_lengthTruncatedSingleWordIsKept(t *testing.T
 	}))
 	defer srv.Close()
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	got, err := c.GenerateProjectDescription(context.Background(), "Proj", []string{"hi"}, "")
 	if err != nil {
 		t.Fatalf("GenerateProjectDescription error = %v", err)
@@ -107,7 +107,7 @@ func TestGenerateProjectDescription_hardCapsOversizedReply(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	got, err := c.GenerateProjectDescription(context.Background(), "Everything", []string{"a", "b"}, "")
 	if err != nil {
 		t.Fatalf("GenerateProjectDescription error = %v", err)

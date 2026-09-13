@@ -34,7 +34,7 @@ func TestClassifyImageIntent_parsesReplyAndForwardsFlags(t *testing.T) {
 	var body string
 	srv := intentServer(t, `{"action":"create","needs_text":true}`, &body)
 	defer srv.Close()
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 
 	intent, err := c.ClassifyImageIntent(context.Background(), "erstelle ein Logo fuer eine Baeckerei", false, true)
 	if err != nil {
@@ -55,7 +55,7 @@ func TestClassifyImageIntent_parsesReplyAndForwardsFlags(t *testing.T) {
 func TestClassifyImageIntent_toleratesCodeFenceAndProse(t *testing.T) {
 	srv := intentServer(t, "Sure! ```json\n{\"action\":\"edit\",\"needs_text\":false}\n```", nil)
 	defer srv.Close()
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 
 	intent, err := c.ClassifyImageIntent(context.Background(), "make it bigger", false, true)
 	if err != nil {
@@ -70,7 +70,7 @@ func TestClassifyImageIntent_failsSafeToNone(t *testing.T) {
 	// Unparseable reply -> none, no error.
 	srv := intentServer(t, "I cannot decide.", nil)
 	defer srv.Close()
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	if intent, err := c.ClassifyImageIntent(context.Background(), "hi", false, false); err != nil || intent.Action != ImageIntentNone {
 		t.Fatalf("garbage reply: intent %+v err %v, want none/nil", intent, err)
 	}
@@ -80,7 +80,7 @@ func TestClassifyImageIntent_failsSafeToNone(t *testing.T) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer errSrv.Close()
-	ec := NewClient(Config{BaseURL: errSrv.URL, APIKey: "k"}, errSrv.Client())
+	ec := mustClient(t, Config{BaseURL: errSrv.URL, APIKey: "k"}, errSrv.Client())
 	if intent, err := ec.ClassifyImageIntent(context.Background(), "hi", false, false); err == nil || intent.Action != ImageIntentNone {
 		t.Fatalf("http error: intent %+v err %v, want none/err", intent, err)
 	}

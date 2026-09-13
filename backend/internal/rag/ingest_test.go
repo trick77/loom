@@ -42,7 +42,7 @@ type fakeUsageRecorder struct {
 	calls    int
 }
 
-func (f *fakeUsageRecorder) AddEmbeddingUsage(_ context.Context, userID string, tokens, requests int) error {
+func (f *fakeUsageRecorder) AddEmbeddingUsage(_ context.Context, userID string, tokens, requests int, _ int64) error {
 	f.userID = userID
 	f.tokens += tokens
 	f.requests += requests

@@ -451,6 +451,7 @@ export const de = {
     completion: "Completion",
     cached: "Cached",
     reasoning: "Reasoning",
+    cost: "Kosten (Listenpreis, Chat und Embeddings)",
     embeddingTokens: "Embedding-Tokens",
     embeddingRequests: "Embedding-Anfragen",
     webSearches: "Web-Suchen",

@@ -71,7 +71,7 @@ func TestClassifyThread_eval(t *testing.T) {
 	if baseURL == "" {
 		t.Skip("set LOOM_THREAD_CLASSIFY_EVAL_BASEURL to run the live classify eval")
 	}
-	c := NewClient(Config{BaseURL: baseURL, APIKey: os.Getenv("LOOM_THREAD_CLASSIFY_EVAL_APIKEY"), Timeout: 30 * time.Second}, nil)
+	c := mustClient(t, Config{BaseURL: baseURL, APIKey: os.Getenv("LOOM_THREAD_CLASSIFY_EVAL_APIKEY"), Timeout: 30 * time.Second}, nil)
 
 	cases := []struct {
 		msg  string

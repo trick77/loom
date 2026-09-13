@@ -20,7 +20,7 @@ func titleServer(t *testing.T, content string) *Client {
 		})
 	}))
 	t.Cleanup(server.Close)
-	return NewClient(Config{BaseURL: server.URL}, server.Client())
+	return mustClient(t, Config{BaseURL: server.URL}, server.Client())
 }
 
 func TestGenerateThreadTitleRejectsScriptDrift(t *testing.T) {

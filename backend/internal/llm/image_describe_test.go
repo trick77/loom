@@ -30,7 +30,7 @@ func TestDescribeImage_usesVisionModelAndReturnsText(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	png := onePixelPNG()
 
 	text, err := c.DescribeImage(context.Background(), png, "image/png")
@@ -55,7 +55,7 @@ func TestDescribeImage_emptyContentReturnsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	_, err := c.DescribeImage(context.Background(), onePixelPNG(), "image/png")
 	if err == nil {
 		t.Fatal("DescribeImage with empty content error = nil, want error")

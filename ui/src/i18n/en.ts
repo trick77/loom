@@ -442,6 +442,7 @@ export const en = {
     completion: "Completion",
     cached: "Cached",
     reasoning: "Reasoning",
+    cost: "Cost (list rate, chat and embeddings)",
     embeddingTokens: "Embedding tokens",
     embeddingRequests: "Embedding requests",
     webSearches: "Web searches",

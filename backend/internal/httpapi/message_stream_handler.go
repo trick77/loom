@@ -443,7 +443,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			citationsJSON = encoded
 		}
 	}
-	assistantMessage, err := s.thread.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsFromTurn(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart)), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
+	turnCost, turnPriced := usageTotal.Cost()
+	assistantMessage, err := s.thread.AddMessageWithCitations(persistCtx, user.ID, threadID, chat.RoleAssistant, assistantContent, messageMetricsWithCost(assistantResult.StreamResult, usageTotal.Total(), time.Since(turnStart), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
 		titleThread(assistantContent)
@@ -490,6 +491,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 				CachedTokens:     turnUsage.PromptTokensDetails.CachedTokens,
 				ReasoningTokens:  turnUsage.CompletionTokenDetails.ReasoningTokens,
 				TotalTokens:      turnUsage.TotalTokens,
+				CostNanoUSD:      turnCost,
 			})
 		})
 	}

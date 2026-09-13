@@ -1525,3 +1525,39 @@ func TestStore_CreateCapitalizesTitleButRenameKeepsIt(t *testing.T) {
 		t.Errorf("renamed title = %q, want %q (a rename must stick)", updated.Title, renamed)
 	}
 }
+
+// The turn's cost round-trips as a nullable: an unpriced turn stays NULL rather
+// than reading as free.
+func TestMessagesPersistCost(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Cost"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cost := int64(3_141_593)
+	priced, err := store.AddMessageWithUsage(ctx, userID, thread.ID, RoleAssistant, "priced", MessageTokenUsage{CostNanoUSD: &cost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unpriced, err := store.AddMessageWithUsage(ctx, userID, thread.ID, RoleAssistant, "unpriced", MessageTokenUsage{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if priced.CostNanoUSD == nil || *priced.CostNanoUSD != cost {
+		t.Fatalf("priced CostNanoUSD = %v, want %d", priced.CostNanoUSD, cost)
+	}
+	if unpriced.CostNanoUSD != nil {
+		t.Fatalf("unpriced CostNanoUSD = %d, want nil", *unpriced.CostNanoUSD)
+	}
+	messages, _, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messages[0].CostNanoUSD == nil || *messages[0].CostNanoUSD != cost || messages[1].CostNanoUSD != nil {
+		t.Fatalf("listed costs = %v / %v", messages[0].CostNanoUSD, messages[1].CostNanoUSD)
+	}
+}

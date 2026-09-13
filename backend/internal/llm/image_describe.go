@@ -3,7 +3,6 @@ package llm
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -31,7 +30,6 @@ const imageDescribeInstruction = "Describe this image in detail for a search ind
 // 404s on image input, so this forces visionModel explicitly. The image is
 // downscaled (imagescale) before being inlined as a base64 data URL.
 func (c *Client) DescribeImage(ctx context.Context, data []byte, mime string) (string, error) {
-	start := time.Now()
 	// Tag the call even when it runs from a path that attached no metadata (a
 	// detached ingest goroutine), so the log line is never an anonymous
 	// vision-model call.
@@ -55,35 +53,19 @@ func (c *Client) DescribeImage(ctx context.Context, data []byte, mime string) (s
 	// and can echo its internal reasoning/response channel markers as literal text
 	// — which would poison the stored description. Describing is perception +
 	// transcription, not reasoning.
-	resp, err := c.executeChatRequestImpl(ctx, messages, chatRequestOptions{
-		model:               c.visionModel,
-		thinking:            &thinkingOption{Type: "disabled"},
-		maxCompletionTokens: imageDescribeMaxCompletionTokens,
-	})
+	reply, err := c.complete(ctx, c.visionModel, messages, imageDescribeMaxCompletionTokens, nil)
 	if err != nil {
-		logInferenceFailed(ctx, c.visionModel, time.Since(start), err)
 		return "", err
 	}
-	defer resp.Body.Close()
-
-	var completion chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
-		err := fmt.Errorf("decode image description response: %w", err)
-		logInferenceFailed(ctx, c.visionModel, time.Since(start), err)
-		return "", err
-	}
-	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.visionModel, time.Since(start), completion.Usage, "")
+	if reply.Empty {
 		return "", fmt.Errorf("image description returned no choices")
 	}
-	choice := completion.Choices[0]
-	observeInference(ctx, c.visionModel, time.Since(start), completion.Usage, choice.FinishReason)
-	text := strings.TrimSpace(choice.Message.Content)
+	text := strings.TrimSpace(reply.Content)
 	if text == "" {
 		// Empty content (e.g. finish_reason=length, or the model emitted only a
 		// channel marker) → surface a clear error so ingest records status=error
 		// instead of embedding nothing.
-		return "", fmt.Errorf("image description was empty (finish_reason=%q)", choice.FinishReason)
+		return "", fmt.Errorf("image description was empty (finish_reason=%q)", reply.FinishReason)
 	}
 	return text, nil
 }

@@ -13,6 +13,7 @@ const sample: api.Usage = {
   totalTokens: 150,
   embeddingTokens: 88,
   embeddingRequests: 6,
+  costNanoUsd: 3_141_593,
   webSearches: 4,
   webFetches: 7,
   obscuraFetches: 2,
@@ -41,6 +42,7 @@ describe("UsagePanel", () => {
     expect(screen.getByText("88")).toBeInTheDocument(); // embedding tokens
     expect(screen.getByText("6")).toBeInTheDocument(); // embedding requests
     expect(screen.getByText("4")).toBeInTheDocument(); // web searches
+    expect(screen.getByText("$0.0031")).toBeInTheDocument(); // lifetime cost, nano-USD as dollars
     // getByText normalizes the thin space (U+202F) to a regular space.
     expect(screen.getByText("1 234 / 2 000 (62%)")).toBeInTheDocument(); // length + capacity %
     expect(screen.getByText("Never")).toBeInTheDocument(); // last updated (no memory yet)

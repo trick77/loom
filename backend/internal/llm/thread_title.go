@@ -2,11 +2,8 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/trick77/loom/internal/titletext"
 )
@@ -14,7 +11,6 @@ import (
 const threadTitleSystemPrompt = "You write short thread titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Do not begin the title with a lead-in such as \"I'll\", \"I will\", \"Sure\", or \"Here is\" — in ANY language (e.g. never \"Ich werde …\", \"Voici …\"); output only the topic phrase itself. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
 
 func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistantMessage, responseLanguage string) (string, error) {
-	start := time.Now()
 	// The user's chat replies honor their response-language preference (see
 	// systemPromptForUser); mirror that here so an auto-generated title matches the
 	// language the conversation is in rather than defaulting to English.
@@ -32,31 +28,19 @@ func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistant
 		{Role: "system", Content: system},
 		{Role: "user", Content: framed},
 	}
-	resp, err := c.executeShortGateChatRequest(ctx, messages, utilityMaxCompletionTokens)
+	reply, err := c.shortGate(ctx, messages, utilityMaxCompletionTokens, nil)
 	if err != nil {
-		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
 		return "", err
 	}
-	defer resp.Body.Close()
-
-	var completion chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
-		err := fmt.Errorf("decode title completion response: %w", err)
-		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
-		return "", err
-	}
-	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, "")
+	if reply.Empty {
 		return "New thread", nil
 	}
-	choice := completion.Choices[0]
-	observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, choice.FinishReason)
 	// A title cut off at the token cap is unreliable; fall back rather than store
 	// a half phrase as the thread title.
-	if choice.FinishReason == "length" {
+	if reply.FinishReason == "length" {
 		return "New thread", nil
 	}
-	title := cleanThreadTitle(choice.Message.Content)
+	title := cleanThreadTitle(reply.Content)
 	// The short-gate model sometimes answers in Chinese no matter what the
 	// language directive says (an English question once came back titled
 	// "Kasia Knez婚姻查询"). A prompt cannot fix a model that ignores it, so the

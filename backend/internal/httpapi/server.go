@@ -191,7 +191,7 @@ type ThreadStore interface {
 // best-effort from the caller's side; see server.recordUsage.
 type UsageStore interface {
 	AddTokens(context.Context, string, usage.TokenDelta) error
-	AddEmbeddingUsage(context.Context, string, int, int) error
+	AddEmbeddingUsage(context.Context, string, int, int, int64) error
 	IncWebSearch(context.Context, string) error
 	IncWebFetch(context.Context, string) error
 	IncObscuraFetch(context.Context, string) error

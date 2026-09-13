@@ -10,13 +10,12 @@ import (
 
 func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	items := startupCapabilities(config.Config{
-		UsersDir:   "/data/users",
-		TikaURL:    "http://tika:9998",
-		EmbedModel: "text-embedding-3-small",
+		UsersDir: "/data/users",
+		TikaURL:  "http://tika:9998",
 	}, mcp.Config{}, startupRuntime{DocToolCount: 5})
 
-	assertCapability(t, items, "chat", "disabled", "BACKEND_CHAT_BASE_URL")
-	assertCapability(t, items, "embeddings", "disabled", "BACKEND_EMBED_BASE_URL")
+	assertCapability(t, items, "chat", "disabled", "LLMWIRE_MIMO_BASE_URL")
+	assertCapability(t, items, "embeddings", "disabled", "LLMWIRE_OPENAI_BASE_URL")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
 	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_API_KEY")
@@ -29,8 +28,6 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 		AuthMode:       config.AuthModeDev,
 		ChatBaseURL:    "https://chat.example/v1",
 		EmbedBaseURL:   "https://api.openai.com/v1",
-		EmbedAPIKey:    "embed-key",
-		EmbedModel:     "text-embedding-3-small",
 		TikaURL:        "http://tika:9998",
 		UsersDir:       "/data/users",
 		TavilyAPIKey:   "tavily-key",

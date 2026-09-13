@@ -2,11 +2,8 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/trick77/loom/internal/classifier"
 )
@@ -70,44 +67,35 @@ func isASCIIAlnum(b byte) bool {
 // decode, or empty-reply failure — so callers can use the result unconditionally;
 // the returned error is informational (for logging) only.
 func (c *Client) ClassifyThread(ctx context.Context, userMessage string) (string, error) {
-	start := time.Now()
 	framed := "First user message:\n\"\"\"\n" + strings.TrimSpace(userMessage) + "\n\"\"\"\n\nCategory:"
 	messages := []Message{
 		{Role: "system", Content: threadClassifySystemPrompt(userMessage)},
 		{Role: "user", Content: framed},
 	}
-	resp, err := c.executeShortGateChatRequest(ctx, messages, utilityMaxCompletionTokens)
+	// decide reads the category out of a reply. Logged after the coercions so
+	// the line shows the category the turn actually used, not the raw reply.
+	decide := func(reply completion) classifier.Category {
+		// Match tolerantly extracts the category from the reply (handling quotes,
+		// punctuation, or stray prose) and coerces anything unrecognized — including a
+		// truncated "length" reply — to General, so a bad reply never produces a bad
+		// category.
+		category := classifier.Match(reply.Content)
+		// Belt and braces: url_lookup was withheld from the menu when the message has
+		// no URL, but the model may still name it. Its block ("rely solely on the page
+		// at the URL") is actively harmful without a URL, so coerce to General.
+		if category == classifier.URLLookup && !messageContainsURL(userMessage) {
+			category = classifier.General
+		}
+		return category
+	}
+	reply, err := c.shortGate(ctx, messages, utilityMaxCompletionTokens, func(reply completion) []slog.Attr {
+		return []slog.Attr{slog.String("category", string(decide(reply)))}
+	})
 	if err != nil {
-		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
 		return string(classifier.General), err
 	}
-	defer resp.Body.Close()
-
-	var completion chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
-		err := fmt.Errorf("decode classify completion response: %w", err)
-		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
-		return string(classifier.General), err
-	}
-	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, "")
+	if reply.Empty {
 		return string(classifier.General), nil
 	}
-	choice := completion.Choices[0]
-	// Match tolerantly extracts the category from the reply (handling quotes,
-	// punctuation, or stray prose) and coerces anything unrecognized — including a
-	// truncated "length" reply — to General, so a bad reply never produces a bad
-	// category.
-	category := classifier.Match(choice.Message.Content)
-	// Belt and braces: url_lookup was withheld from the menu when the message has
-	// no URL, but the model may still name it. Its block ("rely solely on the page
-	// at the URL") is actively harmful without a URL, so coerce to General.
-	if category == classifier.URLLookup && !messageContainsURL(userMessage) {
-		category = classifier.General
-	}
-	// Logged after the coercions above so the line shows the category the turn
-	// actually used, not the model's raw reply.
-	observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, choice.FinishReason,
-		slog.String("category", string(category)))
-	return string(category), nil
+	return string(decide(reply)), nil
 }

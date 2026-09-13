@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
+
+	"github.com/trick77/llmwire"
 )
 
 // ImageIntentAction is the router's read of what a single user turn asks the
@@ -75,38 +76,25 @@ Judge intent from meaning in ANY language, never from specific keywords.`)
 // create ("draw a cat") from an edit ("make it bigger") and never label a turn
 // "edit" when there is no image to edit.
 func (c *Client) ClassifyImageIntent(ctx context.Context, userMessage string, hasAttachedImage, threadHasImage bool) (ImageIntent, error) {
-	start := time.Now()
 	framed := fmt.Sprintf("Flags: image_attached_this_turn=%t, conversation_already_has_an_image=%t\n\nUser message:\n\"\"\"\n%s\n\"\"\"\n\nJSON:",
 		hasAttachedImage, threadHasImage, strings.TrimSpace(userMessage))
 	messages := []Message{
 		{Role: "system", Content: imageIntentSystemPrompt},
 		{Role: "user", Content: framed},
 	}
-	resp, err := c.executeShortGateChatRequest(ctx, messages, imageIntentMaxCompletionTokens)
-	if err != nil {
-		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
-		return ImageIntent{Action: ImageIntentNone}, err
-	}
-	defer resp.Body.Close()
-
-	var completion chatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
-		err := fmt.Errorf("decode image-intent completion response: %w", err)
-		logInferenceFailed(ctx, c.shortGateModel, time.Since(start), err)
-		return ImageIntent{Action: ImageIntentNone}, err
-	}
-	if len(completion.Choices) == 0 {
-		observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, "")
-		return ImageIntent{Action: ImageIntentNone}, nil
-	}
-	choice := completion.Choices[0]
-	intent := parseImageIntent(choice.Message.Content)
 	// Log the decision, not the prompt: what the gate concluded is the one thing
 	// needed to tell a mis-route from a correct route in the logs.
-	observeInference(ctx, c.shortGateModel, time.Since(start), completion.Usage, choice.FinishReason,
-		slog.String("intent", string(intent.Action)),
-		slog.Bool("needs_text", intent.NeedsText))
-	return intent, nil
+	reply, err := c.shortGate(ctx, messages, imageIntentMaxCompletionTokens, func(reply completion) []slog.Attr {
+		intent := parseImageIntent(reply.Content)
+		return []slog.Attr{slog.String("intent", string(intent.Action)), slog.Bool("needs_text", intent.NeedsText)}
+	})
+	if err != nil {
+		return ImageIntent{Action: ImageIntentNone}, err
+	}
+	if reply.Empty {
+		return ImageIntent{Action: ImageIntentNone}, nil
+	}
+	return parseImageIntent(reply.Content), nil
 }
 
 // parseImageIntent extracts the {"action","needs_text"} object from the model
@@ -114,8 +102,8 @@ func (c *Client) ClassifyImageIntent(ctx context.Context, userMessage string, ha
 // unrecognized to a safe ImageIntentNone so a bad reply never routes a turn to
 // the image tool by accident.
 func parseImageIntent(reply string) ImageIntent {
-	raw := extractJSONObject(reply)
-	if raw == "" {
+	raw, ok := llmwire.JSONObject(reply)
+	if !ok {
 		return ImageIntent{Action: ImageIntentNone}
 	}
 	var decoded struct {
@@ -133,47 +121,4 @@ func parseImageIntent(reply string) ImageIntent {
 	default:
 		return ImageIntent{Action: ImageIntentNone}
 	}
-}
-
-// extractJSONObject returns the first brace-balanced {...} span in s, or "" when
-// there is none. Lets the parse survive a model that wraps the object in a code
-// fence or a stray lead-in despite the "ONLY JSON" instruction. Returning the
-// first BALANCED object (not first-"{"-to-last-"}") means a reply that echoes the
-// prompt's example object before the real one still parses the example rather
-// than joining two objects into invalid JSON. Brace counting ignores braces
-// inside strings so a "}" in a value does not close early.
-func extractJSONObject(s string) string {
-	start := strings.IndexByte(s, '{')
-	if start == -1 {
-		return ""
-	}
-	depth := 0
-	inString := false
-	escaped := false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if inString {
-			switch {
-			case escaped:
-				escaped = false
-			case c == '\\':
-				escaped = true
-			case c == '"':
-				inString = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inString = true
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return s[start : i+1]
-			}
-		}
-	}
-	return ""
 }

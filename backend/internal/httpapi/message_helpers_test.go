@@ -119,3 +119,15 @@ func TestShouldGenerateThreadTitle_PromptTitleCapitalizedOrVerbatim(t *testing.T
 		}
 	}
 }
+
+// The cost is persisted only when a call in the turn was priced; an unpriced
+// turn leaves the column NULL rather than storing a free-looking zero.
+func TestMessageMetricsWithCost_UnpricedStaysNil(t *testing.T) {
+	result := llm.StreamResult{Model: "mimo-v2.5-pro"}
+	if m := messageMetricsWithCost(result, llm.TokenUsage{}, time.Second, 0, false); m.CostNanoUSD != nil {
+		t.Fatalf("unpriced CostNanoUSD = %d, want nil", *m.CostNanoUSD)
+	}
+	if m := messageMetricsWithCost(result, llm.TokenUsage{}, time.Second, 4200, true); m.CostNanoUSD == nil || *m.CostNanoUSD != 4200 {
+		t.Fatalf("priced CostNanoUSD = %v, want 4200", m.CostNanoUSD)
+	}
+}

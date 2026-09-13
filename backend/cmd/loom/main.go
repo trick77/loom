@@ -128,7 +128,10 @@ func run() error {
 	// documents; reused below as the chat client.
 	var llmClient *llm.Client
 	if cfg.ChatBaseURL != "" {
-		llmClient = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
+		llmClient, err = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Document RAG is enabled only when an embeddings endpoint is configured.
@@ -148,11 +151,10 @@ func run() error {
 		if err := ragStore.ScrubOutOfScopeMessageCitations(context.Background()); err != nil {
 			return err
 		}
-		embedClient := rag.NewEmbedClient(rag.EmbedConfig{
-			BaseURL: cfg.EmbedBaseURL,
-			APIKey:  cfg.EmbedAPIKey,
-			Model:   cfg.EmbedModel,
-		}, http.DefaultClient)
+		embedClient, err := rag.NewEmbedClient(rag.EmbedConfig{}, http.DefaultClient)
+		if err != nil {
+			return err
+		}
 		tikaClient := documents.NewTikaClient(documents.TikaConfig{BaseURL: cfg.TikaURL})
 		// Tika is an essential dependency of document RAG: fail fast at boot rather
 		// than surface opaque extraction errors on the first upload.
@@ -337,8 +339,6 @@ func responseLogDirForConfig(cfg config.Config) string {
 
 func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 	return llm.Config{
-		BaseURL:             cfg.ChatBaseURL,
-		APIKey:              cfg.ChatAPIKey,
 		MaxCompletionTokens: cfg.ChatMaxCompletionTokens,
 		Timeout:             cfg.ChatTimeout,
 		IdleTimeout:         cfg.ChatIdleTimeout,
