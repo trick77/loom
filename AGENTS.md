@@ -42,7 +42,8 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
   `.env.example`. Required to boot: `BACKEND_SESSION_SECRET`, `BACKEND_ADMIN_INITIAL_PASSWORD`.
 - The model endpoints are llmwire's: `LLMWIRE_MIMO_API_KEY` (chat) and `LLMWIRE_OPENAI_API_KEY`
   (embeddings), read by `llmwire.FromEnv` at boot; the hosts ship in llmwire's profiles.yaml.
-  A set key turns the capability on.
+  A set key turns the capability on. `LLMWIRE_EMULATE_OPENCODE=true` presents every llmwire request,
+  embeddings included, as the opencode client (its MiMo provider entry is marked for it regardless).
 - Secrets via env only; never commit them. The `admin` account is seeded from env on first boot only.
 
 ## Database / migrations

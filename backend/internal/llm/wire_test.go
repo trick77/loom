@@ -237,29 +237,3 @@ func TestLogWarnings_ToolCallMarkupIsAWarning(t *testing.T) {
 		t.Fatalf("levels = %v, want [DEBUG WARN]", levels)
 	}
 }
-
-// Every chat request presents as the opencode client: the MiMo token plan
-// refuses a neutral User-Agent. Both the shipped host (FromEnv, from the
-// provider flag) and an explicit BaseURL (this test) must send it.
-func TestNewClient_PresentsAsOpenCode(t *testing.T) {
-	var userAgent, sessionID string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userAgent, sessionID = r.Header.Get("User-Agent"), r.Header.Get(llmwire.HeaderSessionID)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "Blue Sky"}, "finish_reason": "stop"}},
-			"usage":   map[string]any{"prompt_tokens": 5, "completion_tokens": 2},
-		})
-	}))
-	t.Cleanup(server.Close)
-	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
-	if _, err := client.GenerateThreadTitle(context.Background(), "why is the sky blue", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if userAgent != llmwire.OpenCodeUserAgent {
-		t.Fatalf("User-Agent = %q, want opencode's", userAgent)
-	}
-	if sessionID == "" {
-		t.Fatal("no session id header")
-	}
-}
