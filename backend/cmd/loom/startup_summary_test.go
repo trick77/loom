@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -8,14 +10,38 @@ import (
 	"github.com/trick77/loom/internal/mcp"
 )
 
+// Outside dev auth a missing chat key is a broken deployment, not a routine
+// capability line.
+func TestLogStartupCapabilitiesWarnsWithoutChatKeyOutsideDev(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	logStartupCapabilities(config.Config{AuthMode: config.AuthModeOIDC}, mcp.Config{}, startupRuntime{})
+	if !strings.Contains(buf.String(), "level=WARN msg=\"chat disabled: LLMWIRE_MIMO_API_KEY is unset") {
+		t.Fatalf("no warning without a chat key:\n%s", buf.String())
+	}
+	buf.Reset()
+	logStartupCapabilities(config.Config{AuthMode: config.AuthModeDev}, mcp.Config{}, startupRuntime{})
+	if strings.Contains(buf.String(), "level=WARN msg=\"chat disabled") {
+		t.Fatalf("dev auth must not warn:\n%s", buf.String())
+	}
+	buf.Reset()
+	logStartupCapabilities(config.Config{AuthMode: config.AuthModeOIDC, ChatEnabled: true}, mcp.Config{}, startupRuntime{})
+	if strings.Contains(buf.String(), "level=WARN") {
+		t.Fatalf("a set key must not warn:\n%s", buf.String())
+	}
+}
+
 func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	items := startupCapabilities(config.Config{
 		UsersDir: "/data/users",
 		TikaURL:  "http://tika:9998",
 	}, mcp.Config{}, startupRuntime{DocToolCount: 5})
 
-	assertCapability(t, items, "chat", "disabled", "LLMWIRE_MIMO_BASE_URL")
-	assertCapability(t, items, "embeddings", "disabled", "LLMWIRE_OPENAI_BASE_URL")
+	assertCapability(t, items, "chat", "disabled", "LLMWIRE_MIMO_API_KEY")
+	assertCapability(t, items, "embeddings", "disabled", "LLMWIRE_OPENAI_API_KEY")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
 	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_API_KEY")
@@ -26,8 +52,8 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	items := startupCapabilities(config.Config{
 		AuthMode:       config.AuthModeDev,
-		ChatBaseURL:    "https://chat.example/v1",
-		EmbedBaseURL:   "https://api.openai.com/v1",
+		ChatEnabled:    true,
+		EmbedEnabled:   true,
 		TikaURL:        "http://tika:9998",
 		UsersDir:       "/data/users",
 		TavilyAPIKey:   "tavily-key",

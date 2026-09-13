@@ -313,3 +313,26 @@ func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
 		t.Fatalf("DevUser role = %q, want admin", cfg.DevUser.Role)
 	}
 }
+
+// A capability is on when its llmwire key is set.
+func TestLoad_modelCapabilitiesFollowTheKeys(t *testing.T) {
+	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	t.Setenv("LLMWIRE_MIMO_API_KEY", "")
+	t.Setenv("LLMWIRE_OPENAI_API_KEY", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ChatEnabled || cfg.EmbedEnabled {
+		t.Fatalf("no keys: chat=%v embed=%v, want both off", cfg.ChatEnabled, cfg.EmbedEnabled)
+	}
+	t.Setenv("LLMWIRE_MIMO_API_KEY", "k1")
+	t.Setenv("LLMWIRE_OPENAI_API_KEY", " ")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ChatEnabled || cfg.EmbedEnabled {
+		t.Fatalf("mimo key only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
+	}
+}

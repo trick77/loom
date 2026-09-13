@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -70,18 +71,18 @@ type Config struct {
 	PublicURL string // externally reachable base URL
 
 	// The model endpoints are llmwire's: each model's profile names a
-	// provider, and llmwire.FromEnv reads LLMWIRE_<PROVIDER>_BASE_URL and
-	// LLMWIRE_<PROVIDER>_API_KEY at boot (LLMWIRE_MIMO_* for chat,
-	// LLMWIRE_OPENAI_* for embeddings). The base URLs are mirrored here only to
-	// decide whether a capability is on and to print it at startup; the keys
-	// never pass through this struct. The models are constants of the build
-	// (llm.ModelSummary, rag.EmbedModel).
-	ChatBaseURL             string
+	// provider and ships its host, and llmwire.FromEnv reads the key from
+	// LLMWIRE_<PROVIDER>_API_KEY at boot (LLMWIRE_MIMO_API_KEY for chat,
+	// LLMWIRE_OPENAI_API_KEY for embeddings). A set key turns the capability
+	// on; only that fact is mirrored here, the key itself never passes through
+	// this struct.
+	// The models are constants of the build (llm.ModelSummary, rag.EmbedModel).
+	ChatEnabled             bool
 	ChatMaxCompletionTokens int
 	ChatTimeout             time.Duration
 	ChatIdleTimeout         time.Duration
 	ChatLogDir              string
-	EmbedBaseURL            string
+	EmbedEnabled            bool
 	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
 	// turn (0 disables it, falling back to pure RAG retrieval).
 	KnowledgeInlineTokenBudget int
@@ -149,10 +150,10 @@ func Load() (Config, error) {
 		DBPath:                  env("BACKEND_DB_PATH", "/data/loom.db"),
 		UsersDir:                env("BACKEND_USERS_DIR", "/data/users"),
 		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
-		ChatBaseURL:             env("LLMWIRE_MIMO_BASE_URL", ""),
+		ChatEnabled:             strings.TrimSpace(env("LLMWIRE_MIMO_API_KEY", "")) != "",
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
-		EmbedBaseURL:            env("LLMWIRE_OPENAI_BASE_URL", ""),
+		EmbedEnabled:            strings.TrimSpace(env("LLMWIRE_OPENAI_API_KEY", "")) != "",
 		ImageGenBaseURL:         env("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
 		ImageGenAPIKey:          env("BACKEND_IMAGE_GEN_API_KEY", ""),
 		ImageGenModel:           env("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),

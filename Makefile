@@ -27,9 +27,16 @@ coverage-gate: coverage
 # reports statements only and exposes no line percentage. It also merges the
 # duplicate blocks -coverpkg emits (one set per test binary), which a naive sum
 # over the raw profile gets badly wrong.
+#
+# -count=1: the test cache replays a package's coverage profile, and with
+# -coverpkg that profile carries 0-hit blocks for every package in the module,
+# package main included. main is nobody's dependency, so those entries never
+# invalidate when it changes; the stale blocks land in the report with the old
+# line numbers, duplicate the fresh ones, and diff-cover reads the 0. Seen in CI
+# on a change that added lines to cmd/loom: covered locally, "missing" there.
 backend-coverage:
 	mkdir -p coverage
-	cd backend && CGO_ENABLED=1 go test -race ./... -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out
+	cd backend && CGO_ENABLED=1 go test -race -count=1 ./... -covermode=atomic -coverpkg=./... -coverprofile=../coverage/backend.out
 	cd backend && go run github.com/boumenot/gocover-cobertura@v1.5.0 < ../coverage/backend.out > ../coverage/backend.xml
 
 fe-test:

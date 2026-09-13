@@ -40,9 +40,9 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 ## Config
 - Runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and
   `.env.example`. Required to boot: `BACKEND_SESSION_SECRET`, `BACKEND_ADMIN_INITIAL_PASSWORD`.
-- The model endpoints are llmwire's: `LLMWIRE_MIMO_BASE_URL/_API_KEY` (chat) and
-  `LLMWIRE_OPENAI_BASE_URL/_API_KEY` (embeddings), read by `llmwire.FromEnv` at boot; a set base URL
-  turns the capability on, and a missing key then fails boot with the variable named.
+- The model endpoints are llmwire's: `LLMWIRE_MIMO_API_KEY` (chat) and `LLMWIRE_OPENAI_API_KEY`
+  (embeddings), read by `llmwire.FromEnv` at boot; the hosts ship in llmwire's profiles.yaml.
+  A set key turns the capability on.
 - Secrets via env only; never commit them. The `admin` account is seeded from env on first boot only.
 
 ## Database / migrations

@@ -52,8 +52,8 @@ const documentToolTimeout = 5 * time.Minute
 // not because it cannot reason.
 //
 // These are wire ids llmwire resolves against its profile registry; the
-// endpoint and key come from LLMWIRE_MIMO_BASE_URL and LLMWIRE_MIMO_API_KEY,
-// the variables the profiles' provider names.
+// profile ships the host, and the key comes from LLMWIRE_MIMO_API_KEY, the
+// variable the profiles' provider names.
 const (
 	textModel      = "mimo-v2.5-pro"
 	visionModel    = "mimo-v2.5"
@@ -120,8 +120,8 @@ type Client struct {
 	timeout             time.Duration
 }
 
-// NewClient builds the chat client. The error is a missing LLMWIRE_MIMO_BASE_URL
-// or LLMWIRE_MIMO_API_KEY, named, unless cfg.BaseURL wires the endpoint itself.
+// NewClient builds the chat client. The error is a missing LLMWIRE_MIMO_API_KEY,
+// named, unless cfg.BaseURL wires a test endpoint itself.
 func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient

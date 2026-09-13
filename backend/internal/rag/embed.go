@@ -14,9 +14,9 @@ import (
 
 // EmbedModel is the embedding model, a constant of the build: the vector
 // column width is fixed by the migration that created it (see EmbedDim), so
-// swapping the model is a re-index, not a config change. The endpoint and key
-// come from LLMWIRE_OPENAI_BASE_URL and LLMWIRE_OPENAI_API_KEY, the variables
-// the profile's provider names.
+// swapping the model is a re-index, not a config change. The profile ships the
+// host; the key comes from LLMWIRE_OPENAI_API_KEY, the variable the profile's
+// provider names.
 const EmbedModel = "text-embedding-3-small"
 
 const defaultEmbedTimeout = 1 * time.Minute
@@ -52,7 +52,7 @@ type EmbedConfig struct {
 }
 
 // NewEmbedClient builds an EmbedClient. httpClient is optional. The error is a
-// missing LLMWIRE_OPENAI_BASE_URL or LLMWIRE_OPENAI_API_KEY, named.
+// missing LLMWIRE_OPENAI_API_KEY, named.
 func NewEmbedClient(cfg EmbedConfig, httpClient *http.Client) (*EmbedClient, error) {
 	wire, err := llmwire.FromEnv(EmbedModel, llmwire.Config{
 		BaseURL:     cfg.BaseURL,

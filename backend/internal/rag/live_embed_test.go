@@ -14,8 +14,7 @@ import (
 // sqlite-vec KNN: it confirms the configured model returns 1536-dim vectors and
 // that a semantically related query retrieves the right chunk. Run with:
 //
-//	LLMWIRE_OPENAI_BASE_URL=... LLMWIRE_OPENAI_API_KEY=... \
-//	  go test -tags liveembed -run TestLiveEmbedAndRetrieve ./internal/rag/ -v
+//	LLMWIRE_OPENAI_API_KEY=... go test -tags liveembed -run TestLiveEmbedAndRetrieve ./internal/rag/ -v
 func TestLiveEmbedAndRetrieve(t *testing.T) {
 	emb, err := NewEmbedClient(EmbedConfig{}, nil)
 	if err != nil {

@@ -28,6 +28,12 @@ func logStartupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime sta
 	for _, item := range startupCapabilities(cfg, mcpConfig, runtime) {
 		slog.Info("startup capability", "name", item.Name, "status", item.Status, "detail", item.Detail)
 	}
+	// A key turns chat on, so a missing or misspelled variable no longer fails
+	// boot the way a missing endpoint did: outside dev auth that is a
+	// deployment that cannot chat, and it must not pass as a routine line.
+	if !cfg.ChatEnabled && cfg.AuthMode != config.AuthModeDev {
+		slog.Warn("chat disabled: LLMWIRE_MIMO_API_KEY is unset, every turn will fail")
+	}
 }
 
 func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) []startupCapability {
@@ -58,17 +64,17 @@ func authCapability(cfg config.Config) startupCapability {
 }
 
 func chatCapability(cfg config.Config) startupCapability {
-	if strings.TrimSpace(cfg.ChatBaseURL) == "" {
-		return startupCapability{Name: "chat", Status: "disabled", Detail: "set LLMWIRE_MIMO_BASE_URL"}
+	if !cfg.ChatEnabled {
+		return startupCapability{Name: "chat", Status: "disabled", Detail: "set LLMWIRE_MIMO_API_KEY"}
 	}
-	return startupCapability{Name: "chat", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", llm.ModelSummary(), cfg.ChatBaseURL)}
+	return startupCapability{Name: "chat", Status: "enabled", Detail: "model=" + llm.ModelSummary()}
 }
 
 func embeddingsCapability(cfg config.Config) startupCapability {
-	if strings.TrimSpace(cfg.EmbedBaseURL) == "" {
-		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set LLMWIRE_OPENAI_BASE_URL"}
+	if !cfg.EmbedEnabled {
+		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set LLMWIRE_OPENAI_API_KEY"}
 	}
-	return startupCapability{Name: "embeddings", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", rag.EmbedModel, cfg.EmbedBaseURL)}
+	return startupCapability{Name: "embeddings", Status: "enabled", Detail: "model=" + rag.EmbedModel}
 }
 
 func tikaCapability(cfg config.Config) startupCapability {
