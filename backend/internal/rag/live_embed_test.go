@@ -62,7 +62,7 @@ func TestLiveEmbedAndRetrieve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Embed query: %v", err)
 	}
-	res, err := s.Retrieve(ctx, "u", nil, embeddedQuery.Vectors[0], 1)
+	res, err := s.Retrieve(ctx, "u", nil, nil, embeddedQuery.Vectors[0], 1)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}

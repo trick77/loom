@@ -43,13 +43,14 @@ const defaultProjectSummaryTokenBudget = 6000
 // defaultChatIdleTimeout aborts a chat stream that goes silent. The binding case
 // is not inter-chunk cadence (worst gap measured against real MiMo is ~7.6s on a
 // multi-minute reasoning turn) but time-to-first-token: the watchdog is armed at
-// request entry, and only a data: line resets it (see llm/stream.go), so an
-// upstream queue wait before the first data frame counts in full as idle. MiMo 2.5
-// Pro queues hard under concurrent load — 26s to first token on a round that
-// succeeded, and a round that produced no data frame at all inside 60s, killing the
-// turn. 120s roughly doubles the window over that observed stall while staying far
-// below the total ChatTimeout. Set BACKEND_CHAT_IDLE_TIMEOUT=0 to disable the
-// watchdog.
+// request entry, and only a data: line resets it (llmwire's header and idle
+// bounds, both set from this value in llm/client.go), so an upstream queue wait
+// before the first data frame counts in full as idle. MiMo 2.5 Pro queues hard
+// under concurrent load — 26s to first token on a round that succeeded, and a
+// round that produced no data frame at all inside 60s, killing the turn. 120s
+// roughly doubles the window over that observed stall while staying far below
+// the total ChatTimeout. Set BACKEND_CHAT_IDLE_TIMEOUT=0 to disable the
+// watchdog (the whole-call cap then remains the only bound).
 const defaultChatIdleTimeout = 120 * time.Second
 
 // AuthMode selects how Loom signs users in.

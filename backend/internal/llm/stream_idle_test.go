@@ -216,3 +216,28 @@ func TestClient_StreamIdleTimeoutDisabled(t *testing.T) {
 		t.Fatalf("watchdog must be disabled when IdleTimeout=0, got stall: %v", err)
 	}
 }
+
+// A stall before the first byte (the endpoint queueing past the window without
+// sending headers) reads as ErrStreamStalled, the same as a mid-stream stall.
+func TestClient_StreamStallBeforeHeadersIsAStall(t *testing.T) {
+	// The handler holds the request open until the test ends: the server never
+	// sees the client leave before the headers, so a context wait would block
+	// Close.
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+
+	client := mustClient(t, Config{
+		BaseURL:     server.URL,
+		Timeout:     5 * time.Second,
+		IdleTimeout: 30 * time.Millisecond,
+	}, server.Client())
+
+	_, err := client.StreamChatResult(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil)
+	if !errors.Is(err, ErrStreamStalled) {
+		t.Fatalf("StreamChatResult() error = %v, want ErrStreamStalled", err)
+	}
+}

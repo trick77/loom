@@ -78,7 +78,7 @@ type Config struct {
 	// IdleTimeout aborts a stream when no data frame arrives within the window.
 	// It also bounds the wait for response headers: MiMo Pro queues, and loom
 	// allowed this long before the first byte before the wire moved to llmwire.
-	// Zero takes llmwire's defaults.
+	// Zero disables the watchdog: the whole-call cap is then the only bound.
 	IdleTimeout time.Duration
 	// ResponseLogDir, when set, spools every raw response to that directory
 	// (llmwire.SpoolTransport); incognito turns are never written.
@@ -145,6 +145,15 @@ func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 		// per call in StreamChatWithTools for every other turn.
 		callTimeout = documentToolTimeout
 	}
+	idleTimeout := cfg.IdleTimeout
+	if idleTimeout <= 0 {
+		// llmwire has no off switch for its stream bounds (zero means its
+		// defaults), so "disabled" is spelled as a window as wide as the call.
+		idleTimeout = callTimeout
+		if idleTimeout <= 0 {
+			idleTimeout = llmwire.DefaultCallTimeout
+		}
+	}
 	wire, err := llmwire.FromEnv(textModel, llmwire.Config{
 		BaseURL: cfg.BaseURL,
 		APIKey:  cfg.APIKey,
@@ -152,8 +161,8 @@ func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 		// header pair. The MiMo token plan is sold as that client's backend
 		// and treats a neutral User-Agent as a bot.
 		EmulateOpenCode: true,
-		HeaderTimeout:   cfg.IdleTimeout,
-		IdleTimeout:     cfg.IdleTimeout,
+		HeaderTimeout:   idleTimeout,
+		IdleTimeout:     idleTimeout,
 		CallTimeout:     callTimeout,
 		HTTPClient:      httpClient,
 	})

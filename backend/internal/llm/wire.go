@@ -103,7 +103,10 @@ func chatError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, llmwire.ErrStreamIdle) {
+	// A stall before the first byte (MiMo Pro queueing past the window) and one
+	// mid-stream are the same failure to the handlers: the model stopped
+	// responding.
+	if errors.Is(err, llmwire.ErrStreamIdle) || errors.Is(err, llmwire.ErrNoResponseHeaders) {
 		return fmt.Errorf("read chat completion stream: %w", ErrStreamStalled)
 	}
 	var apiErr *llmwire.APIError
