@@ -155,19 +155,12 @@ func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 		}
 	}
 	wire, err := llmwire.FromEnv(textModel, llmwire.Config{
-		BaseURL: cfg.BaseURL,
-		APIKey:  cfg.APIKey,
-		// Presents as the opencode client: its User-Agent and the session
-		// header pair. The MiMo token plan is sold as that client's backend
-		// and treats a neutral User-Agent as a bot. llmwire's mimo provider
-		// carries emulate_opencode, so FromEnv sets this on the shipped host
-		// by itself; set here too so an explicit BaseURL (the tests) presents
-		// the same way and the intent is visible where the client is built.
-		EmulateOpenCode: true,
-		HeaderTimeout:   idleTimeout,
-		IdleTimeout:     idleTimeout,
-		CallTimeout:     callTimeout,
-		HTTPClient:      httpClient,
+		BaseURL:       cfg.BaseURL,
+		APIKey:        cfg.APIKey,
+		HeaderTimeout: idleTimeout,
+		IdleTimeout:   idleTimeout,
+		CallTimeout:   callTimeout,
+		HTTPClient:    httpClient,
 	})
 	if err != nil {
 		return nil, err

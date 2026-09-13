@@ -23,6 +23,7 @@ services:
       BACKEND_OIDC_ADMIN_GROUP: "${BACKEND_OIDC_ADMIN_GROUP:-loom-admins}"
       LLMWIRE_MIMO_API_KEY: "${LLMWIRE_MIMO_API_KEY}"
       LLMWIRE_OPENAI_API_KEY: "${LLMWIRE_OPENAI_API_KEY}"
+      LLMWIRE_EMULATE_OPENCODE: "${LLMWIRE_EMULATE_OPENCODE:-}"
       # Extra MCP servers from ./conf/mcp.json (standard mcpServers format; merged on top of built-ins).
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"
       # Tokens referenced by mcp.json's ${VAR} placeholders (ipverse-lens whois; Context7 docs).
