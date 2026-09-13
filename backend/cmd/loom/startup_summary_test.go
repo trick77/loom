@@ -1,12 +1,38 @@
 package main
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/trick77/loom/internal/config"
 	"github.com/trick77/loom/internal/mcp"
 )
+
+// Outside dev auth a missing chat key is a broken deployment, not a routine
+// capability line.
+func TestLogStartupCapabilitiesWarnsWithoutChatKeyOutsideDev(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	logStartupCapabilities(config.Config{AuthMode: config.AuthModeOIDC}, mcp.Config{}, startupRuntime{})
+	if !strings.Contains(buf.String(), "level=WARN msg=\"chat disabled: LLMWIRE_MIMO_API_KEY is unset") {
+		t.Fatalf("no warning without a chat key:\n%s", buf.String())
+	}
+	buf.Reset()
+	logStartupCapabilities(config.Config{AuthMode: config.AuthModeDev}, mcp.Config{}, startupRuntime{})
+	if strings.Contains(buf.String(), "level=WARN msg=\"chat disabled") {
+		t.Fatalf("dev auth must not warn:\n%s", buf.String())
+	}
+	buf.Reset()
+	logStartupCapabilities(config.Config{AuthMode: config.AuthModeOIDC, ChatEnabled: true}, mcp.Config{}, startupRuntime{})
+	if strings.Contains(buf.String(), "level=WARN") {
+		t.Fatalf("a set key must not warn:\n%s", buf.String())
+	}
+}
 
 func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	items := startupCapabilities(config.Config{

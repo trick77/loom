@@ -28,6 +28,12 @@ func logStartupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime sta
 	for _, item := range startupCapabilities(cfg, mcpConfig, runtime) {
 		slog.Info("startup capability", "name", item.Name, "status", item.Status, "detail", item.Detail)
 	}
+	// A key turns chat on, so a missing or misspelled variable no longer fails
+	// boot the way a missing endpoint did: outside dev auth that is a
+	// deployment that cannot chat, and it must not pass as a routine line.
+	if !cfg.ChatEnabled && cfg.AuthMode != config.AuthModeDev {
+		slog.Warn("chat disabled: LLMWIRE_MIMO_API_KEY is unset, every turn will fail")
+	}
 }
 
 func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) []startupCapability {
