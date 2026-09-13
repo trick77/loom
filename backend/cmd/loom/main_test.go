@@ -40,7 +40,7 @@ func TestResponseLogDirForConfigOnlyEnablesDevMode(t *testing.T) {
 
 func TestChatClientConfigFromConfig(t *testing.T) {
 	cfg := config.Config{
-		ChatBaseURL:             "https://chat.example/v1",
+		ChatEnabled:             true,
 		ChatMaxCompletionTokens: 4096,
 		ChatTimeout:             90 * time.Second,
 		ChatIdleTimeout:         60 * time.Second,

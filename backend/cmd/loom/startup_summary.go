@@ -58,17 +58,17 @@ func authCapability(cfg config.Config) startupCapability {
 }
 
 func chatCapability(cfg config.Config) startupCapability {
-	if strings.TrimSpace(cfg.ChatBaseURL) == "" {
-		return startupCapability{Name: "chat", Status: "disabled", Detail: "set LLMWIRE_MIMO_BASE_URL"}
+	if !cfg.ChatEnabled {
+		return startupCapability{Name: "chat", Status: "disabled", Detail: "set LLMWIRE_MIMO_API_KEY"}
 	}
-	return startupCapability{Name: "chat", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", llm.ModelSummary(), cfg.ChatBaseURL)}
+	return startupCapability{Name: "chat", Status: "enabled", Detail: "model=" + llm.ModelSummary()}
 }
 
 func embeddingsCapability(cfg config.Config) startupCapability {
-	if strings.TrimSpace(cfg.EmbedBaseURL) == "" {
-		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set LLMWIRE_OPENAI_BASE_URL"}
+	if !cfg.EmbedEnabled {
+		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set LLMWIRE_OPENAI_API_KEY"}
 	}
-	return startupCapability{Name: "embeddings", Status: "enabled", Detail: fmt.Sprintf("model=%s base_url=%s", rag.EmbedModel, cfg.EmbedBaseURL)}
+	return startupCapability{Name: "embeddings", Status: "enabled", Detail: "model=" + rag.EmbedModel}
 }
 
 func tikaCapability(cfg config.Config) startupCapability {

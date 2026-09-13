@@ -127,16 +127,16 @@ func run() error {
 	// Built before the RAG block so the ingester can use it to describe image
 	// documents; reused below as the chat client.
 	var llmClient *llm.Client
-	if cfg.ChatBaseURL != "" {
+	if cfg.ChatEnabled {
 		llmClient, err = llm.NewClient(chatClientConfigFromConfig(cfg), http.DefaultClient)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Document RAG is enabled only when an embeddings endpoint is configured.
+	// Document RAG is enabled only when an embeddings key is configured.
 	var documentService httpapi.DocumentService
-	if strings.TrimSpace(cfg.EmbedBaseURL) != "" {
+	if cfg.EmbedEnabled {
 		ragStore := rag.NewStore(db)
 		if err := ragStore.ResetStuckIngestions(context.Background()); err != nil {
 			return err

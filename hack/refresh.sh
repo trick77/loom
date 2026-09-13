@@ -5,7 +5,6 @@
 #
 # Optional chat API config for local dev:
 #
-#   LLMWIRE_MIMO_BASE_URL=https://your-mimo-host/v1 \
 #   LLMWIRE_MIMO_API_KEY=your-api-key \
 #   ./hack/refresh.sh
 #
