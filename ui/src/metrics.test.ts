@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   formatDuration,
   buildMetricsString,
+  threadCostThrough,
   formatCostNanoUsd,
   formatMessageTime,
   hasRenderableMetrics,
@@ -78,13 +79,15 @@ test("buildMetricsString omits the lead segment when the message stored no reaso
   expect(line).toBe("5s  ·  ↑ 49 498 (38 208/c)  ·  ↓ 1 502 (205/r)  ·  5 %");
 });
 
-test("formatCostNanoUsd keeps a sub-dollar figure readable and rounds a dollar figure to cents", () => {
-  expect(formatCostNanoUsd(3_141_593)).toBe("$0.0031");
-  expect(formatCostNanoUsd(12_500_000)).toBe("$0.0125");
+test("formatCostNanoUsd rounds to the cent and never shows a priced amount as free", () => {
+  expect(formatCostNanoUsd(3_141_593)).toBe("$0.01");
+  expect(formatCostNanoUsd(12_500_000)).toBe("$0.01");
+  expect(formatCostNanoUsd(34_000_000)).toBe("$0.03");
   expect(formatCostNanoUsd(1_237_000_000)).toBe("$1.24");
+  expect(formatCostNanoUsd(0)).toBe("$0.00");
 });
 
-test("buildMetricsString ends with the cost when the turn was priced, and omits it otherwise", () => {
+test("buildMetricsString ends with the thread's running cost, and omits it when nothing was priced", () => {
   const priced = buildMetricsString(
     assistant({
       durationMs: 5000,
@@ -93,8 +96,9 @@ test("buildMetricsString ends with the cost when the turn was priced, and omits 
       contextTokens: 51000,
       costNanoUsd: 3_141_593,
     }),
+    3_141_593,
   );
-  expect(priced).toBe("5s  ·  ↑ 1 000  ·  ↓ 200  ·  5 %  ·  $0.0031");
+  expect(priced).toBe("5s  ·  ↑ 1 000  ·  ↓ 200  ·  5 %  ·  Σ $0.01");
   const unpriced = buildMetricsString(
     assistant({ durationMs: 5000, promptTokens: 1000, completionTokens: 200 }),
   );
@@ -191,4 +195,30 @@ test("formatMessageTime renders a 24-hour HH:MM clock, and empty for an unparsea
   // TZ-independent: assert the shape, not a hardcoded local time.
   expect(formatMessageTime("2026-05-31T14:32:00Z")).toMatch(/^\d{2}:\d{2}$/);
   expect(formatMessageTime("not-a-date")).toBe("");
+});
+
+test("buildMetricsString shows the thread's running total, not the turn's own cost", () => {
+  const turn = assistant({
+    durationMs: 5000,
+    promptTokens: 1000,
+    completionTokens: 200,
+    costNanoUsd: 12_000_000,
+  });
+  expect(buildMetricsString(turn)).toBe("5s  ·  ↑ 1 000  ·  ↓ 200");
+  expect(buildMetricsString(turn, 45_000_000)).toBe(
+    "5s  ·  ↑ 1 000  ·  ↓ 200  ·  Σ $0.05",
+  );
+});
+
+test("threadCostThrough sums the priced messages up to and including the index", () => {
+  const messages = [
+    assistant({ costNanoUsd: 10_000_000 }),
+    assistant({}),
+    assistant({ costNanoUsd: 25_000_000 }),
+    assistant({ costNanoUsd: 5_000_000 }),
+  ];
+  expect(threadCostThrough(messages, 0)).toBe(10_000_000);
+  expect(threadCostThrough(messages, 1)).toBe(10_000_000);
+  expect(threadCostThrough(messages, 2)).toBe(35_000_000);
+  expect(threadCostThrough(messages, 99)).toBe(40_000_000);
 });

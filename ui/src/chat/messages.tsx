@@ -70,6 +70,7 @@ export function MessageBubble({
   retryMessage,
   onRetry,
   category,
+  threadCostNanoUsd,
   publicView = false,
 }: {
   message: Message & {
@@ -83,6 +84,8 @@ export function MessageBubble({
   onRetry?(content: string, pastedTexts?: MessagePastedText[]): void;
   /** Thread-level prompt-classifier category, shown as a pill in the assistant metrics row. */
   category?: string;
+  /** The thread's cost through this message, for the Σ segment of the metrics row. */
+  threadCostNanoUsd?: number;
   /** Read-only public share viewer: hide actions, metrics and citations. */
   publicView?: boolean;
 }) {
@@ -277,6 +280,7 @@ export function MessageBubble({
           }
           metricsMessage={message}
           category={category}
+          threadCostNanoUsd={threadCostNanoUsd}
           speakable
         />
       )}
@@ -652,6 +656,7 @@ function MessageActions({
   onRetry,
   metricsMessage,
   category,
+  threadCostNanoUsd,
   speakable = false,
   alignRight = false,
   streaming = false,
@@ -662,6 +667,7 @@ function MessageActions({
   onRetry?: () => void;
   metricsMessage?: Message;
   category?: string;
+  threadCostNanoUsd?: number;
   speakable?: boolean;
   alignRight?: boolean;
   streaming?: boolean;
@@ -784,7 +790,11 @@ function MessageActions({
       {volumeButton}
       {retryButton}
       {metricsMessage && (
-        <MessageMetrics message={metricsMessage} category={category} />
+        <MessageMetrics
+          message={metricsMessage}
+          category={category}
+          threadCostNanoUsd={threadCostNanoUsd}
+        />
       )}
     </div>
   );

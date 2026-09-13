@@ -40,6 +40,7 @@ import { isNearBottom, previousUserMessage } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { WindowFileDrop } from "./WindowFileDrop";
 import { WorkingDot } from "./WorkingDot";
+import { threadCostThrough } from "../metrics";
 
 export function ThreadPanel({
   thread,
@@ -519,6 +520,7 @@ export function ThreadPanel({
                   }
                   onRetry={handleRetryRequest}
                   category={thread?.category}
+                  threadCostNanoUsd={threadCostThrough(messages, index)}
                 />
               </div>
             ))}
