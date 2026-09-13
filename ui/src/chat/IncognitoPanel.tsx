@@ -14,6 +14,7 @@ import type { MessageWithActivityTrace } from "./types";
 import { previousUserMessage } from "./threadUtils";
 import { WorkingDot } from "./WorkingDot";
 import loomLogo from "../assets/loom-logo.svg";
+import { threadCostThrough } from "../metrics";
 
 // IncognitoPanel is the standalone ephemeral-chat view. It never touches the
 // sidebar, thread lists, or persistence — the transcript lives entirely in the
@@ -187,6 +188,7 @@ export function IncognitoPanel({
                         : null
                     }
                     onRetry={onRetry}
+                    threadCostNanoUsd={threadCostThrough(messages, index)}
                   />
                 </div>
               ))}

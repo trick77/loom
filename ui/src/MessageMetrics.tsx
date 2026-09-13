@@ -14,11 +14,14 @@ import { buildMetricsString, humanizeCategory } from "./metrics";
 export function MessageMetrics({
   message,
   category,
+  threadCostNanoUsd,
 }: {
   message: Message;
   category?: string;
+  // The thread's cost through this message, for the Σ segment.
+  threadCostNanoUsd?: number;
 }) {
-  const line = buildMetricsString(message);
+  const line = buildMetricsString(message, threadCostNanoUsd);
   const pill =
     category !== undefined && category !== "" ? (
       <span className="inline-flex items-center rounded-full bg-[#363632] px-2 py-0.5 font-sans text-[0.75rem] leading-[1.45rem] text-[#d6d3ca]">

@@ -142,7 +142,9 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		ContentBlocks: contentBlocksJSON,
 		CreatedAt:     time.Now(),
 	}
-	applyMessageMetrics(&assistantMessage, messageMetricsFromTurn(assistantResult.StreamResult, llm.TokenUsage{}, time.Since(turnStart)))
+	// Incognito carries no token accounting, but the turn's cost is on the
+	// stream result and the bubble shows the thread's running total from it.
+	applyMessageMetrics(&assistantMessage, messageMetricsWithCost(assistantResult.StreamResult, llm.TokenUsage{}, time.Since(turnStart), assistantResult.CostNanoUSD, assistantResult.CostPriced))
 	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
 		return
 	}
@@ -194,4 +196,5 @@ func applyMessageMetrics(message *chat.Message, metrics chat.MessageTokenUsage) 
 	message.CachedTokens = metrics.CachedTokens
 	message.ReasoningTokens = metrics.ReasoningTokens
 	message.ContextTokens = metrics.ContextTokens
+	message.CostNanoUSD = metrics.CostNanoUSD
 }

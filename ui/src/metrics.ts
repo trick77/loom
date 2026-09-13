@@ -51,15 +51,30 @@ function contextUsagePercent(contextTokens: number): string {
 }
 
 /**
- * Format a nano-USD figure as dollars for the metrics line. Most turns cost a
- * fraction of a cent, so the figure keeps enough decimals to be non-zero:
- * four for anything under a dollar ("$0.0031"), two above ("$1.24"). The
+ * Format a nano-USD figure as dollars, to the cent ("$0.03", "$1.24"). A cent
+ * is the smallest amount shown: a priced turn that cost less still reads
+ * "$0.01", never "$0.00", so a paid call is never displayed as free. The
  * amount is a list-rate equivalent, not an invoice.
  */
 export function formatCostNanoUsd(nanoUsd: number): string {
-  const usd = nanoUsd / 1_000_000_000;
-  if (usd >= 1) return `$${usd.toFixed(2)}`;
-  return `$${usd.toFixed(4)}`;
+  // Round in integer cents: toFixed on the float would turn 0.045 into "0.04".
+  const cents = Math.round(nanoUsd / 10_000_000);
+  if (nanoUsd > 0 && cents < 1) return "$0.01";
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * The thread's cost up to and including the message at `index`: the sum of
+ * every priced message before it in transcript order. Unpriced messages add
+ * nothing, so the figure is a floor when some turns had no rate.
+ */
+export function threadCostThrough(messages: Message[], index: number): number {
+  let sum = 0;
+  for (let i = 0; i <= index && i < messages.length; i++) {
+    const cost = messages[i].costNanoUsd;
+    if (hasPositiveValue(cost)) sum += cost;
+  }
+  return sum;
 }
 
 function cachedSuffix(message: Message): string {
@@ -103,11 +118,17 @@ export function hasRenderableMetrics(message: Message): boolean {
 }
 
 /**
- * Build the metrics line (effort · duration · ↑in (cached/c) · ↓out (reasoning/r) · context%),
- * or null when there is nothing renderable. The lead segment is the reasoning-effort level
- * used for that inference (no model name); omitted when the message stored no effort.
+ * Build the metrics line (effort · duration · ↑in (cached/c) · ↓out (reasoning/r) · context% ·
+ * Σ $thread), or null when there is nothing renderable. The lead segment is the
+ * reasoning-effort level used for that inference (no model name); omitted when the message
+ * stored no effort. The cost segment is the thread's running total through this message
+ * (`threadCostNanoUsd`, from threadCostThrough), never the turn's own figure: what the
+ * reader wants next to the context gauge is what the conversation has cost so far.
  */
-export function buildMetricsString(message: Message): string | null {
+export function buildMetricsString(
+  message: Message,
+  threadCostNanoUsd?: number,
+): string | null {
   if (!hasRenderableMetrics(message)) return null;
   const durationMs = message.durationMs as number;
 
@@ -135,8 +156,8 @@ export function buildMetricsString(message: Message): string | null {
   if (hasPositiveValue(message.contextTokens)) {
     segments.push(contextUsagePercent(message.contextTokens));
   }
-  if (hasPositiveValue(message.costNanoUsd)) {
-    segments.push(formatCostNanoUsd(message.costNanoUsd));
+  if (hasPositiveValue(threadCostNanoUsd)) {
+    segments.push(`Σ${THIN_SPACE}${formatCostNanoUsd(threadCostNanoUsd)}`);
   }
   return segments.join(DOT_SEPARATOR);
 }

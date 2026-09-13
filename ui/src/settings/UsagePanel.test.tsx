@@ -42,7 +42,7 @@ describe("UsagePanel", () => {
     expect(screen.getByText("88")).toBeInTheDocument(); // embedding tokens
     expect(screen.getByText("6")).toBeInTheDocument(); // embedding requests
     expect(screen.getByText("4")).toBeInTheDocument(); // web searches
-    expect(screen.getByText("$0.0031")).toBeInTheDocument(); // lifetime cost, nano-USD as dollars
+    expect(screen.getByText("$0.01")).toBeInTheDocument(); // lifetime cost, nano-USD as dollars, to the cent
     // getByText normalizes the thin space (U+202F) to a regular space.
     expect(screen.getByText("1 234 / 2 000 (62%)")).toBeInTheDocument(); // length + capacity %
     expect(screen.getByText("Never")).toBeInTheDocument(); // last updated (no memory yet)

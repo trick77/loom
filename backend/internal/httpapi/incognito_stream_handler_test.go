@@ -18,7 +18,7 @@ func TestIncognitoStreamEmitsReplyAndPersistsNothing(t *testing.T) {
 	store := &fakeThreadStore{}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{},
+		LLM:    fakeChatClient{cost: 4200},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/incognito/messages:stream", `{"content":"Hi"}`)
@@ -33,6 +33,9 @@ func TestIncognitoStreamEmitsReplyAndPersistsNothing(t *testing.T) {
 		"event: assistant_delta",
 		`data: {"content":"Hel"}`,
 		"event: assistant_message",
+		// The turn's cost rides on the in-memory message so the bubble can
+		// show the running total; nothing about it is stored.
+		`"costNanoUsd":4200`,
 		"event: done",
 	} {
 		if !strings.Contains(body, want) {
