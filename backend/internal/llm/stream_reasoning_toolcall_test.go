@@ -138,13 +138,14 @@ type recordCapture struct {
 type captured struct {
 	msg   string
 	attrs map[string]slog.Value
+	level slog.Level
 }
 
 func (h *recordCapture) Enabled(context.Context, slog.Level) bool { return true }
 func (h *recordCapture) Handle(_ context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	c := captured{msg: r.Message, attrs: map[string]slog.Value{}}
+	c := captured{msg: r.Message, level: r.Level, attrs: map[string]slog.Value{}}
 	r.Attrs(func(a slog.Attr) bool { c.attrs[a.Key] = a.Value; return true })
 	h.records = append(h.records, c)
 	return nil
@@ -169,6 +170,19 @@ func (h *recordCapture) messages() []string {
 	var out []string
 	for _, c := range h.records {
 		out = append(out, c.msg)
+	}
+	return out
+}
+
+// levels lists the level of every record with the message, in order.
+func (h *recordCapture) levels(msg string) []slog.Level {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []slog.Level
+	for _, c := range h.records {
+		if c.msg == msg {
+			out = append(out, c.level)
+		}
 	}
 	return out
 }

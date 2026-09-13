@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -149,11 +150,14 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			break
 		}
 	}
+	// Close waits for the reader to finish, so Result() holds everything that
+	// streamed before a consumer error too: the failure log and the title fall
+	// back on that partial answer. On a clean drain Close is a no-op and Err
+	// carries the wire's own failure.
+	closeErr := stream.Close()
 	res := stream.Result()
 	if consumerErr == nil {
-		// Close is what surfaces a caller-side error; on a consumer error the
-		// deferred Close cancels a stream that is still running.
-		consumerErr = stream.Err()
+		consumerErr = closeErr
 	}
 	logWarnings(ctx, model, stream.Warnings())
 	partial := StreamResult{
@@ -182,7 +186,14 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		return attrs
 	}
 	if consumerErr != nil {
-		err := chatError(consumerErr)
+		var err error
+		if closeErr == nil {
+			// The wire was fine; the consumer (the SSE write to the browser)
+			// failed, and the error must not read as an upstream failure.
+			err = fmt.Errorf("deliver chat completion stream: %w", consumerErr)
+		} else {
+			err = chatError(consumerErr)
+		}
 		logInferenceFailed(ctx, model, durationOr(res.Timing.Total, start), err, progress()...)
 		return partial, err
 	}

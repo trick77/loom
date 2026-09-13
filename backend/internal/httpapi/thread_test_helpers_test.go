@@ -403,6 +403,7 @@ func (f *fakeThreadStore) AddMessageWithCitations(ctx context.Context, _ string,
 		TotalTokens:      usage.TotalTokens,
 		CachedTokens:     usage.CachedTokens,
 		ReasoningTokens:  usage.ReasoningTokens,
+		CostNanoUSD:      usage.CostNanoUSD,
 	}
 	if role == chat.RoleAssistant {
 		f.assistantContent = content
@@ -589,10 +590,15 @@ type fakeChatClient struct {
 	usage               llm.TokenUsage
 	titleUsage          llm.TokenUsage
 	reasoningTitleUsage llm.TokenUsage
-	afterStream         func()
-	projectMemory       string
-	editedMemory        string
-	projectDescription  string
+	// cost, titleCost and reasoningTitleCost are recorded as priced nano-USD
+	// next to the matching usage when non-zero.
+	cost               int64
+	titleCost          int64
+	reasoningTitleCost int64
+	afterStream        func()
+	projectMemory      string
+	editedMemory       string
+	projectDescription string
 	// projectDescriptionCalls, when set, counts GenerateProjectDescription
 	// invocations so a test can assert the in-memory guard short-circuited before
 	// any (wasted) inference.
@@ -644,6 +650,9 @@ func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, assistantMes
 	// Mirror the real client: a completed helper call records its usage into the
 	// request accumulator on ctx.
 	llm.RecordUsage(ctx, f.titleUsage)
+	if f.titleCost > 0 {
+		llm.RecordCost(ctx, f.titleCost, true)
+	}
 	return f.title, nil
 }
 
@@ -657,6 +666,9 @@ func (f fakeChatClient) ClassifyImageIntent(_ context.Context, _ string, _, _ bo
 
 func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string) (string, error) {
 	llm.RecordUsage(ctx, f.reasoningTitleUsage)
+	if f.reasoningTitleCost > 0 {
+		llm.RecordCost(ctx, f.reasoningTitleCost, true)
+	}
 	return f.reasoningTitle, nil
 }
 
@@ -708,7 +720,10 @@ func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.M
 		f.afterStream()
 	}
 	llm.RecordUsage(ctx, f.usage)
-	return llm.StreamResult{Content: content, ReasoningContent: f.reasoningText, Usage: f.usage}, nil
+	if f.cost > 0 {
+		llm.RecordCost(ctx, f.cost, true)
+	}
+	return llm.StreamResult{Content: content, ReasoningContent: f.reasoningText, Usage: f.usage, CostNanoUSD: f.cost, CostPriced: f.cost > 0}, nil
 }
 
 type blockingChatClient struct {

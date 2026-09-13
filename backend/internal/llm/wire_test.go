@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -188,5 +189,51 @@ func TestNewClient_SpoolsResponsesExceptIncognito(t *testing.T) {
 	}
 	if entries, _ := readDirNames(dir); len(entries) != 1 || !strings.HasSuffix(entries[0], ".http") {
 		t.Fatalf("spool = %v, want one .http file", entries)
+	}
+}
+
+// A consumer failure (the SSE write to a departed browser) keeps what the
+// model had streamed so far, so the failure log and the title fallback see
+// the partial answer, and it is not phrased as an upstream failure.
+func TestStreamChat_ConsumerErrorKeepsThePartialAnswer(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-release
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+
+	client := mustClient(t, Config{BaseURL: server.URL, Timeout: 5 * time.Second}, server.Client())
+	sink := errors.New("client went away")
+	result, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil, func(StreamEvent) error { return sink })
+	if !errors.Is(err, sink) {
+		t.Fatalf("error = %v, want the consumer's", err)
+	}
+	if strings.HasPrefix(err.Error(), "chat completion request") {
+		t.Fatalf("error = %q reads as an upstream failure", err)
+	}
+	if result.Content != "Hello" {
+		t.Fatalf("partial content = %q, want the streamed delta", result.Content)
+	}
+}
+
+func TestLogWarnings_ToolCallMarkupIsAWarning(t *testing.T) {
+	capture := &recordCapture{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(capture))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	logWarnings(context.Background(), "m", []llmwire.Warning{
+		{Kind: llmwire.WarnOther, Feature: "usage", Details: "no usage object"},
+		{Kind: llmwire.WarnOther, Feature: "tool_calls", Details: "markup cut"},
+	})
+	levels := capture.levels("llm: wire warning")
+	if len(levels) != 2 || levels[0] != slog.LevelDebug || levels[1] != slog.LevelWarn {
+		t.Fatalf("levels = %v, want [DEBUG WARN]", levels)
 	}
 }

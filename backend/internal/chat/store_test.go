@@ -1557,7 +1557,16 @@ func TestMessagesPersistCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if messages[0].CostNanoUSD == nil || *messages[0].CostNanoUSD != cost || messages[1].CostNanoUSD != nil {
-		t.Fatalf("listed costs = %v / %v", messages[0].CostNanoUSD, messages[1].CostNanoUSD)
+	// Both rows share a created_at second, so the list order falls back to the
+	// random ids: match by content, not by position.
+	listed := map[string]*int64{}
+	for _, m := range messages {
+		listed[m.Content] = m.CostNanoUSD
+	}
+	if got := listed["priced"]; got == nil || *got != cost {
+		t.Fatalf("listed priced cost = %v, want %d", got, cost)
+	}
+	if got := listed["unpriced"]; got != nil {
+		t.Fatalf("listed unpriced cost = %d, want nil", *got)
 	}
 }

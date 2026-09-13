@@ -483,6 +483,9 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// is read here after titles.wait() above so helper-call tokens are included —
 	// matching the per-message stats persisted just above.
 	turnUsage := usageTotal.Total()
+	// Re-read the cost next to the tokens: the per-message figure above was
+	// taken before the title call, whose cost belongs in the rollup too.
+	turnCost, _ = usageTotal.Cost()
 	if turnUsage.Present() {
 		s.recordUsage("tokens", func() error {
 			return s.usage.AddTokens(persistCtx, user.ID, usage.TokenDelta{

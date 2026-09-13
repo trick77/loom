@@ -116,11 +116,18 @@ func chatError(err error) error {
 	return fmt.Errorf("chat completion request: %w", err)
 }
 
-// logWarnings records llmwire's coercion and pricing warnings at debug: the
-// common one is "no usage object" on a helper call, which is not actionable.
+// logWarnings records llmwire's warnings. Most are debug noise (the common one
+// is "no usage object" on a helper call). The tool_calls feature is the
+// exception: it reports inline tool-call markup that the model leaked into its
+// text, recovered into a call or cut without one, which the operator needs to
+// see at the default log level because the client never saw that text.
 func logWarnings(ctx context.Context, model string, warnings []llmwire.Warning) {
 	for _, w := range warnings {
-		slog.DebugContext(ctx, "llm: wire warning",
+		level := slog.LevelDebug
+		if w.Feature == "tool_calls" {
+			level = slog.LevelWarn
+		}
+		slog.LogAttrs(ctx, level, "llm: wire warning",
 			slog.String("model", model),
 			slog.String("kind", string(w.Kind)),
 			slog.String("feature", w.Feature),
