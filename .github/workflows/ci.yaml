@@ -55,13 +55,6 @@ jobs:
         run: ./hack/coverage-gate.sh backend
       - name: Patch coverage
         run: ./hack/patch-coverage.sh origin/${{ github.base_ref }}
-      - name: Coverage debug
-        if: failure()
-        run: |
-          grep -n 'startup_summary.go' coverage/backend.out | head -40
-          grep -n -A60 'filename="cmd/loom/startup_summary.go"' coverage/backend-code-only.xml | grep -E 'filename|number="3[0-9]"' | head -40
-          go version
-          go env GOCACHE GOFLAGS
 
   ui:
     name: UI (build + test)
