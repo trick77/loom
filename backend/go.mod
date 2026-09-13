@@ -1,20 +1,20 @@
 module github.com/trick77/loom
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/asg017/sqlite-vec-go-bindings v0.1.7-alpha.2
-	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/ncruces/go-sqlite3 v0.23.3
 	github.com/trick77/llmwire v0.0.29
 	github.com/xuri/excelize/v2 v2.11.0
-	github.com/yuin/goldmark v1.8.5
+	github.com/yuin/goldmark v1.8.6
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
-	golang.org/x/image v0.45.0
-	golang.org/x/net v0.58.0
-	golang.org/x/oauth2 v0.36.0
-	golang.org/x/text v0.41.0
+	golang.org/x/image v0.46.0
+	golang.org/x/net v0.59.0
+	golang.org/x/oauth2 v0.37.0
+	golang.org/x/text v0.42.0
 )
 
 require (
@@ -40,6 +40,6 @@ require (
 	github.com/trick77/webfetch v0.1.8
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )
