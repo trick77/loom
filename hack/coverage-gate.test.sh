@@ -15,8 +15,8 @@ check() { # check <label> <expected-exit> <actual-exit>
   fi
 }
 
-# 80 of 100 lines covered outside cmd/loom -> 80.0%.
-# cmd/loom contributes 100 lines, all uncovered, and must be ignored entirely:
+# 80 of 100 lines covered outside cmd/ -> 80.0%.
+# cmd/ contributes 100 lines, all uncovered, and must be ignored entirely:
 # including it would report 80/200 = 40.0%, a materially different number.
 gen_lines() { # gen_lines <count> <hits>
   local i
@@ -29,14 +29,14 @@ cat > "$TMP/backend.xml" <<XML
 <?xml version="1.0"?>
 <coverage>
   <packages>
-    <package name="github.com/trick77/peeq/internal/auth">
+    <package name="github.com/trick77/loom/internal/auth">
       <classes>
         <class name="auth" filename="internal/auth/auth.go">
           <lines>$(gen_lines 80 1)$(gen_lines 20 0)</lines>
         </class>
       </classes>
     </package>
-    <package name="github.com/trick77/peeq/cmd/loom">
+    <package name="github.com/trick77/loom/cmd/loom">
       <classes>
         <class name="main" filename="cmd/loom/main.go">
           <lines>$(gen_lines 100 0)</lines>
@@ -65,8 +65,8 @@ check "fails when below floor" 1 $?
 out=$(COVERAGE_FLOORS="$TMP/floors-under" COVERAGE_FILE="$TMP/backend.xml" \
   ./hack/coverage-gate.sh backend 2>&1)
 case "$out" in
-  *80.0*) echo "  ok   excludes cmd/loom (reports 80.0%, not 40.0%)" ;;
-  *)      echo "  FAIL excludes cmd/loom — got: $out"; fail=1 ;;
+  *80.0*) echo "  ok   excludes cmd/ (reports 80.0%, not 40.0%)" ;;
+  *)      echo "  FAIL excludes cmd/ — got: $out"; fail=1 ;;
 esac
 
 COVERAGE_FLOORS="$TMP/floors-under" COVERAGE_FILE="$TMP/backend-malformed.xml" \
@@ -90,7 +90,7 @@ cat > "$TMP/backend-lines.xml" <<XML
 <?xml version="1.0"?>
 <coverage>
   <packages>
-    <package name="github.com/trick77/peeq/internal/lines">
+    <package name="github.com/trick77/loom/internal/lines">
       <classes>
         <class name="lines" filename="internal/lines/lines.go">
           <lines>$(gen_lines 50 1)$(gen_lines 50 0)</lines>
