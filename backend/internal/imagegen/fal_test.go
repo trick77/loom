@@ -292,7 +292,7 @@ func TestFalClientGenerateAlwaysSubmitsTheMostPermissiveSafetySettings(t *testin
 }
 
 func TestFalClientGenerateReturnsValidationError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, `{"detail":[{"msg":"field required"}]}`, http.StatusUnprocessableEntity)
 	}))
 	defer server.Close()

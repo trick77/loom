@@ -1027,7 +1027,7 @@ func TestClient_ClassifyThreadParsesReply(t *testing.T) {
 		{"empty falls back", "", "general"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"choices": []map[string]any{{"message": map[string]string{"content": tc.content}}},
 				})

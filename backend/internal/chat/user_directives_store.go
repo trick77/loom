@@ -28,7 +28,7 @@ ORDER BY position, created_at, rowid`,
 	if err != nil {
 		return nil, fmt.Errorf("list user directives: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	directives := make([]UserDirective, 0)
 	for rows.Next() {
@@ -61,7 +61,7 @@ func (s *Store) AddUserDirective(ctx context.Context, userID, content string) (U
 	if err != nil {
 		return UserDirective{}, fmt.Errorf("add user directive: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	existing, err := directivesTotalLength(ctx, tx, userID, "")
 	if err != nil {
@@ -132,7 +132,7 @@ func (s *Store) ReplaceUserDirective(ctx context.Context, userID, id, content st
 	if err != nil {
 		return UserDirective{}, false, fmt.Errorf("replace user directive: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Not-found takes precedence over a budget rejection: a bogus/stale id should
 	// report "no such instruction", not a misleading "budget full".
@@ -184,7 +184,7 @@ SELECT content FROM user_directives WHERE user_id = ? AND id != ?`,
 	if err != nil {
 		return 0, fmt.Errorf("directives total length: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	total := 0
 	for rows.Next() {

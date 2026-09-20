@@ -129,7 +129,7 @@ LIMIT ?`, strings.Join(filters, " AND "))
 	if err != nil {
 		return nil, fmt.Errorf("list threads: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	threads := make([]Thread, 0)
 	for rows.Next() {
@@ -160,7 +160,7 @@ func (s *Store) markSharedThreads(ctx context.Context, userID string, threads []
 	if err != nil {
 		return fmt.Errorf("list shared thread ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	shared := make(map[string]struct{})
 	for rows.Next() {
 		var id string
@@ -197,7 +197,7 @@ ORDER BY COALESCE(last_message_at, updated_at) DESC, updated_at DESC, id DESC`, 
 	if err != nil {
 		return nil, fmt.Errorf("list thread ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	ids := make([]string, 0)
 	for rows.Next() {
@@ -230,7 +230,7 @@ ORDER BY created_at ASC, id ASC`,
 	if err != nil {
 		return nil, fmt.Errorf("list project thread titles: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	titles := make([]string, 0)
 	for rows.Next() {
@@ -423,7 +423,7 @@ WHERE user_id = ? AND id = ?`,
 		}
 		return threads[0], true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Thread{}, false, nil
 	}
 	return Thread{}, false, fmt.Errorf("get thread: %w", err)
@@ -440,7 +440,7 @@ WHERE user_id = ? AND id = ?`,
 	if err == nil {
 		return true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	return false, fmt.Errorf("check thread: %w", err)

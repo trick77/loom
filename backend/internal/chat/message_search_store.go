@@ -86,7 +86,7 @@ WHERE message_fts MATCH ?
 	if err != nil {
 		return nil, fmt.Errorf("search threads by content: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	hits := make([]ThreadContentHit, 0, limit)
 	seen := make(map[string]struct{})
@@ -172,7 +172,7 @@ WHERE message_fts MATCH ?
 	if err != nil {
 		return nil, fmt.Errorf("search messages: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	hits := make([]MessageSearchHit, 0, limit)
 	for rows.Next() {

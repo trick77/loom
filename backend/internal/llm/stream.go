@@ -88,7 +88,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		logInferenceFailed(ctx, model, time.Since(start), err)
 		return StreamResult{}, err
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	toolCalls := map[int]*ToolCall{}
 	var toolCallOrder []int

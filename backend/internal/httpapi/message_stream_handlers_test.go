@@ -1582,7 +1582,7 @@ func TestStopCauseSanitizesAndWrapsSource(t *testing.T) {
 	})
 
 	t.Run("empty source yields the bare stop cause", func(t *testing.T) {
-		if cause := stopCause("   "); cause != errStreamStopRequested {
+		if cause := stopCause("   "); !errors.Is(cause, errStreamStopRequested) {
 			t.Fatalf("cause = %v, want bare errStreamStopRequested", cause)
 		}
 	})
@@ -2369,7 +2369,7 @@ func TestStreamMessageGatesToolsByCategory(t *testing.T) {
 		}
 		return names
 	}
-	newServer := func(category string, llmClient *fakeToolChatClient) http.Handler {
+	newServer := func(_ string, llmClient *fakeToolChatClient) http.Handler {
 		return newAuthenticatedServer(t, Deps{
 			Thread:    &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}},
 			Artifacts: fakeArtifactStore{},

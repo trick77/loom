@@ -156,7 +156,7 @@ func (s *server) fetchPageHTML(ctx context.Context, pageURL string) (*html.Node,
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("page status %d", resp.StatusCode)
 	}

@@ -47,7 +47,7 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 	if err != nil {
 		return nil, fmt.Errorf("retrieve: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []RetrievedChunk
 	for rows.Next() {
 		var rc RetrievedChunk

@@ -54,7 +54,7 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := deleteChunksTx(ctx, tx, userID, documentID); err != nil {
 		return fmt.Errorf("clear existing chunks: %w", err)
@@ -94,7 +94,7 @@ func (s *Store) ClearChunks(ctx context.Context, userID, documentID string) erro
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := deleteChunksTx(ctx, tx, userID, documentID); err != nil {
 		return fmt.Errorf("clear chunks: %w", err)
 	}
@@ -109,7 +109,7 @@ func collectChunkRowids(ctx context.Context, tx *sql.Tx, query string, args ...a
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []int64
 	for rows.Next() {
 		var id int64
@@ -164,7 +164,7 @@ func (s *Store) deleteScopeDocuments(ctx context.Context, scope string, args ...
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	rowids, err := collectChunkRowids(ctx,
 		tx,
@@ -204,7 +204,7 @@ func (s *Store) DeleteDocument(ctx context.Context, userID, id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := deleteChunksTx(ctx, tx, userID, id); err != nil {
 		return fmt.Errorf("delete chunks: %w", err)
 	}

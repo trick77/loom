@@ -1,6 +1,7 @@
 package rag
 
 import (
+	"errors"
 	"context"
 	"database/sql"
 	"fmt"
@@ -41,7 +42,7 @@ func (s *Store) GetDocument(ctx context.Context, userID, id string) (Document, b
 	row := s.db.QueryRowContext(ctx,
 		`SELECT `+documentColumns+` FROM documents WHERE user_id = ? AND id = ?`, userID, id)
 	d, err := scanDocument(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Document{}, false, nil
 	}
 	if err != nil {
@@ -65,7 +66,7 @@ func (s *Store) ListDocuments(ctx context.Context, userID string, projectID *str
 	if err != nil {
 		return nil, fmt.Errorf("list documents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var docs []Document
 	for rows.Next() {
 		d, err := scanDocument(rows)
@@ -111,7 +112,7 @@ WHERE d.user_id = ? AND a.thread_id = ?`, userID, threadID)
 	if err != nil {
 		return nil, fmt.Errorf("list in-use thread artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []string
 	for rows.Next() {
 		var id string
@@ -154,7 +155,7 @@ func (s *Store) GetDocumentFullText(ctx context.Context, userID, id string) (str
 	err := s.db.QueryRowContext(ctx,
 		`SELECT full_text FROM documents WHERE user_id = ? AND id = ?`,
 		userID, id).Scan(&text)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
 	if err != nil {
@@ -185,7 +186,7 @@ func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID, 
 	query += `) LIMIT 1`
 	var one int
 	err := s.db.QueryRowContext(ctx, query, args...).Scan(&one)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -219,7 +220,7 @@ func (s *Store) IndexedDocsInScope(ctx context.Context, userID string, projectID
 	if err != nil {
 		return nil, fmt.Errorf("list indexed docs in scope: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var docs []IndexedDoc
 	for rows.Next() {
 		var d IndexedDoc
@@ -258,7 +259,7 @@ func (s *Store) ReconcileLegacyDocumentScopes(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Already reconciled on a prior boot? Then do nothing — never touch newer data.
 	var done int
@@ -347,7 +348,7 @@ func collectChunkScopes(ctx context.Context, tx *sql.Tx, query string) ([]chunkS
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []chunkScope
 	for rows.Next() {
 		var cs chunkScope

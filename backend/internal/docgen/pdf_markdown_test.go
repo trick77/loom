@@ -1,7 +1,9 @@
 package docgen
 
-import "strings"
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRenderMarkdownBodyRendersFormatting(t *testing.T) {
 	md := "### Findings\n\n" +

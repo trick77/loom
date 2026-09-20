@@ -78,7 +78,7 @@ func TestEmbedClient_Embed_emptyInputReturnsNothing(t *testing.T) {
 }
 
 func TestEmbedClient_Embed_ignoresMalformedUsage(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := map[string]any{
 			"data": []map[string]any{
 				{"index": 0, "embedding": []float64{0.1, 0.2, 0.3}},
@@ -104,7 +104,7 @@ func TestEmbedClient_Embed_ignoresMalformedUsage(t *testing.T) {
 }
 
 func TestEmbedClient_Embed_errorsOnNon2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer srv.Close()

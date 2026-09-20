@@ -260,7 +260,7 @@ func (s *server) fetchFaviconBytes(ctx context.Context, rawURL string) (body []b
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("upstream status %d", resp.StatusCode)
 	}
@@ -297,7 +297,7 @@ func (s *server) writeFaviconCache(key string, body []byte, contentType string) 
 	}
 	// A site that failed to resolve before and resolves now must stop being reported
 	// as a miss immediately, not at the end of the marker's TTL.
-	os.Remove(dataPath + ".miss")
+	_ = os.Remove(dataPath + ".miss")
 	return dataPath, nil
 }
 
@@ -360,7 +360,7 @@ func serveFaviconFile(w http.ResponseWriter, r *http.Request, path, contentType,
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found")
@@ -389,16 +389,16 @@ func faviconWriteAtomic(path string, data []byte) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	return nil

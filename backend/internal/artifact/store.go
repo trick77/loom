@@ -3,6 +3,7 @@ package artifact
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -97,7 +98,7 @@ func (s *Store) DetachFromThread(ctx context.Context, userID string, artifactIDs
 	if err != nil {
 		return fmt.Errorf("detach artifacts from thread: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, id := range artifactIDs {
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE artifacts SET thread_id = NULL WHERE user_id = ? AND id = ?`,
@@ -156,7 +157,7 @@ WHERE user_id = ? AND id IN (%s)`, placeholders), args...)
 	if err != nil {
 		return nil, fmt.Errorf("get many artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		item, deletedAt, err := scanArtifactWithDeleted(rows)
 		if err != nil {
@@ -191,7 +192,7 @@ WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 		&createdAt,
 		&thumbnailRelPath,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Artifact{}, false, nil
 	}
 	if err != nil {
@@ -248,7 +249,7 @@ LIMIT ?`, strings.Join(filters, " AND "), listOrderBy(opts.Sort, opts.Order))
 	if err != nil {
 		return nil, fmt.Errorf("list artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanArtifacts(rows)
 }
 
@@ -261,7 +262,7 @@ ORDER BY created_at ASC`, userID, threadID)
 	if err != nil {
 		return nil, fmt.Errorf("list thread artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanArtifacts(rows)
 }
 
@@ -294,7 +295,7 @@ ORDER BY created_at ASC`, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list project artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanArtifacts(rows)
 }
 

@@ -248,7 +248,7 @@ func (c *FalClient) submit(ctx context.Context, req GenerateRequest, model strin
 	if err != nil {
 		return falSubmitResponse{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return falSubmitResponse{}, falHTTPError("submit", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -419,7 +419,7 @@ func (c *FalClient) getJSON(ctx context.Context, endpoint, stage string) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, falHTTPError(stage, resp.StatusCode, strings.TrimSpace(string(body)))
@@ -436,7 +436,7 @@ func (c *FalClient) download(ctx context.Context, imageURL string) ([]byte, stri
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", fmt.Errorf("download generated image failed: status %d", resp.StatusCode)
 	}

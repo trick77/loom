@@ -337,7 +337,7 @@ func (f *fakeThreadStore) AddMessage(ctx context.Context, _ string, threadID str
 	return f.AddMessageWithUsage(ctx, "", threadID, role, content, chat.MessageTokenUsage{})
 }
 
-func (f *fakeThreadStore) AddMessageWithAttachments(ctx context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage) (chat.Message, error) {
+func (f *fakeThreadStore) AddMessageWithAttachments(_ context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage) (chat.Message, error) {
 	if len(attachments) == 0 {
 		attachments = json.RawMessage("[]")
 	}
@@ -656,7 +656,7 @@ func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, assistantMes
 	return f.title, nil
 }
 
-func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, error) {
+func (f fakeChatClient) ClassifyThread(_ context.Context, _ string) (string, error) {
 	return f.category, nil
 }
 

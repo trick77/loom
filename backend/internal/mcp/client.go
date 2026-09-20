@@ -151,7 +151,7 @@ func (c *remoteClient) Probe(ctx context.Context) error {
 	if err != nil {
 		return scrubURLError(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 500 {
 		return &mcpStatusError{method: "probe", status: resp.StatusCode}
 	}
@@ -238,7 +238,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 	if err != nil {
 		return scrubURLError(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
 		c.mu.Lock()
 		c.sessionID = id

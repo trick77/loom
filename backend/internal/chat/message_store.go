@@ -136,7 +136,7 @@ func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, e
 	if err != nil {
 		return Message{}, fmt.Errorf("begin message transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	messageID := newID()
 	_, err = tx.ExecContext(ctx, `
@@ -252,7 +252,7 @@ LIMIT ?`,
 	if err != nil {
 		return nil, fmt.Errorf("list recent messages: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	messages := make([]Message, 0)
 	for rows.Next() {
@@ -290,7 +290,7 @@ ORDER BY created_at ASC, id ASC`,
 	if err != nil {
 		return nil, false, fmt.Errorf("list messages: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	messages := make([]Message, 0)
 	for rows.Next() {
@@ -316,7 +316,7 @@ WHERE user_id = ? AND id = ?`,
 	if err == nil {
 		return message, true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, false, nil
 	}
 	return Message{}, false, fmt.Errorf("get message: %w", err)

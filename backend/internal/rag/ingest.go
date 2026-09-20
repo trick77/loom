@@ -143,7 +143,7 @@ func (ing *Ingester) ExtractText(ctx context.Context, userID, documentID string)
 	if err != nil {
 		return "", fmt.Errorf("open document: %w", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	text, err := ing.extractContent(ctx, doc.Filename, doc.MIME, rc)
 	if err != nil {
 		return "", fmt.Errorf("extract text: %w", err)
@@ -157,7 +157,7 @@ func (ing *Ingester) extract(ctx context.Context, doc Document) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("open document: %w", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	text, err := ing.extractContent(ctx, doc.Filename, doc.MIME, rc)
 	if err != nil {
 		return "", fmt.Errorf("extract text: %w", err)

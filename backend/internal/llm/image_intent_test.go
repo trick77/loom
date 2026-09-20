@@ -76,7 +76,7 @@ func TestClassifyImageIntent_failsSafeToNone(t *testing.T) {
 	}
 
 	// Transport error -> none, error surfaced for logging.
-	errSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	errSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer errSrv.Close()

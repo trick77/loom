@@ -120,15 +120,15 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 	size, copyErr := io.Copy(file, io.LimitReader(in.Reader, artifact.MaxArtifactSizeBytes+1))
 	closeErr := file.Close()
 	if copyErr != nil {
-		os.Remove(out.AbsPath)
+		_ = os.Remove(out.AbsPath)
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("write upload: %w", copyErr)
 	}
 	if closeErr != nil {
-		os.Remove(out.AbsPath)
+		_ = os.Remove(out.AbsPath)
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("close upload: %w", closeErr)
 	}
 	if size > artifact.MaxArtifactSizeBytes {
-		os.Remove(out.AbsPath)
+		_ = os.Remove(out.AbsPath)
 		return rag.Document{}, artifact.Artifact{}, ErrTooLarge
 	}
 
@@ -143,7 +143,7 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		Source:          "user_uploaded",
 	})
 	if err != nil {
-		os.Remove(out.AbsPath)
+		_ = os.Remove(out.AbsPath)
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("record artifact: %w", err)
 	}
 
@@ -169,7 +169,7 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		Status:        rag.StatusPending,
 	}
 	if err := s.store.CreateDocument(ctx, doc); err != nil {
-		os.Remove(out.AbsPath)
+		_ = os.Remove(out.AbsPath)
 		_ = s.artifacts.Delete(ctx, in.UserID, art.ID)
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("create document: %w", err)
 	}

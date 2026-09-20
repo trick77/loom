@@ -90,7 +90,7 @@ func runHealthcheck(url string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected health status %d", resp.StatusCode)
 	}
@@ -111,7 +111,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	secureCookies := strings.HasPrefix(cfg.PublicURL, "https://")
 	userStore := auth.NewUserStore(db)
@@ -288,7 +288,7 @@ func run() error {
 	handler := httpapi.New(deps)
 	memoryWorker := httpapi.NewMemoryWorker(deps)
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: handler}
+	srv := newServer(cfg.Addr, handler)
 
 	go func() {
 		slog.Info("listening", "addr", cfg.Addr, "version", version)
@@ -401,4 +401,22 @@ func tavilyConfigured(cfg config.Config) bool {
 
 func imageGenConfigured(cfg config.Config) bool {
 	return strings.TrimSpace(cfg.ImageGenAPIKey) != ""
+}
+
+// newServer builds the listening server. It is split out of main so the
+// timeouts are assertable: a zero value means "no limit", which is what lets a
+// client open a connection, stall, and hold a goroutine and a file descriptor
+// indefinitely (slow loris).
+//
+// WriteTimeout is deliberately absent. internal/sse streams text/event-stream
+// responses that outlive any sane write deadline, and setting one would cut
+// them off mid-stream.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 }

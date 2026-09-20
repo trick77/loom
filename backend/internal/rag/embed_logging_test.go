@@ -62,7 +62,7 @@ func captureInferenceLogs(t *testing.T) *inferenceLogCapture {
 // same log stream as the chat and image calls — with the request's attribution
 // and token counts, but never the text that was embedded.
 func TestEmbedClient_Embed_logsCompletedInferenceWithoutInputs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data":  []map[string]any{{"index": 0, "embedding": []float64{0.1}}},

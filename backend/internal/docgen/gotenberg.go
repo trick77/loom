@@ -122,7 +122,7 @@ func (c *GotenbergClient) Convert(ctx context.Context, html string, assets []got
 	if err != nil {
 		return nil, fmt.Errorf("gotenberg request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch {
 	case resp.StatusCode == http.StatusOK:
@@ -158,7 +158,7 @@ func (c *GotenbergClient) Ping(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("gotenberg health request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("gotenberg health check: status %d", resp.StatusCode)
 	}

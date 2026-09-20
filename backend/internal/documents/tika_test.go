@@ -46,7 +46,7 @@ func TestTikaClient_Extract_returnsPlainText(t *testing.T) {
 }
 
 func TestTikaClient_Extract_errorsOnNon2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 	}))
 	defer srv.Close()
@@ -95,7 +95,7 @@ func TestTikaClient_Ping(t *testing.T) {
 }
 
 func TestTikaClient_Extract_capsExtractedText(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, strings.Repeat("a", maxExtractedTextBytes+5000))
 	}))
 	defer srv.Close()

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -56,7 +57,7 @@ FROM sessions
 WHERE token_hash = ? AND expires_at > datetime('now')`,
 		hashToken(token),
 	).Scan(&session.UserID, &expires)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, false, nil
 	}
 	if err != nil {

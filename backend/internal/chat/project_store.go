@@ -69,7 +69,7 @@ ORDER BY last_activity_at DESC, id DESC`, archiveFilter),
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	projects := make([]Project, 0)
 	for rows.Next() {
@@ -242,7 +242,7 @@ WHERE user_id = ? AND id = ?`,
 	if err == nil {
 		return project, true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, false, nil
 	}
 	return Project{}, false, fmt.Errorf("get project: %w", err)
@@ -259,7 +259,7 @@ WHERE user_id = ? AND id = ?`,
 	if err == nil {
 		return true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	return false, fmt.Errorf("check project: %w", err)
