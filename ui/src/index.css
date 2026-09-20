@@ -243,7 +243,7 @@ body {
 }
 
 /* Kept as a no-op marker: the slim scrollbar it used to define is now the app-wide
-   default in @layer base above. The class stays because five call sites and two tests
+   default in @layer base above. The class stays because several call sites and a test
    still reference it, and because it names the intent at the point of use. */
 .ui-sidebar-scroll {
   /* styles intentionally empty - see the @layer base scrollbar rule */
