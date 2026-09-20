@@ -140,13 +140,13 @@ export function SidebarResizer() {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (active.current !== null) return; // a drag runs; ignore a second finger
     const now = performance.now();
-    // Touch only. The reset exists because a finger has no other way back to the
-    // default: no arrow keys, no Home. A mouse has both, and letting it reset made
-    // an ordinary double-click on the border throw a stored width away -- the strip
-    // straddles the border by 3px, so that click does not even have to be aimed at
-    // the handle.
+    // Touch only, and literally so: pointerType === "touch", not "anything but a
+    // mouse". The reset exists because a finger has no other way back to the
+    // default -- no arrow keys, no Home. A pen comes with a keyboard that has
+    // both, so a stray double-tap with it would throw a stored width away for
+    // nothing, which is the same accident this gate removes for the mouse.
     if (
-      event.pointerType !== "mouse" &&
+      event.pointerType === "touch" &&
       now - lastDown.current < DOUBLE_TAP_MS
     ) {
       lastDown.current = -Infinity;
