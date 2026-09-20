@@ -95,17 +95,23 @@ html {
   }
 }
 
-/* Every scrollable surface wears the sidebar's slim, toned-down scrollbar, so the
-   transcript, settings, projects and chat lists all match it in colour and width.
+/* Every scrollable surface wears the same slim scrollbar, so the transcript,
+   composer, sidebar, settings and list pages all match in colour and width.
    Without this the unstyled containers fall through to the browser default, which
    under color-scheme: dark is both wider and an opaque grey. Applied to * because the
    ::-webkit-scrollbar pseudo-elements do not inherit, so a rule on html alone would
    leave every descendant on the default. Kept in @layer base so an explicit
-   per-element scrollbar style still wins. */
+   per-element scrollbar style still wins.
+
+   The thumb is OPAQUE on purpose. A translucent rgba(255,255,255,.1) thumb composites
+   over whatever panel sits behind it, so the same declaration rendered #3f3f3e on the
+   composer (bg #2a2a28) and #323231 on the sidebar (bg #1b1b1a) - visibly different
+   greys from identical CSS. #383837 is the midpoint of those two, so every scrollbar
+   is now literally the same colour regardless of its surface. */
 @layer base {
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    scrollbar-color: #383837 transparent;
   }
 
   *::-webkit-scrollbar {
@@ -118,12 +124,12 @@ html {
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: #383837;
     border-radius: 9999px;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.18);
+    background-color: #4b4b4a;
   }
 }
 
