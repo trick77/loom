@@ -108,18 +108,7 @@ func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolM
 		return ToolMeta{}, fmt.Errorf("image provider is not configured")
 	}
 	start := time.Now()
-	result, err := t.provider.Generate(ctx, GenerateRequest{
-		Prompt:          req.Prompt,
-		Filename:        req.Filename,
-		AspectRatio:     req.AspectRatio,
-		Width:           req.Width,
-		Height:          req.Height,
-		Seed:            req.Seed,
-		OutputFormat:    req.OutputFormat,
-		SafetyTolerance: req.SafetyTolerance,
-		Model:           req.Model,
-		InputImages:     req.InputImages,
-	})
+	result, err := t.provider.Generate(ctx, GenerateRequest(req))
 	if err != nil {
 		return ToolMeta{}, err
 	}

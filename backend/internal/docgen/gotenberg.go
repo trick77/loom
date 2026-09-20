@@ -124,8 +124,8 @@ func (c *GotenbergClient) Convert(ctx context.Context, html string, assets []got
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	switch {
-	case resp.StatusCode == http.StatusOK:
+	switch resp.StatusCode {
+	case http.StatusOK:
 		// Read one byte past the cap so an over-size render is a clear error rather
 		// than a silently truncated (corrupt) PDF.
 		pdf, err := io.ReadAll(io.LimitReader(resp.Body, maxPDFBytes+1))
@@ -136,10 +136,10 @@ func (c *GotenbergClient) Convert(ctx context.Context, html string, assets []got
 			return nil, fmt.Errorf("gotenberg response exceeds %d bytes", maxPDFBytes)
 		}
 		return pdf, nil
-	case resp.StatusCode == http.StatusBadRequest:
+	case http.StatusBadRequest:
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return nil, fmt.Errorf("gotenberg rejected the document (400): %s", strings.TrimSpace(string(msg)))
-	case resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusServiceUnavailable:
+	case http.StatusConflict, http.StatusServiceUnavailable:
 		return nil, fmt.Errorf("gotenberg unavailable (%d)", resp.StatusCode)
 	default:
 		return nil, fmt.Errorf("gotenberg conversion failed: status %d", resp.StatusCode)

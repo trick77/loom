@@ -779,7 +779,7 @@ func TestClient_StreamChatWithToolsSignalsPendingBeforeInlineToolCall(t *testing
 	if deltaIdx == -1 || pendingIdx == -1 || callIdx == -1 {
 		t.Fatalf("events = %#v, want a content, a pending and a tool-call event", events)
 	}
-	if !(deltaIdx < pendingIdx && pendingIdx < callIdx) {
+	if deltaIdx >= pendingIdx || pendingIdx >= callIdx {
 		t.Fatalf("events out of order: delta=%d pending=%d call=%d (%#v)", deltaIdx, pendingIdx, callIdx, events)
 	}
 }

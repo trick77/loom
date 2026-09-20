@@ -1,10 +1,10 @@
 package chat
 
 import (
-	"errors"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )

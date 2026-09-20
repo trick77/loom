@@ -1,9 +1,9 @@
 package chat
 
 import (
-	"errors"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 )
 

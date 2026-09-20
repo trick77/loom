@@ -1,9 +1,9 @@
 package rag
 
 import (
-	"errors"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
