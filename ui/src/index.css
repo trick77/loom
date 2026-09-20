@@ -84,6 +84,28 @@ html {
   color-scheme: dark;
 }
 
+/* The sidebar is user-resizable from md up: SidebarResizer writes only
+   --ui-sidebar-pref and the clamp keeps the result sane without a resize
+   listener. A listener that re-clamped and wrote back would destroy the
+   preference the first time a tablet turned to portrait. 40vw keeps the thread
+   the majority of the window, so a sidebar dragged wide cannot crowd it out. */
+:root {
+  --ui-sidebar-pref: 362px;
+  --ui-sidebar-w: clamp(280px, var(--ui-sidebar-pref), min(520px, 40vw));
+}
+
+/* The shell grid animates its columns so the collapse toggle glides. During a
+   drag that same transition would run behind every frame and the edge would
+   lag the pointer, so the drag turns it off. The cursor is held across the
+   whole page for the same reason a fast drag outruns the 10px handle. */
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.resizing * {
+  transition: none !important;
+}
+
 /* Tailwind v4 dropped the v3 Preflight default that gave buttons/role=button a
    pointer cursor, so clickable controls without an explicit cursor utility show
    the default arrow. Restore it app-wide. Kept in @layer base so explicit
