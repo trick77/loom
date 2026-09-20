@@ -8,6 +8,10 @@ import (
 	"github.com/trick77/loom/internal/titletext"
 )
 
+// NormalizeThreadTitle cleanses a thread title for storage: it strips leading/
+// trailing whitespace, normalizes quotes, strips markdown syntax, removes emoji,
+// collapses multiple spaces, and truncates to MaxThreadTitleLength. It is used
+// for both user-provided titles (before capitalization) and model-generated ones.
 func NormalizeThreadTitle(title string) string {
 	title = strings.TrimSpace(title)
 	title = titletext.NormalizeQuotes(title)

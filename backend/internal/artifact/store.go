@@ -11,10 +11,12 @@ import (
 	"github.com/trick77/loom/internal/chat"
 )
 
+// Store manages artifact metadata in the database.
 type Store struct {
 	db *sql.DB
 }
 
+// CreateInput holds the parameters for inserting a new artifact record.
 type CreateInput struct {
 	UserID          string
 	ThreadID        string
@@ -31,10 +33,12 @@ type CreateInput struct {
 	ThumbnailRelPath string
 }
 
+// NewStore creates a new artifact store backed by the given database connection.
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+// Create inserts a new artifact record and returns the created artifact with its assigned ID.
 func (s *Store) Create(ctx context.Context, in CreateInput) (Artifact, error) {
 	id := chat.NewIDForInternalUse()
 	source := in.Source
@@ -172,6 +176,8 @@ WHERE user_id = ? AND id IN (%s)`, placeholders), args...)
 	return out, nil
 }
 
+// Get retrieves an artifact by id, scoped to the user, excluding soft-deleted artifacts.
+// The returned bool indicates whether the artifact was found.
 func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, bool, error) {
 	var out Artifact
 	var createdAt string
@@ -212,6 +218,7 @@ WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 	return out, true, nil
 }
 
+// List retrieves a paginated list of artifacts filtered and sorted according to the given options.
 func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Artifact, error) {
 	limit := EffectiveArtifactLimit(opts.Limit)
 
@@ -254,6 +261,7 @@ LIMIT ?`, strings.Join(filters, " AND "), listOrderBy(opts.Sort, opts.Order))
 	return scanArtifacts(rows)
 }
 
+// ListForThread retrieves artifacts in a thread, scoped to the user.
 func (s *Store) ListForThread(ctx context.Context, userID, threadID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
@@ -287,6 +295,7 @@ func escapeLike(term string) string {
 	return replacer.Replace(term)
 }
 
+// ListForProject retrieves artifacts in a project, scoped to the user.
 func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath

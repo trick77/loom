@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// CreateProject creates a new project for the user with the given name and description.
 func (s *Store) CreateProject(ctx context.Context, userID string, in CreateProjectInput) (Project, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -54,6 +55,8 @@ func (s *Store) GetProject(ctx context.Context, userID, projectID string) (Proje
 	return s.getProject(ctx, userID, projectID)
 }
 
+// ListProjects returns all projects for the user. If archived is true, only
+// archived projects are returned; otherwise only active projects.
 func (s *Store) ListProjects(ctx context.Context, userID string, archived bool) ([]Project, error) {
 	archiveFilter := "archived_at IS NULL"
 	if archived {
@@ -85,6 +88,8 @@ ORDER BY last_activity_at DESC, id DESC`, archiveFilter),
 	return projects, nil
 }
 
+// UpdateProject updates an existing project with new name and description values.
+// The bool indicates whether the project was found; false means no project exists for the user.
 func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in UpdateProjectInput) (Project, bool, error) {
 	project, ok, err := s.getProject(ctx, userID, projectID)
 	if err != nil || !ok {
@@ -182,6 +187,8 @@ WHERE user_id = ? AND id = ? AND description_user_edited = 0`,
 	return project, updated, nil
 }
 
+// SetProjectStarred updates the starred state of a project. The bool indicates
+// whether the project was found; false means no project exists for the user.
 func (s *Store) SetProjectStarred(ctx context.Context, userID, projectID string, starred bool) (Project, bool, error) {
 	starredInt := 0
 	if starred {
@@ -203,6 +210,8 @@ WHERE user_id = ? AND id = ?`,
 	return s.getProject(ctx, userID, projectID)
 }
 
+// SetProjectArchived updates the archived state of a project. The bool indicates
+// whether the update affected any rows; false is returned if no project exists for the user.
 func (s *Store) SetProjectArchived(ctx context.Context, userID, projectID string, archived bool) (bool, error) {
 	setArchivedAt := "archived_at = NULL"
 	if archived {
@@ -220,6 +229,8 @@ WHERE user_id = ? AND id = ?`, setArchivedAt),
 	return changed(result)
 }
 
+// DeleteProject deletes a project. The bool indicates whether the project was
+// found and deleted; false is returned if no project exists for the user.
 func (s *Store) DeleteProject(ctx context.Context, userID, projectID string) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `
 DELETE FROM projects

@@ -11,6 +11,7 @@ import (
 
 var safeFilenameChars = regexp.MustCompile(`[^A-Za-z0-9._ -]+`)
 
+// ResolveOutputPath determines the filesystem location for an artifact, creating parent directories as needed.
 func ResolveOutputPath(req OutputRequest) (OutputPath, error) {
 	prepared, err := prepareOutput(req)
 	if err != nil {
@@ -20,6 +21,7 @@ func ResolveOutputPath(req OutputRequest) (OutputPath, error) {
 	return prepared.path(finalName, finalAbs), nil
 }
 
+// CreateOutputFile reserves a unique filename and opens a new file for writing, handling filename collisions.
 func CreateOutputFile(req OutputRequest) (OutputPath, *os.File, error) {
 	prepared, err := prepareOutput(req)
 	if err != nil {
@@ -99,6 +101,7 @@ func (p preparedOutput) path(filename, abs string) OutputPath {
 	}
 }
 
+// ResolveExisting validates and resolves the absolute path for an existing artifact, checking for path traversal attacks.
 func ResolveExisting(usersDir, userID, volumeRelPath string) (string, error) {
 	if filepath.IsAbs(volumeRelPath) || strings.Contains(volumeRelPath, "..") {
 		return "", errors.New("invalid artifact path")

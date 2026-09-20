@@ -13,6 +13,10 @@ func newID() string {
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
+// NewIDForInternalUse returns an opaque, unguessable identifier for internal use.
+// Like NewShareID it uses 128-bit crypto/rand base64url encoding for randomness
+// and unguessability; this variant is not exposed in URLs and can be safely used
+// for any internal id that needs to be unforgeable.
 func NewIDForInternalUse() string {
 	return newID()
 }

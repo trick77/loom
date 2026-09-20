@@ -9,18 +9,27 @@ import (
 	"strings"
 )
 
+// AddMessage adds a message to a thread. It is the thin wrapper for inserting a
+// message with only the identity, role, and content; callers that need to record
+// token usage or attachments should use the full AddMessageWith* variants.
 func (s *Store) AddMessage(ctx context.Context, userID, threadID string, role Role, content string) (Message, error) {
 	return s.AddMessageWithUsage(ctx, userID, threadID, role, content, MessageTokenUsage{})
 }
 
+// AddMessageWithUsage adds a message to a thread, recording token counts, costs,
+// and other turn-specific metrics in the usage parameter.
 func (s *Store) AddMessageWithUsage(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage) (Message, error) {
 	return s.AddMessageWithArtifacts(ctx, userID, threadID, role, content, usage, nil)
 }
 
+// AddMessageWithArtifacts adds a message to a thread, additionally persisting any
+// generated artifacts (code snippets, visualizations, etc.) as a JSON array.
 func (s *Store) AddMessageWithArtifacts(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage) (Message, error) {
 	return s.AddMessageWithActivityTrace(ctx, userID, threadID, role, content, usage, artifacts, nil)
 }
 
+// AddMessageWithActivityTrace adds a message to a thread, additionally persisting
+// the activity trace that records when tool calls were issued and how they resolved.
 func (s *Store) AddMessageWithActivityTrace(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (Message, error) {
 	return s.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil, nil)
 }
@@ -273,6 +282,8 @@ LIMIT ?`,
 	return messages, nil
 }
 
+// ListMessages returns all messages in a thread in chronological order. The bool
+// indicates whether the thread exists; false is returned if the thread is not found.
 func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Message, bool, error) {
 	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
 		return nil, false, err

@@ -2,11 +2,13 @@ package artifact
 
 import "time"
 
+// MaxDisplayFilenameLength is the character limit for artifact display filenames.
 const (
 	MaxDisplayFilenameLength = 180
 	MaxArtifactSizeBytes     = 25 << 20
 )
 
+// Artifact represents a file uploaded or generated in the context of a chat thread or project.
 type Artifact struct {
 	ID              string    `json:"id"`
 	UserID          string    `json:"-"`
@@ -33,22 +35,27 @@ type Artifact struct {
 	Deleted bool `json:"deleted,omitempty"`
 }
 
+// ListType categorizes artifacts by content type for filtering.
 type ListType string
 
 const (
+	// ListTypeAll is the default filter showing all artifacts.
 	ListTypeAll    ListType = "all"
 	ListTypeImages ListType = "images"
 	ListTypeFiles  ListType = "files"
 )
 
+// SortBy specifies the field used to order artifacts in list results.
 type SortBy string
 
 const (
+	// SortByModified sorts by creation time, newest first.
 	SortByModified SortBy = "modified"
 	SortByName     SortBy = "name"
 	SortBySize     SortBy = "size"
 )
 
+// SortOrder specifies the direction for sorting artifact lists.
 type SortOrder string
 
 const (
@@ -56,6 +63,7 @@ const (
 	SortDesc SortOrder = "desc"
 )
 
+// ListOptions specifies filtering and pagination parameters for artifact lists.
 type ListOptions struct {
 	Search string
 	Type   ListType
@@ -67,6 +75,7 @@ type ListOptions struct {
 	Cursor string
 }
 
+// OutputRequest specifies parameters for resolving an artifact's storage path.
 type OutputRequest struct {
 	UsersDir        string
 	UserID          string
@@ -76,6 +85,7 @@ type OutputRequest struct {
 	Extension       string
 }
 
+// OutputPath contains the paths and metadata for an artifact's storage location.
 type OutputPath struct {
 	AbsPath         string
 	VolumeRelPath   string
@@ -83,6 +93,7 @@ type OutputPath struct {
 	MIMEType        string
 }
 
+// MIMEType returns the MIME type for the given file extension.
 func MIMEType(extension string) string {
 	switch normalizeExtension(extension) {
 	case "pdf":
