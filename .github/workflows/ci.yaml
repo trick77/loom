@@ -37,9 +37,11 @@ jobs:
       # gofmt is not covered by `go vet`. Nine files had already drifted out of
       # gofmt shape before this check existed, so it is worth enforcing rather
       # than trusting editors to do it.
+      # From the repo root, not backend/: hack/strip-comment-lines.go is outside
+      # the module, so `go vet ./...` above never sees it, and patch-coverage.sh
+      # runs it on every build.
       - name: gofmt
         run: |
-          cd backend
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
             echo "::error::These files are not gofmt'd. Run: gofmt -w ."
@@ -55,6 +57,12 @@ jobs:
         run: ./hack/coverage-gate.sh backend
       - name: Patch coverage
         run: ./hack/patch-coverage.sh origin/${{ github.base_ref }}
+      # The gate scripts decide whether a PR may merge, so they get tested too.
+      # Both test files already existed here; nothing ran them.
+      - name: Gate self-tests
+        run: |
+          ./hack/coverage-gate.test.sh
+          ./hack/strip-comment-lines.test.sh
 
   ui:
     name: UI (build + test)

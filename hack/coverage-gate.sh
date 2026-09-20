@@ -6,7 +6,9 @@
 # Backend coverage comes from a Cobertura XML conversion of the coverprofile,
 # not from `go tool cover -func`: that prints only per-function statement
 # percentages, exposes no line metric, and gives no way to exclude a package.
-# cmd/loom (main() wiring) is deliberately not counted.
+# Anything under cmd/ (main() wiring) is deliberately not counted. Matching the
+# whole cmd/ tree rather than one binary's name keeps this script identical
+# across every repo in the family, including those with several binaries.
 set -euo pipefail
 
 # Force a C/POSIX numeric locale so awk always uses '.' as the decimal
@@ -49,7 +51,7 @@ except ET.ParseError:
 tot = cov = 0
 for cls in root.iter("class"):
     fn = cls.get("filename", "")
-    if fn.startswith("cmd/loom/") or "/cmd/loom/" in fn:
+    if fn.startswith("cmd/") or "/cmd/" in fn:
         continue
     for line in cls.iter("line"):
         tot += 1
