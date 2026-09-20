@@ -87,8 +87,8 @@ export function SidebarResizer() {
   const moved = useRef(false);
   const active = useRef<number | null>(null); // the pointer that owns the drag
   // Grab point, so the edge does not jump to the pointer. `width` is where the edge
-  // sits on screen, `preference` the number behind it: they differ under the cap,
-  // and a widening drag has to add its travel to the preference, not to the cap.
+  // sits on screen and `preference` the number behind it; under the 40vw cap they
+  // differ, and the drag picks between them by direction.
   const start = useRef({ x: 0, width: 0, preference: 0 });
 
   // Layout, not effect: an effect paints after the first frame, so the sidebar would
@@ -110,6 +110,18 @@ export function SidebarResizer() {
     },
     [],
   );
+
+  // aria-valuenow reports the DISPLAYED width, which the 40vw cap moves with the
+  // window. CSS repaints the edge on a resize but React does not re-render, so
+  // without this the separator kept announcing the width from the last render:
+  // wrong as the preference AND wrong as the edge. Only the rendered output
+  // depends on this, so a bare re-render is the whole job.
+  const [, bumpOnResize] = useState(0);
+  useEffect(() => {
+    const onResize = () => bumpOnResize((n) => n + 1);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   /**
    * One number throughout: the PREFERENCE. The 40vw cap is presentation, applied by
@@ -165,10 +177,15 @@ export function SidebarResizer() {
     moved.current = true;
     // Offset from the grab point, not the raw clientX: grabbing the handle off-centre
     // would otherwise snap the border to the pointer by up to half the hit area.
-    // Travel is applied to the PREFERENCE. Under the cap the preference sits above
-    // the visible edge, and adding dx to the edge instead would silently spend the
-    // difference: a 5px nudge on a capped viewport used to overwrite a stored 520.
-    const next = clampSidebar(start.current.preference + dx);
+    // Direction decides which number the travel applies to, because under the cap
+    // the preference sits above the visible edge.
+    //   widening: from the PREFERENCE, so a nudge does not overwrite a stored 520
+    //             with the capped number the screen happens to be showing.
+    //   narrowing: from the EDGE, which is what the finger is actually on. Adding
+    //             the travel to the preference instead gave a dead zone as wide as
+    //             the gap: a 40px pull moved nothing and still wrote 480 back.
+    const from = dx < 0 ? start.current.width : start.current.preference;
+    const next = clampSidebar(from + dx);
     live.current = next;
     setWidth(next);
     paint(next);
@@ -198,14 +215,17 @@ export function SidebarResizer() {
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    // Narrowing starts from the edge the user can see, so the first press always
-    // moves it; widening starts from the preference, so travel above the cap is not
-    // lost. Both are computed, never measured: the aside's box is still animating
-    // for 200ms after a column change, and two quick presses would compound.
+    // Mirrors the drag: narrowing steps the edge the user can see, so the first
+    // press always moves something; widening steps the preference, so travel above
+    // the cap is kept for the window that can show it. Above the cap a widening
+    // press therefore moves no pixels, the same bargain the drag makes, which is
+    // why aria-valuenow reports the displayed width rather than the preference.
+    // Both computed, never measured: the aside's box is still animating for 200ms
+    // after a column change, and two quick presses would compound against it.
     const shown = displayedWidth(live.current);
     if (event.key === "ArrowLeft") commit(clampSidebar(shown - STEP));
     else if (event.key === "ArrowRight")
-      commit(clampSidebar(Math.max(live.current, shown) + STEP));
+      commit(clampSidebar(live.current + STEP));
     else if (event.key === "Home") commit(SIDEBAR_DEFAULT);
     else return;
     event.preventDefault();
@@ -215,18 +235,22 @@ export function SidebarResizer() {
     <div
       // Only from md, where the sidebar is the layout. Below it the sidebar is an
       // off-canvas drawer and this would drag an edge nobody can see.
-      // Starts AT the border rather than 7px inside it: the sidebar's own
-      // ::-webkit-scrollbar is 8px of track down that edge, and overlapping it
-      // meant that on Windows, Linux, or macOS set to always-show scrollbars,
-      // reaching for the thumb resized the pane instead of scrolling it.
+      // 1px inside the border, not 7px: the sidebar's own ::-webkit-scrollbar is
+      // 8px of track down that edge, and covering it meant that on Windows, Linux,
+      // or macOS set to always-show scrollbars, reaching for the thumb resized the
+      // pane instead of scrolling it. The single pixel keeps the border itself
+      // grabbable, since the visible line is what people aim at.
       className="ui-sidebar-resizer absolute inset-y-0 z-30 hidden w-2.5 cursor-col-resize touch-none select-none md:block"
-      style={{ left: "var(--ui-sidebar-w)" }}
+      style={{ left: "calc(var(--ui-sidebar-w) - 1px)" }}
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize sidebar"
-      aria-valuenow={width}
+      // The DISPLAYED width, not the preference: the separator is where the clamp
+      // puts it, and announcing 520 while it sits at 440 describes a sidebar that
+      // is not on screen. The max moves with the cap for the same reason.
+      aria-valuenow={displayedWidth(width)}
       aria-valuemin={SIDEBAR_MIN}
-      aria-valuemax={SIDEBAR_MAX}
+      aria-valuemax={displayedWidth(SIDEBAR_MAX)}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
