@@ -21,15 +21,15 @@ func TestNewServerSetsReadTimeouts(t *testing.T) {
 	if srv.ReadHeaderTimeout == 0 {
 		t.Error("ReadHeaderTimeout is 0, which means no limit")
 	}
-	if srv.ReadTimeout == 0 {
-		t.Error("ReadTimeout is 0, which means no limit")
-	}
 	if srv.IdleTimeout == 0 {
 		t.Error("IdleTimeout is 0, which means no limit")
 	}
-	// Headers alone must not be able to spend the whole read budget.
-	if srv.ReadHeaderTimeout > srv.ReadTimeout {
-		t.Errorf("ReadHeaderTimeout %v exceeds ReadTimeout %v", srv.ReadHeaderTimeout, srv.ReadTimeout)
+	// ReadTimeout must stay zero. It bounds the whole request including the
+	// body, and the same deadline then cancels r.Context(), so it truncates a
+	// large upload and kills a long chat turn. Slow loris is already closed by
+	// ReadHeaderTimeout.
+	if srv.ReadTimeout != 0 {
+		t.Errorf("ReadTimeout = %v, want 0: it would cancel the request context mid-stream", srv.ReadTimeout)
 	}
 	// WriteTimeout must stay zero: internal/sse streams text/event-stream
 	// responses that a write deadline would truncate.

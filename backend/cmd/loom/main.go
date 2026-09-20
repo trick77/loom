@@ -416,7 +416,10 @@ func newServer(addr string, handler http.Handler) *http.Server {
 		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		IdleTimeout:       120 * time.Second,
+		// ReadTimeout stays unset on purpose. It bounds the whole request
+		// including the body, and once the body is read the same deadline
+		// cancels r.Context(), which would cut off a 25 MB upload mid-body and
+		// kill any long chat turn. ReadHeaderTimeout alone closes slow loris.
+		IdleTimeout: 120 * time.Second,
 	}
 }
