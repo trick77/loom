@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+// SessionCookieName is the name of the browser cookie carrying the session
+// token.
 const SessionCookieName = "loom_session"
 
 // Session is the server-side representation of an authenticated browser session.

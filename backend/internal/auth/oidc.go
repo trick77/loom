@@ -17,6 +17,10 @@ const (
 	oidcNonceCookieName = "loom_oidc_nonce"
 )
 
+// Errors returned when an OIDC callback fails its anti-forgery checks:
+// ErrInvalidState when the state parameter does not match the one issued with
+// the redirect, ErrInvalidNonce when the id token's nonce does not match the
+// cookie from the same exchange.
 var (
 	ErrInvalidState = errors.New("invalid oidc state")
 	ErrInvalidNonce = errors.New("invalid oidc nonce")
