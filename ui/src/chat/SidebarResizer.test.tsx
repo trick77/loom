@@ -428,10 +428,13 @@ describe("SidebarResizer", () => {
     // is NOT cut down to the 440 the viewport was showing.
     expect(stored()).toBe(String(SIDEBAR_MAX));
     expect(pref()).toBe(SIDEBAR_MAX + "px"); // one number, not two
-    expect(valuenow()).toBe(SIDEBAR_MAX);
+    // The separator sits at the capped edge, so that is what it announces:
+    // saying 520 would describe a sidebar that is not on screen.
+    expect(valuenow()).toBe(440);
   });
 
-  // A deliberate narrowing is taken at face value, cap or no cap.
+  // Uncapped: a deliberate narrowing is taken at face value. The capped case is
+  // its own test below, because that is where the two numbers diverge.
   it("lowers the stored preference when the user narrows", () => {
     localStorage.setItem("loom:sidebar-width", "520");
     render(<SidebarResizer />);
@@ -445,6 +448,55 @@ describe("SidebarResizer", () => {
     fireEvent.pointerMove(h, { pointerId: 1, clientX: 400 });
     fireEvent.pointerUp(h, { pointerId: 1 });
     expect(stored()).toBe("400");
+  });
+
+  // Review finding: applying every drag to the preference gave narrowing a dead
+  // zone as wide as the gap the cap opens. Pulling the edge 40px left moved
+  // nothing on screen AND wrote the untouched preference back.
+  it("narrows from the first pixel when the cap is holding the edge back", () => {
+    withViewport(1100); // cap 440, so a stored 520 shows as 440
+    localStorage.setItem("loom:sidebar-width", "520");
+    render(<SidebarResizer />);
+    const h = handle();
+
+    fireEvent.pointerDown(h, {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 440, // the edge the user can see
+    });
+    fireEvent.pointerMove(h, { pointerId: 1, clientX: 400 }); // pull 40px left
+    expect(pref()).toBe("400px"); // tracked the pointer, no dead zone
+    fireEvent.pointerUp(h, { pointerId: 1 });
+    expect(stored()).toBe("400"); // and the narrowing was kept
+  });
+
+  // The same drag the other way still protects a preference above the cap.
+  it("still keeps a capped preference when the drag widens", () => {
+    withViewport(1100);
+    localStorage.setItem("loom:sidebar-width", "520");
+    render(<SidebarResizer />);
+    const h = handle();
+
+    fireEvent.pointerDown(h, {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 440,
+    });
+    fireEvent.pointerMove(h, { pointerId: 1, clientX: 460 });
+    fireEvent.pointerUp(h, { pointerId: 1 });
+    expect(stored()).toBe(String(SIDEBAR_MAX)); // clamped, not cut down to 440
+  });
+
+  // Review finding: aria-valuenow reported the preference while the separator sat
+  // at the capped edge, describing a sidebar that is not there.
+  it("announces where the separator actually is", () => {
+    withViewport(1100);
+    localStorage.setItem("loom:sidebar-width", "520");
+    render(<SidebarResizer />);
+    expect(valuenow()).toBe(440);
+    expect(handle().getAttribute("aria-valuemax")).toBe("440");
   });
 
   // Review finding: a cancel before the slop left the double-tap window armed, so
