@@ -292,7 +292,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Background reasoning-title generation. The deferred wait is a safety net so
 	// no title goroutine writes to the SSE stream after the handler returns on an
 	// early error path.
-	titles := newReasoningTitleTracker(s, stream, streamCtx, inference, userResponseLanguage(user))
+	titles := newReasoningTitleTracker(streamCtx, s, stream, inference, userResponseLanguage(user))
 	defer titles.wait()
 	// titleThread names an as-yet-untitled thread. It runs after the answer so the
 	// title model can see the reply, not just the question — passing an empty

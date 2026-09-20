@@ -5,6 +5,7 @@ import (
 	"io"
 )
 
+// MaxGeneratedInputBytes is the maximum size in bytes (1 MiB) of content that generators will process.
 const MaxGeneratedInputBytes = 1 << 20
 
 // FileToolGuardrail is appended to every file-creation tool description so the
@@ -21,6 +22,7 @@ const FileToolGuardrail = " Call this ONLY when the user asks — in any languag
 	"answer requests — including about attached documents — respond inline and do not " +
 	"create a file."
 
+// GenerateRequest specifies the content and target format for a file generation request.
 type GenerateRequest struct {
 	Format   string
 	Filename string
@@ -30,18 +32,21 @@ type GenerateRequest struct {
 	Context context.Context
 }
 
+// GeneratedMeta contains metadata about a generated file.
 type GeneratedMeta struct {
 	DisplayFilename string
 	Extension       string
 	MIMEType        string
 }
 
+// Generator is the interface that all file format generators implement.
 type Generator interface {
 	ToolName() string
 	Schema() ToolSchema
 	Generate(GenerateRequest, io.Writer) (GeneratedMeta, error)
 }
 
+// ToolSchema defines the JSON schema and metadata for a file generation tool.
 type ToolSchema struct {
 	Name        string
 	Description string

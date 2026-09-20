@@ -27,8 +27,10 @@ func NewPDFGenerator(client *GotenbergClient) PDFGenerator {
 	return PDFGenerator{client: client}
 }
 
+// ToolName returns the name of the PDF file creation tool.
 func (g PDFGenerator) ToolName() string { return "create_pdf_file" }
 
+// Generate creates a styled PDF from the request payload and writes it to w.
 func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta, error) {
 	title, _ := req.Payload["title"].(string)
 	blocks := parseBlocks(req.Payload)
@@ -72,6 +74,7 @@ func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta,
 	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "pdf", MIMEType: artifact.MIMEType("pdf")}, nil
 }
 
+// Schema returns the JSON schema for the PDF generation tool.
 func (g PDFGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name: g.ToolName(),

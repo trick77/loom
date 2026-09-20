@@ -12,7 +12,7 @@ import (
 
 // captureReasoningEffort runs one StreamChatWithTools turn against a stub endpoint
 // and returns the reasoning_effort field of the outbound chat-completion request.
-func captureReasoningEffort(t *testing.T, ctx context.Context) string {
+func captureReasoningEffort(ctx context.Context, t *testing.T) string {
 	t.Helper()
 	got := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +38,7 @@ func captureReasoningEffort(t *testing.T, ctx context.Context) string {
 // outbound reasoning_effort field, overriding the client default.
 func TestClient_StreamUsesReasoningEffortFromContext(t *testing.T) {
 	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{ReasoningEffort: "low"})
-	if effort := captureReasoningEffort(t, ctx); effort != "low" {
+	if effort := captureReasoningEffort(ctx, t); effort != "low" {
 		t.Fatalf("reasoning_effort = %q, want low", effort)
 	}
 }
@@ -46,7 +46,7 @@ func TestClient_StreamUsesReasoningEffortFromContext(t *testing.T) {
 // With no per-request effort (utility calls, or a client that never sends one),
 // the turn falls back to the client's configured default.
 func TestClient_StreamFallsBackToDefaultReasoningEffort(t *testing.T) {
-	if effort := captureReasoningEffort(t, context.Background()); effort != DefaultReasoningEffort {
+	if effort := captureReasoningEffort(context.Background(), t); effort != DefaultReasoningEffort {
 		t.Fatalf("reasoning_effort = %q, want %q", effort, DefaultReasoningEffort)
 	}
 }

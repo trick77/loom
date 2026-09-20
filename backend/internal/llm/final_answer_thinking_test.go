@@ -24,7 +24,7 @@ type streamRequestFields struct {
 // captureStreamRequest runs one tool-free StreamChatWithTools turn against a stub
 // endpoint and returns the thinking / reasoning_effort / max_completion_tokens
 // fields of the outbound chat-completion request, plus the resulting StreamResult.
-func captureStreamRequest(t *testing.T, ctx context.Context) (streamRequestFields, StreamResult) {
+func captureStreamRequest(ctx context.Context, t *testing.T) (streamRequestFields, StreamResult) {
 	t.Helper()
 	got := make(chan streamRequestFields, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +54,7 @@ func TestClient_StreamSuppressesThinkingAndWidensBudgetFromContext(t *testing.T)
 		SuppressThinking:    true,
 		MaxCompletionTokens: 4096,
 	})
-	req, result := captureStreamRequest(t, ctx)
+	req, result := captureStreamRequest(ctx, t)
 	if req.Thinking == nil || req.Thinking.Type != "disabled" {
 		t.Fatalf("thinking = %+v, want {type:disabled}", req.Thinking)
 	}
@@ -75,7 +75,7 @@ func TestClient_StreamSuppressesThinkingAndWidensBudgetFromContext(t *testing.T)
 // uses the client's default completion budget, unaffected by the override plumbing.
 func TestClient_StreamKeepsThinkingWhenNotSuppressed(t *testing.T) {
 	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{ReasoningEffort: "high"})
-	req, _ := captureStreamRequest(t, ctx)
+	req, _ := captureStreamRequest(ctx, t)
 	if req.Thinking != nil {
 		t.Fatalf("thinking = %+v, want nil for a normal turn", req.Thinking)
 	}

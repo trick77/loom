@@ -15,7 +15,7 @@ import (
 
 const maxImageAttachmentsPerMessage = 5
 
-func (s *server) imageContentParts(ctx context.Context, userID, threadID, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
+func (s *server) imageContentParts(ctx context.Context, userID, _, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
 	if len(artifactIDs) == 0 {
 		return nil, nil
 	}

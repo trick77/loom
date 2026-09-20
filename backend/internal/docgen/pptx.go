@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 )
 
+// PPTXGenerator generates PPTX presentations.
 type PPTXGenerator struct{}
 
 type pptxSlide struct {
@@ -25,8 +26,10 @@ type pptxSlide struct {
 	Table        [][]string
 }
 
+// ToolName returns the name of the PPTX presentation creation tool.
 func (g PPTXGenerator) ToolName() string { return "create_pptx_presentation" }
 
+// Schema returns the JSON schema for the PPTX generation tool.
 func (g PPTXGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name: g.ToolName(),
@@ -81,6 +84,7 @@ func (g PPTXGenerator) Schema() ToolSchema {
 	}
 }
 
+// Generate creates a PPTX presentation from the request payload and writes it to w.
 func (g PPTXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta, error) {
 	slides, err := presentationSlides(req.Payload)
 	if err != nil {

@@ -31,7 +31,7 @@ type reasoningTitleTracker struct {
 	spawned  map[string]bool   // reasoning id -> already generating
 }
 
-func newReasoningTitleTracker(s *server, stream *sse.Writer, ctx context.Context, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
+func newReasoningTitleTracker(ctx context.Context, s *server, stream *sse.Writer, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
 	return &reasoningTitleTracker{s: s, stream: stream, ctx: ctx, inf: inf, language: language, titles: map[string]string{}, spawned: map[string]bool{}}
 }
 

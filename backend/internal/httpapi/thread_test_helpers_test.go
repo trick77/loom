@@ -97,7 +97,7 @@ func (f fakeArtifactStore) Get(_ context.Context, userID, artifactID string) (ar
 	return artifact.Artifact{}, false, nil
 }
 
-func (f fakeArtifactStore) List(_ context.Context, userID string, opts artifact.ListOptions) ([]artifact.Artifact, error) {
+func (f fakeArtifactStore) List(_ context.Context, userID string, _ artifact.ListOptions) ([]artifact.Artifact, error) {
 	var out []artifact.Artifact
 	for _, item := range f.artifacts {
 		if item.UserID == userID {

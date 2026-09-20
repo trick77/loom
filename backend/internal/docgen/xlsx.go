@@ -14,10 +14,13 @@ import (
 
 const maxXLSXRows = 5000
 
+// XLSXGenerator generates XLSX spreadsheets.
 type XLSXGenerator struct{}
 
+// ToolName returns the name of the XLSX file creation tool.
 func (g XLSXGenerator) ToolName() string { return "create_xlsx_file" }
 
+// Schema returns the JSON schema for the XLSX generation tool.
 func (g XLSXGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name: g.ToolName(),
@@ -43,6 +46,7 @@ func (g XLSXGenerator) Schema() ToolSchema {
 	}
 }
 
+// Generate creates an XLSX spreadsheet from the request payload and writes it to w.
 func (g XLSXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta, error) {
 	rows, err := spreadsheetRows(req.Payload)
 	if err != nil {

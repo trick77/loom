@@ -70,7 +70,7 @@ type incognitoRetryStub struct {
 	firstTurnNoToolCall bool
 }
 
-func (f *incognitoRetryStub) StreamChatWithTools(ctx context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+func (f *incognitoRetryStub) StreamChatWithTools(_ context.Context, _ []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	f.calls++
 	if f.calls == 1 {
 		// The inline tool-call markup was already stripped upstream, so content is
