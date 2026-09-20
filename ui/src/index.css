@@ -106,6 +106,13 @@ body.resizing * {
   transition: none !important;
 }
 
+/* The handle focuses itself on pointerdown (SidebarResizer), so Chrome's
+   default outline: auto painted its two-stroke focus ring down the strip on
+   every grab. The handle is marked by the resize cursor and nothing else. */
+.ui-sidebar-resizer:focus-visible {
+  outline: none;
+}
+
 /* Tailwind v4 dropped the v3 Preflight default that gave buttons/role=button a
    pointer cursor, so clickable controls without an explicit cursor utility show
    the default arrow. Restore it app-wide. Kept in @layer base so explicit
