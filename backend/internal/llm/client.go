@@ -96,12 +96,14 @@ type Message struct {
 	ToolCallID       string
 }
 
+// MessageContentPart is a single content part in a chat message (text or image).
 type MessageContentPart struct {
 	Type     string
 	Text     string
 	ImageURL *MessageImageURL
 }
 
+// MessageImageURL holds the URL of an image in a message content part.
 type MessageImageURL struct {
 	URL string
 }

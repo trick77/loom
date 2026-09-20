@@ -23,6 +23,7 @@ const (
 	maxDownloadedImageSize = 25 << 20
 )
 
+// FalConfig holds the configuration needed to create a FAL client for image generation.
 type FalConfig struct {
 	BaseURL      string
 	APIKey       string
@@ -32,6 +33,7 @@ type FalConfig struct {
 	HTTPClient   *http.Client
 }
 
+// FalClient is an image generation client for the FAL image generation service.
 type FalClient struct {
 	baseURL      string
 	apiKey       string
@@ -41,6 +43,7 @@ type FalClient struct {
 	httpClient   *http.Client
 }
 
+// NewFalClient creates a new FAL client with the given configuration, applying defaults for any unset fields.
 func NewFalClient(cfg FalConfig) *FalClient {
 	pollInterval := cfg.PollInterval
 	if pollInterval <= 0 {

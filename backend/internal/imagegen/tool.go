@@ -7,10 +7,12 @@ import (
 	"time"
 )
 
+// Tool is an LLM tool that wraps an image generation provider.
 type Tool struct {
 	provider Provider
 }
 
+// ToolRequest is a request to the image generation tool from an LLM.
 type ToolRequest struct {
 	Prompt          string `json:"prompt"`
 	Filename        string `json:"filename,omitempty"`
@@ -30,6 +32,7 @@ type ToolRequest struct {
 	InputImages [][]byte `json:"-"`
 }
 
+// ToolMeta contains metadata about a completed image generation operation.
 type ToolMeta struct {
 	DisplayFilename string
 	Extension       string
@@ -42,20 +45,24 @@ type ToolMeta struct {
 	DurationMs      int64
 }
 
+// ToolSchema describes the image generation tool's name, description, and parameters for LLM tool use.
 type ToolSchema struct {
 	Name        string
 	Description string
 	Parameters  map[string]any
 }
 
+// NewTool creates a new image generation tool wrapping the given provider.
 func NewTool(provider Provider) Tool {
 	return Tool{provider: provider}
 }
 
+// ToolName returns the name of the tool for LLM tool use.
 func (t Tool) ToolName() string {
 	return "generate_image"
 }
 
+// Schema returns the tool schema describing the tool's interface to LLMs.
 func (t Tool) Schema() ToolSchema {
 	return ToolSchema{
 		Name:        t.ToolName(),
@@ -103,6 +110,7 @@ func (t Tool) Schema() ToolSchema {
 	}
 }
 
+// Generate generates an image from the request and writes the image bytes to the provided writer, returning metadata about the generation.
 func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolMeta, error) {
 	if t.provider == nil {
 		return ToolMeta{}, fmt.Errorf("image provider is not configured")

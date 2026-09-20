@@ -14,6 +14,7 @@ import (
 // so one metadata attach in httpapi attributes every model call the turn makes.
 type InferenceMetadata = inference.Metadata
 
+// WithInferenceMetadata returns a context with the given inference metadata attached for logging and tracking model calls.
 func WithInferenceMetadata(ctx context.Context, metadata InferenceMetadata) context.Context {
 	return inference.WithMetadata(ctx, metadata)
 }

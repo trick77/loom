@@ -16,11 +16,13 @@ import (
 // upstream apart from a client disconnect, and surface a clear message.
 var ErrStreamStalled = errors.New("the model stopped responding")
 
+// StreamChat runs a streamed model turn and returns just the content string, calling onDelta for each text chunk.
 func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta func(string) error) (string, error) {
 	result, err := c.StreamChatResult(ctx, messages, onDelta)
 	return result.Content, err
 }
 
+// StreamChatResult runs a streamed model turn and returns the full result including usage and metadata.
 func (c *Client) StreamChatResult(ctx context.Context, messages []Message, onDelta func(string) error) (StreamResult, error) {
 	result, err := c.StreamChatWithTools(ctx, messages, nil, func(event StreamEvent) error {
 		if event.Delta == "" || onDelta == nil {
