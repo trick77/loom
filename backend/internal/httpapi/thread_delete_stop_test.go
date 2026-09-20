@@ -209,18 +209,27 @@ func TestStopAndWaitStillWaitsForAStreamAlreadyStopped(t *testing.T) {
 
 	registry.stop(testUser.ID, "thr_1", errStreamStopRequested)
 
-	unwound := make(chan struct{})
-	go func() {
-		time.Sleep(20 * time.Millisecond)
-		unregister()
-		close(unwound)
-	}()
-	registry.stopAndWait(testUser.ID, "thr_1", errStreamThreadDeleted, time.Second)
+	const (
+		unwindDelay = 20 * time.Millisecond
+		waitWindow  = 5 * time.Second
+	)
 
-	select {
-	case <-unwound:
-	default:
-		t.Fatal("stopAndWait returned before the stopped stream unwound")
+	// start is read before the goroutine is spawned: taken after, the sleep could
+	// already be under way and elapsed would measure short of unwindDelay.
+	start := time.Now()
+	go func() {
+		time.Sleep(unwindDelay)
+		unregister()
+	}()
+
+	registry.stopAndWait(testUser.ID, "thr_1", errStreamThreadDeleted, waitWindow)
+	elapsed := time.Since(start)
+
+	if elapsed < unwindDelay {
+		t.Fatalf("stopAndWait returned after %s, want a wait of at least %s for the stopped stream to unwind", elapsed, unwindDelay)
+	}
+	if elapsed >= waitWindow {
+		t.Fatalf("stopAndWait took %s, want a return on unregister rather than the timeout", elapsed)
 	}
 }
 
