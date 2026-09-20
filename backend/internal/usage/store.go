@@ -48,8 +48,10 @@ type Totals struct {
 	ProjectsCreated int   `json:"projectsCreated"`
 }
 
+// Store tracks per-user lifetime usage counters in the database.
 type Store struct{ db DBTX }
 
+// NewStore creates a new Store backed by the given database connection.
 func NewStore(db DBTX) *Store { return &Store{db: db} }
 
 // AddTokens adds one turn's token usage to the user's lifetime totals, creating
@@ -86,21 +88,32 @@ func (s *Store) AddEmbeddingUsage(ctx context.Context, userID string, tokens, re
 	return err
 }
 
+// IncWebSearch increments the user's web search counter.
 func (s *Store) IncWebSearch(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "web_searches")
 }
+
+// IncWebFetch increments the user's web fetch counter.
 func (s *Store) IncWebFetch(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "web_fetches")
 }
+
+// IncObscuraFetch increments the user's Obscura fetch counter.
 func (s *Store) IncObscuraFetch(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "obscura_fetches")
 }
+
+// IncImageGen increments the user's image generation counter.
 func (s *Store) IncImageGen(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "image_gens")
 }
+
+// IncThreadCreated increments the user's thread creation counter.
 func (s *Store) IncThreadCreated(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "chats_created")
 }
+
+// IncProjectCreated increments the user's project creation counter.
 func (s *Store) IncProjectCreated(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "projects_created")
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// CreateThread creates a new chat thread for the user, optionally within a project.
 func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThreadInput) (Thread, error) {
 	// A thread is created with the user's first prompt as its title (the client
 	// sends it that way), and that prompt is shown as the thread's label until a
@@ -55,6 +56,8 @@ VALUES (?, ?, ?, ?)`,
 	return thread, nil
 }
 
+// GetThread returns a single thread by id. The bool indicates whether the thread
+// exists; false is returned if no thread is found for the user.
 func (s *Store) GetThread(ctx context.Context, userID, threadID string) (Thread, bool, error) {
 	return s.getThread(ctx, userID, threadID)
 }
@@ -100,6 +103,8 @@ func threadFilters(userID string, opts ListThreadsOptions) ([]string, []any, err
 	return filters, args, nil
 }
 
+// ListThreads returns threads matching the specified filters and options, ordered
+// by most recent activity. Pagination is handled via cursor in the options.
 func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreadsOptions) ([]Thread, error) {
 	filters, args, err := threadFilters(userID, opts)
 	if err != nil {
@@ -129,7 +134,7 @@ LIMIT ?`, strings.Join(filters, " AND "))
 	if err != nil {
 		return nil, fmt.Errorf("list threads: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	threads := make([]Thread, 0)
 	for rows.Next() {
@@ -160,7 +165,7 @@ func (s *Store) markSharedThreads(ctx context.Context, userID string, threads []
 	if err != nil {
 		return fmt.Errorf("list shared thread ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	shared := make(map[string]struct{})
 	for rows.Next() {
 		var id string
@@ -197,7 +202,7 @@ ORDER BY COALESCE(last_message_at, updated_at) DESC, updated_at DESC, id DESC`, 
 	if err != nil {
 		return nil, fmt.Errorf("list thread ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	ids := make([]string, 0)
 	for rows.Next() {
@@ -230,7 +235,7 @@ ORDER BY created_at ASC, id ASC`,
 	if err != nil {
 		return nil, fmt.Errorf("list project thread titles: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	titles := make([]string, 0)
 	for rows.Next() {
@@ -246,6 +251,8 @@ ORDER BY created_at ASC, id ASC`,
 	return titles, nil
 }
 
+// UpdateThread updates the title, category, and project association of a thread.
+// The bool indicates whether the thread was found; false is returned if no thread exists for the user.
 func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in UpdateThreadInput) (Thread, bool, error) {
 	thread, ok, err := s.GetThread(ctx, userID, threadID)
 	if err != nil || !ok {
@@ -316,6 +323,8 @@ WHERE user_id = ? AND id = ?`,
 	return nil
 }
 
+// SetThreadStarred updates the starred state of a thread. The bool indicates
+// whether the thread was found; false is returned if no thread exists for the user.
 func (s *Store) SetThreadStarred(ctx context.Context, userID, threadID string, starred bool) (Thread, bool, error) {
 	starredInt := 0
 	if starred {
@@ -369,6 +378,8 @@ WHERE user_id = ? AND id = ? AND image_model = ''`,
 	return thread, updated, nil
 }
 
+// SetThreadArchived updates the archived state of a thread. The bool indicates
+// whether the update affected any rows; false is returned if no thread exists for the user.
 func (s *Store) SetThreadArchived(ctx context.Context, userID, threadID string, archived bool) (bool, error) {
 	setArchivedAt := "archived_at = NULL"
 	if archived {
@@ -386,6 +397,8 @@ WHERE user_id = ? AND id = ?`, setArchivedAt),
 	return changed(result)
 }
 
+// DeleteThread deletes a thread. The bool indicates whether the thread was
+// found and deleted; false is returned if no thread exists for the user.
 func (s *Store) DeleteThread(ctx context.Context, userID, threadID string) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `
 DELETE FROM threads
@@ -423,7 +436,7 @@ WHERE user_id = ? AND id = ?`,
 		}
 		return threads[0], true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Thread{}, false, nil
 	}
 	return Thread{}, false, fmt.Errorf("get thread: %w", err)
@@ -440,7 +453,7 @@ WHERE user_id = ? AND id = ?`,
 	if err == nil {
 		return true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	return false, fmt.Errorf("check thread: %w", err)

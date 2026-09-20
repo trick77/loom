@@ -10,6 +10,7 @@ import (
 
 const threadTitleSystemPrompt = "You write short thread titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Do not begin the title with a lead-in such as \"I'll\", \"I will\", \"Sure\", or \"Here is\" — in ANY language (e.g. never \"Ich werde …\", \"Voici …\"); output only the topic phrase itself. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
 
+// GenerateThreadTitle generates a short title for a conversation thread based on the initial exchange and preferred response language.
 func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistantMessage, responseLanguage string) (string, error) {
 	// The user's chat replies honor their response-language preference (see
 	// systemPromptForUser); mirror that here so an auto-generated title matches the

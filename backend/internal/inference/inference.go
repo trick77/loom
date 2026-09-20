@@ -53,10 +53,13 @@ type Metadata struct {
 	Incognito bool
 }
 
+// WithMetadata attaches metadata to a context for tracking inference calls.
 func WithMetadata(ctx context.Context, metadata Metadata) context.Context {
 	return context.WithValue(ctx, metadataKey{}, metadata)
 }
 
+// MetadataFromContext retrieves metadata from a context, returning a zero Metadata
+// if none is attached.
 func MetadataFromContext(ctx context.Context) Metadata {
 	metadata, _ := ctx.Value(metadataKey{}).(Metadata)
 	return metadata

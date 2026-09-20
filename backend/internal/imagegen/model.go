@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// DefaultWidth and related constants define the default dimensions and limits for image generation requests.
 const (
 	DefaultWidth  = 1024
 	DefaultHeight = 1024
@@ -29,6 +30,7 @@ const (
 	MaxInputImageBytes = 20 << 20
 )
 
+// GenerateRequest is a request to generate an image with specified parameters.
 type GenerateRequest struct {
 	Prompt   string
 	Filename string
@@ -55,6 +57,7 @@ type GenerateRequest struct {
 	InputImages [][]byte
 }
 
+// GenerateResult is the result of a successful image generation, containing the generated image and metadata.
 type GenerateResult struct {
 	Filename    string
 	Extension   string
@@ -70,10 +73,12 @@ type GenerateResult struct {
 	CostCredits *float64
 }
 
+// Provider is an image generation provider that generates images from requests.
 type Provider interface {
 	Generate(context.Context, GenerateRequest) (GenerateResult, error)
 }
 
+// Normalized returns a validated and normalized version of the request, applying defaults and checking constraints.
 func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 	out := r
 	out.Prompt = strings.TrimSpace(out.Prompt)
@@ -289,6 +294,7 @@ func slugFromPrompt(prompt string) string {
 	return strings.Join(words, "-")
 }
 
+// MIMEType returns the MIME type for the given image format string.
 func MIMEType(format string) string {
 	switch strings.ToLower(strings.TrimPrefix(format, ".")) {
 	case "png":

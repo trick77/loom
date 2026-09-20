@@ -3,6 +3,7 @@ package artifact
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,10 +11,12 @@ import (
 	"github.com/trick77/loom/internal/chat"
 )
 
+// Store manages artifact metadata in the database.
 type Store struct {
 	db *sql.DB
 }
 
+// CreateInput holds the parameters for inserting a new artifact record.
 type CreateInput struct {
 	UserID          string
 	ThreadID        string
@@ -30,10 +33,12 @@ type CreateInput struct {
 	ThumbnailRelPath string
 }
 
+// NewStore creates a new artifact store backed by the given database connection.
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+// Create inserts a new artifact record and returns the created artifact with its assigned ID.
 func (s *Store) Create(ctx context.Context, in CreateInput) (Artifact, error) {
 	id := chat.NewIDForInternalUse()
 	source := in.Source
@@ -97,7 +102,7 @@ func (s *Store) DetachFromThread(ctx context.Context, userID string, artifactIDs
 	if err != nil {
 		return fmt.Errorf("detach artifacts from thread: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, id := range artifactIDs {
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE artifacts SET thread_id = NULL WHERE user_id = ? AND id = ?`,
@@ -156,7 +161,7 @@ WHERE user_id = ? AND id IN (%s)`, placeholders), args...)
 	if err != nil {
 		return nil, fmt.Errorf("get many artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		item, deletedAt, err := scanArtifactWithDeleted(rows)
 		if err != nil {
@@ -171,6 +176,8 @@ WHERE user_id = ? AND id IN (%s)`, placeholders), args...)
 	return out, nil
 }
 
+// Get retrieves an artifact by id, scoped to the user, excluding soft-deleted artifacts.
+// The returned bool indicates whether the artifact was found.
 func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, bool, error) {
 	var out Artifact
 	var createdAt string
@@ -191,7 +198,7 @@ WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 		&createdAt,
 		&thumbnailRelPath,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Artifact{}, false, nil
 	}
 	if err != nil {
@@ -211,6 +218,7 @@ WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 	return out, true, nil
 }
 
+// List retrieves a paginated list of artifacts filtered and sorted according to the given options.
 func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Artifact, error) {
 	limit := EffectiveArtifactLimit(opts.Limit)
 
@@ -238,7 +246,8 @@ func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Ar
 	}
 	args = append(args, limit)
 
-	query := fmt.Sprintf(`
+	query := fmt.Sprintf( //nolint:gosec // only fixed SQL structure is interpolated (a closed switch over typed constants); every value is a bound ? parameter
+		`
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
 WHERE %s
@@ -248,10 +257,11 @@ LIMIT ?`, strings.Join(filters, " AND "), listOrderBy(opts.Sort, opts.Order))
 	if err != nil {
 		return nil, fmt.Errorf("list artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanArtifacts(rows)
 }
 
+// ListForThread retrieves artifacts in a thread, scoped to the user.
 func (s *Store) ListForThread(ctx context.Context, userID, threadID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
@@ -261,7 +271,7 @@ ORDER BY created_at ASC`, userID, threadID)
 	if err != nil {
 		return nil, fmt.Errorf("list thread artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanArtifacts(rows)
 }
 
@@ -285,6 +295,7 @@ func escapeLike(term string) string {
 	return replacer.Replace(term)
 }
 
+// ListForProject retrieves artifacts in a project, scoped to the user.
 func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
@@ -294,7 +305,7 @@ ORDER BY created_at ASC`, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list project artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanArtifacts(rows)
 }
 

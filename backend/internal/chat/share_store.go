@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -61,7 +62,7 @@ FROM shared_threads
 	if err == nil {
 		return share, true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Share{}, false, nil
 	}
 	return Share{}, false, fmt.Errorf("get share: %w", err)
@@ -129,7 +130,7 @@ ORDER BY created_at DESC, id DESC`,
 	if err != nil {
 		return nil, fmt.Errorf("list shares: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var shares []Share
 	for rows.Next() {
 		share, err := scanShare(rows)

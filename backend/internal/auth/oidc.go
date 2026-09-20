@@ -17,6 +17,10 @@ const (
 	oidcNonceCookieName = "loom_oidc_nonce"
 )
 
+// Errors returned when an OIDC callback fails its anti-forgery checks:
+// ErrInvalidState when the state parameter does not match the one issued with
+// the redirect, ErrInvalidNonce when the id token's nonce does not match the
+// cookie from the same exchange.
 var (
 	ErrInvalidState = errors.New("invalid oidc state")
 	ErrInvalidNonce = errors.New("invalid oidc nonce")
@@ -115,7 +119,7 @@ func (s *OIDCService) HandleCallback(r *http.Request) (Claims, error) {
 }
 
 func (s *OIDCService) transientCookie(name, value string) *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ //nolint:gosec // HttpOnly and SameSite are set below; Secure is config-driven so local development over plain HTTP still works
 		Name:     name,
 		Value:    value,
 		Path:     "/",

@@ -36,7 +36,7 @@ func (h *completedLogCapture) WithGroup(string) slog.Handler      { return h }
 // first_token_ms is that first wait on its own, so a slow first byte shows in
 // both and a healthy stream's margin is readable off the line.
 func TestClient_StreamProgressReportsFirstByteAndWorstGap(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		time.Sleep(80 * time.Millisecond) // simulate a slow first byte
@@ -115,7 +115,7 @@ func TestClient_StreamIdleTimeoutAbortsStalledStream(t *testing.T) {
 // As long as chunks keep arriving within the idle window the watchdog must not
 // fire, even when the total stream spans more than one idle window.
 func TestClient_StreamIdleTimeoutResetsOnEachChunk(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		// Three 30ms gaps (90ms total) each stay under the 80ms idle window;
@@ -224,7 +224,7 @@ func TestClient_StreamStallBeforeHeadersIsAStall(t *testing.T) {
 	// sees the client leave before the headers, so a context wait would block
 	// Close.
 	release := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		<-release
 	}))
 	t.Cleanup(server.Close)

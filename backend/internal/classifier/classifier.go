@@ -20,6 +20,7 @@ import "strings"
 // unknown string are treated as Unknown — no block is injected.
 type Category string
 
+// Category values represent the available conversation classifications.
 const (
 	KnowledgeDiscovery Category = "knowledge_discovery"
 	AcademicResearch   Category = "academic_research"

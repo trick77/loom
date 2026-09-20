@@ -9,18 +9,27 @@ import (
 type Role string
 
 const (
-	RoleUser      Role = "user"
+	// RoleUser identifies a user message source.
+	RoleUser Role = "user"
+	// RoleAssistant identifies an assistant message source.
 	RoleAssistant Role = "assistant"
-	RoleTool      Role = "tool"
+	// RoleTool identifies a tool message source.
+	RoleTool Role = "tool"
 )
 
+// DefaultThreadTitle is the placeholder title for newly created threads, shown
+// until the title-generation model produces a real title on the first message.
 const DefaultThreadTitle = "New thread"
 
 const (
-	MaxProjectNameLength        = 120
+	// MaxProjectNameLength defines the maximum length for a project name.
+	MaxProjectNameLength = 120
+	// MaxProjectDescriptionLength defines the maximum length for a project description.
 	MaxProjectDescriptionLength = 2000
-	MaxThreadTitleLength        = 200
-	MaxMessageContentLength     = 32000
+	// MaxThreadTitleLength defines the maximum length for a thread title.
+	MaxThreadTitleLength = 200
+	// MaxMessageContentLength defines the maximum length for message content.
+	MaxMessageContentLength = 32000
 )
 
 // Project groups related chat threads for one user.
@@ -198,7 +207,9 @@ type MessageAttachment struct {
 }
 
 const (
-	AttachmentKindImage    = "image"
+	// AttachmentKindImage indicates an image attachment.
+	AttachmentKindImage = "image"
+	// AttachmentKindDocument indicates a document attachment.
 	AttachmentKindDocument = "document"
 )
 
@@ -211,6 +222,9 @@ type MessagePastedText struct {
 	LineCount int    `json:"lineCount"`
 }
 
+// MessageTokenUsage carries token counts and cost information recorded for a
+// single message (one model generation turn, which may involve multiple API calls).
+// It is the input to AddMessageWithUsage and related methods.
 type MessageTokenUsage struct {
 	PromptTokens     *int
 	CompletionTokens *int
@@ -228,26 +242,36 @@ type MessageTokenUsage struct {
 	ReasoningContent string
 }
 
+// CreateProjectInput holds the fields for creating a new project.
 type CreateProjectInput struct {
 	Name        string
 	Description string
 }
 
+// UpdateProjectInput holds the optional fields for updating a project. A nil
+// pointer means the field is not being changed.
 type UpdateProjectInput struct {
 	Name        *string
 	Description *string
 }
 
+// CreateThreadInput holds the fields for creating a new thread within an
+// optional project.
 type CreateThreadInput struct {
 	ProjectID *string
 	Title     string
 }
 
+// ProjectIDUpdate encodes the semantics of updating a thread's project
+// association: Set indicates whether the project is being changed, and Value is
+// the new project id (nil means removing the project association).
 type ProjectIDUpdate struct {
 	Set   bool
 	Value *string
 }
 
+// UpdateThreadInput holds the optional fields for updating a thread. A nil
+// pointer means the field is not being changed.
 type UpdateThreadInput struct {
 	Title *string
 	// Category, when non-nil, sets the thread's prompt-classifier label. A nil
@@ -256,6 +280,7 @@ type UpdateThreadInput struct {
 	ProjectID ProjectIDUpdate
 }
 
+// ListThreadsOptions specifies filters and pagination for thread listing.
 type ListThreadsOptions struct {
 	ProjectID       *string
 	ProjectlessOnly bool
@@ -287,6 +312,7 @@ type Share struct {
 	UpdatedAt   time.Time
 }
 
+// CreateShareInput holds the fields for creating a public share link for a thread.
 type CreateShareInput struct {
 	ShareID     string
 	ThreadID    string
@@ -295,6 +321,7 @@ type CreateShareInput struct {
 	ArtifactIDs []string
 }
 
+// UpdateShareInput holds the fields for updating an existing public share.
 type UpdateShareInput struct {
 	Title       string
 	Snapshot    json.RawMessage

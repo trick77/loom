@@ -17,12 +17,12 @@ func deleteChunksTx(ctx context.Context, tx *sql.Tx, userID, documentID string) 
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		ids = append(ids, id)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := deleteChunksTx(ctx, tx, userID, documentID); err != nil {
 		return fmt.Errorf("clear existing chunks: %w", err)
@@ -94,7 +94,7 @@ func (s *Store) ClearChunks(ctx context.Context, userID, documentID string) erro
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := deleteChunksTx(ctx, tx, userID, documentID); err != nil {
 		return fmt.Errorf("clear chunks: %w", err)
 	}
@@ -109,7 +109,7 @@ func collectChunkRowids(ctx context.Context, tx *sql.Tx, query string, args ...a
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []int64
 	for rows.Next() {
 		var id int64
@@ -164,7 +164,7 @@ func (s *Store) deleteScopeDocuments(ctx context.Context, scope string, args ...
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	rowids, err := collectChunkRowids(ctx,
 		tx,
@@ -180,19 +180,19 @@ func (s *Store) deleteScopeDocuments(ctx context.Context, scope string, args ...
 			return fmt.Errorf("delete scope embedding %d: %w", id, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM chunks WHERE id IN (
+	const deleteChunksPrefix = `DELETE FROM chunks WHERE id IN (
 			SELECT c.id FROM chunks c
 			JOIN documents d ON d.user_id = c.user_id AND d.id = c.document_id
-			WHERE `+scope+`)`,
-		args...); err != nil {
+			WHERE `
+	deleteChunks := deleteChunksPrefix + scope + `)` //nolint:gosec // scope is a const predicate defined at the call site, never caller input; every value is a bound ? parameter
+	if _, err := tx.ExecContext(ctx, deleteChunks, args...); err != nil {
 		return fmt.Errorf("delete scope chunks: %w", err)
 	}
 	// Reuse the same predicate against the documents table; alias d via a self
 	// scope so the shared predicate string applies unchanged.
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM documents WHERE id IN (SELECT d.id FROM documents d WHERE `+scope+`)`,
-		args...); err != nil {
+	const deleteDocsPrefix = `DELETE FROM documents WHERE id IN (SELECT d.id FROM documents d WHERE `
+	deleteDocs := deleteDocsPrefix + scope + `)` //nolint:gosec // scope is a const predicate defined at the call site, never caller input; every value is a bound ? parameter
+	if _, err := tx.ExecContext(ctx, deleteDocs, args...); err != nil {
 		return fmt.Errorf("delete scope documents: %w", err)
 	}
 	return tx.Commit()
@@ -204,7 +204,7 @@ func (s *Store) DeleteDocument(ctx context.Context, userID, id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := deleteChunksTx(ctx, tx, userID, id); err != nil {
 		return fmt.Errorf("delete chunks: %w", err)
 	}

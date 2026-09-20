@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -39,7 +40,7 @@ func migrate(db *sql.DB) error {
 		if err == nil {
 			continue // already applied
 		}
-		if err != sql.ErrNoRows {
+		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 
@@ -52,11 +53,11 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 		if _, err := tx.Exec(string(body)); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("apply %s: %w", name, err)
 		}
 		if _, err := tx.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, name); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("record %s: %w", name, err)
 		}
 		if err := tx.Commit(); err != nil {

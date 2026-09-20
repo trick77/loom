@@ -8,6 +8,8 @@ import (
 // Role is the app-local authorization role mapped from OIDC groups.
 type Role string
 
+// The roles a user can hold. RoleAdmin is granted through the admin group in
+// the OIDC claims; everyone else authenticates as RoleUser.
 const (
 	RoleAdmin Role = "admin"
 	RoleUser  Role = "user"

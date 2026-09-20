@@ -3,12 +3,14 @@ package rag
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
 
 const documentColumns = `id, user_id, project_id, thread_id, artifact_id, volume_relpath, filename, mime, size_bytes, status, error, created_at, embedded_at`
 
+// CreateDocument inserts a new document record into the store.
 func (s *Store) CreateDocument(ctx context.Context, d Document) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO documents (id, user_id, project_id, thread_id, artifact_id, volume_relpath, filename, mime, size_bytes, status)
@@ -37,11 +39,12 @@ func scanDocument(row interface{ Scan(...any) error }) (Document, error) {
 	return d, nil
 }
 
+// GetDocument retrieves a document by ID for a given user, returning the document, whether it exists, and any error.
 func (s *Store) GetDocument(ctx context.Context, userID, id string) (Document, bool, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT `+documentColumns+` FROM documents WHERE user_id = ? AND id = ?`, userID, id)
 	d, err := scanDocument(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Document{}, false, nil
 	}
 	if err != nil {
@@ -65,7 +68,7 @@ func (s *Store) ListDocuments(ctx context.Context, userID string, projectID *str
 	if err != nil {
 		return nil, fmt.Errorf("list documents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var docs []Document
 	for rows.Next() {
 		d, err := scanDocument(rows)
@@ -77,6 +80,7 @@ func (s *Store) ListDocuments(ctx context.Context, userID string, projectID *str
 	return docs, rows.Err()
 }
 
+// CountThreadDocuments returns the number of thread-private documents for a given thread.
 func (s *Store) CountThreadDocuments(ctx context.Context, userID, threadID string) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx,
@@ -111,7 +115,7 @@ WHERE d.user_id = ? AND a.thread_id = ?`, userID, threadID)
 	if err != nil {
 		return nil, fmt.Errorf("list in-use thread artifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []string
 	for rows.Next() {
 		var id string
@@ -123,6 +127,7 @@ WHERE d.user_id = ? AND a.thread_id = ?`, userID, threadID)
 	return ids, rows.Err()
 }
 
+// UpdateStatus updates a document's status and error message.
 func (s *Store) UpdateStatus(ctx context.Context, userID, id, status, errMsg string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE documents SET status = ?, error = ? WHERE user_id = ? AND id = ?`,
@@ -154,7 +159,7 @@ func (s *Store) GetDocumentFullText(ctx context.Context, userID, id string) (str
 	err := s.db.QueryRowContext(ctx,
 		`SELECT full_text FROM documents WHERE user_id = ? AND id = ?`,
 		userID, id).Scan(&text)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
 	if err != nil {
@@ -185,7 +190,7 @@ func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID, 
 	query += `) LIMIT 1`
 	var one int
 	err := s.db.QueryRowContext(ctx, query, args...).Scan(&one)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -219,7 +224,7 @@ func (s *Store) IndexedDocsInScope(ctx context.Context, userID string, projectID
 	if err != nil {
 		return nil, fmt.Errorf("list indexed docs in scope: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var docs []IndexedDoc
 	for rows.Next() {
 		var d IndexedDoc
@@ -258,7 +263,7 @@ func (s *Store) ReconcileLegacyDocumentScopes(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Already reconciled on a prior boot? Then do nothing — never touch newer data.
 	var done int
@@ -347,7 +352,7 @@ func collectChunkScopes(ctx context.Context, tx *sql.Tx, query string) ([]chunkS
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []chunkScope
 	for rows.Next() {
 		var cs chunkScope

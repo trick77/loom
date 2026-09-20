@@ -60,7 +60,7 @@ func TestGenerateProjectDescription_usesItsOwnLargerTokenBudget(t *testing.T) {
 // one-liner beats a permanently empty description (and an empty return would make the
 // backfill retry forever).
 func TestGenerateProjectDescription_salvagesLengthTruncatedReply(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"A very long descrip"},"finish_reason":"length"}]}`))
 	}))
@@ -79,7 +79,7 @@ func TestGenerateProjectDescription_salvagesLengthTruncatedReply(t *testing.T) {
 // A truncation with no salvageable text (only a single partial word) returns empty
 // rather than a meaningless token.
 func TestGenerateProjectDescription_lengthTruncatedSingleWordIsKept(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"length"}]}`))
 	}))
@@ -100,7 +100,7 @@ func TestGenerateProjectDescription_lengthTruncatedSingleWordIsKept(t *testing.T
 // boundary so the stored description never exceeds projectDescriptionMaxChars.
 func TestGenerateProjectDescription_hardCapsOversizedReply(t *testing.T) {
 	long := "This project covers an extremely wide and rambling range of unrelated topics including travel planning, tax accounting, garden landscaping, marathon training schedules, and assorted miscellaneous experiments that go on and on well past any reasonable length"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		resp := map[string]any{"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": long}, "finish_reason": "stop"}}}
 		_ = json.NewEncoder(w).Encode(resp)

@@ -95,7 +95,7 @@ func (s *server) serveArtifactDownload(w http.ResponseWriter, r *http.Request, u
 		writeJSONError(w, http.StatusForbidden, "artifact path rejected")
 		return
 	}
-	file, err := os.Open(abs)
+	file, err := os.Open(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if os.IsNotExist(err) {
 		writeJSONError(w, http.StatusGone, "artifact file is missing")
 		return
@@ -104,7 +104,7 @@ func (s *server) serveArtifactDownload(w http.ResponseWriter, r *http.Request, u
 		serverError(w, r, err, "read artifact failed")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	w.Header().Set("Content-Type", found.MIMEType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+headerSafeFilename(found.DisplayFilename)+`"`)
 	// Immutable bytes → let the browser cache aggressively. ServeContent turns the
@@ -161,12 +161,12 @@ func (s *server) serveArtifactThumbnail(w http.ResponseWriter, r *http.Request, 
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	file, err := os.Open(abs)
+	file, err := os.Open(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Cache-Control", artifactCacheControl)
@@ -192,7 +192,7 @@ func (s *server) resolveOrCreateThumbnail(ctx context.Context, userID string, fo
 	if err != nil {
 		return "", err
 	}
-	src, err := os.ReadFile(origAbs)
+	src, err := os.ReadFile(origAbs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if err != nil {
 		return "", err
 	}
@@ -322,7 +322,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		writeJSONError(w, http.StatusBadRequest, "file is required")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Validate against the explicit image allowlist (PNG/JPG/JPEG/WebP/GIF) rather
 	// than a bare image/* prefix: the model only supports these, so rejecting
@@ -368,7 +368,11 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	closeErr := out.Close()
 	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(output.AbsPath)
-		serverError(w, r, fmt.Errorf("copy err: %v, close err: %v", copyErr, closeErr), "write upload failed")
+		if copyErr != nil {
+			serverError(w, r, fmt.Errorf("copy artifact: %w", copyErr), "write upload failed")
+		} else {
+			serverError(w, r, fmt.Errorf("close artifact: %w", closeErr), "write upload failed")
+		}
 		return
 	}
 	if size > artifact.MaxArtifactSizeBytes {

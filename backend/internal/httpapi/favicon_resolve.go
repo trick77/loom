@@ -141,7 +141,7 @@ func isVisibleServiceIcon(body []byte) bool {
 // the (post-redirect) base URL for resolving relative icon hrefs. It reads at most
 // faviconPageMaxBytes and only parses when the response looks like HTML.
 func (s *server) fetchPageHTML(ctx context.Context, pageURL string) (*html.Node, *url.URL, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil) //nolint:gosec // the client dials through guardPublicAddr, a Control hook that rejects loopback, private, unspecified, link-local and multicast addresses after DNS resolution
 	if err != nil {
 		return nil, nil, err
 	}
@@ -152,11 +152,11 @@ func (s *server) fetchPageHTML(ctx context.Context, pageURL string) (*html.Node,
 	if client == nil {
 		client = faviconDefaultClient
 	}
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // the client dials through guardPublicAddr, a Control hook that rejects loopback, private, unspecified, link-local and multicast addresses after DNS resolution
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("page status %d", resp.StatusCode)
 	}

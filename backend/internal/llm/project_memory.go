@@ -171,7 +171,7 @@ func (c *Client) ApplyMemoryEdit(ctx context.Context, header, currentMemory, ins
 
 // runMemoryCompletion executes a bounded, non-thinking chat completion for the
 // memory helpers and returns the trimmed assistant content.
-func (c *Client) runMemoryCompletion(ctx context.Context, start time.Time, messages []Message) (string, error) {
+func (c *Client) runMemoryCompletion(ctx context.Context, _ time.Time, messages []Message) (string, error) {
 	reply, err := c.complete(ctx, c.model, messages, memoryMaxCompletionTokens, nil)
 	if err != nil {
 		return "", err

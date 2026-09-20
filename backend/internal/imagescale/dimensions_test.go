@@ -109,7 +109,7 @@ func TestExifOrientationSurvivesMalformedSegments(t *testing.T) {
 		{"zero length field", []byte{0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x00, 0x00}},
 		{"not a jpeg", []byte("PK\x03\x04 zip, actually")},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(_ *testing.T) {
 			// Must return, not panic; the value itself is don't-care.
 			_ = exifOrientation(tc.data)
 		})

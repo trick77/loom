@@ -515,7 +515,7 @@ func TestHandleFavicon_noUsableIconReturnsError(t *testing.T) {
 
 func TestHandleFavicon_rejectsNonImageIcon(t *testing.T) {
 	// The favicon.ico serves HTML (a soft-404 page); it must be rejected, not served.
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte("<html></html>"))
 	}))

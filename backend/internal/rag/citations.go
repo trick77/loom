@@ -22,7 +22,7 @@ func (s *Store) ScrubOutOfScopeMessageCitations(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var done int
 	switch err := tx.QueryRowContext(ctx,
@@ -77,7 +77,7 @@ func collectMessagesWithCitations(ctx context.Context, tx *sql.Tx) ([]citationMe
 	if err != nil {
 		return nil, fmt.Errorf("collect message citations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []citationMessage
 	for rows.Next() {

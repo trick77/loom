@@ -24,6 +24,7 @@ const (
 	maxToolOutputBytes  = 32 << 10
 )
 
+// Tool is an MCP tool exposed to the model, with its server name prefix and description.
 type Tool struct {
 	Name         string
 	OriginalName string
@@ -32,6 +33,7 @@ type Tool struct {
 	ServerName   string
 }
 
+// Client is the common interface for MCP tool-serving clients.
 type Client interface {
 	ListTools(context.Context) ([]Tool, error)
 	CallTool(context.Context, string, map[string]any) (string, error)
@@ -113,6 +115,7 @@ func isSessionError(err error) bool {
 	return strings.Contains(strings.ToLower(statusErr.body), "session")
 }
 
+// NewRemoteClient creates a Client that communicates with an MCP server over HTTP via the Streamable HTTP transport.
 func NewRemoteClient(serverName string, cfg ServerConfig, httpClient *http.Client) Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
@@ -151,7 +154,7 @@ func (c *remoteClient) Probe(ctx context.Context) error {
 	if err != nil {
 		return scrubURLError(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 500 {
 		return &mcpStatusError{method: "probe", status: resp.StatusCode}
 	}
@@ -238,7 +241,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 	if err != nil {
 		return scrubURLError(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
 		c.mu.Lock()
 		c.sessionID = id
@@ -404,6 +407,7 @@ type stdioClient struct {
 	initErr    error
 }
 
+// NewStdioClient creates a Client that communicates with an MCP server via stdin/stdout.
 func NewStdioClient(serverName string, cfg ServerConfig) Client {
 	return &stdioClient{serverName: serverName, cfg: cfg}
 }
@@ -483,7 +487,7 @@ func (c *stdioClient) start(ctx context.Context) error {
 		return c.startErr
 	}
 	_ = ctx
-	cmd := exec.Command(c.cfg.Command, c.cfg.Args...)
+	cmd := exec.Command(c.cfg.Command, c.cfg.Args...) //nolint:gosec // MCP servers are launched from the operator-supplied config file, never from request data
 	cmd.Env = os.Environ()
 	for key, value := range c.cfg.Env {
 		cmd.Env = append(cmd.Env, key+"="+value)

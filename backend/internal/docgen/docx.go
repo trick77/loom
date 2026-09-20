@@ -8,10 +8,13 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 )
 
+// DOCXGenerator generates DOCX documents from plain text.
 type DOCXGenerator struct{}
 
+// ToolName returns the name of the DOCX file creation tool.
 func (g DOCXGenerator) ToolName() string { return "create_docx_file" }
 
+// Schema returns the JSON schema for the DOCX generation tool.
 func (g DOCXGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name: g.ToolName(),
@@ -30,6 +33,7 @@ func (g DOCXGenerator) Schema() ToolSchema {
 	}
 }
 
+// Generate creates a DOCX file from the request payload and writes it to w.
 func (g DOCXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta, error) {
 	content, ok := req.Payload["content"].(string)
 	if !ok || strings.TrimSpace(content) == "" {

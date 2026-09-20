@@ -102,7 +102,7 @@ ORDER BY username ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []User
 	for rows.Next() {
@@ -174,7 +174,7 @@ LIMIT 2`,
 	if err != nil {
 		return User{}, false, fmt.Errorf("find user by email: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var matches []User
 	for rows.Next() {

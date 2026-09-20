@@ -123,7 +123,7 @@ type fakeOIDCBackend struct {
 	nonce   string
 }
 
-func (f fakeOIDCBackend) AuthCodeURL(state string, opts ...oauth2.AuthCodeOption) string {
+func (f fakeOIDCBackend) AuthCodeURL(state string, _ ...oauth2.AuthCodeOption) string {
 	if f.authURL != "" {
 		return f.authURL + "?state=" + state
 	}

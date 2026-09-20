@@ -46,7 +46,7 @@ func LoadServersFromFile(path string, lookupEnv func(string) (string, bool)) (ma
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is the operator-supplied MCP config file from server startup configuration, not request data
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

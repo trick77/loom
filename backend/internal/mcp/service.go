@@ -30,6 +30,7 @@ const (
 	requiredDiscoveryRetryInterval = 200 * time.Millisecond
 )
 
+// Service routes tool calls to registered MCP clients and enumerates tools for the model prompt.
 type Service struct {
 	tools      []llm.Tool
 	routes     map[string]toolRoute
@@ -162,6 +163,7 @@ func endpointForServer(sc ServerConfig) string {
 	return rest
 }
 
+// NewService creates a Service from a map of MCP clients, discovering all tools from each client.
 func NewService(clients map[string]Client) (*Service, error) {
 	service := &Service{routes: map[string]toolRoute{}}
 	names := make([]string, 0, len(clients))
@@ -193,6 +195,7 @@ func NewService(clients map[string]Client) (*Service, error) {
 	return service, nil
 }
 
+// NewServiceFromConfig creates a Service from a Config, with best-effort client initialization.
 func NewServiceFromConfig(cfg Config, httpClient *http.Client) (*Service, error) {
 	clients := map[string]Client{}
 	for name, server := range cfg.Servers {
@@ -207,6 +210,7 @@ func NewServiceFromConfig(cfg Config, httpClient *http.Client) (*Service, error)
 	return service, nil
 }
 
+// NewRequiredServiceFromConfig creates a Service from a Config, failing if any client's tool discovery fails.
 func NewRequiredServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client) (*Service, error) {
 	clients := map[string]Client{}
 	for name, server := range cfg.Servers {
@@ -221,6 +225,7 @@ func NewRequiredServiceFromConfig(ctx context.Context, cfg Config, httpClient *h
 	return service, nil
 }
 
+// NewRequiredServiceFromClients creates a Service from clients, failing if any client's tool discovery fails.
 func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Client) (*Service, error) {
 	service := &Service{routes: map[string]toolRoute{}}
 	names := make([]string, 0, len(clients))
@@ -341,6 +346,7 @@ func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, htt
 	return service, nil
 }
 
+// NewBestEffortServiceFromConfig creates a Service from a Config, logging and skipping any server whose discovery fails.
 func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client, logger *slog.Logger) (*Service, error) {
 	origins := make(map[string]string, len(cfg.Servers))
 	for name := range cfg.Servers {
@@ -391,6 +397,7 @@ func clientForServer(name string, server ServerConfig, httpClient *http.Client) 
 	}
 }
 
+// Tools returns the list of all discovered MCP tools.
 func (s *Service) Tools() []llm.Tool {
 	if s == nil {
 		return nil
@@ -442,6 +449,7 @@ func (s *Service) HasTool(name string) bool {
 	return ok
 }
 
+// CallTool invokes an MCP tool by its exposed name, routing to the appropriate client.
 func (s *Service) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
 	route, ok := s.routes[name]
 	if !ok {

@@ -64,7 +64,7 @@ func TestRedactErr_ReturnsPlainErrorsUnchanged(t *testing.T) {
 
 	got := redactErr(err)
 
-	if got != err {
+	if !errors.Is(got, err) {
 		t.Fatalf("redactErr() = %v, want the original error unchanged", got)
 	}
 }

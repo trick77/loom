@@ -260,7 +260,7 @@ func (s *server) fetchFaviconBytes(ctx context.Context, rawURL string) (body []b
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("upstream status %d", resp.StatusCode)
 	}
@@ -297,7 +297,7 @@ func (s *server) writeFaviconCache(key string, body []byte, contentType string) 
 	}
 	// A site that failed to resolve before and resolves now must stop being reported
 	// as a miss immediately, not at the end of the marker's TTL.
-	os.Remove(dataPath + ".miss")
+	_ = os.Remove(dataPath + ".miss") //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 	return dataPath, nil
 }
 
@@ -319,7 +319,7 @@ func (s *server) faviconMissed(key string) bool {
 	if s.faviconCacheDir == "" {
 		return false
 	}
-	info, err := os.Stat(filepath.Join(s.faviconCacheDir, key+".miss"))
+	info, err := os.Stat(filepath.Join(s.faviconCacheDir, key+".miss")) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 	if err != nil {
 		return false
 	}
@@ -333,10 +333,10 @@ func (s *server) faviconCached(key string) (path, contentType string, ok bool) {
 		return "", "", false
 	}
 	dataPath := filepath.Join(s.faviconCacheDir, key)
-	if _, err := os.Stat(dataPath); err != nil {
+	if _, err := os.Stat(dataPath); err != nil { //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 		return "", "", false
 	}
-	ct, err := os.ReadFile(dataPath + ".ct")
+	ct, err := os.ReadFile(dataPath + ".ct") //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 	if err != nil {
 		return "", "", false
 	}
@@ -348,19 +348,19 @@ func (s *server) faviconDir() (string, error) {
 	if s.faviconCacheDir == "" {
 		return "", errors.New("favicon cache disabled")
 	}
-	if err := os.MkdirAll(s.faviconCacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(s.faviconCacheDir, 0o750); err != nil {
 		return "", err
 	}
 	return s.faviconCacheDir, nil
 }
 
 func serveFaviconFile(w http.ResponseWriter, r *http.Request, path, contentType, etag string) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found")
@@ -389,16 +389,16 @@ func faviconWriteAtomic(path string, data []byte) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+	if err := os.Rename(tmpName, path); err != nil { //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
+		_ = os.Remove(tmpName) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 		return err
 	}
 	return nil

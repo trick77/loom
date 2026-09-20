@@ -6,11 +6,14 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 )
 
+// SessionCookieName is the name of the browser cookie carrying the session
+// token.
 const SessionCookieName = "loom_session"
 
 // Session is the server-side representation of an authenticated browser session.
@@ -56,7 +59,7 @@ FROM sessions
 WHERE token_hash = ? AND expires_at > datetime('now')`,
 		hashToken(token),
 	).Scan(&session.UserID, &expires)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, false, nil
 	}
 	if err != nil {
@@ -101,7 +104,7 @@ func (s *SessionStore) Revoke(ctx context.Context, token string) error {
 
 // CookieFor builds the browser session cookie.
 func (s *SessionStore) CookieFor(token string, expires time.Time) *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ //nolint:gosec // HttpOnly and SameSite are set below; Secure is config-driven so local development over plain HTTP still works
 		Name:     SessionCookieName,
 		Value:    token,
 		Path:     "/",
@@ -114,7 +117,7 @@ func (s *SessionStore) CookieFor(token string, expires time.Time) *http.Cookie {
 
 // ClearCookie returns a cookie that clears the browser session.
 func (s *SessionStore) ClearCookie() *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ //nolint:gosec // HttpOnly and SameSite are set below; Secure is config-driven so local development over plain HTTP still works
 		Name:     SessionCookieName,
 		Value:    "",
 		Path:     "/",

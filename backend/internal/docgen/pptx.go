@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 )
 
+// PPTXGenerator generates PPTX presentations.
 type PPTXGenerator struct{}
 
 type pptxSlide struct {
@@ -25,8 +26,10 @@ type pptxSlide struct {
 	Table        [][]string
 }
 
+// ToolName returns the name of the PPTX presentation creation tool.
 func (g PPTXGenerator) ToolName() string { return "create_pptx_presentation" }
 
+// Schema returns the JSON schema for the PPTX generation tool.
 func (g PPTXGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name: g.ToolName(),
@@ -81,6 +84,7 @@ func (g PPTXGenerator) Schema() ToolSchema {
 	}
 }
 
+// Generate creates a PPTX presentation from the request payload and writes it to w.
 func (g PPTXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta, error) {
 	slides, err := presentationSlides(req.Payload)
 	if err != nil {
@@ -227,7 +231,7 @@ func pptxPackage(title string, slides []pptxSlide) map[string]string {
 func pptxContentTypes(slideCount int) string {
 	var overrides strings.Builder
 	for i := range slideCount {
-		overrides.WriteString(fmt.Sprintf(`<Override PartName="/ppt/slides/slide%d.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`, i+1))
+		fmt.Fprintf(&overrides, `<Override PartName="/ppt/slides/slide%d.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`, i+1)
 	}
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -263,7 +267,7 @@ func pptxPresentationRels(slideCount int) string {
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/viewProps" Target="viewProps.xml"/>
   <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles" Target="tableStyles.xml"/>`)
 	for i := range slideCount {
-		rels.WriteString(fmt.Sprintf(`  <Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide%d.xml"/>`, i+5, i+1))
+		fmt.Fprintf(&rels, `  <Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide%d.xml"/>`, i+5, i+1)
 	}
 	rels.WriteString(`</Relationships>`)
 	return rels.String()
@@ -272,7 +276,7 @@ func pptxPresentationRels(slideCount int) string {
 func pptxPresentationXML(slideCount int) string {
 	var ids strings.Builder
 	for i := range slideCount {
-		ids.WriteString(fmt.Sprintf(`<p:sldId id="%d" r:id="rId%d"/>`, 256+i, i+5))
+		fmt.Fprintf(&ids, `<p:sldId id="%d" r:id="rId%d"/>`, 256+i, i+5)
 	}
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">

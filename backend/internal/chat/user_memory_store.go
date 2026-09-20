@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 )
 
@@ -18,7 +19,7 @@ WHERE user_id = ?`,
 	if err == nil {
 		return memory, true, nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return UserMemory{}, false, nil
 	}
 	return UserMemory{}, false, fmt.Errorf("get user memory: %w", err)
@@ -82,7 +83,7 @@ LIMIT ?`,
 	if err != nil {
 		return nil, fmt.Errorf("list user messages: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	messages := make([]Message, 0)
 	for rows.Next() {

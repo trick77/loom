@@ -23,6 +23,7 @@ const (
 	maxDownloadedImageSize = 25 << 20
 )
 
+// FalConfig holds the configuration needed to create a FAL client for image generation.
 type FalConfig struct {
 	BaseURL      string
 	APIKey       string
@@ -32,6 +33,7 @@ type FalConfig struct {
 	HTTPClient   *http.Client
 }
 
+// FalClient is an image generation client for the FAL image generation service.
 type FalClient struct {
 	baseURL      string
 	apiKey       string
@@ -41,6 +43,7 @@ type FalClient struct {
 	httpClient   *http.Client
 }
 
+// NewFalClient creates a new FAL client with the given configuration, applying defaults for any unset fields.
 func NewFalClient(cfg FalConfig) *FalClient {
 	pollInterval := cfg.PollInterval
 	if pollInterval <= 0 {
@@ -248,7 +251,7 @@ func (c *FalClient) submit(ctx context.Context, req GenerateRequest, model strin
 	if err != nil {
 		return falSubmitResponse{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return falSubmitResponse{}, falHTTPError("submit", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -419,7 +422,7 @@ func (c *FalClient) getJSON(ctx context.Context, endpoint, stage string) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, falHTTPError(stage, resp.StatusCode, strings.TrimSpace(string(body)))
@@ -436,7 +439,7 @@ func (c *FalClient) download(ctx context.Context, imageURL string) ([]byte, stri
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", fmt.Errorf("download generated image failed: status %d", resp.StatusCode)
 	}

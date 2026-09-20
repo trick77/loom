@@ -7,8 +7,10 @@ import (
 )
 
 const (
+	// TransportStreamableHTTP denotes the Streamable HTTP protocol for MCP servers.
 	TransportStreamableHTTP = "streamable-http"
-	TransportStdio          = "stdio"
+	// TransportStdio denotes stdio-based MCP servers.
+	TransportStdio = "stdio"
 	// TransportInProcess routes a server to an in-process Client implemented in
 	// Go, with no network or subprocess. Used by the built-in fetch tool.
 	TransportInProcess = "in-process"
@@ -50,10 +52,12 @@ type ServerConfig struct {
 	Categories []string `json:"categories"`
 }
 
+// ExposedToolName constructs the exposed tool name by joining server and tool names with "__".
 func ExposedToolName(serverName, toolName string) string {
 	return serverName + "__" + toolName
 }
 
+// SplitExposedToolName parses an exposed tool name into its server and tool components.
 func SplitExposedToolName(name string) (string, string, bool) {
 	server, tool, ok := strings.Cut(name, "__")
 	if !ok || server == "" || tool == "" {

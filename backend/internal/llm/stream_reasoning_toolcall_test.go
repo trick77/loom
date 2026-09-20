@@ -22,7 +22,7 @@ func TestClient_InlineToolCallInReasoningChannelIsParsedAndGated(t *testing.T) {
 	// A leading bit of genuine reasoning, then the inline tool-call block — both in
 	// reasoning_content, exactly as the failing transcript showed (single-line block).
 	const block = "<tool_call> <function=fetch__fetch> <parameter=url>https://example.com</parameter> </function> </tool_call>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		write := func(s string) {
@@ -80,7 +80,7 @@ func TestClient_InlineToolCallInReasoningChannelIsParsedAndGated(t *testing.T) {
 // phenomenon stays diagnosable from loom's logs rather than silent.
 func TestClient_RecoveredInlineToolCallIsLoggedWithChannel(t *testing.T) {
 	const block = "<tool_call> <function=fetch__fetch> <parameter=url>https://example.com</parameter> </function> </tool_call>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		write := func(s string) {

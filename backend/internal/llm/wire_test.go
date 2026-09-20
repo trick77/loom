@@ -116,7 +116,7 @@ func errorWrapping(err error) error { return wrapped{inner: err} }
 // context; the helper calls record theirs too, so the turn total covers every
 // call the way the token counts do.
 func TestStreamChat_RecordsPricedCostIntoTheAccumulator(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n"))
 		_, _ = w.Write([]byte("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1000,\"completion_tokens\":100,\"prompt_tokens_details\":{\"cached_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":0}}}\n\n"))
@@ -166,7 +166,7 @@ func TestUsageAccumulator_UnpricedCallsLeaveTheTotalUnknown(t *testing.T) {
 // The response spool is llmwire's transport now; loom still wires it from
 // ResponseLogDir and still keeps incognito turns off disk.
 func TestNewClient_SpoolsResponsesExceptIncognito(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "Blue Sky"}, "finish_reason": "stop"}},
@@ -197,7 +197,7 @@ func TestNewClient_SpoolsResponsesExceptIncognito(t *testing.T) {
 // the partial answer, and it is not phrased as an upstream failure.
 func TestStreamChat_ConsumerErrorKeepsThePartialAnswer(t *testing.T) {
 	release := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n"))
 		if flusher, ok := w.(http.Flusher); ok {

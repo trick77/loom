@@ -2,28 +2,33 @@ package llm
 
 import "time"
 
+// Tool is a tool definition for model tool use, containing a function specification.
 type Tool struct {
 	Type     string       `json:"type"`
 	Function ToolFunction `json:"function"`
 }
 
+// ToolFunction is the function specification within a tool, including its name, description, and parameters.
 type ToolFunction struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	Parameters  map[string]any `json:"parameters,omitempty"`
 }
 
+// ToolCall is a model's invocation of a tool, identified by an ID and containing the tool call details.
 type ToolCall struct {
 	ID       string           `json:"id"`
 	Type     string           `json:"type"`
 	Function ToolCallFunction `json:"function"`
 }
 
+// ToolCallFunction contains the name and arguments of a tool call invoked by the model.
 type ToolCallFunction struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
 }
 
+// StreamEvent is a single event emitted during a streamed model turn (text, reasoning, or tool call).
 type StreamEvent struct {
 	Delta          string
 	ReasoningDelta string
@@ -35,6 +40,7 @@ type StreamEvent struct {
 	ToolPending bool
 }
 
+// StreamResult is the complete result of a streamed model turn, containing content, tool calls, and usage information.
 type StreamResult struct {
 	Content          string
 	ReasoningContent string
@@ -51,6 +57,7 @@ type StreamResult struct {
 	CostPriced  bool
 }
 
+// TokenUsage contains token counts for a model call (prompt, completion, cached, and reasoning tokens).
 type TokenUsage struct {
 	PromptTokens           int                    `json:"prompt_tokens"`
 	CompletionTokens       int                    `json:"completion_tokens"`
@@ -59,14 +66,17 @@ type TokenUsage struct {
 	CompletionTokenDetails CompletionTokenDetails `json:"completion_tokens_details"`
 }
 
+// PromptTokenDetails contains detailed breakdown of prompt tokens including cached tokens.
 type PromptTokenDetails struct {
 	CachedTokens int `json:"cached_tokens"`
 }
 
+// CompletionTokenDetails contains detailed breakdown of completion tokens including reasoning tokens.
 type CompletionTokenDetails struct {
 	ReasoningTokens int `json:"reasoning_tokens"`
 }
 
+// Present reports whether the usage contains any non-zero token counts.
 func (u TokenUsage) Present() bool {
 	return u.PromptTokens != 0 ||
 		u.CompletionTokens != 0 ||

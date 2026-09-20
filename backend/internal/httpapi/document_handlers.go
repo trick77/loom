@@ -99,7 +99,7 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "missing file")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	doc, _, err := s.documents.Upload(r.Context(), documents.UploadInput{
 		UserID:    user.ID,

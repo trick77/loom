@@ -13,6 +13,7 @@ type Store struct {
 	db *sql.DB
 }
 
+// NewStore creates a Store for persisting and retrieving documents and embeddings.
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
 // scopeValue maps a nullable project id to the vec_chunks metadata encoding

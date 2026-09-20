@@ -52,7 +52,7 @@ func (c *TikaClient) Ping(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("tika health request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("tika health check: status %d", resp.StatusCode)
 	}
@@ -80,7 +80,7 @@ func (c *TikaClient) Extract(ctx context.Context, filename, mime string, r io.Re
 	if err != nil {
 		return "", fmt.Errorf("tika request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("tika extraction failed: status %d", resp.StatusCode)

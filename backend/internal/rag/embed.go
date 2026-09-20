@@ -77,6 +77,7 @@ type EmbeddingUsage struct {
 	CostPriced   bool
 }
 
+// EmbedResult holds the vectors and usage metrics from an embedding operation.
 type EmbedResult struct {
 	Vectors [][]float32
 	Usage   EmbeddingUsage

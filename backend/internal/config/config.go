@@ -58,9 +58,12 @@ const defaultChatIdleTimeout = 120 * time.Second
 type AuthMode string
 
 const (
+	// AuthModeNone disables authentication.
 	AuthModeNone AuthMode = ""
+	// AuthModeOIDC uses OpenID Connect for authentication.
 	AuthModeOIDC AuthMode = "oidc"
-	AuthModeDev  AuthMode = "dev"
+	// AuthModeDev uses local development authentication.
+	AuthModeDev AuthMode = "dev"
 )
 
 // Config holds all runtime settings. Secrets come from ENV only.

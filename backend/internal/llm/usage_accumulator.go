@@ -23,6 +23,7 @@ type UsageAccumulator struct {
 	priced      bool
 }
 
+// NewUsageAccumulator creates a new accumulator for summing token usage across multiple model calls.
 func NewUsageAccumulator() *UsageAccumulator {
 	return &UsageAccumulator{}
 }

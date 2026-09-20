@@ -181,7 +181,7 @@ func tableFrame(id int, rows [][]string) string {
 	colW := totalW / cols
 	var grid strings.Builder
 	for i := 0; i < cols; i++ {
-		grid.WriteString(fmt.Sprintf(`<a:gridCol w="%d"/>`, colW))
+		fmt.Fprintf(&grid, `<a:gridCol w="%d"/>`, colW)
 	}
 	var body strings.Builder
 	for ri, r := range rows {
@@ -200,9 +200,9 @@ func tableFrame(id int, rows [][]string) string {
 			if ci < len(r) {
 				cell = r[ci]
 			}
-			body.WriteString(fmt.Sprintf(`<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>%s</a:txBody>`+
+			fmt.Fprintf(&body, `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>%s</a:txBody>`+
 				`<a:tcPr><a:solidFill><a:srgbClr val="%s"/></a:solidFill></a:tcPr></a:tc>`,
-				styledRun(cell, 1600, textHex, header, "l"), fill))
+				styledRun(cell, 1600, textHex, header, "l"), fill)
 		}
 		body.WriteString(`</a:tr>`)
 	}

@@ -271,7 +271,7 @@ func TestClient_StreamChatTimeoutCancelsPrimaryStream(t *testing.T) {
 }
 
 func TestClient_StreamChatResultCapturesUsageTrailerChunk(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
 		_, _ = w.Write([]byte(`data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":11,"total_tokens":18,"prompt_tokens_details":{"cached_tokens":3},"completion_tokens_details":{"reasoning_tokens":5}}}` + "\n\n"))
@@ -305,7 +305,7 @@ func TestClient_StreamChatResultCapturesUsageTrailerChunk(t *testing.T) {
 }
 
 func TestClient_StreamChatResultCapturesModelAndReasoningEffortOnDonePath(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
@@ -327,7 +327,7 @@ func TestClient_StreamChatResultCapturesModelAndReasoningEffortOnDonePath(t *tes
 }
 
 func TestClient_StreamChatResultCapturesReasoningContent(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"reasoning_content":"I should check "}}]}` + "\n\n"))
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"reasoning_content":"the facts."}}]}` + "\n\n"))
@@ -361,7 +361,7 @@ func TestClient_StreamChatResultCapturesReasoningContent(t *testing.T) {
 }
 
 func TestClient_StreamChatResultLeavesUsageEmptyWhenMissing(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
@@ -388,7 +388,7 @@ func TestClient_StreamChatResultLeavesUsageEmptyWhenMissing(t *testing.T) {
 func TestClient_StreamChatLogsRawResponseWhenConfigured(t *testing.T) {
 	logDir := t.TempDir()
 	var responseCount int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		responseCount++
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("X-Debug-Trace", "trace-123")
@@ -532,7 +532,7 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedCompletionBudget(t *testin
 }
 
 func TestClient_StreamChatWithDocumentToolUsesExpandedTimeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(30 * time.Millisecond)
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}]}\n\n"))
@@ -656,7 +656,7 @@ func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *
 }
 
 func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search__web","arguments":"{\"q\""}}]}}]}` + "\n\n"))
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\"lume\"}"}}]}}]}` + "\n\n"))
@@ -703,7 +703,7 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 
 func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
 	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
@@ -744,7 +744,7 @@ func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
 
 func TestClient_StreamChatWithToolsSignalsPendingBeforeInlineToolCall(t *testing.T) {
 	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"Let me search. "}}]}` + "\n\n"))
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
@@ -779,7 +779,7 @@ func TestClient_StreamChatWithToolsSignalsPendingBeforeInlineToolCall(t *testing
 	if deltaIdx == -1 || pendingIdx == -1 || callIdx == -1 {
 		t.Fatalf("events = %#v, want a content, a pending and a tool-call event", events)
 	}
-	if !(deltaIdx < pendingIdx && pendingIdx < callIdx) {
+	if deltaIdx >= pendingIdx || pendingIdx >= callIdx {
 		t.Fatalf("events out of order: delta=%d pending=%d call=%d (%#v)", deltaIdx, pendingIdx, callIdx, events)
 	}
 }
@@ -790,7 +790,7 @@ func TestClient_StreamChatWithoutToolsStripsInlineXML(t *testing.T) {
 	// content (never surfaced verbatim) even with no tools offered; the resulting
 	// empty answer is the caller's concern (retry + fallback).
 	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
@@ -809,7 +809,7 @@ func TestClient_StreamChatWithoutToolsStripsInlineXML(t *testing.T) {
 }
 
 func TestClient_StreamChatWithToolsDoesNotStreamMiMoInlineXML(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		// Inline tool call arriving as several content chunks, marker split across two.
 		for _, c := range []string{"<tool", "_call><function=tavily__tavily_search>", "<parameter=q>x</parameter></function></tool_call>"} {
@@ -839,7 +839,7 @@ func TestClient_StreamChatWithToolsDoesNotStreamMiMoInlineXML(t *testing.T) {
 }
 
 func TestClient_StreamChatWithToolsStreamsNormalMiMoContent(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, c := range []string{"Colossus ", "is a 1970 ", "film."} {
 			_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + c + `"}}]}` + "\n\n"))
@@ -867,7 +867,7 @@ func TestClient_StreamChatWithToolsStreamsNormalMiMoContent(t *testing.T) {
 }
 
 func TestClient_StreamChatParsesDataLinesWithoutSpace(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data:{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data:[DONE]\n\n"))
@@ -1080,7 +1080,7 @@ func TestCleanChatTitleQuoteHandling(t *testing.T) {
 }
 
 func TestClient_StreamChatReturnsErrorForHTTP500(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, `{"error":"upstream failed"}`, http.StatusInternalServerError)
 	}))
 	t.Cleanup(server.Close)
@@ -1100,7 +1100,7 @@ func TestClient_StreamChatReturnsErrorForHTTP500(t *testing.T) {
 
 func TestClient_StreamChatPropagatesDeltaCallbackError(t *testing.T) {
 	sentinel := errors.New("sentinel callback error")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
@@ -1152,7 +1152,7 @@ func TestClient_GenerateTitleOmitsEmptyAssistantMessage(t *testing.T) {
 }
 
 func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{

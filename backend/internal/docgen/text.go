@@ -22,14 +22,17 @@ func isAllowedTextExtension(ext string) bool {
 	return allowedTextExtensions[ext]
 }
 
+// TextGenerator generates UTF-8 text files in various formats (txt, md, csv, json, html, xml, yaml, log).
 type TextGenerator struct {
 	MaxInputBytes int
 }
 
+// ToolName returns the name of the text file creation tool.
 func (g TextGenerator) ToolName() string {
 	return "create_text_file"
 }
 
+// Schema returns the JSON schema for the text file generation tool.
 func (g TextGenerator) Schema() ToolSchema {
 	return ToolSchema{
 		Name:        g.ToolName(),
@@ -47,6 +50,7 @@ func (g TextGenerator) Schema() ToolSchema {
 	}
 }
 
+// Generate creates a UTF-8 text file from the request payload and writes it to w.
 func (g TextGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta, error) {
 	content, ok := req.Payload["content"].(string)
 	if !ok || strings.TrimSpace(content) == "" {

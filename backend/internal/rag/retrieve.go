@@ -27,16 +27,18 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 	// KNN over the partition-keyed vtab, joined back to chunks/documents. The
 	// vec0 MATCH/k drive the search; user_id (partition key) and project_id
 	// (metadata) constrain the scope.
-	query := `
+	const queryPrefix = `
 		SELECT c.document_id, d.filename, c.ordinal, c.text, v.distance
 		FROM vec_chunks v
 		JOIN chunks c ON c.id = v.rowid
 		JOIN documents d ON d.id = c.document_id AND d.user_id = v.user_id
 		WHERE v.embedding MATCH ? AND k = ?
 		  AND v.user_id = ?
-		  AND v.project_id IN (` + placeholders + `)
+		  AND v.project_id IN (`
+	const querySuffix = `)
 		  AND d.status = 'embedded'
 		ORDER BY v.distance`
+	query := queryPrefix + placeholders + querySuffix //nolint:gosec // only the ?-placeholder list is interpolated, sized from len(scopes); every value is bound
 
 	args := []any{vecLiteral(queryEmbedding), k, userID}
 	for _, sc := range scopes {
@@ -47,7 +49,7 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 	if err != nil {
 		return nil, fmt.Errorf("retrieve: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []RetrievedChunk
 	for rows.Next() {
 		var rc RetrievedChunk
