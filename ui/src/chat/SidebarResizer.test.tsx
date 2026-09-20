@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import {
   SIDEBAR_DEFAULT,
   SIDEBAR_MAX,
@@ -497,6 +497,26 @@ describe("SidebarResizer", () => {
     render(<SidebarResizer />);
     expect(valuenow()).toBe(440);
     expect(handle().getAttribute("aria-valuemax")).toBe("440");
+  });
+
+  // Review finding: aria-valuenow is computed from the viewport, but CSS repaints
+  // the edge on a resize while React does not re-render, so the separator went on
+  // announcing the width from the last render — wrong as the preference and wrong
+  // as the edge at once.
+  it("re-announces the edge when the window changes size", async () => {
+    withViewport(1600); // cap is the plain 520 max
+    localStorage.setItem("loom:sidebar-width", "520");
+    render(<SidebarResizer />);
+    expect(valuenow()).toBe(520);
+
+    withViewport(1100); // 40vw = 440 now binds
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(valuenow()).toBe(440));
+    expect(handle().getAttribute("aria-valuemax")).toBe("440");
+
+    withViewport(1600); // and back
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(valuenow()).toBe(520));
   });
 
   // Review finding: a cancel before the slop left the double-tap window armed, so
