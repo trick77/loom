@@ -10,6 +10,7 @@ import (
 
 const documentColumns = `id, user_id, project_id, thread_id, artifact_id, volume_relpath, filename, mime, size_bytes, status, error, created_at, embedded_at`
 
+// CreateDocument inserts a new document record into the store.
 func (s *Store) CreateDocument(ctx context.Context, d Document) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO documents (id, user_id, project_id, thread_id, artifact_id, volume_relpath, filename, mime, size_bytes, status)
@@ -38,6 +39,7 @@ func scanDocument(row interface{ Scan(...any) error }) (Document, error) {
 	return d, nil
 }
 
+// GetDocument retrieves a document by ID for a given user, returning the document, whether it exists, and any error.
 func (s *Store) GetDocument(ctx context.Context, userID, id string) (Document, bool, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT `+documentColumns+` FROM documents WHERE user_id = ? AND id = ?`, userID, id)
@@ -78,6 +80,7 @@ func (s *Store) ListDocuments(ctx context.Context, userID string, projectID *str
 	return docs, rows.Err()
 }
 
+// CountThreadDocuments returns the number of thread-private documents for a given thread.
 func (s *Store) CountThreadDocuments(ctx context.Context, userID, threadID string) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx,
@@ -124,6 +127,7 @@ WHERE d.user_id = ? AND a.thread_id = ?`, userID, threadID)
 	return ids, rows.Err()
 }
 
+// UpdateStatus updates a document's status and error message.
 func (s *Store) UpdateStatus(ctx context.Context, userID, id, status, errMsg string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE documents SET status = ?, error = ? WHERE user_id = ? AND id = ?`,

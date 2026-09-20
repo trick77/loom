@@ -24,6 +24,7 @@ const (
 	maxToolOutputBytes  = 32 << 10
 )
 
+// Tool is an MCP tool exposed to the model, with its server name prefix and description.
 type Tool struct {
 	Name         string
 	OriginalName string
@@ -32,6 +33,7 @@ type Tool struct {
 	ServerName   string
 }
 
+// Client is the common interface for MCP tool-serving clients.
 type Client interface {
 	ListTools(context.Context) ([]Tool, error)
 	CallTool(context.Context, string, map[string]any) (string, error)
@@ -113,6 +115,7 @@ func isSessionError(err error) bool {
 	return strings.Contains(strings.ToLower(statusErr.body), "session")
 }
 
+// NewRemoteClient creates a Client that communicates with an MCP server over HTTP via the Streamable HTTP transport.
 func NewRemoteClient(serverName string, cfg ServerConfig, httpClient *http.Client) Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
@@ -404,6 +407,7 @@ type stdioClient struct {
 	initErr    error
 }
 
+// NewStdioClient creates a Client that communicates with an MCP server via stdin/stdout.
 func NewStdioClient(serverName string, cfg ServerConfig) Client {
 	return &stdioClient{serverName: serverName, cfg: cfg}
 }

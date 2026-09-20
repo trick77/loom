@@ -40,9 +40,11 @@ type ListType string
 
 const (
 	// ListTypeAll is the default filter showing all artifacts.
-	ListTypeAll    ListType = "all"
+	ListTypeAll ListType = "all"
+	// ListTypeImages filters to show only image artifacts.
 	ListTypeImages ListType = "images"
-	ListTypeFiles  ListType = "files"
+	// ListTypeFiles filters to show only non-image artifacts.
+	ListTypeFiles ListType = "files"
 )
 
 // SortBy specifies the field used to order artifacts in list results.
@@ -51,15 +53,19 @@ type SortBy string
 const (
 	// SortByModified sorts by creation time, newest first.
 	SortByModified SortBy = "modified"
-	SortByName     SortBy = "name"
-	SortBySize     SortBy = "size"
+	// SortByName sorts by display filename alphabetically.
+	SortByName SortBy = "name"
+	// SortBySize sorts by file size, largest first.
+	SortBySize SortBy = "size"
 )
 
 // SortOrder specifies the direction for sorting artifact lists.
 type SortOrder string
 
 const (
-	SortAsc  SortOrder = "asc"
+	// SortAsc sorts in ascending order.
+	SortAsc SortOrder = "asc"
+	// SortDesc sorts in descending order.
 	SortDesc SortOrder = "desc"
 )
 

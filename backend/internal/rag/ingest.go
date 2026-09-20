@@ -29,6 +29,7 @@ type Embedder interface {
 	Embed(ctx context.Context, inputs []string) (EmbedResult, error)
 }
 
+// EmbeddingUsageRecorder records the token count and cost of embeddings.
 type EmbeddingUsageRecorder interface {
 	AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int, costNanoUSD int64) error
 }
@@ -49,6 +50,7 @@ type Ingester struct {
 	usage     EmbeddingUsageRecorder
 }
 
+// NewIngester creates an Ingester for the extract-chunk-embed-store pipeline.
 func NewIngester(store *Store, opener FileOpener, extractor Extractor, embedder Embedder) *Ingester {
 	return &Ingester{
 		store:     store,
@@ -59,10 +61,12 @@ func NewIngester(store *Store, opener FileOpener, extractor Extractor, embedder 
 	}
 }
 
+// SetUsageRecorder configures the recorder for embedding usage metrics.
 func (ing *Ingester) SetUsageRecorder(usage EmbeddingUsageRecorder) {
 	ing.usage = usage
 }
 
+// SetImageDescriber configures the describer for turning images into text.
 func (ing *Ingester) SetImageDescriber(d ImageDescriber) {
 	ing.describer = d
 }

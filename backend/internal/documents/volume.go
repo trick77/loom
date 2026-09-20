@@ -15,6 +15,7 @@ type VolumeOpener struct {
 	UsersDir string
 }
 
+// OpenDocument opens the file backing a document for reading.
 func (v VolumeOpener) OpenDocument(d rag.Document) (io.ReadCloser, error) {
 	abs, err := artifact.ResolveExisting(v.UsersDir, d.UserID, d.VolumeRelpath)
 	if err != nil {

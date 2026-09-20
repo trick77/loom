@@ -15,6 +15,8 @@ import (
 	"github.com/trick77/loom/internal/rag"
 )
 
+// MaxChatDocuments is the maximum number of user-uploaded documents that can be
+// attached to a project-less chat thread.
 const MaxChatDocuments = 10
 
 // ErrUnsupportedFormat is returned when an upload's extension is not allowlisted.
@@ -43,6 +45,7 @@ type Indexer interface {
 	ExtractText(ctx context.Context, userID, documentID string) (string, error)
 }
 
+// UsageRecorder records embedding usage metrics.
 type UsageRecorder interface {
 	AddEmbeddingUsage(ctx context.Context, userID string, tokens, requests int, costNanoUSD int64) error
 }
@@ -58,10 +61,12 @@ type Service struct {
 	usersDir  string
 }
 
+// NewService creates a new Service with the given dependencies.
 func NewService(store *rag.Store, artifacts ArtifactStore, indexer Indexer, embedder rag.Embedder, usersDir string) *Service {
 	return &Service{store: store, artifacts: artifacts, indexer: indexer, embedder: embedder, usersDir: usersDir}
 }
 
+// SetUsageRecorder attaches a usage recorder to track embedding costs.
 func (s *Service) SetUsageRecorder(usage UsageRecorder) {
 	s.usage = usage
 }
@@ -207,6 +212,8 @@ func (s *Service) FullText(ctx context.Context, userID, documentID string) (stri
 	return s.indexer.ExtractText(ctx, userID, documentID)
 }
 
+// List returns all documents in the given scope, marking any files missing from
+// the volume as stale.
 func (s *Service) List(ctx context.Context, userID string, projectID *string) ([]rag.Document, error) {
 	docs, err := s.store.ListDocuments(ctx, userID, projectID)
 	if err != nil {
@@ -234,6 +241,7 @@ func (s *Service) List(ctx context.Context, userID string, projectID *string) ([
 	return docs, nil
 }
 
+// Get retrieves a single document by ID.
 func (s *Service) Get(ctx context.Context, userID, documentID string) (rag.Document, bool, error) {
 	return s.store.GetDocument(ctx, userID, documentID)
 }
