@@ -80,6 +80,7 @@ import { ThreadPanel } from "./ThreadPanel";
 import { StartPanel } from "./StartPanel";
 import { IncognitoPanel } from "./IncognitoPanel";
 import { Sidebar } from "./Sidebar";
+import { SidebarResizer } from "./SidebarResizer";
 import { tabTitle } from "./tabTitle";
 import { DeleteThreadModal, RenameThreadModal } from "./threadModals";
 import { SearchModal } from "./SearchModal";
@@ -1401,10 +1402,10 @@ export function ThreadShell({
 
   return (
     <div
-      className={`grid h-svh grid-rows-[minmax(0,1fr)] bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out grid-cols-[1fr] ${
+      className={`relative grid h-svh grid-rows-[minmax(0,1fr)] bg-bg font-sans text-ink transition-[grid-template-columns] duration-200 ease-out grid-cols-[1fr] ${
         sidebarCollapsed
           ? "md:grid-cols-[56px_1fr]"
-          : "md:grid-cols-[362px_1fr]"
+          : "md:grid-cols-[var(--ui-sidebar-w)_1fr]"
       }`}
     >
       <Sidebar
@@ -1462,6 +1463,9 @@ export function ThreadShell({
         }
         onCloseThreadMenu={() => setOpenThreadMenuID(null)}
       />
+      {/* The sidebar's right edge, draggable from md up. Not while collapsed:
+          the rail is a fixed 56px then, and there is nothing to size. */}
+      {!sidebarCollapsed && <SidebarResizer />}
       <main className="min-h-0 min-w-0 overflow-hidden bg-bg">
         {showAdmin ? (
           adminPanel
