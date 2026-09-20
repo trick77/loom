@@ -483,7 +483,7 @@ func (c *stdioClient) start(ctx context.Context) error {
 		return c.startErr
 	}
 	_ = ctx
-	cmd := exec.Command(c.cfg.Command, c.cfg.Args...)
+	cmd := exec.Command(c.cfg.Command, c.cfg.Args...) //nolint:gosec // MCP servers are launched from the operator-supplied config file, never from request data
 	cmd.Env = os.Environ()
 	for key, value := range c.cfg.Env {
 		cmd.Env = append(cmd.Env, key+"="+value)

@@ -180,19 +180,19 @@ func (s *Store) deleteScopeDocuments(ctx context.Context, scope string, args ...
 			return fmt.Errorf("delete scope embedding %d: %w", id, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM chunks WHERE id IN (
+	const deleteChunksPrefix = `DELETE FROM chunks WHERE id IN (
 			SELECT c.id FROM chunks c
 			JOIN documents d ON d.user_id = c.user_id AND d.id = c.document_id
-			WHERE `+scope+`)`,
-		args...); err != nil {
+			WHERE `
+	deleteChunks := deleteChunksPrefix + scope + `)` //nolint:gosec // scope is a const predicate defined at the call site, never caller input; every value is a bound ? parameter
+	if _, err := tx.ExecContext(ctx, deleteChunks, args...); err != nil {
 		return fmt.Errorf("delete scope chunks: %w", err)
 	}
 	// Reuse the same predicate against the documents table; alias d via a self
 	// scope so the shared predicate string applies unchanged.
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM documents WHERE id IN (SELECT d.id FROM documents d WHERE `+scope+`)`,
-		args...); err != nil {
+	const deleteDocsPrefix = `DELETE FROM documents WHERE id IN (SELECT d.id FROM documents d WHERE `
+	deleteDocs := deleteDocsPrefix + scope + `)` //nolint:gosec // scope is a const predicate defined at the call site, never caller input; every value is a bound ? parameter
+	if _, err := tx.ExecContext(ctx, deleteDocs, args...); err != nil {
 		return fmt.Errorf("delete scope documents: %w", err)
 	}
 	return tx.Commit()

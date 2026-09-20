@@ -115,7 +115,7 @@ func (s *OIDCService) HandleCallback(r *http.Request) (Claims, error) {
 }
 
 func (s *OIDCService) transientCookie(name, value string) *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ //nolint:gosec // HttpOnly and SameSite are set below; Secure is config-driven so local development over plain HTTP still works
 		Name:     name,
 		Value:    value,
 		Path:     "/",

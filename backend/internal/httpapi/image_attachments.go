@@ -58,7 +58,7 @@ func (s *server) imageContentParts(ctx context.Context, userID, threadID, text s
 		// DownscaleForModel caps the longest side / recompresses to JPEG first, which
 		// turns a multi-MB original into a few hundred KB without losing signal the
 		// tiling vision model would use.
-		raw, err := os.ReadFile(abs)
+		raw, err := os.ReadFile(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 		if err != nil {
 			return nil, fmt.Errorf("read image attachment: %w", err)
 		}
@@ -112,7 +112,7 @@ func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, arti
 	if err != nil {
 		return editImageSource{}, false, fmt.Errorf("edit source image path rejected: %w", err)
 	}
-	raw, err := os.ReadFile(abs)
+	raw, err := os.ReadFile(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if err != nil {
 		return editImageSource{}, false, fmt.Errorf("read edit source image: %w", err)
 	}

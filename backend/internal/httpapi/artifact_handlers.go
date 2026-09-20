@@ -95,7 +95,7 @@ func (s *server) serveArtifactDownload(w http.ResponseWriter, r *http.Request, u
 		writeJSONError(w, http.StatusForbidden, "artifact path rejected")
 		return
 	}
-	file, err := os.Open(abs)
+	file, err := os.Open(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if os.IsNotExist(err) {
 		writeJSONError(w, http.StatusGone, "artifact file is missing")
 		return
@@ -161,7 +161,7 @@ func (s *server) serveArtifactThumbnail(w http.ResponseWriter, r *http.Request, 
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	file, err := os.Open(abs)
+	file, err := os.Open(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
@@ -192,7 +192,7 @@ func (s *server) resolveOrCreateThumbnail(ctx context.Context, userID string, fo
 	if err != nil {
 		return "", err
 	}
-	src, err := os.ReadFile(origAbs)
+	src, err := os.ReadFile(origAbs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if err != nil {
 		return "", err
 	}

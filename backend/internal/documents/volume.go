@@ -20,5 +20,5 @@ func (v VolumeOpener) OpenDocument(d rag.Document) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return os.Open(abs)
+	return os.Open(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 }

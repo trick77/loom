@@ -102,7 +102,7 @@ func (s *SessionStore) Revoke(ctx context.Context, token string) error {
 
 // CookieFor builds the browser session cookie.
 func (s *SessionStore) CookieFor(token string, expires time.Time) *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ //nolint:gosec // HttpOnly and SameSite are set below; Secure is config-driven so local development over plain HTTP still works
 		Name:     SessionCookieName,
 		Value:    token,
 		Path:     "/",
@@ -115,7 +115,7 @@ func (s *SessionStore) CookieFor(token string, expires time.Time) *http.Cookie {
 
 // ClearCookie returns a cookie that clears the browser session.
 func (s *SessionStore) ClearCookie() *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ //nolint:gosec // HttpOnly and SameSite are set below; Secure is config-driven so local development over plain HTTP still works
 		Name:     SessionCookieName,
 		Value:    "",
 		Path:     "/",

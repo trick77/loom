@@ -239,7 +239,8 @@ func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Ar
 	}
 	args = append(args, limit)
 
-	query := fmt.Sprintf(`
+	query := fmt.Sprintf( //nolint:gosec // only fixed SQL structure is interpolated (a closed switch over typed constants); every value is a bound ? parameter
+		`
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
 WHERE %s

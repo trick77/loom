@@ -30,7 +30,7 @@ func CreateOutputFile(req OutputRequest) (OutputPath, *os.File, error) {
 	candidate := prepared.display
 	for i := 2; ; i++ {
 		abs := filepath.Join(prepared.outputDir, candidate)
-		file, err := os.OpenFile(abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		file, err := os.OpenFile(abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // abs is filepath.Join(outputDir, sanitized-basename); outputDir was checked with ensureInside/ensureResolvedInside and the name passed sanitizeDisplayFilename, so it cannot escape the user root
 		if errors.Is(err, os.ErrExist) {
 			candidate = fmt.Sprintf("%s-%d%s", stem, i, ext)
 			continue
