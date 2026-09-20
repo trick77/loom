@@ -6,6 +6,7 @@ import {
   SIDEBAR_MIN,
   SidebarResizer,
   clampSidebar,
+  displayedWidth,
   storedSidebarWidth,
 } from "./SidebarResizer";
 
@@ -25,8 +26,17 @@ const grab = (h: HTMLElement, pointerId = 1, pointerType = "mouse") =>
     clientX: valuenow(),
   });
 
+/** jsdom reports 1024 by default; the clamp keys on 40vw, so tests set it. */
+function withViewport(width: number) {
+  Object.defineProperty(document.documentElement, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
+  withViewport(1600); // 40vw = 640, so the 520 max is the binding cap
   document.documentElement.style.removeProperty("--ui-sidebar-pref");
 });
 afterEach(() => {
@@ -360,33 +370,50 @@ describe("SidebarResizer", () => {
   });
 
   // Review finding: the arrow keys stepped the preference while the drag stepped
-  // the rendered edge, so with a preference above the 40vw cap the first presses
-  // moved nothing on screen and aria-valuenow announced a width the layout did
-  // not have. jsdom lays nothing out, so the cap is simulated by measuring.
-  it("steps the rendered width, not a preference the clamp is holding back", () => {
+  // the rendered edge, so above the 40vw cap the first presses moved nothing on
+  // screen. The width is now computed from the viewport, never measured: the
+  // aside's own box animates for 200ms after any column change, so reading it
+  // made two quick presses compound to less than a step.
+  it("narrows from the edge the user can see, not from a hidden preference", () => {
+    withViewport(1100); // 40vw = 440, so a stored 520 shows as 440
     localStorage.setItem("loom:sidebar-width", "520");
     render(<SidebarResizer />);
-    const h = handle();
-    const aside = document.createElement("div");
-    aside.className = "ui-sidebar-text";
-    aside.getBoundingClientRect = () => ({ width: 440 }) as DOMRect;
-    document.body.appendChild(aside);
 
-    fireEvent.keyDown(h, { key: "ArrowLeft" });
-    expect(valuenow()).toBe(424); // 440 - 16, the edge the user can see
-    aside.remove();
+    fireEvent.keyDown(handle(), { key: "ArrowLeft" });
+    expect(valuenow()).toBe(424); // 440 - 16, the edge that actually moved
   });
 
-  // Review finding: a drag on a capped viewport used to commit the capped number
-  // and throw the wider preference away, which is what the clamp exists to stop.
-  it("keeps a wider stored preference when a capped drag widens", () => {
+  // The other direction: widening must not be capped away, or a preference above
+  // the cap could never grow and the press would look dead.
+  it("widens the preference even while the cap holds the edge back", () => {
+    withViewport(1100);
+    localStorage.setItem("loom:sidebar-width", "460");
+    render(<SidebarResizer />);
+
+    fireEvent.keyDown(handle(), { key: "ArrowRight" });
+    expect(stored()).toBe("476"); // 460 + 16, though the edge stays at 440
+  });
+
+  // Review finding: displayedWidth mirrors the CSS clamp, so it must agree with it.
+  it("mirrors the CSS clamp it stands in for", () => {
+    withViewport(1600); // 40vw = 640, so the 520 max wins
+    expect(displayedWidth(520)).toBe(520);
+    expect(displayedWidth(200)).toBe(SIDEBAR_MIN);
+    withViewport(1100); // 40vw = 440 wins over the max
+    expect(displayedWidth(520)).toBe(440);
+    withViewport(600); // 40vw = 240, below the min, so the min wins
+    expect(displayedWidth(400)).toBe(SIDEBAR_MIN);
+  });
+
+  // Review finding: a drag on a capped viewport threw the wider preference away.
+  // The first fix kept storage but still painted the capped number, which left two
+  // live widths for one preference — storage said 520, the paint said 445, and a
+  // collapse/expand swapped between them. Assert all three move together.
+  it("grows the preference from a capped drag, in storage and in the paint", () => {
+    withViewport(1100); // 40vw = 440; the stored 520 is held back on screen
     localStorage.setItem("loom:sidebar-width", "520");
     render(<SidebarResizer />);
     const h = handle();
-    const aside = document.createElement("div");
-    aside.className = "ui-sidebar-text";
-    aside.getBoundingClientRect = () => ({ width: 440 }) as DOMRect;
-    document.body.appendChild(aside);
 
     fireEvent.pointerDown(h, {
       pointerId: 1,
@@ -394,10 +421,14 @@ describe("SidebarResizer", () => {
       button: 0,
       clientX: 440,
     });
-    fireEvent.pointerMove(h, { pointerId: 1, clientX: 445 });
+    fireEvent.pointerMove(h, { pointerId: 1, clientX: 465 }); // +25
     fireEvent.pointerUp(h, { pointerId: 1 });
-    expect(stored()).toBe("520"); // the docked-monitor width survives
-    aside.remove();
+
+    // 520 + 25 runs into the 520 max, so the preference stays 520 — and crucially
+    // is NOT cut down to the 440 the viewport was showing.
+    expect(stored()).toBe(String(SIDEBAR_MAX));
+    expect(pref()).toBe(SIDEBAR_MAX + "px"); // one number, not two
+    expect(valuenow()).toBe(SIDEBAR_MAX);
   });
 
   // A deliberate narrowing is taken at face value, cap or no cap.

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export const SIDEBAR_MIN = 280;
 export const SIDEBAR_MAX = 520;
@@ -39,17 +39,24 @@ function rememberSidebarWidth(width: number) {
   try {
     localStorage.setItem(STORAGE_KEY, String(width));
   } catch {
-    // Ignore storage failures (private mode); the in-memory width still applies.
+    // Private mode or a full quota. The width holds for this mount, but collapsing
+    // the sidebar unmounts the handle and the next expand re-reads storage, so the
+    // drag is quietly lost then. Better than throwing on a resize.
   }
 }
 
-/** The sidebar's on-screen width, which the CSS clamp may hold below the preference. */
-function renderedWidth(fallback: number): number {
-  // .ui-sidebar-text is the nav sidebar specifically: the Sources drawer is an
-  // <aside> too, so a bare tag selector would measure the wrong box.
-  const el = document.querySelector(".ui-sidebar-text");
-  const width = el?.getBoundingClientRect().width ?? 0;
-  return width > 0 ? width : fallback; // jsdom lays nothing out
+/**
+ * What the CSS clamp on --ui-sidebar-w resolves the preference to, computed rather
+ * than measured. The shell grid transitions grid-template-columns for 200ms, so the
+ * aside's own box is mid-animation after every column change: seeding a drag or an
+ * arrow key from it read a width in flight, which made repeated presses compound to
+ * less than a step and let a grab during the expand animation jump the edge.
+ * Mirrors `clamp(280px, pref, min(520px, 40vw))` exactly.
+ */
+export function displayedWidth(preference: number): number {
+  const vw = document.documentElement.clientWidth || 0;
+  const cap = vw > 0 ? Math.min(SIDEBAR_MAX, 0.4 * vw) : SIDEBAR_MAX;
+  return Math.round(Math.max(SIDEBAR_MIN, Math.min(preference, cap)));
 }
 
 /** Write the width to the DOM only. The CSS clamp on --ui-sidebar-w caps the viewport. */
@@ -79,7 +86,10 @@ export function SidebarResizer() {
   const live = useRef(width);
   const moved = useRef(false);
   const active = useRef<number | null>(null); // the pointer that owns the drag
-  const start = useRef({ x: 0, width: 0 }); // grab point, so the edge does not jump
+  // Grab point, so the edge does not jump to the pointer. `width` is where the edge
+  // sits on screen, `preference` the number behind it: they differ under the cap,
+  // and a widening drag has to add its travel to the preference, not to the cap.
+  const start = useRef({ x: 0, width: 0, preference: 0 });
 
   // Layout, not effect: an effect paints after the first frame, so the sidebar would
   // flash at the default width before the stored preference landed.
@@ -89,23 +99,29 @@ export function SidebarResizer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Collapsing the sidebar unmounts this component, and a collapse during a drag
+  // (a second finger on the hide button) would leave body.resizing behind. That
+  // class disables every transition in the app and pins the cursor to col-resize,
+  // and nothing would clear it until some later drag happened to finish.
+  useEffect(
+    () => () => {
+      active.current = null;
+      document.body.classList.remove("resizing");
+    },
+    [],
+  );
+
   /**
-   * `next` is a width the user just expressed on screen, so it is the rendered
-   * edge. The preference may be wider: the CSS clamp caps --ui-sidebar-w at 40vw,
-   * and a narrow window must not quietly spend the user's stored number. Widening
-   * past the cap therefore keeps the larger preference, while any narrowing is
-   * taken at face value because that is a deliberate act.
+   * One number throughout: the PREFERENCE. The 40vw cap is presentation, applied by
+   * the CSS clamp on screen and reported through aria-valuenow, and is never written
+   * back over the preference. Keeping the cap out of the stored and painted value is
+   * what lets a 520 set on a desktop survive a session spent in portrait.
    */
-  function commit(
-    next: number,
-    intent: "narrow" | "widen" | "exact" = "exact",
-  ) {
+  function commit(next: number) {
     live.current = next;
     setWidth(next);
     paint(next);
-    rememberSidebarWidth(
-      intent === "widen" ? Math.max(next, storedSidebarWidth()) : next,
-    );
+    rememberSidebarWidth(next);
   }
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -122,7 +138,11 @@ export function SidebarResizer() {
     // Seed from the RENDERED width, not the preference: --ui-sidebar-w is clamped to
     // 40vw, so on a narrow window the two diverge and an offset drag would spend
     // that difference moving nothing.
-    start.current = { x: event.clientX, width: renderedWidth(live.current) };
+    start.current = {
+      x: event.clientX,
+      width: displayedWidth(live.current),
+      preference: live.current,
+    };
     moved.current = false;
     event.preventDefault();
     // preventDefault suppresses the compatibility mousedown, and with it the focus it
@@ -145,7 +165,10 @@ export function SidebarResizer() {
     moved.current = true;
     // Offset from the grab point, not the raw clientX: grabbing the handle off-centre
     // would otherwise snap the border to the pointer by up to half the hit area.
-    const next = clampSidebar(start.current.width + dx);
+    // Travel is applied to the PREFERENCE. Under the cap the preference sits above
+    // the visible edge, and adding dx to the edge instead would silently spend the
+    // difference: a 5px nudge on a capped viewport used to overwrite a stored 520.
+    const next = clampSidebar(start.current.preference + dx);
     live.current = next;
     setWidth(next);
     paint(next);
@@ -165,10 +188,7 @@ export function SidebarResizer() {
     // handle within it to fine-tune would snap the width back to the default.
     if (moved.current) {
       lastDown.current = -Infinity;
-      commit(
-        live.current,
-        live.current >= start.current.width ? "widen" : "narrow",
-      );
+      commit(live.current);
     }
     try {
       event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -178,14 +198,14 @@ export function SidebarResizer() {
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    // Seeded from the RENDERED width for the same reason the drag is: with a
-    // preference above the 40vw cap, stepping the preference would walk a number
-    // nobody can see and announce it through aria-valuenow, while the edge stood
-    // still for several presses.
-    const from = renderedWidth(live.current);
-    if (event.key === "ArrowLeft") commit(clampSidebar(from - STEP), "narrow");
+    // Narrowing starts from the edge the user can see, so the first press always
+    // moves it; widening starts from the preference, so travel above the cap is not
+    // lost. Both are computed, never measured: the aside's box is still animating
+    // for 200ms after a column change, and two quick presses would compound.
+    const shown = displayedWidth(live.current);
+    if (event.key === "ArrowLeft") commit(clampSidebar(shown - STEP));
     else if (event.key === "ArrowRight")
-      commit(clampSidebar(from + STEP), "widen");
+      commit(clampSidebar(Math.max(live.current, shown) + STEP));
     else if (event.key === "Home") commit(SIDEBAR_DEFAULT);
     else return;
     event.preventDefault();
@@ -195,8 +215,12 @@ export function SidebarResizer() {
     <div
       // Only from md, where the sidebar is the layout. Below it the sidebar is an
       // off-canvas drawer and this would drag an edge nobody can see.
+      // Starts AT the border rather than 7px inside it: the sidebar's own
+      // ::-webkit-scrollbar is 8px of track down that edge, and overlapping it
+      // meant that on Windows, Linux, or macOS set to always-show scrollbars,
+      // reaching for the thumb resized the pane instead of scrolling it.
       className="ui-sidebar-resizer absolute inset-y-0 z-30 hidden w-2.5 cursor-col-resize touch-none select-none md:block"
-      style={{ left: "calc(var(--ui-sidebar-w) - 7px)" }}
+      style={{ left: "var(--ui-sidebar-w)" }}
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize sidebar"
