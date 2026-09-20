@@ -15,6 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache: false
+      # Pinned: v2.11 runs a G706 log-injection check that v2.13 dropped, so an
+      # unpinned bump makes a repo pass locally and fail here.
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13
+          working-directory: backend
+
   backend:
     name: Backend (build + test)
     runs-on: ubuntu-latest
@@ -31,6 +48,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      # coverage-gate.test.sh exercises the gate's ui branch, which parses the
+      # vitest summary with node, so the backend job needs a node too.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
       - run: pip install diff-cover==10.3.0
       - run: cd backend && go build ./...
       - run: cd backend && go vet ./...
@@ -53,16 +75,18 @@ jobs:
         # Guarantee refs/remotes/origin/<base> exists; a pull_request build
         # checks out the merge ref, not the base branch.
         run: git fetch --no-tags origin +refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
-      - name: Project floor
-        run: ./hack/coverage-gate.sh backend
-      - name: Patch coverage
-        run: ./hack/patch-coverage.sh origin/${{ github.base_ref }}
-      # The gate scripts decide whether a PR may merge, so they get tested too.
-      # Both test files already existed here; nothing ran them.
+      # The gate scripts decide whether a PR may merge, so they run before the
+      # gates themselves: a fail-closed regression in coverage-gate.sh aborts the
+      # job at the gate step, and a self-test after it would never run to explain
+      # why.
       - name: Gate self-tests
         run: |
           ./hack/coverage-gate.test.sh
           ./hack/strip-comment-lines.test.sh
+      - name: Project floor
+        run: ./hack/coverage-gate.sh backend
+      - name: Patch coverage
+        run: ./hack/patch-coverage.sh origin/${{ github.base_ref }}
 
   ui:
     name: UI (build + test)
