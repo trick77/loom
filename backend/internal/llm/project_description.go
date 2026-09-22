@@ -46,7 +46,7 @@ func (c *Client) GenerateProjectDescription(ctx context.Context, projectName str
 		{Role: "system", Content: appendLanguageDirective(projectDescriptionSystemPrompt, responseLanguage)},
 		{Role: "user", Content: b.String()},
 	}
-	reply, err := c.complete(ctx, c.model, messages, projectDescriptionMaxCompletionTokens, nil)
+	reply, err := c.complete(ctx, c.proseModel, messages, projectDescriptionMaxCompletionTokens, nil)
 	if err != nil {
 		return "", err
 	}

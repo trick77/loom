@@ -42,13 +42,14 @@ func (c *Client) StreamChatResult(ctx context.Context, messages []Message, onDel
 // accounting.
 func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, tools []Tool, onEvent func(StreamEvent) error) (StreamResult, error) {
 	start := time.Now()
-	// Single routing decision for the whole turn: vision model iff the payload
-	// carries an image part, else the text model. The same `messages` slice is
-	// re-sent on every tool round within this turn, so the choice stays stable.
-	model := c.modelForMessages(messages)
 	// Per-turn overrides carried on the context (set by the httpapi layer): the
 	// forced-final answer turn disables thinking and widens the completion budget.
 	meta := inferenceMetadataFromContext(ctx)
+	// Single routing decision for the whole turn: the prose model when thinking
+	// is off, else the vision model iff the payload carries an image part, else
+	// the text model. The same `messages` slice is re-sent on every tool round
+	// within this turn, so the choice stays stable.
+	model := c.modelForMessages(messages, meta.SuppressThinking)
 	maxCompletionTokens := c.maxCompletionTokensForTools(tools)
 	if meta.MaxCompletionTokens > 0 {
 		maxCompletionTokens = meta.MaxCompletionTokens

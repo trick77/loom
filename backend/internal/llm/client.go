@@ -38,8 +38,10 @@ const documentToolTimeout = 5 * time.Minute
 // Hardcoded MiMo model selection. Loom targets MiMo specifically and is not
 // model-configurable.
 //
-// ONE model for every chat call as of the V2.6 generation. Both splits that
-// justified three separate constants disappeared at that version bump:
+// Flash for every chat call as of the V2.6 generation, except the three
+// thinking-off prose sites named under proseModel below. Both splits that
+// justified the old three-constant arrangement disappeared at that version
+// bump:
 //
 //   - Vision. mimo-v2.5-pro is text-only and 404s on any image_url part, which
 //     is the only reason image turns were routed to the non-Pro variant.
@@ -59,11 +61,22 @@ const documentToolTimeout = 5 * time.Minute
 // a future split — a cheaper gate model, a Pro that earns its keep on synthesis
 // — moves one use without silently moving the others.
 //
-// The one measured caveat, which no current call site hits: with thinking OFF,
+// proseModel is the exception, and it is a measured one. With thinking OFF,
 // flash answered a one-step arithmetic prompt wrong in three runs out of three
-// (155, 145, 195 against 205) while Pro was correct in all three. Loom's
-// thinking-off sites summarize, label and describe; none of them calculates. A
-// site that needs arithmetic without thinking wants Pro.
+// (155, 145, 195 against the correct 205), a different wrong number each time,
+// while Pro was correct in all three. llmwire's own profile comment calls this
+// out: "DISABLING THINKING COSTS CORRECTNESS HERE... ReasoningOff() is a
+// quality decision, not only a latency one."
+//
+// Three call sites write prose a reader keeps AND disable thinking: the forced
+// final answer (see InferenceMetadata.SuppressThinking), project memory and the
+// project description. The first is the dangerous one — it answers whatever the
+// user actually asked, over gathered research, and "total these three figures"
+// is a perfectly ordinary such question. Those sites stay on Pro, which is what
+// they ran on before V2.6 and what the measurement says is safe.
+//
+// The gates are NOT in that set: a category token, an intent JSON and a
+// handful-of-words title have nothing to get arithmetically wrong.
 //
 // These are wire ids llmwire resolves against its profile registry; the
 // profile ships the host, and the key comes from LLMWIRE_MIMO_API_KEY, the
@@ -72,6 +85,7 @@ const (
 	textModel      = "mimo-v2.6-flash"
 	visionModel    = "mimo-v2.6-flash"
 	shortGateModel = "mimo-v2.6-flash"
+	proseModel     = "mimo-v2.6-pro"
 )
 
 // No reasoning-effort default, and no effort sent at all: loom omits the
@@ -147,6 +161,7 @@ type Client struct {
 	model               string
 	visionModel         string
 	shortGateModel      string
+	proseModel          string
 	maxCompletionTokens int
 	timeout             time.Duration
 }
@@ -201,6 +216,7 @@ func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 		model:               textModel,
 		visionModel:         visionModel,
 		shortGateModel:      shortGateModel,
+		proseModel:          proseModel,
 		maxCompletionTokens: maxCompletionTokens,
 		timeout:             cfg.Timeout,
 	}, nil
@@ -215,12 +231,23 @@ func ModelSummary() string {
 	return textModel
 }
 
-// modelForMessages selects the chat model for a request: the omnimodal vision
-// model when any message carries an image_url content part, otherwise the
-// text-only model. This is the single routing decision; callers thread the
-// returned name through the request body and into StreamResult.Model so the
-// persisted/observed model reflects what actually ran.
-func (c *Client) modelForMessages(messages []Message) string {
+// modelForMessages selects the chat model for a request. This is the single
+// routing decision; callers thread the returned name through the request body
+// and into StreamResult.Model so the persisted/observed model reflects what
+// actually ran.
+//
+// thinkingOff wins over the image check, and the order matters: the forced
+// final answer is the one streamed turn that writes a keeper answer with
+// thinking disabled, and flash gets arithmetic wrong in that mode (see
+// proseModel). A final answer over research that happened to include an image
+// is exactly as able to be asked for a total as one that did not. Checking the
+// image part first would have sent it to flash. This is safe only because both
+// V2.6 models accept image input — at V2.5, where -pro returned 404 on an
+// image part, these two rules were in genuine conflict.
+func (c *Client) modelForMessages(messages []Message, thinkingOff bool) string {
+	if thinkingOff {
+		return c.proseModel
+	}
 	for _, m := range messages {
 		for _, part := range m.ContentParts {
 			if part.Type == "image_url" {

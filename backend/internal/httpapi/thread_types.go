@@ -125,6 +125,12 @@ type streamMessageRequest struct {
 	// sees it); they are persisted separately only so the sent bubble can render a
 	// chip instead of the inline wall of text.
 	PastedTexts []chat.MessagePastedText `json:"pastedTexts"`
+	// ReasoningEffort is accepted and IGNORED. Loom no longer sends a reasoning
+	// level (see llm's reasoning note), but decodeJSONBody sets
+	// DisallowUnknownFields, so dropping the field outright would 400 every
+	// send from a browser tab still running the previous bundle until the user
+	// hard-reloads. Kept as a sink for one release, then removable.
+	ReasoningEffort string `json:"reasoningEffort"`
 }
 
 // incognitoStreamRequest carries the whole ephemeral transcript from the client:
@@ -133,6 +139,12 @@ type streamMessageRequest struct {
 type incognitoStreamRequest struct {
 	Content string                  `json:"content"`
 	History []incognitoHistoryEntry `json:"history"`
+	// ReasoningEffort is accepted and IGNORED. Loom no longer sends a reasoning
+	// level (see llm's reasoning note), but decodeJSONBody sets
+	// DisallowUnknownFields, so dropping the field outright would 400 every
+	// send from a browser tab still running the previous bundle until the user
+	// hard-reloads. Kept as a sink for one release, then removable.
+	ReasoningEffort string `json:"reasoningEffort"`
 }
 
 type incognitoHistoryEntry struct {

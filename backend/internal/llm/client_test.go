@@ -440,7 +440,7 @@ func TestClient_StreamChatLogsRawResponseWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestClient_StreamChatSendsHardcodedReasoningEffort(t *testing.T) {
+func TestClient_StreamChatSendsNoReasoningEffort(t *testing.T) {
 	var gotBody struct {
 		ReasoningEffort string `json:"reasoning_effort"`
 	}
@@ -975,7 +975,8 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			// reasoning_effort high would normally apply to MiMo; utility calls must override it.
+			// Utility calls disable thinking outright; no effort level is sent on
+			// any path, so there is nothing for them to override.
 			client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 			if _, err := tc.call(client); err != nil {
 				t.Fatalf("call error: %v", err)
