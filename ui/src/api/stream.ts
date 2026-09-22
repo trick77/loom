@@ -35,7 +35,6 @@ export async function streamMessage(
   opts: {
     documentAttachmentIds?: string[];
     imageAttachmentIds?: string[];
-    reasoningEffort?: string;
     pastedTexts?: MessagePastedText[];
   } = {},
 ): Promise<void> {
@@ -43,7 +42,6 @@ export async function streamMessage(
     content: string;
     documentAttachmentIds?: string[];
     imageAttachmentIds?: string[];
-    reasoningEffort?: string;
     pastedTexts?: MessagePastedText[];
   } = { content };
   if (opts.documentAttachmentIds && opts.documentAttachmentIds.length > 0) {
@@ -51,9 +49,6 @@ export async function streamMessage(
   }
   if (opts.imageAttachmentIds && opts.imageAttachmentIds.length > 0) {
     requestBody.imageAttachmentIds = opts.imageAttachmentIds;
-  }
-  if (opts.reasoningEffort !== undefined && opts.reasoningEffort !== "") {
-    requestBody.reasoningEffort = opts.reasoningEffort;
   }
   if (opts.pastedTexts && opts.pastedTexts.length > 0) {
     requestBody.pastedTexts = opts.pastedTexts;
@@ -104,19 +99,14 @@ export async function streamIncognitoMessage(
   history: { role: "user" | "assistant"; content: string }[],
   handlers: StreamHandlers,
   signal?: AbortSignal,
-  opts: { reasoningEffort?: string } = {},
 ): Promise<void> {
   const requestBody: {
     content: string;
     history: typeof history;
-    reasoningEffort?: string;
   } = {
     content,
     history,
   };
-  if (opts.reasoningEffort !== undefined && opts.reasoningEffort !== "") {
-    requestBody.reasoningEffort = opts.reasoningEffort;
-  }
   const response = await fetch(`/api/incognito/messages:stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -46,10 +46,6 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// carries an image part, else the text model. The same `messages` slice is
 	// re-sent on every tool round within this turn, so the choice stays stable.
 	model := c.modelForMessages(messages)
-	// One reasoning-effort decision for the whole turn (matching the single model
-	// decision above): the composer's per-request choice from the context, else the
-	// configured default. Reused for both the outbound request and StreamResult.
-	reasoningEffort := c.resolveReasoningEffort(ctx)
 	// Per-turn overrides carried on the context (set by the httpapi layer): the
 	// forced-final answer turn disables thinking and widens the completion budget.
 	meta := inferenceMetadataFromContext(ctx)
@@ -67,14 +63,14 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		// narrow window. See toolCallIdleTimeout.
 		ToolCallIdleTimeout: toolCallIdleTimeout(tools),
 	}
+	// Thinking is controlled by the toggle only; no reasoning_effort is sent.
+	// Leaving Reasoning unset on a normal turn is what lets the model take its
+	// own depth, which measures deeper than any level this family accepts (see
+	// the reasoning note in client.go). The forced final answer still turns
+	// thinking off outright, because leaving it on lets the model burn the whole
+	// completion budget reasoning and emit no prose.
 	if meta.SuppressThinking {
-		// The forced final answer: thinking off on the wire (MiMo's toggle),
-		// while reasoningEffort still feeds StreamResult.ReasoningEffort so the
-		// persisted message keeps the composer's chosen effort, which governed
-		// the reasoning across the tool rounds, rather than recording a blank.
 		req.Reasoning = llmwire.ReasoningOff()
-	} else {
-		req.Reasoning = llmwire.ReasoningEffort(reasoningEffort)
 	}
 	callCtx := ctx
 	if timeout := c.timeoutForTools(tools); timeout > 0 {
@@ -212,7 +208,9 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	}
 	result.Duration = durationOr(res.Timing.Total, start)
 	result.Model = model
-	result.ReasoningEffort = reasoningEffort
+	// ReasoningEffort is left blank: no level is sent, so recording one would
+	// claim a setting that never reached the wire. The column and the metrics
+	// pill's leading segment stay for messages persisted before that change.
 	result.CostNanoUSD, result.CostPriced = costFromWire(res.Usage)
 	if !result.CostPriced {
 		noteUnpriced(ctx, model)

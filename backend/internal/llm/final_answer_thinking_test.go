@@ -64,23 +64,21 @@ func TestClient_StreamSuppressesThinkingAndWidensBudgetFromContext(t *testing.T)
 	if req.MaxCompletionTokens != 4096 {
 		t.Fatalf("max_completion_tokens = %d, want 4096", req.MaxCompletionTokens)
 	}
-	// The wire drops reasoning_effort, but the StreamResult must keep the composer's
-	// chosen effort so the persisted message doesn't lose its reasoning-effort badge.
-	if result.ReasoningEffort != "high" {
-		t.Fatalf("result.ReasoningEffort = %q, want high (preserved for the persisted message)", result.ReasoningEffort)
+	// Nothing to preserve: no effort is sent on any turn, so none is recorded.
+	if result.ReasoningEffort != "" {
+		t.Fatalf("result.ReasoningEffort = %q, want it blank", result.ReasoningEffort)
 	}
 }
 
 // A normal turn (no overrides) keeps thinking on — no thinking field is sent — and
 // uses the client's default completion budget, unaffected by the override plumbing.
 func TestClient_StreamKeepsThinkingWhenNotSuppressed(t *testing.T) {
-	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{ReasoningEffort: "high"})
-	req, _ := captureStreamRequest(ctx, t)
+	req, _ := captureStreamRequest(context.Background(), t)
 	if req.Thinking != nil {
 		t.Fatalf("thinking = %+v, want nil for a normal turn", req.Thinking)
 	}
-	if req.ReasoningEffort != "high" {
-		t.Fatalf("reasoning_effort = %q, want high", req.ReasoningEffort)
+	if req.ReasoningEffort != "" {
+		t.Fatalf("reasoning_effort = %q, want it absent", req.ReasoningEffort)
 	}
 	if req.MaxCompletionTokens != defaultMaxCompletionTokens {
 		t.Fatalf("max_completion_tokens = %d, want default %d", req.MaxCompletionTokens, defaultMaxCompletionTokens)

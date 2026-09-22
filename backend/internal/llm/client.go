@@ -35,35 +35,65 @@ const documentToolMaxCompletionTokens = 32768
 // and flushes it in one burst, ~82s of silence measured for a ~10KB spec.
 const documentToolTimeout = 5 * time.Minute
 
-// Hardcoded MiMo model selection. Loom targets MiMo specifically and is no
-// longer model-configurable: textModel handles normal (text-only) turns, and
-// visionModel (the omnimodal non-Pro variant) is used only for turns that carry
-// image input — mimo-v2.5-pro is text-only and 404s on any image_url part.
+// Hardcoded MiMo model selection. Loom targets MiMo specifically and is not
+// model-configurable.
 //
-// shortGateModel is the same non-Pro deployment, named separately because it is
-// picked for a different reason: the short gates (see shortGate) need a fast
-// answer, not a deep one, and the non-Pro variant responds sooner. Keeping the
-// names apart means a future change to either use — a Pro that accepts images,
-// a dedicated small model — moves one without silently moving the other.
+// ONE model for every chat call as of the V2.6 generation. Both splits that
+// justified three separate constants disappeared at that version bump:
 //
-// Not "the non-reasoning model": mimo-v2.5 is the same reasoning family as Pro
-// and thinks when asked to. The gates suppress that per request (see
-// llmwire.ReasoningOff) and route here because this deployment queues less,
-// not because it cannot reason.
+//   - Vision. mimo-v2.5-pro is text-only and 404s on any image_url part, which
+//     is the only reason image turns were routed to the non-Pro variant.
+//     mimo-v2.6-flash accepts image input — measured 2026-09-22 with
+//     mimo-v2.5-pro re-probed as a 404 control in the same run (llmwire
+//     FINDINGS.md, MiMoProRejectsImageInput). Nothing left to route around.
+//   - Queueing. The short gates ran on the non-Pro deployment because it
+//     answered sooner, after a Pro was measured spending 78s on a 64-token
+//     routing call. mimo-v2.6-flash measures 0.9-2.6s per call, longest
+//     data-frame gap 522ms. The gates are no longer the latency risk that
+//     split existed to contain.
+//
+// flash rather than mimo-v2.6-pro because loom's workload does not buy what Pro
+// sells. Thinking is disabled at every helper call site (see complete), the two
+// are within the same latency class, and flash is a third of the price. The
+// three constants are kept as separate names rather than collapsed into one so
+// a future split — a cheaper gate model, a Pro that earns its keep on synthesis
+// — moves one use without silently moving the others.
+//
+// The one measured caveat, which no current call site hits: with thinking OFF,
+// flash answered a one-step arithmetic prompt wrong in three runs out of three
+// (155, 145, 195 against 205) while Pro was correct in all three. Loom's
+// thinking-off sites summarize, label and describe; none of them calculates. A
+// site that needs arithmetic without thinking wants Pro.
 //
 // These are wire ids llmwire resolves against its profile registry; the
 // profile ships the host, and the key comes from LLMWIRE_MIMO_API_KEY, the
 // variable the profiles' provider names.
 const (
-	textModel      = "mimo-v2.5-pro"
-	visionModel    = "mimo-v2.5"
-	shortGateModel = "mimo-v2.5"
+	textModel      = "mimo-v2.6-flash"
+	visionModel    = "mimo-v2.6-flash"
+	shortGateModel = "mimo-v2.6-flash"
 )
 
-// DefaultReasoningEffort is the reasoning depth used when a turn carries no
-// per-request choice. Exported so the httpapi layer normalizes to the same value
-// the llm client falls back to, keeping the default defined in exactly one place.
-const DefaultReasoningEffort = "high"
+// No reasoning-effort default, and no effort sent at all: loom omits the
+// parameter rather than choosing a level for the caller.
+//
+// The levels are inert on this family. Measured 2026-09-22, five samples per
+// level on a variable-depth prompt (llmwire FINDINGS.md,
+// MiMoEffortLadderIsReal): every range overlaps every other on both V2.6
+// models, and on flash the three levels span 17 tokens between them with
+// "high" the LOWEST mean of the three. There is no ladder to climb.
+//
+// Omitting beats hardcoding one. On both models the no-level range reaches
+// HIGHER than any level's (flash 117-1784 against high's 104-117): sending a
+// level appears to flatten the distribution, losing the occasional deep pass
+// without buying a controllable floor. "high" — the old default here — is
+// therefore the option that most reliably suppresses deep thinking, which is
+// the opposite of what the name promises. Absent means assume nothing.
+//
+// Thinking itself is still controlled, by the toggle rather than the level:
+// llmwire.ReasoningOff at every helper site (see complete) and at the forced
+// final answer (see InferenceMetadata.SuppressThinking). Measured: the toggle
+// is honoured and beats an effort level sent in the same request.
 
 // Config holds the chat client settings loom owns. The endpoint is llmwire's:
 // BaseURL is an explicit override for a test fake or a stand-in endpoint and
@@ -117,7 +147,6 @@ type Client struct {
 	model               string
 	visionModel         string
 	shortGateModel      string
-	reasoningEffort     string
 	maxCompletionTokens int
 	timeout             time.Duration
 }
@@ -172,15 +201,18 @@ func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 		model:               textModel,
 		visionModel:         visionModel,
 		shortGateModel:      shortGateModel,
-		reasoningEffort:     DefaultReasoningEffort,
 		maxCompletionTokens: maxCompletionTokens,
 		timeout:             cfg.Timeout,
 	}, nil
 }
 
-// ModelSummary describes the hardcoded chat models for the startup capability line.
+// ModelSummary describes the hardcoded chat model for the startup capability
+// line. One name, because one model now serves text, vision and the short
+// gates. If a future change splits the constants again this wants the roles
+// spelled out; a conditional here is dead code while they agree, which go vet
+// flags as a suspect constant comparison.
 func ModelSummary() string {
-	return textModel + " (text) / " + visionModel + " (vision)"
+	return textModel
 }
 
 // modelForMessages selects the chat model for a request: the omnimodal vision
@@ -204,17 +236,6 @@ func (c *Client) modelForMessages(messages []Message) string {
 // never run long. Sized with headroom for an 8-word gerund title — a call that
 // still hits the cap is treated as truncated and discarded (see title decoders).
 const utilityMaxCompletionTokens = 32
-
-// resolveReasoningEffort picks the reasoning depth for a turn: the per-request
-// value carried on the context (set by the httpapi layer from the composer
-// selection) when present, else the client's configured default. Utility calls
-// (titles, classifiers) never set the metadata field, so they keep the default.
-func (c *Client) resolveReasoningEffort(ctx context.Context) string {
-	if effort := inferenceMetadataFromContext(ctx).ReasoningEffort; effort != "" {
-		return effort
-	}
-	return c.reasoningEffort
-}
 
 // completion is what a non-streaming helper call returned. Empty is the
 // well-formed reply with no choices the endpoint emits when it drops a request;
@@ -272,16 +293,22 @@ func (c *Client) complete(ctx context.Context, model string, messages []Message,
 
 // shortGate runs a helper call that needs a fast answer rather than a deep one
 // — the short gates a turn blocks on: image intent, thread classification, and
-// the two title generators. On top of disabled thinking it routes to
-// shortGateModel, the non-Pro variant, which responds sooner (measured against
-// a Pro that spent 78s queueing on a 64-token routing call).
+// the two title generators. It routes to shortGateModel on top of disabled
+// thinking.
 //
-// Deliberately NOT used by anything that writes prose a reader keeps: the forced
-// final answer disables thinking too (see InferenceMetadata.SuppressThinking) but
-// is a synthesis over gathered research and stays on the Pro model, as do project
-// memory and the project description. The bar is that the answer is a label, an
-// id or a handful of words nobody reads as prose — not that the deployment
-// cannot reason, which is false; mimo-v2.5 reasons like Pro when asked to.
+// That routing is currently a no-op: every chat constant is mimo-v2.6-flash, so
+// a gate and a main turn hit the same deployment. The seam is kept because the
+// gates are the calls a turn WAITS on before its first token — three of them
+// serialized, each on a 30s bound — so they are where a cheaper or faster model
+// would be pointed first, and pointing it wants one constant to move, not a
+// grep through the call sites. Historically the split was a Pro that spent 78s
+// queueing on a 64-token routing call.
+//
+// Deliberately NOT used by anything that writes prose a reader keeps: the
+// forced final answer disables thinking too (see
+// InferenceMetadata.SuppressThinking) but is a synthesis over gathered
+// research, as are project memory and the project description. The bar is that
+// the answer is a label, an id or a handful of words nobody reads as prose.
 func (c *Client) shortGate(ctx context.Context, messages []Message, maxTokens int, decided func(completion) []slog.Attr) (completion, error) {
 	return c.complete(ctx, c.shortGateModel, messages, maxTokens, decided)
 }

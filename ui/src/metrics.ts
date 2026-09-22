@@ -119,9 +119,10 @@ export function hasRenderableMetrics(message: Message): boolean {
 
 /**
  * Build the metrics line (effort · duration · ↑in (cached/c) · ↓out (reasoning/r) · context% ·
- * Σ $thread), or null when there is nothing renderable. The lead segment is the
- * reasoning-effort level used for that inference (no model name); omitted when the message
- * stored no effort. The cost segment is the thread's running total through this message
+ * Σ $thread), or null when there is nothing renderable. The leading effort segment is
+ * historical: loom sends no reasoning level any more, so new messages store none and the
+ * line opens on the duration. It still renders for messages persisted before that change,
+ * which is why the segment stays. The cost segment is the thread's running total
  * (`threadCostNanoUsd`, from threadCostThrough), never the turn's own figure: what the
  * reader wants next to the context gauge is what the conversation has cost so far.
  */

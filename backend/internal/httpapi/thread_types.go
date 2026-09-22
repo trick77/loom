@@ -120,9 +120,6 @@ type streamMessageRequest struct {
 	Content               string   `json:"content"`
 	DocumentAttachmentIDs []string `json:"documentAttachmentIds"`
 	ImageAttachmentIDs    []string `json:"imageAttachmentIds"`
-	// ReasoningEffort is the composer's chosen reasoning depth (low/medium/high).
-	// Empty or unknown values fall back to the default via normalizeReasoningEffort.
-	ReasoningEffort string `json:"reasoningEffort"`
 	// PastedTexts are large blocks the user pasted into the composer, collapsed
 	// into "Pasted" chips. Their text is already folded into Content (so the model
 	// sees it); they are persisted separately only so the sent bubble can render a
@@ -134,9 +131,8 @@ type streamMessageRequest struct {
 // the new user Content plus the prior turns as History (the server persists
 // nothing, so it cannot reload them). Only user/assistant roles are honored.
 type incognitoStreamRequest struct {
-	Content         string                  `json:"content"`
-	History         []incognitoHistoryEntry `json:"history"`
-	ReasoningEffort string                  `json:"reasoningEffort"`
+	Content string                  `json:"content"`
+	History []incognitoHistoryEntry `json:"history"`
 }
 
 type incognitoHistoryEntry struct {

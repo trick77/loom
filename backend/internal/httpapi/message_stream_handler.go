@@ -41,20 +41,6 @@ var (
 	errStreamThreadDeleted = errors.New("stream canceled: thread deleted")
 )
 
-// normalizeReasoningEffort clamps the client-supplied reasoning depth to the
-// values MiMo accepts (low/medium/high), defaulting anything empty or unknown to
-// llm.DefaultReasoningEffort. Trusting the raw string would let the client push an
-// arbitrary value into the outbound reasoning_effort field, which MiMo rejects
-// with a 400.
-func normalizeReasoningEffort(effort string) string {
-	switch effort {
-	case "low", "medium", "high":
-		return effort
-	default:
-		return llm.DefaultReasoningEffort
-	}
-}
-
 // streamHeartbeatInterval is how often the SSE stream emits a keep-alive comment
 // while silent. Kept well under the 60-120s idle timeouts common to proxies, load
 // balancers, and edges (e.g. Cloudflare ~100s) so a long silent tool-call
@@ -288,7 +274,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			editSource = &src
 		}
 	}
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, ReasoningEffort: normalizeReasoningEffort(body.ReasoningEffort)}
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	// Background reasoning-title generation. The deferred wait is a safety net so
 	// no title goroutine writes to the SSE stream after the handler returns on an
 	// early error path.

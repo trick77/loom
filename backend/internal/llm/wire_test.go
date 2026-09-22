@@ -131,8 +131,9 @@ func TestStreamChat_RecordsPricedCostIntoTheAccumulator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// mimo-v2.5-pro: 1000 input at 0.435 USD/M, 100 output at 0.87 USD/M.
-	const want = int64(1000*435 + 100*870)
+	// mimo-v2.6-flash: 1000 input at 0.14 USD/M, 100 output at 0.28 USD/M,
+	// in nano-USD. A third of what mimo-v2.5-pro cost for the same turn.
+	const want = int64(1000*140 + 100*280)
 	if !result.CostPriced || result.CostNanoUSD != want {
 		t.Fatalf("cost = %d priced=%v, want %d", result.CostNanoUSD, result.CostPriced, want)
 	}

@@ -105,7 +105,7 @@ test("buildMetricsString ends with the thread's running cost, and omits it when 
   expect(unpriced).toBe("5s  ·  ↑ 1 000  ·  ↓ 200");
 });
 
-test("buildMetricsString leads with the reasoning effort level, without the model or parentheses", () => {
+test("buildMetricsString leads with a stored reasoning effort, without the model or parentheses", () => {
   const line = buildMetricsString(
     assistant({
       model: "mimo-v2.5-pro",

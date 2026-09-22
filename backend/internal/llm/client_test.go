@@ -69,8 +69,10 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	if !gotBody.Stream {
 		t.Fatal("stream = false, want true")
 	}
-	if gotBody.ReasoningEffort != "high" {
-		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
+	// No effort level on the wire; see TestClient_StreamSendsNoReasoningEffort
+	// for why the field is omitted rather than defaulted.
+	if gotBody.ReasoningEffort != "" {
+		t.Fatalf("reasoning_effort = %q, want it absent", gotBody.ReasoningEffort)
 	}
 	if gotBody.MaxCompletionTokens != 2048 {
 		t.Fatalf("max_completion_tokens = %d, want 2048", gotBody.MaxCompletionTokens)
@@ -321,8 +323,10 @@ func TestClient_StreamChatResultCapturesModelAndReasoningEffortOnDonePath(t *tes
 	if result.Model != textModel {
 		t.Fatalf("model = %q, want %q", result.Model, textModel)
 	}
-	if result.ReasoningEffort != "high" {
-		t.Fatalf("reasoning effort = %q, want high", result.ReasoningEffort)
+	// Blank: no level is sent, so none is recorded. The field stays on
+	// StreamResult only for messages persisted before that change.
+	if result.ReasoningEffort != "" {
+		t.Fatalf("reasoning effort = %q, want it blank", result.ReasoningEffort)
 	}
 }
 
@@ -456,8 +460,10 @@ func TestClient_StreamChatSendsHardcodedReasoningEffort(t *testing.T) {
 	if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
 		t.Fatalf("StreamChat() error: %v", err)
 	}
-	if gotBody.ReasoningEffort != "high" {
-		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
+	// No effort level on the wire; see TestClient_StreamSendsNoReasoningEffort
+	// for why the field is omitted rather than defaulted.
+	if gotBody.ReasoningEffort != "" {
+		t.Fatalf("reasoning_effort = %q, want it absent", gotBody.ReasoningEffort)
 	}
 }
 

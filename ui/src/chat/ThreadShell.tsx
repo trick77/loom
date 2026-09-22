@@ -95,7 +95,6 @@ import {
   upsertThreadById,
 } from "../projects/projectMembership";
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
-import { DEFAULT_REASONING_EFFORT, type ReasoningEffort } from "./reasoning";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 
 export { buildImageStats } from "./artifacts";
@@ -195,13 +194,6 @@ export function ThreadShell({
   const [incognitoMessages, setIncognitoMessages] = useState<
     MessageWithActivityTrace[]
   >([]);
-  // The composer's reasoning-effort choice. In-memory only — it is not persisted
-  // and does not carry across threads: every new thread opens at the default
-  // (navigateToNew resets it), and a manual change applies to the current thread
-  // only. High is the model's own default.
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(
-    DEFAULT_REASONING_EFFORT,
-  );
   // A slash command ("/mcp", "/tools", …) opens this ephemeral overlay panel
   // instead of sending a message; null when no panel is open.
   const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(
@@ -485,9 +477,6 @@ export function ThreadShell({
     setActiveThread(null);
     setMessages([]);
     setSendError("");
-    // Every new thread starts at the default reasoning effort; the previous
-    // thread's choice does not carry over (it is never persisted).
-    setReasoningEffort(DEFAULT_REASONING_EFFORT);
     navigate({ view: "new" });
     setRoute({ view: "new" });
   }, [onThread]);
@@ -1136,7 +1125,6 @@ export function ThreadShell({
         {
           documentAttachmentIds,
           imageAttachmentIds,
-          reasoningEffort,
           pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
         },
       );
@@ -1305,7 +1293,6 @@ export function ThreadShell({
           },
         },
         abortController.signal,
-        { reasoningEffort },
       );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -1377,8 +1364,6 @@ export function ThreadShell({
             streamingBlocks={activeRun.blocks}
             isSending={activeThreadIsStreaming}
             sendError={visibleSendError}
-            reasoningEffort={reasoningEffort}
-            onReasoningEffortChange={setReasoningEffort}
             onDraftChange={(text) => setDraftText(draftScope, text)}
             pastedTexts={draft.pastedTexts}
             onAddPastedText={handleAddPastedText}
@@ -1546,8 +1531,6 @@ export function ThreadShell({
               isSending={false}
               sendDisabled={false}
               openThreadMenuID={openThreadMenuID}
-              reasoningEffort={reasoningEffort}
-              onReasoningEffortChange={setReasoningEffort}
               onBack={navigateToProjects}
               onDraftChange={(text) => setDraftText(draftScope, text)}
               pastedTexts={draft.pastedTexts}
@@ -1593,8 +1576,6 @@ export function ThreadShell({
             sendError={visibleSendError}
             attachments={pendingAttachments}
             attachNote={pendingAttachNote}
-            reasoningEffort={reasoningEffort}
-            onReasoningEffortChange={setReasoningEffort}
             onOpenSidebar={() => setMobileSidebarOpen(true)}
             onDraftChange={(text) => setDraftText(draftScope, text)}
             pastedTexts={draft.pastedTexts}
@@ -1624,8 +1605,6 @@ export function ThreadShell({
             isSending={activeThreadIsStreaming}
             sendDisabled={false}
             openThreadMenuID={openThreadMenuID}
-            reasoningEffort={reasoningEffort}
-            onReasoningEffortChange={setReasoningEffort}
             onDraftChange={(text) => setDraftText(draftScope, text)}
             pastedTexts={draft.pastedTexts}
             onAddPastedText={handleAddPastedText}
