@@ -55,6 +55,11 @@ func TestShortGatesRunOnTheShortGateModel(t *testing.T) {
 // thinking is disabled too. The bar is what the call produces — a label or an id,
 // not prose — and not "thinking is off", which the forced final answer also does
 // and must never be downgraded by widening this routing.
+//
+// It asserts proseModel, not textModel. Those were the same constant while one
+// model served everything; at V2.6 they diverged, and a version of this test
+// that still read textModel would have gone on passing while the helper moved
+// to flash — which is where thinking-off prose gets arithmetic wrong.
 func TestLongFormHelpersStayOnThePro(t *testing.T) {
 	server, models := modelRecorder(t, `{"choices":[{"message":{"role":"assistant","content":"a description"},"finish_reason":"stop"}]}`)
 	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
@@ -66,7 +71,7 @@ func TestLongFormHelpersStayOnThePro(t *testing.T) {
 	if len(*models) != 1 {
 		t.Fatalf("recorded %d requests, want 1", len(*models))
 	}
-	if (*models)[0] != textModel {
-		t.Fatalf("project description used %q, want the Pro model %q", (*models)[0], textModel)
+	if (*models)[0] != proseModel {
+		t.Fatalf("project description used %q, want the Pro model %q", (*models)[0], proseModel)
 	}
 }

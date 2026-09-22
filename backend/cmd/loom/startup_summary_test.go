@@ -65,7 +65,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	}}, startupRuntime{DocToolCount: 5, ImageToolCount: 1, DiscoveredToolCount: 3})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
-	assertCapability(t, items, "chat", "enabled", "model=mimo-v2.5-pro (text) / mimo-v2.5 (vision)")
+	assertCapability(t, items, "chat", "enabled", "model=mimo-v2.6-flash")
 	assertCapability(t, items, "embeddings", "enabled", "text-embedding-3-small")
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")

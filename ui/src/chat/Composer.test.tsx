@@ -23,8 +23,6 @@ test("reports unsupported picker files instead of silently ignoring them", () =>
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -60,8 +58,6 @@ test("attaches supported picker files and reports unsupported companions", () =>
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -96,8 +92,6 @@ test("focuses the textarea and moves the caret to the end when focusSignal chang
         focusSignal={focusSignal}
         isSending={false}
         placeholder="Write a message..."
-        reasoningEffort="high"
-        onReasoningEffortChange={() => undefined}
         onDraftChange={() => undefined}
         onSend={() => undefined}
         onStop={() => undefined}
@@ -133,8 +127,6 @@ test("renders uploading attachment previews inside the composer", () => {
       isSending={false}
       placeholder="Write a message..."
       attachments={attachments}
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -173,8 +165,6 @@ test("shows a thumbnail for previewable image attachments", () => {
       isSending={false}
       placeholder="Write a message..."
       attachments={attachments}
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -211,8 +201,6 @@ test("keeps attachment previews above the draft text area", () => {
       isSending={false}
       placeholder="Write a message..."
       attachments={attachments}
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -251,8 +239,6 @@ test("removes an attachment preview before send", () => {
       isSending={false}
       placeholder="How can I help you today?"
       attachments={attachments}
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -275,8 +261,6 @@ test("collapses an oversized paste into a pasted-text chip", () => {
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={onDraftChange}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -304,8 +288,6 @@ test("drops the selected draft text when a large paste replaces a selection", ()
       draft="old draft"
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={onDraftChange}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -333,8 +315,6 @@ test("collapses a tall paste that exceeds the line threshold under the char limi
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -361,8 +341,6 @@ test("leaves a paste at the threshold inline", () => {
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -388,8 +366,6 @@ test("renders a pasted-text chip with a preview and badge, and removes it", () =
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -423,8 +399,6 @@ test("attaches a pasted screenshot, synthesizing a filename for a nameless image
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -457,8 +431,6 @@ test("preserves pasted text when the clipboard carries both text and an image re
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={onDraftChange}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -488,8 +460,6 @@ test("reports an unsupported pasted image type instead of silently ignoring it",
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}
@@ -520,8 +490,6 @@ test("ignores a pasted image when attachments are unavailable (incognito)", () =
       draft=""
       isSending={false}
       placeholder="Write a message..."
-      reasoningEffort="high"
-      onReasoningEffortChange={() => undefined}
       onDraftChange={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}

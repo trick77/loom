@@ -69,8 +69,10 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	if !gotBody.Stream {
 		t.Fatal("stream = false, want true")
 	}
-	if gotBody.ReasoningEffort != "high" {
-		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
+	// No effort level on the wire; see TestClient_StreamSendsNoReasoningEffort
+	// for why the field is omitted rather than defaulted.
+	if gotBody.ReasoningEffort != "" {
+		t.Fatalf("reasoning_effort = %q, want it absent", gotBody.ReasoningEffort)
 	}
 	if gotBody.MaxCompletionTokens != 2048 {
 		t.Fatalf("max_completion_tokens = %d, want 2048", gotBody.MaxCompletionTokens)
@@ -321,8 +323,10 @@ func TestClient_StreamChatResultCapturesModelAndReasoningEffortOnDonePath(t *tes
 	if result.Model != textModel {
 		t.Fatalf("model = %q, want %q", result.Model, textModel)
 	}
-	if result.ReasoningEffort != "high" {
-		t.Fatalf("reasoning effort = %q, want high", result.ReasoningEffort)
+	// Blank: no level is sent, so none is recorded. The field stays on
+	// StreamResult only for messages persisted before that change.
+	if result.ReasoningEffort != "" {
+		t.Fatalf("reasoning effort = %q, want it blank", result.ReasoningEffort)
 	}
 }
 
@@ -436,7 +440,7 @@ func TestClient_StreamChatLogsRawResponseWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestClient_StreamChatSendsHardcodedReasoningEffort(t *testing.T) {
+func TestClient_StreamChatSendsNoReasoningEffort(t *testing.T) {
 	var gotBody struct {
 		ReasoningEffort string `json:"reasoning_effort"`
 	}
@@ -456,8 +460,10 @@ func TestClient_StreamChatSendsHardcodedReasoningEffort(t *testing.T) {
 	if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
 		t.Fatalf("StreamChat() error: %v", err)
 	}
-	if gotBody.ReasoningEffort != "high" {
-		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
+	// No effort level on the wire; see TestClient_StreamSendsNoReasoningEffort
+	// for why the field is omitted rather than defaulted.
+	if gotBody.ReasoningEffort != "" {
+		t.Fatalf("reasoning_effort = %q, want it absent", gotBody.ReasoningEffort)
 	}
 }
 
@@ -969,7 +975,8 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			// reasoning_effort high would normally apply to MiMo; utility calls must override it.
+			// Utility calls disable thinking outright; no effort level is sent on
+			// any path, so there is nothing for them to override.
 			client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 			if _, err := tc.call(client); err != nil {
 				t.Fatalf("call error: %v", err)

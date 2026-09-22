@@ -29,12 +29,6 @@ type Metadata struct {
 	ThreadID string
 	Purpose  string
 	Round    int
-	// ReasoningEffort is the per-request reasoning depth chosen for this turn
-	// (low/medium/high). Empty falls back to the client's default. It rides the
-	// context so the httpapi layer can steer the effort without threading a new
-	// argument through every StreamChatWithTools call site; utility/title calls
-	// leave it empty and keep the default. See llm.resolveReasoningEffort.
-	ReasoningEffort string
 	// SuppressThinking turns MiMo's native thinking off for this turn
 	// ({"thinking":{"type":"disabled"}}), the same lever the utility calls use.
 	// Set on the forced-final answer turns: by then all research reasoning has

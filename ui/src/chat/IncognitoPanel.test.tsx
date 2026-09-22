@@ -137,8 +137,6 @@ describe("IncognitoPanel", () => {
         streamingBlocks={[]}
         isSending
         sendError=""
-        reasoningEffort="high"
-        onReasoningEffortChange={vi.fn()}
         onDraftChange={vi.fn()}
         pastedTexts={[]}
         onAddPastedText={vi.fn()}
@@ -159,8 +157,6 @@ describe("IncognitoPanel", () => {
         streamingBlocks={[{ type: "text", content: "Answering" }]}
         isSending
         sendError=""
-        reasoningEffort="high"
-        onReasoningEffortChange={vi.fn()}
         onDraftChange={vi.fn()}
         pastedTexts={[]}
         onAddPastedText={vi.fn()}
@@ -183,8 +179,6 @@ describe("IncognitoPanel", () => {
         streamingBlocks={[]}
         isSending={false}
         sendError="Model unavailable"
-        reasoningEffort="high"
-        onReasoningEffortChange={vi.fn()}
         onDraftChange={vi.fn()}
         pastedTexts={[]}
         onAddPastedText={vi.fn()}

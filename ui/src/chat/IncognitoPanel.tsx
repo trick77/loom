@@ -9,7 +9,6 @@ import { AssistantProse, MessageBubble } from "./messages";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import type { MessagePastedText } from "../api";
 import type { PastedText } from "./pastedText";
-import type { ReasoningEffort } from "./reasoning";
 import type { MessageWithActivityTrace } from "./types";
 import { previousUserMessage } from "./threadUtils";
 import { WorkingDot } from "./WorkingDot";
@@ -27,8 +26,6 @@ export function IncognitoPanel({
   streamingBlocks,
   isSending,
   sendError,
-  reasoningEffort,
-  onReasoningEffortChange,
   onDraftChange,
   pastedTexts,
   onAddPastedText,
@@ -44,8 +41,6 @@ export function IncognitoPanel({
   streamingBlocks: ContentBlock[];
   isSending: boolean;
   sendError: string;
-  reasoningEffort: ReasoningEffort;
-  onReasoningEffortChange(value: ReasoningEffort): void;
   onDraftChange(value: string): void;
   pastedTexts: PastedText[];
   onAddPastedText(text: string): void;
@@ -91,8 +86,6 @@ export function IncognitoPanel({
       focusSignal={focusSignal}
       isSending={isSending}
       placeholder={t("incognito.placeholder")}
-      reasoningEffort={reasoningEffort}
-      onReasoningEffortChange={onReasoningEffortChange}
       onDraftChange={onDraftChange}
       pastedTexts={pastedTexts}
       onAddPastedText={onAddPastedText}

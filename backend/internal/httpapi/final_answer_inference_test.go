@@ -10,7 +10,7 @@ import (
 // top of the normal purpose/round metadata, so the forced final answer writes
 // prose instead of burning the whole budget on reasoning.
 func TestFinalAnswerInferenceSuppressesThinkingAndWidensBudget(t *testing.T) {
-	base := llm.InferenceMetadata{ReasoningEffort: "high", ThreadID: "thr_1"}
+	base := llm.InferenceMetadata{ThreadID: "thr_1"}
 
 	got := finalAnswerInference(base, "chat_final", maxToolRounds+1)
 

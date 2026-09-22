@@ -24,7 +24,7 @@ test("renders nothing without renderable metrics", () => {
   expect(container).toBeEmptyDOMElement();
 });
 
-test("renders the metrics line when data is present, leading with the reasoning effort", () => {
+test("renders the metrics line when data is present, leading with a stored reasoning effort", () => {
   render(
     <MessageMetrics
       message={assistant({

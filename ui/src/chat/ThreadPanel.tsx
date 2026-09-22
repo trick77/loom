@@ -29,7 +29,6 @@ import { AssistantProse, MessageBubble } from "./messages";
 import { webSourceMap } from "./sourcePills";
 import { assignDisplayNumbers } from "./sourceNumbering";
 import type { PastedText } from "./pastedText";
-import type { ReasoningEffort } from "./reasoning";
 import {
   isImageAttachment,
   toSentAttachment,
@@ -57,8 +56,6 @@ export function ThreadPanel({
   isSending,
   sendDisabled,
   openThreadMenuID,
-  reasoningEffort,
-  onReasoningEffortChange,
   onOpenSidebar,
   onDraftChange,
   pastedTexts,
@@ -91,8 +88,6 @@ export function ThreadPanel({
   isSending: boolean;
   sendDisabled: boolean;
   openThreadMenuID: string | null;
-  reasoningEffort: ReasoningEffort;
-  onReasoningEffortChange(value: ReasoningEffort): void;
   onDraftChange(value: string): void;
   pastedTexts: PastedText[];
   onAddPastedText(text: string): void;
@@ -611,8 +606,6 @@ export function ThreadPanel({
                 isSending={isSending}
                 sendDisabled={sendDisabled || imageUploadPending}
                 placeholder={t("thread.messagePlaceholder")}
-                reasoningEffort={reasoningEffort}
-                onReasoningEffortChange={onReasoningEffortChange}
                 onDraftChange={onDraftChange}
                 pastedTexts={pastedTexts}
                 onAddPastedText={onAddPastedText}

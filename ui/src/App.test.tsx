@@ -934,7 +934,7 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
       "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "It is hot", reasoningEffort: "high" }),
+        body: JSON.stringify({ content: "It is hot" }),
       }),
     ),
   );
@@ -1147,7 +1147,6 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
         body: JSON.stringify({
           content: "What is this image?",
           imageAttachmentIds: ["art_image"],
-          reasoningEffort: "high",
         }),
       }),
     ),
@@ -1277,7 +1276,6 @@ test('"Use in thread" references an existing artifact without re-uploading it', 
         body: JSON.stringify({
           content: "Describe this",
           imageAttachmentIds: ["art_1"],
-          reasoningEffort: "high",
         }),
       }),
     ),
@@ -1402,7 +1400,6 @@ test("retries a failed deferred new-chat image upload before streaming", async (
         body: JSON.stringify({
           content: "What is this image?",
           imageAttachmentIds: ["art_image_retry"],
-          reasoningEffort: "high",
         }),
       }),
     ),

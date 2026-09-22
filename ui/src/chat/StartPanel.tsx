@@ -7,7 +7,6 @@ import { Icon } from "./Icon";
 import { pickGreeting } from "./threadUtils";
 import { PromptStarters } from "./PromptStarters";
 import type { PastedText } from "./pastedText";
-import type { ReasoningEffort } from "./reasoning";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
 import loomLogo from "../assets/loom-logo.svg";
@@ -20,8 +19,6 @@ export function StartPanel({
   sendError,
   attachments,
   attachNote,
-  reasoningEffort,
-  onReasoningEffortChange,
   onOpenSidebar,
   onDraftChange,
   pastedTexts,
@@ -41,8 +38,6 @@ export function StartPanel({
   sendError: string;
   attachments: ComposerAttachment[];
   attachNote: string;
-  reasoningEffort: ReasoningEffort;
-  onReasoningEffortChange(value: ReasoningEffort): void;
   onOpenSidebar(): void;
   onDraftChange(value: string): void;
   pastedTexts: PastedText[];
@@ -109,8 +104,6 @@ export function StartPanel({
             isSending={isSending}
             sendDisabled={sendDisabled}
             placeholder={t("startPanel.placeholder")}
-            reasoningEffort={reasoningEffort}
-            onReasoningEffortChange={onReasoningEffortChange}
             onDraftChange={onDraftChange}
             pastedTexts={pastedTexts}
             onAddPastedText={onAddPastedText}
