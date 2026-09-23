@@ -121,11 +121,19 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			// A normal textual answer ends the loop. But if the model stops
 			// after running tools without producing any text, fall through to a
 			// forced, tool-free final answer instead of returning an empty (and
-			// therefore discarded) response.
-			if strings.TrimSpace(result.Content) != "" || !toolRan {
+			// therefore discarded) response. The same applies when thinking ate
+			// the whole completion cap (finish_reason=length, no text): the forced
+			// final runs with thinking off, so it cannot run out the same way.
+			empty := strings.TrimSpace(result.Content) == ""
+			truncated := empty && result.FinishReason == "length"
+			if !empty || (!toolRan && !truncated) {
 				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 			}
-			slog.Info("forcing final answer", "reason", "empty_after_tools", "round", round)
+			reason := "empty_after_tools"
+			if truncated {
+				reason = "reasoning_hit_cap"
+			}
+			slog.Info("forcing final answer", "reason", reason, "round", round)
 			break
 		}
 		// Log every tool call's argument size so document payloads are measurable in

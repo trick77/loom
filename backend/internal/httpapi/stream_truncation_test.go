@@ -70,3 +70,48 @@ func TestStreamMessageStopsOnTruncatedToolCall(t *testing.T) {
 		t.Fatalf("persisted messages = %#v, want only the user message", store.messages)
 	}
 }
+
+// A first round that spends the whole completion cap on reasoning ends with
+// finish_reason=length, no text and no tool call. That must not surface as
+// "empty assistant response": the loop falls through to the forced final answer,
+// which runs with thinking off and so cannot spend its budget the same way.
+func TestStreamMessageRecoversFromReasoningOnlyTruncation(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+	}
+	llmClient := &fakeToolChatClient{
+		results: []llm.StreamResult{
+			{ReasoningContent: "thinking at length", FinishReason: "length"},
+		},
+		plain: "The actual answer.",
+	}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{
+				Type:     "function",
+				Function: llm.ToolFunction{Name: "search__web", Description: "Search", Parameters: map[string]any{"type": "object"}},
+			}},
+			result: "search result",
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Compare these two approaches"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "empty assistant response") {
+		t.Fatalf("reasoning-only truncation surfaced as an empty response:\n%s", body)
+	}
+	if len(llmClient.histories) != 2 {
+		t.Fatalf("model called %d times, want 2 (truncated round + forced final)", len(llmClient.histories))
+	}
+	if len(llmClient.tools[1]) != 0 {
+		t.Fatalf("forced final offered %d tools, want none", len(llmClient.tools[1]))
+	}
+	if len(store.messages) != 2 || store.messages[1].Content != "The actual answer." {
+		t.Fatalf("persisted messages = %#v, want the forced final answer", store.messages)
+	}
+}
