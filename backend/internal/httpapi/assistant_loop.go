@@ -466,7 +466,7 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writ
 	if err == nil && strings.TrimSpace(result.Content) == "" {
 		slog.Info("incognito turn produced no answer text; retrying tool-free", "recovered_tool_calls", len(result.ToolCalls))
 		retryHistory := append(append([]llm.Message(nil), history...), llm.Message{Role: "user", Content: incognitoDirectAnswerNudge})
-		if retryResult, retryErr := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, inferenceWithPurpose(inference, "chat", 2), nil); retryErr == nil && strings.TrimSpace(retryResult.Content) != "" {
+		if retryResult, retryErr := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, incognitoRetryInference(inference, result), nil); retryErr == nil && strings.TrimSpace(retryResult.Content) != "" {
 			result = retryResult
 		}
 	}
@@ -475,6 +475,17 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writ
 		return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
 	}
 	return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
+}
+
+// incognitoRetryInference picks the metadata for the incognito empty-answer
+// retry. A first turn that ran out at the cap spent it on reasoning, so a retry
+// with thinking still on would most likely run out the same way; it goes out
+// with thinking off instead, like the forced final answer.
+func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamResult) llm.InferenceMetadata {
+	if first.FinishReason == "length" {
+		return finalAnswerInference(metadata, "chat", 2)
+	}
+	return inferenceWithPurpose(metadata, "chat", 2)
 }
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
@@ -535,11 +546,11 @@ func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round 
 	return metadata
 }
 
-// finalAnswerMaxCompletionTokens is the widened completion budget for the forced
-// final answer. The default chat cap is sized for a single answer with thinking;
-// the forced final synthesizes many gathered sources with thinking off, so it
-// gets more room for prose (and never spends the budget on reasoning).
-const finalAnswerMaxCompletionTokens = 8192
+// finalAnswerMaxCompletionTokens is the completion budget for the forced final
+// answer. It matches the default chat cap: the forced final synthesizes many
+// gathered sources with thinking off, so the whole budget goes to prose, and it
+// must never be tighter than the answer a normal round could have written.
+const finalAnswerMaxCompletionTokens = 16384
 
 // finalAnswerInference builds the metadata for a forced final-answer turn: it
 // disables thinking and widens the completion budget. By this point all research
