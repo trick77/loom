@@ -25,8 +25,8 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatLogDir != "logs/llm-responses" {
 		t.Errorf("ChatLogDir default = %q, want logs/llm-responses", cfg.ChatLogDir)
 	}
-	if cfg.ChatMaxCompletionTokens != 2048 {
-		t.Errorf("ChatMaxCompletionTokens default = %d, want 2048", cfg.ChatMaxCompletionTokens)
+	if cfg.ChatMaxCompletionTokens != 16384 {
+		t.Errorf("ChatMaxCompletionTokens default = %d, want 16384", cfg.ChatMaxCompletionTokens)
 	}
 	if cfg.ChatTimeout != 4*time.Minute {
 		t.Errorf("ChatTimeout default = %s, want 4m0s", cfg.ChatTimeout)

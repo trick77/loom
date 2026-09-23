@@ -13,7 +13,11 @@ import (
 
 // Keep in sync with imagegen's direct-client fallback default.
 const defaultImageGenPollTimeout = 1 * time.Minute
-const defaultChatMaxCompletionTokens = 2048
+
+// defaultChatMaxCompletionTokens covers reasoning plus answer: MiMo counts both
+// against the cap, and with no reasoning_effort sent mimo-v2.6-flash thinks past
+// 2048 on its own, leaving no room for the answer.
+const defaultChatMaxCompletionTokens = 16384
 
 // defaultChatTimeout is the coarse total wall-clock budget for a streamed chat
 // turn. It only has to backstop a connection that hangs without the idle watchdog
