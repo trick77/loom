@@ -323,7 +323,7 @@ function AttachmentNotShared() {
 // collapsed, inactive activity panel; text blocks render prose (with
 // downloadable/pending-fenced-artifact detection); artifact blocks render the
 // generated-artifact card.
-function AssistantBlock({
+const AssistantBlock = memo(function AssistantBlock({
   block,
   sources,
   display,
@@ -343,7 +343,7 @@ function AssistantBlock({
       {block.content}
     </AssistantProse>
   );
-}
+});
 
 function SentAttachments({
   attachments,
@@ -503,7 +503,7 @@ function CodeBlock({
   );
 }
 
-export function ProseMarkdown({
+export const ProseMarkdown = memo(function ProseMarkdown({
   children,
   streaming = false,
   sources,
@@ -516,11 +516,18 @@ export function ProseMarkdown({
   /** Persisted index -> reader-facing number, from assignDisplayNumbers. */
   display?: DisplayMap;
 }) {
+  // react-markdown re-runs its whole pipeline when the plugin list or the
+  // component map changes identity, and both used to be rebuilt on every
+  // render, i.e. on every streamed token for every message on screen. The
+  // plugin list is memoized on its inputs; the component map is a constant.
   // rehypeKatex first so math renders before streamFade/sourcePills post-process the tree.
-  const rehypePlugins: PluggableList = [rehypeKatexPlugin, rehypeHighlight];
-  if (streaming) rehypePlugins.push(rehypeStreamFade);
-  if (sources !== undefined && display !== undefined)
-    rehypePlugins.push([rehypeSourcePills, sources, display]);
+  const rehypePlugins = useMemo<PluggableList>(() => {
+    const plugins: PluggableList = [rehypeKatexPlugin, rehypeHighlight];
+    if (streaming) plugins.push(rehypeStreamFade);
+    if (sources !== undefined && display !== undefined)
+      plugins.push([rehypeSourcePills, sources, display]);
+    return plugins;
+  }, [streaming, sources, display]);
   // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses.
   const normalized = useMemo(
     () => normalizeMathDelimiters(children),
@@ -531,48 +538,49 @@ export function ProseMarkdown({
       <Markdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={rehypePlugins}
-        components={
-          {
-            a({ children, ...props }) {
-              return (
-                <a {...props} target="_blank" rel="noreferrer">
-                  {children}
-                </a>
-              );
-            },
-            // Custom element emitted by rehypeSourcePills for each [n] citation.
-            // Cast: react-markdown's Components type is keyed by HTML tag names, so a
-            // custom element name isn't in the type — the runtime maps it fine.
-            // Spread rather than pick: the plugin also sets data attributes on the
-            // node (data-tight), and a hand-listed prop set silently drops them.
-            [SOURCE_PILL_TAG]: (props: Record<string, unknown>) => (
-              <SourcePill {...props} />
-            ),
-            img({ src, ...props }) {
-              // Only render images whose src is an absolute, loadable URL. The model
-              // sometimes embeds a generated image by its bare filename (e.g.
-              // `![Lego Set](lego-selfie-set.png)`), which can never resolve — the
-              // real image is already shown as an artifact card — so drop it instead
-              // of rendering a broken-image placeholder.
-              const ok =
-                typeof src === "string" && /^(https?:|data:)/i.test(src);
-              return ok ? <img src={src} {...props} /> : null;
-            },
-            pre: CodeBlock,
-          } as Components
-        }
+        components={markdownComponents}
       >
         {normalized}
       </Markdown>
     </div>
   );
-}
+});
+
+// markdownComponents maps markdown elements to the app's renderers. Nothing in
+// it depends on the message, so it is built once.
+const markdownComponents = {
+  a({ children, ...props }) {
+    return (
+      <a {...props} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    );
+  },
+  // Custom element emitted by rehypeSourcePills for each [n] citation.
+  // Cast: react-markdown's Components type is keyed by HTML tag names, so a
+  // custom element name isn't in the type — the runtime maps it fine.
+  // Spread rather than pick: the plugin also sets data attributes on the
+  // node (data-tight), and a hand-listed prop set silently drops them.
+  [SOURCE_PILL_TAG]: (props: Record<string, unknown>) => (
+    <SourcePill {...props} />
+  ),
+  img({ src, ...props }) {
+    // Only render images whose src is an absolute, loadable URL. The model
+    // sometimes embeds a generated image by its bare filename (e.g.
+    // `![Lego Set](lego-selfie-set.png)`), which can never resolve — the
+    // real image is already shown as an artifact card — so drop it instead
+    // of rendering a broken-image placeholder.
+    const ok = typeof src === "string" && /^(https?:|data:)/i.test(src);
+    return ok ? <img src={src} {...props} /> : null;
+  },
+  pre: CodeBlock,
+} as Components;
 
 // AssistantProse renders one run of assistant prose with the
 // downloadable/pending-fenced-artifact detection, but no action/metrics row — the
 // single bottom footer is rendered once per message by MessageBubble. Used for
 // each committed text block and for the live streaming text block.
-export function AssistantProse({
+export const AssistantProse = memo(function AssistantProse({
   children,
   streaming = false,
   sources,
@@ -666,7 +674,7 @@ export function AssistantProse({
       </ProseMarkdown>
     </div>
   );
-}
+});
 
 function MessageActions({
   copyLabel,
