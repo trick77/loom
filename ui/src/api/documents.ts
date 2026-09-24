@@ -8,7 +8,7 @@ import i18n from "../i18n";
 
 export async function uploadDocument(
   file: File,
-  opts: { threadId?: string; projectId?: string } = {},
+  opts: { threadId?: string; projectId?: string; signal?: AbortSignal } = {},
 ): Promise<Document> {
   const form = new FormData();
   form.append("file", file);
@@ -17,6 +17,7 @@ export async function uploadDocument(
   const response = await fetch("/api/documents/upload", {
     method: "POST",
     body: form,
+    signal: opts.signal,
   });
   if (response.status === 415) {
     throw new UserFacingError(i18n.t("errors.unsupportedDocumentFormat"));
@@ -36,7 +37,7 @@ export async function uploadDocument(
 
 export async function uploadImageAttachment(
   file: File,
-  opts: { threadId?: string; projectId?: string } = {},
+  opts: { threadId?: string; projectId?: string; signal?: AbortSignal } = {},
 ): Promise<Artifact> {
   const form = new FormData();
   form.append("file", file);
@@ -45,6 +46,7 @@ export async function uploadImageAttachment(
   const response = await fetch("/api/artifacts/images/upload", {
     method: "POST",
     body: form,
+    signal: opts.signal,
   });
   if (response.status === 415) {
     throw new UserFacingError(i18n.t("errors.unsupportedImageFormat"));

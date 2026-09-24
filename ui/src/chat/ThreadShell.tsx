@@ -169,6 +169,10 @@ export function ThreadShell({
   const [pendingAttachments, setPendingAttachments] = useState<
     ComposerAttachment[]
   >([]);
+  const pendingAttachmentCountRef = useRef(pendingAttachments.length);
+  useEffect(() => {
+    pendingAttachmentCountRef.current = pendingAttachments.length;
+  }, [pendingAttachments.length]);
   const [pendingAttachNote, setPendingAttachNote] = useState("");
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -708,31 +712,35 @@ export function ThreadShell({
     if (sizeFiltered.length < files.length) {
       setPendingAttachNote(t("errors.fileTooLarge"));
     }
-    setPendingAttachments((current) => {
-      const remaining = DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - current.length;
-      if (remaining <= 0) {
-        setPendingAttachNote(
-          t("composer.attachLimit", {
-            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-          }),
-        );
-        return current;
-      }
-      const accepted = sizeFiltered.slice(0, remaining);
-      if (accepted.length < sizeFiltered.length) {
-        setPendingAttachNote(
-          t("composer.attachLimit", {
-            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-          }),
-        );
-      } else if (accepted.length > 0 && sizeFiltered.length === files.length) {
-        setPendingAttachNote("");
-      }
-      return [
-        ...current,
-        ...accepted.map((file) => createComposerAttachment(file, "queued")),
-      ];
-    });
+    // The count is mirrored in a ref so two drops in one render both see the
+    // other's files, and the note is set here rather than inside the state
+    // updater, which StrictMode runs twice.
+    const remaining =
+      DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - pendingAttachmentCountRef.current;
+    if (remaining <= 0) {
+      setPendingAttachNote(
+        t("composer.attachLimit", {
+          count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+        }),
+      );
+      return;
+    }
+    const accepted = sizeFiltered.slice(0, remaining);
+    if (accepted.length < sizeFiltered.length) {
+      setPendingAttachNote(
+        t("composer.attachLimit", {
+          count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+        }),
+      );
+    } else if (accepted.length > 0 && sizeFiltered.length === files.length) {
+      setPendingAttachNote("");
+    }
+    if (accepted.length === 0) return;
+    pendingAttachmentCountRef.current += accepted.length;
+    const queued = accepted.map((file) =>
+      createComposerAttachment(file, "queued"),
+    );
+    setPendingAttachments((current) => [...current, ...queued]);
   }
 
   function handleRemovePendingAttachment(id: string) {
