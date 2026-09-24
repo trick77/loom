@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/chat"
 )
 
 // maxJSONBodyBytes bounds an ordinary JSON request body. Endpoints whose
@@ -39,24 +40,21 @@ func serverError(w http.ResponseWriter, r *http.Request, err error, clientMessag
 	writeJSONError(w, http.StatusInternalServerError, clientMessage)
 }
 
-func writeThreadStoreError(w http.ResponseWriter, r *http.Request, err error, validationStatus int, validationMessages ...string) {
-	message := err.Error()
-	for _, validationMessage := range validationMessages {
-		if message == validationMessage {
-			writeJSONError(w, validationStatus, message)
-			return
-		}
+// writeStoreError maps a chat store failure to its response: a
+// chat.ValidationError is a 400 carrying its message, a missing thread or
+// project is a 404, anything else is an internal error logged by serverError.
+func writeStoreError(w http.ResponseWriter, r *http.Request, err error) {
+	var validation *chat.ValidationError
+	switch {
+	case errors.As(err, &validation):
+		writeJSONError(w, http.StatusBadRequest, validation.Msg)
+	case errors.Is(err, chat.ErrThreadNotFound):
+		writeJSONError(w, http.StatusNotFound, chat.ErrThreadNotFound.Error())
+	case errors.Is(err, chat.ErrProjectNotFound):
+		writeJSONError(w, http.StatusNotFound, chat.ErrProjectNotFound.Error())
+	default:
+		serverError(w, r, err, "thread store failed")
 	}
-	serverError(w, r, err, "thread store failed")
-}
-
-func writeMappedThreadStoreError(w http.ResponseWriter, r *http.Request, err error, statuses map[string]int) {
-	message := err.Error()
-	if status, ok := statuses[message]; ok {
-		writeJSONError(w, status, message)
-		return
-	}
-	serverError(w, r, err, "thread store failed")
 }
 
 func currentUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {

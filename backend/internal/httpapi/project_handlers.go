@@ -59,7 +59,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		Description: body.Description,
 	})
 	if err != nil {
-		writeThreadStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
+		writeStoreError(w, r, err)
 		return
 	}
 	s.recordUsage("project_created", func() error { return s.usage.IncProjectCreated(r.Context(), user.ID) })
@@ -78,7 +78,7 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	project, found, err := s.thread.UpdateProject(r.Context(), user.ID, r.PathValue("projectID"), body.toInput())
 	if err != nil {
-		writeThreadStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
+		writeStoreError(w, r, err)
 		return
 	}
 	if !found {

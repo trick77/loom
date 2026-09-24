@@ -317,7 +317,7 @@ func (f *fakeThreadStore) UpdateThread(_ context.Context, userID, threadID strin
 	if in.Title != nil {
 		title := chat.NormalizeThreadTitle(*in.Title)
 		if title == "" {
-			return chat.Thread{}, false, errors.New("thread title is required")
+			return chat.Thread{}, false, &chat.ValidationError{Msg: "thread title is required"}
 		}
 		f.thread.Title = title
 	}

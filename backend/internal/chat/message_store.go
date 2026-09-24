@@ -96,51 +96,51 @@ func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, e
 	}
 	content = strings.TrimSpace(content)
 	if content == "" {
-		return Message{}, errors.New("message content is required")
+		return Message{}, validation("message content is required")
 	}
 	if len(content) > maxContentLengthForRole(role) {
-		return Message{}, errors.New("message content is too long")
+		return Message{}, validation("message content is too long")
 	}
 	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
 		return Message{}, err
 	} else if !ok {
-		return Message{}, errors.New("thread not found")
+		return Message{}, ErrThreadNotFound
 	}
 	if len(artifacts) == 0 {
 		artifacts = json.RawMessage("[]")
 	}
 	if !json.Valid(artifacts) {
-		return Message{}, errors.New("message artifacts must be valid JSON")
+		return Message{}, validation("message artifacts must be valid JSON")
 	}
 	if len(activityTrace) == 0 {
 		activityTrace = json.RawMessage("[]")
 	}
 	if !json.Valid(activityTrace) {
-		return Message{}, errors.New("message activity trace must be valid JSON")
+		return Message{}, validation("message activity trace must be valid JSON")
 	}
 	if len(citations) == 0 {
 		citations = json.RawMessage("[]")
 	}
 	if !json.Valid(citations) {
-		return Message{}, errors.New("message citations must be valid JSON")
+		return Message{}, validation("message citations must be valid JSON")
 	}
 	if len(attachments) == 0 {
 		attachments = json.RawMessage("[]")
 	}
 	if !json.Valid(attachments) {
-		return Message{}, errors.New("message attachments must be valid JSON")
+		return Message{}, validation("message attachments must be valid JSON")
 	}
 	if len(contentBlocks) == 0 {
 		contentBlocks = json.RawMessage("[]")
 	}
 	if !json.Valid(contentBlocks) {
-		return Message{}, errors.New("message content blocks must be valid JSON")
+		return Message{}, validation("message content blocks must be valid JSON")
 	}
 	if len(pastedTexts) == 0 {
 		pastedTexts = json.RawMessage("[]")
 	}
 	if !json.Valid(pastedTexts) {
-		return Message{}, errors.New("message pasted texts must be valid JSON")
+		return Message{}, validation("message pasted texts must be valid JSON")
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)

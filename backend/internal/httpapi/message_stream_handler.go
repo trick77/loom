@@ -102,7 +102,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	pastedTexts := marshalPastedTexts(body.PastedTexts)
 	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments, pastedTexts)
 	if err != nil {
-		writeThreadStoreError(w, r, err, http.StatusBadRequest, "message content is required", "message content is too long")
+		writeStoreError(w, r, err)
 		return
 	}
 	streamCtx, cancelStream := context.WithCancelCause(r.Context())

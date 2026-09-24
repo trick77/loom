@@ -14,14 +14,14 @@ import (
 func (s *Store) CreateProject(ctx context.Context, userID string, in CreateProjectInput) (Project, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return Project{}, errors.New("project name is required")
+		return Project{}, validation("project name is required")
 	}
 	if len(name) > MaxProjectNameLength {
-		return Project{}, errors.New("project name is too long")
+		return Project{}, validation("project name is too long")
 	}
 	description := strings.TrimSpace(in.Description)
 	if len(description) > MaxProjectDescriptionLength {
-		return Project{}, errors.New("project description is too long")
+		return Project{}, validation("project description is too long")
 	}
 	// A description the user types at creation time is user-authored, so lock it
 	// (description_user_edited = 1) exactly as a manual edit would — otherwise the
@@ -102,10 +102,10 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 	if in.Name != nil {
 		name = strings.TrimSpace(*in.Name)
 		if name == "" {
-			return Project{}, false, errors.New("project name is required")
+			return Project{}, false, validation("project name is required")
 		}
 		if len(name) > MaxProjectNameLength {
-			return Project{}, false, errors.New("project name is too long")
+			return Project{}, false, validation("project name is too long")
 		}
 	}
 	description := project.Description
@@ -113,7 +113,7 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 	if descriptionTouched {
 		description = strings.TrimSpace(*in.Description)
 		if len(description) > MaxProjectDescriptionLength {
-			return Project{}, false, errors.New("project description is too long")
+			return Project{}, false, validation("project description is too long")
 		}
 	}
 

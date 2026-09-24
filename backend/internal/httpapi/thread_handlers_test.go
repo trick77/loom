@@ -248,7 +248,7 @@ func TestUpdateThreadCanRemoveFromProject(t *testing.T) {
 func TestUpdateThreadProjectNotFoundReturns404(t *testing.T) {
 	store := &fakeThreadStore{
 		thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
-		updateThreadErr: errors.New("project not found"),
+		updateThreadErr: chat.ErrProjectNotFound,
 	}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()

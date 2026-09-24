@@ -26,7 +26,7 @@ func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThread
 		if ok, err := s.projectExists(ctx, userID, *in.ProjectID); err != nil {
 			return Thread{}, err
 		} else if !ok {
-			return Thread{}, errors.New("project not found")
+			return Thread{}, ErrProjectNotFound
 		}
 		projectID = *in.ProjectID
 	}
@@ -78,7 +78,7 @@ func (s *Store) GetThread(ctx context.Context, userID, threadID string) (Thread,
 // ListThreadIDs stay in sync on which rows match.
 func threadFilters(userID string, opts ListThreadsOptions) ([]string, []any, error) {
 	if opts.ProjectID != nil && opts.ProjectlessOnly {
-		return nil, nil, errors.New("project filter cannot be combined with projectless filter")
+		return nil, nil, validation("project filter cannot be combined with projectless filter")
 	}
 	filters := []string{"user_id = ?"}
 	args := []any{userID}
@@ -274,7 +274,7 @@ func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in Up
 	if in.Title != nil {
 		normalized := NormalizeThreadTitle(*in.Title)
 		if normalized == "" {
-			return Thread{}, false, errors.New("thread title is required")
+			return Thread{}, false, validation("thread title is required")
 		}
 		title = normalized
 	}
@@ -297,7 +297,7 @@ func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in Up
 		if ok, err := projectExistsIn(ctx, tx, userID, *in.ProjectID.Value); err != nil {
 			return Thread{}, false, err
 		} else if !ok {
-			return Thread{}, false, errors.New("project not found")
+			return Thread{}, false, ErrProjectNotFound
 		}
 	}
 	result, err := tx.ExecContext(ctx, `
@@ -377,10 +377,10 @@ WHERE user_id = ? AND id = ?`,
 func (s *Store) SetThreadTitleIfUnchanged(ctx context.Context, userID, threadID, expectedTitle, title string) (Thread, bool, error) {
 	title = NormalizeThreadTitle(title)
 	if title == "" {
-		return Thread{}, false, errors.New("thread title is required")
+		return Thread{}, false, validation("thread title is required")
 	}
 	if len(title) > MaxThreadTitleLength {
-		return Thread{}, false, errors.New("thread title is too long")
+		return Thread{}, false, validation("thread title is too long")
 	}
 	result, err := s.db.ExecContext(ctx, `
 UPDATE threads

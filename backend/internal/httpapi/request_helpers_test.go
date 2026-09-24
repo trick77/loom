@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -64,5 +66,31 @@ func TestEditMemoryRejectsOversizedBody(t *testing.T) {
 
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want 413; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWriteStoreErrorMapsValidationNotFoundAndInternal(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		body   string
+	}{
+		{"validation", &chat.ValidationError{Msg: "thread title is required"}, http.StatusBadRequest, `{"error":"thread title is required"}`},
+		{"wrapped validation", fmt.Errorf("update: %w", &chat.ValidationError{Msg: "project name is too long"}), http.StatusBadRequest, `{"error":"project name is too long"}`},
+		{"project missing", chat.ErrProjectNotFound, http.StatusNotFound, `{"error":"project not found"}`},
+		{"thread missing", fmt.Errorf("move: %w", chat.ErrThreadNotFound), http.StatusNotFound, `{"error":"thread not found"}`},
+		{"internal", errors.New("disk on fire"), http.StatusInternalServerError, `{"error":"thread store failed"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			writeStoreError(rec, httptest.NewRequest(http.MethodPost, "/x", nil), tc.err)
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d, want %d", rec.Code, tc.status)
+			}
+			if got := strings.TrimSpace(rec.Body.String()); got != tc.body {
+				t.Fatalf("body = %s, want %s", got, tc.body)
+			}
+		})
 	}
 }
