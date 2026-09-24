@@ -19,16 +19,33 @@ function harness() {
   return { turn, patches, onAssistantMessage, run: () => run };
 }
 
-test("deltas accumulate into text blocks and each one patches the run", () => {
+test("a burst of deltas accumulates into one text block and one run patch per microtask", async () => {
   const { turn, patches, run } = harness();
   turn.handlers.onDelta("Hel");
   turn.handlers.onDelta("lo");
-  expect(patches).toHaveLength(2);
+  expect(patches).toHaveLength(0);
+  await Promise.resolve();
+  expect(patches).toHaveLength(1);
   expect(run().blocks).toEqual([{ type: "text", content: "Hello" }]);
   expect(turn.liveBlocks()).toEqual(run().blocks);
 });
 
-test("a tool call clears the pending flag and upserts its trace block", () => {
+test("a flush queued before the assistant message does not resurrect the blocks", async () => {
+  const { turn, run } = harness();
+  turn.handlers.onDelta("answer");
+  turn.handlers.onAssistantMessage({
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "answer",
+    createdAt: "x",
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(run().blocks).toEqual([]);
+});
+
+test("a tool call clears the pending flag and upserts its trace block", async () => {
   const { turn, run } = harness();
   turn.handlers.onToolPending?.();
   expect(run().toolPending).toBe(true);
@@ -38,6 +55,7 @@ test("a tool call clears the pending flag and upserts its trace block", () => {
     arguments: "{}",
   });
   expect(run().toolPending).toBe(false);
+  await Promise.resolve();
   expect(run().blocks[0]?.type).toBe("trace");
 });
 

@@ -59,11 +59,23 @@ export function createTurnHandlers(opts: {
   onThread?: (thread: Thread) => void;
 }): { handlers: StreamHandlers; liveBlocks: () => ContentBlock[] } {
   let liveBlocks: ContentBlock[] = [];
+  // One network chunk dispatches many events; every one used to write the run,
+  // and every run write re-rendered the whole shell. Block updates land on the
+  // local array at once and reach the run once per microtask, so a chunk's
+  // worth of deltas costs one render.
+  let flushQueued = false;
+  const flush = () => {
+    if (!flushQueued) return;
+    flushQueued = false;
+    opts.patch({ blocks: liveBlocks });
+  };
   const applyBlocks = (
     updater: (current: ContentBlock[]) => ContentBlock[],
   ) => {
     liveBlocks = updater(liveBlocks);
-    opts.patch({ blocks: liveBlocks });
+    if (flushQueued) return;
+    flushQueued = true;
+    queueMicrotask(flush);
   };
   const handlers: StreamHandlers = {
     onUserMessage: (message) => opts.onUserMessage?.(message),
@@ -93,6 +105,9 @@ export function createTurnHandlers(opts: {
         sources: mergeSourceSnapshot(run.sources, sources, false),
       })),
     onAssistantMessage: (message) => {
+      // Drop a queued flush: it would put the live blocks back onto the run
+      // after the reset below.
+      flushQueued = false;
       opts.onAssistantMessage(message, liveBlocks);
       // The persisted message now carries the blocks; the run's live copy is
       // done with.
