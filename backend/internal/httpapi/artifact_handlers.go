@@ -261,7 +261,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	var body renameArtifactRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeDecodeError(w, err)
 		return
 	}
 	if strings.TrimSpace(body.DisplayFilename) == "" {

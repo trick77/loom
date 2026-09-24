@@ -57,8 +57,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body streamMessageRequest
-	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSONBodyLimit(w, r, &body, maxStreamBodyBytes); err != nil {
+		writeDecodeError(w, err)
 		return
 	}
 

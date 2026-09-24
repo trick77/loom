@@ -13,7 +13,16 @@ import (
 	"github.com/trick77/loom/internal/auth"
 )
 
+// maxJSONBodyBytes bounds an ordinary JSON request body. Endpoints whose
+// payload legitimately carries message-sized text use decodeJSONBodyLimit with
+// a wider bound.
 const maxJSONBodyBytes = 64 * 1024
+
+// maxStreamBodyBytes bounds the two chat stream endpoints. One send may carry
+// the content cap plus the pasted blocks that duplicate that text, and the
+// incognito endpoint replays its whole transcript every turn, so the ordinary
+// limit would reject legitimate sends long before the store's own caps apply.
+const maxStreamBodyBytes = 4 << 20
 
 // serverError logs the underlying cause of a 5xx with request context and
 // returns a generic JSON error to the client (no internal details leak out).
@@ -65,11 +74,19 @@ func requireThreadStore(w http.ResponseWriter, s *server) bool {
 	return true
 }
 
+// decodeJSONBody decodes one JSON value from a body bounded by maxJSONBodyBytes.
+// Callers report a failure with writeDecodeError so an oversized body gets its
+// own status.
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) error {
+	return decodeJSONBodyLimit(w, r, dst, maxJSONBodyBytes)
+}
+
+// decodeJSONBodyLimit is decodeJSONBody with an explicit byte bound.
+func decodeJSONBodyLimit(w http.ResponseWriter, r *http.Request, dst any, limit int64) error {
 	if r.Body == nil {
 		return nil
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
@@ -86,6 +103,17 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) error {
 		return err
 	}
 	return nil
+}
+
+// writeDecodeError maps a decodeJSONBody failure to its client status: an
+// oversized body is a 413 the client can act on, anything else is a malformed
+// payload.
+func writeDecodeError(w http.ResponseWriter, err error) {
+	if isRequestBodyTooLarge(err) {
+		writeJSONError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return
+	}
+	writeJSONError(w, http.StatusBadRequest, "invalid request body")
 }
 
 func isRequestBodyTooLarge(err error) bool {

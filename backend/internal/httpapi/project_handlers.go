@@ -51,7 +51,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var body createProjectRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	project, err := s.thread.CreateProject(r.Context(), user.ID, chat.CreateProjectInput{
@@ -73,7 +73,7 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var body updateProjectRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	project, found, err := s.thread.UpdateProject(r.Context(), user.ID, r.PathValue("projectID"), body.toInput())

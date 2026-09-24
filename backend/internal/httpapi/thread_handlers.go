@@ -103,7 +103,7 @@ func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 	}
 	var body createThreadRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	thread, err := s.thread.CreateThread(r.Context(), user.ID, chat.CreateThreadInput{
@@ -191,7 +191,7 @@ func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {
 	}
 	var body updateThreadRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	thread, found, err := s.thread.UpdateThread(r.Context(), user.ID, r.PathValue("threadID"), body.toInput())
@@ -328,7 +328,7 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 	}
 	var body bulkDeleteThreadsRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	deleted := 0

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -156,8 +155,8 @@ func decodeMemoryInstruction(w http.ResponseWriter, r *http.Request) (string, bo
 	var body struct {
 		Instruction string `json:"instruction"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSONBody(w, r, &body); err != nil {
+		writeDecodeError(w, err)
 		return "", false
 	}
 	instruction := strings.TrimSpace(body.Instruction)

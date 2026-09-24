@@ -106,7 +106,7 @@ func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 	var body updateMeRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	if !allowedResponseLanguages[body.ResponseLanguage] {
