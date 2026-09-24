@@ -43,7 +43,6 @@ import { SettingsModal } from "../settings/SettingsModal";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
 import {
-  createPastedText,
   pastedTextFromBlock,
   toPastedTextBlock,
   type PastedText,
@@ -55,10 +54,7 @@ import {
   draftScopeKey,
   getDraft,
   setDraft as setScopedDraft,
-  setDraftPastedTexts as setScopedPastedTexts,
-  setDraftText as setScopedDraftText,
   threadDraftScope,
-  type ComposerDrafts,
   type DraftScope,
 } from "./composerDrafts";
 import {
@@ -101,6 +97,7 @@ import {
 } from "../projects/projectMembership";
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
+import { useComposerDrafts } from "./useComposerDrafts";
 import { useEscapeKey } from "./useEscapeKey";
 
 // Each sources event is a full snapshot of *its own kind* only: knowledge_sources
@@ -151,10 +148,15 @@ export function ThreadShell({
   // owns them (see composerDrafts.ts). They belong to the thread they were typed
   // in: leaving that thread must not carry them into the next one, and must not
   // throw them away either.
-  const [drafts, setDrafts] = useState<ComposerDrafts>({});
-  // Bumped whenever a retry loads a message back into the composer, to focus the
-  // textarea and move the caret to the end (see Composer's focusSignal).
-  const [composerFocusTick, setComposerFocusTick] = useState(0);
+  const {
+    drafts,
+    setDrafts,
+    setDraftText,
+    addPastedText,
+    removePastedText,
+    focusTick: composerFocusTick,
+    requestFocus: requestComposerFocus,
+  } = useComposerDrafts();
   // Files attached on the new-thread start screen, held until the first send creates
   // a thread to bind them to (deferred upload — avoids orphan empty threads and
   // scopes the upload to the thread it was attached in).
@@ -205,29 +207,11 @@ export function ThreadShell({
   const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(
     null,
   );
-  function setDraftText(scope: DraftScope, text: string) {
-    setDrafts((current) => setScopedDraftText(current, scope, text));
-  }
-  // Large pastes collapsed into removable "Pasted" chips shown above the textarea.
-  // Folded back into the outgoing message content on send (never uploaded/indexed).
   function handleAddPastedText(text: string) {
-    setDrafts((current) =>
-      setScopedPastedTexts(current, draftScope, [
-        ...getDraft(current, draftScope).pastedTexts,
-        createPastedText(text),
-      ]),
-    );
+    addPastedText(draftScope, text);
   }
   function handleRemovePastedText(id: string) {
-    setDrafts((current) =>
-      setScopedPastedTexts(
-        current,
-        draftScope,
-        getDraft(current, draftScope).pastedTexts.filter(
-          (pasted) => pasted.id !== id,
-        ),
-      ),
-    );
+    removePastedText(draftScope, id);
   }
   // Flush hook for the deferred new-thread upload: the scope is supplied per call at
   // send time (the thread does not exist yet when the file is picked). Its
@@ -779,7 +763,7 @@ export function ThreadShell({
         pastedTexts: blocks.map(pastedTextFromBlock),
       }),
     );
-    setComposerFocusTick((tick) => tick + 1);
+    requestComposerFocus();
   }
 
   async function sendContent(
@@ -1353,7 +1337,7 @@ export function ThreadShell({
         pastedTexts: blocks.map(pastedTextFromBlock),
       }),
     );
-    setComposerFocusTick((tick) => tick + 1);
+    requestComposerFocus();
   }
 
   // A failed turn's error belongs to its own thread; everything else (starring,
