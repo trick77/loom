@@ -221,41 +221,12 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 	if call.Function.Name == projectThreadsToolName {
 		return s.projectThreadsDigest(ctx, user.ID, thread), nil, true
 	}
-	if call.Function.Name == conversationSearchToolName {
+	if isArgTool(call.Function.Name) {
 		args, err := parseToolArguments(call.Function.Arguments)
 		if err != nil {
 			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
 		}
-		return s.conversationSearchDigest(ctx, user.ID, thread, args), nil, true
-	}
-	if call.Function.Name == readThreadToolName {
-		args, err := parseToolArguments(call.Function.Arguments)
-		if err != nil {
-			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
-		}
-		threadID, _ := args["thread_id"].(string)
-		return s.readThreadDigest(ctx, user.ID, threadID), nil, true
-	}
-	if call.Function.Name == addUserDirectiveToolName {
-		args, err := parseToolArguments(call.Function.Arguments)
-		if err != nil {
-			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
-		}
-		return capToolOutput(s.addUserDirectiveDigest(ctx, user.ID, args)), nil, true
-	}
-	if call.Function.Name == removeUserDirectiveToolName {
-		args, err := parseToolArguments(call.Function.Arguments)
-		if err != nil {
-			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
-		}
-		return capToolOutput(s.removeUserDirectiveDigest(ctx, user.ID, args)), nil, true
-	}
-	if call.Function.Name == replaceUserDirectiveToolName {
-		args, err := parseToolArguments(call.Function.Arguments)
-		if err != nil {
-			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
-		}
-		return capToolOutput(s.replaceUserDirectiveDigest(ctx, user.ID, args)), nil, true
+		return s.runArgTool(ctx, user, thread, call.Function.Name, args), nil, true
 	}
 	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call, editSource, typography); handled {
 		return output, response, true
@@ -534,4 +505,33 @@ func parseToolArguments(raw string) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	return args, nil
+}
+
+// isArgTool reports whether name is one of the built-in tools that take JSON
+// arguments and answer with a text digest.
+func isArgTool(name string) bool {
+	switch name {
+	case conversationSearchToolName, readThreadToolName, addUserDirectiveToolName, removeUserDirectiveToolName, replaceUserDirectiveToolName:
+		return true
+	}
+	return false
+}
+
+// runArgTool dispatches one of the argument-taking built-in tools; the
+// arguments have already been parsed and validated as JSON.
+func (s *server) runArgTool(ctx context.Context, user auth.User, thread chat.Thread, name string, args map[string]any) string {
+	switch name {
+	case conversationSearchToolName:
+		return s.conversationSearchDigest(ctx, user.ID, thread, args)
+	case readThreadToolName:
+		threadID, _ := args["thread_id"].(string)
+		return s.readThreadDigest(ctx, user.ID, threadID)
+	case addUserDirectiveToolName:
+		return capToolOutput(s.addUserDirectiveDigest(ctx, user.ID, args))
+	case removeUserDirectiveToolName:
+		return capToolOutput(s.removeUserDirectiveDigest(ctx, user.ID, args))
+	case replaceUserDirectiveToolName:
+		return capToolOutput(s.replaceUserDirectiveDigest(ctx, user.ID, args))
+	}
+	return capToolOutput("tool failed: unknown tool " + name)
 }

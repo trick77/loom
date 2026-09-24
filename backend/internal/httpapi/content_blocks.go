@@ -126,3 +126,16 @@ func (b *blockBuilder) addTraceOnlyResult(titles *reasoningTitleTracker, result 
 	}
 	titles.spawn(reasoningID, result.ReasoningContent)
 }
+
+// result assembles the loop's outcome from what the builder collected: the
+// flat trace and the ordered blocks travel with every return, whatever else
+// the turn produced.
+func (b *blockBuilder) result(stream llm.StreamResult, artifacts []artifactResponse, toolError string) assistantLoopResult {
+	return assistantLoopResult{
+		StreamResult:  stream,
+		Artifacts:     artifacts,
+		ToolError:     toolError,
+		ActivityTrace: b.flatTrace(),
+		Blocks:        b.blocks,
+	}
+}

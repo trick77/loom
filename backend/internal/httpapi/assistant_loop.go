@@ -67,9 +67,9 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
 		b.addResult(titles, result)
 		if persistInterruptedPartial(result, err) {
-			return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+			return b.result(result, nil, ""), nil
 		}
-		return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
+		return b.result(result, nil, ""), err
 	}
 	if imageArtifactRequired {
 		if imageTool := findGenerateImageTool(tools); imageTool != nil {
@@ -112,7 +112,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		if err != nil {
 			if persistInterruptedPartial(result, err) {
 				b.addResult(titles, result)
-				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+				return b.result(result, artifacts, ""), nil
 			}
 			return assistantLoopResult{}, err
 		}
@@ -127,7 +127,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			empty := strings.TrimSpace(result.Content) == ""
 			truncated := empty && result.FinishReason == "length"
 			if !empty || (!toolRan && !truncated) {
-				return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+				return b.result(result, artifacts, ""), nil
 			}
 			reason := "empty_after_tools"
 			if truncated {
@@ -269,7 +269,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, finalAnswerInference(inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(titles, result)
 	if persistInterruptedPartial(result, err) {
-		return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+		return b.result(result, artifacts, ""), nil
 	}
 	// Backstop: if the clean synthesis still produced no prose (e.g. the model emitted
 	// an inline tool call that was stripped), retry once with a firmer directive, then
@@ -283,7 +283,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalAnswerInference(inference, "chat_final_retry", maxToolRounds+2), nil)
 		b.addResult(titles, result)
 		if persistInterruptedPartial(result, err) {
-			return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+			return b.result(result, artifacts, ""), nil
 		}
 		if err == nil && strings.TrimSpace(result.Content) == "" {
 			slog.Warn("final answer empty after retry; using fallback", "round", maxToolRounds+2)
@@ -294,7 +294,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 			b.addText(result.Content)
 		}
 	}
-	return assistantLoopResult{StreamResult: result, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
+	return b.result(result, artifacts, ""), err
 }
 
 // finalAnswerFallback is surfaced when the model never commits to a prose answer on
@@ -339,7 +339,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	if !compiled {
 		fallback, ok := fallbackImageToolCall(userPrompt)
 		if !ok {
-			return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+			return b.result(result, nil, ""), nil
 		}
 		slog.Warn("image prompt compiler produced no usable tool call; generating from the user's own text",
 			"thread_id", thread.ID, "tool_calls", len(result.ToolCalls))
@@ -375,7 +375,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		Content:    output,
 	})
 	if response == nil {
-		return assistantLoopResult{StreamResult: result, ToolError: output, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+		return b.result(result, nil, output), nil
 	}
 
 	b.addArtifact(*response)
@@ -387,7 +387,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	final, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
 	b.addResult(titles, final)
 	if persistInterruptedPartial(final, err) {
-		return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+		return b.result(final, artifacts, ""), nil
 	}
 	if err == nil && strings.TrimSpace(final.Content) == "" {
 		final.Content = fallbackImageArtifactResponse(*response)
@@ -395,7 +395,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		// so the timeline matches the persisted content column.
 		b.addText(final.Content)
 	}
-	return assistantLoopResult{StreamResult: final, Artifacts: artifacts, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
+	return b.result(final, artifacts, ""), err
 }
 
 func fallbackImageArtifactResponse(response artifactResponse) string {
@@ -472,9 +472,9 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writ
 	}
 	b.addResult(titles, result)
 	if persistInterruptedPartial(result, err) {
-		return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, nil
+		return b.result(result, nil, ""), nil
 	}
-	return assistantLoopResult{StreamResult: result, ActivityTrace: b.flatTrace(), Blocks: b.blocks}, err
+	return b.result(result, nil, ""), err
 }
 
 // incognitoRetryInference picks the metadata for the incognito empty-answer
