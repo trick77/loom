@@ -2548,3 +2548,23 @@ func TestStreamMessageSurvivesReasoningTitlePanic(t *testing.T) {
 		t.Fatalf("a title was emitted despite the panic:\n%s", body)
 	}
 }
+
+// A panic after the stream has opened cannot become a 500 (the 200 and the
+// first events are already on the wire); the client must still get a
+// terminal error event instead of a silently truncated stream.
+func TestStreamMessageEmitsErrorEventOnPanic(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "T"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{streamPanic: true}})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, "event: user_message") {
+		t.Fatalf("stream did not open: status %d body:\n%s", rec.Code, body)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(body), "event: error\ndata: {\"error\":\"internal server error\"}") {
+		t.Fatalf("stream did not end with an error event:\n%s", body)
+	}
+}

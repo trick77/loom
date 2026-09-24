@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -136,6 +137,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// From here on the 200 is committed, so a panic must end the stream with an
+	// error event rather than reach the recovery middleware, which can no longer
+	// answer with a 500.
+	defer recoverToStream(stream, r)
 	// Keep the connection alive through idle proxies during long silent gaps —
 	// notably while MiMo serializes a large tool-call argument server-side and
 	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
@@ -585,4 +590,16 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 		source = "deadline"
 	}
 	return source, cause.Error()
+}
+
+// recoverToStream is deferred by the stream handlers once the SSE response is
+// committed. It turns a panic into a terminal error event so the client sees a
+// failed turn instead of a stream that just stops. The panic is logged here
+// with its stack; it is not re-raised because the recovery middleware could
+// only write a 500 into the open stream.
+func recoverToStream(stream *sse.Writer, r *http.Request) {
+	if p := recover(); p != nil {
+		slog.Error("panic recovered mid-stream", "err", p, "path", r.URL.Path, "stack", string(debug.Stack()))
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": "internal server error"})
+	}
 }

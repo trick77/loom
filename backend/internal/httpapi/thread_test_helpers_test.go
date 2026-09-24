@@ -585,6 +585,7 @@ type fakeChatClient struct {
 	category            string
 	reasoningTitle      string
 	reasoningTitlePanic bool
+	streamPanic         bool
 	history             *[]llm.Message
 	streamText          *string
 	reasoningText       string
@@ -692,6 +693,9 @@ func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _ string, 
 }
 
 func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+	if f.streamPanic {
+		panic("stream exploded")
+	}
 	if f.history != nil {
 		*f.history = append((*f.history)[:0], history...)
 	}

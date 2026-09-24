@@ -7,16 +7,23 @@ import (
 	"time"
 )
 
-// recovery converts panics in downstream handlers into 500 responses.
+// recovery converts panics in downstream handlers into JSON 500 responses.
+// When the handler had already started its response (an SSE stream, a partial
+// download) nothing more is written: a trailing error would corrupt what the
+// client holds, and the stream handlers emit their own terminal error event
+// (see recoverToStream).
 func recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{ResponseWriter: w}
 		defer func() {
-			if rec := recover(); rec != nil {
-				slog.Error("panic recovered", "err", rec, "path", r.URL.Path, "stack", string(debug.Stack()))
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+			if p := recover(); p != nil {
+				slog.Error("panic recovered", "err", p, "path", r.URL.Path, "headers_sent", rec.status != 0, "stack", string(debug.Stack()))
+				if rec.status == 0 {
+					writeJSONError(rec, http.StatusInternalServerError, "internal server error")
+				}
 			}
 		}()
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(rec, r)
 	})
 }
 
