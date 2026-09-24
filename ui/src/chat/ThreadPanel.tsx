@@ -40,6 +40,7 @@ import type { MessageWithActivityTrace } from "./types";
 import { WindowFileDrop } from "./WindowFileDrop";
 import { WorkingDot } from "./WorkingDot";
 import { threadCostPrefix } from "../metrics";
+import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
 
 export function ThreadPanel({
   thread,
@@ -389,17 +390,7 @@ export function ThreadPanel({
     };
   }, []);
 
-  useEffect(() => {
-    if (!headerMenuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || headerMenuRef.current?.contains(target))
-        return;
-      onCloseThreadMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [headerMenuOpen, onCloseThreadMenu]);
+  useOutsideRefPointerDown(headerMenuOpen, headerMenuRef, onCloseThreadMenu);
 
   return (
     <section className="flex h-svh min-h-0 flex-col">

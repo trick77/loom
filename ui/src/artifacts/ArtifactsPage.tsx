@@ -1,9 +1,9 @@
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -36,6 +36,8 @@ import {
   DeleteArtifactModal,
   RenameArtifactModal,
 } from "./ArtifactActionModals";
+import { downloadBlob } from "../chat/download";
+import { useOutsideRefPointerDown } from "../chat/useOutsidePointerDown";
 
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -485,18 +487,7 @@ function ArtifactRowFrame({
 
   // Close the menu on an outside click or Escape, mirroring the thread row menu.
   useEscapeKey(onCloseMenu);
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || rowRef.current?.contains(target)) return;
-      onCloseMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [menuOpen, onCloseMenu]);
+  useOutsideRefPointerDown(menuOpen, rowRef, onCloseMenu);
 
   return (
     <BrowsingListRowFrame
@@ -761,13 +752,8 @@ function ImageArtifactRow({
 }
 
 async function downloadToBrowser(artifact: Artifact) {
-  const blob = await downloadArtifact(artifact.downloadUrl);
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = artifact.displayFilename;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  downloadBlob(
+    await downloadArtifact(artifact.downloadUrl),
+    artifact.displayFilename,
+  );
 }

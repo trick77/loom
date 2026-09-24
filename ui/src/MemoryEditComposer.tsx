@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { Icon } from "./chat/Icon";
 import { useEscapeKey } from "./chat/useEscapeKey";
+import { useOutsideRefPointerDown } from "./chat/useOutsidePointerDown";
 
 // Crayon and arrow glyphs are inlined (rather than the icon font) to match
 // claude.ai's project-memory composer 1:1.
@@ -169,14 +170,5 @@ export function useDismissOnOutside(
   onClose: () => void,
 ) {
   useEscapeKey(onClose);
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-    };
-  }, [open, ref, onClose]);
+  useOutsideRefPointerDown(open, ref, onClose);
 }

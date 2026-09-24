@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Project, Thread } from "../api";
@@ -13,6 +13,7 @@ import { ArchiveIcon } from "../projects/ProjectActionsMenu";
 import { Icon } from "./Icon";
 import type { SidebarIconName } from "./types";
 import { useMenuPlacement } from "./useMenuPlacement";
+import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
 
 export function SidebarPrimaryItem({
   icon,
@@ -149,17 +150,7 @@ function SidebarThreadItem({
   const { t } = useTranslation();
   const itemRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || itemRef.current?.contains(target))
-        return;
-      onCloseMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen, onCloseMenu]);
+  useOutsideRefPointerDown(menuOpen, itemRef, onCloseMenu);
 
   return (
     <div ref={itemRef} className="relative">
@@ -247,17 +238,7 @@ export function SidebarProjectItem({
   const { t } = useTranslation();
   const itemRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || itemRef.current?.contains(target))
-        return;
-      onCloseMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen, onCloseMenu]);
+  useOutsideRefPointerDown(menuOpen, itemRef, onCloseMenu);
 
   return (
     <div ref={itemRef} className="relative">

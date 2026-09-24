@@ -64,6 +64,7 @@ import {
   isImageAttachment,
   type ComposerAttachment,
 } from "./useDocumentAttachments";
+import { downloadBlob } from "./download";
 
 type MessageBubbleProps = {
   message: Message & {
@@ -1007,16 +1008,8 @@ async function copyResponse(content: string): Promise<boolean> {
 }
 
 function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
-  const url = URL.createObjectURL(
+  downloadBlob(
     new Blob([artifact.content], { type: artifact.mimeType }),
+    `ui-response.${artifact.extension}`,
   );
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `ui-response.${artifact.extension}`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  // Revoking synchronously after click() cancels the download in Safari and
-  // Firefox, which resolve the URL after the handler returns.
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }

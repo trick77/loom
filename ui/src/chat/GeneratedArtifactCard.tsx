@@ -8,6 +8,7 @@ import { Icon } from "./Icon";
 import { ImageLightbox } from "./ImageLightbox";
 import { PdfLightbox } from "./PdfLightbox";
 import { isPdfAttachment } from "./useDocumentAttachments";
+import { downloadBlob } from "./download";
 
 export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const { t } = useTranslation();
@@ -57,15 +58,10 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   async function handleDownload() {
     setError("");
     try {
-      const blob = await downloadArtifact(artifact.downloadUrl);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = artifact.displayFilename;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(
+        await downloadArtifact(artifact.downloadUrl),
+        artifact.displayFilename,
+      );
     } catch {
       setError(t("artifactCard.downloadFailed"));
     }
