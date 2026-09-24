@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
@@ -160,5 +161,21 @@ func TestOffsetRegistryBackfillsDetail(t *testing.T) {
 	}
 	if all[0].Title != "A Title" || all[0].Favicon == "" {
 		t.Errorf("backfill failed through the offset: %+v", all[0])
+	}
+}
+
+// A citation snippet is cut by byte count; cutting inside a multi-byte rune
+// produced invalid UTF-8 that then landed in the persisted citations JSON.
+func TestSnippetNeverSplitsRunes(t *testing.T) {
+	text := strings.Repeat("€", citationSnippetChars) // 3 bytes each: the byte cut lands mid-rune
+	got := snippet(text)
+	if !utf8.ValidString(got) {
+		t.Fatalf("snippet() = %q is not valid UTF-8", got)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("snippet() = %q, want the ellipsis suffix", got)
+	}
+	if len(got) > citationSnippetChars+len("…") {
+		t.Fatalf("snippet() is %d bytes, want at most %d", len(got), citationSnippetChars+len("…"))
 	}
 }

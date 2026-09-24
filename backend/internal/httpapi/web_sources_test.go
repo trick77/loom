@@ -272,3 +272,24 @@ func TestAddDetailedBackfillsEmptyFields(t *testing.T) {
 		t.Errorf("expected backfill, got %+v", src)
 	}
 }
+
+// A navigate that failed delivered no page: it must not register a source, and
+// the snapshot that follows must not inherit a label pointing at it. Before,
+// the header armed by an earlier successful navigate was left in place, so the
+// next snapshot was labelled with the previous page's URL.
+func TestRelabelWebToolOutputFailedNavigateDisarmsSnapshotLabel(t *testing.T) {
+	srv := &server{}
+	reg := newWebSourceRegistry()
+	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://first.example/"}, "navigated ok", reg)
+	_ = srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<first page>", reg)
+
+	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://second.example/"}, toolFailedPrefix+": timeout", reg)
+	snap := srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<whatever the browser shows now>", reg)
+
+	if strings.Contains(snap, "first.example") || strings.Contains(snap, "second.example") {
+		t.Fatalf("snapshot after a failed navigate carries a source label:\n%s", snap)
+	}
+	if reg.len() != 1 {
+		t.Fatalf("sources = %d, want only the successful navigate", reg.len())
+	}
+}

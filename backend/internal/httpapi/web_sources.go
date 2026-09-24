@@ -205,6 +205,13 @@ func (s *server) relabelWebToolOutput(toolName string, arguments map[string]any,
 		}
 		return fmt.Sprintf("Web source [%d]: %s\n\n%s", idx, strings.TrimSpace(argURL(arguments)), output)
 	case obscuraNavigateToolName:
+		if strings.HasPrefix(output, toolFailedPrefix) {
+			// Nothing was delivered: register no source, and disarm the header so
+			// the next snapshot is not labelled with the previously navigated page.
+			reg.obscuraNavHd = ""
+			reg.obscuraNavID = 0
+			return output
+		}
 		out := prependURLSource(argURL(arguments), output, reg)
 		if idx, ok := reg.add(argURL(arguments)); ok {
 			// Remember this source so the following browser_snapshot (the call that
