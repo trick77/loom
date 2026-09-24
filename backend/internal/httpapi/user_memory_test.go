@@ -69,22 +69,27 @@ func TestRefreshUserMemoryIfDue_NoNewMessagesIsNoOp(t *testing.T) {
 	}
 }
 
-// TestRefreshUserMemoryIfDue_NegativeDeltaIsNoOp guards the deletion case: when
-// messages were deleted since the last refresh (count < sourceCount), the gate
-// must no-op safely — never producing a negative fold window.
-func TestRefreshUserMemoryIfDue_NegativeDeltaIsNoOp(t *testing.T) {
+// TestRefreshUserMemoryIfDue_NegativeDeltaRefoldsRemainingTranscript guards
+// the deletion case: when messages were deleted since the last refresh (count
+// < sourceCount) there is no "new since last time" window, so the remaining
+// transcript is folded in full — never a negative window, and never a memory
+// left describing conversations that no longer exist.
+func TestRefreshUserMemoryIfDue_NegativeDeltaRefoldsRemainingTranscript(t *testing.T) {
 	store := &fakeThreadStore{
 		userMessageCount: 2,
 		userMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 5},
 		messages:         []chat.Message{{Role: chat.RoleUser, Content: "Hi"}},
 	}
-	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- rebuilt"}}
 
 	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
-	if store.userMemory.Content != "- prior" {
-		t.Fatalf("memory = %q, want unchanged prior with a negative delta", store.userMemory.Content)
+	if store.userMemory.Content != "- rebuilt" {
+		t.Fatalf("memory = %q, want rebuilt from the remaining transcript", store.userMemory.Content)
+	}
+	if store.userMemory.SourceMessageCount != 2 {
+		t.Fatalf("SourceMessageCount = %d, want the current count 2", store.userMemory.SourceMessageCount)
 	}
 }
 

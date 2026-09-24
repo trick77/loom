@@ -78,11 +78,12 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	if err != nil {
 		return err
 	}
-	// Refresh on any new activity since the last refresh — a created or updated
-	// thread raises count. Zero delta is a no-op, and must short-circuit here: the
-	// window would be 0 and scope.list's limit<=0 path defaults to 200, which would
-	// rebuild from nothing.
-	if count <= sourceCount {
+	// Refresh on any change since the last refresh: new activity raises count,
+	// deleted threads lower it (and the memory may now describe conversations
+	// that no longer exist). An unchanged count is a no-op, and must
+	// short-circuit here: the window would be 0 and scope.list's limit<=0 path
+	// defaults to 200, which would rebuild from nothing.
+	if count == sourceCount {
 		return nil
 	}
 	// Debounce: skip when the memory was refreshed within minAge. A never-generated
@@ -95,7 +96,13 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	// fixed 40) avoids skipping messages when refreshes are spaced hours/days apart,
 	// up to memoryRebuildLimit — a backlog larger than that still folds only the
 	// most recent memoryRebuildLimit, but that is strictly better than the old cap.
-	window := min(count-sourceCount, memoryRebuildLimit)
+	// After deletions there is no "new since last time" delta; fold the whole
+	// remaining transcript instead so the memory is rebuilt from what is left.
+	window := count - sourceCount
+	if window <= 0 {
+		window = count
+	}
+	window = min(window, memoryRebuildLimit)
 	messages, err := scope.list(ctx, window)
 	if err != nil {
 		return err

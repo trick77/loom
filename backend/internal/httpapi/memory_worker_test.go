@@ -223,3 +223,26 @@ func TestRefreshMemoryIfDue_SingleFlightPerScope(t *testing.T) {
 		t.Fatalf("memory = %q, want regenerated once", store.userMemory.Content)
 	}
 }
+
+// The gate compared the live message count to the count the memory was built
+// from with "<=", so once threads were deleted and the count dropped, no
+// refresh ran until the old number was exceeded again.
+func TestRefreshMemoryIfDue_RefreshesWhenCountDropped(t *testing.T) {
+	stale := time.Now().Add(-25 * time.Hour)
+	store := &fakeThreadStore{
+		userMessageCount: 6,
+		userMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 10, UpdatedAt: &stale},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "still here"}},
+	}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- REGENERATED"}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), memoryUserRefreshAge); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if store.userMemory.Content != "- REGENERATED" {
+		t.Fatalf("memory = %q, want regenerated after the count dropped", store.userMemory.Content)
+	}
+	if store.userMemory.SourceMessageCount != 6 {
+		t.Fatalf("SourceMessageCount = %d, want the current count 6", store.userMemory.SourceMessageCount)
+	}
+}
