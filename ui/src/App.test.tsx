@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
 import i18n from "./i18n";
-import { GeneratedArtifactCard } from "./ThreadShell";
+import { GeneratedArtifactCard } from "./chat/GeneratedArtifactCard";
 import { ICONS } from "./chat/Icon";
 import { possibleGreetings } from "./chat/threadUtils";
 import { escapeRegExp } from "./search/highlight";

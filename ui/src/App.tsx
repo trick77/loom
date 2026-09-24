@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ThreadShell } from "./ThreadShell";
+import { ThreadShell } from "./chat/ThreadShell";
 import loomLogo from "./assets/loom-logo.svg";
 import {
   AuthExpiredError,

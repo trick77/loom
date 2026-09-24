@@ -34,7 +34,7 @@ import {
   upsertToolCallBlock,
   upsertToolResultBlock,
 } from "./contentBlocks";
-import { ThreadsPage } from "../ThreadsPage";
+import { ThreadsPage } from "../chats/ThreadsPage";
 import { ArtifactsPage } from "../artifacts/ArtifactsPage";
 import { MemoryPage } from "../MemoryPage";
 import { navigate, routeFromLocation, type RouteState } from "./routing";
@@ -102,10 +102,6 @@ import {
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 import { useEscapeKey } from "./useEscapeKey";
-
-export { buildImageStats } from "./artifacts";
-export { GeneratedArtifactCard } from "./GeneratedArtifactCard";
-export { ProseMarkdown } from "./messages";
 
 // Each sources event is a full snapshot of *its own kind* only: knowledge_sources
 // carries the user's numbered documents (no url) once before the model runs,
