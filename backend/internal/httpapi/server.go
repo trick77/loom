@@ -132,11 +132,7 @@ type ThreadCRUDStore interface {
 
 // MessageStore appends messages and reads them back.
 type MessageStore interface {
-	AddMessage(context.Context, string, string, chat.Role, string) (chat.Message, error)
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage) (chat.Message, error)
-	AddMessageWithUsage(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage) (chat.Message, error)
-	AddMessageWithArtifacts(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage) (chat.Message, error)
-	AddMessageWithActivityTrace(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 	ListRecentMessages(context.Context, string, string, int) ([]chat.Message, error)

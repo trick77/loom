@@ -11,35 +11,32 @@ import (
 	"github.com/trick77/loom/internal/sqlutil"
 )
 
-// AddMessage adds a message to a thread. It is the thin wrapper for inserting a
-// message with only the identity, role, and content; callers that need to record
-// token usage or attachments should use the full AddMessageWith* variants.
+// AddMessage inserts a message with only identity, role and content.
 func (s *Store) AddMessage(ctx context.Context, userID, threadID string, role Role, content string) (Message, error) {
-	return s.AddMessageWithUsage(ctx, userID, threadID, role, content, MessageTokenUsage{})
+	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content})
 }
 
-// AddMessageWithUsage adds a message to a thread, recording token counts, costs,
-// and other turn-specific metrics in the usage parameter.
+// AddMessageWithUsage inserts a message and records the turn's token counts,
+// cost and other metrics.
 func (s *Store) AddMessageWithUsage(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage) (Message, error) {
-	return s.AddMessageWithArtifacts(ctx, userID, threadID, role, content, usage, nil)
+	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage})
 }
 
-// AddMessageWithArtifacts adds a message to a thread, additionally persisting any
-// generated artifacts (code snippets, visualizations, etc.) as a JSON array.
+// AddMessageWithArtifacts inserts a message together with its generated
+// artifacts (a JSON array).
 func (s *Store) AddMessageWithArtifacts(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage) (Message, error) {
-	return s.AddMessageWithActivityTrace(ctx, userID, threadID, role, content, usage, artifacts, nil)
+	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage, artifacts: artifacts})
 }
 
-// AddMessageWithActivityTrace adds a message to a thread, additionally persisting
-// the activity trace that records when tool calls were issued and how they resolved.
+// AddMessageWithActivityTrace inserts a message together with its artifacts
+// and the activity trace recording its tool calls.
 func (s *Store) AddMessageWithActivityTrace(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (Message, error) {
-	return s.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil, nil)
+	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage, artifacts: artifacts, activityTrace: activityTrace})
 }
 
-// AddMessageWithCitations is the full message insert, additionally persisting RAG
-// citations (the documents whose chunks informed the answer) and the ordered
-// content blocks (the interleaved text/trace/artifact timeline). citations and
-// contentBlocks may be nil for turns without retrieval or blocks.
+// AddMessageWithCitations is the full assistant insert: artifacts, activity
+// trace, citations (the documents and web sources behind the answer) and the
+// ordered content blocks. Any of the JSON columns may be nil.
 func (s *Store) AddMessageWithCitations(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (Message, error) {
 	return s.insertMessage(ctx, messageInsert{
 		userID:        userID,
@@ -106,41 +103,23 @@ func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, e
 	} else if !ok {
 		return Message{}, ErrThreadNotFound
 	}
-	if len(artifacts) == 0 {
-		artifacts = json.RawMessage("[]")
+	jsonColumns := []struct {
+		name string
+		raw  *json.RawMessage
+	}{
+		{"artifacts", &artifacts},
+		{"activity trace", &activityTrace},
+		{"citations", &citations},
+		{"attachments", &attachments},
+		{"content blocks", &contentBlocks},
+		{"pasted texts", &pastedTexts},
 	}
-	if !json.Valid(artifacts) {
-		return Message{}, validation("message artifacts must be valid JSON")
-	}
-	if len(activityTrace) == 0 {
-		activityTrace = json.RawMessage("[]")
-	}
-	if !json.Valid(activityTrace) {
-		return Message{}, validation("message activity trace must be valid JSON")
-	}
-	if len(citations) == 0 {
-		citations = json.RawMessage("[]")
-	}
-	if !json.Valid(citations) {
-		return Message{}, validation("message citations must be valid JSON")
-	}
-	if len(attachments) == 0 {
-		attachments = json.RawMessage("[]")
-	}
-	if !json.Valid(attachments) {
-		return Message{}, validation("message attachments must be valid JSON")
-	}
-	if len(contentBlocks) == 0 {
-		contentBlocks = json.RawMessage("[]")
-	}
-	if !json.Valid(contentBlocks) {
-		return Message{}, validation("message content blocks must be valid JSON")
-	}
-	if len(pastedTexts) == 0 {
-		pastedTexts = json.RawMessage("[]")
-	}
-	if !json.Valid(pastedTexts) {
-		return Message{}, validation("message pasted texts must be valid JSON")
+	for _, column := range jsonColumns {
+		normalized, err := normalizeJSONArray(column.name, *column.raw)
+		if err != nil {
+			return Message{}, err
+		}
+		*column.raw = normalized
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -345,4 +324,16 @@ func maxContentLengthForRole(role Role) int {
 		return MaxMessageContentLength
 	}
 	return MaxAssistantMessageContentLength
+}
+
+// normalizeJSONArray defaults an absent JSON column to an empty array and
+// rejects one that is not valid JSON, naming the column in the error.
+func normalizeJSONArray(name string, raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 {
+		return json.RawMessage("[]"), nil
+	}
+	if !json.Valid(raw) {
+		return nil, validation("message " + name + " must be valid JSON")
+	}
+	return raw, nil
 }

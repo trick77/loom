@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -1726,5 +1727,19 @@ func TestStore_UpdateThreadReportsMissingThread(t *testing.T) {
 	title := "x"
 	if _, ok, err := store.UpdateThread(ctx, userID, "missing", UpdateThreadInput{Title: &title}); err != nil || ok {
 		t.Fatalf("UpdateThread(missing) = ok %v, err %v; want false, nil", ok, err)
+	}
+}
+
+func TestNormalizeJSONArray(t *testing.T) {
+	if got, err := normalizeJSONArray("artifacts", nil); err != nil || string(got) != "[]" {
+		t.Fatalf("nil -> %s, %v; want [] and no error", got, err)
+	}
+	if got, err := normalizeJSONArray("artifacts", json.RawMessage(`[{"id":"a"}]`)); err != nil || string(got) != `[{"id":"a"}]` {
+		t.Fatalf("valid -> %s, %v; want it back unchanged", got, err)
+	}
+	_, err := normalizeJSONArray("citations", json.RawMessage(`{not json`))
+	var verr *ValidationError
+	if !errors.As(err, &verr) || verr.Msg != "message citations must be valid JSON" {
+		t.Fatalf("invalid -> %v, want a validation error naming the column", err)
 	}
 }
