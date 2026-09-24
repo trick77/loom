@@ -479,3 +479,36 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 		t.Fatalf("encode response: %v", err)
 	}
 }
+
+// The queue URLs come from fal's own responses. The API key must only ever go
+// to the configured host: a compromised or misconfigured upstream that points
+// the status URL elsewhere must not receive the credential.
+func TestFalClientRefusesToSendKeyToForeignQueueHost(t *testing.T) {
+	var foreignRequests int
+	foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		foreignRequests++
+		writeJSON(t, w, map[string]any{"status": "COMPLETED"})
+	}))
+	t.Cleanup(foreign.Close)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != testFalSubmitURL {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		writeJSON(t, w, map[string]any{
+			"request_id":   "req-1",
+			"status_url":   foreign.URL + "/queue/status",
+			"response_url": foreign.URL + "/queue/response",
+		})
+	}))
+	t.Cleanup(server.Close)
+	client := NewFalClient(FalConfig{BaseURL: server.URL, APIKey: "test-key", Model: testFalModel, PollInterval: time.Millisecond, HTTPClient: server.Client()})
+
+	_, err := client.Generate(context.Background(), GenerateRequest{Prompt: "x", Width: 512, Height: 512, OutputFormat: "png"})
+
+	if err == nil || !strings.Contains(err.Error(), "host") {
+		t.Fatalf("Generate() error = %v, want a refusal naming the foreign host", err)
+	}
+	if foreignRequests != 0 {
+		t.Fatalf("foreign host received %d requests with the API key, want 0", foreignRequests)
+	}
+}
