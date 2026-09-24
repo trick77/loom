@@ -59,19 +59,14 @@ func ThumbnailRelPath(volumeRelPath string) string {
 // forbids for user paths) and requires the relpath to live under that subtree, so a
 // stray value can neither escape the user root nor point at a user-visible file.
 func ResolveThumbnailExisting(usersDir, userID, thumbnailRelPath string) (string, error) {
-	slash := filepath.ToSlash(thumbnailRelPath)
-	if filepath.IsAbs(thumbnailRelPath) || strings.Contains(slash, "..") {
+	clean, err := cleanVolumePath(thumbnailRelPath)
+	if err != nil {
 		return "", errors.New("invalid thumbnail path")
 	}
-	if !strings.HasPrefix(slash, thumbnailReservedDir+"/") {
+	if !strings.HasPrefix(clean, thumbnailReservedDir+"/") {
 		return "", errors.New("not a thumbnail path")
 	}
-	userRoot := filepath.Join(usersDir, userID)
-	abs := filepath.Join(userRoot, filepath.FromSlash(thumbnailRelPath))
-	if err := ensureInside(userRoot, abs); err != nil {
-		return "", err
-	}
-	return abs, nil
+	return resolveInside(filepath.Join(usersDir, userID), clean)
 }
 
 // WriteThumbnail decodes src, scales it to a JPEG thumbnail, and writes it into the

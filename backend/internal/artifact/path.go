@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -69,6 +70,9 @@ func prepareOutput(req OutputRequest) (preparedOutput, error) {
 	}
 	baseRel := filepath.Join("files", "outputs")
 	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
+		if err := validateProjectSegment(*req.ProjectID); err != nil {
+			return preparedOutput{}, err
+		}
 		baseRel = filepath.Join("projects", *req.ProjectID, "outputs")
 	}
 	userRoot := filepath.Join(req.UsersDir, req.UserID)
@@ -101,27 +105,88 @@ func (p preparedOutput) path(filename, abs string) OutputPath {
 	}
 }
 
-// ResolveExisting validates and resolves the absolute path for an existing artifact, checking for path traversal attacks.
+// ResolveExisting validates and resolves the absolute path for a user-visible
+// artifact, rejecting traversal, the reserved .loom subtree and symlink escapes.
 func ResolveExisting(usersDir, userID, volumeRelPath string) (string, error) {
-	if filepath.IsAbs(volumeRelPath) || strings.Contains(volumeRelPath, "..") {
+	clean, err := cleanVolumePath(volumeRelPath)
+	if err != nil {
 		return "", errors.New("invalid artifact path")
 	}
-	if strings.HasPrefix(filepath.ToSlash(volumeRelPath), ".loom/") {
+	if clean == reservedDir || strings.HasPrefix(clean, reservedDir+"/") {
 		return "", errors.New("reserved artifact path")
 	}
-	userRoot := filepath.Join(usersDir, userID)
-	abs := filepath.Join(userRoot, filepath.FromSlash(volumeRelPath))
+	return resolveInside(filepath.Join(usersDir, userID), clean)
+}
+
+// reservedDir is the per-user subtree loom keeps for itself (thumbnails); user
+// artifact paths may never point into it.
+const reservedDir = ".loom"
+
+// cleanVolumePath normalizes a volume-relative path to slash form and rejects
+// anything that is not a plain relative path into the volume: absolute paths,
+// an empty or "." path, and any ".." segment (a ".." inside a name, as in
+// a..b.pdf, is fine).
+func cleanVolumePath(rel string) (string, error) {
+	slash := filepath.ToSlash(rel)
+	if filepath.IsAbs(rel) || strings.HasPrefix(slash, "/") {
+		return "", errors.New("absolute path")
+	}
+	clean := path.Clean(slash)
+	if clean == "." || clean == "" {
+		return "", errors.New("empty path")
+	}
+	for _, segment := range strings.Split(clean, "/") {
+		if segment == ".." {
+			return "", errors.New("path traversal")
+		}
+	}
+	return clean, nil
+}
+
+// resolveInside maps a cleaned volume-relative path to its absolute location
+// under userRoot and proves the location stays inside the root once symlinks
+// are followed. The deepest existing prefix of the path is resolved (so a
+// not-yet-written file still validates), and a final component that exists as
+// a symlink is rejected outright: loom only ever writes regular files, so a
+// symlink there is not something to follow.
+func resolveInside(userRoot, clean string) (string, error) {
+	abs := filepath.Join(userRoot, filepath.FromSlash(clean))
 	if err := ensureInside(userRoot, abs); err != nil {
 		return "", err
 	}
-	resolvedParent, err := filepath.EvalSymlinks(filepath.Dir(abs))
-	if err != nil {
-		return "", fmt.Errorf("resolve artifact parent: %w", err)
+	existing := abs
+	for {
+		info, err := os.Lstat(existing)
+		if err == nil {
+			if existing == abs && info.Mode()&os.ModeSymlink != 0 {
+				return "", errors.New("artifact path is a symlink")
+			}
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			break
+		}
+		existing = parent
 	}
-	if err := ensureResolvedInside(userRoot, resolvedParent); err != nil {
-		return "", err
+	// The root is its own deepest prefix for a path whose first component does
+	// not exist yet; the root itself is trusted, only what hangs below it is
+	// checked once symlinks are followed.
+	if filepath.Clean(existing) != filepath.Clean(userRoot) {
+		if err := ensureResolvedInside(userRoot, existing); err != nil {
+			return "", err
+		}
 	}
 	return abs, nil
+}
+
+// validateProjectSegment rejects a project id that would not stay a single path
+// segment under the user's volume.
+func validateProjectSegment(projectID string) error {
+	if projectID == "" || projectID == "." || projectID == ".." || filepath.IsAbs(projectID) || strings.ContainsAny(projectID, `/\`) {
+		return errors.New("invalid project id")
+	}
+	return nil
 }
 
 func ensureResolvedInside(root, path string) error {

@@ -173,3 +173,82 @@ func TestMIMETypeImages(t *testing.T) {
 func strPtr(value string) *string {
 	return &value
 }
+
+// The symlink check covered the parent directory only: a symlinked *file*
+// inside the sandbox was resolved by os.Open to wherever it pointed.
+func TestResolveExistingRejectsSymlinkedFile(t *testing.T) {
+	usersDir := t.TempDir()
+	outputs := filepath.Join(usersDir, "user_1", "files", "outputs")
+	if err := os.MkdirAll(outputs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "secret.pdf")
+	if err := os.WriteFile(outside, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(outputs, "report.pdf")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ResolveExisting(usersDir, "user_1", "files/outputs/report.pdf"); err == nil {
+		t.Fatal("ResolveExisting() error = nil, want symlinked file rejected")
+	}
+}
+
+// ".." as a substring is not traversal: a file called a..b.pdf is legitimate.
+func TestResolveExistingAllowsDoubleDotInName(t *testing.T) {
+	usersDir := t.TempDir()
+	outputs := filepath.Join(usersDir, "user_1", "files", "outputs")
+	if err := os.MkdirAll(outputs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outputs, "a..b.pdf"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	abs, err := ResolveExisting(usersDir, "user_1", "files/outputs/a..b.pdf")
+	if err != nil {
+		t.Fatalf("ResolveExisting() error = %v, want nil", err)
+	}
+	if filepath.Base(abs) != "a..b.pdf" {
+		t.Fatalf("ResolveExisting() = %q, want the file itself", abs)
+	}
+}
+
+func TestResolveExistingRejectsTraversalAndReservedInAnySpelling(t *testing.T) {
+	usersDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(usersDir, "user_1"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{
+		"../user_2/files/x.pdf",
+		"files/../../user_2/x.pdf",
+		"./.loom/thumbnails/x.jpg",
+		".loom/thumbnails/x.jpg",
+		"/etc/passwd",
+		"",
+		".",
+	} {
+		if _, err := ResolveExisting(usersDir, "user_1", rel); err == nil {
+			t.Errorf("ResolveExisting(%q) error = nil, want rejection", rel)
+		}
+	}
+}
+
+// A project id is a path segment; the output path must apply the same
+// single-segment rule the upload path already enforces.
+func TestCreateOutputFileRejectsProjectIDWithSeparator(t *testing.T) {
+	for _, projectID := range []string{"../x", "a/b", `a\b`, ".."} {
+		id := projectID
+		_, _, err := CreateOutputFile(OutputRequest{
+			UsersDir:        t.TempDir(),
+			UserID:          "user_1",
+			ProjectID:       &id,
+			DisplayFilename: "out.txt",
+			Extension:       "txt",
+		})
+		if err == nil {
+			t.Errorf("CreateOutputFile(project %q) error = nil, want invalid project id", projectID)
+		}
+	}
+}

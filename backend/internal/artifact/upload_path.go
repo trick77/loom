@@ -43,8 +43,8 @@ func CreateUploadFile(req UploadRequest) (OutputPath, *os.File, error) {
 	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
 		projectID := *req.ProjectID
 		// Reject a project id that would escape the volume; it is a path segment.
-		if filepath.IsAbs(projectID) || strings.Contains(filepath.ToSlash(projectID), "..") || strings.ContainsAny(projectID, `/\`) {
-			return OutputPath{}, nil, errors.New("invalid project id")
+		if err := validateProjectSegment(projectID); err != nil {
+			return OutputPath{}, nil, err
 		}
 		baseRel = filepath.Join("projects", projectID)
 	}
