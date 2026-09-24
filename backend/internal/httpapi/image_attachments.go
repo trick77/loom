@@ -98,8 +98,11 @@ type editImageSource struct {
 // artifact for direct editing. Unlike imageContentParts (which downscales hard to
 // the vision-input budget and so would reintroduce detail loss), this keeps the
 // original and only trims to the image model's input envelope. Returns ok=false when the
-// artifact is missing, out of scope, or not a supported image type.
-func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, artifactID string) (editImageSource, bool, error) {
+// artifact is missing or not a supported image type. Like imageContentParts it
+// accepts any image the user owns, whatever thread it came from: "Use in
+// thread" re-references an artifact from a new thread, and rejecting it here
+// silently dropped the source of the follow-up edit.
+func (s *server) loadEditSourceImage(ctx context.Context, userID, artifactID string) (editImageSource, bool, error) {
 	if s.artifacts == nil || strings.TrimSpace(artifactID) == "" {
 		return editImageSource{}, false, nil
 	}
@@ -108,9 +111,6 @@ func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, arti
 		return editImageSource{}, false, fmt.Errorf("load edit source image: %w", err)
 	}
 	if !ok {
-		return editImageSource{}, false, nil
-	}
-	if item.ThreadID != "" && item.ThreadID != threadID {
 		return editImageSource{}, false, nil
 	}
 	if !allowedImageMIME(item.MIMEType) {

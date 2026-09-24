@@ -277,7 +277,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// the source image.
 	var editSource *editImageSource
 	if imageArtifactRequired && editSourceID != "" {
-		if src, ok, srcErr := s.loadEditSourceImage(r.Context(), user.ID, threadID, editSourceID); srcErr != nil {
+		if src, ok, srcErr := s.loadEditSourceImage(r.Context(), user.ID, editSourceID); srcErr != nil {
 			slog.Warn("load edit source image failed; generating without source image",
 				"thread_id", threadID, "artifact_id", editSourceID, "err", srcErr)
 		} else if ok {

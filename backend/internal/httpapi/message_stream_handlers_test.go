@@ -1036,7 +1036,7 @@ func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
 	srv := &server{artifacts: store, usersDir: usersDir}
 
 	// Happy path: original bytes are returned for an in-scope, allowed image.
-	src, ok, err := srv.loadEditSourceImage(context.Background(), userID, "thr_1", "img_ok")
+	src, ok, err := srv.loadEditSourceImage(context.Background(), userID, "img_ok")
 	if err != nil || !ok {
 		t.Fatalf("loadEditSourceImage(img_ok) = ok %v, err %v", ok, err)
 	}
@@ -1044,10 +1044,18 @@ func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
 		t.Fatalf("Data = %q, want original bytes", src.Data)
 	}
 
-	// Out-of-scope (different thread), unsupported MIME, missing, and empty id all
-	// degrade to ok=false without an error so the turn proceeds prompt-only.
-	for _, id := range []string{"img_other_thread", "img_bad_mime", "img_missing", ""} {
-		_, ok, err := srv.loadEditSourceImage(context.Background(), userID, "thr_1", id)
+	// An image from another of the user's threads is a valid edit source: "Use
+	// in thread" re-references it from a new thread, and the vision path already
+	// accepts it, so the edit path must too or the follow-up edit silently loses
+	// its source. Ownership (the user-scoped lookup) is the real boundary.
+	if _, ok, err := srv.loadEditSourceImage(context.Background(), userID, "img_other_thread"); err != nil || !ok {
+		t.Fatalf("loadEditSourceImage(img_other_thread) = ok %v, err %v, want ok=true", ok, err)
+	}
+
+	// Unsupported MIME, missing, and empty id all degrade to ok=false without an
+	// error so the turn proceeds prompt-only.
+	for _, id := range []string{"img_bad_mime", "img_missing", ""} {
+		_, ok, err := srv.loadEditSourceImage(context.Background(), userID, id)
 		if err != nil || ok {
 			t.Fatalf("loadEditSourceImage(%q) = ok %v, err %v, want ok=false, err=nil", id, ok, err)
 		}
