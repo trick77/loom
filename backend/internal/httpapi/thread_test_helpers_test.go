@@ -594,6 +594,11 @@ type fakeChatClient struct {
 	reasoningTitle      string
 	reasoningTitlePanic bool
 	streamPanic         bool
+	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
+	// open and count how many callers got through.
+	memoryEntered       chan struct{}
+	memoryGate          chan struct{}
+	memoryCalls         *atomic.Int32
 	history             *[]llm.Message
 	streamText          *string
 	reasoningText       string
@@ -686,6 +691,15 @@ func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string)
 }
 
 func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _, _, _ string) (string, error) {
+	if f.memoryCalls != nil {
+		f.memoryCalls.Add(1)
+	}
+	if f.memoryEntered != nil {
+		f.memoryEntered <- struct{}{}
+	}
+	if f.memoryGate != nil {
+		<-f.memoryGate
+	}
 	return f.projectMemory, nil
 }
 

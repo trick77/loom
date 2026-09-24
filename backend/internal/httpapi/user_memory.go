@@ -18,6 +18,7 @@ import (
 func (s *server) userMemoryScope(user auth.User) memoryScope {
 	return memoryScope{
 		name:         "user",
+		key:          "user:" + user.ID,
 		purpose:      "user_memory",
 		header:       "",
 		systemPrompt: llm.UserMemorySystemPrompt,

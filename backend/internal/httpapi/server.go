@@ -65,6 +65,7 @@ type Deps struct {
 type server struct {
 	version                    string
 	background                 *Background
+	inflight                   inflightKeys
 	oidc                       OIDCService
 	auth                       *auth.Middleware
 	sessions                   SessionService

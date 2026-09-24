@@ -43,6 +43,7 @@ const (
 // storage access, the generation header, and the system prompt.
 type memoryScope struct {
 	name         string // for logs, e.g. "project" / "user"
+	key          string // single-flight key, unique per stored memory, e.g. "project:<id>"
 	purpose      string // inference metadata purpose
 	header       string // generation header block (e.g. project name/description)
 	systemPrompt string // llm system prompt selecting the memory's style
@@ -64,6 +65,11 @@ type memoryScope struct {
 // what keeps the daily user sweep and the debounced project refresh from firing
 // on every turn.
 func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope memoryScope, minAge time.Duration) error {
+	release, ok := s.inflight.tryAcquire("memory:" + scope.key)
+	if !ok {
+		return nil
+	}
+	defer release()
 	count, err := scope.count(ctx)
 	if err != nil {
 		return err

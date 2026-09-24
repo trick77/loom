@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -167,5 +169,57 @@ func TestMemoryWorker_safely_RecoversPanic(t *testing.T) {
 
 	if !ranAfterPanic {
 		t.Fatal("safely must continue running scopes after recovering a panic")
+	}
+}
+
+// Concurrent turns in one scope must not each start the same LLM refresh: the
+// gate is check-then-act on stored counters, so without a guard every caller
+// that reads the stale count regenerates. Only the first proceeds; the rest
+// return at once and the next due check picks up the fresh counters.
+func TestRefreshMemoryIfDue_SingleFlightPerScope(t *testing.T) {
+	stale := time.Now().Add(-25 * time.Hour)
+	store := &fakeThreadStore{
+		userMessageCount: 50,
+		userMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 0, UpdatedAt: &stale},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "I moved to Zurich"}},
+	}
+	entered := make(chan struct{}, 8)
+	gate := make(chan struct{})
+	var calls atomic.Int32
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- REGENERATED", memoryEntered: entered, memoryGate: gate, memoryCalls: &calls}}
+	refresh := func() error {
+		return s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), memoryUserRefreshAge)
+	}
+
+	first := make(chan error, 1)
+	go func() { first <- refresh() }()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first refresh never reached the model")
+	}
+
+	// While the first refresh is inside the model call, four more turns fire.
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := refresh(); err != nil {
+				t.Errorf("concurrent refreshMemoryIfDue() error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	close(gate)
+	if err := <-first; err != nil {
+		t.Fatalf("first refreshMemoryIfDue() error: %v", err)
+	}
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("GenerateMemory calls = %d, want 1", got)
+	}
+	if store.userMemory.Content != "- REGENERATED" {
+		t.Fatalf("memory = %q, want regenerated once", store.userMemory.Content)
 	}
 }

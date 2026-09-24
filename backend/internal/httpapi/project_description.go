@@ -41,6 +41,11 @@ func (s *server) maybeRefreshProjectDescriptionAsync(parent context.Context, use
 // always": a thread titled inside a debounce window is caught on the next trigger or
 // sweep because the count still differs, instead of being stranded.
 func (s *server) refreshProjectDescriptionIfDue(ctx context.Context, user auth.User, projectID string) error {
+	release, ok := s.inflight.tryAcquire("description:" + projectID)
+	if !ok {
+		return nil
+	}
+	defer release()
 	project, err := s.findProject(ctx, user.ID, projectID)
 	if err != nil || project == nil {
 		return err

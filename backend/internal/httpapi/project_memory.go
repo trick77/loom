@@ -17,6 +17,7 @@ import (
 func (s *server) projectMemoryScope(user auth.User, project chat.Project) memoryScope {
 	return memoryScope{
 		name:         "project",
+		key:          "project:" + project.ID,
 		purpose:      "project_memory",
 		header:       projectMemoryHeader(project),
 		systemPrompt: llm.ProjectMemorySystemPrompt,
