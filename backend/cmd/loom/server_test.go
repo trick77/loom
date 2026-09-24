@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"testing"
+	"time"
 )
 
 // A zero timeout means "no limit", which is the slow-loris exposure a
@@ -35,5 +38,32 @@ func TestNewServerSetsReadTimeouts(t *testing.T) {
 	// responses that a write deadline would truncate.
 	if srv.WriteTimeout != 0 {
 		t.Errorf("WriteTimeout = %v, want 0: it would cut off the SSE stream", srv.WriteTimeout)
+	}
+}
+
+// A listener that fails to bind (port in use, bad address) must fail run():
+// logging the error inside the accept goroutine and then waiting for a signal
+// leaves a process that looks alive but serves nothing.
+func TestServeReturnsListenError(t *testing.T) {
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer taken.Close()
+
+	srv := newServer(taken.Addr().String(), http.NewServeMux())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, srv, func(context.Context) {}) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("serve() error = nil, want bind failure")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("serve() did not return after the listener failed")
 	}
 }

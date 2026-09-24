@@ -290,20 +290,46 @@ func run() error {
 
 	srv := newServer(cfg.Addr, handler)
 
-	go func() {
-		slog.Info("listening", "addr", cfg.Addr, "version", version)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("server error", "err", err)
-		}
-	}()
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	// Background memory refresh sweeps until shutdown cancels ctx.
-	go memoryWorker.Run(ctx)
-	<-ctx.Done()
+	return serve(ctx, srv, memoryWorker.Run)
+}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// shutdownTimeout bounds the graceful stop: in-flight requests get this long
+// to finish once a signal arrives.
+const shutdownTimeout = 10 * time.Second
+
+// serve runs the listener until ctx is done or the listener itself fails, then
+// shuts the server down gracefully. A bind failure is returned, not just
+// logged: a process that logged "address in use" and then sat waiting for a
+// signal looked alive to its supervisor while serving nothing.
+//
+// background is the long-running sweep (the memory worker) that runs for the
+// server's lifetime; it stops when ctx does.
+func serve(ctx context.Context, srv *http.Server, background func(context.Context)) error {
+	listenErr := make(chan error, 1)
+	go func() {
+		slog.Info("listening", "addr", srv.Addr, "version", version)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			listenErr <- err
+			return
+		}
+		listenErr <- nil
+	}()
+
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	defer stopWorker()
+	go background(workerCtx)
+
+	select {
+	case <-ctx.Done():
+	case err := <-listenErr:
+		if err != nil {
+			return fmt.Errorf("listen on %s: %w", srv.Addr, err)
+		}
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
 }
