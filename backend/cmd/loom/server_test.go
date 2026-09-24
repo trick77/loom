@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/trick77/loom/internal/httpapi"
 )
 
 // A zero timeout means "no limit", which is the slow-loris exposure a
@@ -41,29 +45,89 @@ func TestNewServerSetsReadTimeouts(t *testing.T) {
 	}
 }
 
-// A listener that fails to bind (port in use, bad address) must fail run():
-// logging the error inside the accept goroutine and then waiting for a signal
-// leaves a process that looks alive but serves nothing.
-func TestServeReturnsListenError(t *testing.T) {
-	taken, err := net.Listen("tcp", "127.0.0.1:0")
+// A listener that fails must fail run(): logging the error inside the accept
+// goroutine and then waiting for a signal leaves a process that looks alive
+// but serves nothing.
+func TestServeReturnsListenerError(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer taken.Close()
+	_ = ln.Close() // Serve on a closed listener fails at once.
 
-	srv := newServer(taken.Addr().String(), http.NewServeMux())
+	srv := newServer(ln.Addr().String(), http.NewServeMux())
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	done := make(chan error, 1)
-	go func() { done <- serve(ctx, srv, func(context.Context) {}) }()
+	go func() { done <- serve(ctx, srv, ln, func(context.Context) {}, httpapi.NewBackground(ctx)) }()
 
 	select {
 	case err := <-done:
 		if err == nil {
-			t.Fatal("serve() error = nil, want bind failure")
+			t.Fatal("serve() error = nil, want listener failure")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("serve() did not return after the listener failed")
+	}
+}
+
+// Shutdown order matters because the database closes right after serve()
+// returns: in-flight requests are told to stop (their context is canceled with
+// a shutdown cause, so a stream unwinds and persists its partial answer), the
+// listener drains, and then the background group is waited for.
+func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	requestStarted := make(chan struct{})
+	requestCause := make(chan error, 1)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /hang", func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		<-r.Context().Done()
+		requestCause <- context.Cause(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := newServer(ln.Addr().String(), mux)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	bg := httpapi.NewBackground(context.Background())
+	var backgroundFinished atomic.Bool
+	bg.Spawn(context.Background(), "drain", func(ctx context.Context) {
+		<-ctx.Done()
+		backgroundFinished.Store(true)
+	})
+
+	served := make(chan error, 1)
+	go func() { served <- serve(ctx, srv, ln, func(context.Context) {}, bg) }()
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String() + "/hang")
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request never reached the handler")
+	}
+
+	cancel()
+
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Fatalf("serve() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve() did not return after the signal")
+	}
+	if !errors.Is(<-requestCause, errServerShuttingDown) {
+		t.Fatal("request context was not canceled with the shutdown cause")
+	}
+	if !backgroundFinished.Load() {
+		t.Fatal("serve() returned before the background group drained")
 	}
 }

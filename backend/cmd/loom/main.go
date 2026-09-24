@@ -260,7 +260,11 @@ func run() error {
 		DiscoveredToolCount: discoveredTools,
 	})
 
+	// Post-turn refreshes outlive their request; serve() drains this group before
+	// the deferred db.Close above runs.
+	background := httpapi.NewBackground(context.Background())
 	deps := httpapi.Deps{
+		Background:                 background,
 		Version:                    version,
 		Static:                     web.SPAHandler(),
 		OIDC:                       oidcService,
@@ -289,49 +293,75 @@ func run() error {
 	memoryWorker := httpapi.NewMemoryWorker(deps)
 
 	srv := newServer(cfg.Addr, handler)
+	// Bind synchronously so "address in use" fails startup here instead of
+	// being logged from a goroutine while the process waits for a signal.
+	ln, err := net.Listen("tcp", cfg.Addr)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return serve(ctx, srv, memoryWorker.Run)
+	return serve(ctx, srv, ln, memoryWorker.Run, background)
 }
 
-// shutdownTimeout bounds the graceful stop: in-flight requests get this long
-// to finish once a signal arrives.
+// shutdownTimeout bounds each stage of the graceful stop: in-flight requests
+// get this long to finish once a signal arrives, then the background group
+// gets the same.
 const shutdownTimeout = 10 * time.Second
 
-// serve runs the listener until ctx is done or the listener itself fails, then
-// shuts the server down gracefully. A bind failure is returned, not just
-// logged: a process that logged "address in use" and then sat waiting for a
-// signal looked alive to its supervisor while serving nothing.
+// errServerShuttingDown is the cause every in-flight request context is
+// canceled with at shutdown, so a stream logs it as such and not as a client
+// disconnect.
+var errServerShuttingDown = errors.New("server shutting down")
+
+// serve accepts on ln until ctx is done or the listener fails, then stops in
+// the order the deferred db.Close in run() needs:
 //
-// background is the long-running sweep (the memory worker) that runs for the
-// server's lifetime; it stops when ctx does.
-func serve(ctx context.Context, srv *http.Server, background func(context.Context)) error {
-	listenErr := make(chan error, 1)
+//  1. cancel every request context with errServerShuttingDown, so an open SSE
+//     stream unwinds now (persisting its partial answer on a detached context)
+//     instead of holding Shutdown for the whole timeout;
+//  2. Shutdown the listener and wait for handlers to return;
+//  3. drain the background group, whose tasks still write to the database.
+//
+// worker is the long-running memory sweep; it stops when ctx does.
+func serve(ctx context.Context, srv *http.Server, ln net.Listener, worker func(context.Context), background *httpapi.Background) error {
+	baseCtx, cancelBase := context.WithCancelCause(context.Background())
+	defer cancelBase(nil)
+	srv.BaseContext = func(net.Listener) context.Context { return baseCtx }
+
+	serveErr := make(chan error, 1)
 	go func() {
-		slog.Info("listening", "addr", srv.Addr, "version", version)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			listenErr <- err
+		slog.Info("listening", "addr", ln.Addr().String(), "version", version)
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- err
 			return
 		}
-		listenErr <- nil
+		serveErr <- nil
 	}()
 
 	workerCtx, stopWorker := context.WithCancel(ctx)
 	defer stopWorker()
-	go background(workerCtx)
+	go worker(workerCtx)
 
 	select {
 	case <-ctx.Done():
-	case err := <-listenErr:
+	case err := <-serveErr:
 		if err != nil {
-			return fmt.Errorf("listen on %s: %w", srv.Addr, err)
+			return fmt.Errorf("serve on %s: %w", ln.Addr().String(), err)
 		}
 	}
 
+	cancelBase(errServerShuttingDown)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Warn("shutdown did not finish cleanly", "err", err)
+	}
+	if err := background.Stop(shutdownTimeout); err != nil {
+		slog.Warn("background tasks did not drain", "err", err)
+	}
+	return nil
 }
 
 // sidecarReadinessTimeout bounds each startup health probe. Gotenberg and Tika
