@@ -166,40 +166,31 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 }
 
 func buildLLMHistory(user auth.User, toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
-	systemContent := systemPromptForUser(user, time.Now())
 	// Tool guidance (e.g. the file-creation guardrail) travels with the tools it
 	// describes: it is passed non-empty only when those tools are offered this
 	// turn, so the prompt never names a tool that was gated out of the request.
-	if strings.TrimSpace(toolGuidance) != "" {
-		systemContent += "\n\n" + toolGuidance
+	// The blocks keep this order; an empty one is skipped.
+	systemContent := systemPromptForUser(user, time.Now())
+	for _, block := range []string{toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext} {
+		if strings.TrimSpace(block) != "" {
+			systemContent += "\n\n" + block
+		}
 	}
-	if strings.TrimSpace(classifierContext) != "" {
-		systemContent += "\n\n" + classifierContext
-	}
-	if strings.TrimSpace(userContext) != "" {
-		systemContent += "\n\n" + userContext
-	}
-	if strings.TrimSpace(projectContext) != "" {
-		systemContent += "\n\n" + projectContext
-	}
-	if strings.TrimSpace(knowledgeContext) != "" {
-		systemContent += "\n\n" + knowledgeContext
-	}
-	if strings.TrimSpace(documentContext) != "" {
-		systemContent += "\n\n" + documentContext
-	}
+	return buildHistory(systemContent, messages, newUserMessage)
+}
+
+// buildHistory is the model history every chat turn sends: the system prompt,
+// the prior user and assistant turns (tool rows are not replayed), then the
+// new user message.
+func buildHistory(systemContent string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	history := []llm.Message{{Role: "system", Content: systemContent}}
 	for _, message := range messages {
 		switch message.Role {
 		case chat.RoleUser, chat.RoleAssistant:
-			history = append(history, llm.Message{
-				Role:    string(message.Role),
-				Content: message.Content,
-			})
+			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
 		}
 	}
-	history = append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
-	return history
+	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
 }
 
 // incognitoSystemPrompt is the system prompt for a tool-free incognito turn. Unlike
@@ -224,15 +215,7 @@ func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
 // user message. It reads no persisted memory or context (mirroring the "not added to
 // memory" promise on the read side too).
 func buildIncognitoHistory(user auth.User, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
-	history := []llm.Message{{Role: "system", Content: incognitoSystemPromptForUser(user, time.Now())}}
-	for _, message := range messages {
-		switch message.Role {
-		case chat.RoleUser, chat.RoleAssistant:
-			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
-		}
-	}
-	history = append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
-	return history
+	return buildHistory(incognitoSystemPromptForUser(user, time.Now()), messages, newUserMessage)
 }
 
 func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {

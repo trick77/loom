@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 )
 
@@ -129,5 +130,16 @@ func TestMessageMetricsWithCost_UnpricedStaysNil(t *testing.T) {
 	}
 	if m := messageMetricsWithCost(result, llm.TokenUsage{}, time.Second, 4200, true); m.CostNanoUSD == nil || *m.CostNanoUSD != 4200 {
 		t.Fatalf("priced CostNanoUSD = %v, want 4200", m.CostNanoUSD)
+	}
+}
+
+func TestBuildHistoryDropsToolMessages(t *testing.T) {
+	history := buildHistory("sys", []chat.Message{
+		{Role: chat.RoleUser, Content: "q"},
+		{Role: chat.RoleTool, Content: "tool output"},
+		{Role: chat.RoleAssistant, Content: "a"},
+	}, chat.Message{Content: "next"})
+	if len(history) != 4 || history[0].Role != "system" || history[1].Content != "q" || history[2].Content != "a" || history[3].Content != "next" {
+		t.Fatalf("buildHistory() = %+v, want system, q, a, next", history)
 	}
 }
