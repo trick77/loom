@@ -14,18 +14,6 @@ import (
 	"golang.org/x/text/language/display"
 )
 
-// messageMetricsFromTurn builds the persisted per-message stats. Model, reasoning
-// effort, and reasoning content describe the final answer call (result), while
-// usage and duration cover the whole turn: usage is the sum across every model
-// call (answer turns, tool rounds, and the reasoning/thread-title helpers) and
-// duration is the turn's wall-clock. ContextTokens is the exception — it is the
-// final answer call's own model-reported total_tokens (result.Usage), the true
-// context size of that single generation, kept separate from the accumulated
-// usage so the UI can report context-window occupancy without double-counting.
-func messageMetricsFromTurn(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration) chat.MessageTokenUsage {
-	return messageMetricsWithCost(result, usage, duration, 0, false)
-}
-
 // messageMetricsWithCost is messageMetricsFromTurn plus the turn's summed cost;
 // priced false leaves it NULL rather than recording a free-looking zero.
 func messageMetricsWithCost(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration, costNanoUSD int64, priced bool) chat.MessageTokenUsage {

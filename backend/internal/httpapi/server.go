@@ -239,9 +239,7 @@ type ArtifactStore interface {
 
 // ChatClient is the LLM dependency used by chat stream handlers.
 type ChatClient interface {
-	StreamChat(context.Context, []llm.Message, func(string) error) (string, error)
 	StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error)
-	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
 	GenerateThreadTitle(context.Context, string, string, string) (string, error)
 	ClassifyThread(context.Context, string) (string, error)
 	ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error)

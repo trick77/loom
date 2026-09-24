@@ -47,10 +47,6 @@ type webSourceRegistry struct {
 	obscuraNavID int    // registry index of the last obscura navigation (0 = none)
 }
 
-func newWebSourceRegistry() *webSourceRegistry {
-	return newWebSourceRegistryAfter(0)
-}
-
 // newWebSourceRegistryAfter starts numbering at offset+1.
 func newWebSourceRegistryAfter(offset int) *webSourceRegistry {
 	if offset < 0 {

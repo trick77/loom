@@ -649,11 +649,6 @@ type fakeChatClient struct {
 	titleAssistantSeen *string
 }
 
-func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
-	result, err := f.StreamChatResult(context.Background(), history, onDelta)
-	return result.Content, err
-}
-
 func (f fakeChatClient) StreamChatResult(_ context.Context, history []llm.Message, onDelta func(string) error) (llm.StreamResult, error) {
 	if f.history != nil {
 		*f.history = append((*f.history)[:0], history...)
@@ -782,11 +777,6 @@ type blockingChatClient struct {
 	titleCalls     atomic.Int32
 }
 
-func (f *blockingChatClient) StreamChat(ctx context.Context, _ []llm.Message, _ func(string) error) (string, error) {
-	result, err := f.StreamChatResult(ctx, nil, nil)
-	return result.Content, err
-}
-
 func (f *blockingChatClient) StreamChatResult(ctx context.Context, _ []llm.Message, _ func(string) error) (llm.StreamResult, error) {
 	close(f.started)
 	<-ctx.Done()
@@ -842,11 +832,6 @@ type fakeToolChatClient struct {
 	imageIntent    llm.ImageIntent
 	titleResult    string
 	titleFor       func(reasoning string) string
-}
-
-func (f *fakeToolChatClient) StreamChat(context.Context, []llm.Message, func(string) error) (string, error) {
-	result, err := f.StreamChatResult(context.Background(), nil, nil)
-	return result.Content, err
 }
 
 func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error) {
