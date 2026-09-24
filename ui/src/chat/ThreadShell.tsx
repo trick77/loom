@@ -19,6 +19,8 @@ import {
   type ShareInfo,
   type Thread,
   type User,
+  PayloadTooLargeError,
+  StreamInterruptedError,
 } from "../api";
 import {
   appendArtifactBlock,

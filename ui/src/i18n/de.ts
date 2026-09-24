@@ -107,6 +107,9 @@ export const de = {
     removeFromProject: "Aus Projekt entfernen",
     addToProject: "Zu Projekt hinzufügen",
     stopFailed: "Nachricht konnte nicht gestoppt werden.",
+    streamInterrupted:
+      "Die Verbindung ist abgebrochen, bevor die Antwort fertig war. Was angekommen ist, steht oben.",
+    messageTooLarge: "Diese Nachricht ist zu gross zum Senden.",
     updateFailed: "Thread konnte nicht aktualisiert werden.",
     projectUpdateFailed: "Projekt konnte nicht aktualisiert werden.",
   },

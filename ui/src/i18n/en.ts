@@ -105,6 +105,9 @@ export const en = {
     removeFromProject: "Remove from project",
     addToProject: "Add to project",
     stopFailed: "Message failed to stop.",
+    streamInterrupted:
+      "The connection dropped before the answer finished. What arrived is shown above.",
+    messageTooLarge: "This message is too large to send.",
     updateFailed: "Thread failed to update.",
     projectUpdateFailed: "Project failed to update.",
   },
