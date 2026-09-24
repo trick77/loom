@@ -50,7 +50,8 @@ export function useThreadData({
         setProjects(nextProjects);
         setThreads(nextThreads.items);
         setThreadDataLoaded(true);
-        setLoadError("");
+        // Not clearing loadError here: a route load that failed while this
+        // initial fetch was still in flight owns that error.
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -85,9 +86,17 @@ export function useThreadData({
           setActiveShare(response.share ?? null);
           activeThreadIDRef.current = response.thread.id;
           setMessages(response.messages.map(rehydrateLoadedMessage));
+          setLoadError("");
         })
         .catch((error: unknown) => {
           if (!active) return;
+          // The route names a thread we could not load; leaving the previous
+          // one in place would show its transcript under the new URL and, since
+          // the composer follows the active thread, send the next message to it.
+          activeThreadIDRef.current = null;
+          setActiveThread(null);
+          setActiveShare(null);
+          setMessages([]);
           handleActionError(
             error,
             i18n.t("errors.threadLoadFailed"),
