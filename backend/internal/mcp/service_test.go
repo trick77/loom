@@ -492,3 +492,41 @@ func TestServiceServerStatusIsCachedWithinTTL(t *testing.T) {
 		t.Fatalf("statuses = %#v / %#v, want alpha active from both calls", first, second)
 	}
 }
+
+// A file-declared server that reuses a built-in server's name exposes tools
+// under the same prefixed names; the built-in keeps them and the duplicates
+// are skipped with a warning, not fatal: a typo in the operator's JSON file
+// must not take the built-ins down with it.
+func TestServiceFromConfigsSkipsDuplicateToolNamesFromBestEffortServers(t *testing.T) {
+	newServer := func() *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			var req rpcRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("Decode request: %v", err)
+			}
+			switch req.Method {
+			case "initialize":
+				writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+			case "tools/list":
+				writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{{"name": "echo", "inputSchema": map[string]any{"type": "object"}}}})
+			}
+		}))
+	}
+	builtIn, fromFile := newServer(), newServer()
+	t.Cleanup(builtIn.Close)
+	t.Cleanup(fromFile.Close)
+	required := Config{Servers: map[string]ServerConfig{"alpha": {Transport: TransportStreamableHTTP, URL: builtIn.URL}}}
+	bestEffort := Config{Servers: map[string]ServerConfig{"alpha": {Transport: TransportStreamableHTTP, URL: fromFile.URL}}}
+
+	service, err := NewServiceFromConfigs(context.Background(), required, bestEffort, builtIn.Client(), nil)
+	if err != nil {
+		t.Fatalf("NewServiceFromConfigs() error = %v, want the duplicate skipped", err)
+	}
+	if got := len(service.Tools()); got != 1 {
+		t.Fatalf("tools = %d, want the built-in's alpha__echo only", got)
+	}
+}
