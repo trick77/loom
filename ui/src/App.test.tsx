@@ -1377,7 +1377,7 @@ test("retries a failed deferred new-chat image upload before streaming", async (
     ),
   );
   await waitFor(() =>
-    expect(screen.getByText("failed to upload image")).toBeInTheDocument(),
+    expect(screen.getByText(/failed to upload/i)).toBeInTheDocument(),
   );
   expect(
     fetchMock.mock.calls.some(
@@ -5271,7 +5271,7 @@ test("a newer shell error replaces a failed turn's error on that thread", async 
   await waitFor(() =>
     expect(screen.queryByText(/the turn blew up/i)).toBeNull(),
   );
-  expect(screen.getByText(/failed to update thread/i)).toBeInTheDocument();
+  expect(screen.getByText(/thread failed to update/i)).toBeInTheDocument();
 });
 
 test("shows a new thread in Recents under the user's question, then swaps in the generated title", async () => {

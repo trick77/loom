@@ -6,6 +6,17 @@ export class AuthExpiredError extends Error {
   }
 }
 
+// UserFacingError carries text written for the user: a localized validation
+// message, or the server's own error text. Everything else the API layer
+// throws is an internal English message that the UI replaces with a
+// translated fallback (see chat/actionErrors.ts).
+export class UserFacingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserFacingError";
+  }
+}
+
 // expectJSON is the shared success/JSON path for authenticated endpoints: it
 // maps a 401 to AuthExpiredError, any other non-2xx to the caller's message,
 // and otherwise decodes the JSON body.

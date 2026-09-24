@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+import { UserFacingError } from "../api/http";
+import { describeActionError } from "./actionErrors";
 import {
   AuthExpiredError,
   DEFAULT_THREAD_TITLE,
@@ -256,17 +259,31 @@ export function ThreadShell({
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
 
+  // translateStreamError names the two transport failures the user can act on
+  // in their own language; every other error keeps its own text (a server
+  // error event is written for the user, an API failure is mapped by
+  // handleActionError).
+  const translateStreamError = useCallback(
+    (error: unknown): unknown => {
+      if (error instanceof StreamInterruptedError) {
+        return new UserFacingError(t("thread.streamInterrupted"));
+      }
+      if (error instanceof PayloadTooLargeError) {
+        return new UserFacingError(t("thread.messageTooLarge"));
+      }
+      return error;
+    },
+    [t],
+  );
+
   const handleActionError = useCallback(
     (error: unknown, fallback: string, setError: (message: string) => void) => {
-      if (error instanceof AuthExpiredError) {
+      const message = describeActionError(error, fallback);
+      if (message === null) {
         onSessionExpired();
         return;
       }
-      setError(
-        error instanceof Error && error.message !== ""
-          ? error.message
-          : fallback,
-      );
+      setError(message);
     },
     [onSessionExpired],
   );
@@ -702,20 +719,24 @@ export function ThreadShell({
     setSendError("");
     const sizeFiltered = files.filter(isWithinUploadSizeLimit);
     if (sizeFiltered.length < files.length) {
-      setPendingAttachNote("Files must be 25 MB or smaller.");
+      setPendingAttachNote(t("errors.fileTooLarge"));
     }
     setPendingAttachments((current) => {
       const remaining = DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - current.length;
       if (remaining <= 0) {
         setPendingAttachNote(
-          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+          t("composer.attachLimit", {
+            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+          }),
         );
         return current;
       }
       const accepted = sizeFiltered.slice(0, remaining);
       if (accepted.length < sizeFiltered.length) {
         setPendingAttachNote(
-          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+          t("composer.attachLimit", {
+            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+          }),
         );
       } else if (accepted.length > 0 && sizeFiltered.length === files.length) {
         setPendingAttachNote("");
@@ -931,9 +952,11 @@ export function ThreadShell({
             // The send stops here with the start screen still on show, so put the
             // files back rather than making the user pick them again.
             setPendingAttachments(attachmentsToFlush);
-            throw new Error(
+            throw new UserFacingError(
               failedImageAttachment.error ??
-                `Failed to upload ${failedImageAttachment.filename}.`,
+                t("errors.uploadFailed", {
+                  filename: failedImageAttachment.filename,
+                }),
             );
           }
         }
@@ -1145,6 +1168,9 @@ export function ThreadShell({
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      // A stop the user asked for closes the stream server-side before the
+      // client aborts its fetch, which reads as an interruption; it is not one.
+      if (abortController.signal.aborted) return;
       // Keep the partial streamed blocks visible so a failed turn still shows what
       // streamed (prose, an activity trace, a tool that errored); the next send
       // clears them.
@@ -1173,10 +1199,14 @@ export function ThreadShell({
       // existed (createThread itself, or the deferred upload flush) has no thread
       // to pin it to and no surface showing that run — it belongs to the shell,
       // which is the start screen the user is still looking at.
-      handleActionError(error, "Message failed to send.", (message) => {
-        if (targetThreadID === null) reportShellError(message);
-        else patchStreamRun(runKey, { error: message });
-      });
+      handleActionError(
+        translateStreamError(error),
+        t("thread.sendFailed"),
+        (message) => {
+          if (targetThreadID === null) reportShellError(message);
+          else patchStreamRun(runKey, { error: message });
+        },
+      );
     } finally {
       endStreamRun(runKey, {
         keepFailedTurnVisible: keepFailedTurnVisible && targetThreadID !== null,
@@ -1298,6 +1328,7 @@ export function ThreadShell({
       );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      if (abortController.signal.aborted) return;
       keepFailedTurnVisible = true;
       // Drop the optimistic user bubble that never got a reply so the user can retry.
       setIncognitoMessages((current) =>
@@ -1311,8 +1342,10 @@ export function ThreadShell({
           }),
         );
       }
-      handleActionError(error, "Message failed to send.", (message) =>
-        patchStreamRun(INCOGNITO_RUN_KEY, { error: message }),
+      handleActionError(
+        translateStreamError(error),
+        t("thread.sendFailed"),
+        (message) => patchStreamRun(INCOGNITO_RUN_KEY, { error: message }),
       );
     } finally {
       endStreamRun(INCOGNITO_RUN_KEY, {
@@ -1509,7 +1542,7 @@ export function ThreadShell({
               projects={projects}
               loadError={
                 loadError === "" && threadDataLoaded
-                  ? "Project not found."
+                  ? t("errors.projectNotFound")
                   : loadError
               }
               onOpenSidebar={() => setMobileSidebarOpen(true)}

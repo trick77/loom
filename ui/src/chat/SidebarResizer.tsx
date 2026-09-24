@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export const SIDEBAR_MIN = 280;
 export const SIDEBAR_MAX = 520;
@@ -78,6 +79,7 @@ function paint(width: number) {
  * not depend on, and a tablet has no other way back to the default width.
  */
 export function SidebarResizer() {
+  const { t } = useTranslation();
   const [width, setWidth] = useState(storedSidebarWidth);
   const lastDown = useRef(-Infinity);
   // The live width during a drag. State alone is not enough: the pointerup handler
@@ -256,7 +258,7 @@ export function SidebarResizer() {
       style={{ left: "calc(var(--ui-sidebar-w) - 7px)" }}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
+      aria-label={t("sidebar.resize")}
       // The DISPLAYED width, not the preference: the separator is where the clamp
       // puts it, and announcing 520 while it sits at 440 describes a sidebar that
       // is not on screen. The max moves with the cap for the same reason.

@@ -1,4 +1,4 @@
-import { AuthExpiredError, expectJSON } from "./http";
+import { AuthExpiredError, expectJSON, UserFacingError } from "./http";
 import {
   DOCUMENT_MAX_THREAD_ATTACHMENTS,
   type Artifact,
@@ -22,17 +22,17 @@ export async function uploadDocument(
     throw new AuthExpiredError();
   }
   if (response.status === 415) {
-    throw new Error(i18n.t("errors.unsupportedDocumentFormat"));
+    throw new UserFacingError(i18n.t("errors.unsupportedDocumentFormat"));
   }
   if (response.status === 409) {
-    throw new Error(
+    throw new UserFacingError(
       i18n.t("errors.tooManyAttachments", {
         count: DOCUMENT_MAX_THREAD_ATTACHMENTS,
       }),
     );
   }
   if (response.status === 413) {
-    throw new Error(i18n.t("errors.fileTooLarge"));
+    throw new UserFacingError(i18n.t("errors.fileTooLarge"));
   }
   return expectJSON<Document>(response, "failed to upload document");
 }
@@ -53,17 +53,17 @@ export async function uploadImageAttachment(
     throw new AuthExpiredError();
   }
   if (response.status === 415) {
-    throw new Error(i18n.t("errors.unsupportedImageFormat"));
+    throw new UserFacingError(i18n.t("errors.unsupportedImageFormat"));
   }
   if (response.status === 409) {
-    throw new Error(
+    throw new UserFacingError(
       i18n.t("errors.tooManyAttachments", {
         count: DOCUMENT_MAX_THREAD_ATTACHMENTS,
       }),
     );
   }
   if (response.status === 413) {
-    throw new Error(i18n.t("errors.fileTooLarge"));
+    throw new UserFacingError(i18n.t("errors.fileTooLarge"));
   }
   return expectJSON<Artifact>(response, "failed to upload image");
 }

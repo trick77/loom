@@ -11,6 +11,8 @@ import {
 } from "../api";
 import { isRevocablePreview } from "../components/AttachmentPreview";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
+import { UserFacingError } from "../api/http";
+import i18n from "../i18n";
 
 export type ComposerAttachmentStatus =
   "queued" | "uploading" | "processing" | "ready" | "error";
@@ -278,20 +280,24 @@ export function useDocumentAttachments(scope: {
       const projectId = override?.projectId ?? scope.projectId;
       const sizeFiltered = files.filter(isWithinUploadSizeLimit);
       if (sizeFiltered.length < files.length) {
-        setAttachNote("Files must be 25 MB or smaller.");
+        setAttachNote(i18n.t("errors.fileTooLarge"));
       }
       const remaining =
         DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - attachments.length;
       if (remaining <= 0) {
         setAttachNote(
-          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+          i18n.t("composer.attachLimit", {
+            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+          }),
         );
         return;
       }
       const accepted = sizeFiltered.slice(0, remaining);
       if (accepted.length < sizeFiltered.length) {
         setAttachNote(
-          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+          i18n.t("composer.attachLimit", {
+            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+          }),
         );
       }
       if (accepted.length === 0) return;
@@ -364,7 +370,9 @@ async function uploadAttachments(
 
   const uploadDocumentAttachment = async (attachment: ComposerAttachment) => {
     if (attachment.file === undefined) return;
-    setAttachNote(`Uploading ${attachment.filename}…`);
+    setAttachNote(
+      i18n.t("composer.uploadingFile", { filename: attachment.filename }),
+    );
     onStatus(attachment.id, { status: "uploading" });
     try {
       const doc = await uploadDocument(attachment.file, {
@@ -386,9 +394,9 @@ async function uploadAttachments(
       });
     } catch (error) {
       const message =
-        error instanceof Error
+        error instanceof UserFacingError
           ? error.message
-          : `Failed to upload ${attachment.filename}.`;
+          : i18n.t("errors.uploadFailed", { filename: attachment.filename });
       onStatus(attachment.id, { status: "error", error: message });
       setAttachNote(message);
     }
@@ -398,11 +406,15 @@ async function uploadAttachments(
     if (attachment.file === undefined || attachment.artifactId !== undefined)
       continue;
     if (threadId === undefined && projectId === undefined) {
-      setAttachNote(`${attachment.filename} will upload when you send.`);
+      setAttachNote(
+        i18n.t("composer.uploadDeferred", { filename: attachment.filename }),
+      );
       continue;
     }
     if (isImageAttachment(attachment)) {
-      setAttachNote(`Uploading ${attachment.filename}…`);
+      setAttachNote(
+        i18n.t("composer.uploadingFile", { filename: attachment.filename }),
+      );
       onStatus(attachment.id, { status: "uploading" });
       try {
         const image = await uploadImageAttachment(attachment.file, {
@@ -413,9 +425,9 @@ async function uploadAttachments(
         setAttachNote("");
       } catch (error) {
         const message =
-          error instanceof Error
+          error instanceof UserFacingError
             ? error.message
-            : `Failed to upload ${attachment.filename}.`;
+            : i18n.t("errors.uploadFailed", { filename: attachment.filename });
         onStatus(attachment.id, { status: "error", error: message });
         setAttachNote(message);
       }

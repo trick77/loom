@@ -1,4 +1,4 @@
-import { AuthExpiredError } from "./http";
+import { AuthExpiredError, UserFacingError } from "./http";
 import type {
   Artifact,
   Citation,
@@ -40,7 +40,7 @@ export class StreamInterruptedError extends Error {
 
 // StreamFailedError carries the server's own `error` event text, which is
 // written for the user (e.g. "image generation was not completed").
-export class StreamFailedError extends Error {
+export class StreamFailedError extends UserFacingError {
   constructor(message: string) {
     super(message);
     this.name = "StreamFailedError";
@@ -131,7 +131,9 @@ async function expectStreamResponse(
     throw new PayloadTooLargeError();
   }
   if (!response.ok) {
-    throw new Error(await readStreamError(response));
+    // The server rejects a send before the stream opens with a message meant
+    // for the user (an unknown attachment, content that is too long).
+    throw new UserFacingError(await readStreamError(response));
   }
   if (!response.body) {
     throw new Error("stream response has no body");

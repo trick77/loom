@@ -40,6 +40,7 @@ export const en = {
     german: "Deutsch (Deutschland)",
   },
   sidebar: {
+    resize: "Resize sidebar",
     search: "Search",
     showSidebar: "Show sidebar",
     hideSidebar: "Hide sidebar",
@@ -62,6 +63,10 @@ export const en = {
     archive: "Archive",
   },
   composer: {
+    attachLimit_one: "You can attach up to {{count}} file per message.",
+    attachLimit_other: "You can attach up to {{count}} files per message.",
+    uploadingFile: "Uploading {{filename}}…",
+    uploadDeferred: "{{filename}} will upload when you send.",
     attachments: "Message attachments",
     addAttachment: "Add attachment",
     sendMessage: "Send message",
@@ -81,6 +86,7 @@ export const en = {
     useIncognito: "Use incognito",
   },
   thread: {
+    sendFailed: "Message failed to send.",
     header: "Thread header",
     manageSharing: "Manage sharing",
     shareChat: "Share chat",
@@ -150,6 +156,8 @@ export const en = {
     projects: "Projects",
   },
   errors: {
+    uploadFailed: "{{filename}} failed to upload.",
+    projectNotFound: "Project not found.",
     unsupportedDocumentFormat: "Unsupported document format",
     unsupportedImageFormat: "Unsupported image format",
     fileTooLarge: "Files must be 25 MB or smaller.",

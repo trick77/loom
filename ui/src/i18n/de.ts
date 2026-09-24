@@ -42,6 +42,7 @@ export const de = {
     german: "Deutsch (Deutschland)",
   },
   sidebar: {
+    resize: "Seitenleiste anpassen",
     search: "Suchen",
     showSidebar: "Seitenleiste einblenden",
     hideSidebar: "Seitenleiste ausblenden",
@@ -64,6 +65,11 @@ export const de = {
     archive: "Archivieren",
   },
   composer: {
+    attachLimit_one: "Pro Nachricht kannst du bis zu {{count}} Datei anhängen.",
+    attachLimit_other:
+      "Pro Nachricht kannst du bis zu {{count}} Dateien anhängen.",
+    uploadingFile: "{{filename}} wird hochgeladen…",
+    uploadDeferred: "{{filename}} wird beim Senden hochgeladen.",
     attachments: "Anhänge",
     addAttachment: "Anhang hinzufügen",
     sendMessage: "Nachricht senden",
@@ -83,6 +89,7 @@ export const de = {
     useIncognito: "Inkognito verwenden",
   },
   thread: {
+    sendFailed: "Nachricht konnte nicht gesendet werden.",
     header: "Thread-Kopfzeile",
     manageSharing: "Freigabe verwalten",
     shareChat: "Chat teilen",
@@ -152,6 +159,8 @@ export const de = {
     projects: "Projekte",
   },
   errors: {
+    uploadFailed: "{{filename}} konnte nicht hochgeladen werden.",
+    projectNotFound: "Projekt nicht gefunden.",
     unsupportedDocumentFormat: "Nicht unterstütztes Dokumentformat",
     unsupportedImageFormat: "Nicht unterstütztes Bildformat",
     fileTooLarge: "Dateien dürfen höchstens 25 MB gross sein.",
