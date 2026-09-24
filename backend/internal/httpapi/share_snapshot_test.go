@@ -31,11 +31,12 @@ func TestBuildShareSnapshot_sanitizes(t *testing.T) {
 			Content:          "here is the answer",
 			ReasoningContent: "SECRET_CHAIN_OF_THOUGHT",
 			Citations:        json.RawMessage(`[{"title":"CONFIDENTIAL_SOURCE_DOC","url":"doc://x"}]`),
-			Artifacts:        json.RawMessage(`[{"id":"art1","displayFilename":"diagram.svg","downloadUrl":"/api/artifacts/art1/download"}]`),
+			Artifacts:        json.RawMessage(`[{"id":"art1","displayFilename":"diagram.svg","downloadUrl":"/api/artifacts/art1/download","projectId":"proj_SECRET_ID"}]`),
 			ContentBlocks: json.RawMessage(`[
 				{"type":"trace","content":"SECRET_TOOL_TRACE"},
 				{"type":"text","content":"here is the answer"},
-				{"type":"artifact","artifact":{"id":"art2","displayFilename":"chart.png","downloadUrl":"/api/artifacts/art2/download","thumbnailUrl":"/api/artifacts/art2/thumbnail"}}
+				{"type":"artifact","artifact":{"id":"art2","displayFilename":"chart.png","downloadUrl":"/api/artifacts/art2/download","thumbnailUrl":"/api/artifacts/art2/thumbnail","projectId":"proj_SECRET_ID"}},
+				{"type":"future_kind","content":"SECRET_UNKNOWN_BLOCK"}
 			]`),
 			PromptTokens: &promptTokens,
 			Model:        &model,
@@ -76,6 +77,9 @@ func TestBuildShareSnapshot_sanitizes(t *testing.T) {
 		"1234",                         // token metric
 		"/api/artifacts/art1/download", // un-rewritten (authed) artifact URL
 		`"trace"`,                      // no trace blocks survive
+		"proj_SECRET_ID",               // internal project id on artifact objects
+		"SECRET_UNKNOWN_BLOCK",         // a block type the sanitizer does not know
+		"future_kind",
 	}
 	for _, bad := range mustNotContain {
 		if strings.Contains(got, bad) {

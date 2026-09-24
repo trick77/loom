@@ -26,13 +26,15 @@ const maxStreamBodyBytes = 4 << 20
 
 // serverError logs the underlying cause of a 5xx with request context and
 // returns a generic JSON error to the client (no internal details leak out).
-// Every 500 path must go through here so failures are never silent.
+// Every 500 path must go through here so failures are never silent. The cause
+// is redacted for the log (query strings, userinfo) and the path drops a share
+// token, since a cause that embeds an upstream URL may carry a key.
 func serverError(w http.ResponseWriter, r *http.Request, err error, clientMessage string) {
 	slog.Error("request failed",
 		"method", r.Method,
-		"path", r.URL.Path,
+		"path", logPath(r),
 		"client_message", clientMessage,
-		"err", err,
+		"err", redactErr(err),
 	)
 	writeJSONError(w, http.StatusInternalServerError, clientMessage)
 }

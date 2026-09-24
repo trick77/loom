@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -17,7 +18,7 @@ func recovery(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w}
 		defer func() {
 			if p := recover(); p != nil {
-				slog.Error("panic recovered", "err", p, "path", r.URL.Path, "headers_sent", rec.status != 0, "stack", string(debug.Stack()))
+				slog.Error("panic recovered", "err", p, "path", logPath(r), "headers_sent", rec.status != 0, "stack", string(debug.Stack()))
 				if rec.status == 0 {
 					writeJSONError(rec, http.StatusInternalServerError, "internal server error")
 				}
@@ -81,9 +82,21 @@ func logging(next http.Handler) http.Handler {
 		}
 		slog.LogAttrs(r.Context(), level, "request",
 			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
+			slog.String("path", logPath(r)),
 			slog.Int("status", rec.status),
 			slog.String("dur", time.Since(start).String()),
 		)
 	})
+}
+
+// logPath is the request path as it may appear in a log line. A share id is the
+// bearer token of a public share, so the {shareID} segment is redacted; the mux
+// sets the path values on the request before the handler runs, and the logging
+// wrapper reads them after it returns.
+func logPath(r *http.Request) string {
+	path := r.URL.Path
+	if shareID := r.PathValue("shareID"); shareID != "" {
+		path = strings.Replace(path, shareID, "[redacted]", 1)
+	}
+	return path
 }
