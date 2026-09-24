@@ -5529,3 +5529,67 @@ test("a failed admin user list is shown as an error, not as a sign-out", async (
   );
   expect(screen.queryByRole("link", { name: /sign in/i })).toBeNull();
 });
+
+test("a failed deferred new-chat document upload stops the send and keeps the file staged", async () => {
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        return Response.json(
+          {
+            id: "t1",
+            title: "Summarize this",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }
+      if (url === "/api/documents/upload" && init?.method === "POST")
+        return new Response("boom", { status: 500 });
+      if (url.endsWith("/messages:stream") && init?.method === "POST")
+        throw new Error(`unexpected stream ${url}`);
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  const textbox = await screen.findByPlaceholderText(
+    "How can I help you today?",
+  );
+  const composer = textbox.closest("form");
+  const fileInput = composer?.querySelector('input[type="file"]');
+  if (fileInput === null || fileInput === undefined)
+    throw new Error("file input missing");
+  fireEvent.change(fileInput, {
+    target: {
+      files: [new File(["notes"], "notes.txt", { type: "text/plain" })],
+    },
+  });
+  fireEvent.change(textbox, { target: { value: "Summarize this" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/documents/upload",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.getByText(/failed to upload/i)).toBeInTheDocument(),
+  );
+  // The message did not go out without its file, and the file is still staged.
+  expect(
+    fetchMock.mock.calls.some(([url]) =>
+      String(url).endsWith("/messages:stream"),
+    ),
+  ).toBe(false);
+  expect(screen.getByText("notes.txt")).toBeInTheDocument();
+});

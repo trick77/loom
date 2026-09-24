@@ -937,20 +937,25 @@ export function ThreadShell({
             },
             updateSentAttachmentStatus,
           );
-          const failedImageAttachment = options.attachments.find(
+          // Any attachment the flush could not land stops the send: an image
+          // without its artifact, a document without its document row, or one
+          // that reported an error. Documents used to be dropped silently here,
+          // so the message went out without the file the user attached.
+          const failedAttachment = options.attachments.find(
             (attachment) =>
-              isImageAttachment(attachment) &&
-              (attachment.status === "error" ||
-                attachment.artifactId === undefined),
+              attachment.status === "error" ||
+              (isImageAttachment(attachment)
+                ? attachment.artifactId === undefined
+                : attachment.documentId === undefined),
           );
-          if (failedImageAttachment !== undefined) {
+          if (failedAttachment !== undefined) {
             // The send stops here with the start screen still on show, so put the
             // files back rather than making the user pick them again.
             setPendingAttachments(attachmentsToFlush);
             throw new UserFacingError(
-              failedImageAttachment.error ??
+              failedAttachment.error ??
                 t("errors.uploadFailed", {
-                  filename: failedImageAttachment.filename,
+                  filename: failedAttachment.filename,
                 }),
             );
           }
