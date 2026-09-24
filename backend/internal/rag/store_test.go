@@ -203,3 +203,60 @@ func TestStore_getDocumentRejectsMalformedTimestamp(t *testing.T) {
 		t.Fatal("GetDocument() error = nil, want a timestamp parse error")
 	}
 }
+
+func TestStore_ReplaceChunksRemovesEveryPriorVector(t *testing.T) {
+	s, db := newTestStore(t)
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", SizeBytes: 1, Status: StatusPending})
+	many := make([]TextChunk, 200)
+	embs := make([][]float32, 200)
+	for i := range many {
+		many[i] = TextChunk{Ordinal: i, Text: "t", TokenCount: 1}
+		embs[i] = unit()
+	}
+	if err := s.ReplaceChunks(ctx, "u1", "d1", many, embs); err != nil {
+		t.Fatalf("ReplaceChunks(200): %v", err)
+	}
+	if err := s.ReplaceChunks(ctx, "u1", "d1", many[:3], embs[:3]); err != nil {
+		t.Fatalf("ReplaceChunks(3): %v", err)
+	}
+	var vectors int
+	if err := db.QueryRow(`SELECT count(*) FROM vec_chunks`).Scan(&vectors); err != nil {
+		t.Fatal(err)
+	}
+	if vectors != 3 {
+		t.Fatalf("vec_chunks rows = %d, want 3 (the 200 prior vectors deleted)", vectors)
+	}
+}
+
+// The status filter is applied after the nearest-neighbour search; asking
+// for exactly k neighbours and then dropping the ones still indexing used to
+// return fewer than k even when enough embedded chunks existed.
+func TestStore_RetrieveReturnsKWhenNearerDocsArePending(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	near := unit()    // identical to the query: distance 0
+	further := unit() // a little off
+	further[1] = 0.2
+
+	_ = s.CreateDocument(ctx, Document{ID: "pending", UserID: "u1", VolumeRelpath: "files/p.txt", Filename: "p.txt", MIME: "text/plain", SizeBytes: 1, Status: StatusPending})
+	if err := s.ReplaceChunks(ctx, "u1", "pending", []TextChunk{{Text: "p"}}, [][]float32{near}); err != nil {
+		t.Fatal(err)
+	}
+	// ReplaceChunks marks the document embedded; put it back to indexing.
+	if err := s.UpdateStatus(ctx, "u1", "pending", StatusEmbedding, ""); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.CreateDocument(ctx, Document{ID: "ready", UserID: "u1", VolumeRelpath: "files/r.txt", Filename: "r.txt", MIME: "text/plain", SizeBytes: 1, Status: StatusPending})
+	if err := s.ReplaceChunks(ctx, "u1", "ready", []TextChunk{{Text: "r"}}, [][]float32{further}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := s.Retrieve(ctx, "u1", nil, nil, unit(), 1)
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if len(res) != 1 || res[0].DocumentID != "ready" {
+		t.Fatalf("Retrieve(k=1) = %+v, want the one embedded chunk", res)
+	}
+}
