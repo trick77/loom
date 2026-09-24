@@ -12,16 +12,6 @@ import (
 
 var safeFilenameChars = regexp.MustCompile(`[^A-Za-z0-9._ -]+`)
 
-// ResolveOutputPath determines the filesystem location for an artifact, creating parent directories as needed.
-func ResolveOutputPath(req OutputRequest) (OutputPath, error) {
-	prepared, err := prepareOutput(req)
-	if err != nil {
-		return OutputPath{}, err
-	}
-	finalName, finalAbs := collisionFreeName(prepared.outputDir, prepared.display)
-	return prepared.path(finalName, finalAbs), nil
-}
-
 // CreateOutputFile reserves a unique filename and opens a new file for writing, handling filename collisions.
 func CreateOutputFile(req OutputRequest) (OutputPath, *os.File, error) {
 	prepared, err := prepareOutput(req)
@@ -257,19 +247,6 @@ func SanitizeDisplayName(input string) (string, error) {
 		}
 	}
 	return name, nil
-}
-
-func collisionFreeName(dir, name string) (string, string) {
-	ext := filepath.Ext(name)
-	stem := strings.TrimSuffix(name, ext)
-	candidate := name
-	for i := 2; ; i++ {
-		abs := filepath.Join(dir, candidate)
-		if _, err := os.Stat(abs); errors.Is(err, os.ErrNotExist) {
-			return candidate, abs
-		}
-		candidate = fmt.Sprintf("%s-%d%s", stem, i, ext)
-	}
 }
 
 func ensureInside(root, path string) error {

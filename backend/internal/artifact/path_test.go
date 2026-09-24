@@ -6,21 +6,20 @@ import (
 	"testing"
 )
 
-func TestResolveOutputPathUsesThreadScope(t *testing.T) {
+func TestCreateOutputFileUsesThreadScope(t *testing.T) {
 	root := t.TempDir()
-	req := OutputRequest{
+	out, file, err := CreateOutputFile(OutputRequest{
 		UsersDir:        root,
 		UserID:          "user_1",
 		ThreadID:        "thread_1",
 		ProjectID:       strPtr("proj_1"),
 		DisplayFilename: "Q1 report.pdf",
 		Extension:       "pdf",
-	}
-
-	out, err := ResolveOutputPath(req)
+	})
 	if err != nil {
-		t.Fatalf("ResolveOutputPath() error = %v", err)
+		t.Fatalf("CreateOutputFile() error = %v", err)
 	}
+	_ = file.Close()
 	if out.VolumeRelPath != "projects/proj_1/outputs/Q1 report.pdf" {
 		t.Fatalf("VolumeRelPath = %q", out.VolumeRelPath)
 	}
@@ -29,9 +28,9 @@ func TestResolveOutputPathUsesThreadScope(t *testing.T) {
 	}
 }
 
-func TestResolveOutputPathUsesProjectlessOutputs(t *testing.T) {
+func TestCreateOutputFileUsesProjectlessOutputs(t *testing.T) {
 	root := t.TempDir()
-	out, err := ResolveOutputPath(OutputRequest{
+	out, file, err := CreateOutputFile(OutputRequest{
 		UsersDir:        root,
 		UserID:          "user_1",
 		ThreadID:        "thread_1",
@@ -39,17 +38,18 @@ func TestResolveOutputPathUsesProjectlessOutputs(t *testing.T) {
 		Extension:       "md",
 	})
 	if err != nil {
-		t.Fatalf("ResolveOutputPath() error = %v", err)
+		t.Fatalf("CreateOutputFile() error = %v", err)
 	}
+	_ = file.Close()
 	if out.VolumeRelPath != "files/outputs/notes.md" {
 		t.Fatalf("VolumeRelPath = %q", out.VolumeRelPath)
 	}
 }
 
-func TestResolveOutputPathRejectsTraversalAndReservedPaths(t *testing.T) {
+func TestCreateOutputFileRejectsTraversalAndReservedPaths(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"../secret.pdf", "/tmp/secret.pdf", ".loom/secret.pdf", "folder/../../secret.pdf"} {
-		_, err := ResolveOutputPath(OutputRequest{
+		_, file, err := CreateOutputFile(OutputRequest{
 			UsersDir:        root,
 			UserID:          "user_1",
 			ThreadID:        "thread_1",
@@ -57,33 +57,9 @@ func TestResolveOutputPathRejectsTraversalAndReservedPaths(t *testing.T) {
 			Extension:       "pdf",
 		})
 		if err == nil {
-			t.Fatalf("ResolveOutputPath(%q) succeeded, want error", name)
+			_ = file.Close()
+			t.Fatalf("CreateOutputFile(%q) succeeded, want error", name)
 		}
-	}
-}
-
-func TestResolveOutputPathAddsCollisionSuffix(t *testing.T) {
-	root := t.TempDir()
-	existing := filepath.Join(root, "user_1", "files", "outputs")
-	if err := os.MkdirAll(existing, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(existing, "report.pdf"), []byte("old"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	out, err := ResolveOutputPath(OutputRequest{
-		UsersDir:        root,
-		UserID:          "user_1",
-		ThreadID:        "thread_1",
-		DisplayFilename: "report.pdf",
-		Extension:       "pdf",
-	})
-	if err != nil {
-		t.Fatalf("ResolveOutputPath() error = %v", err)
-	}
-	if out.DisplayFilename != "report-2.pdf" {
-		t.Fatalf("DisplayFilename = %q", out.DisplayFilename)
 	}
 }
 
