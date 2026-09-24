@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // AddMessage adds a message to a thread. It is the thin wrapper for inserting a
@@ -147,7 +149,7 @@ func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, e
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	messageID := newID()
+	messageID := sqlutil.NewID()
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO messages (
     id,

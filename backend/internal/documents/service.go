@@ -125,11 +125,11 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		if err != nil {
 			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count thread documents: %w", err)
 		}
-		uploadCount, err := s.countThreadUploads(ctx, in.UserID, threadID)
+		items, err := s.artifacts.ListForThread(ctx, in.UserID, threadID)
 		if err != nil {
 			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count thread uploads: %w", err)
 		}
-		if documentCount >= MaxChatDocuments || uploadCount >= MaxChatDocuments {
+		if documentCount >= MaxChatDocuments || artifact.CountThreadUploads(items, in.UserID) >= MaxChatDocuments {
 			return rag.Document{}, artifact.Artifact{}, ErrThreadDocumentLimit
 		}
 	}
@@ -205,20 +205,6 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("create document: %w", err)
 	}
 	return doc, art, nil
-}
-
-func (s *Service) countThreadUploads(ctx context.Context, userID, threadID string) (int, error) {
-	items, err := s.artifacts.ListForThread(ctx, userID, threadID)
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, item := range items {
-		if item.UserID == userID && item.ProjectID == nil && item.Source == "user_uploaded" {
-			count++
-		}
-	}
-	return count, nil
 }
 
 // Index runs ingestion for a document ("Add to knowledge"). Callers that want it

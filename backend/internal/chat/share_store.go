@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // CreateShare inserts a new public share row for a thread. The caller supplies the
@@ -26,7 +28,7 @@ func (s *Store) CreateShare(ctx context.Context, userID string, in CreateShareIn
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO shared_threads (id, share_id, thread_id, user_id, title, snapshot, artifact_ids)
 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		newID(), in.ShareID, in.ThreadID, userID, in.Title, snapshot, artifactIDs,
+		sqlutil.NewID(), in.ShareID, in.ThreadID, userID, in.Title, snapshot, artifactIDs,
 	)
 	if err != nil {
 		return Share{}, fmt.Errorf("insert share: %w", err)
@@ -172,15 +174,15 @@ func scanShare(row rowScanner) (Share, error) {
 		return Share{}, fmt.Errorf("parse artifact_ids: %w", err)
 	}
 	share.ArtifactIDs = ids
-	share.SnapshotAt, err = parseSQLiteTime(snapshotAt)
+	share.SnapshotAt, err = sqlutil.ParseTime(snapshotAt)
 	if err != nil {
 		return Share{}, fmt.Errorf("parse snapshot_at: %w", err)
 	}
-	share.CreatedAt, err = parseSQLiteTime(createdAt)
+	share.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Share{}, fmt.Errorf("parse created_at: %w", err)
 	}
-	share.UpdatedAt, err = parseSQLiteTime(updatedAt)
+	share.UpdatedAt, err = sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return Share{}, fmt.Errorf("parse updated_at: %w", err)
 	}

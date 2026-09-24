@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // CreateThread creates a new chat thread for the user, optionally within a project.
@@ -29,7 +31,7 @@ func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThread
 		projectID = *in.ProjectID
 	}
 
-	threadID := newID()
+	threadID := sqlutil.NewID()
 	// The insert and the project activity touch land together or not at all.
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -97,7 +99,7 @@ func threadFilters(userID string, opts ListThreadsOptions) ([]string, []any, err
 	}
 	if search := strings.TrimSpace(opts.Search); search != "" {
 		filters = append(filters, `title LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+escapeLike(search)+"%")
+		args = append(args, "%"+sqlutil.EscapeLike(search)+"%")
 	}
 	// Derive chat visibility from the owning project's archived state instead of
 	// writing to threads. In the resting lists (no project scope, no search,
@@ -463,13 +465,6 @@ WHERE user_id = ? AND id = ?`,
 		return false, fmt.Errorf("delete thread: %w", err)
 	}
 	return changed(result)
-}
-
-// escapeLike escapes the LIKE wildcards so a user search term matches literally.
-// Used together with `ESCAPE '\'` in the query.
-func escapeLike(term string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(term)
 }
 
 func (s *Store) getThread(ctx context.Context, userID, threadID string) (Thread, bool, error) {

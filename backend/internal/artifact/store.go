@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // Store manages artifact metadata in the database.
@@ -209,7 +209,7 @@ WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
 		out.ProjectID = &projectID.String
 	}
 	out.ThumbnailRelPath = thumbnailRelPath.String
-	parsed, err := parseSQLiteTime(createdAt)
+	parsed, err := sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Artifact{}, false, fmt.Errorf("parse artifact created_at: %w", err)
 	}
@@ -226,7 +226,7 @@ func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Ar
 	args := []any{userID}
 	if search := strings.TrimSpace(opts.Search); search != "" {
 		filters = append(filters, `display_filename LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+escapeLike(search)+"%")
+		args = append(args, "%"+sqlutil.EscapeLike(search)+"%")
 	}
 	switch opts.Type {
 	case ListTypeImages:
@@ -290,11 +290,6 @@ func listOrderBy(sort SortBy, order SortOrder) string {
 	}
 }
 
-func escapeLike(term string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(term)
-}
-
 // ListForProject retrieves artifacts in a project, scoped to the user.
 func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
@@ -350,7 +345,7 @@ func scanArtifact(scanner interface {
 		out.ProjectID = &projectID.String
 	}
 	out.ThumbnailRelPath = thumbnailRelPath.String
-	parsed, err := parseSQLiteTime(createdAt)
+	parsed, err := sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("parse artifact created_at: %w", err)
 	}
@@ -390,7 +385,7 @@ func scanArtifactWithDeleted(scanner interface {
 		out.ProjectID = &projectID.String
 	}
 	out.ThumbnailRelPath = thumbnailRelPath.String
-	parsed, err := parseSQLiteTime(createdAt)
+	parsed, err := sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Artifact{}, sql.NullString{}, fmt.Errorf("parse artifact created_at: %w", err)
 	}
@@ -409,14 +404,4 @@ func setArtifactURLs(a *Artifact) {
 	if IsThumbnailableMIME(a.MIMEType) {
 		a.ThumbnailURL = "/api/artifacts/" + a.ID + "/thumbnail"
 	}
-}
-
-func parseSQLiteTime(value string) (time.Time, error) {
-	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339Nano, time.RFC3339} {
-		parsed, err := time.Parse(layout, value)
-		if err == nil {
-			return parsed, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("unsupported time format %q", value)
 }

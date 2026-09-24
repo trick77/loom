@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // GetProjectMemory returns the stored memory for a project. The bool is false
@@ -119,7 +121,7 @@ func scanProjectMemory(row rowScanner) (ProjectMemory, error) {
 	if err := row.Scan(&memory.ProjectID, &memory.Content, &memory.SourceMessageCount, &updatedAt); err != nil {
 		return ProjectMemory{}, err
 	}
-	parsed, err := parseSQLiteTime(updatedAt)
+	parsed, err := sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return ProjectMemory{}, fmt.Errorf("parse updated_at: %w", err)
 	}

@@ -2,11 +2,11 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // UserStore persists app-local users mapped from OIDC identities.
@@ -63,7 +63,7 @@ WHERE oidc_subject = ?`,
 	}
 
 	user := User{
-		ID:               newID(),
+		ID:               sqlutil.NewID(),
 		OIDCSubject:      claims.Subject,
 		Username:         username,
 		Email:            claims.Email,
@@ -230,12 +230,4 @@ func contains(values []string, needle string) bool {
 		}
 	}
 	return false
-}
-
-func newID() string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err)
-	}
-	return base64.RawURLEncoding.EncodeToString(b[:])
 }

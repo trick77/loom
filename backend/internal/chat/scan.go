@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 type rowScanner interface {
@@ -28,15 +30,15 @@ func scanProject(row rowScanner) (Project, error) {
 	if err != nil {
 		return Project{}, fmt.Errorf("parse auto_description_generated_at: %w", err)
 	}
-	project.CreatedAt, err = parseSQLiteTime(createdAt)
+	project.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Project{}, fmt.Errorf("parse created_at: %w", err)
 	}
-	project.UpdatedAt, err = parseSQLiteTime(updatedAt)
+	project.UpdatedAt, err = sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return Project{}, fmt.Errorf("parse updated_at: %w", err)
 	}
-	project.LastActivityAt, err = parseSQLiteTime(lastActivityAt)
+	project.LastActivityAt, err = sqlutil.ParseTime(lastActivityAt)
 	if err != nil {
 		return Project{}, fmt.Errorf("parse last_activity_at: %w", err)
 	}
@@ -59,11 +61,11 @@ func scanThread(row rowScanner) (Thread, error) {
 	if err != nil {
 		return Thread{}, fmt.Errorf("parse archived_at: %w", err)
 	}
-	thread.CreatedAt, err = parseSQLiteTime(createdAt)
+	thread.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Thread{}, fmt.Errorf("parse created_at: %w", err)
 	}
-	thread.UpdatedAt, err = parseSQLiteTime(updatedAt)
+	thread.UpdatedAt, err = sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return Thread{}, fmt.Errorf("parse updated_at: %w", err)
 	}
@@ -94,11 +96,11 @@ func scanThreadWithSnippet(row rowScanner) (Thread, string, error) {
 	if err != nil {
 		return Thread{}, "", fmt.Errorf("parse archived_at: %w", err)
 	}
-	thread.CreatedAt, err = parseSQLiteTime(createdAt)
+	thread.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Thread{}, "", fmt.Errorf("parse created_at: %w", err)
 	}
-	thread.UpdatedAt, err = parseSQLiteTime(updatedAt)
+	thread.UpdatedAt, err = sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return Thread{}, "", fmt.Errorf("parse updated_at: %w", err)
 	}
@@ -165,7 +167,7 @@ func scanMessage(row rowScanner) (Message, error) {
 	message.Model = nullableString(model)
 	message.ReasoningEffort = nullableString(reasoningEffort)
 	var err error
-	message.CreatedAt, err = parseSQLiteTime(createdAt)
+	message.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Message{}, fmt.Errorf("parse created_at: %w", err)
 	}
@@ -192,21 +194,11 @@ func nullableTime(value sql.NullString) (*time.Time, error) {
 	if !value.Valid || value.String == "" {
 		return nil, nil
 	}
-	parsed, err := parseSQLiteTime(value.String)
+	parsed, err := sqlutil.ParseTime(value.String)
 	if err != nil {
 		return nil, err
 	}
 	return &parsed, nil
-}
-
-func parseSQLiteTime(value string) (time.Time, error) {
-	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339Nano, time.RFC3339} {
-		parsed, err := time.Parse(layout, value)
-		if err == nil {
-			return parsed, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("unsupported time format %q", value)
 }
 
 func defaultJSON(value string) json.RawMessage {

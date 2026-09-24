@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // SessionCookieName is the name of the browser cookie carrying the session
@@ -66,7 +68,7 @@ WHERE token_hash = ? AND expires_at > datetime('now')`,
 	if err != nil {
 		return Session{}, false, fmt.Errorf("lookup session: %w", err)
 	}
-	expiresAt, err := parseDBTime(expires)
+	expiresAt, err := sqlutil.ParseTime(expires)
 	if err != nil {
 		return Session{}, false, err
 	}
@@ -170,12 +172,4 @@ func hashToken(token string) string {
 
 func formatTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05")
-}
-
-func parseDBTime(value string) (time.Time, error) {
-	t, err := time.ParseInLocation("2006-01-02 15:04:05", value, time.UTC)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse db time: %w", err)
-	}
-	return t, nil
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/loom/internal/sqlutil"
 	"github.com/trick77/loom/internal/store"
 )
 
@@ -140,7 +141,7 @@ func TestUserStore_UpsertFromClaimsDoesNotAdoptAmbiguousEmail(t *testing.T) {
 		if _, err := db.ExecContext(ctx, `
 INSERT INTO users (id, oidc_subject, username, email, display_name, role, response_language, last_seen_at)
 VALUES (?, ?, 'jan', 'jan@example.com', 'Jan', 'user', '', datetime('now'))`,
-			newID(), subject,
+			sqlutil.NewID(), subject,
 		); err != nil {
 			t.Fatalf("seed %s: %v", subject, err)
 		}

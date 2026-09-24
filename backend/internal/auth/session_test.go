@@ -5,13 +5,15 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 func insertTestUser(t *testing.T, db DBTX, role Role) User {
 	t.Helper()
 	user := User{
-		ID:               newID(),
-		OIDCSubject:      newID(),
+		ID:               sqlutil.NewID(),
+		OIDCSubject:      sqlutil.NewID(),
 		Username:         "test-user",
 		Email:            "test@example.com",
 		DisplayName:      "Test User",

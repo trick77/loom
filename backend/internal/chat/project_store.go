@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // CreateProject creates a new project for the user with the given name and description.
@@ -28,7 +30,7 @@ func (s *Store) CreateProject(ctx context.Context, userID string, in CreateProje
 	if description != "" {
 		userEdited = 1
 	}
-	projectID := newID()
+	projectID := sqlutil.NewID()
 
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO projects (id, user_id, name, description, description_user_edited, last_activity_at)
