@@ -5,6 +5,7 @@ import type { Citation } from "../api";
 import type { DisplayMap } from "./sourcePills";
 import { Icon } from "./Icon";
 import { hostOf, SourceFavicon } from "./SourceFavicon";
+import { useEscapeKey } from "./useEscapeKey";
 
 // How many sources render above the "More" divider.
 const PRIMARY_COUNT = 4;
@@ -42,14 +43,7 @@ export function SourcesSidebar({
   const { t } = useTranslation();
   const firstSelected = useRef<HTMLAnchorElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useEscapeKey(onClose, { active: open });
 
   // A selected source can sit below the "More" divider and start off-screen, so the
   // click has to bring it into view. "nearest" keeps a source that is already visible

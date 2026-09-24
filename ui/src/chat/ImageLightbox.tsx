@@ -1,7 +1,7 @@
-import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Icon } from "./Icon";
+import { useEscapeKey } from "./useEscapeKey";
 
 // Full-screen modal preview shared by the generated-image card and the inline
 // SVG response bubble. Closes on backdrop click or Escape; clicking the image
@@ -21,13 +21,7 @@ export function ImageLightbox({
   fill?: boolean;
 }) {
   const { t } = useTranslation();
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   return (
     <div

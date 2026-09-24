@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { downloadArtifact } from "../api";
 import { Icon } from "./Icon";
+import { useEscapeKey } from "./useEscapeKey";
 
 // Full-screen modal that previews a PDF artifact inline. The backend serves
 // artifact bytes with `Content-Disposition: attachment`, so pointing an iframe
@@ -23,13 +24,7 @@ export function PdfLightbox({
   const [objectUrl, setObjectUrl] = useState("");
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   useEffect(() => {
     let cancelled = false;

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Project } from "../api";
 import { Icon } from "../chat/Icon";
+import { useEscapeKey } from "../chat/useEscapeKey";
 
 export function ProjectDialog({
   project,
@@ -17,6 +18,7 @@ export function ProjectDialog({
   onCancel(): void;
   onSubmit(input: { name: string; description: string }): void;
 }) {
+  useEscapeKey(onCancel);
   const { t } = useTranslation();
   const [name, setName] = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");

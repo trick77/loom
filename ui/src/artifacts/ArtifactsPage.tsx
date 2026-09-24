@@ -31,6 +31,7 @@ import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
 import { useInfiniteList } from "../useInfiniteList";
 import { ArtifactActionsMenu } from "./ArtifactActionsMenu";
+import { useEscapeKey } from "../chat/useEscapeKey";
 import {
   DeleteArtifactModal,
   RenameArtifactModal,
@@ -483,6 +484,7 @@ function ArtifactRowFrame({
   const showMenuButton = hovered || menuOpen;
 
   // Close the menu on an outside click or Escape, mirroring the thread row menu.
+  useEscapeKey(onCloseMenu);
   useEffect(() => {
     if (!menuOpen) return;
     function handlePointerDown(event: PointerEvent) {
@@ -490,14 +492,9 @@ function ArtifactRowFrame({
       if (!(target instanceof Node) || rowRef.current?.contains(target)) return;
       onCloseMenu();
     }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCloseMenu();
-    }
     document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [menuOpen, onCloseMenu]);
 
@@ -687,14 +684,7 @@ function ImageArtifactRow({
   const { t } = useTranslation();
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setLightboxOpen(false);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightboxOpen]);
+  useEscapeKey(() => setLightboxOpen(false), { active: lightboxOpen });
 
   const openPreview = () => {
     setLightboxOpen(true);

@@ -101,6 +101,7 @@ import {
 } from "../projects/projectMembership";
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
+import { useEscapeKey } from "./useEscapeKey";
 
 export { buildImageStats } from "./artifacts";
 export { GeneratedArtifactCard } from "./GeneratedArtifactCard";
@@ -248,14 +249,9 @@ export function ThreadShell({
   // On mobile the sidebar is an overlay drawer that always shows the full
   // content; the rail-collapse only applies on desktop.
   const railCollapsed = !isMobile && sidebarCollapsed;
-  useEffect(() => {
-    if (!mobileSidebarOpen) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileSidebarOpen(false);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mobileSidebarOpen]);
+  useEscapeKey(() => setMobileSidebarOpen(false), {
+    active: mobileSidebarOpen,
+  });
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
 
@@ -406,31 +402,19 @@ export function ThreadShell({
     };
   }, []);
 
-  useEffect(() => {
-    if (openThreadMenuID === null) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpenThreadMenuID(null);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [openThreadMenuID]);
+  useEscapeKey(() => setOpenThreadMenuID(null), {
+    active: openThreadMenuID !== null,
+  });
 
   // Escape stops the turn on the thread you are looking at. Runs on other threads
   // keep going — you stop those by opening them.
-  useEffect(() => {
-    if (!activeThreadIsStreaming) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      handleStopResponse("escape");
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [activeThreadIsStreaming, handleStopResponse]);
+  // Registered at the bottom of the Escape stack: any surface opened on top
+  // (a lightbox, a dialog, a menu) takes the key first, so closing it never
+  // also stops the answer.
+  useEscapeKey(() => handleStopResponse("escape"), {
+    active: activeThreadIsStreaming,
+    bottom: true,
+  });
 
   // ⌘K / Ctrl-K opens the search palette from anywhere in the app.
   useEffect(() => {

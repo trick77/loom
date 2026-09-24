@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
@@ -6,6 +6,7 @@ import { updateMe } from "../api";
 import { setLanguage, SUPPORTED_LANGUAGES, type UiLanguage } from "../i18n";
 import { menuIconClass, menuItemClass } from "../ThreadActionsMenu";
 import { Icon } from "./Icon";
+import { useEscapeKey } from "./useEscapeKey";
 
 const LANGUAGE_FLYOUT_WIDTH = 240;
 
@@ -36,13 +37,7 @@ export function UserMenu({
   } | null>(null);
   const languageButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const active = (i18n.language.startsWith("de") ? "de" : "en") as UiLanguage;
 
