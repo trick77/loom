@@ -21,6 +21,7 @@ import (
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/store"
 )
 
@@ -2601,5 +2602,48 @@ func TestStreamMessageKeepsRenameMadeDuringStream(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), `"title":"Generated"`) {
 		t.Fatalf("stream announced the generated title over the rename:\n%s", rec.Body.String())
+	}
+}
+
+// The pre-answer loads (drift classification, user and project context, the
+// document chain) are independent and each may be a slow round trip; they must
+// overlap. The classifier is held open until the attached document's text has
+// been requested, which the old sequential order never reached.
+func TestPrepareTurnLoadsContextsConcurrently(t *testing.T) {
+	classifyGate := make(chan struct{})
+	fullTextEntered := make(chan struct{}, 1)
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		// A prior turn: the thread is not freshly classified, so the drift
+		// classifier runs for this message.
+		messages: []chat.Message{{ID: "m0", ThreadID: "thr_1", Role: chat.RoleUser, Content: "earlier"}},
+	}
+	docs := &fakeDocumentService{
+		doc:             rag.Document{ID: "d1", ThreadID: strPtr("thr_1"), Filename: "notes.txt", Status: rag.StatusEmbedded},
+		fullText:        "notes",
+		fullTextEntered: fullTextEntered,
+	}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs, LLM: fakeChatClient{classifyGate: classifyGate}})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Summarize","documentAttachmentIds":["d1"]}`)
+
+	done := make(chan struct{})
+	go func() {
+		srv.ServeHTTP(rec, req)
+		close(done)
+	}()
+	select {
+	case <-fullTextEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the attached document was not loaded while the drift classifier was still pending")
+	}
+	close(classifyGate)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("turn did not finish")
+	}
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "event: assistant_message") {
+		t.Fatalf("status = %d body:\n%s", rec.Code, rec.Body.String())
 	}
 }

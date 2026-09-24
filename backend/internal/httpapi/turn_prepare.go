@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
@@ -99,48 +100,53 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	// path will run (its tools are forced), or when the sticky category already
 	// grants those tools. Fail-safe: ClassifyThread returns General on failure, so
 	// a failed classification simply adds nothing.
-	turnCategory := ""
-	if !freshlyClassified && !imageArtifactRequired && !categoryGrantsCodingDocs(category) {
-		driftInference := llm.InferenceMetadata{UserID: in.user.ID, Username: in.user.Username, ThreadID: in.thread.ID, Purpose: "classify_drift", Round: 1}
-		// Bounded like the image gate: the answer waits on this, and General is a
-		// fine answer when the endpoint is slow (see turnGateTimeout).
-		driftCtx, cancelDrift := context.WithTimeout(in.streamCtx, turnGateTimeout)
-		turnCategory, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), in.userMessage.Content)
-		cancelDrift()
-	}
+	// The pre-answer loads below are independent of one another and each may
+	// be a model or database round trip (the drift classifier alone is bounded
+	// by turnGateTimeout), so they run concurrently; the tool gate and the
+	// history need all of them and are built after the join. The document
+	// chain stays sequential inside its goroutine: attached documents, then
+	// project knowledge, then RAG share the [n] numbering in docIdx.
+	var (
+		turnCategory                      string
+		userContext                       string
+		projectContext                    string
+		docIdx                            = newDocIndexer()
+		documentContext, knowledgeContext string
+		knowledgeSources                  []citation
+	)
+	parallel(
+		func() {
+			if freshlyClassified || imageArtifactRequired || categoryGrantsCodingDocs(category) {
+				return
+			}
+			driftInference := llm.InferenceMetadata{UserID: in.user.ID, Username: in.user.Username, ThreadID: in.thread.ID, Purpose: "classify_drift", Round: 1}
+			driftCtx, cancelDrift := context.WithTimeout(in.streamCtx, turnGateTimeout)
+			defer cancelDrift()
+			turnCategory, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), in.userMessage.Content)
+		},
+		func() { userContext = s.userContextForUser(in.reqCtx, in.user.ID) },
+		func() { projectContext = s.projectContextForThread(in.reqCtx, in.user.ID, in.thread) },
+		func() {
+			var inlinedDocIDs, knowledgeInlinedIDs map[string]bool
+			var attachmentSources []citation
+			var inlinedAll bool
+			documentContext, inlinedDocIDs, attachmentSources = s.documentInlineContext(in.turnCtx, in.user.ID, in.thread, in.body.DocumentAttachmentIDs, docIdx)
+			knowledgeContext, knowledgeInlinedIDs, knowledgeSources, inlinedAll = s.knowledgeInlineContext(in.turnCtx, in.user.ID, in.thread, inlinedDocIDs, docIdx)
+			if !inlinedAll {
+				ragExclude := mergeDocIDSets(inlinedDocIDs, knowledgeInlinedIDs)
+				ragContext, ragSources := s.knowledgeContextForThread(in.turnCtx, in.user.ID, in.thread, in.userMessage.Content, ragExclude, docIdx)
+				knowledgeContext = joinNonEmptyBlocks(knowledgeContext, ragContext)
+				knowledgeSources = append(knowledgeSources, ragSources...)
+			}
+			knowledgeSources = append(append([]citation(nil), attachmentSources...), knowledgeSources...)
+		},
+	)
 
-	// Gate the injected tool set (and the tool guidance that must match it) on the
-	// sticky + per-turn category plus explicit-format escalation. Built once here so
-	// the system prompt and the offered tools stay consistent (see toolGate).
 	gate := newToolGate(category, turnCategory, in.userMessage.Content)
 	fileToolGuidance := ""
 	if gate.docgenEnabled() {
 		fileToolGuidance = fileToolGuardrailPrompt
 	}
-
-	userContext := s.userContextForUser(in.reqCtx, in.user.ID)
-	projectContext := s.projectContextForThread(in.reqCtx, in.user.ID, in.thread)
-	// Inline the full text of any documents attached to this message, and exclude
-	// those documents from RAG retrieval below so the model never sees them twice.
-	docIdx := newDocIndexer()
-	documentContext, inlinedDocIDs, attachmentSources := s.documentInlineContext(in.turnCtx, in.user.ID, in.thread, in.body.DocumentAttachmentIDs, docIdx)
-	// Adaptively inject the project's indexed knowledge in full when it fits the
-	// token budget (skipping RAG entirely in that case); otherwise fall back to RAG
-	// excerpts for whatever did not fit. Auto-inlined documents are excluded from RAG.
-	// One numbering space for the whole turn: attachments and knowledge documents
-	// take [1]..[k] above, and the web-source registry is seeded to continue at k+1
-	// (see runAssistantLoop), so a marker in the answer is unambiguous whatever kind
-	// of source it points at.
-	knowledgeInlineContext, knowledgeInlinedIDs, knowledgeSources, inlinedAll := s.knowledgeInlineContext(in.turnCtx, in.user.ID, in.thread, inlinedDocIDs, docIdx)
-	knowledgeContext := knowledgeInlineContext
-	if !inlinedAll {
-		ragExclude := mergeDocIDSets(inlinedDocIDs, knowledgeInlinedIDs)
-		ragContext, ragSources := s.knowledgeContextForThread(in.turnCtx, in.user.ID, in.thread, in.userMessage.Content, ragExclude, docIdx)
-		knowledgeContext = joinNonEmptyBlocks(knowledgeInlineContext, ragContext)
-		knowledgeSources = append(knowledgeSources, ragSources...)
-	}
-	// Attachment citations lead: they were numbered first.
-	knowledgeSources = append(append([]citation(nil), attachmentSources...), knowledgeSources...)
 	if len(knowledgeSources) > 0 {
 		_ = sendSSEJSON(in.stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
@@ -194,5 +200,35 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		editSource:       editSource,
 		knowledgeSources: knowledgeSources,
 		sourceCount:      docIdx.count(),
+	}
+}
+
+// parallel runs fns concurrently and returns once all have finished. A panic
+// in any of them is re-raised on the caller's goroutine, where the stream
+// handler's recover turns it into an error event; left on its own goroutine
+// it would take the process down.
+func parallel(fns ...func()) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var panicked any
+	for _, fn := range fns {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					mu.Lock()
+					if panicked == nil {
+						panicked = r
+					}
+					mu.Unlock()
+				}
+			}()
+			fn()
+		}()
+	}
+	wg.Wait()
+	if panicked != nil {
+		panic(panicked)
 	}
 }

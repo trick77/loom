@@ -612,6 +612,8 @@ type fakeChatClient struct {
 	reasoningTitle      string
 	reasoningTitlePanic bool
 	streamPanic         bool
+	// classifyGate, when set, holds ClassifyThread open until it is closed.
+	classifyGate chan struct{}
 	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
 	// open and count how many callers got through.
 	memoryEntered       chan struct{}
@@ -684,7 +686,13 @@ func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, assistantMes
 	return f.title, nil
 }
 
-func (f fakeChatClient) ClassifyThread(_ context.Context, _ string) (string, error) {
+func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, error) {
+	if f.classifyGate != nil {
+		select {
+		case <-f.classifyGate:
+		case <-ctx.Done():
+		}
+	}
 	return f.category, nil
 }
 

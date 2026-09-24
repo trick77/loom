@@ -30,7 +30,9 @@ type fakeDocumentService struct {
 	artifactsInUseErr   error
 	inUseQueriedThreads []string
 	unindexErr          error
-	deleteErr           error
+	// fullTextEntered, when set, is signalled (non-blocking) when FullText runs.
+	fullTextEntered chan struct{}
+	deleteErr       error
 }
 
 func (f *fakeDocumentService) Upload(_ context.Context, in documents.UploadInput) (rag.Document, artifact.Artifact, error) {
@@ -47,6 +49,12 @@ func (f *fakeDocumentService) Get(context.Context, string, string) (rag.Document
 	return f.doc, true, nil
 }
 func (f *fakeDocumentService) FullText(context.Context, string, string) (string, error) {
+	if f.fullTextEntered != nil {
+		select {
+		case f.fullTextEntered <- struct{}{}:
+		default:
+		}
+	}
 	return f.fullText, f.fullTextErr
 }
 func (f *fakeDocumentService) Index(context.Context, string, string) error   { return nil }
