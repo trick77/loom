@@ -9,7 +9,7 @@ import type {
   ToolResultEvent,
 } from "./types";
 
-type StreamHandlers = {
+export type StreamHandlers = {
   onUserMessage(message: Message): void;
   onDelta(delta: string): void;
   onReasoningDelta?(delta: string): void;

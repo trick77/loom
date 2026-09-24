@@ -15,8 +15,6 @@ import {
   streamMessage,
   streamIncognitoMessage,
   type Artifact,
-  type Citation,
-  type ContentBlock,
   type MessagePastedText,
   type Project,
   type ShareInfo,
@@ -25,15 +23,7 @@ import {
   PayloadTooLargeError,
   StreamInterruptedError,
 } from "../api";
-import {
-  appendArtifactBlock,
-  appendReasoningDeltaBlock,
-  appendTextDelta,
-  applyReasoningTitleBlock,
-  graftStreamedBlocks,
-  upsertToolCallBlock,
-  upsertToolResultBlock,
-} from "./contentBlocks";
+import { graftStreamedBlocks } from "./contentBlocks";
 import { ThreadsPage } from "../chats/ThreadsPage";
 import { ArtifactsPage } from "../artifacts/ArtifactsPage";
 import { MemoryPage } from "../MemoryPage";
@@ -98,30 +88,8 @@ import {
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 import { useComposerDrafts } from "./useComposerDrafts";
+import { createTurnHandlers, newTempID } from "./turnHandlers";
 import { useEscapeKey } from "./useEscapeKey";
-
-// Each sources event is a full snapshot of *its own kind* only: knowledge_sources
-// carries the user's numbered documents (no url) once before the model runs,
-// web_sources carries the gathered pages (url) after every tool round. Replacing
-// the whole list on either would drop the other kind — since documents became
-// citable, the first search result would unresolve every document [n] pill
-// mid-answer and shift the display numbering that is meant to be append-only.
-// So each event replaces only its own kind. Documents lead: they hold the low
-// indices, numbered before the tool loop.
-function isWebCitation(citation: Citation): boolean {
-  return typeof citation.url === "string" && citation.url !== "";
-}
-
-export function mergeSourceSnapshot(
-  previous: Citation[],
-  incoming: Citation[],
-  incomingAreWeb: boolean,
-): Citation[] {
-  const kept = previous.filter(
-    (citation) => isWebCitation(citation) !== incomingAreWeb,
-  );
-  return incomingAreWeb ? [...kept, ...incoming] : [...incoming, ...kept];
-}
 
 type ThreadShellProps = {
   user: User;
@@ -935,17 +903,77 @@ export function ThreadShell({
       }
       targetThreadID = targetThread.id;
       const threadIDForRun = targetThreadID;
-      // Accumulate this turn's ordered blocks in a closure-local array, the single
-      // source of truth for the graft at turn end. The rendered copy lives on the
-      // run, but a run can be ended (or superseded) from elsewhere, so the graft
-      // must not depend on reading it back.
-      let liveBlocks: ContentBlock[] = [];
-      const applyBlocks = (
-        updater: (current: ContentBlock[]) => ContentBlock[],
-      ) => {
-        liveBlocks = updater(liveBlocks);
-        patchStreamRun(runKey, { blocks: liveBlocks });
-      };
+      const turn = createTurnHandlers({
+        patch: (next) => patchStreamRun(runKey, next),
+        onUserMessage: (message) => {
+          if (!isCurrentThread()) return;
+          const confirmed =
+            options.attachments.length > 0
+              ? {
+                  ...message,
+                  attachments: options.attachments.map(toSentAttachment),
+                }
+              : message;
+          // Fold the persisted message into the list, replacing the optimistic
+          // placeholder in place (its clientKey/position survive => stable React key,
+          // no remount or scroll jump). Capture the placeholder id into a const rather
+          // than reading the outer `optimisticUserMessageID` inside the updater: the
+          // latter is reset to null synchronously below, but React may defer the
+          // updater (when its queue is non-empty mid-stream) until after that reset —
+          // reading null then would miss the placeholder, append a second bubble, and
+          // leave the orphaned optimistic one. Reset before setMessages so the catch
+          // block treats the message as confirmed and won't drop it.
+          const placeholderID = optimisticUserMessageID;
+          optimisticUserMessageID = null;
+          setMessages((current) =>
+            reconcileUserMessage(current, placeholderID, confirmed),
+          );
+        },
+        onAssistantMessage: (message, liveBlocks) => {
+          // The persisted message may already carry the backend's ordered
+          // contentBlocks. When it doesn't (older backends / lag), graft the
+          // just-streamed blocks — settled to done — so the chronological order
+          // (and the activity panel) survives the turn settling. The final answer
+          // text can arrive only on the assistant_message (not as deltas), so
+          // ensure the message content is represented as a trailing text block
+          // when the streamed blocks carry no prose of their own.
+          if (isCurrentThread()) {
+            setMessages((current) => {
+              const grafted = graftStreamedBlocks(message, liveBlocks);
+              // Mirror the user-message dedup: if a route refresh already loaded this
+              // assistant message, replace it in place (keeping the richer grafted
+              // blocks and its clientKey) instead of appending a duplicate bubble.
+              const index = current.findIndex((item) => item.id === grafted.id);
+              if (index === -1) return [...current, grafted];
+              const next = current.slice();
+              next[index] = {
+                ...grafted,
+                clientKey: current[index].clientKey,
+              };
+              return next;
+            });
+          }
+          // The settled message carries its own citations and blocks, so drop the
+          // live copies now rather than at endRun — the stream reader yields
+          // between chunks, so waiting would flash the turn twice.
+        },
+        onThread: (updatedThread) => {
+          receivedThreadEvent = true;
+          if (isCurrentThread()) setActiveThread(updatedThread);
+          setThreads((current) => upsertThread(current, updatedThread));
+          // Compare against the project captured when this send started, never a
+          // live `route` read: a run outlives navigation now.
+          if (
+            projectIDForNewThread !== null &&
+            updatedThread.projectId !== undefined &&
+            updatedThread.projectId === projectIDForNewThread
+          ) {
+            setProjectThreads((current) =>
+              upsertThreadById(current, updatedThread),
+            );
+          }
+        },
+      });
       const documentAttachmentIds = options.attachments
         .filter((attachment) => attachment.documentId !== undefined)
         .map((attachment) => attachment.documentId!);
@@ -966,7 +994,7 @@ export function ThreadShell({
         // Avoid crypto.randomUUID: it is undefined in insecure contexts (plain http://),
         // which a corporate intranet deployment may well be — and that is exactly where
         // this fix matters. Date.now()+random is unique enough for a transient id.
-        const tempID = `temp-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const tempID = newTempID("temp-user");
         optimisticUserMessageID = tempID;
         const optimisticMessage: MessageWithActivityTrace = {
           id: tempID,
@@ -987,124 +1015,7 @@ export function ThreadShell({
       await streamMessage(
         threadIDForRun,
         content,
-        {
-          onUserMessage: (message) => {
-            if (!isCurrentThread()) return;
-            const confirmed =
-              options.attachments.length > 0
-                ? {
-                    ...message,
-                    attachments: options.attachments.map(toSentAttachment),
-                  }
-                : message;
-            // Fold the persisted message into the list, replacing the optimistic
-            // placeholder in place (its clientKey/position survive => stable React key,
-            // no remount or scroll jump). Capture the placeholder id into a const rather
-            // than reading the outer `optimisticUserMessageID` inside the updater: the
-            // latter is reset to null synchronously below, but React may defer the
-            // updater (when its queue is non-empty mid-stream) until after that reset —
-            // reading null then would miss the placeholder, append a second bubble, and
-            // leave the orphaned optimistic one. Reset before setMessages so the catch
-            // block treats the message as confirmed and won't drop it.
-            const placeholderID = optimisticUserMessageID;
-            optimisticUserMessageID = null;
-            setMessages((current) =>
-              reconcileUserMessage(current, placeholderID, confirmed),
-            );
-          },
-          onDelta: (delta) => {
-            // Each content delta extends the trailing text block, or opens a new one
-            // when the trailing block is a trace/artifact — so prose that resumes
-            // after a tool round becomes its own block, preserving chronology.
-            applyBlocks((current) => appendTextDelta(current, delta));
-          },
-          onReasoningDelta: (delta) => {
-            applyBlocks((current) => appendReasoningDeltaBlock(current, delta));
-          },
-          onReasoningTitle: (event) => {
-            applyBlocks((current) =>
-              applyReasoningTitleBlock(current, event.id, event.title),
-            );
-          },
-          onToolPending: () => {
-            patchStreamRun(runKey, { toolPending: true });
-          },
-          onToolCall: (event) => {
-            // The pending call is now a real (running) trace event; let the trace's
-            // own running status drive the "thinking" affordance from here.
-            patchStreamRun(runKey, { toolPending: false });
-            applyBlocks((current) => upsertToolCallBlock(current, event));
-          },
-          onToolResult: (event) => {
-            applyBlocks((current) => upsertToolResultBlock(current, event));
-          },
-          onArtifact: (artifact) => {
-            applyBlocks((current) => appendArtifactBlock(current, artifact));
-          },
-          // Each event is a full snapshot of one kind of source, so it replaces
-          // that kind and leaves the other in place (see mergeSourceSnapshot).
-          onWebSources: (sources) => {
-            patchStreamRun(runKey, (run) => ({
-              sources: mergeSourceSnapshot(run.sources, sources, true),
-            }));
-          },
-          onKnowledgeSources: (sources) => {
-            patchStreamRun(runKey, (run) => ({
-              sources: mergeSourceSnapshot(run.sources, sources, false),
-            }));
-          },
-          onAssistantMessage: (message) => {
-            // The persisted message may already carry the backend's ordered
-            // contentBlocks. When it doesn't (older backends / lag), graft the
-            // just-streamed blocks — settled to done — so the chronological order
-            // (and the activity panel) survives the turn settling. The final answer
-            // text can arrive only on the assistant_message (not as deltas), so
-            // ensure the message content is represented as a trailing text block
-            // when the streamed blocks carry no prose of their own.
-            if (isCurrentThread()) {
-              setMessages((current) => {
-                const grafted = graftStreamedBlocks(message, liveBlocks);
-                // Mirror the user-message dedup: if a route refresh already loaded this
-                // assistant message, replace it in place (keeping the richer grafted
-                // blocks and its clientKey) instead of appending a duplicate bubble.
-                const index = current.findIndex(
-                  (item) => item.id === grafted.id,
-                );
-                if (index === -1) return [...current, grafted];
-                const next = current.slice();
-                next[index] = {
-                  ...grafted,
-                  clientKey: current[index].clientKey,
-                };
-                return next;
-              });
-            }
-            // The settled message carries its own citations and blocks, so drop the
-            // live copies now rather than at endRun — the stream reader yields
-            // between chunks, so waiting would flash the turn twice.
-            patchStreamRun(runKey, {
-              blocks: [],
-              sources: [],
-              toolPending: false,
-            });
-          },
-          onThread: (updatedThread) => {
-            receivedThreadEvent = true;
-            if (isCurrentThread()) setActiveThread(updatedThread);
-            setThreads((current) => upsertThread(current, updatedThread));
-            // Compare against the project captured when this send started, never a
-            // live `route` read: a run outlives navigation now.
-            if (
-              projectIDForNewThread !== null &&
-              updatedThread.projectId !== undefined &&
-              updatedThread.projectId === projectIDForNewThread
-            ) {
-              setProjectThreads((current) =>
-                upsertThreadById(current, updatedThread),
-              );
-            }
-          },
-        },
+        turn.handlers,
         abortController.signal,
         {
           documentAttachmentIds,
@@ -1219,7 +1130,7 @@ export function ThreadShell({
         role: message.role as "user" | "assistant",
         content: message.content,
       }));
-    const tempID = `incognito-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const tempID = newTempID("incognito-user");
     const optimisticMessage: MessageWithActivityTrace = {
       id: tempID,
       clientKey: tempID,
@@ -1236,53 +1147,28 @@ export function ThreadShell({
     setIncognitoMessages((current) => [...current, optimisticMessage]);
     const abortController = new AbortController();
     beginStreamRun(INCOGNITO_RUN_KEY, abortController);
-    let liveBlocks: ContentBlock[] = [];
-    const applyBlocks = (
-      updater: (current: ContentBlock[]) => ContentBlock[],
-    ) => {
-      liveBlocks = updater(liveBlocks);
-      patchStreamRun(INCOGNITO_RUN_KEY, { blocks: liveBlocks });
-    };
+    const turn = createTurnHandlers({
+      patch: (next) => patchStreamRun(INCOGNITO_RUN_KEY, next),
+      onAssistantMessage: (message, liveBlocks) => {
+        // Give each turn a unique id so React keys and per-message actions never
+        // collide (the server returns a constant synthetic id).
+        const uniqueID = newTempID("incognito-assistant");
+        const grafted = graftStreamedBlocks(
+          { ...message, id: uniqueID },
+          liveBlocks,
+        );
+        setIncognitoMessages((current) => [
+          ...current,
+          { ...grafted, clientKey: uniqueID },
+        ]);
+      },
+    });
     let keepFailedTurnVisible = false;
     try {
       await streamIncognitoMessage(
         content,
         history,
-        {
-          onUserMessage: () => {
-            // The incognito endpoint does not echo the user message; the optimistic
-            // bubble is the permanent one.
-          },
-          onDelta: (delta) =>
-            applyBlocks((current) => appendTextDelta(current, delta)),
-          onReasoningDelta: (delta) =>
-            applyBlocks((current) => appendReasoningDeltaBlock(current, delta)),
-          onReasoningTitle: (event) =>
-            applyBlocks((current) =>
-              applyReasoningTitleBlock(current, event.id, event.title),
-            ),
-          onAssistantMessage: (message) => {
-            // Give each turn a unique id so React keys and per-message actions never
-            // collide (the server returns a constant synthetic id).
-            const uniqueID = `incognito-assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-            const grafted = graftStreamedBlocks(
-              { ...message, id: uniqueID },
-              liveBlocks,
-            );
-            setIncognitoMessages((current) => [
-              ...current,
-              { ...grafted, clientKey: uniqueID },
-            ]);
-            patchStreamRun(INCOGNITO_RUN_KEY, {
-              blocks: [],
-              sources: [],
-              toolPending: false,
-            });
-          },
-          onThread: () => {
-            // Incognito never emits a thread event; nothing to reconcile.
-          },
-        },
+        turn.handlers,
         abortController.signal,
       );
     } catch (error) {
