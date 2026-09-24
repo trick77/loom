@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/chat"
 )
@@ -106,30 +105,4 @@ func buildThreadDigestSection(messages []chat.Message, byteBudget int) string {
 		fmt.Fprintf(&b, "%s: %s\n", kept[i].role, kept[i].text)
 	}
 	return b.String()
-}
-
-// truncateTailToBytes keeps the last whole runes of s that fit in byteBudget bytes
-// (the conclusion of an answer), prefixing an ellipsis when content was dropped.
-// Rune-safe: it never splits a multibyte character.
-func truncateTailToBytes(s string, byteBudget int) string {
-	if len(s) <= byteBudget {
-		return s
-	}
-	const ellipsis = "…"
-	avail := byteBudget - len(ellipsis)
-	if avail < 0 {
-		avail = 0
-	}
-	runes := []rune(s)
-	bytes := 0
-	start := len(runes)
-	for i := len(runes) - 1; i >= 0; i-- {
-		rb := utf8.RuneLen(runes[i])
-		if bytes+rb > avail {
-			break
-		}
-		bytes += rb
-		start = i
-	}
-	return ellipsis + string(runes[start:])
 }

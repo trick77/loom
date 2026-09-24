@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/chat"
 )
@@ -139,22 +138,6 @@ func (s *server) documentInlineContext(ctx context.Context, userID string, threa
 	}
 	b.WriteString(inlineDocsClosingTag)
 	return b.String(), inlinedInFull, citations
-}
-
-// truncateBytesOnRuneBoundary returns the longest prefix of s that is at most max
-// bytes and does not split a UTF-8 rune. It returns "" when max <= 0.
-func truncateBytesOnRuneBoundary(s string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	if len(s) <= max {
-		return s
-	}
-	cut := max
-	for cut > 0 && !utf8.RuneStart(s[cut]) {
-		cut--
-	}
-	return s[:cut]
 }
 
 // documentInThreadScope reports whether a document (by its project/thread scope)
