@@ -35,16 +35,28 @@ const minPerThreadDigestBytes = 600
 // rendering lives in one place. It never returns an error — the output feeds a
 // tool result — surfacing load failures and empty threads as readable notes.
 func (s *server) renderThreadDigest(ctx context.Context, userID string, t chat.Thread, byteBudget int) string {
-	var b strings.Builder
-	if t.LastMessageAt != nil {
-		fmt.Fprintf(&b, "Last activity: %s\n", t.LastMessageAt.Format("2006-01-02"))
-	}
 	messages, err := s.thread.ListRecentMessages(ctx, userID, t.ID, maxRecentMessagesPerThread)
 	if err != nil {
 		slog.Warn("thread digest: list messages failed", "thread_id", t.ID, "err", err)
-		b.WriteString("(could not load this thread's messages)\n")
-		return b.String()
+		return threadActivityLine(t) + "(could not load this thread's messages)\n"
 	}
+	return renderThreadDigestMessages(t, messages, byteBudget)
+}
+
+// threadActivityLine is the "Last activity" header of a digest, empty for a
+// thread that never had a message.
+func threadActivityLine(t chat.Thread) string {
+	if t.LastMessageAt == nil {
+		return ""
+	}
+	return fmt.Sprintf("Last activity: %s\n", t.LastMessageAt.Format("2006-01-02"))
+}
+
+// renderThreadDigestMessages renders a thread's digest from messages already
+// loaded (the project tool loads every sibling's tail in one query).
+func renderThreadDigestMessages(t chat.Thread, messages []chat.Message, byteBudget int) string {
+	var b strings.Builder
+	b.WriteString(threadActivityLine(t))
 	section := buildThreadDigestSection(messages, byteBudget)
 	if section == "" {
 		b.WriteString("(no readable messages in this thread)\n")

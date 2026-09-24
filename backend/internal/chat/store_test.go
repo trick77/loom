@@ -1743,3 +1743,46 @@ func TestNormalizeJSONArray(t *testing.T) {
 		t.Fatalf("invalid -> %v, want a validation error naming the column", err)
 	}
 }
+
+func TestStore_ListRecentMessagesForThreadsKeepsPerThreadTailInOrder(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	a, _ := store.CreateThread(ctx, userID, CreateThreadInput{Title: "A"})
+	b, _ := store.CreateThread(ctx, userID, CreateThreadInput{Title: "B"})
+	for _, content := range []string{"a1", "a2", "a3"} {
+		if _, err := store.AddMessage(ctx, userID, a.ID, RoleUser, content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.AddMessage(ctx, userID, b.ID, RoleUser, "b1"); err != nil {
+		t.Fatal(err)
+	}
+
+	tails, err := store.ListRecentMessagesForThreads(ctx, userID, []string{a.ID, b.ID, "missing"}, 2)
+	if err != nil {
+		t.Fatalf("ListRecentMessagesForThreads() error: %v", err)
+	}
+	if got := contents(tails[a.ID]); got != "a2,a3" {
+		t.Fatalf("tail of A = %q, want the last two in order", got)
+	}
+	if got := contents(tails[b.ID]); got != "b1" {
+		t.Fatalf("tail of B = %q, want b1", got)
+	}
+	if _, ok := tails["missing"]; ok {
+		t.Fatal("an unknown thread id produced an entry")
+	}
+	empty, err := store.ListRecentMessagesForThreads(ctx, userID, nil, 2)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("no ids -> %v, %v; want an empty map", empty, err)
+	}
+}
+
+func contents(messages []Message) string {
+	parts := make([]string, 0, len(messages))
+	for _, m := range messages {
+		parts = append(parts, m.Content)
+	}
+	return strings.Join(parts, ",")
+}

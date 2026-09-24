@@ -452,6 +452,18 @@ func (f *fakeThreadStore) ListRecentMessages(_ context.Context, _ string, _ stri
 	return msgs, nil
 }
 
+func (f *fakeThreadStore) ListRecentMessagesForThreads(ctx context.Context, userID string, threadIDs []string, limit int) (map[string][]chat.Message, error) {
+	out := make(map[string][]chat.Message, len(threadIDs))
+	for _, id := range threadIDs {
+		msgs, err := f.ListRecentMessages(ctx, userID, id, limit)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = msgs
+	}
+	return out, nil
+}
+
 func (f *fakeThreadStore) SearchMessages(_ context.Context, _ string, _ string, _ *string, _ string, _ int) ([]chat.MessageSearchHit, error) {
 	return append([]chat.MessageSearchHit(nil), f.searchHits...), nil
 }

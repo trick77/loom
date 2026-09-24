@@ -263,6 +263,52 @@ LIMIT ?`,
 	return messages, nil
 }
 
+// ListRecentMessagesForThreads returns the last perThread messages of each of
+// the given threads, in insertion order, keyed by thread id, with one query.
+// The project digest reads the tail of every sibling thread; loading them one
+// query per thread was an N+1 over up to fifty threads.
+func (s *Store) ListRecentMessagesForThreads(ctx context.Context, userID string, threadIDs []string, perThread int) (map[string][]Message, error) {
+	out := make(map[string][]Message, len(threadIDs))
+	if len(threadIDs) == 0 {
+		return out, nil
+	}
+	if perThread <= 0 {
+		perThread = 50
+	}
+	placeholders := strings.Repeat("?,", len(threadIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, 0, len(threadIDs)+2)
+	args = append(args, userID)
+	for _, id := range threadIDs {
+		args = append(args, id)
+	}
+	args = append(args, perThread)
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
+FROM (
+	SELECT messages.*, rowid AS row_order, ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY rowid DESC) AS recency
+	FROM messages
+	WHERE user_id = ? AND thread_id IN (`+placeholders+`)
+)
+WHERE recency <= ?
+ORDER BY thread_id, row_order ASC`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list recent messages for threads: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		message, err := scanMessage(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan recent message: %w", err)
+		}
+		out[message.ThreadID] = append(out[message.ThreadID], message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent messages for threads: %w", err)
+	}
+	return out, nil
+}
+
 // ListMessages returns all messages in a thread in insertion order. rowid, not
 // created_at: the timestamp has one-second resolution and ids are random, so a
 // question and its quick reply would otherwise come back in either order. The
