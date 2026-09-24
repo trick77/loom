@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -443,5 +444,51 @@ func TestEndpointForServerNeverLeaksCredentials(t *testing.T) {
 				t.Fatalf("endpointForServer(%q) = %q, want %q", tc.url, got, tc.want)
 			}
 		})
+	}
+}
+
+// Every status call built a fresh client per server and, for stdio servers,
+// spawned a process; the /mcp and /tools slash commands are available to every
+// signed-in user, so the result is cached briefly.
+func TestServiceServerStatusIsCachedWithinTTL(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		switch req.Method {
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{}})
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+	cfg := Config{Servers: map[string]ServerConfig{"alpha": {Transport: TransportStreamableHTTP, URL: server.URL}}}
+	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, server.Client(), nil)
+	if err != nil {
+		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+	}
+	baseline := requests.Load()
+
+	first := service.ServerStatus(context.Background())
+	afterFirst := requests.Load()
+	if afterFirst == baseline {
+		t.Fatal("first ServerStatus() did not probe the server")
+	}
+	second := service.ServerStatus(context.Background())
+	if got := requests.Load(); got != afterFirst {
+		t.Fatalf("second ServerStatus() within the TTL probed again (%d -> %d)", afterFirst, got)
+	}
+	if len(first) != 1 || len(second) != 1 || !first[0].Active || !second[0].Active {
+		t.Fatalf("statuses = %#v / %#v, want alpha active from both calls", first, second)
 	}
 }

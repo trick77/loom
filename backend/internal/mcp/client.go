@@ -97,8 +97,11 @@ type mcpStatusError struct {
 	body   string
 }
 
+// Error names the method and status only. The body stays on the struct for
+// isSessionError; it is never part of the message, which reaches the user in
+// the /mcp panel and could echo request headers or tokens the server reflects.
 func (e *mcpStatusError) Error() string {
-	return fmt.Sprintf("MCP %s failed with status %d: %s", e.method, e.status, e.body)
+	return fmt.Sprintf("MCP %s failed with status %d", e.method, e.status)
 }
 
 // isSessionError reports whether err is an expired/invalid Streamable HTTP

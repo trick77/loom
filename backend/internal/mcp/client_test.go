@@ -515,3 +515,16 @@ func TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock(t *testing.T) {
 }
 
 var _ = exec.Command
+
+// The failure reason is shown to the user in the /mcp panel; a remote body can
+// echo request headers or tokens, so it never travels in the error text.
+func TestMCPStatusErrorDoesNotEchoRemoteBody(t *testing.T) {
+	err := &mcpStatusError{method: "tools/list", status: 502, body: "<html>secret token abc123</html>"}
+	msg := err.Error()
+	if strings.Contains(msg, "secret") || strings.Contains(msg, "abc123") {
+		t.Fatalf("Error() = %q echoes the remote body", msg)
+	}
+	if !strings.Contains(msg, "502") || !strings.Contains(msg, "tools/list") {
+		t.Fatalf("Error() = %q, want the method and status", msg)
+	}
+}

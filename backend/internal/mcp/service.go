@@ -37,7 +37,20 @@ type Service struct {
 	cfg        Config
 	origins    map[string]string
 	httpClient *http.Client
+
+	// statusMu guards the ServerStatus cache. A status call probes every server
+	// with a fresh client (a process, for stdio servers) and is reachable by any
+	// signed-in user through the /mcp and /tools slash commands, so the result
+	// is reused for statusCacheTTL.
+	statusMu    sync.Mutex
+	statusAt    time.Time
+	statusCache []ServerStatus
 }
+
+// statusCacheTTL is how long a ServerStatus result is reused. The panel may
+// show a server up to this much later than it changed state, which is a fair
+// trade against spawning a probe per keystroke.
+const statusCacheTTL = 30 * time.Second
 
 type toolRoute struct {
 	client Client
@@ -68,6 +81,20 @@ func (s *Service) ServerStatus(ctx context.Context) []ServerStatus {
 	if s == nil || len(s.cfg.Servers) == 0 {
 		return nil
 	}
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	if s.statusCache != nil && time.Since(s.statusAt) < statusCacheTTL {
+		return append([]ServerStatus(nil), s.statusCache...)
+	}
+	statuses := s.probeAll(ctx)
+	s.statusCache = statuses
+	s.statusAt = time.Now()
+	return append([]ServerStatus(nil), statuses...)
+}
+
+// probeAll probes every configured server concurrently and returns their
+// statuses sorted by name.
+func (s *Service) probeAll(ctx context.Context) []ServerStatus {
 	names := make([]string, 0, len(s.cfg.Servers))
 	for name := range s.cfg.Servers {
 		names = append(names, name)
