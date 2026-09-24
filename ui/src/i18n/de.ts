@@ -12,6 +12,7 @@ export const de = {
     newThread: "Neuer Thread",
   },
   app: {
+    adminUsersLoadFailed: "Benutzer konnten nicht geladen werden.",
     loading: "Wird geladen",
     signIn: "Anmelden",
     serviceUnavailable: "Dienst nicht verfügbar",

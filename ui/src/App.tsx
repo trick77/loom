@@ -2,7 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ThreadShell } from "./ThreadShell";
 import loomLogo from "./assets/loom-logo.svg";
-import { getMe, listUsers, logout, updateMe, type User } from "./api";
+import {
+  AuthExpiredError,
+  getMe,
+  listUsers,
+  logout,
+  updateMe,
+  type User,
+} from "./api";
 import { applyUserLanguage, seedLanguageFor } from "./i18n";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
@@ -13,6 +20,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [adminError, setAdminError] = useState("");
   const taglines = t("app.taglines", { returnObjects: true }) as string[];
   const [taglineIndex] = useState(() =>
     Math.floor(Math.random() * taglines.length),
@@ -62,12 +70,19 @@ export default function App() {
 
   async function handleAdmin() {
     setShowAdmin(true);
+    setAdminError("");
     if (adminUsers.length === 0) {
       try {
         setAdminUsers(await listUsers());
-      } catch {
-        setStatus("signed-out");
-        setUser(null);
+      } catch (error) {
+        // Only an expired session ends the session; a failed list is an error
+        // on the admin page, not a reason to sign the user out.
+        if (error instanceof AuthExpiredError) {
+          setStatus("signed-out");
+          setUser(null);
+          return;
+        }
+        setAdminError(t("app.adminUsersLoadFailed"));
       }
     }
   }
@@ -135,6 +150,11 @@ export default function App() {
             {t("app.admin")}
           </h1>
           <div className="mt-4 divide-y divide-border border-y border-border">
+            {adminError !== "" && (
+              <p role="alert" className="text-sm text-accent">
+                {adminError}
+              </p>
+            )}
             {adminUsers.map((adminUser) => (
               <div
                 key={adminUser.id}

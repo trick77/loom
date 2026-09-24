@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 import {
+  AuthExpiredError,
   DOCUMENT_ACCEPT,
   deleteDocument,
   indexDocument,
@@ -62,7 +63,13 @@ function statusBadge(doc: Document, t: TFunction): Badge {
  * the project can retrieve them. It sits beside the auto-generated memory panel
  * but is user-owned content, not a generated digest.
  */
-export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
+export function ProjectKnowledgePanel({
+  projectId,
+  onSessionExpired,
+}: {
+  projectId: string;
+  onSessionExpired?(): void;
+}) {
   const { t } = useTranslation();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,12 +86,14 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
     try {
       const items = await listDocuments(projectId);
       setDocs(items);
-    } catch {
+    } catch (error) {
       // Best-effort: a transient list failure leaves the previous view in place.
+      // An expired session is not transient; it ends the session.
+      if (error instanceof AuthExpiredError) onSessionExpired?.();
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, onSessionExpired]);
 
   useEffect(() => {
     setLoading(true);

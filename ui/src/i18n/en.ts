@@ -10,6 +10,7 @@ export const en = {
     newThread: "New thread",
   },
   app: {
+    adminUsersLoadFailed: "Users failed to load.",
     loading: "Loading",
     signIn: "Sign in",
     serviceUnavailable: "Service unavailable",

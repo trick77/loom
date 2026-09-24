@@ -1558,6 +1558,7 @@ export function ThreadShell({
               sendDisabled={false}
               openThreadMenuID={openThreadMenuID}
               onBack={navigateToProjects}
+              onSessionExpired={onSessionExpired}
               onDraftChange={(text) => setDraftText(draftScope, text)}
               pastedTexts={draft.pastedTexts}
               onAddPastedText={handleAddPastedText}
@@ -1730,6 +1731,7 @@ export function ThreadShell({
         <SearchModal
           onClose={() => setSearchOpen(false)}
           onSelectThread={(threadID) => void selectThread(threadID)}
+          onSessionExpired={onSessionExpired}
         />
       )}
     </div>

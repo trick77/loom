@@ -1,4 +1,4 @@
-import { AuthExpiredError, expectJSON } from "./http";
+import { expectJSON, expectOK } from "./http";
 import type { Project, ProjectMemory } from "./types";
 
 export async function listProjects(archived?: boolean): Promise<Project[]> {
@@ -55,12 +55,7 @@ export async function archiveProject(projectId: string): Promise<void> {
       method: "POST",
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to archive project");
-  }
+  await expectOK(response, "failed to archive project");
 }
 
 export async function unarchiveProject(projectId: string): Promise<void> {
@@ -70,12 +65,7 @@ export async function unarchiveProject(projectId: string): Promise<void> {
       method: "POST",
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to unarchive project");
-  }
+  await expectOK(response, "failed to unarchive project");
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
@@ -85,12 +75,7 @@ export async function deleteProject(projectId: string): Promise<void> {
       method: "DELETE",
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to delete project");
-  }
+  await expectOK(response, "failed to delete project");
 }
 
 export async function getProjectMemory(

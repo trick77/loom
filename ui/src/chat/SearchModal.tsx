@@ -13,9 +13,11 @@ import { useThreadSearch } from "../search/useThreadSearch";
 export function SearchModal({
   onClose,
   onSelectThread,
+  onSessionExpired,
 }: {
   onClose(): void;
   onSelectThread(threadID: string): void;
+  onSessionExpired?(): void;
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
@@ -24,7 +26,7 @@ export function SearchModal({
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [listHeight, setListHeight] = useState<number | undefined>(undefined);
   const titleID = useId();
-  const { results } = useThreadSearch(query);
+  const { results } = useThreadSearch(query, { onSessionExpired });
   const hasQuery = query.trim() !== "";
 
   useEffect(() => {

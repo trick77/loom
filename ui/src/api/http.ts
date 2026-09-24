@@ -32,3 +32,20 @@ export async function expectJSON<T>(
   }
   return response.json() as Promise<T>;
 }
+
+// expectOK is expectJSON for endpoints that answer with no body (204 and the
+// like): it maps a 401 to AuthExpiredError and any other non-2xx to the
+// caller's message. `tolerate` lists statuses that count as success (a 404 on
+// an idempotent delete).
+export async function expectOK(
+  response: Response,
+  errorMessage: string,
+  tolerate: number[] = [],
+): Promise<void> {
+  if (response.status === 401) {
+    throw new AuthExpiredError();
+  }
+  if (!response.ok && !tolerate.includes(response.status)) {
+    throw new Error(errorMessage);
+  }
+}

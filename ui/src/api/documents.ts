@@ -1,4 +1,4 @@
-import { AuthExpiredError, expectJSON, UserFacingError } from "./http";
+import { UserFacingError, expectJSON, expectOK } from "./http";
 import {
   DOCUMENT_MAX_THREAD_ATTACHMENTS,
   type Artifact,
@@ -18,9 +18,6 @@ export async function uploadDocument(
     method: "POST",
     body: form,
   });
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
   if (response.status === 415) {
     throw new UserFacingError(i18n.t("errors.unsupportedDocumentFormat"));
   }
@@ -49,9 +46,6 @@ export async function uploadImageAttachment(
     method: "POST",
     body: form,
   });
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
   if (response.status === 415) {
     throw new UserFacingError(i18n.t("errors.unsupportedImageFormat"));
   }
@@ -71,9 +65,6 @@ export async function uploadImageAttachment(
 export async function listDocuments(projectId?: string): Promise<Document[]> {
   const suffix = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
   const response = await fetch(`/api/documents${suffix}`);
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
   const body = await expectJSON<{ items: Document[] }>(
     response,
     "failed to load documents",
@@ -88,9 +79,6 @@ export async function indexDocument(documentId: string): Promise<Document> {
       method: "POST",
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
   return expectJSON<Document>(response, "failed to index document");
 }
 
@@ -101,12 +89,7 @@ export async function unindexDocument(documentId: string): Promise<void> {
       method: "POST",
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to unindex document");
-  }
+  await expectOK(response, "failed to unindex document");
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {
@@ -116,10 +99,5 @@ export async function deleteDocument(documentId: string): Promise<void> {
       method: "DELETE",
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to delete document");
-  }
+  await expectOK(response, "failed to delete document");
 }

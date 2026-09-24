@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  AuthExpiredError,
   listThreads,
   searchThreadContent,
   type Thread,
@@ -32,13 +33,22 @@ const CONTENT_DEBOUNCE_MS = 250;
 // the search so stale rows drop out.
 export function useThreadSearch(
   query: string,
-  options: { limit?: number; reloadToken?: number } = {},
+  options: {
+    limit?: number;
+    reloadToken?: number;
+    // Called when a search request answers 401; the caller signs the user out.
+    onSessionExpired?: () => void;
+  } = {},
 ): {
   results: SearchResult[];
   titleLoading: boolean;
   contentLoading: boolean;
 } {
-  const { limit = MAX_SEARCH_RESULTS, reloadToken = 0 } = options;
+  const {
+    limit = MAX_SEARCH_RESULTS,
+    reloadToken = 0,
+    onSessionExpired,
+  } = options;
   const trimmed = query.trim();
   const [titleResults, setTitleResults] = useState<Thread[]>([]);
   const [contentResults, setContentResults] = useState<ThreadContentHit[]>([]);
@@ -60,8 +70,9 @@ export function useThreadSearch(
           setTitleResults(page.items);
           setTitleLoading(false);
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           if (cancelled) return;
+          if (error instanceof AuthExpiredError) onSessionExpired?.();
           setTitleResults([]);
           setTitleLoading(false);
         });
@@ -80,8 +91,9 @@ export function useThreadSearch(
             setContentResults(hits);
             setContentLoading(false);
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             if (cancelled) return;
+            if (error instanceof AuthExpiredError) onSessionExpired?.();
             setContentResults([]);
             setContentLoading(false);
           });

@@ -5504,3 +5504,28 @@ test("a send from the start screen does not pull the user back after they naviga
   expect(window.location.pathname).toBe("/projects");
   expect(screen.getByRole("heading", { name: "Projects" })).toBeInTheDocument();
 });
+
+test("a failed admin user list is shown as an error, not as a sign-out", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "admin" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/admin/users")
+        return Response.json({ error: "boom" }, { status: 500 });
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /admin/i }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Users failed to load.",
+  );
+  expect(screen.queryByRole("link", { name: /sign in/i })).toBeNull();
+});

@@ -27,6 +27,7 @@ export function ProjectDetailPage({
   sendDisabled = false,
   openThreadMenuID,
   onBack,
+  onSessionExpired,
   onDraftChange,
   pastedTexts,
   onAddPastedText,
@@ -55,6 +56,7 @@ export function ProjectDetailPage({
   sendDisabled?: boolean;
   openThreadMenuID: string | null;
   onBack(): void;
+  onSessionExpired?(): void;
   onDraftChange(value: string): void;
   pastedTexts: PastedText[];
   onAddPastedText(text: string): void;
@@ -310,7 +312,10 @@ export function ProjectDetailPage({
             </ul>
           </div>
           <aside className="flex w-full flex-col gap-4">
-            <ProjectKnowledgePanel projectId={project.id} />
+            <ProjectKnowledgePanel
+              projectId={project.id}
+              onSessionExpired={onSessionExpired}
+            />
             <ProjectMemoryPanel projectId={project.id} />
           </aside>
         </div>
