@@ -1,13 +1,15 @@
 package config
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestLoad_defaults(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -49,7 +51,7 @@ func TestLoad_defaults(t *testing.T) {
 }
 
 func TestLoad_gotenbergURLOverride(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_GOTENBERG_URL", "http://localhost:3000")
 
 	cfg, err := Load()
@@ -71,7 +73,7 @@ func TestLoad_overrides_and_required(t *testing.T) {
 }
 
 func TestLoad_chatGenerationBounds(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_CHAT_MAX_COMPLETION_TOKENS", "4096")
 	t.Setenv("BACKEND_CHAT_TIMEOUT", "45s")
 	t.Setenv("BACKEND_CHAT_IDLE_TIMEOUT", "0")
@@ -136,7 +138,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+			requiredEnv(t)
 			t.Setenv(tc.key, tc.value)
 
 			_, err := Load()
@@ -148,7 +150,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 }
 
 func TestLoad_firstClassMCPToolURLs(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_OBSCURA_MCP_URL", "http://obscura:8090/mcp")
 
 	cfg, err := Load()
@@ -161,7 +163,7 @@ func TestLoad_firstClassMCPToolURLs(t *testing.T) {
 }
 
 func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	requiredEnv(t)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -184,17 +186,17 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 }
 
 func TestLoadImageGenRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_IMAGE_GEN_API_KEY", "fal-test")
 	t.Setenv("BACKEND_IMAGE_GEN_BASE_URL", "")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_BASE_URL is required") {
+	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_BASE_URL must be an absolute") {
 		t.Fatalf("Load() error = %v, want BACKEND_IMAGE_GEN_BASE_URL required", err)
 	}
 }
 
 func TestLoadImageGenConfiguredByAPIKey(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_IMAGE_GEN_API_KEY", "fal-test")
 	t.Setenv("BACKEND_IMAGE_GEN_MODEL", "flux-2-klein-9b")
 	cfg, err := Load()
@@ -210,7 +212,7 @@ func TestLoadImageGenConfiguredByAPIKey(t *testing.T) {
 }
 
 func TestLoadImageGenPollTimeoutOverride(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "7m")
 	cfg, err := Load()
 	if err != nil {
@@ -222,7 +224,7 @@ func TestLoadImageGenPollTimeoutOverride(t *testing.T) {
 }
 
 func TestLoadImageGenRejectsInvalidPollTimeout(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "soon")
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration") {
@@ -230,20 +232,8 @@ func TestLoadImageGenRejectsInvalidPollTimeout(t *testing.T) {
 	}
 }
 
-func TestLoad_defaultsDoNotRequireAdminPassword(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.AdminInitialPassword != "" {
-		t.Fatalf("AdminInitialPassword = %q, want empty legacy field", cfg.AdminInitialPassword)
-	}
-}
-
 func TestLoad_oidcSettings(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_PUBLIC_URL", "https://loom.example.com")
 	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/loom/")
 	t.Setenv("BACKEND_OIDC_CLIENT_ID", "loom-client")
@@ -265,10 +255,11 @@ func TestLoad_oidcSettings(t *testing.T) {
 }
 
 func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/loom/")
 	t.Setenv("BACKEND_OIDC_CLIENT_ID", "loom-client")
 	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://loom.example.com/api/auth/callback")
+	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when OIDC issuer is set without client secret")
@@ -276,7 +267,7 @@ func TestLoad_oidcSettingsMustBeComplete(t *testing.T) {
 }
 
 func TestLoad_devAuthRequiresLoopbackAddr(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_AUTH_MODE", "dev")
 	t.Setenv("BACKEND_ADDR", ":8080")
 
@@ -286,7 +277,7 @@ func TestLoad_devAuthRequiresLoopbackAddr(t *testing.T) {
 }
 
 func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_AUTH_MODE", "dev")
 	t.Setenv("BACKEND_ADDR", "localhost:8080")
 	t.Setenv("BACKEND_PUBLIC_URL", "https://loom.example.com")
@@ -297,7 +288,7 @@ func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
 }
 
 func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	requiredEnv(t)
 	t.Setenv("BACKEND_AUTH_MODE", "dev")
 	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
 	t.Setenv("BACKEND_PUBLIC_URL", "http://localhost:8080")
@@ -316,7 +307,7 @@ func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
 
 // A capability is on when its llmwire key is set.
 func TestLoad_modelCapabilitiesFollowTheKeys(t *testing.T) {
-	t.Setenv("BACKEND_SESSION_SECRET", "secret")
+	requiredEnv(t)
 	t.Setenv("LLMWIRE_MIMO_API_KEY", "")
 	t.Setenv("LLMWIRE_OPENAI_API_KEY", "")
 	cfg, err := Load()
@@ -334,5 +325,73 @@ func TestLoad_modelCapabilitiesFollowTheKeys(t *testing.T) {
 	}
 	if !cfg.ChatEnabled || cfg.EmbedEnabled {
 		t.Fatalf("mimo key only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
+	}
+}
+
+// requiredEnv sets the smallest environment Load accepts: the session secret
+// and a complete OIDC setup. Tests override individual keys after calling it.
+func requiredEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_AUTH_MODE", "oidc")
+	t.Setenv("BACKEND_OIDC_ISSUER", "https://idp.example.com")
+	t.Setenv("BACKEND_OIDC_CLIENT_ID", "loom")
+	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "s3cret")
+	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://loom.example.com/api/auth/callback")
+	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "loom-admins")
+}
+
+// An unset auth mode with no issuer booted a server nobody could log in to.
+func TestLoad_rejectsEmptyAuthMode(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_AUTH_MODE", "")
+	t.Setenv("BACKEND_OIDC_ISSUER", "")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "BACKEND_AUTH_MODE") {
+		t.Fatalf("Load() error = %v, want an auth mode error", err)
+	}
+}
+
+func TestLoad_validatesURLsAndDirs(t *testing.T) {
+	for _, tc := range []struct {
+		name, key, value, want string
+		extra                  map[string]string
+	}{
+		{"relative public url", "BACKEND_PUBLIC_URL", "loom.example.com", "BACKEND_PUBLIC_URL", nil},
+		{"public url without host", "BACKEND_PUBLIC_URL", "https://", "BACKEND_PUBLIC_URL", nil},
+		{"relative users dir", "BACKEND_USERS_DIR", "data/users", "BACKEND_USERS_DIR", nil},
+		{"empty db path", "BACKEND_DB_PATH", "", "BACKEND_DB_PATH", nil},
+		{"image gen base url without scheme", "BACKEND_IMAGE_GEN_BASE_URL", "queue.fal.run", "BACKEND_IMAGE_GEN_BASE_URL", map[string]string{"BACKEND_IMAGE_GEN_API_KEY": "k"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requiredEnv(t)
+			for k, v := range tc.extra {
+				t.Setenv(k, v)
+			}
+			t.Setenv(tc.key, tc.value)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Load() error = %v, want it to name %s", err, tc.want)
+			}
+		})
+	}
+}
+
+// An empty admin group is a legal but surprising setup (nobody is admin), so
+// it is logged rather than refused.
+func TestLoad_warnsOnEmptyAdminGroup(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "")
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if !strings.Contains(logs.String(), "BACKEND_OIDC_ADMIN_GROUP") {
+		t.Fatalf("no warning about the empty admin group:\n%s", logs.String())
 	}
 }

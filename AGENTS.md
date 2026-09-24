@@ -16,11 +16,11 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
   floors. Needs `pip install diff-cover==10.3.0`. New code must be tested; legacy debt is ignored.
 - `make fe-build` — build the SPA into `backend/web/dist` (embedded by Go)
 - `make build` — full build → `bin/loom` (CGO_ENABLED=0)
-- `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_ADMIN_INITIAL_PASSWORD`)
+- `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_AUTH_MODE`; `make dev` sets both)
 - `docker compose up --build` — full stack (copy `.env.example` → `.env` and fill it first)
 
 ## Locked technical choices (do not change without explicit agreement)
-- Module path `github.com/trick77/loom`. Go 1.25 (`go.mod`; Containerfile uses `golang:1.25-alpine`).
+- Module path `github.com/trick77/loom`. Go 1.26 (`go.mod`; Containerfile uses `golang:1.27-alpine`).
 - **Pure-Go SQLite**: `ncruces/go-sqlite3` pinned to **`v0.23.3`** + `sqlite-vec-go-bindings/ncruces`
   pinned to **`v0.1.7-alpha.2`**.
   `CGO_ENABLED=0` everywhere. Do NOT switch to `mattn/go-sqlite3` — the pin matches the sqlite-vec
@@ -39,7 +39,8 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 
 ## Config
 - Runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and
-  `.env.example`. Required to boot: `BACKEND_SESSION_SECRET`, `BACKEND_ADMIN_INITIAL_PASSWORD`.
+  `.env.example`. Required to boot: `BACKEND_SESSION_SECRET` and `BACKEND_AUTH_MODE` (`oidc` with its
+  issuer/client settings, or `dev` on loopback).
 - The model endpoints are llmwire's: `LLMWIRE_MIMO_API_KEY` (chat) and `LLMWIRE_OPENAI_API_KEY`
   (embeddings), read by `llmwire.FromEnv` at boot; the hosts ship in llmwire's profiles.yaml.
   A set key turns the capability on. `LLMWIRE_EMULATE_OPENCODE=true` presents every llmwire request,
