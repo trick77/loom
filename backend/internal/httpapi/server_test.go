@@ -413,3 +413,12 @@ func (f fakeUserStore) ListUsers(context.Context) ([]auth.User, error) {
 func (f fakeUserStore) UpdateResponseLanguage(context.Context, string, string) error {
 	return nil
 }
+
+func TestNewServerDefaultsSessionTTL(t *testing.T) {
+	if got := newServer(Deps{}).sessionTTL; got != defaultSessionTTL {
+		t.Fatalf("sessionTTL = %s, want the default %s", got, defaultSessionTTL)
+	}
+	if got := newServer(Deps{SessionTTL: 12 * time.Hour}).sessionTTL; got != 12*time.Hour {
+		t.Fatalf("sessionTTL = %s, want the configured 12h", got)
+	}
+}

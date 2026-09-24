@@ -124,9 +124,13 @@ type Config struct {
 	// token hash would invalidate every live session, which is a deliberate,
 	// separate change; requiring it now keeps deployments ready for that.
 	SessionSecret string
-	AuthMode      AuthMode
-	OIDC          OIDCConfig
-	DevUser       DevUserConfig
+	// SessionTTL is how long a login stays valid. Group membership and the
+	// admin role are recomputed at login, so this bounds how long a revoked
+	// group membership keeps working.
+	SessionTTL time.Duration
+	AuthMode   AuthMode
+	OIDC       OIDCConfig
+	DevUser    DevUserConfig
 }
 
 // OIDCConfig holds OpenID Connect settings.
@@ -154,6 +158,9 @@ func env(key, def string) string {
 	}
 	return def
 }
+
+// defaultSessionTTL is the login lifetime when BACKEND_SESSION_TTL is unset.
+const defaultSessionTTL = 30 * 24 * time.Hour
 
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
@@ -227,6 +234,11 @@ func Load() (Config, error) {
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
 	}
+	sessionTTL, err := time.ParseDuration(env("BACKEND_SESSION_TTL", defaultSessionTTL.String()))
+	if err != nil || sessionTTL <= 0 {
+		return Config{}, fmt.Errorf("BACKEND_SESSION_TTL must be a duration greater than 0")
+	}
+	cfg.SessionTTL = sessionTTL
 	if strings.TrimSpace(cfg.DBPath) == "" {
 		return Config{}, fmt.Errorf("BACKEND_DB_PATH is required")
 	}

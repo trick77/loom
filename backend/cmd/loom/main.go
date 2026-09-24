@@ -273,6 +273,7 @@ func run() error {
 		OIDC:                       oidcService,
 		Auth:                       authMW,
 		Sessions:                   sessionStore,
+		SessionTTL:                 cfg.SessionTTL,
 		Users:                      userStore,
 		Thread:                     threadStore,
 		Usage:                      usageStore,
@@ -305,8 +306,14 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return serve(ctx, srv, ln, memoryWorker.Run, background)
+	return serve(ctx, srv, ln, background, memoryWorker.Run, func(ctx context.Context) {
+		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
+	})
 }
+
+// sessionJanitorInterval is how often expired sessions are purged while the
+// server runs; boot runs one sweep as well.
+const sessionJanitorInterval = time.Hour
 
 // shutdownTimeout bounds each stage of the graceful stop: in-flight requests
 // get this long to finish once a signal arrives, then the background group
@@ -327,8 +334,9 @@ var errServerShuttingDown = errors.New("server shutting down")
 //  2. Shutdown the listener and wait for handlers to return;
 //  3. drain the background group, whose tasks still write to the database.
 //
-// worker is the long-running memory sweep; it stops when ctx does.
-func serve(ctx context.Context, srv *http.Server, ln net.Listener, worker func(context.Context), background *httpapi.Background) error {
+// workers are the long-running sweeps (memory refresh, session janitor);
+// they stop when ctx does.
+func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *httpapi.Background, workers ...func(context.Context)) error {
 	baseCtx, cancelBase := context.WithCancelCause(context.Background())
 	defer cancelBase(nil)
 	srv.BaseContext = func(net.Listener) context.Context { return baseCtx }
@@ -343,9 +351,11 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, worker func(c
 		serveErr <- nil
 	}()
 
-	workerCtx, stopWorker := context.WithCancel(ctx)
-	defer stopWorker()
-	go worker(workerCtx)
+	workerCtx, stopWorkers := context.WithCancel(ctx)
+	defer stopWorkers()
+	for _, worker := range workers {
+		go worker(workerCtx)
+	}
 
 	select {
 	case <-ctx.Done():

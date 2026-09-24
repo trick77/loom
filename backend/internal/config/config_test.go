@@ -395,3 +395,28 @@ func TestLoad_warnsOnEmptyAdminGroup(t *testing.T) {
 		t.Fatalf("no warning about the empty admin group:\n%s", logs.String())
 	}
 }
+
+func TestLoad_sessionTTL(t *testing.T) {
+	requiredEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.SessionTTL != 30*24*time.Hour {
+		t.Fatalf("SessionTTL default = %s, want 720h", cfg.SessionTTL)
+	}
+
+	t.Setenv("BACKEND_SESSION_TTL", "12h")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.SessionTTL != 12*time.Hour {
+		t.Fatalf("SessionTTL = %s, want 12h", cfg.SessionTTL)
+	}
+
+	t.Setenv("BACKEND_SESSION_TTL", "0")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_SESSION_TTL") {
+		t.Fatalf("Load() error = %v, want a session TTL error", err)
+	}
+}

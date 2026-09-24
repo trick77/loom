@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -25,9 +26,11 @@ type Deps struct {
 	Version string
 	Static  http.Handler // serves the embedded SPA; may be nil in tests
 
-	OIDC       OIDCService
-	Auth       *auth.Middleware
-	Sessions   SessionService
+	OIDC     OIDCService
+	Auth     *auth.Middleware
+	Sessions SessionService
+	// SessionTTL is the login lifetime; zero means defaultSessionTTL.
+	SessionTTL time.Duration
 	Users      UserService
 	Thread     ThreadStore
 	Usage      UsageStore
@@ -69,6 +72,7 @@ type server struct {
 	oidc                       OIDCService
 	auth                       *auth.Middleware
 	sessions                   SessionService
+	sessionTTL                 time.Duration
 	users                      UserService
 	thread                     ThreadStore
 	usage                      UsageStore
@@ -293,6 +297,7 @@ func newServer(d Deps) *server {
 		oidc:                       d.OIDC,
 		auth:                       d.Auth,
 		sessions:                   d.Sessions,
+		sessionTTL:                 cmp.Or(d.SessionTTL, defaultSessionTTL),
 		users:                      d.Users,
 		thread:                     d.Thread,
 		usage:                      d.Usage,

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -91,6 +92,31 @@ func (s *SessionStore) DeleteExpired(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("count deleted sessions: %w", err)
 	}
 	return deleted, nil
+}
+
+// RunJanitor deletes expired sessions every interval until ctx is done. Boot
+// runs one sweep too; this keeps a long-running server from accumulating
+// rows for sessions nobody can use any more.
+func (s *SessionStore) RunJanitor(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		deleted, err := s.DeleteExpired(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				slog.Warn("session janitor sweep failed", "err", err)
+			}
+			continue
+		}
+		if deleted > 0 {
+			slog.Info("session janitor purged expired sessions", "count", deleted)
+		}
+	}
 }
 
 // Revoke deletes the session for token.

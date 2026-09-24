@@ -60,7 +60,7 @@ func TestServeReturnsListenerError(t *testing.T) {
 	defer cancel()
 
 	done := make(chan error, 1)
-	go func() { done <- serve(ctx, srv, ln, func(context.Context) {}, httpapi.NewBackground(ctx)) }()
+	go func() { done <- serve(ctx, srv, ln, httpapi.NewBackground(ctx), func(context.Context) {}) }()
 
 	select {
 	case err := <-done:
@@ -101,7 +101,7 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 	})
 
 	served := make(chan error, 1)
-	go func() { served <- serve(ctx, srv, ln, func(context.Context) {}, bg) }()
+	go func() { served <- serve(ctx, srv, ln, bg, func(context.Context) {}) }()
 	go func() {
 		resp, err := http.Get("http://" + ln.Addr().String() + "/hang")
 		if err == nil {
