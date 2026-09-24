@@ -81,6 +81,16 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
+	// Resolve the attached images into model content parts BEFORE anything is
+	// persisted or streamed: a bad attachment list (too many, unknown id, not an
+	// image) is a plain 400 here. Once the user message is stored and the SSE
+	// stream is open there is no way to reject the send cleanly. The store trims
+	// content, so the text part uses the same trimmed form the message will carry.
+	imageParts, err := s.imageContentParts(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	// Persist the images and documents the user sent with this message so the sent
 	// previews survive a reload (resolved user-scoped; out-of-scope ids skipped).
 	sentAttachments := s.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs)
@@ -227,11 +237,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sendSSEJSON(stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
 	history := buildLLMHistory(user, fileToolGuidance, classifier.Block(category), userContext, projectContext, knowledgeContext, documentContext, priorMessages, userMessage)
-	imageParts, err := s.imageContentParts(r.Context(), user.ID, threadID, userMessage.Content, body.ImageAttachmentIDs)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	// editSourceID is the image whose original pixels are forwarded to the image
 	// model for direct editing (image-to-image). Defaults to the photo the user
 	// attached this turn; the follow-up branch below sets it to a reused prior image.
@@ -248,7 +253,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// explicit attachment (handled above) whose failure is surfaced to the user.
 	if len(imageParts) == 0 && imageRoute.reuseSource {
 		if sourceID := latestImageArtifactID(priorMessages); sourceID != "" {
-			if parts, partsErr := s.imageContentParts(r.Context(), user.ID, threadID, userMessage.Content, []string{sourceID}); partsErr != nil {
+			if parts, partsErr := s.imageContentParts(r.Context(), user.ID, userMessage.Content, []string{sourceID}); partsErr != nil {
 				slog.Warn("auto-attach of prior image failed; continuing without source image",
 					"thread_id", threadID, "artifact_id", sourceID, "err", partsErr)
 			} else {

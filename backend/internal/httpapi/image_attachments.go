@@ -15,7 +15,12 @@ import (
 
 const maxImageAttachmentsPerMessage = 5
 
-func (s *server) imageContentParts(ctx context.Context, userID, _, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
+// imageContentParts turns the image artifacts a user attached into the vision
+// content parts for the model, followed by the text part. It validates the
+// whole list (count, ownership, image type, readable file) and fails on the
+// first problem, so callers run it before persisting anything: a rejected
+// attachment list is a plain 400, not an orphaned user turn.
+func (s *server) imageContentParts(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
 	if len(artifactIDs) == 0 {
 		return nil, nil
 	}
@@ -25,16 +30,19 @@ func (s *server) imageContentParts(ctx context.Context, userID, _, text string, 
 	if len(artifactIDs) > maxImageAttachmentsPerMessage {
 		return nil, fmt.Errorf("too many image attachments")
 	}
+	// One user-scoped batch lookup instead of a query per id; ids that don't
+	// resolve are simply absent from the map.
+	items, err := s.artifacts.GetMany(ctx, userID, artifactIDs)
+	if err != nil {
+		return nil, fmt.Errorf("load image attachments: %w", err)
+	}
 	parts := make([]llm.MessageContentPart, 0, len(artifactIDs)+1)
 	for _, artifactID := range artifactIDs {
-		item, ok, err := s.artifacts.Get(ctx, userID, artifactID)
-		if err != nil {
-			return nil, fmt.Errorf("load image attachment: %w", err)
-		}
+		item, ok := items[artifactID]
 		if !ok {
 			return nil, fmt.Errorf("image attachment not found")
 		}
-		// No thread-scope check here: s.artifacts.Get already user-scopes the lookup,
+		// No thread-scope check here: s.artifacts.GetMany already user-scopes the lookup,
 		// so a forged id pointing at another user's artifact can't resolve. An
 		// artifact keeps the thread it was generated/uploaded in, and "Use in thread"
 		// deliberately re-references an existing artifact from a *new* thread, so

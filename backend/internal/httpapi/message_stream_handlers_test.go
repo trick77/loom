@@ -2480,3 +2480,44 @@ func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 		t.Fatal("drift-to-coding turn should offer docgen (coding is a docgen category)")
 	}
 }
+
+// Attachment validation must run before the user message is persisted and
+// before the SSE stream opens: a rejected send is a plain 400 JSON response,
+// never a JSON blob inside a committed event stream with an orphaned user turn.
+func TestStreamMessageRejectsBadImageAttachmentsBeforePersisting(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"too many", `{"content":"Hi","imageAttachmentIds":["a","b","c","d","e","f"]}`},
+		{"unknown id", `{"content":"Hi","imageAttachmentIds":["art_missing"]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"}}
+			srv := newAuthenticatedServer(t, Deps{
+				Thread:    store,
+				Artifacts: fakeArtifactStore{},
+				UsersDir:  t.TempDir(),
+				LLM:       fakeChatClient{},
+			})
+			req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", tt.body)
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body:\n%s", rec.Code, rec.Body.String())
+			}
+			if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+				t.Fatalf("Content-Type = %q, want application/json", ct)
+			}
+			if strings.Contains(rec.Body.String(), "event:") {
+				t.Fatalf("body carries SSE events:\n%s", rec.Body.String())
+			}
+			if len(store.messages) != 0 {
+				t.Fatalf("persisted messages = %d, want 0", len(store.messages))
+			}
+		})
+	}
+}

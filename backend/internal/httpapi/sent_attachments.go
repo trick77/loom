@@ -41,18 +41,20 @@ func marshalPastedTexts(blocks []chat.MessagePastedText) json.RawMessage {
 func (s *server) resolveSentAttachments(ctx context.Context, userID string, thread chat.Thread, imageIDs, documentIDs []string) json.RawMessage {
 	attachments := make([]chat.MessageAttachment, 0, len(imageIDs)+len(documentIDs))
 
-	if s.artifacts != nil {
+	if s.artifacts != nil && len(imageIDs) > 0 {
+		// One user-scoped batch lookup; unknown ids are absent from the map.
+		found, err := s.artifacts.GetMany(ctx, userID, imageIDs)
+		if err != nil {
+			slog.Warn("sent image attachment lookup failed", "err", err)
+			found = nil
+		}
 		seen := make(map[string]bool)
 		for _, id := range imageIDs {
 			if id == "" || seen[id] {
 				continue
 			}
 			seen[id] = true
-			art, ok, err := s.artifacts.Get(ctx, userID, id)
-			if err != nil {
-				slog.Warn("sent image attachment lookup failed", "artifact_id", id, "err", err)
-				continue
-			}
+			art, ok := found[id]
 			if !ok {
 				slog.Warn("sent image attachment not found", "artifact_id", id)
 				continue
