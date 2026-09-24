@@ -1,4 +1,5 @@
 import {
+  memo,
   type ComponentPropsWithoutRef,
   type ReactNode,
   useCallback,
@@ -65,14 +66,7 @@ import {
   type ComposerAttachment,
 } from "./useDocumentAttachments";
 
-export function MessageBubble({
-  message,
-  retryMessage,
-  onRetry,
-  category,
-  threadCostNanoUsd,
-  publicView = false,
-}: {
+type MessageBubbleProps = {
   message: Message & {
     attachments?: ComposerAttachment[];
     hadAttachment?: boolean;
@@ -88,7 +82,28 @@ export function MessageBubble({
   threadCostNanoUsd?: number;
   /** Read-only public share viewer: hide actions, metrics and citations. */
   publicView?: boolean;
-}) {
+};
+
+// MessageBubble routes a message to the bubble for its role. The two bubbles
+// are separate components (rather than an early return inside one) so each
+// can call its own hooks, and each is memoized: the transcript re-renders on
+// every streamed token, and nothing about a settled message changes then.
+export function MessageBubble(props: MessageBubbleProps) {
+  return props.message.role === "user" ? (
+    <UserMessageBubble {...props} />
+  ) : (
+    <AssistantMessageBubble {...props} />
+  );
+}
+
+const UserMessageBubble = memo(function UserMessageBubble({
+  message,
+  retryMessage,
+  onRetry,
+  category,
+  threadCostNanoUsd,
+  publicView = false,
+}: MessageBubbleProps) {
   const { t } = useTranslation();
   // Large pasted blocks were folded into content on send (so the model sees them);
   // strip them back out for display and render each matched block as a "Pasted"
@@ -102,51 +117,57 @@ export function MessageBubble({
       ? stripPastedBlocks(message.content, blocks)
       : { text: message.content, matched: [] as boolean[] };
   }, [message.content, message.pastedTexts]);
-  if (message.role === "user") {
-    const pastedTexts = message.pastedTexts ?? [];
-    return (
-      <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
-        {message.attachments !== undefined &&
-          message.attachments.length > 0 && (
-            <SentAttachments attachments={message.attachments} />
+  const pastedTexts = message.pastedTexts ?? [];
+  return (
+    <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
+      {message.attachments !== undefined && message.attachments.length > 0 && (
+        <SentAttachments attachments={message.attachments} />
+      )}
+      {pastedMatched.some(Boolean) && (
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          {pastedTexts.map((pasted, index) =>
+            pastedMatched[index] ? (
+              <PastedTextCard
+                key={`${message.id}-pasted-${index}`}
+                text={pasted.text}
+                lineCount={pasted.lineCount}
+              />
+            ) : null,
           )}
-        {pastedMatched.some(Boolean) && (
-          <div className="mt-2 flex flex-wrap justify-end gap-2">
-            {pastedTexts.map((pasted, index) =>
-              pastedMatched[index] ? (
-                <PastedTextCard
-                  key={`${message.id}-pasted-${index}`}
-                  text={pasted.text}
-                  lineCount={pasted.lineCount}
-                />
-              ) : null,
-            )}
-          </div>
-        )}
-        {displayContent !== "" && (
-          <div className="ui-message-text ui-user-message-text mt-2 rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
-            {displayContent}
-          </div>
-        )}
-        {publicView && message.hadAttachment === true && (
-          <AttachmentNotShared />
-        )}
-        {!publicView && (
-          <MessageActions
-            copyLabel={t("messages.copyMessage")}
-            copyText={message.content}
-            retryLabel={t("messages.retryMessage")}
-            // Retry re-stages the collapsed pastes as chips (not the inline wall):
-            // pass the stripped draft plus the blocks, so resend keeps the collapse.
-            onRetry={() => onRetry?.(displayContent, message.pastedTexts)}
-            // The sent message carries only its time (no token metrics) in the status line.
-            metricsMessage={message}
-            alignRight
-          />
-        )}
-      </div>
-    );
-  }
+        </div>
+      )}
+      {displayContent !== "" && (
+        <div className="ui-message-text ui-user-message-text mt-2 rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
+          {displayContent}
+        </div>
+      )}
+      {publicView && message.hadAttachment === true && <AttachmentNotShared />}
+      {!publicView && (
+        <MessageActions
+          copyLabel={t("messages.copyMessage")}
+          copyText={message.content}
+          retryLabel={t("messages.retryMessage")}
+          // Retry re-stages the collapsed pastes as chips (not the inline wall):
+          // pass the stripped draft plus the blocks, so resend keeps the collapse.
+          onRetry={() => onRetry?.(displayContent, message.pastedTexts)}
+          // The sent message carries only its time (no token metrics) in the status line.
+          metricsMessage={message}
+          alignRight
+        />
+      )}
+    </div>
+  );
+});
+
+const AssistantMessageBubble = memo(function AssistantMessageBubble({
+  message,
+  retryMessage,
+  onRetry,
+  category,
+  threadCostNanoUsd,
+  publicView = false,
+}: MessageBubbleProps) {
+  const { t } = useTranslation();
   // Render the assistant message as a single ordered list of content blocks
   // (text / trace / artifact) so prose, tool-activity panels and images appear in
   // the exact chronological order they arrived. The copy/retry/TTS + metrics
@@ -286,7 +307,7 @@ export function MessageBubble({
       )}
     </div>
   );
-}
+});
 
 // AttachmentNotShared is the subtle marker shown in a public share on a message
 // that originally carried an uploaded file. The file itself is never shared (it

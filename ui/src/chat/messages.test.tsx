@@ -416,3 +416,36 @@ test("renders citation markers as outbound links in the public share view", () =
     screen.queryByRole("button", { name: "Alpha" }),
   ).not.toBeInTheDocument();
 });
+
+test("MessageBubble renders user and assistant messages through the role switch", () => {
+  const { unmount } = render(
+    <MessageBubble
+      message={{
+        id: "u1",
+        threadId: "t1",
+        role: "user",
+        content: "a question",
+        createdAt: "2026-05-30T00:00:00Z",
+      }}
+      retryMessage={null}
+      onRetry={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("a question")).toBeInTheDocument();
+  unmount();
+
+  render(
+    <MessageBubble
+      message={{
+        id: "a1",
+        threadId: "t1",
+        role: "assistant",
+        content: "an answer",
+        createdAt: "2026-05-30T00:00:01Z",
+      }}
+      retryMessage={null}
+      onRetry={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("an answer")).toBeInTheDocument();
+});
