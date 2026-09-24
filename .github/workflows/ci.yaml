@@ -108,6 +108,7 @@ jobs:
       - run: pip install diff-cover==10.3.0
       - run: cd ui && npm ci
       - run: cd ui && npm run format:check
+      - run: cd ui && npm run lint
       - run: cd ui && npm run build # tsc --noEmit && vite build — fängt Typ-/Build-Fehler
       - run: make fe-coverage
       - name: Fetch base ref

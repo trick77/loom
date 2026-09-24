@@ -1,7 +1,6 @@
 import {
   memo,
   type ComponentPropsWithoutRef,
-  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -98,10 +97,7 @@ export function MessageBubble(props: MessageBubbleProps) {
 
 const UserMessageBubble = memo(function UserMessageBubble({
   message,
-  retryMessage,
   onRetry,
-  category,
-  threadCostNanoUsd,
   publicView = false,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
@@ -697,7 +693,9 @@ function MessageActions({
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
-  speakingRef.current = speaking;
+  useEffect(() => {
+    speakingRef.current = speaking;
+  }, [speaking]);
 
   // Stop any in-progress narration started here when the bubble unmounts.
   useEffect(

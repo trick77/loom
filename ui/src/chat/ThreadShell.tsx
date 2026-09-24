@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { UserFacingError } from "../api/http";
@@ -309,7 +309,6 @@ export function ThreadShell({
     setThreads,
     starredProjects,
     starredThreads,
-    threads,
     unstarredProjects,
   } = useThreadData({
     abortAllStreamRuns,
@@ -1440,7 +1439,6 @@ export function ThreadShell({
         openThreadMenuID={openThreadMenuID}
         onToggleDesktopCollapsed={() => setSidebarCollapsed((value) => !value)}
         onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
-        onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
         onToggleUserMenu={() => setUserMenuOpen((open) => !open)}
         onCloseUserMenu={() => setUserMenuOpen(false)}
         onOpenSettings={() => setSettingsOpen(true)}

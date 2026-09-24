@@ -388,7 +388,6 @@ function SearchResultRow({
 }: {
   result: { title: string; url?: string; domain?: string; snippet?: string };
 }) {
-  const favicon = result.url === undefined ? undefined : faviconURL(result.url);
   const href =
     result.url === undefined ? undefined : externalHTTPURL(result.url);
   const title = <div className="ui-activity-result-title">{result.title}</div>;

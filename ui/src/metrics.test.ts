@@ -183,7 +183,7 @@ test("buildMetricsString formats context usage above 100% without clamping", () 
       contextTokens: 2_000_000,
     }),
   );
-  // 2 000 000 / 1 048 576 = 190.7% -> "191 %"
+  // 2 000 000 / 1 048 576 = 190.7% -> "191 %"
   expect(line).toContain("191 %");
 });
 

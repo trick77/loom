@@ -12,6 +12,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 ## Commands
 - `make test` — backend Go tests (`go test ./...`)
 - `make fe-test` — frontend Vitest
+- `make fe-lint` — frontend lint (oxlint: rules-of-hooks, exhaustive-deps, unused vars)
 - `make coverage-gate` — coverage gates: 80% on lines the branch changes, plus project
   floors. Needs `pip install diff-cover==10.3.0`. New code must be tested; legacy debt is ignored.
 - `make fe-build` — build the SPA into `backend/web/dist` (embedded by Go)

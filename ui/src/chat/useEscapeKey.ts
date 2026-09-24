@@ -15,7 +15,9 @@ export function useEscapeKey(
 ): void {
   const { active = true, bottom = false } = options;
   const handlerRef = useRef(handler);
-  handlerRef.current = handler;
+  useEffect(() => {
+    handlerRef.current = handler;
+  });
   useEffect(() => {
     if (!active) return;
     const entry = () => handlerRef.current();

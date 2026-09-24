@@ -51,6 +51,7 @@ export function cleanResultText(text: string): string {
     // with VS16 (U+FE0F), and leftover skin-tone modifiers / ZWJ / VS16. Text-
     // presentation symbols (™ © ® ✔ ‼ →) are not pictographic emoji and stay.
     .replace(
+      // oxlint-disable-next-line no-misleading-character-class -- the joiner and variation selector are the point
       /\p{Extended_Pictographic}️|\p{Emoji_Presentation}|[\p{Emoji_Modifier}‍️]/gu,
       "",
     )

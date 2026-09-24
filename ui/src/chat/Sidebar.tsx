@@ -30,7 +30,6 @@ export function Sidebar({
   openThreadMenuID,
   onToggleDesktopCollapsed,
   onCloseMobileSidebar,
-  onOpenMobileSidebar,
   onToggleUserMenu,
   onCloseUserMenu,
   onOpenSettings,
@@ -73,7 +72,6 @@ export function Sidebar({
   openThreadMenuID: string | null;
   onToggleDesktopCollapsed(): void;
   onCloseMobileSidebar(): void;
-  onOpenMobileSidebar(): void;
   onToggleUserMenu(): void;
   onCloseUserMenu(): void;
   onOpenSettings(): void;
