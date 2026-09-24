@@ -1570,3 +1570,28 @@ func TestMessagesPersistCost(t *testing.T) {
 		t.Fatalf("listed unpriced cost = %d, want nil", *got)
 	}
 }
+
+func TestInsertMessageCapsByRole(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Caps"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	// A long answer (the forced final answer may run to 8k tokens) must persist.
+	longAnswer := strings.Repeat("a", MaxMessageContentLength+8000)
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleAssistant, longAnswer); err != nil {
+		t.Fatalf("AddMessage(assistant, %d bytes) error = %v, want nil", len(longAnswer), err)
+	}
+	// The user cap is unchanged.
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, strings.Repeat("u", MaxMessageContentLength+1)); err == nil {
+		t.Fatal("AddMessage(user, over cap) error = nil, want overlong content error")
+	}
+	// The assistant cap is generous, not unbounded.
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleAssistant, strings.Repeat("a", MaxAssistantMessageContentLength+1)); err == nil {
+		t.Fatal("AddMessage(assistant, over cap) error = nil, want overlong content error")
+	}
+}

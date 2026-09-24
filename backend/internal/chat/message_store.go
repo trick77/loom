@@ -96,7 +96,7 @@ func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, e
 	if content == "" {
 		return Message{}, errors.New("message content is required")
 	}
-	if len(content) > MaxMessageContentLength {
+	if len(content) > maxContentLengthForRole(role) {
 		return Message{}, errors.New("message content is too long")
 	}
 	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
@@ -331,4 +331,13 @@ WHERE user_id = ? AND id = ?`,
 		return Message{}, false, nil
 	}
 	return Message{}, false, fmt.Errorf("get message: %w", err)
+}
+
+// maxContentLengthForRole picks the content cap by author: user text is bounded
+// by what one send may carry, model output by the generous assistant cap.
+func maxContentLengthForRole(role Role) int {
+	if role == RoleUser {
+		return MaxMessageContentLength
+	}
+	return MaxAssistantMessageContentLength
 }
