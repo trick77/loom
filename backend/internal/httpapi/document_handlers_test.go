@@ -29,6 +29,8 @@ type fakeDocumentService struct {
 	artifactsInUse      []string
 	artifactsInUseErr   error
 	inUseQueriedThreads []string
+	unindexErr          error
+	deleteErr           error
 }
 
 func (f *fakeDocumentService) Upload(_ context.Context, in documents.UploadInput) (rag.Document, artifact.Artifact, error) {
@@ -48,8 +50,8 @@ func (f *fakeDocumentService) FullText(context.Context, string, string) (string,
 	return f.fullText, f.fullTextErr
 }
 func (f *fakeDocumentService) Index(context.Context, string, string) error   { return nil }
-func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return nil }
-func (f *fakeDocumentService) Delete(context.Context, string, string) error  { return nil }
+func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return f.unindexErr }
+func (f *fakeDocumentService) Delete(context.Context, string, string) error  { return f.deleteErr }
 func (f *fakeDocumentService) DeleteThreadData(_ context.Context, _ string, threadID string) error {
 	f.deletedThreadData = append(f.deletedThreadData, threadID)
 	return f.deleteDataErr
@@ -210,5 +212,26 @@ func TestToDocumentResponse_setsDownloadURLFromArtifact(t *testing.T) {
 	noArt := toDocumentResponse(rag.Document{ID: "d2", Filename: "notes.md"})
 	if noArt.DownloadURL != "" {
 		t.Errorf("DownloadURL = %q, want empty when no artifact", noArt.DownloadURL)
+	}
+}
+
+// While an ingest runs, unindex and delete are refused with a 409 so the client
+// keeps polling instead of racing the running chunk writes.
+func TestHandleUnindexAndDeleteDocument_conflictWhileIndexing(t *testing.T) {
+	svc := &fakeDocumentService{
+		doc:        rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusExtracting},
+		unindexErr: documents.ErrIndexInProgress,
+		deleteErr:  documents.ErrIndexInProgress,
+	}
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
+	for _, req := range []*http.Request{
+		authenticatedRequest(http.MethodPost, "/api/documents/d1/unindex", ""),
+		authenticatedRequest(http.MethodDelete, "/api/documents/d1", ""),
+	} {
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("%s %s status = %d, want 409; body=%s", req.Method, req.URL.Path, rec.Code, rec.Body.String())
+		}
 	}
 }

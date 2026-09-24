@@ -7,16 +7,34 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/store"
 )
 
-type fakeIndexer struct{ called []string }
+type fakeIndexer struct {
+	called []string
+	// entered is signalled when Ingest starts; block, when set, holds Ingest
+	// open until it is closed or the context ends (mirroring a slow Tika or
+	// embedding call).
+	entered chan struct{}
+	block   chan struct{}
+}
 
-func (f *fakeIndexer) Ingest(_ context.Context, _, documentID string) error {
+func (f *fakeIndexer) Ingest(ctx context.Context, _, documentID string) error {
 	f.called = append(f.called, documentID)
+	if f.entered != nil {
+		f.entered <- struct{}{}
+	}
+	if f.block != nil {
+		select {
+		case <-f.block:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	return nil
 }
 
@@ -271,5 +289,64 @@ func TestService_Retrieve_embedsQueryAndReturnsChunks(t *testing.T) {
 	}
 	if usage.userID != "u" || usage.tokens != 1 || usage.requests != 1 {
 		t.Errorf("embedding usage = user %q tokens %d requests %d, want u/1/1", usage.userID, usage.tokens, usage.requests)
+	}
+}
+
+// A second index request for a document that is already being ingested (a
+// double click, two tabs) must not start a second Tika/embedding run, and an
+// unindex or delete must not race the running ingest's chunk writes.
+func TestService_Index_isSingleFlightPerDocument(t *testing.T) {
+	svc, idx, _ := newTestService(t)
+	idx.entered = make(chan struct{}, 1)
+	idx.block = make(chan struct{})
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+
+	first := make(chan error, 1)
+	go func() { first <- svc.Index(ctx, "u", doc.ID) }()
+	<-idx.entered
+
+	if err := svc.Index(ctx, "u", doc.ID); !errors.Is(err, ErrIndexInProgress) {
+		t.Fatalf("second Index() error = %v, want ErrIndexInProgress", err)
+	}
+	if err := svc.Unindex(ctx, "u", doc.ID); !errors.Is(err, ErrIndexInProgress) {
+		t.Fatalf("Unindex() during ingest error = %v, want ErrIndexInProgress", err)
+	}
+	if err := svc.Delete(ctx, "u", doc.ID); !errors.Is(err, ErrIndexInProgress) {
+		t.Fatalf("Delete() during ingest error = %v, want ErrIndexInProgress", err)
+	}
+	close(idx.block)
+	if err := <-first; err != nil {
+		t.Fatalf("first Index() error = %v", err)
+	}
+	if len(idx.called) != 1 {
+		t.Fatalf("Ingest calls = %d, want 1", len(idx.called))
+	}
+	// Once the ingest is done the document is free again.
+	if err := svc.Unindex(ctx, "u", doc.ID); err != nil {
+		t.Fatalf("Unindex() after ingest error = %v", err)
+	}
+}
+
+// An ingest that never returns (a hung sidecar) used to leave the document
+// stuck in extracting/embedding until restart; it is bounded, and the failure
+// is recorded even though the ingest's own context is dead by then.
+func TestService_Index_timesOutAndRecordsFailure(t *testing.T) {
+	svc, idx, _ := newTestService(t)
+	idx.block = make(chan struct{})
+	defer close(idx.block)
+	svc.SetIndexTimeout(20 * time.Millisecond)
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+
+	if err := svc.Index(ctx, "u", doc.ID); err == nil {
+		t.Fatal("Index() error = nil, want a timeout")
+	}
+	got, ok, err := svc.Get(ctx, "u", doc.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get() = ok %v, err %v", ok, err)
+	}
+	if got.Status != rag.StatusError || got.Error == "" {
+		t.Fatalf("status after timeout = %q (%q), want error with a reason", got.Status, got.Error)
 	}
 }

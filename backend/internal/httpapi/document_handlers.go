@@ -195,6 +195,10 @@ func (s *server) handleUnindexDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.documents.Unindex(r.Context(), user.ID, r.PathValue("documentID")); err != nil {
+		if errors.Is(err, documents.ErrIndexInProgress) {
+			writeJSONError(w, http.StatusConflict, "document is being indexed")
+			return
+		}
 		serverError(w, r, err, "unindex failed")
 		return
 	}
@@ -211,6 +215,10 @@ func (s *server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.documents.Delete(r.Context(), user.ID, r.PathValue("documentID")); err != nil {
+		if errors.Is(err, documents.ErrIndexInProgress) {
+			writeJSONError(w, http.StatusConflict, "document is being indexed")
+			return
+		}
 		serverError(w, r, err, "delete failed")
 		return
 	}

@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
@@ -59,11 +61,35 @@ type Service struct {
 	embedder  rag.Embedder
 	usage     UsageRecorder
 	usersDir  string
+	// inflight holds "userID/documentID" for every ingest currently running:
+	// one ingest per document at a time, and no unindex or delete underneath
+	// a running one (see ErrIndexInProgress).
+	inflight     sync.Map
+	indexTimeout time.Duration
 }
+
+// ErrIndexInProgress is returned when an ingest is already running for the
+// document: a second index request is not started, and an unindex or delete
+// would race the running ingest's chunk writes. Callers map it to a conflict
+// and let the client poll the status instead.
+var ErrIndexInProgress = errors.New("document is being indexed")
+
+// defaultIndexTimeout bounds one ingest end to end (extraction plus every
+// embedding batch); a hung sidecar used to leave the document stuck in
+// extracting/embedding until restart.
+const defaultIndexTimeout = 10 * time.Minute
 
 // NewService creates a new Service with the given dependencies.
 func NewService(store *rag.Store, artifacts ArtifactStore, indexer Indexer, embedder rag.Embedder, usersDir string) *Service {
-	return &Service{store: store, artifacts: artifacts, indexer: indexer, embedder: embedder, usersDir: usersDir}
+	return &Service{store: store, artifacts: artifacts, indexer: indexer, embedder: embedder, usersDir: usersDir, indexTimeout: defaultIndexTimeout}
+}
+
+// SetIndexTimeout overrides the per-ingest bound (tests, and operators with
+// very large documents).
+func (s *Service) SetIndexTimeout(timeout time.Duration) {
+	if timeout > 0 {
+		s.indexTimeout = timeout
+	}
 }
 
 // SetUsageRecorder attaches a usage recorder to track embedding costs.
@@ -198,7 +224,31 @@ func (s *Service) countThreadUploads(ctx context.Context, userID, threadID strin
 // Index runs ingestion for a document ("Add to knowledge"). Callers that want it
 // off the request path should invoke it in a detached goroutine.
 func (s *Service) Index(ctx context.Context, userID, documentID string) error {
-	return s.indexer.Ingest(ctx, userID, documentID)
+	key := inflightKey(userID, documentID)
+	if _, running := s.inflight.LoadOrStore(key, struct{}{}); running {
+		return ErrIndexInProgress
+	}
+	defer s.inflight.Delete(key)
+	ingestCtx, cancel := context.WithTimeout(ctx, s.indexTimeout)
+	defer cancel()
+	err := s.indexer.Ingest(ingestCtx, userID, documentID)
+	if err != nil && ingestCtx.Err() != nil {
+		// The ingester records its own failures, but not this one: its context
+		// is dead, so its status write would fail too. Record it detached so
+		// the document does not sit in extracting/embedding forever.
+		_ = s.store.UpdateStatus(context.WithoutCancel(ctx), userID, documentID, rag.StatusError, "indexing timed out: "+err.Error())
+	}
+	return err
+}
+
+// indexing reports whether an ingest is running for the document.
+func (s *Service) indexing(userID, documentID string) bool {
+	_, running := s.inflight.Load(inflightKey(userID, documentID))
+	return running
+}
+
+func inflightKey(userID, documentID string) string {
+	return userID + "/" + documentID
 }
 
 // FullText returns a document's full plain text (re-extracted from the volume),
@@ -255,6 +305,9 @@ func (s *Service) IndexedDocsInScope(ctx context.Context, userID string, project
 // Unindex removes a document's chunks/embeddings but keeps the file and document
 // row (status back to pending), so it can be re-indexed later.
 func (s *Service) Unindex(ctx context.Context, userID, documentID string) error {
+	if s.indexing(userID, documentID) {
+		return ErrIndexInProgress
+	}
 	if err := s.store.ClearChunks(ctx, userID, documentID); err != nil {
 		return err
 	}
@@ -264,6 +317,9 @@ func (s *Service) Unindex(ctx context.Context, userID, documentID string) error 
 // Delete removes the document, its chunks/embeddings, its artifact row, and the
 // underlying file from the volume.
 func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
+	if s.indexing(userID, documentID) {
+		return ErrIndexInProgress
+	}
 	doc, ok, err := s.store.GetDocument(ctx, userID, documentID)
 	if err != nil {
 		return err
