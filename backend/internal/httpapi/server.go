@@ -57,10 +57,14 @@ type Deps struct {
 	// ProjectSummaryTokenBudget bounds the cross-thread digest returned by the
 	// read_project_threads tool.
 	ProjectSummaryTokenBudget int
+	// Background owns the goroutines that outlive a request (post-turn memory
+	// refreshes). nil means a group nobody stops, which is what tests want.
+	Background *Background
 }
 
 type server struct {
 	version                    string
+	background                 *Background
 	oidc                       OIDCService
 	auth                       *auth.Middleware
 	sessions                   SessionService
@@ -277,7 +281,12 @@ type UserService interface {
 // also wires the HTTP routes) and NewMemoryWorker (which only needs the stores
 // and LLM client for the background refresh).
 func newServer(d Deps) *server {
+	background := d.Background
+	if background == nil {
+		background = NewBackground(context.Background())
+	}
 	return &server{
+		background:                 background,
 		version:                    d.Version,
 		oidc:                       d.OIDC,
 		auth:                       d.Auth,

@@ -2521,3 +2521,30 @@ func TestStreamMessageRejectsBadImageAttachmentsBeforePersisting(t *testing.T) {
 		})
 	}
 }
+
+// A panic inside the reasoning-title goroutine must not kill the process or
+// hang the turn: the title is skipped and the answer still lands.
+func TestStreamMessageSurvivesReasoningTitlePanic(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	streamText := "Answer."
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			streamText:          &streamText,
+			reasoningText:       "Thinking about it.",
+			reasoningTitlePanic: true,
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: assistant_message") || !strings.Contains(body, "event: done") {
+		t.Fatalf("stream did not complete:\n%s", body)
+	}
+	if strings.Contains(body, "assistant_reasoning_title") {
+		t.Fatalf("a title was emitted despite the panic:\n%s", body)
+	}
+}

@@ -136,13 +136,13 @@ func (s *server) maybeRefreshProjectMemoryAsync(parent context.Context, user aut
 		return
 	}
 	projectID := *thread.ProjectID
-	go func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), memoryBackgroundTimeout)
+	s.background.Spawn(parent, "project_memory:"+projectID, func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
 		defer cancel()
 		if err := s.refreshProjectMemoryIfDue(ctx, user, projectID); err != nil {
 			slog.Warn("background project memory refresh failed", "project_id", projectID, "err", err)
 		}
-	}()
+	})
 }
 
 // refreshProjectMemoryIfDue runs an incremental refresh when the gate is met.

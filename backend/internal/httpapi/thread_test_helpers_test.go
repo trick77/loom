@@ -584,6 +584,7 @@ type fakeChatClient struct {
 	titleErr            error
 	category            string
 	reasoningTitle      string
+	reasoningTitlePanic bool
 	history             *[]llm.Message
 	streamText          *string
 	reasoningText       string
@@ -665,6 +666,9 @@ func (f fakeChatClient) ClassifyImageIntent(_ context.Context, _ string, _, _ bo
 }
 
 func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string) (string, error) {
+	if f.reasoningTitlePanic {
+		panic("reasoning title exploded")
+	}
 	llm.RecordUsage(ctx, f.reasoningTitleUsage)
 	if f.reasoningTitleCost > 0 {
 		llm.RecordCost(ctx, f.reasoningTitleCost, true)

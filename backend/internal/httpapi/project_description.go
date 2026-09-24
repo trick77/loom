@@ -18,13 +18,13 @@ import (
 // returning, and is best-effort (errors are logged, never surfaced). The actual work
 // is gated/debounced in refreshProjectDescriptionIfDue, so a no-op call is cheap.
 func (s *server) maybeRefreshProjectDescriptionAsync(parent context.Context, user auth.User, projectID string) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), memoryBackgroundTimeout)
+	s.background.Spawn(parent, "project_description:"+projectID, func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
 		defer cancel()
 		if err := s.refreshProjectDescriptionIfDue(ctx, user, projectID); err != nil {
 			slog.Warn("background project description refresh failed", "project_id", projectID, "err", err)
 		}
-	}()
+	})
 }
 
 // refreshProjectDescriptionIfDue regenerates a project's auto-description from its
