@@ -2122,61 +2122,9 @@ test("renders artifact card from historical assistant message", async () => {
   ).toBeInTheDocument();
 });
 
-test("renders image artifact preview from generated artifact card", async () => {
-  const objectURL = "blob:ui-image-preview";
-  const createObjectURL = vi.fn(() => objectURL);
-  const revokeObjectURL = vi.fn();
-  stubURLObjectMethods(createObjectURL, revokeObjectURL);
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/artifacts/art_1/download") {
-        return {
-          status: 200,
-          ok: true,
-          blob: async () => new Blob(["image-bytes"], { type: "image/png" }),
-        } as Response;
-      }
-      throw new Error(`unexpected fetch ${String(input)}`);
-    }),
-  );
-
-  render(
-    <GeneratedArtifactCard
-      artifact={{
-        id: "art_1",
-        displayFilename: "robot.png",
-        mimeType: "image/png",
-        sizeBytes: 12,
-        downloadUrl: "/api/artifacts/art_1/download",
-      }}
-    />,
-  );
-
-  expect(
-    await screen.findByRole("img", { name: "robot.png" }, { timeout: 3000 }),
-  ).toHaveAttribute("src", objectURL);
-  expect(createObjectURL).toHaveBeenCalledTimes(1);
-  expect(
-    screen.getByRole("button", { name: "Download robot.png" }),
-  ).toBeInTheDocument();
-});
-
-test("clicking an image artifact opens a lightbox preview in the browser", async () => {
-  const objectURL = "blob:ui-image-preview";
-  stubURLObjectMethods(
-    vi.fn(() => objectURL),
-    vi.fn(),
-  );
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    if (String(input) === "/api/artifacts/art_1/download") {
-      return {
-        status: 200,
-        ok: true,
-        blob: async () => new Blob(["image-bytes"], { type: "image/png" }),
-      } as Response;
-    }
-    throw new Error(`unexpected fetch ${String(input)}`);
+test("renders a generated image artifact from its thumbnail without downloading it", () => {
+  const fetchMock = vi.fn(async () => {
+    throw new Error("unexpected fetch");
   });
   vi.stubGlobal("fetch", fetchMock);
 
@@ -2188,23 +2136,70 @@ test("clicking an image artifact opens a lightbox preview in the browser", async
         mimeType: "image/png",
         sizeBytes: 12,
         downloadUrl: "/api/artifacts/art_1/download",
+        thumbnailUrl: "/api/artifacts/art_1/thumbnail",
       }}
     />,
   );
 
-  fireEvent.click(await screen.findByRole("img", { name: "robot.png" }));
+  expect(screen.getByRole("img", { name: "robot.png" })).toHaveAttribute(
+    "src",
+    "/api/artifacts/art_1/thumbnail",
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "Download robot.png" }),
+  ).toBeInTheDocument();
+});
 
-  // The lightbox overlay appears, showing the already-downloaded blob — no host open call.
+test("an image artifact without a thumbnail previews the full image", () => {
+  render(
+    <GeneratedArtifactCard
+      artifact={{
+        id: "art_1",
+        displayFilename: "robot.png",
+        mimeType: "image/png",
+        sizeBytes: 12,
+        downloadUrl: "/api/artifacts/art_1/download",
+      }}
+    />,
+  );
+
+  expect(screen.getByRole("img", { name: "robot.png" })).toHaveAttribute(
+    "src",
+    "/api/artifacts/art_1/download",
+  );
+});
+
+test("clicking an image artifact opens a lightbox preview in the browser", async () => {
+  const fetchMock = vi.fn(async () => {
+    throw new Error("unexpected fetch");
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <GeneratedArtifactCard
+      artifact={{
+        id: "art_1",
+        displayFilename: "robot.png",
+        mimeType: "image/png",
+        sizeBytes: 12,
+        downloadUrl: "/api/artifacts/art_1/download",
+        thumbnailUrl: "/api/artifacts/art_1/thumbnail",
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("img", { name: "robot.png" }));
+
+  // The lightbox overlay shows the full image straight from its URL: no
+  // download and no host open call.
   const dialog = await screen.findByRole("dialog", {
     name: "Preview robot.png",
   });
   expect(
     within(dialog).getByRole("img", { name: "robot.png" }),
-  ).toHaveAttribute("src", objectURL);
-  expect(fetchMock).not.toHaveBeenCalledWith(
-    "/api/artifacts/art_1/open",
-    expect.anything(),
-  );
+  ).toHaveAttribute("src", "/api/artifacts/art_1/download");
+  expect(fetchMock).not.toHaveBeenCalled();
 
   // The close button dismisses the lightbox.
   fireEvent.click(

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { downloadArtifact, type Artifact } from "../api";
@@ -13,7 +13,6 @@ import { downloadBlob } from "./download";
 export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const { t } = useTranslation();
   const [error, setError] = useState("");
-  const [previewUrl, setPreviewUrl] = useState("");
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   // A deleted artifact has no bytes on disk: render a tombstone (disabled
@@ -31,29 +30,14 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const imageStats = isImage ? buildImageStats(artifact) : null;
   const typeLabel = fileTypeLabel(artifact.displayFilename);
 
-  useEffect(() => {
-    if (!isImage) {
-      setPreviewUrl("");
-      return;
-    }
-    let cancelled = false;
-    let objectUrl = "";
-    setError("");
-    setPreviewUrl("");
-    void downloadArtifact(artifact.downloadUrl)
-      .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setPreviewUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setError(t("artifactCard.previewFailed"));
-      });
-    return () => {
-      cancelled = true;
-      if (objectUrl !== "") URL.revokeObjectURL(objectUrl);
-    };
-  }, [artifact.downloadUrl, isImage]);
+  // The card shows the server's small JPEG thumbnail when there is one and the
+  // full image otherwise; the lightbox always shows the full image. Both are
+  // plain image loads on the session cookie (the artifact library does the
+  // same), so a chat full of generated images no longer downloads every
+  // original as a blob just to render its preview.
+  const previewUrl = isImage
+    ? (artifact.thumbnailUrl ?? artifact.downloadUrl)
+    : "";
 
   async function handleDownload() {
     setError("");
@@ -68,7 +52,6 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   }
 
   function handleOpenPreview() {
-    if (previewUrl === "") return;
     setError("");
     setLightboxOpen(true);
   }
@@ -100,6 +83,7 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
                 src={previewUrl}
                 alt={artifact.displayFilename}
                 loading="lazy"
+                onError={() => setError(t("artifactCard.previewFailed"))}
               />
             )}
           </button>
@@ -121,6 +105,7 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
                 src={previewUrl}
                 alt={artifact.displayFilename}
                 loading="lazy"
+                onError={() => setError(t("artifactCard.previewFailed"))}
               />
             )}
           </button>
@@ -186,9 +171,9 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
           </button>
         )}
       </div>
-      {lightboxOpen && previewUrl !== "" && (
+      {lightboxOpen && (
         <ImageLightbox
-          src={previewUrl}
+          src={artifact.downloadUrl}
           alt={artifact.displayFilename}
           onClose={() => setLightboxOpen(false)}
         />
