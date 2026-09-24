@@ -208,3 +208,36 @@ func TestIngester_ExtractText_fallsBackWhenNoCache(t *testing.T) {
 		t.Errorf("ExtractText = %q, want live extraction when nothing cached", got)
 	}
 }
+
+type countingExtractor struct {
+	calls int
+	text  string
+}
+
+func (c *countingExtractor) Extract(_ context.Context, _, _ string, r io.Reader) (string, error) {
+	c.calls++
+	_, _ = io.Copy(io.Discard, r)
+	return c.text, nil
+}
+
+// An attachment that is inlined into the prompt but never indexed used to be
+// re-extracted by Tika on every turn; the live extraction now caches its text.
+func TestIngester_ExtractText_cachesLiveExtraction(t *testing.T) {
+	extractor := &countingExtractor{text: "extracted once"}
+	ing, s := newIngester(t, extractor, &fakeEmbedder{}, fakeOpener{})
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusPending})
+
+	for i := range 2 {
+		got, err := ing.ExtractText(ctx, "u1", "d1")
+		if err != nil {
+			t.Fatalf("ExtractText #%d: %v", i+1, err)
+		}
+		if got != "extracted once" {
+			t.Fatalf("ExtractText #%d = %q", i+1, got)
+		}
+	}
+	if extractor.calls != 1 {
+		t.Fatalf("extractor calls = %d, want 1 (the second read comes from the cache)", extractor.calls)
+	}
+}
