@@ -11,6 +11,7 @@ import {
   uploadDocument,
   type Document,
 } from "../api";
+import { UserFacingError } from "../api/http";
 import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
 import type { IconName } from "../chat/Icon";
@@ -24,6 +25,10 @@ const TRANSIENT_STATUSES: ReadonlySet<Document["status"]> = new Set([
   "extracting",
   "embedding",
 ]);
+
+// POLL_DELAYS_MS is the backoff between status polls while a document is
+// still being ingested; the last entry repeats.
+const POLL_DELAYS_MS = [2000, 5000, 10000] as const;
 
 type Badge = { label: string; icon: IconName; className: string };
 
@@ -82,32 +87,69 @@ export function ProjectKnowledgePanel({
   const [deleteError, setDeleteError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const items = await listDocuments(projectId);
-      setDocs(items);
-    } catch (error) {
-      // Best-effort: a transient list failure leaves the previous view in place.
-      // An expired session is not transient; it ends the session.
-      if (error instanceof AuthExpiredError) onSessionExpired?.();
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, onSessionExpired]);
+  // load fetches the project's documents. The token lets a caller drop the
+  // result when it is no longer wanted: switching projects mid-fetch used to
+  // let the old project's list overwrite the new one's.
+  const load = useCallback(
+    async (token: { cancelled: boolean }) => {
+      try {
+        const items = await listDocuments(projectId);
+        if (token.cancelled) return;
+        setDocs(items);
+      } catch (error) {
+        if (token.cancelled) return;
+        // Best-effort: a transient list failure leaves the previous view in
+        // place. An expired session is not transient; it ends the session.
+        if (error instanceof AuthExpiredError) onSessionExpired?.();
+      } finally {
+        if (!token.cancelled) setLoading(false);
+      }
+    },
+    [projectId, onSessionExpired],
+  );
+  const refresh = useCallback(() => load({ cancelled: false }), [load]);
 
+  const pollRound = useRef(0);
   useEffect(() => {
     setLoading(true);
     setError("");
-    void refresh();
-  }, [refresh]);
+    pollRound.current = 0;
+    const token = { cancelled: false };
+    void load(token);
+    return () => {
+      token.cancelled = true;
+    };
+  }, [load]);
 
   // Poll while any document is still extracting/embedding so the badge advances
-  // to "Ready" without a manual reload; stop once everything has settled.
+  // to "Ready" without a manual reload; stop once everything has settled. The
+  // loop schedules its next tick itself once a load has answered (so it does
+  // not depend on the list changing identity) and backs off from 2s to 5s to
+  // 10s so a long ingest is not hammered.
+  const polling = docs.some((d) => TRANSIENT_STATUSES.has(d.status));
   useEffect(() => {
-    if (!docs.some((d) => TRANSIENT_STATUSES.has(d.status))) return;
-    const timer = setInterval(() => void refresh(), 2000);
-    return () => clearInterval(timer);
-  }, [docs, refresh]);
+    if (!polling) {
+      pollRound.current = 0;
+      return;
+    }
+    const token = { cancelled: false };
+    let timer = 0;
+    const schedule = () => {
+      const delay =
+        POLL_DELAYS_MS[Math.min(pollRound.current, POLL_DELAYS_MS.length - 1)];
+      timer = window.setTimeout(() => {
+        pollRound.current += 1;
+        void load(token).then(() => {
+          if (!token.cancelled) schedule();
+        });
+      }, delay);
+    };
+    schedule();
+    return () => {
+      token.cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [polling, load]);
 
   const handleFiles = async (files: FileList | null) => {
     if (files === null || files.length === 0) return;
@@ -121,7 +163,7 @@ export function ProjectKnowledgePanel({
       await refresh();
     } catch (err) {
       setError(
-        err instanceof Error
+        err instanceof UserFacingError
           ? err.message
           : t("projects.knowledge.error.upload"),
       );
