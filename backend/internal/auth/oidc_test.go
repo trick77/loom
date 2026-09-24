@@ -137,3 +137,35 @@ func (f fakeOIDCBackend) Exchange(context.Context, string) (*oauth2.Token, error
 func (f fakeOIDCBackend) VerifyClaims(context.Context, *oauth2.Token) (VerifiedClaims, error) {
 	return VerifiedClaims{Claims: f.claims, Nonce: f.nonce}, nil
 }
+
+// Only an explicit email_verified=true from the provider marks the email as
+// verified; an absent claim is "not stated", not "yes".
+func TestClaimsFromIDToken_EmailVerifiedRequiresExplicitTrue(t *testing.T) {
+	yes, no := true, false
+	for _, tc := range []struct {
+		name  string
+		claim *bool
+		want  bool
+	}{
+		{"absent", nil, false},
+		{"false", &no, false},
+		{"true", &yes, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := claimsFromIDToken("sub-1", "nonce", idTokenClaims{Email: "jan@example.com", EmailVerified: tc.claim})
+			if got.Claims.EmailVerified != tc.want {
+				t.Fatalf("EmailVerified = %v, want %v", got.Claims.EmailVerified, tc.want)
+			}
+		})
+	}
+}
+
+func TestClaimsFromIDToken_ComposesNameFromGivenAndFamily(t *testing.T) {
+	got := claimsFromIDToken("sub-1", "n", idTokenClaims{Name: "J", GivenName: "Jan", FamilyName: "Saner"})
+	if got.Claims.Name != "Jan Saner" {
+		t.Fatalf("Name = %q, want the composed full name", got.Claims.Name)
+	}
+	if got.Nonce != "n" || got.Claims.Subject != "sub-1" {
+		t.Fatalf("subject/nonce not carried: %+v", got)
+	}
+}

@@ -252,6 +252,9 @@ func run() error {
 			Email:    cfg.DevUser.Email,
 			Name:     cfg.DevUser.DisplayName,
 			Groups:   []string{auth.DevAdminGroup},
+			// The dev identity is fixed by config, so its email is as trustworthy
+			// as the process that set it.
+			EmailVerified: true,
 		}
 	}
 	logStartupCapabilities(cfg, mcpConfig, startupRuntime{

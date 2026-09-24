@@ -152,18 +152,26 @@ func (b realOIDCBackend) VerifyClaims(ctx context.Context, token *oauth2.Token) 
 	if err != nil {
 		return VerifiedClaims{}, err
 	}
-	var oidcClaims struct {
-		PreferredUsername string   `json:"preferred_username"`
-		Email             string   `json:"email"`
-		EmailVerified     *bool    `json:"email_verified"`
-		Name              string   `json:"name"`
-		GivenName         string   `json:"given_name"`
-		FamilyName        string   `json:"family_name"`
-		Groups            []string `json:"groups"`
-	}
+	var oidcClaims idTokenClaims
 	if err := idToken.Claims(&oidcClaims); err != nil {
 		return VerifiedClaims{}, err
 	}
+	return claimsFromIDToken(idToken.Subject, idToken.Nonce, oidcClaims), nil
+}
+
+// idTokenClaims is the subset of ID token claims loom reads.
+type idTokenClaims struct {
+	PreferredUsername string   `json:"preferred_username"`
+	Email             string   `json:"email"`
+	EmailVerified     *bool    `json:"email_verified"`
+	Name              string   `json:"name"`
+	GivenName         string   `json:"given_name"`
+	FamilyName        string   `json:"family_name"`
+	Groups            []string `json:"groups"`
+}
+
+// claimsFromIDToken maps the verified token's claims onto loom's Claims.
+func claimsFromIDToken(subject, nonce string, oidcClaims idTokenClaims) VerifiedClaims {
 	// Prefer given_name + family_name so the full name (incl. last name) is
 	// shown; fall back to the single "name" claim when those are absent.
 	name := oidcClaims.Name
@@ -172,14 +180,14 @@ func (b realOIDCBackend) VerifyClaims(ctx context.Context, token *oauth2.Token) 
 	}
 	return VerifiedClaims{
 		Claims: Claims{
-			Subject:  idToken.Subject,
+			Subject:  subject,
 			Username: oidcClaims.PreferredUsername,
 			Email:    oidcClaims.Email,
 			Name:     name,
 			Groups:   oidcClaims.Groups,
-			// Absent means "not stated"; only an explicit false is a denial.
-			EmailUnverified: oidcClaims.EmailVerified != nil && !*oidcClaims.EmailVerified,
+			// Only an explicit true vouches for the email; absent is "not stated".
+			EmailVerified: oidcClaims.EmailVerified != nil && *oidcClaims.EmailVerified,
 		},
-		Nonce: idToken.Nonce,
-	}, nil
+		Nonce: nonce,
+	}
 }

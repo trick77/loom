@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 )
 
 // UserStore persists app-local users mapped from OIDC identities.
@@ -36,7 +37,9 @@ func (s *UserStore) UpsertFromClaims(ctx context.Context, claims Claims, adminGr
 	if err != nil {
 		return User{}, err
 	}
-	if !ok && claims.Email != "" && !claims.EmailUnverified {
+	// Adoption by email moves an existing account to this subject, so it takes
+	// an email the provider explicitly verified; see Claims.EmailVerified.
+	if !ok && claims.Email != "" && claims.EmailVerified {
 		existing, ok, err = s.adoptByEmail(ctx, claims.Email, claims.Subject)
 		if err != nil {
 			return User{}, err
@@ -212,6 +215,7 @@ WHERE id = ? AND oidc_subject = ?`,
 	if adopted == 0 {
 		return User{}, false, nil
 	}
+	slog.Info("adopted existing account by verified email", "user_id", user.ID, "old_subject", user.OIDCSubject, "new_subject", subject)
 	user.OIDCSubject = subject
 	return user, true, nil
 }
