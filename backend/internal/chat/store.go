@@ -8,6 +8,12 @@ import (
 // DBTX is the subset of *sql.DB used by chat stores.
 type DBTX interface {
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	execer
+}
+
+// execer is the statement-level subset of DBTX that both *sql.DB and *sql.Tx
+// satisfy; helpers that must run inside a caller's transaction take it.
+type execer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row

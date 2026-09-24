@@ -260,8 +260,14 @@ WHERE user_id = ? AND id = ?`,
 }
 
 func (s *Store) projectExists(ctx context.Context, userID, projectID string) (bool, error) {
+	return projectExistsIn(ctx, s.db, userID, projectID)
+}
+
+// projectExistsIn is projectExists against an explicit handle, so a caller can
+// check inside its own transaction.
+func projectExistsIn(ctx context.Context, db execer, userID, projectID string) (bool, error) {
 	var one int
-	err := s.db.QueryRowContext(ctx, `
+	err := db.QueryRowContext(ctx, `
 SELECT 1
 FROM projects
 WHERE user_id = ? AND id = ?`,

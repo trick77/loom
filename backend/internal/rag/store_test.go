@@ -185,3 +185,21 @@ func TestStore_deleteDocumentRemovesChunksAndVectors(t *testing.T) {
 		t.Errorf("after delete docs=%d chunks=%d vecs=%d, want 0/0/0", docs, chunks, vecs)
 	}
 }
+
+// A timestamp the scanner cannot parse used to be swallowed into a zero time;
+// a corrupt row now surfaces as an error instead of a document dated year 1.
+func TestStore_getDocumentRejectsMalformedTimestamp(t *testing.T) {
+	s, db := newTestStore(t)
+	ctx := context.Background()
+	doc := Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", SizeBytes: 10, Status: StatusPending}
+	if err := s.CreateDocument(ctx, doc); err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE documents SET created_at = 'not a time' WHERE id = 'd1'`); err != nil {
+		t.Fatalf("corrupt row: %v", err)
+	}
+
+	if _, _, err := s.GetDocument(ctx, "u1", "d1"); err == nil {
+		t.Fatal("GetDocument() error = nil, want a timestamp parse error")
+	}
+}

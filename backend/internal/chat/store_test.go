@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/trick77/loom/internal/store"
@@ -1661,5 +1662,69 @@ func TestStore_ListMessagesPreservesInsertionOrderWithinSameSecond(t *testing.T)
 	}
 	if len(tail) != 3 || tail[0].Content != "a18" || tail[1].Content != "q19" || tail[2].Content != "a19" {
 		t.Fatalf("ListRecentMessages(3) = %v, want the last three in order", []string{tail[0].Content, tail[1].Content, tail[2].Content})
+	}
+}
+
+// UpdateThread was a read-then-write of the whole row: two concurrent partial
+// updates (a rename, a project move) could each write back a stale copy of
+// the other's field. Each update now touches only the fields it was given,
+// inside one transaction.
+func TestStore_UpdateThreadConcurrentPartialUpdatesKeepBoth(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "P"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Start"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	for i := range 25 {
+		title := fmt.Sprintf("Title %d", i)
+		var wantProject *string
+		if i%2 == 0 {
+			wantProject = &project.ID
+		}
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{Title: &title}); err != nil {
+				t.Errorf("UpdateThread(title) error: %v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{ProjectID: ProjectIDUpdate{Set: true, Value: wantProject}}); err != nil {
+				t.Errorf("UpdateThread(project) error: %v", err)
+			}
+		}()
+		wg.Wait()
+
+		got, _, err := store.GetThread(ctx, userID, thread.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Title != title {
+			t.Fatalf("iteration %d: title = %q, want %q (rename lost to the project move)", i, got.Title, title)
+		}
+		if (got.ProjectID == nil) != (wantProject == nil) {
+			t.Fatalf("iteration %d: project = %v, want %v (move lost to the rename)", i, got.ProjectID, wantProject)
+		}
+	}
+}
+
+func TestStore_UpdateThreadReportsMissingThread(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	title := "x"
+	if _, ok, err := store.UpdateThread(ctx, userID, "missing", UpdateThreadInput{Title: &title}); err != nil || ok {
+		t.Fatalf("UpdateThread(missing) = ok %v, err %v; want false, nil", ok, err)
 	}
 }
