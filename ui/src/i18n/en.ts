@@ -181,6 +181,7 @@ export const en = {
     threadRemoveFromProjectFailed: "Thread failed to remove from project.",
   },
   messages: {
+    copyFailed: "Couldn’t copy.",
     copyMessage: "Copy message",
     retryMessage: "Retry message",
     copyResponse: "Copy response",

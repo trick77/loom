@@ -189,6 +189,7 @@ export const de = {
       "Thread konnte nicht aus dem Projekt entfernt werden.",
   },
   messages: {
+    copyFailed: "Kopieren fehlgeschlagen.",
     copyMessage: "Nachricht kopieren",
     retryMessage: "Nachricht wiederholen",
     copyResponse: "Antwort kopieren",

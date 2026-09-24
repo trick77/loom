@@ -4129,7 +4129,8 @@ test("downloads fenced generated data without markdown fences", async () => {
   );
 
   expect(createObjectURL).toHaveBeenCalledTimes(1);
-  expect(revokeObjectURL).toHaveBeenCalledWith(objectURL);
+  // The URL is revoked on the next tick so the download is not cancelled.
+  await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith(objectURL));
   const blob = downloadedBlob;
   expect(blob).toBeInstanceOf(Blob);
   if (blob === undefined) throw new Error("expected download blob");

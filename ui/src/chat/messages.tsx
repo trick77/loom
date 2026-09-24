@@ -473,10 +473,12 @@ function CodeBlock({
 
   const handleCopy = useCallback(() => {
     const code = preRef.current?.textContent ?? "";
-    void copyResponse(code);
-    setCopied(true);
-    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-    resetRef.current = window.setTimeout(() => setCopied(false), 1500);
+    void copyResponse(code).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      if (resetRef.current !== null) window.clearTimeout(resetRef.current);
+      resetRef.current = window.setTimeout(() => setCopied(false), 1500);
+    });
   }, []);
 
   return (
@@ -690,7 +692,17 @@ function MessageActions({
   streaming?: boolean;
 }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
+  const copied = copyState === "copied";
+  const copyResetRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (copyResetRef.current !== null)
+        window.clearTimeout(copyResetRef.current);
+    };
+  }, []);
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   useEffect(() => {
@@ -704,9 +716,11 @@ function MessageActions({
   );
 
   async function handleCopy() {
-    await copyResponse(copyText);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+    const ok = await copyResponse(copyText);
+    setCopyState(ok ? "copied" : "failed");
+    if (copyResetRef.current !== null)
+      window.clearTimeout(copyResetRef.current);
+    copyResetRef.current = window.setTimeout(() => setCopyState("idle"), 1200);
   }
 
   function endSpeech() {
@@ -743,8 +757,10 @@ function MessageActions({
       className="grid h-6 w-5 place-items-center text-[#858178] hover:text-[#f3f0e8]"
       onClick={handleCopy}
       type="button"
-      title={t("messages.copy")}
-      aria-label={copyLabel}
+      title={
+        copyState === "failed" ? t("messages.copyFailed") : t("messages.copy")
+      }
+      aria-label={copyState === "failed" ? t("messages.copyFailed") : copyLabel}
     >
       {copied ? (
         <CheckIcon className="h-[1rem] w-[1rem]" />
@@ -968,8 +984,18 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
   );
 }
 
-async function copyResponse(content: string) {
-  await navigator.clipboard?.writeText(content);
+// copyResponse writes to the clipboard and reports whether it worked: the
+// clipboard is absent on insecure origins and the write is rejected when the
+// document is not focused or permission is denied. A rejected write used to
+// escape as an unhandled rejection while the button still said "Copied".
+async function copyResponse(content: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard === undefined) return false;
+    await navigator.clipboard.writeText(content);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
@@ -982,5 +1008,7 @@ function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // Revoking synchronously after click() cancels the download in Safari and
+  // Firefox, which resolve the URL after the handler returns.
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
