@@ -120,6 +120,7 @@ type ThreadCRUDStore interface {
 	UpdateThread(context.Context, string, string, chat.UpdateThreadInput) (chat.Thread, bool, error)
 	SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error)
 	SetThreadImageModelIfEmpty(context.Context, string, string, string) (chat.Thread, bool, error)
+	SetThreadTitleIfUnchanged(context.Context, string, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
 }

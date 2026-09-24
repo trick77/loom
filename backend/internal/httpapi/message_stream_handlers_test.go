@@ -2568,3 +2568,30 @@ func TestStreamMessageEmitsErrorEventOnPanic(t *testing.T) {
 		t.Fatalf("stream did not end with an error event:\n%s", body)
 	}
 }
+
+// Titling runs after the answer; a rename the user made while the answer was
+// streaming is newer than the snapshot the turn started from and must win.
+func TestStreamMessageKeepsRenameMadeDuringStream(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			title:       "Generated",
+			afterStream: func() { store.thread.Title = "Mine" },
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if store.thread.Title != "Mine" {
+		t.Fatalf("thread title = %q, want the rename kept", store.thread.Title)
+	}
+	if strings.Contains(rec.Body.String(), `"title":"Generated"`) {
+		t.Fatalf("stream announced the generated title over the rename:\n%s", rec.Body.String())
+	}
+}

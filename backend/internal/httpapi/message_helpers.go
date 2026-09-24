@@ -127,7 +127,11 @@ const titleSourceLimit = 2000
 // a truncation, or a script drift). The stored title is then left alone rather
 // than replaced by a placeholder, so the thread keeps the message it was created
 // with instead of going blank.
-func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage string) error {
+// generateAndSendThreadTitle names the thread from the turn and announces it on
+// the stream. expectedTitle is the title the turn started from: the update is a
+// compare-and-set against it, so a rename made while the answer streamed wins
+// and no thread event is sent for the discarded generated title.
+func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, expectedTitle, userMessage, assistantMessage string) error {
 	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
 	requestCtx, cancelTitle := context.WithTimeout(requestCtx, turnGateTimeout)
 	defer cancelTitle()
@@ -142,14 +146,14 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	if strings.TrimSpace(title) == "" {
 		return nil
 	}
-	// Model-written, not user-written: capitalize it here, since UpdateThread
+	// Model-written, not user-written: capitalize it here, since the store
 	// leaves a title exactly as it was handed over (a rename must stick).
 	title = chat.CapitalizeThreadTitle(chat.NormalizeThreadTitle(title))
-	thread, found, err := s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Title: &title})
+	thread, updated, err := s.thread.SetThreadTitleIfUnchanged(persistCtx, user.ID, threadID, expectedTitle, title)
 	if err != nil {
 		return err
 	}
-	if !found {
+	if !updated {
 		return nil
 	}
 	// A newly-titled thread in a project changes the project's titled-thread set, so

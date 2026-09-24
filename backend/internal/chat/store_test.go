@@ -1595,3 +1595,34 @@ func TestInsertMessageCapsByRole(t *testing.T) {
 		t.Fatal("AddMessage(assistant, over cap) error = nil, want overlong content error")
 	}
 }
+
+func TestStore_SetThreadTitleIfUnchanged(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: DefaultThreadTitle})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	// Title still what the caller saw: the generated one lands.
+	updated, ok, err := store.SetThreadTitleIfUnchanged(ctx, userID, thread.ID, DefaultThreadTitle, "Generated")
+	if err != nil || !ok || updated.Title != "Generated" {
+		t.Fatalf("SetThreadTitleIfUnchanged() = %+v, %v, %v; want Generated, true, nil", updated, ok, err)
+	}
+
+	// The user renamed in between (a PATCH during a long stream): the generated
+	// title must not clobber it.
+	mine := "Mine"
+	if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{Title: &mine}); err != nil {
+		t.Fatalf("UpdateThread() error: %v", err)
+	}
+	current, ok, err := store.SetThreadTitleIfUnchanged(ctx, userID, thread.ID, "Generated", "Generated again")
+	if err != nil || ok {
+		t.Fatalf("SetThreadTitleIfUnchanged() after rename = ok %v, err %v; want false, nil", ok, err)
+	}
+	if current.Title != "Mine" {
+		t.Fatalf("title after skipped update = %q, want Mine", current.Title)
+	}
+}

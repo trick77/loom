@@ -346,6 +346,38 @@ WHERE user_id = ? AND id = ?`,
 	return s.GetThread(ctx, userID, threadID)
 }
 
+// SetThreadTitleIfUnchanged sets the thread's title only while it still equals
+// expectedTitle: a compare-and-set for the generated title, which lands after
+// the answer and must not overwrite a rename the user made in the meantime.
+// It returns the current thread and whether the update applied.
+func (s *Store) SetThreadTitleIfUnchanged(ctx context.Context, userID, threadID, expectedTitle, title string) (Thread, bool, error) {
+	title = NormalizeThreadTitle(title)
+	if title == "" {
+		return Thread{}, false, errors.New("thread title is required")
+	}
+	if len(title) > MaxThreadTitleLength {
+		return Thread{}, false, errors.New("thread title is too long")
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE threads
+SET title = ?, updated_at = datetime('now')
+WHERE user_id = ? AND id = ? AND title = ?`,
+		title, userID, threadID, expectedTitle,
+	)
+	if err != nil {
+		return Thread{}, false, fmt.Errorf("set thread title: %w", err)
+	}
+	updated, err := changed(result)
+	if err != nil {
+		return Thread{}, false, err
+	}
+	thread, ok, err := s.getThread(ctx, userID, threadID)
+	if err != nil || !ok {
+		return Thread{}, updated, err
+	}
+	return thread, updated, nil
+}
+
 // SetThreadImageModelIfEmpty locks the image-generation model for a thread on the
 // first image generated in it: it writes image_model only while the column is
 // still empty (WHERE ... AND image_model = ”), so the choice is made exactly once

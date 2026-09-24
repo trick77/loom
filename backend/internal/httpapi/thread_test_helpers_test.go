@@ -313,6 +313,14 @@ func (f *fakeThreadStore) SetThreadStarred(context.Context, string, string, bool
 	return f.thread, true, nil
 }
 
+func (f *fakeThreadStore) SetThreadTitleIfUnchanged(_ context.Context, _, _, expectedTitle, title string) (chat.Thread, bool, error) {
+	if f.thread.Title != expectedTitle {
+		return f.thread, false, nil
+	}
+	f.thread.Title = chat.NormalizeThreadTitle(title)
+	return f.thread, true, nil
+}
+
 func (f *fakeThreadStore) SetThreadImageModelIfEmpty(_ context.Context, _, _, model string) (chat.Thread, bool, error) {
 	if model != "" && f.thread.ImageModel == "" {
 		f.thread.ImageModel = model

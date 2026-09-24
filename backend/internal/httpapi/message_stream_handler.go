@@ -312,7 +312,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		// per-message stats and the lifetime rollup. WithoutCancel keeps that
 		// value while letting the call outlive a client disconnect.
 		titleCtx := context.WithoutCancel(streamCtx)
-		if err := s.generateAndSendThreadTitle(titleCtx, titleCtx, stream, user, threadID, userMessage.Content, assistantMessage); err != nil {
+		if err := s.generateAndSendThreadTitle(titleCtx, titleCtx, stream, user, threadID, thread.Title, userMessage.Content, assistantMessage); err != nil {
 			slog.Warn("thread title generation failed", "thread_id", threadID, "error", err)
 		}
 	}
