@@ -33,6 +33,9 @@ type fakeArtifactStore struct {
 	deleted *[]string
 	// detached, when set, records the ids passed to DetachFromThread.
 	detached *[]string
+	// createErr makes Create fail; created, when set, receives Create's input.
+	createErr error
+	created   *artifact.CreateInput
 }
 
 func (f fakeArtifactStore) DetachFromThread(_ context.Context, _ string, artifactIDs []string) error {
@@ -84,8 +87,23 @@ func (f fakeArtifactStore) GetMany(_ context.Context, userID string, ids []strin
 	return out, nil
 }
 
-func (f fakeArtifactStore) Create(context.Context, artifact.CreateInput) (artifact.Artifact, error) {
-	return artifact.Artifact{}, nil
+func (f fakeArtifactStore) Create(_ context.Context, in artifact.CreateInput) (artifact.Artifact, error) {
+	if f.createErr != nil {
+		return artifact.Artifact{}, f.createErr
+	}
+	if f.created != nil {
+		*f.created = in
+	}
+	return artifact.Artifact{
+		ID:              "art_created",
+		UserID:          in.UserID,
+		ThreadID:        in.ThreadID,
+		ProjectID:       in.ProjectID,
+		DisplayFilename: in.DisplayFilename,
+		VolumeRelPath:   in.VolumeRelPath,
+		MIMEType:        in.MIMEType,
+		SizeBytes:       in.SizeBytes,
+	}, nil
 }
 
 func (f fakeArtifactStore) Get(_ context.Context, userID, artifactID string) (artifact.Artifact, bool, error) {

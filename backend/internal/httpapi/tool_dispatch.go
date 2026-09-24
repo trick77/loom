@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -312,53 +311,16 @@ func (s *server) runDocGenerator(ctx context.Context, stream *sse.Writer, user a
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
 		return "tool failed: generated file is too large", nil
 	}
-	out, file, err := artifact.CreateOutputFile(artifact.OutputRequest{
-		UsersDir:        s.usersDir,
-		UserID:          user.ID,
-		ThreadID:        thread.ID,
-		ProjectID:       thread.ProjectID,
+	created, err := s.persistArtifactBytes(ctx, user, thread, artifactSpec{
 		DisplayFilename: meta.DisplayFilename,
 		Extension:       meta.Extension,
+		Data:            buffer.Bytes(),
+		Thumbnail:       true,
 	})
 	if err != nil {
 		return capToolOutput("tool failed: " + err.Error()), nil
 	}
-	if _, err := file.Write(buffer.Bytes()); err != nil {
-		_ = file.Close()
-		_ = os.Remove(out.AbsPath)
-		return capToolOutput("tool failed: write artifact: " + err.Error()), nil
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(out.AbsPath)
-		return capToolOutput("tool failed: close artifact: " + err.Error()), nil
-	}
-	// Eagerly generate the sidecar thumbnail (best-effort) from the bytes already in
-	// hand; a non-raster artifact yields none and is served via lazy backfill later.
-	thumbnailRelPath := generateThumbnailBestEffort(s.usersDir, user.ID, out.MIMEType, buffer.Bytes(), out.VolumeRelPath)
-	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
-		UserID:           user.ID,
-		ThreadID:         thread.ID,
-		ProjectID:        thread.ProjectID,
-		DisplayFilename:  out.DisplayFilename,
-		VolumeRelPath:    out.VolumeRelPath,
-		MIMEType:         out.MIMEType,
-		SizeBytes:        int64(buffer.Len()),
-		ThumbnailRelPath: thumbnailRelPath,
-	})
-	if err != nil {
-		_ = os.Remove(out.AbsPath)
-		artifact.RemoveThumbnail(s.usersDir, user.ID, out.VolumeRelPath)
-		return capToolOutput("tool failed: persist artifact: " + err.Error()), nil
-	}
-	response := artifactResponse{
-		ID:              created.ID,
-		DisplayFilename: created.DisplayFilename,
-		MIMEType:        created.MIMEType,
-		SizeBytes:       created.SizeBytes,
-		ProjectID:       created.ProjectID,
-		DownloadURL:     created.DownloadURL,
-		ThumbnailURL:    created.ThumbnailURL,
-	}
+	response := artifactResponseFromArtifact(created)
 	_ = sendSSEJSON(stream, "artifact", response)
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
@@ -466,58 +428,22 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
 		return nil, "tool failed: generated image is too large", true
 	}
-	out, file, err := artifact.CreateOutputFile(artifact.OutputRequest{
-		UsersDir:        s.usersDir,
-		UserID:          user.ID,
-		ThreadID:        thread.ID,
-		ProjectID:       thread.ProjectID,
+	created, err := s.persistArtifactBytes(ctx, user, thread, artifactSpec{
 		DisplayFilename: meta.DisplayFilename,
 		Extension:       meta.Extension,
+		MIMEType:        meta.MIMEType,
+		Data:            buffer.Bytes(),
+		Thumbnail:       true,
 	})
 	if err != nil {
 		return nil, capToolOutput("tool failed: " + err.Error()), true
 	}
-	if _, err := file.Write(buffer.Bytes()); err != nil {
-		_ = file.Close()
-		_ = os.Remove(out.AbsPath)
-		return nil, capToolOutput("tool failed: write artifact: " + err.Error()), true
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(out.AbsPath)
-		return nil, capToolOutput("tool failed: close artifact: " + err.Error()), true
-	}
-	// Eagerly generate the sidecar thumbnail (best-effort) from the generated image
-	// bytes already in hand; failure is harmless, the endpoint backfills lazily.
-	thumbnailRelPath := generateThumbnailBestEffort(s.usersDir, user.ID, meta.MIMEType, buffer.Bytes(), out.VolumeRelPath)
-	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
-		UserID:           user.ID,
-		ThreadID:         thread.ID,
-		ProjectID:        thread.ProjectID,
-		DisplayFilename:  out.DisplayFilename,
-		VolumeRelPath:    out.VolumeRelPath,
-		MIMEType:         meta.MIMEType,
-		SizeBytes:        int64(buffer.Len()),
-		ThumbnailRelPath: thumbnailRelPath,
-	})
-	if err != nil {
-		_ = os.Remove(out.AbsPath)
-		artifact.RemoveThumbnail(s.usersDir, user.ID, out.VolumeRelPath)
-		return nil, capToolOutput("tool failed: persist artifact: " + err.Error()), true
-	}
-	response := artifactResponse{
-		ID:              created.ID,
-		DisplayFilename: created.DisplayFilename,
-		MIMEType:        created.MIMEType,
-		SizeBytes:       created.SizeBytes,
-		ProjectID:       created.ProjectID,
-		DownloadURL:     created.DownloadURL,
-		ThumbnailURL:    created.ThumbnailURL,
-		Model:           meta.Model,
-		Provider:        meta.Provider,
-		Width:           meta.Width,
-		Height:          meta.Height,
-		DurationMs:      meta.DurationMs,
-	}
+	response := artifactResponseFromArtifact(created)
+	response.Model = meta.Model
+	response.Provider = meta.Provider
+	response.Width = meta.Width
+	response.Height = meta.Height
+	response.DurationMs = meta.DurationMs
 	s.recordUsage("image_gen", func() error { return s.usage.IncImageGen(ctx, user.ID) })
 	_ = sendSSEJSON(stream, "artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
