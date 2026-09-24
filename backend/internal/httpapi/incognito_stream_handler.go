@@ -90,15 +90,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 				"reasoning_bytes", len(assistantResult.ReasoningContent))
 			return
 		}
-		message := "stream failed"
-		var userErr streamUserError
-		switch {
-		case errors.As(err, &userErr):
-			message = userErr.message
-		case errors.Is(err, llm.ErrStreamStalled):
-			message = llm.ErrStreamStalled.Error()
-			slog.Warn("incognito stream stalled", "reasoning_bytes", len(assistantResult.ReasoningContent))
-		}
+		message := streamFailureMessage(err, assistantResult, "incognito", incognitoThreadID)
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		return
 	}
@@ -119,16 +111,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	titles.mergeInto(assistantResult.ActivityTrace)
 	titles.mergeIntoBlocks(assistantResult.Blocks)
 
-	activityTraceJSON, err := json.Marshal(assistantResult.ActivityTrace)
-	if err != nil {
-		activityTraceJSON = []byte("[]")
-	}
-	contentBlocksJSON := []byte("[]")
-	if len(assistantResult.Blocks) > 0 {
-		if encoded, marshalErr := json.Marshal(assistantResult.Blocks); marshalErr == nil {
-			contentBlocksJSON = encoded
-		}
-	}
+	activityTraceJSON, contentBlocksJSON := marshalTurnJSON(incognitoThreadID, assistantResult.ActivityTrace, assistantResult.Blocks)
 
 	assistantMessage := chat.Message{
 		ID:            "incognito-assistant",
