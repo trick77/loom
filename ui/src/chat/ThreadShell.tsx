@@ -151,6 +151,10 @@ export function ThreadShell({
 }: ThreadShellProps) {
   const { t, i18n } = useTranslation();
   const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
+  // The latest route, for the async send flow: it awaits thread creation and
+  // the upload flush, and must not act on the route it started from.
+  const routeRef = useRef(route);
+  routeRef.current = route;
   // The textarea contents and the staged "Pasted" chips, keyed by the surface that
   // owns them (see composerDrafts.ts). They belong to the thread they were typed
   // in: leaving that thread must not carry them into the next one, and must not
@@ -944,9 +948,6 @@ export function ThreadShell({
             );
           }
         }
-        setActiveThread(createdThread);
-        activeThreadIDRef.current = targetThread.id;
-        setMessages([]);
         // The run now belongs to a real thread. Rekeying in the same tick as the
         // route switch is what lets the thread we are about to land on pick the
         // turn up mid-flight.
@@ -954,11 +955,19 @@ export function ThreadShell({
         rekeyStreamRun(runKey, createdRunKey);
         runKey = createdRunKey;
         restoreScope = threadDraftScope(targetThread.id);
-        navigate({ view: "thread", threadID: targetThread.id });
-        setRoute({ view: "thread", threadID: targetThread.id });
+        // Creating the thread (and flushing uploads) took real time, during which
+        // the start screen stayed interactive. Only land on the new thread if the
+        // user is still where they sent from; if they went elsewhere, the turn
+        // runs in the background and the thread waits in Recents.
+        if (draftScopeKey(routeRef.current, false) === options.draftScope) {
+          setActiveThread(createdThread);
+          activeThreadIDRef.current = targetThread.id;
+          setMessages([]);
+          navigate({ view: "thread", threadID: targetThread.id });
+          setRoute({ view: "thread", threadID: targetThread.id });
+        }
       }
       targetThreadID = targetThread.id;
-      activeThreadIDRef.current = targetThreadID;
       const threadIDForRun = targetThreadID;
       // Accumulate this turn's ordered blocks in a closure-local array, the single
       // source of truth for the graft at turn end. The rendered copy lives on the
