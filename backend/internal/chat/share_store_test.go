@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -78,5 +79,31 @@ func TestShareStore_lifecycle(t *testing.T) {
 	}
 	if _, ok, _ := store.GetShareByShareID(ctx, "tok123"); ok {
 		t.Fatalf("share should have cascaded on thread delete")
+	}
+}
+
+func TestStore_ListSharesForUserOmitsSnapshots(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateShare(ctx, userID, CreateShareInput{ShareID: "pub1", ThreadID: thread.ID, Title: "T", Snapshot: json.RawMessage(`{"messages":[{"content":"a long transcript"}]}`)}); err != nil {
+		t.Fatalf("CreateShare: %v", err)
+	}
+
+	shares, err := store.ListSharesForUser(ctx, userID)
+	if err != nil || len(shares) != 1 {
+		t.Fatalf("ListSharesForUser = %d shares, err %v; want 1", len(shares), err)
+	}
+	if len(shares[0].Snapshot) != 0 || shares[0].Title != "T" || shares[0].ShareID != "pub1" {
+		t.Fatalf("listed share = %+v, want metadata without the snapshot", shares[0])
+	}
+	full, ok, err := store.GetShareByShareID(ctx, "pub1")
+	if err != nil || !ok || !strings.Contains(string(full.Snapshot), "a long transcript") {
+		t.Fatalf("GetShareByShareID lost the snapshot: %+v, %v, %v", full, ok, err)
 	}
 }

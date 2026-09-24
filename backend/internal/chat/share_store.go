@@ -121,9 +121,12 @@ WHERE user_id = ? AND thread_id = ?`,
 // ListSharesForUser returns the user's shares, newest first, for the settings
 // dashboard. Snapshots are omitted from the scan-heavy listing path is not needed
 // here — the full row is small enough and the dashboard renders metadata only.
+// ListSharesForUser lists the user's shares for the settings page. The
+// snapshot column is left out (Snapshot is empty on every row): the list shows
+// metadata only, and a snapshot is the whole frozen transcript.
 func (s *Store) ListSharesForUser(ctx context.Context, userID string) ([]Share, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, share_id, thread_id, user_id, shared, title, snapshot, artifact_ids, snapshot_at, created_at, updated_at
+SELECT id, share_id, thread_id, user_id, shared, title, '' AS snapshot, artifact_ids, snapshot_at, created_at, updated_at
 FROM shared_threads
 WHERE user_id = ?
 ORDER BY created_at DESC, id DESC`,
