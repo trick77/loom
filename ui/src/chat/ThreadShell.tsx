@@ -37,7 +37,7 @@ import {
 import { ThreadsPage } from "../chats/ThreadsPage";
 import { ArtifactsPage } from "../artifacts/ArtifactsPage";
 import { MemoryPage } from "../MemoryPage";
-import { navigate, routeFromLocation, type RouteState } from "./routing";
+import { useRouteState } from "./useRouteState";
 import type { MessageWithActivityTrace } from "./types";
 import { SettingsModal } from "../settings/SettingsModal";
 import { SlashCommandPanel } from "./SlashCommandPanel";
@@ -146,11 +146,7 @@ export function ThreadShell({
   onSessionExpired,
 }: ThreadShellProps) {
   const { t, i18n } = useTranslation();
-  const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
-  // The latest route, for the async send flow: it awaits thread creation and
-  // the upload flush, and must not act on the route it started from.
-  const routeRef = useRef(route);
-  routeRef.current = route;
+  const { route, routeRef, go } = useRouteState();
   // The textarea contents and the staged "Pasted" chips, keyed by the surface that
   // owns them (see composerDrafts.ts). They belong to the thread they were typed
   // in: leaving that thread must not carry them into the next one, and must not
@@ -391,20 +387,6 @@ export function ThreadShell({
     ],
   );
 
-  useEffect(() => {
-    if (window.location.pathname === "/") {
-      window.history.replaceState({}, "", "/new");
-      setRoute({ view: "new" });
-    }
-    function handlePopState() {
-      setRoute(routeFromLocation());
-    }
-    window.addEventListener("popstate", handlePopState);
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
-  }, []);
-
   useEscapeKey(() => setOpenThreadMenuID(null), {
     active: openThreadMenuID !== null,
   });
@@ -483,9 +465,8 @@ export function ThreadShell({
     setActiveThread(null);
     setMessages([]);
     setSendError("");
-    navigate({ view: "new" });
-    setRoute({ view: "new" });
-  }, [onThread]);
+    go({ view: "new" });
+  }, [go, onThread]);
 
   // "Use in thread" from the Artifacts library: open the new-chat screen with the
   // artifact pre-attached so the user can prompt against it. navigateToNew() nulls
@@ -506,40 +487,35 @@ export function ThreadShell({
   const navigateToThreads = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "threads" });
-    setRoute({ view: "threads" });
-  }, [onThread]);
+    go({ view: "threads" });
+  }, [go, onThread]);
 
   const navigateToArtifacts = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "artifacts" });
-    setRoute({ view: "artifacts" });
-  }, [onThread]);
+    go({ view: "artifacts" });
+  }, [go, onThread]);
 
   const navigateToProjects = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "projects" });
-    setRoute({ view: "projects" });
-  }, [onThread]);
+    go({ view: "projects" });
+  }, [go, onThread]);
 
   const navigateToMemory = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "memory" });
-    setRoute({ view: "memory" });
-  }, [onThread]);
+    go({ view: "memory" });
+  }, [go, onThread]);
 
   const navigateToProject = useCallback(
     (project: Project) => {
       onThread();
       setMobileSidebarOpen(false);
       setOpenedProject(project);
-      navigate({ view: "project", projectID: project.id });
-      setRoute({ view: "project", projectID: project.id });
+      go({ view: "project", projectID: project.id });
     },
-    [onThread],
+    [go, onThread],
   );
 
   const {
@@ -619,8 +595,7 @@ export function ThreadShell({
   async function selectThread(threadID: string) {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "thread", threadID });
-    setRoute({ view: "thread", threadID });
+    go({ view: "thread", threadID });
   }
 
   async function handleSetThreadStarred(
@@ -971,8 +946,7 @@ export function ThreadShell({
           setActiveThread(createdThread);
           activeThreadIDRef.current = targetThread.id;
           setMessages([]);
-          navigate({ view: "thread", threadID: targetThread.id });
-          setRoute({ view: "thread", threadID: targetThread.id });
+          go({ view: "thread", threadID: targetThread.id });
         }
       }
       targetThreadID = targetThread.id;
