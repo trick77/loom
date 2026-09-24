@@ -7,6 +7,7 @@ import {
   formatMessageTime,
   hasRenderableMetrics,
   humanizeCategory,
+  threadCostPrefix,
 } from "./metrics";
 import type { Message } from "./api";
 
@@ -221,4 +222,36 @@ test("threadCostThrough sums the priced messages up to and including the index",
   expect(threadCostThrough(messages, 1)).toBe(10_000_000);
   expect(threadCostThrough(messages, 2)).toBe(35_000_000);
   expect(threadCostThrough(messages, 99)).toBe(40_000_000);
+});
+
+test("threadCostPrefix equals threadCostThrough at every index", () => {
+  const messages = [
+    {
+      id: "1",
+      threadId: "t",
+      role: "user" as const,
+      content: "",
+      createdAt: "",
+      costNanoUsd: 5,
+    },
+    {
+      id: "2",
+      threadId: "t",
+      role: "assistant" as const,
+      content: "",
+      createdAt: "",
+    },
+    {
+      id: "3",
+      threadId: "t",
+      role: "assistant" as const,
+      content: "",
+      createdAt: "",
+      costNanoUsd: 7,
+    },
+  ];
+  const prefix = threadCostPrefix(messages);
+  messages.forEach((_, index) => {
+    expect(prefix[index]).toBe(threadCostThrough(messages, index));
+  });
 });

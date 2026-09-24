@@ -5,6 +5,8 @@ import {
   possibleGreetings,
   reconcileUserMessage,
   updateMessageAttachment,
+  previousUserMessages,
+  previousUserMessage,
 } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 
@@ -213,4 +215,41 @@ test("without a name, only nameless greetings are used and no placeholder leaks"
     const rand = () => i / 50;
     expect(greetingForNow("", night, rand)).not.toContain("{name}");
   }
+});
+
+test("previousUserMessages equals previousUserMessage at every index", () => {
+  const messages = [
+    {
+      id: "u1",
+      threadId: "t",
+      role: "user" as const,
+      content: "q1",
+      createdAt: "",
+    },
+    {
+      id: "a1",
+      threadId: "t",
+      role: "assistant" as const,
+      content: "a1",
+      createdAt: "",
+    },
+    {
+      id: "u2",
+      threadId: "t",
+      role: "user" as const,
+      content: "q2",
+      createdAt: "",
+    },
+    {
+      id: "a2",
+      threadId: "t",
+      role: "assistant" as const,
+      content: "a2",
+      createdAt: "",
+    },
+  ];
+  const previous = previousUserMessages(messages);
+  messages.forEach((_, index) => {
+    expect(previous[index]).toBe(previousUserMessage(messages, index));
+  });
 });

@@ -35,11 +35,11 @@ import {
   useDocumentAttachments,
   type ComposerAttachment,
 } from "./useDocumentAttachments";
-import { isNearBottom, previousUserMessage } from "./threadUtils";
+import { isNearBottom, previousUserMessages } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { WindowFileDrop } from "./WindowFileDrop";
 import { WorkingDot } from "./WorkingDot";
-import { threadCostThrough } from "../metrics";
+import { threadCostPrefix } from "../metrics";
 
 export function ThreadPanel({
   thread,
@@ -112,6 +112,14 @@ export function ThreadPanel({
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // Per-bubble derived data in one pass: the per-row helpers walked the
+  // transcript from the start for every bubble, quadratic on long threads and
+  // repeated on every streamed token.
+  const cumulativeCost = useMemo(() => threadCostPrefix(messages), [messages]);
+  const previousUser = useMemo(
+    () => previousUserMessages(messages),
+    [messages],
+  );
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   // The thread has unshared content when its latest message is newer than the
   // share snapshot — this drives the dot badge and the "Update" affordance.
@@ -509,13 +517,11 @@ export function ThreadPanel({
                 <MessageBubble
                   message={message}
                   retryMessage={
-                    message.role === "assistant"
-                      ? previousUserMessage(messages, index)
-                      : null
+                    message.role === "assistant" ? previousUser[index] : null
                   }
                   onRetry={handleRetryRequest}
                   category={thread?.category}
-                  threadCostNanoUsd={threadCostThrough(messages, index)}
+                  threadCostNanoUsd={cumulativeCost[index]}
                 />
               </div>
             ))}

@@ -158,6 +158,18 @@ export function isNearBottom(element: HTMLElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
 }
 
+// previousUserMessages is previousUserMessage for every index at once: the
+// nearest user message before each position, in one pass.
+export function previousUserMessages(messages: Message[]): (Message | null)[] {
+  const out = new Array<Message | null>(messages.length);
+  let last: Message | null = null;
+  for (let i = 0; i < messages.length; i++) {
+    out[i] = last;
+    if (messages[i].role === "user") last = messages[i];
+  }
+  return out;
+}
+
 export function previousUserMessage(
   messages: Message[],
   beforeIndex: number,
