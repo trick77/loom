@@ -1,7 +1,11 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { SharePage } from "./share/SharePage";
+// Loaded only on a share URL: a visitor with a link should not download the
+// app shell to read one transcript.
+const SharePage = lazy(() =>
+  import("./share/SharePage").then((module) => ({ default: module.SharePage })),
+);
 import "./i18n";
 import "./index.css";
 
@@ -17,7 +21,9 @@ if (window.location.pathname.startsWith(sharePath)) {
   );
   root.render(
     <React.StrictMode>
-      <SharePage shareId={shareId} />
+      <Suspense fallback={null}>
+        <SharePage shareId={shareId} />
+      </Suspense>
     </React.StrictMode>,
   );
 } else {

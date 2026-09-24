@@ -68,6 +68,16 @@ export function useThreadData({
     };
   }, [abortAllStreamRuns, onSessionExpired]);
 
+  // reloadThreads refreshes the sidebar lists after a bulk change; the initial
+  // load above and this share one request shape.
+  const reloadThreads = useCallback(() => {
+    listThreads({ limit: 30 })
+      .then((nextThreads) => setThreads(nextThreads.items))
+      .catch((error: unknown) => {
+        if (error instanceof AuthExpiredError) onSessionExpired();
+      });
+  }, [onSessionExpired]);
+
   const loadRoute = useCallback(
     (route: RouteState) => {
       if (route.view !== "thread") {
@@ -181,6 +191,7 @@ export function useThreadData({
     projectThreads,
     projects,
     recentThreads,
+    reloadThreads,
     setActiveThread,
     setMessages,
     setProjectThreads,

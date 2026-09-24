@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ThreadShell } from "./chat/ThreadShell";
+// The chat shell (markdown, KaTeX, highlighting, every view) is by far the
+// largest chunk; the sign-in and loading screens do not need it.
+const ThreadShell = lazy(() =>
+  import("./chat/ThreadShell").then((module) => ({
+    default: module.ThreadShell,
+  })),
+);
 import loomLogo from "./assets/loom-logo.svg";
 import {
   AuthExpiredError,
@@ -137,36 +143,46 @@ export default function App() {
   }
 
   return (
-    <ThreadShell
-      user={user}
-      showAdmin={showAdmin}
-      onAdmin={handleAdmin}
-      onThread={handleThread}
-      onLogout={handleLogout}
-      onSessionExpired={handleSessionExpired}
-      adminPanel={
-        <section className="h-full overflow-y-auto p-6">
-          <h1 className="font-serif text-2xl font-light tracking-tight">
-            {t("app.admin")}
-          </h1>
-          <div className="mt-4 divide-y divide-border border-y border-border">
-            {adminError !== "" && (
-              <p role="alert" className="text-sm text-accent">
-                {adminError}
-              </p>
-            )}
-            {adminUsers.map((adminUser) => (
-              <div
-                key={adminUser.id}
-                className="flex justify-between py-3 text-sm"
-              >
-                <span>{adminUser.displayName || adminUser.username}</span>
-                <span className="text-muted capitalize">{adminUser.role}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+    <Suspense
+      fallback={
+        <div className="flex h-svh items-center justify-center bg-bg font-sans text-muted">
+          {t("app.loading")}
+        </div>
       }
-    />
+    >
+      <ThreadShell
+        user={user}
+        showAdmin={showAdmin}
+        onAdmin={handleAdmin}
+        onThread={handleThread}
+        onLogout={handleLogout}
+        onSessionExpired={handleSessionExpired}
+        adminPanel={
+          <section className="h-full overflow-y-auto p-6">
+            <h1 className="font-serif text-2xl font-light tracking-tight">
+              {t("app.admin")}
+            </h1>
+            <div className="mt-4 divide-y divide-border border-y border-border">
+              {adminError !== "" && (
+                <p role="alert" className="text-sm text-accent">
+                  {adminError}
+                </p>
+              )}
+              {adminUsers.map((adminUser) => (
+                <div
+                  key={adminUser.id}
+                  className="flex justify-between py-3 text-sm"
+                >
+                  <span>{adminUser.displayName || adminUser.username}</span>
+                  <span className="text-muted capitalize">
+                    {adminUser.role}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        }
+      />
+    </Suspense>
   );
 }

@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { UserFacingError } from "../api/http";
 import { describeActionError } from "./actionErrors";
 import {
-  AuthExpiredError,
   DEFAULT_THREAD_TITLE,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   createThread,
-  listThreads,
   setProjectStarred,
   setThreadStarred,
   stopMessage,
@@ -25,11 +30,8 @@ import {
 } from "../api";
 import { graftStreamedBlocks } from "./contentBlocks";
 import { ThreadsPage } from "../chats/ThreadsPage";
-import { ArtifactsPage } from "../artifacts/ArtifactsPage";
-import { MemoryPage } from "../MemoryPage";
 import { useRouteState } from "./useRouteState";
 import type { MessageWithActivityTrace } from "./types";
-import { SettingsModal } from "../settings/SettingsModal";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
 import {
@@ -80,7 +82,6 @@ import { DeleteProjectModal } from "../projects/DeleteProjectModal";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage";
 import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
-import { ProjectsPage } from "../projects/ProjectsPage";
 import {
   replaceThreadById,
   upsertThreadById,
@@ -89,6 +90,27 @@ import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 import { useComposerDrafts } from "./useComposerDrafts";
 import { createTurnHandlers, newTempID } from "./turnHandlers";
+
+// The secondary views and the settings modal load on first use rather than
+// with the chat: a user who never opens the artifact library never pays for it.
+const ArtifactsPage = lazy(() =>
+  import("../artifacts/ArtifactsPage").then((module) => ({
+    default: module.ArtifactsPage,
+  })),
+);
+const MemoryPage = lazy(() =>
+  import("../MemoryPage").then((module) => ({ default: module.MemoryPage })),
+);
+const ProjectsPage = lazy(() =>
+  import("../projects/ProjectsPage").then((module) => ({
+    default: module.ProjectsPage,
+  })),
+);
+const SettingsModal = lazy(() =>
+  import("../settings/SettingsModal").then((module) => ({
+    default: module.SettingsModal,
+  })),
+);
 import { useEscapeKey } from "./useEscapeKey";
 
 type ThreadShellProps = {
@@ -250,6 +272,7 @@ export function ThreadShell({
     projectThreads,
     projects,
     recentThreads,
+    reloadThreads,
     setActiveThread,
     setMessages,
     setProjectThreads,
@@ -525,14 +548,6 @@ export function ThreadShell({
     onOpenThreadModal: () => setMobileSidebarOpen(false),
     route,
   });
-
-  const reloadThreads = useCallback(() => {
-    listThreads({ limit: 30 })
-      .then((nextThreads) => setThreads(nextThreads.items))
-      .catch((error: unknown) => {
-        if (error instanceof AuthExpiredError) onSessionExpired();
-      });
-  }, [onSessionExpired]);
 
   function openArchiveProjectModal(project: Project) {
     setArchivingProject(project);
@@ -1357,38 +1372,22 @@ export function ThreadShell({
             onSessionExpired={onSessionExpired}
           />
         ) : route.view === "artifacts" ? (
-          <ArtifactsPage
-            onOpenSidebar={() => setMobileSidebarOpen(true)}
-            onSessionExpired={onSessionExpired}
-            onUseInThread={handleUseArtifactInThread}
-          />
+          <Suspense fallback={null}>
+            <ArtifactsPage
+              onOpenSidebar={() => setMobileSidebarOpen(true)}
+              onSessionExpired={onSessionExpired}
+              onUseInThread={handleUseArtifactInThread}
+            />
+          </Suspense>
         ) : route.view === "memory" ? (
-          <MemoryPage onOpenSidebar={() => setMobileSidebarOpen(true)} />
+          <Suspense fallback={null}>
+            <MemoryPage onOpenSidebar={() => setMobileSidebarOpen(true)} />
+          </Suspense>
         ) : route.view === "projects" ? (
-          <ProjectsPage
-            projects={projects}
-            loadError={loadError}
-            onOpenSidebar={() => setMobileSidebarOpen(true)}
-            onCreateProject={() => openProjectDialog(null)}
-            onOpenProject={navigateToProject}
-            onEditProject={openProjectDialog}
-            onArchiveProject={openArchiveProjectModal}
-            onUnarchiveProject={unarchiveProjectAndReload}
-            onDeleteProject={(project) => {
-              setDeletingProject(project);
-              setModalError("");
-              setOpenThreadMenuID(null);
-            }}
-          />
-        ) : route.view === "project" ? (
-          activeProject === null ? (
+          <Suspense fallback={null}>
             <ProjectsPage
               projects={projects}
-              loadError={
-                loadError === "" && threadDataLoaded
-                  ? t("errors.projectNotFound")
-                  : loadError
-              }
+              loadError={loadError}
               onOpenSidebar={() => setMobileSidebarOpen(true)}
               onCreateProject={() => openProjectDialog(null)}
               onOpenProject={navigateToProject}
@@ -1401,6 +1400,30 @@ export function ThreadShell({
                 setOpenThreadMenuID(null);
               }}
             />
+          </Suspense>
+        ) : route.view === "project" ? (
+          activeProject === null ? (
+            <Suspense fallback={null}>
+              <ProjectsPage
+                projects={projects}
+                loadError={
+                  loadError === "" && threadDataLoaded
+                    ? t("errors.projectNotFound")
+                    : loadError
+                }
+                onOpenSidebar={() => setMobileSidebarOpen(true)}
+                onCreateProject={() => openProjectDialog(null)}
+                onOpenProject={navigateToProject}
+                onEditProject={openProjectDialog}
+                onArchiveProject={openArchiveProjectModal}
+                onUnarchiveProject={unarchiveProjectAndReload}
+                onDeleteProject={(project) => {
+                  setDeletingProject(project);
+                  setModalError("");
+                  setOpenThreadMenuID(null);
+                }}
+              />
+            </Suspense>
           ) : (
             <ProjectDetailPage
               project={activeProject}
@@ -1573,7 +1596,11 @@ export function ThreadShell({
           }
         />
       )}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
       {slashCommand !== null && (
         <SlashCommandPanel
           command={slashCommand}
