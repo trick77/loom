@@ -100,9 +100,15 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// argument streams or bursts over later chunks. Surface the name once per
 	// call as soon as it is known so the client can show the running tool
 	// immediately; the full call re-emitted at end-of-stream carries the same id
-	// and updates the same entry instead of duplicating it. Inline-recovered
-	// calls arrive the same way (name first, arguments last).
+	// and updates the same entry instead of duplicating it. That only holds when
+	// the early event already carries the id, so when the name lands a chunk
+	// before the id the emit waits for the id. A call that never gets one (an
+	// inline-recovered call arrives name first, arguments last, no id) is
+	// surfaced once its arguments start, since an id would have preceded them.
 	nameEmitted := map[int]bool{}
+	// argBytes counts streamed argument bytes per call for the progress log; the
+	// text itself is not accumulated here, the wire's Result carries it.
+	argBytes := map[int]int{}
 	var finishReason string
 	emit := func(ev StreamEvent) error {
 		if onEvent == nil {
@@ -137,8 +143,9 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			if ev.Name != "" {
 				call.Function.Name = ev.Name
 			}
-			call.Function.Arguments += ev.ArgumentsDelta
-			if call.Function.Name != "" && !nameEmitted[ev.Index] {
+			argBytes[ev.Index] += len(ev.ArgumentsDelta)
+			idKnown := call.ID != "" || ev.ArgumentsDelta != ""
+			if call.Function.Name != "" && idKnown && !nameEmitted[ev.Index] {
 				nameEmitted[ev.Index] = true
 				consumerErr = emit(StreamEvent{ToolCall: ToolCall{ID: call.ID, Type: call.Type, Function: ToolCallFunction{Name: call.Function.Name}}})
 			}
@@ -176,7 +183,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 			slog.Int("content_bytes", len(res.Content)),
 			slog.Int("reasoning_bytes", len(res.Reasoning)),
 		)
-		if n := toolArgBytes(toolCalls); n > 0 {
+		if n := toolArgBytes(argBytes); n > 0 {
 			attrs = append(attrs, slog.Int("tool_arg_bytes", n))
 		}
 		if name := firstToolName(toolCalls, toolCallOrder); name != "" {
@@ -221,13 +228,13 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	return result, nil
 }
 
-// toolArgBytes sums the streamed tool-call argument lengths accumulated so far —
-// the size of what the model is serializing into tool calls, which on a stalled
+// toolArgBytes sums the streamed tool-call argument bytes counted so far — the
+// size of what the model is serializing into tool calls, which on a stalled
 // document turn is exactly the payload that never finished.
-func toolArgBytes(byIndex map[int]*ToolCall) int {
+func toolArgBytes(byIndex map[int]int) int {
 	total := 0
-	for _, call := range byIndex {
-		total += len(call.Function.Arguments)
+	for _, n := range byIndex {
+		total += n
 	}
 	return total
 }
