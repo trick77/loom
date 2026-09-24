@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1557,16 +1558,10 @@ func TestMessagesPersistCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Both rows share a created_at second, so the list order falls back to the
-	// random ids: match by content, not by position.
-	listed := map[string]*int64{}
-	for _, m := range messages {
-		listed[m.Content] = m.CostNanoUSD
-	}
-	if got := listed["priced"]; got == nil || *got != cost {
+	if got := messages[len(messages)-2].CostNanoUSD; got == nil || *got != cost {
 		t.Fatalf("listed priced cost = %v, want %d", got, cost)
 	}
-	if got := listed["unpriced"]; got != nil {
+	if got := messages[len(messages)-1].CostNanoUSD; got != nil {
 		t.Fatalf("listed unpriced cost = %d, want nil", *got)
 	}
 }
@@ -1624,5 +1619,47 @@ func TestStore_SetThreadTitleIfUnchanged(t *testing.T) {
 	}
 	if current.Title != "Mine" {
 		t.Fatalf("title after skipped update = %q, want Mine", current.Title)
+	}
+}
+
+// created_at has one-second resolution and ids are random, so ordering by
+// (created_at, id) shuffled a question and its quick reply within the same
+// second, both in the transcript and in the history sent to the model.
+// rowid is insertion order and messages was never rebuilt, so it is exact.
+func TestStore_ListMessagesPreservesInsertionOrderWithinSameSecond(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Order"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	const pairs = 20
+	for i := range pairs {
+		if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, fmt.Sprintf("q%d", i)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.AddMessage(ctx, userID, thread.ID, RoleAssistant, fmt.Sprintf("a%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	messages, _, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range pairs {
+		if messages[2*i].Content != fmt.Sprintf("q%d", i) || messages[2*i+1].Content != fmt.Sprintf("a%d", i) {
+			t.Fatalf("ListMessages() pair %d = %q, %q; want q%d, a%d", i, messages[2*i].Content, messages[2*i+1].Content, i, i)
+		}
+	}
+
+	tail, err := store.ListRecentMessages(ctx, userID, thread.ID, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tail) != 3 || tail[0].Content != "a18" || tail[1].Content != "q19" || tail[2].Content != "a19" {
+		t.Fatalf("ListRecentMessages(3) = %v, want the last three in order", []string{tail[0].Content, tail[1].Content, tail[2].Content})
 	}
 }

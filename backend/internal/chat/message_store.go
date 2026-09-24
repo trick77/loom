@@ -254,7 +254,7 @@ func (s *Store) ListRecentMessages(ctx context.Context, userID, threadID string,
 SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
 FROM messages
 WHERE user_id = ? AND thread_id = ?
-ORDER BY created_at DESC, id DESC
+ORDER BY rowid DESC
 LIMIT ?`,
 		userID, threadID, limit,
 	)
@@ -282,8 +282,11 @@ LIMIT ?`,
 	return messages, nil
 }
 
-// ListMessages returns all messages in a thread in chronological order. The bool
-// indicates whether the thread exists; false is returned if the thread is not found.
+// ListMessages returns all messages in a thread in insertion order. rowid, not
+// created_at: the timestamp has one-second resolution and ids are random, so a
+// question and its quick reply would otherwise come back in either order. The
+// bool indicates whether the thread exists; false is returned if the thread is
+// not found.
 func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Message, bool, error) {
 	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
 		return nil, false, err
@@ -295,7 +298,7 @@ func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Me
 SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
 FROM messages
 WHERE user_id = ? AND thread_id = ?
-ORDER BY created_at ASC, id ASC`,
+ORDER BY rowid ASC`,
 		userID, threadID,
 	)
 	if err != nil {
