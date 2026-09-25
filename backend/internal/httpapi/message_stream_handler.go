@@ -86,14 +86,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// image) is a plain 400 here. Once the user message is stored and the SSE
 	// stream is open there is no way to reject the send cleanly. The store trims
 	// content, so the text part uses the same trimmed form the message will carry.
-	imageParts, err := s.imageContentParts(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
+	imageParts, imageArtifacts, err := s.resolveImageAttachments(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Persist the images and documents the user sent with this message so the sent
 	// previews survive a reload (resolved user-scoped; out-of-scope ids skipped).
-	sentAttachments := s.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs)
+	sentAttachments := s.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs, imageArtifacts)
 	// Persist the collapsed paste blocks so the sent bubble renders "Pasted" chips
 	// on reload instead of the inline wall of text. Their text is already folded
 	// into body.Content, so the model and every content-derived path (title,
@@ -207,6 +207,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			// Whatever streamed before the cancel is still the best title source
 			// available; it is simply shorter than a completed answer.
 			titleThread(assistantResult.Content)
+			// End the stream deliberately. A client that did not issue the stop
+			// itself (the thread open in a second tab) would otherwise read an
+			// unterminated stream as a dropped connection. The write fails
+			// harmlessly when the client is the one that went away.
+			_ = stream.Send("done", "{}")
 			return
 		}
 		message := streamFailureMessage(err, assistantResult, "message", threadID)
