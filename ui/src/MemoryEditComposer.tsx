@@ -169,6 +169,6 @@ export function useDismissOnOutside(
   ref: { current: HTMLElement | null },
   onClose: () => void,
 ) {
-  useEscapeKey(onClose);
+  useEscapeKey(onClose, { active: open });
   useOutsideRefPointerDown(open, ref, onClose);
 }

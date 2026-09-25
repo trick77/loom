@@ -486,7 +486,7 @@ function ArtifactRowFrame({
   const showMenuButton = hovered || menuOpen;
 
   // Close the menu on an outside click or Escape, mirroring the thread row menu.
-  useEscapeKey(onCloseMenu);
+  useEscapeKey(onCloseMenu, { active: menuOpen });
   useOutsideRefPointerDown(menuOpen, rowRef, onCloseMenu);
 
   return (
