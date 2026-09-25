@@ -312,9 +312,6 @@ func TestService_Index_isSingleFlightPerDocument(t *testing.T) {
 	if err := svc.Unindex(ctx, "u", doc.ID); !errors.Is(err, ErrIndexInProgress) {
 		t.Fatalf("Unindex() during ingest error = %v, want ErrIndexInProgress", err)
 	}
-	if err := svc.Delete(ctx, "u", doc.ID); !errors.Is(err, ErrIndexInProgress) {
-		t.Fatalf("Delete() during ingest error = %v, want ErrIndexInProgress", err)
-	}
 	close(idx.block)
 	if err := <-first; err != nil {
 		t.Fatalf("first Index() error = %v", err)
@@ -348,5 +345,33 @@ func TestService_Index_timesOutAndRecordsFailure(t *testing.T) {
 	}
 	if got.Status != rag.StatusError || got.Error == "" {
 		t.Fatalf("status after timeout = %q (%q), want error with a reason", got.Status, got.Error)
+	}
+}
+
+// A delete during an ingest cancels the run and waits for it instead of
+// refusing: the composer deletes a removed attachment seconds after its upload
+// started indexing, and a 409 there orphaned the document in the thread.
+func TestService_Delete_cancelsRunningIngest(t *testing.T) {
+	svc, idx, _ := newTestService(t)
+	idx.entered = make(chan struct{}, 1)
+	idx.block = make(chan struct{})
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+
+	first := make(chan error, 1)
+	go func() { first <- svc.Index(ctx, "u", doc.ID) }()
+	<-idx.entered
+
+	if err := svc.Delete(ctx, "u", doc.ID); err != nil {
+		t.Fatalf("Delete() during ingest error = %v, want nil", err)
+	}
+	if err := <-first; !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled Index() error = %v, want context.Canceled", err)
+	}
+	if _, ok, err := svc.store.GetDocument(ctx, "u", doc.ID); err != nil || ok {
+		t.Fatalf("document still present after Delete() (ok=%v, err=%v)", ok, err)
+	}
+	if svc.indexing("u", doc.ID) {
+		t.Fatal("inflight key still held after the cancelled ingest")
 	}
 }

@@ -61,9 +61,9 @@ type Service struct {
 	embedder  rag.Embedder
 	usage     UsageRecorder
 	usersDir  string
-	// inflight holds "userID/documentID" for every ingest currently running:
-	// one ingest per document at a time, and no unindex or delete underneath
-	// a running one (see ErrIndexInProgress).
+	// inflight maps "userID/documentID" to the ingest currently running for
+	// it: one ingest per document at a time, no unindex underneath a running
+	// one (see ErrIndexInProgress), and a delete cancels it and waits.
 	inflight     sync.Map
 	indexTimeout time.Duration
 }
@@ -211,26 +211,59 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 // off the request path should invoke it in a detached goroutine.
 func (s *Service) Index(ctx context.Context, userID, documentID string) error {
 	key := inflightKey(userID, documentID)
-	if _, running := s.inflight.LoadOrStore(key, struct{}{}); running {
-		return ErrIndexInProgress
-	}
-	defer s.inflight.Delete(key)
 	ingestCtx, cancel := context.WithTimeout(ctx, s.indexTimeout)
 	defer cancel()
+	run := &inflightRun{cancel: cancel, done: make(chan struct{})}
+	if _, running := s.inflight.LoadOrStore(key, run); running {
+		return ErrIndexInProgress
+	}
+	defer func() {
+		s.inflight.Delete(key)
+		close(run.done)
+	}()
 	err := s.indexer.Ingest(ingestCtx, userID, documentID)
 	if err != nil && ingestCtx.Err() != nil {
 		// The ingester records its own failures, but not this one: its context
 		// is dead, so its status write would fail too. Record it detached so
-		// the document does not sit in extracting/embedding forever.
-		_ = s.store.UpdateStatus(context.WithoutCancel(ctx), userID, documentID, rag.StatusError, "indexing timed out: "+err.Error())
+		// the document does not sit in extracting/embedding forever (a delete
+		// that cancelled the run removes the row right after).
+		reason := "indexing timed out: "
+		if errors.Is(ingestCtx.Err(), context.Canceled) {
+			reason = "indexing canceled: "
+		}
+		_ = s.store.UpdateStatus(context.WithoutCancel(ctx), userID, documentID, rag.StatusError, reason+err.Error())
 	}
 	return err
+}
+
+// inflightRun is a running ingest: cancel aborts it, done closes once it has
+// unwound and released the inflight key.
+type inflightRun struct {
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // indexing reports whether an ingest is running for the document.
 func (s *Service) indexing(userID, documentID string) bool {
 	_, running := s.inflight.Load(inflightKey(userID, documentID))
 	return running
+}
+
+// cancelIndexing aborts a running ingest for the document, if any, and waits
+// for it to unwind so nothing writes chunks underneath the caller.
+func (s *Service) cancelIndexing(ctx context.Context, userID, documentID string) error {
+	value, running := s.inflight.Load(inflightKey(userID, documentID))
+	if !running {
+		return nil
+	}
+	run := value.(*inflightRun)
+	run.cancel()
+	select {
+	case <-run.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func inflightKey(userID, documentID string) string {
@@ -303,8 +336,11 @@ func (s *Service) Unindex(ctx context.Context, userID, documentID string) error 
 // Delete removes the document, its chunks/embeddings, its artifact row, and the
 // underlying file from the volume.
 func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
-	if s.indexing(userID, documentID) {
-		return ErrIndexInProgress
+	// A delete wins over a running ingest: the composer removes an attachment
+	// seconds after the upload started indexing it, and a refusal there would
+	// leave the document in the thread's knowledge for good.
+	if err := s.cancelIndexing(ctx, userID, documentID); err != nil {
+		return err
 	}
 	doc, ok, err := s.store.GetDocument(ctx, userID, documentID)
 	if err != nil {
