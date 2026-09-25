@@ -95,8 +95,18 @@ func logging(next http.Handler) http.Handler {
 // wrapper reads them after it returns.
 func logPath(r *http.Request) string {
 	path := r.URL.Path
-	if shareID := r.PathValue("shareID"); shareID != "" {
-		path = strings.Replace(path, shareID, "[redacted]", 1)
+	shareID := r.PathValue("shareID")
+	if shareID == "" {
+		return path
+	}
+	// Replace the segment that follows "shares", not the first substring
+	// match: a short token can also occur inside an earlier segment.
+	segments := strings.Split(path, "/")
+	for i := 1; i < len(segments); i++ {
+		if segments[i-1] == "shares" && segments[i] == shareID {
+			segments[i] = "[redacted]"
+			return strings.Join(segments, "/")
+		}
 	}
 	return path
 }

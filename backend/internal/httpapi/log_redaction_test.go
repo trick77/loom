@@ -53,3 +53,17 @@ func TestServerErrorRedactsQueryStringAndShareToken(t *testing.T) {
 		t.Fatalf("server error log was not redacted:\n%s", logs.String())
 	}
 }
+
+// A token that also occurs inside an earlier segment is redacted where it is
+// the share id, not at its first substring match.
+func TestRequestLogRedactsTheShareSegmentNotASubstring(t *testing.T) {
+	logs := captureLogs(t)
+	h := New(Deps{})
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/shares/api", nil))
+
+	if !strings.Contains(logs.String(), "/api/shares/[redacted]") {
+		t.Fatalf("request log does not redact the share segment:\n%s", logs.String())
+	}
+}
