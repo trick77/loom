@@ -51,6 +51,3 @@ backend/web/dist/*
 
 # Local MCP server overrides (real file; example is tracked)
 conf/mcp.json
-
-# Local git worktrees
-.agents/worktrees/
