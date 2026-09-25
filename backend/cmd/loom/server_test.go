@@ -140,3 +140,58 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 		t.Fatal("serve() cancelled a background task that would have finished on its own")
 	}
 }
+
+// An ordinary request in flight when the signal arrives finishes with its
+// context intact: only what outlives the grace is cancelled.
+func TestServeShutdownLetsShortRequestsFinish(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	requestStarted := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /short", func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		time.Sleep(200 * time.Millisecond)
+		if r.Context().Err() != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := newServer(ln.Addr().String(), mux)
+	ctx, cancel := context.WithCancel(context.Background())
+	bg := httpapi.NewBackground(context.Background())
+
+	served := make(chan error, 1)
+	go func() { served <- serve(ctx, srv, ln, bg, func(context.Context) {}) }()
+	status := make(chan int, 1)
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String() + "/short")
+		if err != nil {
+			status <- 0
+			return
+		}
+		_ = resp.Body.Close()
+		status <- resp.StatusCode
+	}()
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request never reached the handler")
+	}
+
+	cancel()
+
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Fatalf("serve() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve() did not return after the signal")
+	}
+	if got := <-status; got != http.StatusOK {
+		t.Fatalf("in-flight request status = %d, want 200 (it was cancelled instead of allowed to finish)", got)
+	}
+}

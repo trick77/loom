@@ -320,6 +320,10 @@ const sessionJanitorInterval = time.Hour
 // gets the same.
 const shutdownTimeout = 10 * time.Second
 
+// shutdownGrace is how long in-flight requests get to finish on their own
+// before the streams among them are cancelled.
+const shutdownGrace = 2 * time.Second
+
 // errServerShuttingDown is the cause every in-flight request context is
 // canceled with at shutdown, so a stream logs it as such and not as a client
 // disconnect.
@@ -365,11 +369,21 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *h
 		}
 	}
 
-	cancelBase(errServerShuttingDown)
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Warn("shutdown did not finish cleanly", "err", err)
+	// Phase one: stop accepting and give in-flight requests a short grace to
+	// finish on their own; a thread create mid-transaction completes instead
+	// of failing with a cancelled context. Phase two, only when something is
+	// still running at the end of the grace (an SSE stream): cancel every
+	// request context with the shutdown cause so the streams unwind, and
+	// wait for them.
+	graceCtx, cancelGrace := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancelGrace()
+	if err := srv.Shutdown(graceCtx); err != nil {
+		cancelBase(errServerShuttingDown)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("shutdown did not finish cleanly", "err", err)
+		}
 	}
 	if err := background.Stop(shutdownTimeout); err != nil {
 		slog.Warn("background tasks did not drain", "err", err)
