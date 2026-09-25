@@ -26,7 +26,11 @@ CREATE TABLE shared_threads_new (
 
 INSERT INTO shared_threads_new (id, share_id, thread_id, user_id, shared, title, snapshot, artifact_ids, snapshot_at, created_at, updated_at)
 SELECT id, share_id, thread_id, user_id, shared, title, snapshot, artifact_ids, snapshot_at, created_at, updated_at
-FROM shared_threads;
+FROM shared_threads s
+-- A share row whose user is not the thread's owner is exactly what the new key
+-- forbids; copying one would fail the whole migration at COMMIT. Such a row was
+-- never reachable through the handlers, so it is dropped.
+WHERE EXISTS (SELECT 1 FROM threads t WHERE t.id = s.thread_id AND t.user_id = s.user_id);
 
 DROP TABLE shared_threads;
 ALTER TABLE shared_threads_new RENAME TO shared_threads;
