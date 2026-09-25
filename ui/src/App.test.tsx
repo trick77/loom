@@ -2040,6 +2040,70 @@ test("Escape stops the active assistant response", async () => {
   });
 });
 
+test("a stop before any answer text is not reported as a dropped connection", async () => {
+  // The server's cancel branch returns without a terminal event, so the stream
+  // body simply ends once the stop request lands, before the client aborts.
+  let stopped = false;
+  let closeStream: (() => void) | null = null;
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [threadFixture()], nextCursor: null });
+      if (url === "/api/threads/t1")
+        return Response.json({ thread: threadFixture(), messages: [] });
+      if (
+        url.startsWith("/api/threads/t1/messages:stop") &&
+        init?.method === "POST"
+      ) {
+        stopped = true;
+        closeStream?.();
+        // The closed body is observed before the stop response makes it back
+        // over the network, so the run's catch runs before the client aborts.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return new Response("", { status: 204 });
+      }
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+              ),
+            );
+            if (stopped) controller.close();
+            else closeStream = () => controller.close();
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("button", { name: "Stop response" }),
+    ).not.toBeInTheDocument();
+  });
+  expect(screen.queryByText(/connection dropped/i)).not.toBeInTheDocument();
+});
+
 test("renders artifact card from streamed artifact event", async () => {
   const artifact = {
     id: "art_1",

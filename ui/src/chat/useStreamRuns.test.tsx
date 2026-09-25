@@ -60,3 +60,18 @@ describe("useStreamRuns patch", () => {
     expect(result.current.runs[KEY]).toBeUndefined();
   });
 });
+
+describe("stop requests", () => {
+  it("remembers which run's controller a stop was requested for", () => {
+    const { result } = renderHook(() => useStreamRuns());
+    const controller = new AbortController();
+    const other = new AbortController();
+    act(() => result.current.begin(threadRunKey("t1"), controller));
+
+    expect(result.current.stopRequested(controller)).toBe(false);
+    act(() => result.current.markStopRequested(threadRunKey("t1")));
+    expect(result.current.stopRequested(controller)).toBe(true);
+    expect(result.current.stopRequested(other)).toBe(false);
+    expect(controller.signal.aborted).toBe(false);
+  });
+});

@@ -182,6 +182,8 @@ export function ThreadShell({
     end: endStreamRun,
     abort: abortStreamRun,
     abortAll: abortAllStreamRuns,
+    markStopRequested,
+    stopRequested,
     nextProvisionalKey,
   } = useStreamRuns();
   // Incognito mode is a standalone, ephemeral chat reachable only from /new. Its
@@ -345,6 +347,9 @@ export function ThreadShell({
       // fetch once that stop request has been sent. Aborting first would drop the
       // connection and make the server log the generic request-context cancel
       // instead of this attributed one (the cancel cause is first-writer-wins).
+      // The server may close the stream before the abort lands; the run's catch
+      // reads this mark so that close is not reported as a dropped connection.
+      markStopRequested(activeRunKey);
       void stopMessage(activeThread.id, source)
         .catch((error: unknown) => {
           handleActionError(error, t("thread.stopFailed"), reportShellError);
@@ -357,6 +362,7 @@ export function ThreadShell({
       activeThread,
       handleActionError,
       incognito,
+      markStopRequested,
       reportShellError,
       t,
     ],
@@ -1055,7 +1061,8 @@ export function ThreadShell({
       if (error instanceof DOMException && error.name === "AbortError") return;
       // A stop the user asked for closes the stream server-side before the
       // client aborts its fetch, which reads as an interruption; it is not one.
-      if (abortController.signal.aborted) return;
+      if (abortController.signal.aborted || stopRequested(abortController))
+        return;
       // Keep the partial streamed blocks visible so a failed turn still shows what
       // streamed (prose, an activity trace, a tool that errored); the next send
       // clears them.
