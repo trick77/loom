@@ -17,6 +17,10 @@ type Background struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+	// mu guards stopped and orders every Add before Stop's Wait: an Add that
+	// races a Wait on a drained group is a WaitGroup misuse panic.
+	mu      sync.Mutex
+	stopped bool
 }
 
 // NewBackground returns a group whose tasks stop when parent is done or Stop is
@@ -31,9 +35,16 @@ func NewBackground(parent context.Context) *Background {
 // request that spawned the task ending must not abort it, the group stopping
 // must. A panic in fn is recovered and logged under label.
 func (b *Background) Spawn(parent context.Context, label string, fn func(ctx context.Context)) {
+	b.mu.Lock()
+	if b.stopped {
+		b.mu.Unlock()
+		slog.Warn("background task dropped: shutting down", "task", label)
+		return
+	}
+	b.wg.Add(1)
+	b.mu.Unlock()
 	ctx, cancel := context.WithCancel(context.WithoutCancel(parent))
 	stop := context.AfterFunc(b.ctx, cancel)
-	b.wg.Add(1)
 	go func() {
 		defer b.wg.Done()
 		defer stop()
@@ -47,6 +58,9 @@ func (b *Background) Spawn(parent context.Context, label string, fn func(ctx con
 // that outlives the timeout is reported, not killed; the caller decides what
 // that means for the resources the task may still hold.
 func (b *Background) Stop(timeout time.Duration) error {
+	b.mu.Lock()
+	b.stopped = true
+	b.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
 		b.wg.Wait()

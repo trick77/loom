@@ -108,3 +108,20 @@ func TestBackgroundTaskKeepsParentValuesNotItsCancellation(t *testing.T) {
 		t.Fatalf("Stop() error = %v", err)
 	}
 }
+
+// A task spawned once Stop has begun (a stream handler outliving the HTTP
+// shutdown reaches its post-turn refresh) is dropped: adding to the group
+// while Stop waits on it would panic.
+func TestBackgroundSpawnAfterStopIsDropped(t *testing.T) {
+	bg := NewBackground(context.Background())
+	if err := bg.Stop(time.Second); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	ran := make(chan struct{}, 1)
+	bg.Spawn(context.Background(), "late", func(context.Context) { ran <- struct{}{} })
+	select {
+	case <-ran:
+		t.Fatal("a task spawned after Stop ran")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
