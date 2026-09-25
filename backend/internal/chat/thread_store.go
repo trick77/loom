@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // CreateThread creates a new chat thread for the user, optionally within a project.
@@ -24,13 +26,19 @@ func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThread
 		if ok, err := s.projectExists(ctx, userID, *in.ProjectID); err != nil {
 			return Thread{}, err
 		} else if !ok {
-			return Thread{}, errors.New("project not found")
+			return Thread{}, ErrProjectNotFound
 		}
 		projectID = *in.ProjectID
 	}
 
-	threadID := newID()
-	_, err := s.db.ExecContext(ctx, `
+	threadID := sqlutil.NewID()
+	// The insert and the project activity touch land together or not at all.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Thread{}, fmt.Errorf("begin thread create: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO threads (id, user_id, project_id, title)
 VALUES (?, ?, ?, ?)`,
 		threadID, userID, projectID, title,
@@ -41,9 +49,12 @@ VALUES (?, ?, ?, ?)`,
 
 	// Creating a thread inside a project is user activity in that project.
 	if projectID != nil {
-		if err := s.touchProjectActivity(ctx, userID, projectID); err != nil {
+		if err := touchProjectActivityIn(ctx, tx, userID, projectID); err != nil {
 			return Thread{}, err
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Thread{}, fmt.Errorf("commit thread create: %w", err)
 	}
 
 	thread, ok, err := s.GetThread(ctx, userID, threadID)
@@ -67,7 +78,7 @@ func (s *Store) GetThread(ctx context.Context, userID, threadID string) (Thread,
 // ListThreadIDs stay in sync on which rows match.
 func threadFilters(userID string, opts ListThreadsOptions) ([]string, []any, error) {
 	if opts.ProjectID != nil && opts.ProjectlessOnly {
-		return nil, nil, errors.New("project filter cannot be combined with projectless filter")
+		return nil, nil, validation("project filter cannot be combined with projectless filter")
 	}
 	filters := []string{"user_id = ?"}
 	args := []any{userID}
@@ -88,7 +99,7 @@ func threadFilters(userID string, opts ListThreadsOptions) ([]string, []any, err
 	}
 	if search := strings.TrimSpace(opts.Search); search != "" {
 		filters = append(filters, `title LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+escapeLike(search)+"%")
+		args = append(args, "%"+sqlutil.EscapeLike(search)+"%")
 	}
 	// Derive chat visibility from the owning project's archived state instead of
 	// writing to threads. In the resting lists (no project scope, no search,
@@ -254,64 +265,91 @@ ORDER BY created_at ASC, id ASC`,
 // UpdateThread updates the title, category, and project association of a thread.
 // The bool indicates whether the thread was found; false is returned if no thread exists for the user.
 func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in UpdateThreadInput) (Thread, bool, error) {
-	thread, ok, err := s.GetThread(ctx, userID, threadID)
-	if err != nil || !ok {
-		return Thread{}, ok, err
-	}
-
-	title := thread.Title
+	// Each field is written only when it was provided (the UPDATE keeps the
+	// stored value otherwise), and the project check, the row update and the
+	// project activity touch share one transaction. The previous read-modify-
+	// write of the whole row let two concurrent partial updates overwrite each
+	// other's field with a stale copy.
+	var title any
 	if in.Title != nil {
-		title = NormalizeThreadTitle(*in.Title)
-		if title == "" {
-			return Thread{}, false, errors.New("thread title is required")
+		normalized := NormalizeThreadTitle(*in.Title)
+		if normalized == "" {
+			return Thread{}, false, validation("thread title is required")
 		}
+		title = normalized
 	}
-
-	var projectID any
-	if thread.ProjectID != nil {
-		projectID = *thread.ProjectID
-	}
-	if in.ProjectID.Set {
-		projectID = nil
-		if in.ProjectID.Value != nil {
-			if ok, err := s.projectExists(ctx, userID, *in.ProjectID.Value); err != nil {
-				return Thread{}, false, err
-			} else if !ok {
-				return Thread{}, false, errors.New("project not found")
-			}
-			projectID = *in.ProjectID.Value
-		}
-	}
-
-	category := thread.Category
+	var category any
 	if in.Category != nil {
 		category = *in.Category
 	}
+	var projectID any
+	if in.ProjectID.Set && in.ProjectID.Value != nil {
+		projectID = *in.ProjectID.Value
+	}
 
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Thread{}, false, fmt.Errorf("begin thread update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if projectID != nil {
+		if ok, err := projectExistsIn(ctx, tx, userID, *in.ProjectID.Value); err != nil {
+			return Thread{}, false, err
+		} else if !ok {
+			return Thread{}, false, ErrProjectNotFound
+		}
+	}
+	result, err := tx.ExecContext(ctx, `
 UPDATE threads
-SET title = ?, category = ?, project_id = ?, updated_at = datetime('now')
+SET title = COALESCE(?, title),
+    category = COALESCE(?, category),
+    project_id = CASE WHEN ? THEN ? ELSE project_id END,
+    updated_at = datetime('now')
 WHERE user_id = ? AND id = ?`,
-		title, category, projectID, userID, threadID,
+		title, category, in.ProjectID.Set, projectID, userID, threadID,
 	)
 	if err != nil {
 		return Thread{}, false, fmt.Errorf("update thread: %w", err)
 	}
-
-	// Moving a thread into a project is user activity in that project.
-	if projectID != nil {
-		if err := s.touchProjectActivity(ctx, userID, projectID); err != nil {
-			return Thread{}, false, err
-		}
+	updated, err := changed(result)
+	if err != nil {
+		return Thread{}, false, err
+	}
+	if !updated {
+		return Thread{}, false, nil
+	}
+	// Editing a thread is user activity in the project it is in, or was just
+	// moved into.
+	if err := touchThreadProjectIn(ctx, tx, userID, threadID); err != nil {
+		return Thread{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Thread{}, false, fmt.Errorf("commit thread update: %w", err)
 	}
 	return s.GetThread(ctx, userID, threadID)
+}
+
+// touchThreadProjectIn bumps last_activity_at of the project the thread is in;
+// a thread outside any project touches nothing.
+func touchThreadProjectIn(ctx context.Context, db execer, userID, threadID string) error {
+	_, err := db.ExecContext(ctx, `
+UPDATE projects
+SET last_activity_at = datetime('now')
+WHERE user_id = ? AND id = (SELECT project_id FROM threads WHERE user_id = ? AND id = ?)`,
+		userID, userID, threadID,
+	)
+	if err != nil {
+		return fmt.Errorf("touch thread project activity: %w", err)
+	}
+	return nil
 }
 
 // touchProjectActivity bumps a project's last_activity_at to now. projectID is the
 // thread's project_id value (a string id; callers guard against the nil/no-project
 // case). Best-effort by design lives at the call site — here a DB error propagates.
-func (s *Store) touchProjectActivity(ctx context.Context, userID string, projectID any) error {
-	_, err := s.db.ExecContext(ctx, `
+func touchProjectActivityIn(ctx context.Context, db execer, userID string, projectID any) error {
+	_, err := db.ExecContext(ctx, `
 UPDATE projects
 SET last_activity_at = datetime('now')
 WHERE user_id = ? AND id = ?`,
@@ -344,6 +382,44 @@ WHERE user_id = ? AND id = ?`,
 		return Thread{}, ok, err
 	}
 	return s.GetThread(ctx, userID, threadID)
+}
+
+// SetThreadTitleIfUnchanged sets the thread's title only while it still equals
+// expectedTitle: a compare-and-set for the generated title, which lands after
+// the answer and must not overwrite a rename the user made in the meantime.
+// It returns the current thread and whether the update applied.
+func (s *Store) SetThreadTitleIfUnchanged(ctx context.Context, userID, threadID, expectedTitle, title string) (Thread, bool, error) {
+	title = NormalizeThreadTitle(title)
+	if title == "" {
+		return Thread{}, false, validation("thread title is required")
+	}
+	if len(title) > MaxThreadTitleLength {
+		return Thread{}, false, validation("thread title is too long")
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE threads
+SET title = ?, updated_at = datetime('now')
+WHERE user_id = ? AND id = ? AND title = ?`,
+		title, userID, threadID, expectedTitle,
+	)
+	if err != nil {
+		return Thread{}, false, fmt.Errorf("set thread title: %w", err)
+	}
+	updated, err := changed(result)
+	if err != nil {
+		return Thread{}, false, err
+	}
+	if updated {
+		// The generated title counts as project activity, as a rename does.
+		if err := touchThreadProjectIn(ctx, s.db, userID, threadID); err != nil {
+			return Thread{}, false, err
+		}
+	}
+	thread, ok, err := s.getThread(ctx, userID, threadID)
+	if err != nil || !ok {
+		return Thread{}, updated, err
+	}
+	return thread, updated, nil
 }
 
 // SetThreadImageModelIfEmpty locks the image-generation model for a thread on the
@@ -409,13 +485,6 @@ WHERE user_id = ? AND id = ?`,
 		return false, fmt.Errorf("delete thread: %w", err)
 	}
 	return changed(result)
-}
-
-// escapeLike escapes the LIKE wildcards so a user search term matches literally.
-// Used together with `ESCAPE '\'` in the query.
-func escapeLike(term string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(term)
 }
 
 func (s *Store) getThread(ctx context.Context, userID, threadID string) (Thread, bool, error) {

@@ -6,6 +6,7 @@ import {
   modalDangerButtonClass,
 } from "../ThreadActionsMenu";
 import { ErrorText } from "./ErrorText";
+import { useEscapeKey } from "./useEscapeKey";
 
 export function RenameThreadModal({
   title,
@@ -115,13 +116,7 @@ export function ModalShell({
   onCancel(): void;
 }) {
   const titleID = useId();
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCancel();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
+  useEscapeKey(onCancel);
   return (
     <div
       className="fixed inset-0 z-40 grid place-items-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px] md:pr-4 md:pl-[378px]"

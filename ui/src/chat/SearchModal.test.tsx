@@ -77,7 +77,10 @@ describe("SearchModal", () => {
       target: { value: "kayak" },
     });
 
-    expect(useThreadSearchMock).toHaveBeenLastCalledWith("kayak");
+    expect(useThreadSearchMock).toHaveBeenLastCalledWith(
+      "kayak",
+      expect.objectContaining({}),
+    );
   });
 
   it("renders one row per result and selects the first by default", () => {

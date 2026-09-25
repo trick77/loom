@@ -1,4 +1,4 @@
-import { AuthExpiredError, expectJSON } from "./http";
+import { expectJSON, expectOK } from "./http";
 import type { Page, Thread, ThreadContentHit, ThreadResponse } from "./types";
 
 export async function listThreads(
@@ -137,12 +137,7 @@ export async function deleteThread(threadId: string): Promise<void> {
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
     method: "DELETE",
   });
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to delete thread");
-  }
+  await expectOK(response, "failed to delete thread");
 }
 
 export async function bulkDeleteThreads(
@@ -178,10 +173,5 @@ export async function stopMessage(
       signal: AbortSignal.timeout(stopMessageTimeoutMs),
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to stop message");
-  }
+  await expectOK(response, "failed to stop message");
 }

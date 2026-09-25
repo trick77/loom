@@ -150,9 +150,11 @@ func similarityFromDistance(distance float64) float64 {
 	return 1.0 / (1.0 + distance)
 }
 
+// snippet bounds a citation excerpt to citationSnippetChars bytes, cutting on
+// a rune boundary so the persisted citations JSON stays valid UTF-8.
 func snippet(text string) string {
 	if len(text) <= citationSnippetChars {
 		return text
 	}
-	return strings.TrimSpace(text[:citationSnippetChars]) + "…"
+	return strings.TrimSpace(truncateBytesOnRuneBoundary(text, citationSnippetChars)) + "…"
 }

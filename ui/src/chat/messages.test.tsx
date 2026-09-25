@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import type { Message } from "../api";
@@ -415,4 +415,95 @@ test("renders citation markers as outbound links in the public share view", () =
   expect(
     screen.queryByRole("button", { name: "Alpha" }),
   ).not.toBeInTheDocument();
+});
+
+test("MessageBubble renders user and assistant messages through the role switch", () => {
+  const { unmount } = render(
+    <MessageBubble
+      message={{
+        id: "u1",
+        threadId: "t1",
+        role: "user",
+        content: "a question",
+        createdAt: "2026-05-30T00:00:00Z",
+      }}
+      retryMessage={null}
+      onRetry={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("a question")).toBeInTheDocument();
+  unmount();
+
+  render(
+    <MessageBubble
+      message={{
+        id: "a1",
+        threadId: "t1",
+        role: "assistant",
+        content: "an answer",
+        createdAt: "2026-05-30T00:00:01Z",
+      }}
+      retryMessage={null}
+      onRetry={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("an answer")).toBeInTheDocument();
+});
+
+function assistantMessage() {
+  return {
+    id: "a1",
+    threadId: "t1",
+    role: "assistant" as const,
+    content: "an answer",
+    createdAt: "2026-05-30T00:00:01Z",
+  };
+}
+
+test("a rejected clipboard write shows a failure instead of Copied", async () => {
+  const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText },
+    configurable: true,
+  });
+  render(
+    <MessageBubble
+      message={assistantMessage()}
+      retryMessage={null}
+      onRetry={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Copy response" }));
+
+  expect(
+    await screen.findByRole("button", { name: "Couldn’t copy." }),
+  ).toBeInTheDocument();
+  expect(writeText).toHaveBeenCalledWith("an answer");
+});
+
+test("the copied indicator's timer is cleared on unmount", async () => {
+  vi.useFakeTimers();
+  try {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+    const view = render(
+      <MessageBubble
+        message={assistantMessage()}
+        retryMessage={null}
+        onRetry={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy response" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
 });

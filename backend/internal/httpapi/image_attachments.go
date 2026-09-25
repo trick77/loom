@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -15,26 +16,44 @@ import (
 
 const maxImageAttachmentsPerMessage = 5
 
-func (s *server) imageContentParts(ctx context.Context, userID, _, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
+// imageContentParts turns the image artifacts a user attached into the vision
+// content parts for the model, followed by the text part. It validates the
+// whole list (count, ownership, image type, readable file) and fails on the
+// first problem, so callers run it before persisting anything: a rejected
+// attachment list is a plain 400, not an orphaned user turn.
+func (s *server) imageContentParts(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
+	parts, _, err := s.resolveImageAttachments(ctx, userID, text, artifactIDs)
+	return parts, err
+}
+
+// resolveImageAttachments is imageContentParts that also hands back the
+// looked-up artifacts, so the send path can record the sent attachments
+// without a second batch query.
+func (s *server) resolveImageAttachments(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, map[string]artifact.Artifact, error) {
 	if len(artifactIDs) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if s.artifacts == nil {
-		return nil, fmt.Errorf("image attachments are not available")
+		return nil, nil, fmt.Errorf("image attachments are not available")
 	}
 	if len(artifactIDs) > maxImageAttachmentsPerMessage {
-		return nil, fmt.Errorf("too many image attachments")
+		return nil, nil, fmt.Errorf("too many image attachments")
+	}
+	// One user-scoped batch lookup instead of a query per id; ids that don't
+	// resolve are simply absent from the map.
+	items, err := s.artifacts.GetMany(ctx, userID, artifactIDs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load image attachments: %w", err)
 	}
 	parts := make([]llm.MessageContentPart, 0, len(artifactIDs)+1)
 	for _, artifactID := range artifactIDs {
-		item, ok, err := s.artifacts.Get(ctx, userID, artifactID)
-		if err != nil {
-			return nil, fmt.Errorf("load image attachment: %w", err)
+		// GetMany deliberately returns soft-deleted rows (the transcript overlay
+		// needs them); an attachment must be a live artifact with bytes on disk.
+		item, ok := items[artifactID]
+		if !ok || item.Deleted {
+			return nil, nil, fmt.Errorf("image attachment not found")
 		}
-		if !ok {
-			return nil, fmt.Errorf("image attachment not found")
-		}
-		// No thread-scope check here: s.artifacts.Get already user-scopes the lookup,
+		// No thread-scope check here: s.artifacts.GetMany already user-scopes the lookup,
 		// so a forged id pointing at another user's artifact can't resolve. An
 		// artifact keeps the thread it was generated/uploaded in, and "Use in thread"
 		// deliberately re-references an existing artifact from a *new* thread, so
@@ -46,11 +65,11 @@ func (s *server) imageContentParts(ctx context.Context, userID, _, text string, 
 		// an accepted image type, not merely image/*, so an out-of-allowlist format
 		// (e.g. image/bmp) can't slip into the model request via the attach path.
 		if !allowedImageMIME(item.MIMEType) {
-			return nil, fmt.Errorf("attachment is not a supported image type")
+			return nil, nil, fmt.Errorf("attachment is not a supported image type")
 		}
 		abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)
 		if err != nil {
-			return nil, fmt.Errorf("image attachment path rejected: %w", err)
+			return nil, nil, fmt.Errorf("image attachment path rejected: %w", err)
 		}
 		// MiMo's OpenAI-compatible image input accepts data URLs, so the request path
 		// base64-encodes each upload in memory. This data URL rides on the message
@@ -60,7 +79,9 @@ func (s *server) imageContentParts(ctx context.Context, userID, _, text string, 
 		// tiling vision model would use.
 		raw, err := os.ReadFile(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 		if err != nil {
-			return nil, fmt.Errorf("read image attachment: %w", err)
+			// The os error names the absolute volume path; that stays in the log.
+			slog.Warn("image attachment unreadable", "artifact_id", artifactID, "err", err)
+			return nil, nil, fmt.Errorf("image attachment is unreadable")
 		}
 		encoded, encodedMIME := imagescale.DownscaleForModel(raw, item.MIMEType)
 		parts = append(parts, llm.MessageContentPart{
@@ -71,7 +92,7 @@ func (s *server) imageContentParts(ctx context.Context, userID, _, text string, 
 		})
 	}
 	parts = append(parts, llm.MessageContentPart{Type: "text", Text: text})
-	return parts, nil
+	return parts, items, nil
 }
 
 // editImageSource carries the original bytes of an uploaded/prior image that is
@@ -90,8 +111,11 @@ type editImageSource struct {
 // artifact for direct editing. Unlike imageContentParts (which downscales hard to
 // the vision-input budget and so would reintroduce detail loss), this keeps the
 // original and only trims to the image model's input envelope. Returns ok=false when the
-// artifact is missing, out of scope, or not a supported image type.
-func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, artifactID string) (editImageSource, bool, error) {
+// artifact is missing or not a supported image type. Like imageContentParts it
+// accepts any image the user owns, whatever thread it came from: "Use in
+// thread" re-references an artifact from a new thread, and rejecting it here
+// silently dropped the source of the follow-up edit.
+func (s *server) loadEditSourceImage(ctx context.Context, userID, artifactID string) (editImageSource, bool, error) {
 	if s.artifacts == nil || strings.TrimSpace(artifactID) == "" {
 		return editImageSource{}, false, nil
 	}
@@ -100,9 +124,6 @@ func (s *server) loadEditSourceImage(ctx context.Context, userID, threadID, arti
 		return editImageSource{}, false, fmt.Errorf("load edit source image: %w", err)
 	}
 	if !ok {
-		return editImageSource{}, false, nil
-	}
-	if item.ThreadID != "" && item.ThreadID != threadID {
 		return editImageSource{}, false, nil
 	}
 	if !allowedImageMIME(item.MIMEType) {

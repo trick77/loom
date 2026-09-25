@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
@@ -7,6 +7,10 @@ import { Icon } from "../chat/Icon";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
+import {
+  insideSelector,
+  useOutsidePointerDown,
+} from "../chat/useOutsidePointerDown";
 
 type ProjectSort = "recent" | "edited" | "created";
 type ProjectTab = "active" | "archived";
@@ -87,17 +91,12 @@ export function ProjectsPage({
     });
   }, [source, query, sort]);
 
-  useEffect(() => {
-    if (openMenuID === null) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest("[data-project-card-menu-root]") !== null) return;
-      setOpenMenuID(null);
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [openMenuID]);
+  const closeProjectCardMenu = useCallback(() => setOpenMenuID(null), []);
+  useOutsidePointerDown(
+    openMenuID !== null,
+    insideProjectCardMenu,
+    closeProjectCardMenu,
+  );
 
   function handleUnarchive(project: Project) {
     // Optimistically drop it from the archived list; the parent promotes it back
@@ -320,3 +319,5 @@ function emptyMessage(
 function compareDatesDesc(a: string, b: string): number {
   return new Date(b).getTime() - new Date(a).getTime();
 }
+
+const insideProjectCardMenu = insideSelector("[data-project-card-menu-root]");

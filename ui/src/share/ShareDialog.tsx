@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { createShare, disableShare, updateShare, type ShareInfo } from "../api";
 import { Icon, type IconName } from "../chat/Icon";
+import { useEscapeKey } from "../chat/useEscapeKey";
 
 // ShareDialog is the owner-facing share modal. It copies Claude's flow 1:1, minus
 // "Share with your team" and minus "Report": Keep private ⇄ Create public link,
@@ -35,13 +36,7 @@ export function ShareDialog({
   }, [share]);
 
   // Close on Escape, matching the app's other dismissible surfaces.
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   async function run<T>(fn: () => Promise<T>, after?: (result: T) => void) {
     setBusy(true);

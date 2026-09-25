@@ -21,6 +21,7 @@ import (
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/store"
 )
 
@@ -1036,7 +1037,7 @@ func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
 	srv := &server{artifacts: store, usersDir: usersDir}
 
 	// Happy path: original bytes are returned for an in-scope, allowed image.
-	src, ok, err := srv.loadEditSourceImage(context.Background(), userID, "thr_1", "img_ok")
+	src, ok, err := srv.loadEditSourceImage(context.Background(), userID, "img_ok")
 	if err != nil || !ok {
 		t.Fatalf("loadEditSourceImage(img_ok) = ok %v, err %v", ok, err)
 	}
@@ -1044,10 +1045,18 @@ func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
 		t.Fatalf("Data = %q, want original bytes", src.Data)
 	}
 
-	// Out-of-scope (different thread), unsupported MIME, missing, and empty id all
-	// degrade to ok=false without an error so the turn proceeds prompt-only.
-	for _, id := range []string{"img_other_thread", "img_bad_mime", "img_missing", ""} {
-		_, ok, err := srv.loadEditSourceImage(context.Background(), userID, "thr_1", id)
+	// An image from another of the user's threads is a valid edit source: "Use
+	// in thread" re-references it from a new thread, and the vision path already
+	// accepts it, so the edit path must too or the follow-up edit silently loses
+	// its source. Ownership (the user-scoped lookup) is the real boundary.
+	if _, ok, err := srv.loadEditSourceImage(context.Background(), userID, "img_other_thread"); err != nil || !ok {
+		t.Fatalf("loadEditSourceImage(img_other_thread) = ok %v, err %v, want ok=true", ok, err)
+	}
+
+	// Unsupported MIME, missing, and empty id all degrade to ok=false without an
+	// error so the turn proceeds prompt-only.
+	for _, id := range []string{"img_bad_mime", "img_missing", ""} {
+		_, ok, err := srv.loadEditSourceImage(context.Background(), userID, id)
 		if err != nil || ok {
 			t.Fatalf("loadEditSourceImage(%q) = ok %v, err %v, want ok=false, err=nil", id, ok, err)
 		}
@@ -1139,7 +1148,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 			},
 		}}
 
-		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistry())
+		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
 
 		if !strings.Contains(got, "rendered page text") {
 			t.Fatalf("output = %q, want obscura snapshot text", got)
@@ -1154,7 +1163,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	t.Run("surfaces fetch failure when obscura is unavailable", func(t *testing.T) {
 		srv := &server{mcp: fakeMCPService{err: errFakeTool}}
 
-		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistry())
+		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
 
 		if !strings.HasPrefix(got, "tool failed") {
 			t.Fatalf("output = %q, want tool failed prefix", got)
@@ -1177,7 +1186,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 		}}
 		otherCall := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"query":"x"}`}}
 
-		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, otherCall, 0, newWebSourceRegistry())
+		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, otherCall, 0, newWebSourceRegistryAfter(0))
 
 		if obscuraCalled {
 			t.Fatal("obscura must not be called for non-fetch tools")
@@ -2478,5 +2487,172 @@ func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 	}
 	if !hasDocgen {
 		t.Fatal("drift-to-coding turn should offer docgen (coding is a docgen category)")
+	}
+}
+
+// Attachment validation must run before the user message is persisted and
+// before the SSE stream opens: a rejected send is a plain 400 JSON response,
+// never a JSON blob inside a committed event stream with an orphaned user turn.
+func TestStreamMessageRejectsBadImageAttachmentsBeforePersisting(t *testing.T) {
+	deleted := artifact.Artifact{ID: "art_gone", UserID: testUser.ID, MIMEType: "image/png", VolumeRelPath: "files/uploads/gone.png", Deleted: true}
+	tests := []struct {
+		name      string
+		body      string
+		artifacts []artifact.Artifact
+	}{
+		{"too many", `{"content":"Hi","imageAttachmentIds":["a","b","c","d","e","f"]}`, nil},
+		{"unknown id", `{"content":"Hi","imageAttachmentIds":["art_missing"]}`, nil},
+		// The batch lookup returns soft-deleted rows for the transcript overlay;
+		// they are not attachable and the 400 must not name the volume path.
+		{"deleted", `{"content":"Hi","imageAttachmentIds":["art_gone"]}`, []artifact.Artifact{deleted}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"}}
+			usersDir := t.TempDir()
+			srv := newAuthenticatedServer(t, Deps{
+				Thread:    store,
+				Artifacts: fakeArtifactStore{artifacts: tt.artifacts},
+				UsersDir:  usersDir,
+				LLM:       fakeChatClient{},
+			})
+			req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", tt.body)
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body:\n%s", rec.Code, rec.Body.String())
+			}
+			if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+				t.Fatalf("Content-Type = %q, want application/json", ct)
+			}
+			if strings.Contains(rec.Body.String(), "event:") {
+				t.Fatalf("body carries SSE events:\n%s", rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), usersDir) {
+				t.Fatalf("body leaks the volume path:\n%s", rec.Body.String())
+			}
+			if len(store.messages) != 0 {
+				t.Fatalf("persisted messages = %d, want 0", len(store.messages))
+			}
+		})
+	}
+}
+
+// A panic inside the reasoning-title goroutine must not kill the process or
+// hang the turn: the title is skipped and the answer still lands.
+func TestStreamMessageSurvivesReasoningTitlePanic(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	streamText := "Answer."
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			streamText:          &streamText,
+			reasoningText:       "Thinking about it.",
+			reasoningTitlePanic: true,
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: assistant_message") || !strings.Contains(body, "event: done") {
+		t.Fatalf("stream did not complete:\n%s", body)
+	}
+	if strings.Contains(body, "assistant_reasoning_title") {
+		t.Fatalf("a title was emitted despite the panic:\n%s", body)
+	}
+}
+
+// A panic after the stream has opened cannot become a 500 (the 200 and the
+// first events are already on the wire); the client must still get a
+// terminal error event instead of a silently truncated stream.
+func TestStreamMessageEmitsErrorEventOnPanic(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "T"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{streamPanic: true}})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, "event: user_message") {
+		t.Fatalf("stream did not open: status %d body:\n%s", rec.Code, body)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(body), "event: error\ndata: {\"error\":\"internal server error\"}") {
+		t.Fatalf("stream did not end with an error event:\n%s", body)
+	}
+}
+
+// Titling runs after the answer; a rename the user made while the answer was
+// streaming is newer than the snapshot the turn started from and must win.
+func TestStreamMessageKeepsRenameMadeDuringStream(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			title:       "Generated",
+			afterStream: func() { store.thread.Title = "Mine" },
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if store.thread.Title != "Mine" {
+		t.Fatalf("thread title = %q, want the rename kept", store.thread.Title)
+	}
+	if strings.Contains(rec.Body.String(), `"title":"Generated"`) {
+		t.Fatalf("stream announced the generated title over the rename:\n%s", rec.Body.String())
+	}
+}
+
+// The pre-answer loads (drift classification, user and project context, the
+// document chain) are independent and each may be a slow round trip; they must
+// overlap. The classifier is held open until the attached document's text has
+// been requested, which the old sequential order never reached.
+func TestPrepareTurnLoadsContextsConcurrently(t *testing.T) {
+	classifyGate := make(chan struct{})
+	fullTextEntered := make(chan struct{}, 1)
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		// A prior turn: the thread is not freshly classified, so the drift
+		// classifier runs for this message.
+		messages: []chat.Message{{ID: "m0", ThreadID: "thr_1", Role: chat.RoleUser, Content: "earlier"}},
+	}
+	docs := &fakeDocumentService{
+		doc:             rag.Document{ID: "d1", ThreadID: strPtr("thr_1"), Filename: "notes.txt", Status: rag.StatusEmbedded},
+		fullText:        "notes",
+		fullTextEntered: fullTextEntered,
+	}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs, LLM: fakeChatClient{classifyGate: classifyGate}})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Summarize","documentAttachmentIds":["d1"]}`)
+
+	done := make(chan struct{})
+	go func() {
+		srv.ServeHTTP(rec, req)
+		close(done)
+	}()
+	select {
+	case <-fullTextEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the attached document was not loaded while the drift classifier was still pending")
+	}
+	close(classifyGate)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("turn did not finish")
+	}
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "event: assistant_message") {
+		t.Fatalf("status = %d body:\n%s", rec.Code, rec.Body.String())
 	}
 }

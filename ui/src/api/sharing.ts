@@ -1,4 +1,4 @@
-import { AuthExpiredError, expectJSON } from "./http";
+import { expectJSON, expectOK } from "./http";
 import type { PublicShare, ShareInfo, ShareListItem } from "./types";
 
 // ShareNotFoundError signals a missing, disabled, or deleted share — the public
@@ -39,12 +39,7 @@ export async function disableShare(threadId: string): Promise<void> {
       method: "DELETE",
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok && response.status !== 404) {
-    throw new Error("failed to disable share");
-  }
+  await expectOK(response, "failed to disable share", [404]);
 }
 
 export async function getMyShares(): Promise<ShareListItem[]> {

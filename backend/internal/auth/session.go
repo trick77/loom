@@ -8,8 +8,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // SessionCookieName is the name of the browser cookie carrying the session
@@ -65,7 +68,7 @@ WHERE token_hash = ? AND expires_at > datetime('now')`,
 	if err != nil {
 		return Session{}, false, fmt.Errorf("lookup session: %w", err)
 	}
-	expiresAt, err := parseDBTime(expires)
+	expiresAt, err := sqlutil.ParseTime(expires)
 	if err != nil {
 		return Session{}, false, err
 	}
@@ -91,6 +94,31 @@ func (s *SessionStore) DeleteExpired(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("count deleted sessions: %w", err)
 	}
 	return deleted, nil
+}
+
+// RunJanitor deletes expired sessions every interval until ctx is done. Boot
+// runs one sweep too; this keeps a long-running server from accumulating
+// rows for sessions nobody can use any more.
+func (s *SessionStore) RunJanitor(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		deleted, err := s.DeleteExpired(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				slog.Warn("session janitor sweep failed", "err", err)
+			}
+			continue
+		}
+		if deleted > 0 {
+			slog.Info("session janitor purged expired sessions", "count", deleted)
+		}
+	}
 }
 
 // Revoke deletes the session for token.
@@ -144,12 +172,4 @@ func hashToken(token string) string {
 
 func formatTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05")
-}
-
-func parseDBTime(value string) (time.Time, error) {
-	t, err := time.ParseInLocation("2006-01-02 15:04:05", value, time.UTC)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse db time: %w", err)
-	}
-	return t, nil
 }

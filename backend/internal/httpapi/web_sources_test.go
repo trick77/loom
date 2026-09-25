@@ -27,7 +27,7 @@ func TestDeriveLabel(t *testing.T) {
 }
 
 func TestNormalizeURLDedupe(t *testing.T) {
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	// Same page, different fragment / trailing slash -> one index.
 	i1, ok1 := reg.add("https://modal.com/docs/")
 	i2, ok2 := reg.add("https://modal.com/docs#section")
@@ -70,7 +70,7 @@ func TestRelabelTavilyText(t *testing.T) {
 		"Content: Modal runs Python serverlessly.",
 	}, "\n")
 
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	out := relabelTavilyResult(raw, reg)
 
 	if !strings.Contains(out, "[1] Title: TrueFoundry") {
@@ -92,7 +92,7 @@ func TestRelabelTavilyText(t *testing.T) {
 
 func TestRelabelTavilyJSONFallback(t *testing.T) {
 	raw := `{"results":[{"title":"TrueFoundry","url":"https://truefoundry.com"},{"title":"Modal","url":"https://modal.com"}]}`
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	out := relabelTavilyResult(raw, reg)
 	if reg.len() != 2 {
 		t.Fatalf("expected 2 sources from JSON, got %d", reg.len())
@@ -104,7 +104,7 @@ func TestRelabelTavilyJSONFallback(t *testing.T) {
 
 func TestRelabelTavilyURLSweepFallback(t *testing.T) {
 	raw := "Some unstructured blob mentioning https://truefoundry.com and https://modal.com/docs here."
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	out := relabelTavilyResult(raw, reg)
 	if reg.len() != 2 {
 		t.Fatalf("expected 2 swept sources, got %d", reg.len())
@@ -125,7 +125,7 @@ func TestRelabelTavilyURLSweepFallback(t *testing.T) {
 // URL in place. This pins the reason: the citation payload changes while len() does
 // not, so a length-gated emit would leave the sidebar showing degraded data.
 func TestWebSourceCitationsReflectBackfillWithoutLengthChange(t *testing.T) {
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	// First seen as a bare fetch: no title, no favicon.
 	reg.addDetailed("https://truefoundry.com/blog", "", "", "")
 	before := webSourceCitations(reg.all())
@@ -147,7 +147,7 @@ func TestWebSourceCitationsReflectBackfillWithoutLengthChange(t *testing.T) {
 }
 
 func TestPrependURLSourceFetch(t *testing.T) {
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	out := prependURLSource("https://modal.com/docs", "The page content.", reg)
 	if !strings.HasPrefix(out, "Web source [1]: https://modal.com/docs") {
 		t.Errorf("expected fetch header, got:\n%s", out)
@@ -159,7 +159,7 @@ func TestPrependURLSourceFetch(t *testing.T) {
 
 func TestRelabelWebToolOutputObscuraNavigateThenSnapshot(t *testing.T) {
 	srv := &server{}
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	navArgs := map[string]any{"url": "https://truefoundry.com/pricing"}
 	// Navigate registers the source and arms the snapshot header.
 	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, navArgs, "navigated ok", reg)
@@ -175,7 +175,7 @@ func TestRelabelWebToolOutputObscuraNavigateThenSnapshot(t *testing.T) {
 
 func TestRelabelWebToolOutputNonWebToolIsNoop(t *testing.T) {
 	srv := &server{}
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	out := srv.relabelWebToolOutput("conversation_search", map[string]any{}, "digest", reg)
 	if out != "digest" {
 		t.Errorf("expected non-web tool output unchanged, got %q", out)
@@ -214,7 +214,7 @@ func TestRelabelTavilyTextCapturesSidebarFields(t *testing.T) {
 		"Content: TrueFoundry lets teams deploy models on Kubernetes.",
 		"Favicon: https://truefoundry.com/favicon.ico",
 	}, "\n")
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	relabelTavilyResult(raw, reg)
 	if reg.len() != 1 {
 		t.Fatalf("expected 1 source, got %d", reg.len())
@@ -233,7 +233,7 @@ func TestRelabelTavilyTextCapturesSidebarFields(t *testing.T) {
 
 func TestFetchSourceCapturesSnippet(t *testing.T) {
 	srv := &server{}
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	page := "  Modal is a serverless   platform\nfor running Python.  "
 	out := srv.relabelWebToolOutput(fetchToolName, map[string]any{"url": "https://modal.com/docs"}, page, reg)
 	if !strings.HasPrefix(out, "Web source [1]: https://modal.com/docs") {
@@ -260,7 +260,7 @@ func TestParseToolArgumentsNullIsWritableMap(t *testing.T) {
 }
 
 func TestAddDetailedBackfillsEmptyFields(t *testing.T) {
-	reg := newWebSourceRegistry()
+	reg := newWebSourceRegistryAfter(0)
 	// First seen with no detail (e.g. a bare fetch), then again with details (Tavily).
 	reg.addDetailed("https://modal.com/docs", "", "", "")
 	reg.addDetailed("https://modal.com/docs#frag", "Modal Docs", "Run Python serverlessly", "https://modal.com/fav.ico")
@@ -270,5 +270,26 @@ func TestAddDetailedBackfillsEmptyFields(t *testing.T) {
 	src := reg.all()[0]
 	if src.Title != "Modal Docs" || src.Snippet != "Run Python serverlessly" || src.Favicon != "https://modal.com/fav.ico" {
 		t.Errorf("expected backfill, got %+v", src)
+	}
+}
+
+// A navigate that failed delivered no page: it must not register a source, and
+// the snapshot that follows must not inherit a label pointing at it. Before,
+// the header armed by an earlier successful navigate was left in place, so the
+// next snapshot was labelled with the previous page's URL.
+func TestRelabelWebToolOutputFailedNavigateDisarmsSnapshotLabel(t *testing.T) {
+	srv := &server{}
+	reg := newWebSourceRegistryAfter(0)
+	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://first.example/"}, "navigated ok", reg)
+	_ = srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<first page>", reg)
+
+	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://second.example/"}, toolFailedPrefix+": timeout", reg)
+	snap := srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<whatever the browser shows now>", reg)
+
+	if strings.Contains(snap, "first.example") || strings.Contains(snap, "second.example") {
+		t.Fatalf("snapshot after a failed navigate carries a source label:\n%s", snap)
+	}
+	if reg.len() != 1 {
+		t.Fatalf("sources = %d, want only the successful navigate", reg.len())
 	}
 }

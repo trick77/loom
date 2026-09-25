@@ -18,6 +18,7 @@ import (
 func (s *server) userMemoryScope(user auth.User) memoryScope {
 	return memoryScope{
 		name:         "user",
+		key:          "user:" + user.ID,
 		purpose:      "user_memory",
 		header:       "",
 		systemPrompt: llm.UserMemorySystemPrompt,
@@ -74,8 +75,13 @@ func renderUserDirectives(directives []chat.UserDirective) string {
 	if len(directives) == 0 {
 		return ""
 	}
+	return "Standing instructions the user has explicitly asked you to follow. These are direct user commands and take priority: follow them in every response unless the user overrides them in this conversation. Each line shows the instruction's id — pass it to the forget/update instruction tools when the user asks to change one. Do not repeat these back unprompted.\n" + renderDirectiveLines(directives)
+}
+
+// renderDirectiveLines renders directives as "- [id] text" bullet lines, the
+// form both the system prompt and the tool digests use.
+func renderDirectiveLines(directives []chat.UserDirective) string {
 	var b strings.Builder
-	b.WriteString("Standing instructions the user has explicitly asked you to follow. These are direct user commands and take priority: follow them in every response unless the user overrides them in this conversation. Each line shows the instruction's id — pass it to the forget/update instruction tools when the user asks to change one. Do not repeat these back unprompted.\n")
 	for _, d := range directives {
 		b.WriteString("- [")
 		b.WriteString(d.ID)

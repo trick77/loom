@@ -1,4 +1,4 @@
-import { AuthExpiredError } from "./http";
+import { AuthExpiredError, UserFacingError } from "./http";
 import type {
   Artifact,
   Citation,
@@ -9,7 +9,7 @@ import type {
   ToolResultEvent,
 } from "./types";
 
-type StreamHandlers = {
+export type StreamHandlers = {
   onUserMessage(message: Message): void;
   onDelta(delta: string): void;
   onReasoningDelta?(delta: string): void;
@@ -26,6 +26,34 @@ type StreamHandlers = {
   // snapshot — replace, do not merge.
   onWebSources?(sources: Citation[]): void;
 };
+
+// StreamInterruptedError: the connection closed (a proxy timeout, a dropped
+// network, the server dying) before the turn reached a terminal event
+// (`assistant_message`, `done` or `error`). Whatever streamed so far is real;
+// the turn did not complete.
+export class StreamInterruptedError extends Error {
+  constructor() {
+    super("stream interrupted");
+    this.name = "StreamInterruptedError";
+  }
+}
+
+// StreamFailedError carries the server's own `error` event text, which is
+// written for the user (e.g. "image generation was not completed").
+export class StreamFailedError extends UserFacingError {
+  constructor(message: string) {
+    super(message);
+    this.name = "StreamFailedError";
+  }
+}
+
+// PayloadTooLargeError: the server refused the request body outright (413).
+export class PayloadTooLargeError extends Error {
+  constructor() {
+    super("request body too large");
+    this.name = "PayloadTooLargeError";
+  }
+}
 
 export async function streamMessage(
   threadId: string,
@@ -62,33 +90,7 @@ export async function streamMessage(
       signal,
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error(await readStreamError(response));
-  }
-  if (!response.body) {
-    throw new Error("stream response has no body");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) {
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true });
-      buffer = drainSSEBuffer(buffer, handlers);
-    }
-    buffer += decoder.decode();
-    drainSSEBuffer(buffer, handlers);
-  } finally {
-    reader.releaseLock();
-  }
+  await readSSEStream(await expectStreamResponse(response), handlers);
 }
 
 // streamIncognitoMessage runs an ephemeral turn against the stateless incognito
@@ -113,19 +115,47 @@ export async function streamIncognitoMessage(
     body: JSON.stringify(requestBody),
     signal,
   });
+  await readSSEStream(await expectStreamResponse(response), handlers);
+}
+
+// expectStreamResponse checks the HTTP status before any event is parsed: the
+// server rejects a bad send (unknown attachment, oversized body) with a plain
+// error response, never inside the event stream.
+async function expectStreamResponse(
+  response: Response,
+): Promise<ReadableStream<Uint8Array>> {
   if (response.status === 401) {
     throw new AuthExpiredError();
   }
+  if (response.status === 413) {
+    throw new PayloadTooLargeError();
+  }
   if (!response.ok) {
-    throw new Error(await readStreamError(response));
+    // The server rejects a send before the stream opens with a message meant
+    // for the user (an unknown attachment, content that is too long).
+    throw new UserFacingError(await readStreamError(response));
   }
   if (!response.body) {
     throw new Error("stream response has no body");
   }
+  return response.body;
+}
 
-  const reader = response.body.getReader();
+// readSSEStream consumes the event stream until it ends. A stream that ends
+// without a terminal event is an interruption, not a completed turn: the run
+// would otherwise be dropped as if it had succeeded, taking the partial answer
+// with it and showing no error.
+async function readSSEStream(
+  body: ReadableStream<Uint8Array>,
+  handlers: StreamHandlers,
+): Promise<void> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let settled = false;
+  const dispatch = (rawEvent: string) => {
+    if (dispatchSSEEvent(rawEvent, handlers)) settled = true;
+  };
   try {
     for (;;) {
       const { value, done } = await reader.read();
@@ -133,12 +163,21 @@ export async function streamIncognitoMessage(
         break;
       }
       buffer += decoder.decode(value, { stream: true });
-      buffer = drainSSEBuffer(buffer, handlers);
+      buffer = drainSSEBuffer(buffer, dispatch);
     }
     buffer += decoder.decode();
-    drainSSEBuffer(buffer, handlers);
+    drainSSEBuffer(buffer, dispatch);
   } finally {
+    if (!settled) {
+      // Whether the server threw an error event mid-stream or the loop is
+      // unwinding for another reason, tell the body we are done with it so the
+      // connection is released instead of lingering until GC.
+      await reader.cancel().catch(() => {});
+    }
     reader.releaseLock();
+  }
+  if (!settled) {
+    throw new StreamInterruptedError();
   }
 }
 
@@ -154,18 +193,27 @@ async function readStreamError(response: Response): Promise<string> {
   return "failed to stream message";
 }
 
-function drainSSEBuffer(buffer: string, handlers: StreamHandlers): string {
+// drainSSEBuffer dispatches every complete event in buffer and returns the
+// unfinished remainder. Line endings are normalised first: the spec allows
+// CRLF, and a proxy may rewrite them.
+function drainSSEBuffer(
+  buffer: string,
+  dispatch: (rawEvent: string) => void,
+): string {
+  buffer = buffer.replace(/\r\n/g, "\n");
   let separator = buffer.indexOf("\n\n");
   while (separator !== -1) {
     const rawEvent = buffer.slice(0, separator);
     buffer = buffer.slice(separator + 2);
-    dispatchSSEEvent(rawEvent, handlers);
+    dispatch(rawEvent);
     separator = buffer.indexOf("\n\n");
   }
   return buffer;
 }
 
-function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
+// dispatchSSEEvent routes one event to its handler and reports whether it was
+// a terminal event for the turn.
+function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers): boolean {
   let event = "";
   const dataLines: string[] = [];
   for (const line of rawEvent.split("\n")) {
@@ -176,7 +224,7 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
     }
   }
   if (event === "" || dataLines.length === 0) {
-    return;
+    return false;
   }
   const payload = JSON.parse(dataLines.join("\n")) as unknown;
   switch (event) {
@@ -194,7 +242,7 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       break;
     case "assistant_message":
       handlers.onAssistantMessage(payload as Message);
-      break;
+      return true;
     case "thread":
       handlers.onThread(payload as Thread);
       break;
@@ -219,8 +267,11 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers) {
       handlers.onWebSources?.((payload as { sources: Citation[] }).sources);
       break;
     case "done":
-      break;
+      return true;
     case "error":
-      throw new Error((payload as { error?: string }).error ?? "stream failed");
+      throw new StreamFailedError(
+        (payload as { error?: string }).error ?? "stream failed",
+      );
   }
+  return false;
 }

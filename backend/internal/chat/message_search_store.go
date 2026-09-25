@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // defaultMessageSearchLimit caps how many full-text hits SearchMessages returns
@@ -190,7 +192,7 @@ WHERE message_fts MATCH ?
 			hit.ProjectID = &id
 		}
 		hit.Role = Role(role)
-		hit.CreatedAt, err = parseSQLiteTime(createdAt)
+		hit.CreatedAt, err = sqlutil.ParseTime(createdAt)
 		if err != nil {
 			return nil, fmt.Errorf("parse hit created_at: %w", err)
 		}

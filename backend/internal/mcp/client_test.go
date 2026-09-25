@@ -449,27 +449,111 @@ func TestScrubURLErrorRemovesCredentials(t *testing.T) {
 	}
 }
 
+// runMCPTestHelper is the stdio MCP server the tests spawn as a child process
+// (the test binary re-invoked with BACKEND_MCP_TEST_HELPER=1). Like a real
+// server it refuses every method until it has seen initialize on THIS process,
+// so a client that restarts the process without re-initializing is caught.
+// BACKEND_MCP_HELPER_EXTRA_TOOL=1 advertises a second tool for allowlist
+// tests, and a tools/call with text "hang" never answers, so a caller can
+// cancel mid-call.
 func runMCPTestHelper(t *testing.T) {
 	t.Helper()
 	scanner := bufio.NewScanner(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
+	initialized := false
 	for scanner.Scan() {
 		var req rpcRequest
 		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
 			t.Fatalf("helper decode: %v", err)
 		}
+		if req.Method != "initialize" && !initialized {
+			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32002, "message": "server not initialized"}})
+			continue
+		}
 		switch req.Method {
 		case "initialize":
+			// Servers built on the reference SDKs refuse a second handshake.
+			if initialized {
+				_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32600, "message": "server already initialized"}})
+				continue
+			}
+			initialized = true
 			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"protocolVersion": "2025-06-18"}})
 		case "tools/list":
-			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{
-				"tools": []map[string]any{{"name": "echo", "description": "Echo", "inputSchema": map[string]any{"type": "object"}}},
-			}})
+			tools := []map[string]any{{"name": "echo", "description": "Echo", "inputSchema": map[string]any{"type": "object"}}}
+			if os.Getenv("BACKEND_MCP_HELPER_EXTRA_TOOL") == "1" {
+				tools = append(tools, map[string]any{"name": "secret", "description": "Not allowed", "inputSchema": map[string]any{"type": "object"}})
+			}
+			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"tools": tools}})
 		case "tools/call":
+			if args, ok := req.Params.(map[string]any); ok {
+				if inner, ok := args["arguments"].(map[string]any); ok && inner["text"] == "hang" {
+					time.Sleep(10 * time.Second)
+					continue
+				}
+			}
 			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{
 				"content": []map[string]any{{"type": "text", "text": "echo result"}},
 			}})
 		}
+	}
+}
+
+// A cancelled call kills the shared process; the next call starts a new one,
+// which must be initialized again or every request to it fails.
+func TestStdioClientReinitializesAfterCancel(t *testing.T) {
+	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
+		runMCPTestHelper(t)
+		return
+	}
+	client := NewStdioClient("local", ServerConfig{
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestStdioClientReinitializesAfterCancel"},
+		Env:       map[string]string{"BACKEND_MCP_TEST_HELPER": "1"},
+	})
+	defer client.Close()
+
+	if _, err := client.ListTools(context.Background()); err != nil {
+		t.Fatalf("first ListTools() error: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := client.CallTool(ctx, "echo", map[string]any{"text": "hang"}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CallTool(hang) error = %v, want deadline exceeded", err)
+	}
+
+	tools, err := client.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("ListTools() after cancel error: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "local__echo" {
+		t.Fatalf("tools after cancel = %#v", tools)
+	}
+}
+
+// The per-server allowlist applied to HTTP servers only; a stdio server
+// exposed every tool it advertised.
+func TestStdioClientAllowlistFiltersTools(t *testing.T) {
+	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
+		runMCPTestHelper(t)
+		return
+	}
+	client := NewStdioClient("local", ServerConfig{
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestStdioClientAllowlistFiltersTools"},
+		Env:       map[string]string{"BACKEND_MCP_TEST_HELPER": "1", "BACKEND_MCP_HELPER_EXTRA_TOOL": "1"},
+		Tools:     []string{"echo"},
+	})
+	defer client.Close()
+
+	tools, err := client.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("ListTools() error: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "local__echo" {
+		t.Fatalf("tools = %#v, want only local__echo", tools)
 	}
 }
 
@@ -515,3 +599,47 @@ func TestStdioClientCallHonorsContextAndCloseDoesNotDeadlock(t *testing.T) {
 }
 
 var _ = exec.Command
+
+// The failure reason is shown to the user in the /mcp panel; a remote body can
+// echo request headers or tokens, so it never travels in the error text.
+func TestMCPStatusErrorDoesNotEchoRemoteBody(t *testing.T) {
+	err := &mcpStatusError{method: "tools/list", status: 502, body: "<html>secret token abc123</html>"}
+	msg := err.Error()
+	if strings.Contains(msg, "secret") || strings.Contains(msg, "abc123") {
+		t.Fatalf("Error() = %q echoes the remote body", msg)
+	}
+	if !strings.Contains(msg, "502") || !strings.Contains(msg, "tools/list") {
+		t.Fatalf("Error() = %q, want the method and status", msg)
+	}
+}
+
+// Two turns reaching a stdio server at once right after boot must share one
+// handshake: the initialized flag was checked outside the lock, so both sent
+// "initialize" and the second one failed on a healthy process.
+func TestStdioClientInitializesOnceUnderConcurrentFirstCalls(t *testing.T) {
+	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
+		runMCPTestHelper(t)
+		return
+	}
+	client := NewStdioClient("local", ServerConfig{
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestStdioClientInitializesOnceUnderConcurrentFirstCalls"},
+		Env:       map[string]string{"BACKEND_MCP_TEST_HELPER": "1"},
+	})
+	defer client.Close()
+
+	const callers = 4
+	errs := make(chan error, callers)
+	for range callers {
+		go func() {
+			_, err := client.ListTools(context.Background())
+			errs <- err
+		}()
+	}
+	for range callers {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent first ListTools() error: %v", err)
+		}
+	}
+}

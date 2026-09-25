@@ -67,7 +67,7 @@ func TestLoadEditSourceImage_reportsSourceDimensions(t *testing.T) {
 		}}},
 	}
 
-	src, ok, err := s.loadEditSourceImage(context.Background(), userID, "t1", "art_1")
+	src, ok, err := s.loadEditSourceImage(context.Background(), userID, "art_1")
 	if err != nil || !ok {
 		t.Fatalf("loadEditSourceImage() ok=%v err=%v", ok, err)
 	}
@@ -117,7 +117,7 @@ func TestLoadEditSourceImage_undecodableHasUnknownDimensions(t *testing.T) {
 		}}},
 	}
 
-	src, ok, err := s.loadEditSourceImage(context.Background(), userID, "t1", "art_1")
+	src, ok, err := s.loadEditSourceImage(context.Background(), userID, "art_1")
 	if err != nil {
 		t.Fatalf("loadEditSourceImage() error = %v", err)
 	}

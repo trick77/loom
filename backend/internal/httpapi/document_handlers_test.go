@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
@@ -29,6 +30,12 @@ type fakeDocumentService struct {
 	artifactsInUse      []string
 	artifactsInUseErr   error
 	inUseQueriedThreads []string
+	unindexErr          error
+	// fullTextEntered, when set, is signalled (non-blocking) when FullText runs.
+	fullTextEntered chan struct{}
+	deleteErr       error
+	// indexCalls, when set, receives the id of every document Index runs for.
+	indexCalls chan string
 }
 
 func (f *fakeDocumentService) Upload(_ context.Context, in documents.UploadInput) (rag.Document, artifact.Artifact, error) {
@@ -45,11 +52,22 @@ func (f *fakeDocumentService) Get(context.Context, string, string) (rag.Document
 	return f.doc, true, nil
 }
 func (f *fakeDocumentService) FullText(context.Context, string, string) (string, error) {
+	if f.fullTextEntered != nil {
+		select {
+		case f.fullTextEntered <- struct{}{}:
+		default:
+		}
+	}
 	return f.fullText, f.fullTextErr
 }
-func (f *fakeDocumentService) Index(context.Context, string, string) error   { return nil }
-func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return nil }
-func (f *fakeDocumentService) Delete(context.Context, string, string) error  { return nil }
+func (f *fakeDocumentService) Index(_ context.Context, _, documentID string) error {
+	if f.indexCalls != nil {
+		f.indexCalls <- documentID
+	}
+	return nil
+}
+func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return f.unindexErr }
+func (f *fakeDocumentService) Delete(context.Context, string, string) error  { return f.deleteErr }
 func (f *fakeDocumentService) DeleteThreadData(_ context.Context, _ string, threadID string) error {
 	f.deletedThreadData = append(f.deletedThreadData, threadID)
 	return f.deleteDataErr
@@ -210,5 +228,53 @@ func TestToDocumentResponse_setsDownloadURLFromArtifact(t *testing.T) {
 	noArt := toDocumentResponse(rag.Document{ID: "d2", Filename: "notes.md"})
 	if noArt.DownloadURL != "" {
 		t.Errorf("DownloadURL = %q, want empty when no artifact", noArt.DownloadURL)
+	}
+}
+
+// While an ingest runs, unindex and delete are refused with a 409 so the client
+// keeps polling instead of racing the running chunk writes.
+func TestHandleUnindexAndDeleteDocument_conflictWhileIndexing(t *testing.T) {
+	svc := &fakeDocumentService{
+		doc:        rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusExtracting},
+		unindexErr: documents.ErrIndexInProgress,
+		deleteErr:  documents.ErrIndexInProgress,
+	}
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
+	for _, req := range []*http.Request{
+		authenticatedRequest(http.MethodPost, "/api/documents/d1/unindex", ""),
+		authenticatedRequest(http.MethodDelete, "/api/documents/d1", ""),
+	} {
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("%s %s status = %d, want 409; body=%s", req.Method, req.URL.Path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// The ingest runs in the background group, not on a bare goroutine: a panic
+// in it is recovered and shutdown drains it before the database closes.
+func TestHandleIndexDocument_runsIngestInBackgroundGroup(t *testing.T) {
+	svc := &fakeDocumentService{
+		doc:        rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusPending},
+		indexCalls: make(chan string, 1),
+	}
+	bg := NewBackground(context.Background())
+	server := newAuthenticatedServer(t, Deps{Documents: svc, Background: bg})
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/documents/d1/index", ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if err := bg.Stop(time.Second); err != nil {
+		t.Fatalf("Stop() error = %v (the ingest was not tracked by the group)", err)
+	}
+	select {
+	case id := <-svc.indexCalls:
+		if id != "d1" {
+			t.Fatalf("indexed %q, want d1", id)
+		}
+	default:
+		t.Fatal("Index was not run")
 	}
 }

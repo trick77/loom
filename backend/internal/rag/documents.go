@@ -30,11 +30,17 @@ func scanDocument(row interface{ Scan(...any) error }) (Document, error) {
 	if err := row.Scan(&d.ID, &d.UserID, &d.ProjectID, &d.ThreadID, &d.ArtifactID, &d.VolumeRelpath, &d.Filename, &d.MIME, &d.SizeBytes, &d.Status, &d.Error, &createdAt, &embeddedAt); err != nil {
 		return Document{}, err
 	}
-	d.CreatedAt, _ = time.Parse(time.DateTime, createdAt)
+	created, err := time.Parse(time.DateTime, createdAt)
+	if err != nil {
+		return Document{}, fmt.Errorf("parse document created_at %q: %w", createdAt, err)
+	}
+	d.CreatedAt = created
 	if embeddedAt.Valid {
-		if t, err := time.Parse(time.DateTime, embeddedAt.String); err == nil {
-			d.EmbeddedAt = &t
+		t, err := time.Parse(time.DateTime, embeddedAt.String)
+		if err != nil {
+			return Document{}, fmt.Errorf("parse document embedded_at %q: %w", embeddedAt.String, err)
 		}
+		d.EmbeddedAt = &t
 	}
 	return d, nil
 }

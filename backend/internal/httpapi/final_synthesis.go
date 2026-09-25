@@ -146,9 +146,9 @@ func truncateHead(s string, keep int) string {
 	}
 	body := keep - len(truncationMarker)
 	if body <= 0 {
-		return strings.ToValidUTF8(s[:keep], "")
+		return truncateBytesOnRuneBoundary(s, keep)
 	}
-	return strings.ToValidUTF8(s[:body], "") + truncationMarker
+	return truncateBytesOnRuneBoundary(s, body) + truncationMarker
 }
 
 // webSourceIndexBlock renders the complete list of gathered sources as a compact

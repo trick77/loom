@@ -14,18 +14,6 @@ import (
 	"golang.org/x/text/language/display"
 )
 
-// messageMetricsFromTurn builds the persisted per-message stats. Model, reasoning
-// effort, and reasoning content describe the final answer call (result), while
-// usage and duration cover the whole turn: usage is the sum across every model
-// call (answer turns, tool rounds, and the reasoning/thread-title helpers) and
-// duration is the turn's wall-clock. ContextTokens is the exception — it is the
-// final answer call's own model-reported total_tokens (result.Usage), the true
-// context size of that single generation, kept separate from the accumulated
-// usage so the UI can report context-window occupancy without double-counting.
-func messageMetricsFromTurn(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration) chat.MessageTokenUsage {
-	return messageMetricsWithCost(result, usage, duration, 0, false)
-}
-
 // messageMetricsWithCost is messageMetricsFromTurn plus the turn's summed cost;
 // priced false leaves it NULL rather than recording a free-looking zero.
 func messageMetricsWithCost(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration, costNanoUSD int64, priced bool) chat.MessageTokenUsage {
@@ -127,7 +115,11 @@ const titleSourceLimit = 2000
 // a truncation, or a script drift). The stored title is then left alone rather
 // than replaced by a placeholder, so the thread keeps the message it was created
 // with instead of going blank.
-func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, userMessage, assistantMessage string) error {
+// generateAndSendThreadTitle names the thread from the turn and announces it on
+// the stream. expectedTitle is the title the turn started from: the update is a
+// compare-and-set against it, so a rename made while the answer streamed wins
+// and no thread event is sent for the discarded generated title.
+func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, expectedTitle, userMessage, assistantMessage string) error {
 	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
 	requestCtx, cancelTitle := context.WithTimeout(requestCtx, turnGateTimeout)
 	defer cancelTitle()
@@ -142,14 +134,14 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	if strings.TrimSpace(title) == "" {
 		return nil
 	}
-	// Model-written, not user-written: capitalize it here, since UpdateThread
+	// Model-written, not user-written: capitalize it here, since the store
 	// leaves a title exactly as it was handed over (a rename must stick).
 	title = chat.CapitalizeThreadTitle(chat.NormalizeThreadTitle(title))
-	thread, found, err := s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Title: &title})
+	thread, updated, err := s.thread.SetThreadTitleIfUnchanged(persistCtx, user.ID, threadID, expectedTitle, title)
 	if err != nil {
 		return err
 	}
-	if !found {
+	if !updated {
 		return nil
 	}
 	// A newly-titled thread in a project changes the project's titled-thread set, so
@@ -162,40 +154,31 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 }
 
 func buildLLMHistory(user auth.User, toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
-	systemContent := systemPromptForUser(user, time.Now())
 	// Tool guidance (e.g. the file-creation guardrail) travels with the tools it
 	// describes: it is passed non-empty only when those tools are offered this
 	// turn, so the prompt never names a tool that was gated out of the request.
-	if strings.TrimSpace(toolGuidance) != "" {
-		systemContent += "\n\n" + toolGuidance
+	// The blocks keep this order; an empty one is skipped.
+	systemContent := systemPromptForUser(user, time.Now())
+	for _, block := range []string{toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext} {
+		if strings.TrimSpace(block) != "" {
+			systemContent += "\n\n" + block
+		}
 	}
-	if strings.TrimSpace(classifierContext) != "" {
-		systemContent += "\n\n" + classifierContext
-	}
-	if strings.TrimSpace(userContext) != "" {
-		systemContent += "\n\n" + userContext
-	}
-	if strings.TrimSpace(projectContext) != "" {
-		systemContent += "\n\n" + projectContext
-	}
-	if strings.TrimSpace(knowledgeContext) != "" {
-		systemContent += "\n\n" + knowledgeContext
-	}
-	if strings.TrimSpace(documentContext) != "" {
-		systemContent += "\n\n" + documentContext
-	}
+	return buildHistory(systemContent, messages, newUserMessage)
+}
+
+// buildHistory is the model history every chat turn sends: the system prompt,
+// the prior user and assistant turns (tool rows are not replayed), then the
+// new user message.
+func buildHistory(systemContent string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	history := []llm.Message{{Role: "system", Content: systemContent}}
 	for _, message := range messages {
 		switch message.Role {
 		case chat.RoleUser, chat.RoleAssistant:
-			history = append(history, llm.Message{
-				Role:    string(message.Role),
-				Content: message.Content,
-			})
+			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
 		}
 	}
-	history = append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
-	return history
+	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
 }
 
 // incognitoSystemPrompt is the system prompt for a tool-free incognito turn. Unlike
@@ -220,15 +203,7 @@ func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
 // user message. It reads no persisted memory or context (mirroring the "not added to
 // memory" promise on the read side too).
 func buildIncognitoHistory(user auth.User, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
-	history := []llm.Message{{Role: "system", Content: incognitoSystemPromptForUser(user, time.Now())}}
-	for _, message := range messages {
-		switch message.Role {
-		case chat.RoleUser, chat.RoleAssistant:
-			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
-		}
-	}
-	history = append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
-	return history
+	return buildHistory(incognitoSystemPromptForUser(user, time.Now()), messages, newUserMessage)
 }
 
 func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {

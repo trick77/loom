@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { ThreadsPage } from "./ThreadsPage";
+import { ThreadsPage } from "./chats/ThreadsPage";
 import * as api from "./api";
 import type { Thread } from "./api";
 

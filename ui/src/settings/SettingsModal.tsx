@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Icon, type IconName } from "../chat/Icon";
 import { SharedChatsPanel } from "./SharedChatsPanel";
 import { UsagePanel } from "./UsagePanel";
+import { useEscapeKey } from "../chat/useEscapeKey";
 
 type SettingsSection = "usage" | "shares";
 
@@ -20,13 +21,7 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
   const { t } = useTranslation();
   const [section, setSection] = useState<SettingsSection>("usage");
 
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   return (
     <div

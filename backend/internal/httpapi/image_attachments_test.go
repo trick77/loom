@@ -51,7 +51,7 @@ func TestImageContentParts_acceptsArtifactFromDifferentThread(t *testing.T) {
 		}}},
 	}
 
-	parts, err := s.imageContentParts(context.Background(), userID, "new-thread", "describe this", []string{"art_1"})
+	parts, err := s.imageContentParts(context.Background(), userID, "describe this", []string{"art_1"})
 	if err != nil {
 		t.Fatalf("cross-thread image attachment must be accepted, got error: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestImageContentParts_rejectsForeignUserArtifact(t *testing.T) {
 		}}},
 	}
 
-	if _, err := s.imageContentParts(context.Background(), caller, "t1", "x", []string{"art_1"}); err == nil {
+	if _, err := s.imageContentParts(context.Background(), caller, "x", []string{"art_1"}); err == nil {
 		t.Fatal("foreign-user artifact must not resolve as an image attachment")
 	}
 }

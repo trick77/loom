@@ -1,4 +1,4 @@
-.PHONY: build test coverage coverage-gate backend-coverage fe-build fe-test fe-coverage run dev refresh docker-dev docker-dev-down tidy
+.PHONY: build test coverage coverage-gate backend-coverage fe-build fe-test fe-lint fe-coverage run dev refresh docker-dev docker-dev-down tidy
 
 tidy:
 	cd backend && go mod tidy
@@ -41,6 +41,12 @@ backend-coverage:
 
 fe-test:
 	cd ui && npm run test -- --run
+
+# oxlint rather than ESLint: typescript-eslint does not support the
+# TypeScript 7 release the UI builds with, and oxlint parses TypeScript
+# natively with the same rules-of-hooks / exhaustive-deps checks.
+fe-lint:
+	cd ui && npm run lint
 
 fe-coverage:
 	cd ui && npm run test:coverage

@@ -1,4 +1,10 @@
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/react";
+
+// The chat shell and the secondary views are lazy chunks. Their first import
+// in a test file can take longer than Testing Library's default one-second
+// findBy/waitFor timeout, most visibly under coverage instrumentation in CI.
+configure({ asyncUtilTimeout: 5000 });
 
 // Initialize the i18n singleton for every test, mirroring runtime where main.tsx
 // imports it before any component renders. Without this, components using

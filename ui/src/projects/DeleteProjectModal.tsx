@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import type { Project } from "../api";
+import { useEscapeKey } from "../chat/useEscapeKey";
 import {
   modalCancelButtonClass,
   modalDangerButtonClass,
@@ -19,6 +20,7 @@ export function DeleteProjectModal({
   onCancel(): void;
   onDelete(): void;
 }) {
+  useEscapeKey(onCancel);
   const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px]">

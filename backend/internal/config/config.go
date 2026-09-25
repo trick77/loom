@@ -3,9 +3,11 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -117,11 +119,18 @@ type Config struct {
 	// no-op. See mcp.LoadServersFromFile.
 	MCPServersFile string
 
-	AdminInitialPassword string // legacy; the OIDC provider owns credentials in Phase 2
-	SessionSecret        string
-	AuthMode             AuthMode
-	OIDC                 OIDCConfig
-	DevUser              DevUserConfig
+	// SessionSecret is required but currently reserved: sessions are random
+	// tokens stored hashed, so nothing derives from it yet. Wiring it into the
+	// token hash would invalidate every live session, which is a deliberate,
+	// separate change; requiring it now keeps deployments ready for that.
+	SessionSecret string
+	// SessionTTL is how long a login stays valid. Group membership and the
+	// admin role are recomputed at login, so this bounds how long a revoked
+	// group membership keeps working.
+	SessionTTL time.Duration
+	AuthMode   AuthMode
+	OIDC       OIDCConfig
+	DevUser    DevUserConfig
 }
 
 // OIDCConfig holds OpenID Connect settings.
@@ -150,6 +159,9 @@ func env(key, def string) string {
 	return def
 }
 
+// defaultSessionTTL is the login lifetime when BACKEND_SESSION_TTL is unset.
+const defaultSessionTTL = 30 * 24 * time.Hour
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
@@ -171,7 +183,6 @@ func Load() (Config, error) {
 		TavilyAPIKey:            env("BACKEND_TAVILY_API_KEY", ""),
 		ObscuraMCPURL:           env("BACKEND_OBSCURA_MCP_URL", ""),
 		MCPServersFile:          env("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
-		AdminInitialPassword:    env("BACKEND_ADMIN_INITIAL_PASSWORD", ""),
 		SessionSecret:           env("BACKEND_SESSION_SECRET", ""),
 		AuthMode:                AuthMode(env("BACKEND_AUTH_MODE", "")),
 		OIDC: OIDCConfig{
@@ -223,11 +234,28 @@ func Load() (Config, error) {
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
 	}
+	sessionTTL, err := time.ParseDuration(env("BACKEND_SESSION_TTL", defaultSessionTTL.String()))
+	if err != nil || sessionTTL <= 0 {
+		return Config{}, fmt.Errorf("BACKEND_SESSION_TTL must be a duration greater than 0")
+	}
+	cfg.SessionTTL = sessionTTL
+	if strings.TrimSpace(cfg.DBPath) == "" {
+		return Config{}, fmt.Errorf("BACKEND_DB_PATH is required")
+	}
+	if !filepath.IsAbs(cfg.UsersDir) {
+		return Config{}, fmt.Errorf("BACKEND_USERS_DIR must be an absolute path")
+	}
+	if cfg.PublicURL != "" && !isAbsoluteHTTPURL(cfg.PublicURL) {
+		return Config{}, fmt.Errorf("BACKEND_PUBLIC_URL must be an absolute http(s) URL")
+	}
 	if cfg.AuthMode == AuthModeNone && cfg.OIDC.Issuer != "" {
 		cfg.AuthMode = AuthModeOIDC
 	}
 	switch cfg.AuthMode {
 	case AuthModeNone:
+		// No mode and no issuer to infer one from: the server would boot with
+		// no way to sign in. Fail loudly instead.
+		return Config{}, fmt.Errorf("BACKEND_AUTH_MODE is required (one of: oidc, dev)")
 	case AuthModeOIDC:
 		if cfg.OIDC.Issuer == "" {
 			return Config{}, fmt.Errorf("BACKEND_OIDC_ISSUER is required when BACKEND_AUTH_MODE=oidc")
@@ -241,6 +269,9 @@ func Load() (Config, error) {
 		if cfg.OIDC.RedirectURL == "" {
 			return Config{}, fmt.Errorf("BACKEND_OIDC_REDIRECT_URL is required when BACKEND_OIDC_ISSUER is set")
 		}
+		if strings.TrimSpace(cfg.OIDC.AdminGroup) == "" {
+			slog.Warn("BACKEND_OIDC_ADMIN_GROUP is empty: no OIDC login will be granted the admin role")
+		}
 	case AuthModeDev:
 		if err := validateDevAuthLocalOnly(cfg); err != nil {
 			return Config{}, err
@@ -249,8 +280,8 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("BACKEND_AUTH_MODE must be one of: oidc, dev")
 	}
 	if cfg.ImageGenAPIKey != "" {
-		if cfg.ImageGenBaseURL == "" {
-			return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_BASE_URL is required when BACKEND_IMAGE_GEN_API_KEY is set")
+		if !isAbsoluteHTTPURL(cfg.ImageGenBaseURL) {
+			return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_BASE_URL must be an absolute http(s) URL when BACKEND_IMAGE_GEN_API_KEY is set")
 		}
 		if cfg.ImageGenModel == "" {
 			return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_MODEL is required when BACKEND_IMAGE_GEN_API_KEY is set")
@@ -291,4 +322,13 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// isAbsoluteHTTPURL reports whether raw parses as an http(s) URL with a host.
+func isAbsoluteHTTPURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
 }

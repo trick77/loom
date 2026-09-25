@@ -21,7 +21,7 @@ func TestResolveSentAttachments_resolvesImageAndScopedDocument(t *testing.T) {
 	}
 	thread := chat.Thread{ID: "t1"}
 
-	raw := s.resolveSentAttachments(context.Background(), "u1", thread, []string{"art_1"}, []string{"d1"})
+	raw := s.resolveSentAttachments(context.Background(), "u1", thread, []string{"art_1"}, []string{"d1"}, nil)
 
 	var got []chat.MessageAttachment
 	if err := json.Unmarshal(raw, &got); err != nil {
@@ -51,7 +51,7 @@ func TestResolveSentAttachments_skipsForeignUserArtifact(t *testing.T) {
 		}},
 	}
 
-	raw := s.resolveSentAttachments(context.Background(), "u1", chat.Thread{ID: "t1"}, []string{"art_1"}, nil)
+	raw := s.resolveSentAttachments(context.Background(), "u1", chat.Thread{ID: "t1"}, []string{"art_1"}, nil, nil)
 
 	if string(raw) != "[]" {
 		t.Fatalf("foreign artifact must not attach, got %s", raw)
@@ -65,7 +65,7 @@ func TestResolveSentAttachments_skipsOutOfScopeDocument(t *testing.T) {
 		}},
 	}
 
-	raw := s.resolveSentAttachments(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, []string{"d1"})
+	raw := s.resolveSentAttachments(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, []string{"d1"}, nil)
 
 	if string(raw) != "[]" {
 		t.Fatalf("out-of-scope document must not attach, got %s", raw)
@@ -74,7 +74,7 @@ func TestResolveSentAttachments_skipsOutOfScopeDocument(t *testing.T) {
 
 func TestResolveSentAttachments_emptyWhenNoIDs(t *testing.T) {
 	s := &server{}
-	raw := s.resolveSentAttachments(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, nil)
+	raw := s.resolveSentAttachments(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, nil, nil)
 	if string(raw) != "[]" {
 		t.Fatalf("want [], got %s", raw)
 	}

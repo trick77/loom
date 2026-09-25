@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// retrieveOverfetchFactor is how many more neighbours than k the vector search
+// asks for, to leave room for the status filter applied afterwards.
+const retrieveOverfetchFactor = 3
+
 // Retrieve returns up to k chunks most similar to queryEmbedding, scoped to the
 // user and the thread's knowledge scope: every thread sees user-global chunks; a
 // project thread (projectID != nil) also sees that project's chunks; and a thread
@@ -40,7 +44,10 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 		ORDER BY v.distance`
 	query := queryPrefix + placeholders + querySuffix //nolint:gosec // only the ?-placeholder list is interpolated, sized from len(scopes); every value is bound
 
-	args := []any{vecLiteral(queryEmbedding), k, userID}
+	// The status filter runs after the nearest-neighbour search: asking vec0 for
+	// exactly k neighbours and then dropping the ones whose document is still
+	// indexing returned fewer than k. Over-fetch, then trim to k below.
+	args := []any{vecLiteral(queryEmbedding), k * retrieveOverfetchFactor, userID}
 	for _, sc := range scopes {
 		args = append(args, sc)
 	}
@@ -58,5 +65,11 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 		}
 		out = append(out, rc)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) > k {
+		out = out[:k]
+	}
+	return out, nil
 }

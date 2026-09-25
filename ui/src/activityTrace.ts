@@ -409,7 +409,7 @@ function stripReasoningLeadIn(value: string): string {
   return value
     .replace(/^(?:i|we)\s+should\s+compare\s+/i, "compared ")
     .replace(
-      /^(?:i|we)\s+(?:should|need to|will|can|must|am going to|\'ll)\s+/i,
+      /^(?:i|we)\s+(?:should|need to|will|can|must|am going to|'ll)\s+/i,
       "",
     )
     .replace(/^let(?:'s| us)\s+/i, "")

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Project, Thread } from "../api";
@@ -17,6 +17,10 @@ import { SidebarOpenButton } from "../SidebarOpenButton";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
 import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel";
+import {
+  insideSelector,
+  useOutsidePointerDown,
+} from "../chat/useOutsidePointerDown";
 
 export function ProjectDetailPage({
   project,
@@ -27,6 +31,7 @@ export function ProjectDetailPage({
   sendDisabled = false,
   openThreadMenuID,
   onBack,
+  onSessionExpired,
   onDraftChange,
   pastedTexts,
   onAddPastedText,
@@ -55,6 +60,7 @@ export function ProjectDetailPage({
   sendDisabled?: boolean;
   openThreadMenuID: string | null;
   onBack(): void;
+  onSessionExpired?(): void;
   onDraftChange(value: string): void;
   pastedTexts: PastedText[];
   onAddPastedText(text: string): void;
@@ -102,17 +108,11 @@ export function ProjectDetailPage({
     onSend(sentAttachments);
   };
 
-  useEffect(() => {
-    if (openThreadMenuID !== projectMenuKey) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest("[data-project-detail-menu-root]") !== null) return;
-      onCloseThreadMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [onCloseThreadMenu, openThreadMenuID, projectMenuKey]);
+  useOutsidePointerDown(
+    openThreadMenuID === projectMenuKey,
+    insideProjectDetailMenu,
+    onCloseThreadMenu,
+  );
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -310,7 +310,10 @@ export function ProjectDetailPage({
             </ul>
           </div>
           <aside className="flex w-full flex-col gap-4">
-            <ProjectKnowledgePanel projectId={project.id} />
+            <ProjectKnowledgePanel
+              projectId={project.id}
+              onSessionExpired={onSessionExpired}
+            />
             <ProjectMemoryPanel projectId={project.id} />
           </aside>
         </div>
@@ -318,3 +321,7 @@ export function ProjectDetailPage({
     </div>
   );
 }
+
+const insideProjectDetailMenu = insideSelector(
+  "[data-project-detail-menu-root]",
+);

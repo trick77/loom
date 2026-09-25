@@ -51,7 +51,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var body createProjectRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	project, err := s.thread.CreateProject(r.Context(), user.ID, chat.CreateProjectInput{
@@ -59,7 +59,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		Description: body.Description,
 	})
 	if err != nil {
-		writeThreadStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
+		writeStoreError(w, r, err)
 		return
 	}
 	s.recordUsage("project_created", func() error { return s.usage.IncProjectCreated(r.Context(), user.ID) })
@@ -73,12 +73,12 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var body updateProjectRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	project, found, err := s.thread.UpdateProject(r.Context(), user.ID, r.PathValue("projectID"), body.toInput())
 	if err != nil {
-		writeThreadStoreError(w, r, err, http.StatusBadRequest, "project name is required", "project name is too long", "project description is too long")
+		writeStoreError(w, r, err)
 		return
 	}
 	if !found {

@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // Store manages artifact metadata in the database.
@@ -179,42 +179,16 @@ WHERE user_id = ? AND id IN (%s)`, placeholders), args...)
 // Get retrieves an artifact by id, scoped to the user, excluding soft-deleted artifacts.
 // The returned bool indicates whether the artifact was found.
 func (s *Store) Get(ctx context.Context, userID, artifactID string) (Artifact, bool, error) {
-	var out Artifact
-	var createdAt string
-	var threadID, projectID, thumbnailRelPath sql.NullString
-	err := s.db.QueryRowContext(ctx, `
+	out, err := scanArtifact(s.db.QueryRowContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
-WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID).Scan(
-		&out.ID,
-		&out.UserID,
-		&threadID,
-		&projectID,
-		&out.DisplayFilename,
-		&out.VolumeRelPath,
-		&out.MIMEType,
-		&out.SizeBytes,
-		&out.Source,
-		&createdAt,
-		&thumbnailRelPath,
-	)
+WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Artifact{}, false, nil
 	}
 	if err != nil {
 		return Artifact{}, false, fmt.Errorf("get artifact: %w", err)
 	}
-	out.ThreadID = threadID.String
-	if projectID.Valid {
-		out.ProjectID = &projectID.String
-	}
-	out.ThumbnailRelPath = thumbnailRelPath.String
-	parsed, err := parseSQLiteTime(createdAt)
-	if err != nil {
-		return Artifact{}, false, fmt.Errorf("parse artifact created_at: %w", err)
-	}
-	out.CreatedAt = parsed
-	setArtifactURLs(&out)
 	return out, true, nil
 }
 
@@ -226,7 +200,7 @@ func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Ar
 	args := []any{userID}
 	if search := strings.TrimSpace(opts.Search); search != "" {
 		filters = append(filters, `display_filename LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+escapeLike(search)+"%")
+		args = append(args, "%"+sqlutil.EscapeLike(search)+"%")
 	}
 	switch opts.Type {
 	case ListTypeImages:
@@ -290,11 +264,6 @@ func listOrderBy(sort SortBy, order SortOrder) string {
 	}
 }
 
-func escapeLike(term string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(term)
-}
-
 // ListForProject retrieves artifacts in a project, scoped to the user.
 func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
@@ -324,52 +293,31 @@ func scanArtifacts(rows *sql.Rows) ([]Artifact, error) {
 	return artifacts, nil
 }
 
-func scanArtifact(scanner interface {
-	Scan(dest ...any) error
-}) (Artifact, error) {
-	var out Artifact
-	var createdAt string
-	var threadID, projectID, thumbnailRelPath sql.NullString
-	if err := scanner.Scan(
-		&out.ID,
-		&out.UserID,
-		&threadID,
-		&projectID,
-		&out.DisplayFilename,
-		&out.VolumeRelPath,
-		&out.MIMEType,
-		&out.SizeBytes,
-		&out.Source,
-		&createdAt,
-		&thumbnailRelPath,
-	); err != nil {
-		return Artifact{}, fmt.Errorf("scan artifact: %w", err)
-	}
-	out.ThreadID = threadID.String
-	if projectID.Valid {
-		out.ProjectID = &projectID.String
-	}
-	out.ThumbnailRelPath = thumbnailRelPath.String
-	parsed, err := parseSQLiteTime(createdAt)
-	if err != nil {
-		return Artifact{}, fmt.Errorf("parse artifact created_at: %w", err)
-	}
-	out.CreatedAt = parsed
-	setArtifactURLs(&out)
-	return out, nil
+func scanArtifact(scanner rowScanner) (Artifact, error) {
+	out, _, err := scanArtifactRow(scanner, false)
+	return out, err
 }
 
 // scanArtifactWithDeleted scans a row that also selects the deleted_at column,
 // returning the artifact plus the raw nullable deleted_at so the caller can set
 // the Deleted flag. Used by GetMany, which (unlike the other queries) must surface
 // soft-deleted rows.
-func scanArtifactWithDeleted(scanner interface {
+func scanArtifactWithDeleted(scanner rowScanner) (Artifact, sql.NullString, error) {
+	return scanArtifactRow(scanner, true)
+}
+
+// rowScanner is what *sql.Row and *sql.Rows share.
+type rowScanner interface {
 	Scan(dest ...any) error
-}) (Artifact, sql.NullString, error) {
+}
+
+// scanArtifactRow scans the artifact columns in their SELECT order, followed by
+// deleted_at when withDeleted is set, and derives the URL fields.
+func scanArtifactRow(scanner rowScanner, withDeleted bool) (Artifact, sql.NullString, error) {
 	var out Artifact
 	var createdAt string
 	var threadID, projectID, thumbnailRelPath, deletedAt sql.NullString
-	if err := scanner.Scan(
+	dest := []any{
 		&out.ID,
 		&out.UserID,
 		&threadID,
@@ -381,8 +329,11 @@ func scanArtifactWithDeleted(scanner interface {
 		&out.Source,
 		&createdAt,
 		&thumbnailRelPath,
-		&deletedAt,
-	); err != nil {
+	}
+	if withDeleted {
+		dest = append(dest, &deletedAt)
+	}
+	if err := scanner.Scan(dest...); err != nil {
 		return Artifact{}, sql.NullString{}, fmt.Errorf("scan artifact: %w", err)
 	}
 	out.ThreadID = threadID.String
@@ -390,7 +341,7 @@ func scanArtifactWithDeleted(scanner interface {
 		out.ProjectID = &projectID.String
 	}
 	out.ThumbnailRelPath = thumbnailRelPath.String
-	parsed, err := parseSQLiteTime(createdAt)
+	parsed, err := sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Artifact{}, sql.NullString{}, fmt.Errorf("parse artifact created_at: %w", err)
 	}
@@ -409,14 +360,4 @@ func setArtifactURLs(a *Artifact) {
 	if IsThumbnailableMIME(a.MIMEType) {
 		a.ThumbnailURL = "/api/artifacts/" + a.ID + "/thumbnail"
 	}
-}
-
-func parseSQLiteTime(value string) (time.Time, error) {
-	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339Nano, time.RFC3339} {
-		parsed, err := time.Parse(layout, value)
-		if err == nil {
-			return parsed, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("unsupported time format %q", value)
 }

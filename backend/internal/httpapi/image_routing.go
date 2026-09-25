@@ -139,21 +139,7 @@ func containsAnyToken(tokens []string, set map[string]bool) bool {
 // thread carries an image artifact — the precondition for silently reusing it as
 // an edit source.
 func priorConversationHasImageArtifact(messages []chat.Message) bool {
-	for _, message := range messages {
-		var artifacts []struct {
-			MIMEType      string `json:"mimeType"`
-			SnakeMIMEType string `json:"mime_type"`
-		}
-		if err := json.Unmarshal(message.Artifacts, &artifacts); err != nil {
-			continue
-		}
-		for _, item := range artifacts {
-			if strings.HasPrefix(item.MIMEType, "image/") || strings.HasPrefix(item.SnakeMIMEType, "image/") {
-				return true
-			}
-		}
-	}
-	return false
+	return latestImageArtifactID(messages) != ""
 }
 
 // latestImageArtifactID returns the id of the most recent image artifact across

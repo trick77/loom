@@ -38,8 +38,8 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var body incognitoStreamRequest
-	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSONBodyLimit(w, r, &body, maxStreamBodyBytes); err != nil {
+		writeDecodeError(w, err)
 		return
 	}
 	if strings.TrimSpace(body.Content) == "" {
@@ -75,6 +75,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	defer recoverToStream(stream, r)
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
@@ -89,15 +90,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 				"reasoning_bytes", len(assistantResult.ReasoningContent))
 			return
 		}
-		message := "stream failed"
-		var userErr streamUserError
-		switch {
-		case errors.As(err, &userErr):
-			message = userErr.message
-		case errors.Is(err, llm.ErrStreamStalled):
-			message = llm.ErrStreamStalled.Error()
-			slog.Warn("incognito stream stalled", "reasoning_bytes", len(assistantResult.ReasoningContent))
-		}
+		message := streamFailureMessage(err, assistantResult, "incognito", incognitoThreadID)
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		return
 	}
@@ -118,16 +111,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	titles.mergeInto(assistantResult.ActivityTrace)
 	titles.mergeIntoBlocks(assistantResult.Blocks)
 
-	activityTraceJSON, err := json.Marshal(assistantResult.ActivityTrace)
-	if err != nil {
-		activityTraceJSON = []byte("[]")
-	}
-	contentBlocksJSON := []byte("[]")
-	if len(assistantResult.Blocks) > 0 {
-		if encoded, marshalErr := json.Marshal(assistantResult.Blocks); marshalErr == nil {
-			contentBlocksJSON = encoded
-		}
-	}
+	activityTraceJSON, contentBlocksJSON := marshalTurnJSON(incognitoThreadID, assistantResult.ActivityTrace, assistantResult.Blocks)
 
 	assistantMessage := chat.Message{
 		ID:            "incognito-assistant",

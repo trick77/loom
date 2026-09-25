@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -44,6 +43,7 @@ const (
 // storage access, the generation header, and the system prompt.
 type memoryScope struct {
 	name         string // for logs, e.g. "project" / "user"
+	key          string // single-flight key, unique per stored memory, e.g. "project:<id>"
 	purpose      string // inference metadata purpose
 	header       string // generation header block (e.g. project name/description)
 	systemPrompt string // llm system prompt selecting the memory's style
@@ -65,6 +65,11 @@ type memoryScope struct {
 // what keeps the daily user sweep and the debounced project refresh from firing
 // on every turn.
 func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope memoryScope, minAge time.Duration) error {
+	release, ok := s.inflight.tryAcquire("memory:" + scope.key)
+	if !ok {
+		return nil
+	}
+	defer release()
 	count, err := scope.count(ctx)
 	if err != nil {
 		return err
@@ -73,11 +78,12 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	if err != nil {
 		return err
 	}
-	// Refresh on any new activity since the last refresh — a created or updated
-	// thread raises count. Zero delta is a no-op, and must short-circuit here: the
-	// window would be 0 and scope.list's limit<=0 path defaults to 200, which would
-	// rebuild from nothing.
-	if count <= sourceCount {
+	// Refresh on any change since the last refresh: new activity raises count,
+	// deleted threads lower it (and the memory may now describe conversations
+	// that no longer exist). An unchanged count is a no-op, and must
+	// short-circuit here: the window would be 0 and scope.list's limit<=0 path
+	// defaults to 200, which would rebuild from nothing.
+	if count == sourceCount {
 		return nil
 	}
 	// Debounce: skip when the memory was refreshed within minAge. A never-generated
@@ -90,7 +96,23 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	// fixed 40) avoids skipping messages when refreshes are spaced hours/days apart,
 	// up to memoryRebuildLimit — a backlog larger than that still folds only the
 	// most recent memoryRebuildLimit, but that is strictly better than the old cap.
-	window := min(count-sourceCount, memoryRebuildLimit)
+	window := count - sourceCount
+	if count < sourceCount {
+		// Messages were deleted, and the stored memory may describe them.
+		// There is no "new since last time" delta: rebuild from what is left,
+		// and clear the memory when nothing is. The prior is dropped only when
+		// the remaining transcript fits the rebuild window, so the rebuild sees
+		// all of it; past that, dropping it would lose everything older than the
+		// window, which costs more than a stale line about a deleted thread.
+		if count == 0 {
+			return scope.upsert(ctx, "", 0)
+		}
+		if count <= memoryRebuildLimit {
+			prior = ""
+		}
+		window = count
+	}
+	window = min(window, memoryRebuildLimit)
 	messages, err := scope.list(ctx, window)
 	if err != nil {
 		return err
@@ -156,8 +178,8 @@ func decodeMemoryInstruction(w http.ResponseWriter, r *http.Request) (string, bo
 	var body struct {
 		Instruction string `json:"instruction"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSONBody(w, r, &body); err != nil {
+		writeDecodeError(w, err)
 		return "", false
 	}
 	instruction := strings.TrimSpace(body.Instruction)

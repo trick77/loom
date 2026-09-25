@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/trick77/loom/internal/store"
@@ -1557,16 +1560,229 @@ func TestMessagesPersistCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Both rows share a created_at second, so the list order falls back to the
-	// random ids: match by content, not by position.
-	listed := map[string]*int64{}
-	for _, m := range messages {
-		listed[m.Content] = m.CostNanoUSD
-	}
-	if got := listed["priced"]; got == nil || *got != cost {
+	if got := messages[len(messages)-2].CostNanoUSD; got == nil || *got != cost {
 		t.Fatalf("listed priced cost = %v, want %d", got, cost)
 	}
-	if got := listed["unpriced"]; got != nil {
+	if got := messages[len(messages)-1].CostNanoUSD; got != nil {
 		t.Fatalf("listed unpriced cost = %d, want nil", *got)
 	}
+}
+
+func TestInsertMessageCapsByRole(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Caps"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	// A long answer (the forced final answer may run to 8k tokens) must persist.
+	longAnswer := strings.Repeat("a", MaxMessageContentLength+8000)
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleAssistant, longAnswer); err != nil {
+		t.Fatalf("AddMessage(assistant, %d bytes) error = %v, want nil", len(longAnswer), err)
+	}
+	// The user cap is unchanged.
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, strings.Repeat("u", MaxMessageContentLength+1)); err == nil {
+		t.Fatal("AddMessage(user, over cap) error = nil, want overlong content error")
+	}
+	// The assistant cap is generous, not unbounded.
+	if _, err := store.AddMessage(ctx, userID, thread.ID, RoleAssistant, strings.Repeat("a", MaxAssistantMessageContentLength+1)); err == nil {
+		t.Fatal("AddMessage(assistant, over cap) error = nil, want overlong content error")
+	}
+}
+
+func TestStore_SetThreadTitleIfUnchanged(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: DefaultThreadTitle})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	// Title still what the caller saw: the generated one lands.
+	updated, ok, err := store.SetThreadTitleIfUnchanged(ctx, userID, thread.ID, DefaultThreadTitle, "Generated")
+	if err != nil || !ok || updated.Title != "Generated" {
+		t.Fatalf("SetThreadTitleIfUnchanged() = %+v, %v, %v; want Generated, true, nil", updated, ok, err)
+	}
+
+	// The user renamed in between (a PATCH during a long stream): the generated
+	// title must not clobber it.
+	mine := "Mine"
+	if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{Title: &mine}); err != nil {
+		t.Fatalf("UpdateThread() error: %v", err)
+	}
+	current, ok, err := store.SetThreadTitleIfUnchanged(ctx, userID, thread.ID, "Generated", "Generated again")
+	if err != nil || ok {
+		t.Fatalf("SetThreadTitleIfUnchanged() after rename = ok %v, err %v; want false, nil", ok, err)
+	}
+	if current.Title != "Mine" {
+		t.Fatalf("title after skipped update = %q, want Mine", current.Title)
+	}
+}
+
+// created_at has one-second resolution and ids are random, so ordering by
+// (created_at, id) shuffled a question and its quick reply within the same
+// second, both in the transcript and in the history sent to the model.
+// rowid is insertion order and messages was never rebuilt, so it is exact.
+func TestStore_ListMessagesPreservesInsertionOrderWithinSameSecond(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Order"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	const pairs = 20
+	for i := range pairs {
+		if _, err := store.AddMessage(ctx, userID, thread.ID, RoleUser, fmt.Sprintf("q%d", i)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.AddMessage(ctx, userID, thread.ID, RoleAssistant, fmt.Sprintf("a%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	messages, _, err := store.ListMessages(ctx, userID, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range pairs {
+		if messages[2*i].Content != fmt.Sprintf("q%d", i) || messages[2*i+1].Content != fmt.Sprintf("a%d", i) {
+			t.Fatalf("ListMessages() pair %d = %q, %q; want q%d, a%d", i, messages[2*i].Content, messages[2*i+1].Content, i, i)
+		}
+	}
+
+	tail, err := store.ListRecentMessages(ctx, userID, thread.ID, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tail) != 3 || tail[0].Content != "a18" || tail[1].Content != "q19" || tail[2].Content != "a19" {
+		t.Fatalf("ListRecentMessages(3) = %v, want the last three in order", []string{tail[0].Content, tail[1].Content, tail[2].Content})
+	}
+}
+
+// UpdateThread was a read-then-write of the whole row: two concurrent partial
+// updates (a rename, a project move) could each write back a stale copy of
+// the other's field. Each update now touches only the fields it was given,
+// inside one transaction.
+func TestStore_UpdateThreadConcurrentPartialUpdatesKeepBoth(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "P"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Start"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	for i := range 25 {
+		title := fmt.Sprintf("Title %d", i)
+		var wantProject *string
+		if i%2 == 0 {
+			wantProject = &project.ID
+		}
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{Title: &title}); err != nil {
+				t.Errorf("UpdateThread(title) error: %v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{ProjectID: ProjectIDUpdate{Set: true, Value: wantProject}}); err != nil {
+				t.Errorf("UpdateThread(project) error: %v", err)
+			}
+		}()
+		wg.Wait()
+
+		got, _, err := store.GetThread(ctx, userID, thread.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Title != title {
+			t.Fatalf("iteration %d: title = %q, want %q (rename lost to the project move)", i, got.Title, title)
+		}
+		if (got.ProjectID == nil) != (wantProject == nil) {
+			t.Fatalf("iteration %d: project = %v, want %v (move lost to the rename)", i, got.ProjectID, wantProject)
+		}
+	}
+}
+
+func TestStore_UpdateThreadReportsMissingThread(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	title := "x"
+	if _, ok, err := store.UpdateThread(ctx, userID, "missing", UpdateThreadInput{Title: &title}); err != nil || ok {
+		t.Fatalf("UpdateThread(missing) = ok %v, err %v; want false, nil", ok, err)
+	}
+}
+
+func TestNormalizeJSONArray(t *testing.T) {
+	if got, err := normalizeJSONArray("artifacts", nil); err != nil || string(got) != "[]" {
+		t.Fatalf("nil -> %s, %v; want [] and no error", got, err)
+	}
+	if got, err := normalizeJSONArray("artifacts", json.RawMessage(`[{"id":"a"}]`)); err != nil || string(got) != `[{"id":"a"}]` {
+		t.Fatalf("valid -> %s, %v; want it back unchanged", got, err)
+	}
+	_, err := normalizeJSONArray("citations", json.RawMessage(`{not json`))
+	var verr *ValidationError
+	if !errors.As(err, &verr) || verr.Msg != "message citations must be valid JSON" {
+		t.Fatalf("invalid -> %v, want a validation error naming the column", err)
+	}
+}
+
+func TestStore_ListRecentMessagesForThreadsKeepsPerThreadTailInOrder(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	a, _ := store.CreateThread(ctx, userID, CreateThreadInput{Title: "A"})
+	b, _ := store.CreateThread(ctx, userID, CreateThreadInput{Title: "B"})
+	for _, content := range []string{"a1", "a2", "a3"} {
+		if _, err := store.AddMessage(ctx, userID, a.ID, RoleUser, content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.AddMessage(ctx, userID, b.ID, RoleUser, "b1"); err != nil {
+		t.Fatal(err)
+	}
+
+	tails, err := store.ListRecentMessagesForThreads(ctx, userID, []string{a.ID, b.ID, "missing"}, 2)
+	if err != nil {
+		t.Fatalf("ListRecentMessagesForThreads() error: %v", err)
+	}
+	if got := contents(tails[a.ID]); got != "a2,a3" {
+		t.Fatalf("tail of A = %q, want the last two in order", got)
+	}
+	if got := contents(tails[b.ID]); got != "b1" {
+		t.Fatalf("tail of B = %q, want b1", got)
+	}
+	if _, ok := tails["missing"]; ok {
+		t.Fatal("an unknown thread id produced an entry")
+	}
+	empty, err := store.ListRecentMessagesForThreads(ctx, userID, nil, 2)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("no ids -> %v, %v; want an empty map", empty, err)
+	}
+}
+
+func contents(messages []Message) string {
+	parts := make([]string, 0, len(messages))
+	for _, m := range messages {
+		parts = append(parts, m.Content)
+	}
+	return strings.Join(parts, ",")
 }

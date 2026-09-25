@@ -145,12 +145,16 @@ func rewriteArtifactArrayForShare(shareID string, raw json.RawMessage) (json.Raw
 		return nil, nil, err
 	}
 	var ids []string
+	public := make([]map[string]json.RawMessage, 0, len(objs))
 	for _, obj := range objs {
-		if id := rewriteArtifactObjectURLs(shareID, obj); id != "" {
-			ids = append(ids, id)
+		shared, id := rewriteArtifactObjectURLs(shareID, obj)
+		if id == "" {
+			continue
 		}
+		ids = append(ids, id)
+		public = append(public, shared)
 	}
-	out, err := json.Marshal(objs)
+	out, err := json.Marshal(public)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -195,10 +199,12 @@ func rewriteContentBlocksForShare(shareID string, raw json.RawMessage, content s
 				if err := json.Unmarshal(artifactRaw, &obj); err != nil {
 					return nil, nil, err
 				}
-				if id := rewriteArtifactObjectURLs(shareID, obj); id != "" {
-					ids = append(ids, id)
+				shared, id := rewriteArtifactObjectURLs(shareID, obj)
+				if id == "" {
+					continue
 				}
-				encoded, err := json.Marshal(obj)
+				ids = append(ids, id)
+				encoded, err := json.Marshal(shared)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -218,7 +224,9 @@ func rewriteContentBlocksForShare(shareID string, raw json.RawMessage, content s
 			}
 			kept = append(kept, block)
 		default:
-			kept = append(kept, block)
+			// The snapshot is an allowlist: a block type this sanitizer does not
+			// know is dropped, so a future kind never leaks through by default.
+			continue
 		}
 	}
 
@@ -233,26 +241,38 @@ func rewriteContentBlocksForShare(shareID string, raw json.RawMessage, content s
 	return out, ids, nil
 }
 
-// rewriteArtifactObjectURLs points an embedded artifact's download/thumbnail URLs
-// at the absolute public share-scoped path and returns its id. The authed path is
-// /api/artifacts/{id}/{download,thumbnail}; the public path baked here is
-// /api/shares/{shareID}/artifacts/{id}/{download,thumbnail}, which a logged-out
-// viewer can fetch and which the public handlers gate on the share's allowlist.
-func rewriteArtifactObjectURLs(shareID string, obj map[string]json.RawMessage) string {
+// sharedArtifactFields are the artifact object keys a public snapshot carries.
+// Everything else (the internal project id, generation metadata) stays behind.
+var sharedArtifactFields = []string{"id", "displayFilename", "mimeType", "sizeBytes", "width", "height"}
+
+// rewriteArtifactObjectURLs builds the public form of an embedded artifact: an
+// allowlisted copy of its fields with the download/thumbnail URLs pointed at
+// the absolute share-scoped path, plus its id ("" when the object has none).
+// The authed path is /api/artifacts/{id}/{download,thumbnail}; the public path
+// baked here is /api/shares/{shareID}/artifacts/{id}/{download,thumbnail},
+// which a logged-out viewer can fetch and which the public handlers gate on
+// the share's allowlist.
+func rewriteArtifactObjectURLs(shareID string, obj map[string]json.RawMessage) (map[string]json.RawMessage, string) {
 	id := artifactObjectID(obj)
 	if id == "" {
-		return ""
+		return nil, ""
+	}
+	shared := make(map[string]json.RawMessage, len(sharedArtifactFields)+2)
+	for _, key := range sharedArtifactFields {
+		if v, ok := obj[key]; ok {
+			shared[key] = v
+		}
 	}
 	base := "/api/shares/" + shareID + "/artifacts/" + id
 	if encoded, err := json.Marshal(base + "/download"); err == nil {
-		obj["downloadUrl"] = encoded
+		shared["downloadUrl"] = encoded
 	}
 	// Only rewrite a thumbnail URL the artifact actually had (raster images); leave
 	// SVGs/files without one so the viewer falls back to the download/typed icon.
 	if _, ok := obj["thumbnailUrl"]; ok {
 		if encoded, err := json.Marshal(base + "/thumbnail"); err == nil {
-			obj["thumbnailUrl"] = encoded
+			shared["thumbnailUrl"] = encoded
 		}
 	}
-	return id
+	return shared, id
 }

@@ -12,6 +12,7 @@ import i18n from "../i18n";
 import { UsagePanel } from "../settings/UsagePanel";
 import { Icon } from "./Icon";
 import { SLASH_COMMANDS, type SlashCommandName } from "./slashCommands";
+import { useEscapeKey } from "./useEscapeKey";
 
 /**
  * SlashCommandPanel — the ephemeral overlay a slash command opens. It renders
@@ -26,13 +27,7 @@ export function SlashCommandPanel({
   onClose(): void;
 }) {
   const { t } = useTranslation();
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   return (
     <div

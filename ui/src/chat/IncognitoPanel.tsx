@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ContentBlock } from "../api";
@@ -14,6 +14,7 @@ import { previousUserMessage } from "./threadUtils";
 import { WorkingDot } from "./WorkingDot";
 import loomLogo from "../assets/loom-logo.svg";
 import { threadCostThrough } from "../metrics";
+import { useEscapeKey } from "./useEscapeKey";
 
 // IncognitoPanel is the standalone ephemeral-chat view. It never touches the
 // sidebar, thread lists, or persistence — the transcript lives entirely in the
@@ -63,13 +64,7 @@ export function IncognitoPanel({
     if (el !== null) el.scrollTop = el.scrollHeight;
   });
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !isSending) onExit();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isSending, onExit]);
+  useEscapeKey(onExit, { active: !isSending });
 
   const notice = (
     <div className="ui-meta-text mt-3 text-center text-[#5599e7]">

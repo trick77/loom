@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -167,5 +169,148 @@ func TestMemoryWorker_safely_RecoversPanic(t *testing.T) {
 
 	if !ranAfterPanic {
 		t.Fatal("safely must continue running scopes after recovering a panic")
+	}
+}
+
+// Concurrent turns in one scope must not each start the same LLM refresh: the
+// gate is check-then-act on stored counters, so without a guard every caller
+// that reads the stale count regenerates. Only the first proceeds; the rest
+// return at once and the next due check picks up the fresh counters.
+func TestRefreshMemoryIfDue_SingleFlightPerScope(t *testing.T) {
+	stale := time.Now().Add(-25 * time.Hour)
+	store := &fakeThreadStore{
+		userMessageCount: 50,
+		userMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 0, UpdatedAt: &stale},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "I moved to Zurich"}},
+	}
+	entered := make(chan struct{}, 8)
+	gate := make(chan struct{})
+	var calls atomic.Int32
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- REGENERATED", memoryEntered: entered, memoryGate: gate, memoryCalls: &calls}}
+	refresh := func() error {
+		return s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), memoryUserRefreshAge)
+	}
+
+	first := make(chan error, 1)
+	go func() { first <- refresh() }()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first refresh never reached the model")
+	}
+
+	// While the first refresh is inside the model call, four more turns fire.
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := refresh(); err != nil {
+				t.Errorf("concurrent refreshMemoryIfDue() error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	close(gate)
+	if err := <-first; err != nil {
+		t.Fatalf("first refreshMemoryIfDue() error: %v", err)
+	}
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("GenerateMemory calls = %d, want 1", got)
+	}
+	if store.userMemory.Content != "- REGENERATED" {
+		t.Fatalf("memory = %q, want regenerated once", store.userMemory.Content)
+	}
+}
+
+// The gate compared the live message count to the count the memory was built
+// from with "<=", so once threads were deleted and the count dropped, no
+// refresh ran until the old number was exceeded again.
+func TestRefreshMemoryIfDue_RefreshesWhenCountDropped(t *testing.T) {
+	stale := time.Now().Add(-25 * time.Hour)
+	store := &fakeThreadStore{
+		userMessageCount: 6,
+		userMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 10, UpdatedAt: &stale},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "still here"}},
+	}
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- REGENERATED"}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), memoryUserRefreshAge); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if store.userMemory.Content != "- REGENERATED" {
+		t.Fatalf("memory = %q, want regenerated after the count dropped", store.userMemory.Content)
+	}
+	if store.userMemory.SourceMessageCount != 6 {
+		t.Fatalf("SourceMessageCount = %d, want the current count 6", store.userMemory.SourceMessageCount)
+	}
+}
+
+// After deletions the memory is rebuilt from what is left, not folded into
+// the stale prior that may describe the deleted conversations; with nothing
+// left it is cleared.
+func TestRefreshMemoryIfDue_DeletionsRebuildWithoutThePrior(t *testing.T) {
+	store := &fakeThreadStore{
+		userMessageCount: 2,
+		userMemory:       chat.UserMemory{Content: "- stale", SourceMessageCount: 60},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	}
+	priors := make(chan string, 1)
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- fresh", memoryPriors: priors}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if got := <-priors; got != "" {
+		t.Fatalf("GenerateMemory prior = %q, want the stale memory dropped", got)
+	}
+	if store.listLimit != 2 {
+		t.Fatalf("list limit = %d, want the whole remaining transcript (2)", store.listLimit)
+	}
+	if store.userMemory.Content != "- fresh" || store.userMemory.SourceMessageCount != 2 {
+		t.Fatalf("stored memory = %+v, want the rebuilt one over 2 messages", store.userMemory)
+	}
+}
+
+func TestRefreshMemoryIfDue_EverythingDeletedClearsTheMemory(t *testing.T) {
+	var calls atomic.Int32
+	store := &fakeThreadStore{
+		userMessageCount: 0,
+		userMemory:       chat.UserMemory{Content: "- stale", SourceMessageCount: 60},
+	}
+	s := &server{thread: store, llm: fakeChatClient{memoryCalls: &calls}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if store.userMemory.Content != "" || store.userMemory.SourceMessageCount != 0 {
+		t.Fatalf("stored memory = %+v, want cleared", store.userMemory)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("GenerateMemory calls = %d, want 0 (nothing to summarise)", calls.Load())
+	}
+}
+
+// A long history that no longer fits the rebuild window keeps its prior after
+// a deletion: rebuilding from the newest messages alone would lose everything
+// older than the window.
+func TestRefreshMemoryIfDue_DeletionInLongHistoryKeepsThePrior(t *testing.T) {
+	store := &fakeThreadStore{
+		userMessageCount: memoryRebuildLimit + 50,
+		userMemory:       chat.UserMemory{Content: "- long-term", SourceMessageCount: memoryRebuildLimit + 60},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	}
+	priors := make(chan string, 1)
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- folded", memoryPriors: priors}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if got := <-priors; got != "- long-term" {
+		t.Fatalf("GenerateMemory prior = %q, want the long-term memory kept", got)
+	}
+	if store.listLimit != memoryRebuildLimit {
+		t.Fatalf("list limit = %d, want %d", store.listLimit, memoryRebuildLimit)
 	}
 }

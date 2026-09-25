@@ -17,8 +17,12 @@ import (
 // boundary. The existing ORDER BY depends on the same invariant.
 const sqliteTimeLayout = "2006-01-02 15:04:05"
 
+// defaultArtifactLimit is the page size when the client passes none. The
+// client paginates with cursors, so the default only bounds the first page;
+// it used to equal the maximum, which made every library load a 1000-row
+// query.
 const (
-	defaultArtifactLimit = 1000
+	defaultArtifactLimit = 100
 	maxArtifactLimit     = 1000
 )
 

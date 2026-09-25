@@ -18,13 +18,13 @@ import (
 // returning, and is best-effort (errors are logged, never surfaced). The actual work
 // is gated/debounced in refreshProjectDescriptionIfDue, so a no-op call is cheap.
 func (s *server) maybeRefreshProjectDescriptionAsync(parent context.Context, user auth.User, projectID string) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), memoryBackgroundTimeout)
+	s.background.Spawn(parent, "project_description:"+projectID, func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
 		defer cancel()
 		if err := s.refreshProjectDescriptionIfDue(ctx, user, projectID); err != nil {
 			slog.Warn("background project description refresh failed", "project_id", projectID, "err", err)
 		}
-	}()
+	})
 }
 
 // refreshProjectDescriptionIfDue regenerates a project's auto-description from its
@@ -41,6 +41,11 @@ func (s *server) maybeRefreshProjectDescriptionAsync(parent context.Context, use
 // always": a thread titled inside a debounce window is caught on the next trigger or
 // sweep because the count still differs, instead of being stranded.
 func (s *server) refreshProjectDescriptionIfDue(ctx context.Context, user auth.User, projectID string) error {
+	release, ok := s.inflight.tryAcquire("description:" + projectID)
+	if !ok {
+		return nil
+	}
+	defer release()
 	project, err := s.findProject(ctx, user.ID, projectID)
 	if err != nil || project == nil {
 		return err

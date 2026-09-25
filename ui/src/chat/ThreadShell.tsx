@@ -1,44 +1,40 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import {
-  AuthExpiredError,
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
+
+import { UserFacingError } from "../api/http";
+import { describeActionError } from "./actionErrors";
+import {
   DEFAULT_THREAD_TITLE,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   createThread,
-  listThreads,
   setProjectStarred,
   setThreadStarred,
   stopMessage,
   streamMessage,
   streamIncognitoMessage,
   type Artifact,
-  type Citation,
-  type ContentBlock,
   type MessagePastedText,
   type Project,
   type ShareInfo,
   type Thread,
   type User,
+  PayloadTooLargeError,
+  StreamInterruptedError,
 } from "../api";
-import {
-  appendArtifactBlock,
-  appendReasoningDeltaBlock,
-  appendTextDelta,
-  applyReasoningTitleBlock,
-  graftStreamedBlocks,
-  upsertToolCallBlock,
-  upsertToolResultBlock,
-} from "./contentBlocks";
-import { ThreadsPage } from "../ThreadsPage";
-import { ArtifactsPage } from "../artifacts/ArtifactsPage";
-import { MemoryPage } from "../MemoryPage";
-import { navigate, routeFromLocation, type RouteState } from "./routing";
+import { graftStreamedBlocks } from "./contentBlocks";
+import { ThreadsPage } from "../chats/ThreadsPage";
+import { useRouteState } from "./useRouteState";
 import type { MessageWithActivityTrace } from "./types";
-import { SettingsModal } from "../settings/SettingsModal";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
 import {
-  createPastedText,
   pastedTextFromBlock,
   toPastedTextBlock,
   type PastedText,
@@ -50,10 +46,7 @@ import {
   draftScopeKey,
   getDraft,
   setDraft as setScopedDraft,
-  setDraftPastedTexts as setScopedPastedTexts,
-  setDraftText as setScopedDraftText,
   threadDraftScope,
-  type ComposerDrafts,
   type DraftScope,
 } from "./composerDrafts";
 import {
@@ -89,40 +82,36 @@ import { DeleteProjectModal } from "../projects/DeleteProjectModal";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage";
 import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
-import { ProjectsPage } from "../projects/ProjectsPage";
 import {
   replaceThreadById,
   upsertThreadById,
 } from "../projects/projectMembership";
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
+import { useComposerDrafts } from "./useComposerDrafts";
+import { createTurnHandlers, newTempID } from "./turnHandlers";
 
-export { buildImageStats } from "./artifacts";
-export { GeneratedArtifactCard } from "./GeneratedArtifactCard";
-export { ProseMarkdown } from "./messages";
-
-// Each sources event is a full snapshot of *its own kind* only: knowledge_sources
-// carries the user's numbered documents (no url) once before the model runs,
-// web_sources carries the gathered pages (url) after every tool round. Replacing
-// the whole list on either would drop the other kind — since documents became
-// citable, the first search result would unresolve every document [n] pill
-// mid-answer and shift the display numbering that is meant to be append-only.
-// So each event replaces only its own kind. Documents lead: they hold the low
-// indices, numbered before the tool loop.
-function isWebCitation(citation: Citation): boolean {
-  return typeof citation.url === "string" && citation.url !== "";
-}
-
-export function mergeSourceSnapshot(
-  previous: Citation[],
-  incoming: Citation[],
-  incomingAreWeb: boolean,
-): Citation[] {
-  const kept = previous.filter(
-    (citation) => isWebCitation(citation) !== incomingAreWeb,
-  );
-  return incomingAreWeb ? [...kept, ...incoming] : [...incoming, ...kept];
-}
+// The secondary views and the settings modal load on first use rather than
+// with the chat: a user who never opens the artifact library never pays for it.
+const ArtifactsPage = lazy(() =>
+  import("../artifacts/ArtifactsPage").then((module) => ({
+    default: module.ArtifactsPage,
+  })),
+);
+const MemoryPage = lazy(() =>
+  import("../MemoryPage").then((module) => ({ default: module.MemoryPage })),
+);
+const ProjectsPage = lazy(() =>
+  import("../projects/ProjectsPage").then((module) => ({
+    default: module.ProjectsPage,
+  })),
+);
+const SettingsModal = lazy(() =>
+  import("../settings/SettingsModal").then((module) => ({
+    default: module.SettingsModal,
+  })),
+);
+import { useEscapeKey } from "./useEscapeKey";
 
 type ThreadShellProps = {
   user: User;
@@ -144,21 +133,30 @@ export function ThreadShell({
   onSessionExpired,
 }: ThreadShellProps) {
   const { t, i18n } = useTranslation();
-  const [route, setRoute] = useState<RouteState>(() => routeFromLocation());
+  const { route, routeRef, go } = useRouteState();
   // The textarea contents and the staged "Pasted" chips, keyed by the surface that
   // owns them (see composerDrafts.ts). They belong to the thread they were typed
   // in: leaving that thread must not carry them into the next one, and must not
   // throw them away either.
-  const [drafts, setDrafts] = useState<ComposerDrafts>({});
-  // Bumped whenever a retry loads a message back into the composer, to focus the
-  // textarea and move the caret to the end (see Composer's focusSignal).
-  const [composerFocusTick, setComposerFocusTick] = useState(0);
+  const {
+    drafts,
+    setDrafts,
+    setDraftText,
+    addPastedText,
+    removePastedText,
+    focusTick: composerFocusTick,
+    requestFocus: requestComposerFocus,
+  } = useComposerDrafts();
   // Files attached on the new-thread start screen, held until the first send creates
   // a thread to bind them to (deferred upload — avoids orphan empty threads and
   // scopes the upload to the thread it was attached in).
   const [pendingAttachments, setPendingAttachments] = useState<
     ComposerAttachment[]
   >([]);
+  const pendingAttachmentCountRef = useRef(pendingAttachments.length);
+  useEffect(() => {
+    pendingAttachmentCountRef.current = pendingAttachments.length;
+  }, [pendingAttachments.length]);
   const [pendingAttachNote, setPendingAttachNote] = useState("");
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -184,6 +182,8 @@ export function ThreadShell({
     end: endStreamRun,
     abort: abortStreamRun,
     abortAll: abortAllStreamRuns,
+    markStopRequested,
+    stopRequested,
     nextProvisionalKey,
   } = useStreamRuns();
   // Incognito mode is a standalone, ephemeral chat reachable only from /new. Its
@@ -199,29 +199,11 @@ export function ThreadShell({
   const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(
     null,
   );
-  function setDraftText(scope: DraftScope, text: string) {
-    setDrafts((current) => setScopedDraftText(current, scope, text));
-  }
-  // Large pastes collapsed into removable "Pasted" chips shown above the textarea.
-  // Folded back into the outgoing message content on send (never uploaded/indexed).
   function handleAddPastedText(text: string) {
-    setDrafts((current) =>
-      setScopedPastedTexts(current, draftScope, [
-        ...getDraft(current, draftScope).pastedTexts,
-        createPastedText(text),
-      ]),
-    );
+    addPastedText(draftScope, text);
   }
   function handleRemovePastedText(id: string) {
-    setDrafts((current) =>
-      setScopedPastedTexts(
-        current,
-        draftScope,
-        getDraft(current, draftScope).pastedTexts.filter(
-          (pasted) => pasted.id !== id,
-        ),
-      ),
-    );
+    removePastedText(draftScope, id);
   }
   // Flush hook for the deferred new-thread upload: the scope is supplied per call at
   // send time (the thread does not exist yet when the file is picked). Its
@@ -243,28 +225,37 @@ export function ThreadShell({
   // On mobile the sidebar is an overlay drawer that always shows the full
   // content; the rail-collapse only applies on desktop.
   const railCollapsed = !isMobile && sidebarCollapsed;
-  useEffect(() => {
-    if (!mobileSidebarOpen) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileSidebarOpen(false);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mobileSidebarOpen]);
+  useEscapeKey(() => setMobileSidebarOpen(false), {
+    active: mobileSidebarOpen,
+  });
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
 
+  // translateStreamError names the two transport failures the user can act on
+  // in their own language; every other error keeps its own text (a server
+  // error event is written for the user, an API failure is mapped by
+  // handleActionError).
+  const translateStreamError = useCallback(
+    (error: unknown): unknown => {
+      if (error instanceof StreamInterruptedError) {
+        return new UserFacingError(t("thread.streamInterrupted"));
+      }
+      if (error instanceof PayloadTooLargeError) {
+        return new UserFacingError(t("thread.messageTooLarge"));
+      }
+      return error;
+    },
+    [t],
+  );
+
   const handleActionError = useCallback(
     (error: unknown, fallback: string, setError: (message: string) => void) => {
-      if (error instanceof AuthExpiredError) {
+      const message = describeActionError(error, fallback);
+      if (message === null) {
         onSessionExpired();
         return;
       }
-      setError(
-        error instanceof Error && error.message !== ""
-          ? error.message
-          : fallback,
-      );
+      setError(message);
     },
     [onSessionExpired],
   );
@@ -283,6 +274,7 @@ export function ThreadShell({
     projectThreads,
     projects,
     recentThreads,
+    reloadThreads,
     setActiveThread,
     setMessages,
     setProjectThreads,
@@ -290,7 +282,6 @@ export function ThreadShell({
     setThreads,
     starredProjects,
     starredThreads,
-    threads,
     unstarredProjects,
   } = useThreadData({
     abortAllStreamRuns,
@@ -356,6 +347,9 @@ export function ThreadShell({
       // fetch once that stop request has been sent. Aborting first would drop the
       // connection and make the server log the generic request-context cancel
       // instead of this attributed one (the cancel cause is first-writer-wins).
+      // The server may close the stream before the abort lands; the run's catch
+      // reads this mark so that close is not reported as a dropped connection.
+      markStopRequested(activeRunKey);
       void stopMessage(activeThread.id, source)
         .catch((error: unknown) => {
           handleActionError(error, t("thread.stopFailed"), reportShellError);
@@ -368,50 +362,25 @@ export function ThreadShell({
       activeThread,
       handleActionError,
       incognito,
+      markStopRequested,
       reportShellError,
       t,
     ],
   );
 
-  useEffect(() => {
-    if (window.location.pathname === "/") {
-      window.history.replaceState({}, "", "/new");
-      setRoute({ view: "new" });
-    }
-    function handlePopState() {
-      setRoute(routeFromLocation());
-    }
-    window.addEventListener("popstate", handlePopState);
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (openThreadMenuID === null) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpenThreadMenuID(null);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [openThreadMenuID]);
+  useEscapeKey(() => setOpenThreadMenuID(null), {
+    active: openThreadMenuID !== null,
+  });
 
   // Escape stops the turn on the thread you are looking at. Runs on other threads
   // keep going — you stop those by opening them.
-  useEffect(() => {
-    if (!activeThreadIsStreaming) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      handleStopResponse("escape");
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [activeThreadIsStreaming, handleStopResponse]);
+  // Registered at the bottom of the Escape stack: any surface opened on top
+  // (a lightbox, a dialog, a menu) takes the key first, so closing it never
+  // also stops the answer.
+  useEscapeKey(() => handleStopResponse("escape"), {
+    active: activeThreadIsStreaming,
+    bottom: true,
+  });
 
   // ⌘K / Ctrl-K opens the search palette from anywhere in the app.
   useEffect(() => {
@@ -477,9 +446,8 @@ export function ThreadShell({
     setActiveThread(null);
     setMessages([]);
     setSendError("");
-    navigate({ view: "new" });
-    setRoute({ view: "new" });
-  }, [onThread]);
+    go({ view: "new" });
+  }, [go, onThread]);
 
   // "Use in thread" from the Artifacts library: open the new-chat screen with the
   // artifact pre-attached so the user can prompt against it. navigateToNew() nulls
@@ -500,40 +468,35 @@ export function ThreadShell({
   const navigateToThreads = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "threads" });
-    setRoute({ view: "threads" });
-  }, [onThread]);
+    go({ view: "threads" });
+  }, [go, onThread]);
 
   const navigateToArtifacts = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "artifacts" });
-    setRoute({ view: "artifacts" });
-  }, [onThread]);
+    go({ view: "artifacts" });
+  }, [go, onThread]);
 
   const navigateToProjects = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "projects" });
-    setRoute({ view: "projects" });
-  }, [onThread]);
+    go({ view: "projects" });
+  }, [go, onThread]);
 
   const navigateToMemory = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "memory" });
-    setRoute({ view: "memory" });
-  }, [onThread]);
+    go({ view: "memory" });
+  }, [go, onThread]);
 
   const navigateToProject = useCallback(
     (project: Project) => {
       onThread();
       setMobileSidebarOpen(false);
       setOpenedProject(project);
-      navigate({ view: "project", projectID: project.id });
-      setRoute({ view: "project", projectID: project.id });
+      go({ view: "project", projectID: project.id });
     },
-    [onThread],
+    [go, onThread],
   );
 
   const {
@@ -592,14 +555,6 @@ export function ThreadShell({
     route,
   });
 
-  const reloadThreads = useCallback(() => {
-    listThreads({ limit: 30 })
-      .then((nextThreads) => setThreads(nextThreads.items))
-      .catch((error: unknown) => {
-        if (error instanceof AuthExpiredError) onSessionExpired();
-      });
-  }, [onSessionExpired]);
-
   function openArchiveProjectModal(project: Project) {
     setArchivingProject(project);
     setModalError("");
@@ -613,8 +568,7 @@ export function ThreadShell({
   async function selectThread(threadID: string) {
     onThread();
     setMobileSidebarOpen(false);
-    navigate({ view: "thread", threadID });
-    setRoute({ view: "thread", threadID });
+    go({ view: "thread", threadID });
   }
 
   async function handleSetThreadStarred(
@@ -700,29 +654,37 @@ export function ThreadShell({
     setSendError("");
     const sizeFiltered = files.filter(isWithinUploadSizeLimit);
     if (sizeFiltered.length < files.length) {
-      setPendingAttachNote("Files must be 25 MB or smaller.");
+      setPendingAttachNote(t("errors.fileTooLarge"));
     }
-    setPendingAttachments((current) => {
-      const remaining = DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - current.length;
-      if (remaining <= 0) {
-        setPendingAttachNote(
-          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
-        );
-        return current;
-      }
-      const accepted = sizeFiltered.slice(0, remaining);
-      if (accepted.length < sizeFiltered.length) {
-        setPendingAttachNote(
-          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
-        );
-      } else if (accepted.length > 0 && sizeFiltered.length === files.length) {
-        setPendingAttachNote("");
-      }
-      return [
-        ...current,
-        ...accepted.map((file) => createComposerAttachment(file, "queued")),
-      ];
-    });
+    // The count is mirrored in a ref so two drops in one render both see the
+    // other's files, and the note is set here rather than inside the state
+    // updater, which StrictMode runs twice.
+    const remaining =
+      DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - pendingAttachmentCountRef.current;
+    if (remaining <= 0) {
+      setPendingAttachNote(
+        t("composer.attachLimit", {
+          count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+        }),
+      );
+      return;
+    }
+    const accepted = sizeFiltered.slice(0, remaining);
+    if (accepted.length < sizeFiltered.length) {
+      setPendingAttachNote(
+        t("composer.attachLimit", {
+          count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+        }),
+      );
+    } else if (accepted.length > 0 && sizeFiltered.length === files.length) {
+      setPendingAttachNote("");
+    }
+    if (accepted.length === 0) return;
+    pendingAttachmentCountRef.current += accepted.length;
+    const queued = accepted.map((file) =>
+      createComposerAttachment(file, "queued"),
+    );
+    setPendingAttachments((current) => [...current, ...queued]);
   }
 
   function handleRemovePendingAttachment(id: string) {
@@ -790,7 +752,7 @@ export function ThreadShell({
         pastedTexts: blocks.map(pastedTextFromBlock),
       }),
     );
-    setComposerFocusTick((tick) => tick + 1);
+    requestComposerFocus();
   }
 
   async function sendContent(
@@ -919,25 +881,29 @@ export function ThreadShell({
             },
             updateSentAttachmentStatus,
           );
-          const failedImageAttachment = options.attachments.find(
+          // Any attachment the flush could not land stops the send: an image
+          // without its artifact, a document without its document row, or one
+          // that reported an error. Documents used to be dropped silently here,
+          // so the message went out without the file the user attached.
+          const failedAttachment = options.attachments.find(
             (attachment) =>
-              isImageAttachment(attachment) &&
-              (attachment.status === "error" ||
-                attachment.artifactId === undefined),
+              attachment.status === "error" ||
+              (isImageAttachment(attachment)
+                ? attachment.artifactId === undefined
+                : attachment.documentId === undefined),
           );
-          if (failedImageAttachment !== undefined) {
+          if (failedAttachment !== undefined) {
             // The send stops here with the start screen still on show, so put the
             // files back rather than making the user pick them again.
             setPendingAttachments(attachmentsToFlush);
-            throw new Error(
-              failedImageAttachment.error ??
-                `Failed to upload ${failedImageAttachment.filename}.`,
+            throw new UserFacingError(
+              failedAttachment.error ??
+                t("errors.uploadFailed", {
+                  filename: failedAttachment.filename,
+                }),
             );
           }
         }
-        setActiveThread(createdThread);
-        activeThreadIDRef.current = targetThread.id;
-        setMessages([]);
         // The run now belongs to a real thread. Rekeying in the same tick as the
         // route switch is what lets the thread we are about to land on pick the
         // turn up mid-flight.
@@ -945,23 +911,90 @@ export function ThreadShell({
         rekeyStreamRun(runKey, createdRunKey);
         runKey = createdRunKey;
         restoreScope = threadDraftScope(targetThread.id);
-        navigate({ view: "thread", threadID: targetThread.id });
-        setRoute({ view: "thread", threadID: targetThread.id });
+        // Creating the thread (and flushing uploads) took real time, during which
+        // the start screen stayed interactive. Only land on the new thread if the
+        // user is still where they sent from; if they went elsewhere, the turn
+        // runs in the background and the thread waits in Recents.
+        if (draftScopeKey(routeRef.current, false) === options.draftScope) {
+          setActiveThread(createdThread);
+          activeThreadIDRef.current = targetThread.id;
+          setMessages([]);
+          go({ view: "thread", threadID: targetThread.id });
+        }
       }
       targetThreadID = targetThread.id;
-      activeThreadIDRef.current = targetThreadID;
       const threadIDForRun = targetThreadID;
-      // Accumulate this turn's ordered blocks in a closure-local array, the single
-      // source of truth for the graft at turn end. The rendered copy lives on the
-      // run, but a run can be ended (or superseded) from elsewhere, so the graft
-      // must not depend on reading it back.
-      let liveBlocks: ContentBlock[] = [];
-      const applyBlocks = (
-        updater: (current: ContentBlock[]) => ContentBlock[],
-      ) => {
-        liveBlocks = updater(liveBlocks);
-        patchStreamRun(runKey, { blocks: liveBlocks });
-      };
+      const turn = createTurnHandlers({
+        patch: (next) => patchStreamRun(runKey, next),
+        onUserMessage: (message) => {
+          if (!isCurrentThread()) return;
+          const confirmed =
+            options.attachments.length > 0
+              ? {
+                  ...message,
+                  attachments: options.attachments.map(toSentAttachment),
+                }
+              : message;
+          // Fold the persisted message into the list, replacing the optimistic
+          // placeholder in place (its clientKey/position survive => stable React key,
+          // no remount or scroll jump). Capture the placeholder id into a const rather
+          // than reading the outer `optimisticUserMessageID` inside the updater: the
+          // latter is reset to null synchronously below, but React may defer the
+          // updater (when its queue is non-empty mid-stream) until after that reset —
+          // reading null then would miss the placeholder, append a second bubble, and
+          // leave the orphaned optimistic one. Reset before setMessages so the catch
+          // block treats the message as confirmed and won't drop it.
+          const placeholderID = optimisticUserMessageID;
+          optimisticUserMessageID = null;
+          setMessages((current) =>
+            reconcileUserMessage(current, placeholderID, confirmed),
+          );
+        },
+        onAssistantMessage: (message, liveBlocks) => {
+          // The persisted message may already carry the backend's ordered
+          // contentBlocks. When it doesn't (older backends / lag), graft the
+          // just-streamed blocks — settled to done — so the chronological order
+          // (and the activity panel) survives the turn settling. The final answer
+          // text can arrive only on the assistant_message (not as deltas), so
+          // ensure the message content is represented as a trailing text block
+          // when the streamed blocks carry no prose of their own.
+          if (isCurrentThread()) {
+            setMessages((current) => {
+              const grafted = graftStreamedBlocks(message, liveBlocks);
+              // Mirror the user-message dedup: if a route refresh already loaded this
+              // assistant message, replace it in place (keeping the richer grafted
+              // blocks and its clientKey) instead of appending a duplicate bubble.
+              const index = current.findIndex((item) => item.id === grafted.id);
+              if (index === -1) return [...current, grafted];
+              const next = current.slice();
+              next[index] = {
+                ...grafted,
+                clientKey: current[index].clientKey,
+              };
+              return next;
+            });
+          }
+          // The settled message carries its own citations and blocks, so drop the
+          // live copies now rather than at endRun — the stream reader yields
+          // between chunks, so waiting would flash the turn twice.
+        },
+        onThread: (updatedThread) => {
+          receivedThreadEvent = true;
+          if (isCurrentThread()) setActiveThread(updatedThread);
+          setThreads((current) => upsertThread(current, updatedThread));
+          // Compare against the project captured when this send started, never a
+          // live `route` read: a run outlives navigation now.
+          if (
+            projectIDForNewThread !== null &&
+            updatedThread.projectId !== undefined &&
+            updatedThread.projectId === projectIDForNewThread
+          ) {
+            setProjectThreads((current) =>
+              upsertThreadById(current, updatedThread),
+            );
+          }
+        },
+      });
       const documentAttachmentIds = options.attachments
         .filter((attachment) => attachment.documentId !== undefined)
         .map((attachment) => attachment.documentId!);
@@ -982,7 +1015,7 @@ export function ThreadShell({
         // Avoid crypto.randomUUID: it is undefined in insecure contexts (plain http://),
         // which a corporate intranet deployment may well be — and that is exactly where
         // this fix matters. Date.now()+random is unique enough for a transient id.
-        const tempID = `temp-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const tempID = newTempID("temp-user");
         optimisticUserMessageID = tempID;
         const optimisticMessage: MessageWithActivityTrace = {
           id: tempID,
@@ -1003,124 +1036,7 @@ export function ThreadShell({
       await streamMessage(
         threadIDForRun,
         content,
-        {
-          onUserMessage: (message) => {
-            if (!isCurrentThread()) return;
-            const confirmed =
-              options.attachments.length > 0
-                ? {
-                    ...message,
-                    attachments: options.attachments.map(toSentAttachment),
-                  }
-                : message;
-            // Fold the persisted message into the list, replacing the optimistic
-            // placeholder in place (its clientKey/position survive => stable React key,
-            // no remount or scroll jump). Capture the placeholder id into a const rather
-            // than reading the outer `optimisticUserMessageID` inside the updater: the
-            // latter is reset to null synchronously below, but React may defer the
-            // updater (when its queue is non-empty mid-stream) until after that reset —
-            // reading null then would miss the placeholder, append a second bubble, and
-            // leave the orphaned optimistic one. Reset before setMessages so the catch
-            // block treats the message as confirmed and won't drop it.
-            const placeholderID = optimisticUserMessageID;
-            optimisticUserMessageID = null;
-            setMessages((current) =>
-              reconcileUserMessage(current, placeholderID, confirmed),
-            );
-          },
-          onDelta: (delta) => {
-            // Each content delta extends the trailing text block, or opens a new one
-            // when the trailing block is a trace/artifact — so prose that resumes
-            // after a tool round becomes its own block, preserving chronology.
-            applyBlocks((current) => appendTextDelta(current, delta));
-          },
-          onReasoningDelta: (delta) => {
-            applyBlocks((current) => appendReasoningDeltaBlock(current, delta));
-          },
-          onReasoningTitle: (event) => {
-            applyBlocks((current) =>
-              applyReasoningTitleBlock(current, event.id, event.title),
-            );
-          },
-          onToolPending: () => {
-            patchStreamRun(runKey, { toolPending: true });
-          },
-          onToolCall: (event) => {
-            // The pending call is now a real (running) trace event; let the trace's
-            // own running status drive the "thinking" affordance from here.
-            patchStreamRun(runKey, { toolPending: false });
-            applyBlocks((current) => upsertToolCallBlock(current, event));
-          },
-          onToolResult: (event) => {
-            applyBlocks((current) => upsertToolResultBlock(current, event));
-          },
-          onArtifact: (artifact) => {
-            applyBlocks((current) => appendArtifactBlock(current, artifact));
-          },
-          // Each event is a full snapshot of one kind of source, so it replaces
-          // that kind and leaves the other in place (see mergeSourceSnapshot).
-          onWebSources: (sources) => {
-            patchStreamRun(runKey, (run) => ({
-              sources: mergeSourceSnapshot(run.sources, sources, true),
-            }));
-          },
-          onKnowledgeSources: (sources) => {
-            patchStreamRun(runKey, (run) => ({
-              sources: mergeSourceSnapshot(run.sources, sources, false),
-            }));
-          },
-          onAssistantMessage: (message) => {
-            // The persisted message may already carry the backend's ordered
-            // contentBlocks. When it doesn't (older backends / lag), graft the
-            // just-streamed blocks — settled to done — so the chronological order
-            // (and the activity panel) survives the turn settling. The final answer
-            // text can arrive only on the assistant_message (not as deltas), so
-            // ensure the message content is represented as a trailing text block
-            // when the streamed blocks carry no prose of their own.
-            if (isCurrentThread()) {
-              setMessages((current) => {
-                const grafted = graftStreamedBlocks(message, liveBlocks);
-                // Mirror the user-message dedup: if a route refresh already loaded this
-                // assistant message, replace it in place (keeping the richer grafted
-                // blocks and its clientKey) instead of appending a duplicate bubble.
-                const index = current.findIndex(
-                  (item) => item.id === grafted.id,
-                );
-                if (index === -1) return [...current, grafted];
-                const next = current.slice();
-                next[index] = {
-                  ...grafted,
-                  clientKey: current[index].clientKey,
-                };
-                return next;
-              });
-            }
-            // The settled message carries its own citations and blocks, so drop the
-            // live copies now rather than at endRun — the stream reader yields
-            // between chunks, so waiting would flash the turn twice.
-            patchStreamRun(runKey, {
-              blocks: [],
-              sources: [],
-              toolPending: false,
-            });
-          },
-          onThread: (updatedThread) => {
-            receivedThreadEvent = true;
-            if (isCurrentThread()) setActiveThread(updatedThread);
-            setThreads((current) => upsertThread(current, updatedThread));
-            // Compare against the project captured when this send started, never a
-            // live `route` read: a run outlives navigation now.
-            if (
-              projectIDForNewThread !== null &&
-              updatedThread.projectId !== undefined &&
-              updatedThread.projectId === projectIDForNewThread
-            ) {
-              setProjectThreads((current) =>
-                upsertThreadById(current, updatedThread),
-              );
-            }
-          },
-        },
+        turn.handlers,
         abortController.signal,
         {
           documentAttachmentIds,
@@ -1143,6 +1059,10 @@ export function ThreadShell({
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      // A stop the user asked for closes the stream server-side before the
+      // client aborts its fetch, which reads as an interruption; it is not one.
+      if (abortController.signal.aborted || stopRequested(abortController))
+        return;
       // Keep the partial streamed blocks visible so a failed turn still shows what
       // streamed (prose, an activity trace, a tool that errored); the next send
       // clears them.
@@ -1171,10 +1091,14 @@ export function ThreadShell({
       // existed (createThread itself, or the deferred upload flush) has no thread
       // to pin it to and no surface showing that run — it belongs to the shell,
       // which is the start screen the user is still looking at.
-      handleActionError(error, "Message failed to send.", (message) => {
-        if (targetThreadID === null) reportShellError(message);
-        else patchStreamRun(runKey, { error: message });
-      });
+      handleActionError(
+        translateStreamError(error),
+        t("thread.sendFailed"),
+        (message) => {
+          if (targetThreadID === null) reportShellError(message);
+          else patchStreamRun(runKey, { error: message });
+        },
+      );
     } finally {
       endStreamRun(runKey, {
         keepFailedTurnVisible: keepFailedTurnVisible && targetThreadID !== null,
@@ -1228,7 +1152,7 @@ export function ThreadShell({
         role: message.role as "user" | "assistant",
         content: message.content,
       }));
-    const tempID = `incognito-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const tempID = newTempID("incognito-user");
     const optimisticMessage: MessageWithActivityTrace = {
       id: tempID,
       clientKey: tempID,
@@ -1245,57 +1169,33 @@ export function ThreadShell({
     setIncognitoMessages((current) => [...current, optimisticMessage]);
     const abortController = new AbortController();
     beginStreamRun(INCOGNITO_RUN_KEY, abortController);
-    let liveBlocks: ContentBlock[] = [];
-    const applyBlocks = (
-      updater: (current: ContentBlock[]) => ContentBlock[],
-    ) => {
-      liveBlocks = updater(liveBlocks);
-      patchStreamRun(INCOGNITO_RUN_KEY, { blocks: liveBlocks });
-    };
+    const turn = createTurnHandlers({
+      patch: (next) => patchStreamRun(INCOGNITO_RUN_KEY, next),
+      onAssistantMessage: (message, liveBlocks) => {
+        // Give each turn a unique id so React keys and per-message actions never
+        // collide (the server returns a constant synthetic id).
+        const uniqueID = newTempID("incognito-assistant");
+        const grafted = graftStreamedBlocks(
+          { ...message, id: uniqueID },
+          liveBlocks,
+        );
+        setIncognitoMessages((current) => [
+          ...current,
+          { ...grafted, clientKey: uniqueID },
+        ]);
+      },
+    });
     let keepFailedTurnVisible = false;
     try {
       await streamIncognitoMessage(
         content,
         history,
-        {
-          onUserMessage: () => {
-            // The incognito endpoint does not echo the user message; the optimistic
-            // bubble is the permanent one.
-          },
-          onDelta: (delta) =>
-            applyBlocks((current) => appendTextDelta(current, delta)),
-          onReasoningDelta: (delta) =>
-            applyBlocks((current) => appendReasoningDeltaBlock(current, delta)),
-          onReasoningTitle: (event) =>
-            applyBlocks((current) =>
-              applyReasoningTitleBlock(current, event.id, event.title),
-            ),
-          onAssistantMessage: (message) => {
-            // Give each turn a unique id so React keys and per-message actions never
-            // collide (the server returns a constant synthetic id).
-            const uniqueID = `incognito-assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-            const grafted = graftStreamedBlocks(
-              { ...message, id: uniqueID },
-              liveBlocks,
-            );
-            setIncognitoMessages((current) => [
-              ...current,
-              { ...grafted, clientKey: uniqueID },
-            ]);
-            patchStreamRun(INCOGNITO_RUN_KEY, {
-              blocks: [],
-              sources: [],
-              toolPending: false,
-            });
-          },
-          onThread: () => {
-            // Incognito never emits a thread event; nothing to reconcile.
-          },
-        },
+        turn.handlers,
         abortController.signal,
       );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      if (abortController.signal.aborted) return;
       keepFailedTurnVisible = true;
       // Drop the optimistic user bubble that never got a reply so the user can retry.
       setIncognitoMessages((current) =>
@@ -1309,8 +1209,10 @@ export function ThreadShell({
           }),
         );
       }
-      handleActionError(error, "Message failed to send.", (message) =>
-        patchStreamRun(INCOGNITO_RUN_KEY, { error: message }),
+      handleActionError(
+        translateStreamError(error),
+        t("thread.sendFailed"),
+        (message) => patchStreamRun(INCOGNITO_RUN_KEY, { error: message }),
       );
     } finally {
       endStreamRun(INCOGNITO_RUN_KEY, {
@@ -1343,7 +1245,7 @@ export function ThreadShell({
         pastedTexts: blocks.map(pastedTextFromBlock),
       }),
     );
-    setComposerFocusTick((tick) => tick + 1);
+    requestComposerFocus();
   }
 
   // A failed turn's error belongs to its own thread; everything else (starring,
@@ -1412,7 +1314,6 @@ export function ThreadShell({
         openThreadMenuID={openThreadMenuID}
         onToggleDesktopCollapsed={() => setSidebarCollapsed((value) => !value)}
         onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
-        onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
         onToggleUserMenu={() => setUserMenuOpen((open) => !open)}
         onCloseUserMenu={() => setUserMenuOpen(false)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -1478,38 +1379,22 @@ export function ThreadShell({
             onSessionExpired={onSessionExpired}
           />
         ) : route.view === "artifacts" ? (
-          <ArtifactsPage
-            onOpenSidebar={() => setMobileSidebarOpen(true)}
-            onSessionExpired={onSessionExpired}
-            onUseInThread={handleUseArtifactInThread}
-          />
+          <Suspense fallback={null}>
+            <ArtifactsPage
+              onOpenSidebar={() => setMobileSidebarOpen(true)}
+              onSessionExpired={onSessionExpired}
+              onUseInThread={handleUseArtifactInThread}
+            />
+          </Suspense>
         ) : route.view === "memory" ? (
-          <MemoryPage onOpenSidebar={() => setMobileSidebarOpen(true)} />
+          <Suspense fallback={null}>
+            <MemoryPage onOpenSidebar={() => setMobileSidebarOpen(true)} />
+          </Suspense>
         ) : route.view === "projects" ? (
-          <ProjectsPage
-            projects={projects}
-            loadError={loadError}
-            onOpenSidebar={() => setMobileSidebarOpen(true)}
-            onCreateProject={() => openProjectDialog(null)}
-            onOpenProject={navigateToProject}
-            onEditProject={openProjectDialog}
-            onArchiveProject={openArchiveProjectModal}
-            onUnarchiveProject={unarchiveProjectAndReload}
-            onDeleteProject={(project) => {
-              setDeletingProject(project);
-              setModalError("");
-              setOpenThreadMenuID(null);
-            }}
-          />
-        ) : route.view === "project" ? (
-          activeProject === null ? (
+          <Suspense fallback={null}>
             <ProjectsPage
               projects={projects}
-              loadError={
-                loadError === "" && threadDataLoaded
-                  ? "Project not found."
-                  : loadError
-              }
+              loadError={loadError}
               onOpenSidebar={() => setMobileSidebarOpen(true)}
               onCreateProject={() => openProjectDialog(null)}
               onOpenProject={navigateToProject}
@@ -1522,6 +1407,30 @@ export function ThreadShell({
                 setOpenThreadMenuID(null);
               }}
             />
+          </Suspense>
+        ) : route.view === "project" ? (
+          activeProject === null ? (
+            <Suspense fallback={null}>
+              <ProjectsPage
+                projects={projects}
+                loadError={
+                  loadError === "" && threadDataLoaded
+                    ? t("errors.projectNotFound")
+                    : loadError
+                }
+                onOpenSidebar={() => setMobileSidebarOpen(true)}
+                onCreateProject={() => openProjectDialog(null)}
+                onOpenProject={navigateToProject}
+                onEditProject={openProjectDialog}
+                onArchiveProject={openArchiveProjectModal}
+                onUnarchiveProject={unarchiveProjectAndReload}
+                onDeleteProject={(project) => {
+                  setDeletingProject(project);
+                  setModalError("");
+                  setOpenThreadMenuID(null);
+                }}
+              />
+            </Suspense>
           ) : (
             <ProjectDetailPage
               project={activeProject}
@@ -1532,6 +1441,7 @@ export function ThreadShell({
               sendDisabled={false}
               openThreadMenuID={openThreadMenuID}
               onBack={navigateToProjects}
+              onSessionExpired={onSessionExpired}
               onDraftChange={(text) => setDraftText(draftScope, text)}
               pastedTexts={draft.pastedTexts}
               onAddPastedText={handleAddPastedText}
@@ -1693,7 +1603,11 @@ export function ThreadShell({
           }
         />
       )}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
       {slashCommand !== null && (
         <SlashCommandPanel
           command={slashCommand}
@@ -1704,6 +1618,7 @@ export function ThreadShell({
         <SearchModal
           onClose={() => setSearchOpen(false)}
           onSelectThread={(threadID) => void selectThread(threadID)}
+          onSessionExpired={onSessionExpired}
         />
       )}
     </div>

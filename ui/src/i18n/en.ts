@@ -10,6 +10,7 @@ export const en = {
     newThread: "New thread",
   },
   app: {
+    adminUsersLoadFailed: "Users failed to load.",
     loading: "Loading",
     signIn: "Sign in",
     serviceUnavailable: "Service unavailable",
@@ -40,6 +41,7 @@ export const en = {
     german: "Deutsch (Deutschland)",
   },
   sidebar: {
+    resize: "Resize sidebar",
     search: "Search",
     showSidebar: "Show sidebar",
     hideSidebar: "Hide sidebar",
@@ -62,6 +64,10 @@ export const en = {
     archive: "Archive",
   },
   composer: {
+    attachLimit_one: "You can attach up to {{count}} file per message.",
+    attachLimit_other: "You can attach up to {{count}} files per message.",
+    uploadingFile: "Uploading {{filename}}…",
+    uploadDeferred: "{{filename}} will upload when you send.",
     attachments: "Message attachments",
     addAttachment: "Add attachment",
     sendMessage: "Send message",
@@ -81,6 +87,7 @@ export const en = {
     useIncognito: "Use incognito",
   },
   thread: {
+    sendFailed: "Message failed to send.",
     header: "Thread header",
     manageSharing: "Manage sharing",
     shareChat: "Share chat",
@@ -105,6 +112,9 @@ export const en = {
     removeFromProject: "Remove from project",
     addToProject: "Add to project",
     stopFailed: "Message failed to stop.",
+    streamInterrupted:
+      "The connection dropped before the answer finished. What arrived is shown above.",
+    messageTooLarge: "This message is too large to send.",
     updateFailed: "Thread failed to update.",
     projectUpdateFailed: "Project failed to update.",
   },
@@ -147,6 +157,8 @@ export const en = {
     projects: "Projects",
   },
   errors: {
+    uploadFailed: "{{filename}} failed to upload.",
+    projectNotFound: "Project not found.",
     unsupportedDocumentFormat: "Unsupported document format",
     unsupportedImageFormat: "Unsupported image format",
     fileTooLarge: "Files must be 25 MB or smaller.",
@@ -169,6 +181,7 @@ export const en = {
     threadRemoveFromProjectFailed: "Thread failed to remove from project.",
   },
   messages: {
+    copyFailed: "Couldn’t copy.",
     copyMessage: "Copy message",
     retryMessage: "Retry message",
     copyResponse: "Copy response",

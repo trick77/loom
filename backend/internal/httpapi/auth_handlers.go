@@ -9,7 +9,9 @@ import (
 	"github.com/trick77/loom/internal/auth"
 )
 
-const sessionTTL = 30 * 24 * time.Hour
+// defaultSessionTTL applies when Deps.SessionTTL is unset (tests, and any
+// caller that does not read BACKEND_SESSION_TTL).
+const defaultSessionTTL = 30 * 24 * time.Hour
 
 func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if s.devAuthClaims.Subject != "" {
@@ -49,7 +51,7 @@ func (s *server) createSessionFromClaims(w http.ResponseWriter, r *http.Request,
 		serverError(w, r, err, "user upsert failed")
 		return
 	}
-	session, err := s.sessions.Create(r.Context(), user.ID, sessionTTL)
+	session, err := s.sessions.Create(r.Context(), user.ID, s.sessionTTL)
 	if err != nil {
 		serverError(w, r, err, "session create failed")
 		return
@@ -106,7 +108,7 @@ func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 	var body updateMeRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		writeDecodeError(w, err)
 		return
 	}
 	if !allowedResponseLanguages[body.ResponseLanguage] {

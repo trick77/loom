@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // ErrDirectivesBudgetExceeded is returned by AddUserDirective/ReplaceUserDirective
@@ -79,7 +81,7 @@ SELECT COALESCE(MAX(position), -1) + 1 FROM user_directives WHERE user_id = ?`,
 		return UserDirective{}, fmt.Errorf("add user directive: next position: %w", err)
 	}
 
-	id := newID()
+	id := sqlutil.NewID()
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO user_directives (id, user_id, content, position, created_at, updated_at)
 VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
@@ -219,11 +221,11 @@ func scanUserDirective(row rowScanner) (UserDirective, error) {
 	if err := row.Scan(&directive.ID, &directive.UserID, &directive.Content, &directive.Position, &createdAt, &updatedAt); err != nil {
 		return UserDirective{}, err
 	}
-	created, err := parseSQLiteTime(createdAt)
+	created, err := sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return UserDirective{}, fmt.Errorf("parse created_at: %w", err)
 	}
-	updated, err := parseSQLiteTime(updatedAt)
+	updated, err := sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return UserDirective{}, fmt.Errorf("parse updated_at: %w", err)
 	}

@@ -5,13 +5,15 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 func insertTestUser(t *testing.T, db DBTX, role Role) User {
 	t.Helper()
 	user := User{
-		ID:               newID(),
-		OIDCSubject:      newID(),
+		ID:               sqlutil.NewID(),
+		OIDCSubject:      sqlutil.NewID(),
 		Username:         "test-user",
 		Email:            "test@example.com",
 		DisplayName:      "Test User",
@@ -198,4 +200,37 @@ func sessionExists(t *testing.T, db DBTX, token string) bool {
 		t.Fatalf("query session exists: %v", err)
 	}
 	return count == 1
+}
+
+// Expired sessions were only purged at boot, so a long-running server let
+// them pile up; the janitor sweeps on an interval until its context ends.
+func TestSessionStore_RunJanitorPurgesExpiredSessions(t *testing.T) {
+	db := openTestDB(t)
+	user := insertTestUser(t, db, RoleUser)
+	store := NewSessionStore(db, false)
+	expired, err := store.Create(context.Background(), user.ID, -time.Hour)
+	if err != nil {
+		t.Fatalf("Create(expired) error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		store.RunJanitor(ctx, 5*time.Millisecond)
+		close(done)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for sessionExists(t, db, expired.Token) {
+		if time.Now().After(deadline) {
+			t.Fatal("janitor never purged the expired session")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("janitor did not stop when its context ended")
+	}
 }

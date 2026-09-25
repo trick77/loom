@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // deleteChunksTx removes a document's chunks and their vec rows within tx. The
@@ -26,8 +27,17 @@ func deleteChunksTx(ctx context.Context, tx *sql.Tx, userID, documentID string) 
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid = ?`, id); err != nil {
+	// One statement for every vector row instead of one per chunk. The ids were
+	// collected above rather than expressed as a subquery because vec0 resolves
+	// each rowid through its own xUpdate; the IN list keeps that to one round
+	// trip through the driver.
+	if len(ids) > 0 {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+		args := make([]any, 0, len(ids))
+		for _, id := range ids {
+			args = append(args, id)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid IN (`+placeholders+`)`, args...); err != nil { //nolint:gosec // only the ?-placeholder list is interpolated; every value is bound
 			return err
 		}
 	}

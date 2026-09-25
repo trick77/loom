@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -107,24 +106,6 @@ func faviconRelease(key string, g *faviconGate) {
 		delete(faviconLocks, key)
 	}
 	faviconLocksMu.Unlock()
-}
-
-// guardPublicAddr rejects connections to non-public IP ranges. IsPrivate covers
-// RFC1918 (v4) and RFC4193 ULA (fc00::/7, v6).
-func guardPublicAddr(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return err
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return fmt.Errorf("favicon: unresolved address %q", address)
-	}
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() ||
-		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
-		return fmt.Errorf("favicon: refusing to connect to %s", ip)
-	}
-	return nil
 }
 
 // handleFavicon resolves, proxies and caches the best icon for a web source. The
@@ -256,7 +237,7 @@ func (s *server) fetchFaviconBytes(ctx context.Context, rawURL string) (body []b
 	if client == nil {
 		client = faviconDefaultClient
 	}
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // candidate URLs stay on the page's own host (keepSameSite) and the client dials through guardPublicAddr, which rejects every non-public address and non-web port after DNS resolution
 	if err != nil {
 		return nil, "", err
 	}

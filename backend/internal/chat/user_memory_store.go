@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // GetUserMemory returns the stored memory for a user. The bool is false when no
@@ -110,7 +112,7 @@ func scanUserMemory(row rowScanner) (UserMemory, error) {
 	if err := row.Scan(&memory.Content, &memory.SourceMessageCount, &updatedAt); err != nil {
 		return UserMemory{}, err
 	}
-	parsed, err := parseSQLiteTime(updatedAt)
+	parsed, err := sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return UserMemory{}, fmt.Errorf("parse updated_at: %w", err)
 	}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   deleteArtifact,
@@ -11,6 +11,8 @@ import {
 } from "../api";
 import { isRevocablePreview } from "../components/AttachmentPreview";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
+import { UserFacingError } from "../api/http";
+import i18n from "../i18n";
 
 export type ComposerAttachmentStatus =
   "queued" | "uploading" | "processing" | "ready" | "error";
@@ -68,6 +70,12 @@ export function toSentAttachment(
 // never existed"). It is a no-op for re-attached existing artifacts — only what
 // the composer itself uploaded (uploadedByComposer) is ours to delete. Best
 // effort: a failed delete must not block the UI removal.
+// inflightUploads holds the controller of every upload still running, keyed by
+// attachment id. Removing a chip mid-upload aborts its request; an upload that
+// completed anyway (the abort raced the response) is deleted server-side so no
+// orphan document or artifact is left behind.
+const inflightUploads = new Map<string, AbortController>();
+
 export function deleteUploadedAttachment(attachment: ComposerAttachment): void {
   if (attachment.uploadedByComposer !== true) return;
   if (attachment.documentId !== undefined) {
@@ -185,6 +193,12 @@ export function useDocumentAttachments(scope: {
     Record<string, ComposerAttachment[]>
   >({});
   const attachments = attachmentsByScope[scopeKey] ?? NO_ATTACHMENTS;
+  // Synchronous mirror of attachments.length for the limit check; re-synced
+  // from state after every render and bumped as files are accepted.
+  const attachmentCountRef = useRef(attachments.length);
+  useEffect(() => {
+    attachmentCountRef.current = attachments.length;
+  }, [attachments.length]);
 
   const setScopeAttachments = useCallback(
     (
@@ -235,6 +249,8 @@ export function useDocumentAttachments(scope: {
   const removeAttachment = useCallback(
     (id: string) => {
       const removed = attachments.find((attachment) => attachment.id === id);
+      inflightUploads.get(id)?.abort();
+      inflightUploads.delete(id);
       if (isRevocablePreview(removed?.previewUrl))
         URL.revokeObjectURL(removed.previewUrl);
       // Delete it server-side too (only if the composer uploaded it), so removing
@@ -278,20 +294,26 @@ export function useDocumentAttachments(scope: {
       const projectId = override?.projectId ?? scope.projectId;
       const sizeFiltered = files.filter(isWithinUploadSizeLimit);
       if (sizeFiltered.length < files.length) {
-        setAttachNote("Files must be 25 MB or smaller.");
+        setAttachNote(i18n.t("errors.fileTooLarge"));
       }
+      // attachmentCountRef, not attachments.length: two drops in one render
+      // would both read the count from before either was applied.
       const remaining =
-        DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - attachments.length;
+        DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - attachmentCountRef.current;
       if (remaining <= 0) {
         setAttachNote(
-          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+          i18n.t("composer.attachLimit", {
+            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+          }),
         );
         return;
       }
       const accepted = sizeFiltered.slice(0, remaining);
       if (accepted.length < sizeFiltered.length) {
         setAttachNote(
-          `You can attach up to ${DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE} files per message.`,
+          i18n.t("composer.attachLimit", {
+            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+          }),
         );
       }
       if (accepted.length === 0) return;
@@ -303,6 +325,7 @@ export function useDocumentAttachments(scope: {
             : "uploading",
         ),
       );
+      attachmentCountRef.current += pending.length;
       setScopeAttachments(scopeKey, (current) => [...current, ...pending]);
       if (threadId !== undefined || projectId !== undefined) {
         void uploadAttachments(
@@ -314,7 +337,6 @@ export function useDocumentAttachments(scope: {
       }
     },
     [
-      attachments.length,
       scope.threadId,
       scope.projectId,
       scopeKey,
@@ -364,13 +386,24 @@ async function uploadAttachments(
 
   const uploadDocumentAttachment = async (attachment: ComposerAttachment) => {
     if (attachment.file === undefined) return;
-    setAttachNote(`Uploading ${attachment.filename}…`);
+    setAttachNote(
+      i18n.t("composer.uploadingFile", { filename: attachment.filename }),
+    );
     onStatus(attachment.id, { status: "uploading" });
+    const controller = new AbortController();
+    inflightUploads.set(attachment.id, controller);
     try {
       const doc = await uploadDocument(attachment.file, {
         threadId,
         projectId,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) {
+        // Removed while the request was in flight and the server finished
+        // anyway: nothing on screen owns this document any more.
+        deleteUploadedAttachment({ ...attachment, documentId: doc.id });
+        return;
+      }
       // The document is usable inline as soon as it is uploaded — its full text is
       // injected into the prompt on send — so don't block sending on embedding.
       // Mark ready immediately, then index in the background so the large-document
@@ -385,12 +418,16 @@ async function uploadAttachments(
         // Best-effort: inline full-text still works even if background indexing fails.
       });
     } catch (error) {
+      if (controller.signal.aborted) return;
       const message =
-        error instanceof Error
+        error instanceof UserFacingError
           ? error.message
-          : `Failed to upload ${attachment.filename}.`;
+          : i18n.t("errors.uploadFailed", { filename: attachment.filename });
       onStatus(attachment.id, { status: "error", error: message });
       setAttachNote(message);
+    } finally {
+      if (inflightUploads.get(attachment.id) === controller)
+        inflightUploads.delete(attachment.id);
     }
   };
 
@@ -398,26 +435,41 @@ async function uploadAttachments(
     if (attachment.file === undefined || attachment.artifactId !== undefined)
       continue;
     if (threadId === undefined && projectId === undefined) {
-      setAttachNote(`${attachment.filename} will upload when you send.`);
+      setAttachNote(
+        i18n.t("composer.uploadDeferred", { filename: attachment.filename }),
+      );
       continue;
     }
     if (isImageAttachment(attachment)) {
-      setAttachNote(`Uploading ${attachment.filename}…`);
+      setAttachNote(
+        i18n.t("composer.uploadingFile", { filename: attachment.filename }),
+      );
       onStatus(attachment.id, { status: "uploading" });
+      const controller = new AbortController();
+      inflightUploads.set(attachment.id, controller);
       try {
         const image = await uploadImageAttachment(attachment.file, {
           threadId,
           projectId,
+          signal: controller.signal,
         });
+        if (controller.signal.aborted) {
+          deleteUploadedAttachment({ ...attachment, artifactId: image.id });
+          continue;
+        }
         onStatus(attachment.id, { status: "ready", artifactId: image.id });
         setAttachNote("");
       } catch (error) {
+        if (controller.signal.aborted) continue;
         const message =
-          error instanceof Error
+          error instanceof UserFacingError
             ? error.message
-            : `Failed to upload ${attachment.filename}.`;
+            : i18n.t("errors.uploadFailed", { filename: attachment.filename });
         onStatus(attachment.id, { status: "error", error: message });
         setAttachNote(message);
+      } finally {
+        if (inflightUploads.get(attachment.id) === controller)
+          inflightUploads.delete(attachment.id);
       }
       continue;
     }

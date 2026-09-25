@@ -105,9 +105,23 @@ func (s *server) projectThreadsDigest(ctx context.Context, userID string, thread
 		fmt.Fprintf(&b, "(Note: %d older thread(s) were omitted to stay within budget; the most recently active are included.)\n", omitted)
 	}
 
+	// One query for every sibling's tail instead of one per thread; if it
+	// fails the per-thread path below still answers.
+	ids := make([]string, 0, len(others))
+	for _, t := range others {
+		ids = append(ids, t.ID)
+	}
+	tails, err := s.thread.ListRecentMessagesForThreads(ctx, userID, ids, maxRecentMessagesPerThread)
+	if err != nil {
+		slog.Warn("project threads digest: batch list failed; loading per thread", "err", err)
+	}
 	for i, t := range others {
 		fmt.Fprintf(&b, "\n=== Thread %d: %s ===\n", i+1, strings.TrimSpace(displayThreadTitle(t)))
-		b.WriteString(s.renderThreadDigest(ctx, userID, t, perThreadBytes))
+		if tails != nil {
+			b.WriteString(renderThreadDigestMessages(t, tails[t.ID], perThreadBytes))
+		} else {
+			b.WriteString(s.renderThreadDigest(ctx, userID, t, perThreadBytes))
+		}
 	}
 
 	// Final hard guard: even though the per-thread byte shares bound the total by

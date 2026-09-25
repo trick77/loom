@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Project } from "../api";
 import { modalCancelButtonClass } from "../ThreadActionsMenu";
+import { useEscapeKey } from "../chat/useEscapeKey";
 
 export function ArchiveProjectModal({
   project,
@@ -16,6 +17,7 @@ export function ArchiveProjectModal({
   onCancel(): void;
   onArchive(): void;
 }) {
+  useEscapeKey(onCancel);
   const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px]">

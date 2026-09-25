@@ -68,6 +68,19 @@ export function formatCostNanoUsd(nanoUsd: number): string {
  * every priced message before it in transcript order. Unpriced messages add
  * nothing, so the figure is a floor when some turns had no rate.
  */
+// threadCostPrefix is threadCostThrough for every index at once: the running
+// cost after each message, in one pass instead of one per rendered bubble.
+export function threadCostPrefix(messages: Message[]): number[] {
+  const prefix = new Array<number>(messages.length);
+  let sum = 0;
+  for (let i = 0; i < messages.length; i++) {
+    const cost = messages[i].costNanoUsd;
+    if (hasPositiveValue(cost)) sum += cost;
+    prefix[i] = sum;
+  }
+  return prefix;
+}
+
 export function threadCostThrough(messages: Message[], index: number): number {
   let sum = 0;
   for (let i = 0; i <= index && i < messages.length; i++) {

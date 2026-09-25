@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -156,7 +157,10 @@ func TestRequiredServiceRetriesDiscoveryUntilStartupContextDeadline(t *testing.T
 	}
 }
 
-func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
+// newStatusTestService returns a service with one reachable server ("alpha")
+// and one that refuses connections ("zeta").
+func newStatusTestService(t *testing.T) *Service {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -185,6 +189,11 @@ func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
 	}
+	return service
+}
+
+func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
+	service := newStatusTestService(t)
 
 	statuses := service.ServerStatus(context.Background())
 	if len(statuses) != 2 {
@@ -443,5 +452,112 @@ func TestEndpointForServerNeverLeaksCredentials(t *testing.T) {
 				t.Fatalf("endpointForServer(%q) = %q, want %q", tc.url, got, tc.want)
 			}
 		})
+	}
+}
+
+// Every status call built a fresh client per server and, for stdio servers,
+// spawned a process; the /mcp and /tools slash commands are available to every
+// signed-in user, so the result is cached briefly.
+func TestServiceServerStatusIsCachedWithinTTL(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode request: %v", err)
+		}
+		switch req.Method {
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{}})
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+	cfg := Config{Servers: map[string]ServerConfig{"alpha": {Transport: TransportStreamableHTTP, URL: server.URL}}}
+	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, server.Client(), nil)
+	if err != nil {
+		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+	}
+	baseline := requests.Load()
+
+	first := service.ServerStatus(context.Background())
+	afterFirst := requests.Load()
+	if afterFirst == baseline {
+		t.Fatal("first ServerStatus() did not probe the server")
+	}
+	second := service.ServerStatus(context.Background())
+	if got := requests.Load(); got != afterFirst {
+		t.Fatalf("second ServerStatus() within the TTL probed again (%d -> %d)", afterFirst, got)
+	}
+	if len(first) != 1 || len(second) != 1 || !first[0].Active || !second[0].Active {
+		t.Fatalf("statuses = %#v / %#v, want alpha active from both calls", first, second)
+	}
+}
+
+// A file-declared server that reuses a built-in server's name exposes tools
+// under the same prefixed names; the built-in keeps them and the duplicates
+// are skipped with a warning, not fatal: a typo in the operator's JSON file
+// must not take the built-ins down with it.
+func TestServiceFromConfigsSkipsDuplicateToolNamesFromBestEffortServers(t *testing.T) {
+	newServer := func() *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			var req rpcRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("Decode request: %v", err)
+			}
+			switch req.Method {
+			case "initialize":
+				writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+			case "tools/list":
+				writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{{"name": "echo", "inputSchema": map[string]any{"type": "object"}}}})
+			}
+		}))
+	}
+	builtIn, fromFile := newServer(), newServer()
+	t.Cleanup(builtIn.Close)
+	t.Cleanup(fromFile.Close)
+	required := Config{Servers: map[string]ServerConfig{"alpha": {Transport: TransportStreamableHTTP, URL: builtIn.URL}}}
+	bestEffort := Config{Servers: map[string]ServerConfig{"alpha": {Transport: TransportStreamableHTTP, URL: fromFile.URL}}}
+
+	service, err := NewServiceFromConfigs(context.Background(), required, bestEffort, builtIn.Client(), nil)
+	if err != nil {
+		t.Fatalf("NewServiceFromConfigs() error = %v, want the duplicate skipped", err)
+	}
+	if got := len(service.Tools()); got != 1 {
+		t.Fatalf("tools = %d, want the built-in's alpha__echo only", got)
+	}
+}
+
+// A caller whose request is cancelled mid-probe gets nothing, and the probe
+// still lands for everyone else: the cache must never hold a result that
+// merely reflects the first caller's cancellation.
+func TestServiceServerStatusSurvivesCancelledCaller(t *testing.T) {
+	service := newStatusTestService(t)
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := service.ServerStatus(cancelled); got != nil {
+		t.Fatalf("ServerStatus(cancelled) = %#v, want nil", got)
+	}
+
+	statuses := service.ServerStatus(context.Background())
+	if len(statuses) != 2 {
+		t.Fatalf("ServerStatus() len = %d, want 2: %#v", len(statuses), statuses)
+	}
+	for _, st := range statuses {
+		if st.Name == "alpha" && !st.Active {
+			t.Fatalf("alpha reported inactive after a cancelled caller: %#v", statuses)
+		}
 	}
 }

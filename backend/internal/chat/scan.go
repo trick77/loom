@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 type rowScanner interface {
@@ -28,15 +30,15 @@ func scanProject(row rowScanner) (Project, error) {
 	if err != nil {
 		return Project{}, fmt.Errorf("parse auto_description_generated_at: %w", err)
 	}
-	project.CreatedAt, err = parseSQLiteTime(createdAt)
+	project.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Project{}, fmt.Errorf("parse created_at: %w", err)
 	}
-	project.UpdatedAt, err = parseSQLiteTime(updatedAt)
+	project.UpdatedAt, err = sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return Project{}, fmt.Errorf("parse updated_at: %w", err)
 	}
-	project.LastActivityAt, err = parseSQLiteTime(lastActivityAt)
+	project.LastActivityAt, err = sqlutil.ParseTime(lastActivityAt)
 	if err != nil {
 		return Project{}, fmt.Errorf("parse last_activity_at: %w", err)
 	}
@@ -44,11 +46,27 @@ func scanProject(row rowScanner) (Project, error) {
 }
 
 func scanThread(row rowScanner) (Thread, error) {
+	return scanThreadRow(row)
+}
+
+// scanThreadWithSnippet scans a thread row followed by a trailing snippet
+// column (the SELECT order used by SearchThreadsByContent).
+func scanThreadWithSnippet(row rowScanner) (Thread, string, error) {
+	var snippet string
+	thread, err := scanThreadRow(row, &snippet)
+	return thread, snippet, err
+}
+
+// scanThreadRow scans the thread columns in their SELECT order, then any extra
+// trailing columns the query added.
+func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	var thread Thread
 	var projectID sql.NullString
 	var archivedAt, lastMessageAt sql.NullString
 	var createdAt, updatedAt string
-	if err := row.Scan(&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt); err != nil {
+	dest := []any{&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt}
+	dest = append(dest, extra...)
+	if err := row.Scan(dest...); err != nil {
 		return Thread{}, err
 	}
 	if projectID.Valid {
@@ -59,11 +77,11 @@ func scanThread(row rowScanner) (Thread, error) {
 	if err != nil {
 		return Thread{}, fmt.Errorf("parse archived_at: %w", err)
 	}
-	thread.CreatedAt, err = parseSQLiteTime(createdAt)
+	thread.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Thread{}, fmt.Errorf("parse created_at: %w", err)
 	}
-	thread.UpdatedAt, err = parseSQLiteTime(updatedAt)
+	thread.UpdatedAt, err = sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return Thread{}, fmt.Errorf("parse updated_at: %w", err)
 	}
@@ -72,41 +90,6 @@ func scanThread(row rowScanner) (Thread, error) {
 		return Thread{}, fmt.Errorf("parse last_message_at: %w", err)
 	}
 	return thread, nil
-}
-
-// scanThreadWithSnippet scans a thread row followed by a trailing snippet
-// column (the SELECT order used by SearchThreadsByContent). It mirrors
-// scanThread's column parsing and adds the FTS5 snippet as a separate return.
-func scanThreadWithSnippet(row rowScanner) (Thread, string, error) {
-	var thread Thread
-	var projectID sql.NullString
-	var archivedAt, lastMessageAt sql.NullString
-	var createdAt, updatedAt string
-	var snippet string
-	if err := row.Scan(&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt, &snippet); err != nil {
-		return Thread{}, "", err
-	}
-	if projectID.Valid {
-		thread.ProjectID = &projectID.String
-	}
-	var err error
-	thread.ArchivedAt, err = nullableTime(archivedAt)
-	if err != nil {
-		return Thread{}, "", fmt.Errorf("parse archived_at: %w", err)
-	}
-	thread.CreatedAt, err = parseSQLiteTime(createdAt)
-	if err != nil {
-		return Thread{}, "", fmt.Errorf("parse created_at: %w", err)
-	}
-	thread.UpdatedAt, err = parseSQLiteTime(updatedAt)
-	if err != nil {
-		return Thread{}, "", fmt.Errorf("parse updated_at: %w", err)
-	}
-	thread.LastMessageAt, err = nullableTime(lastMessageAt)
-	if err != nil {
-		return Thread{}, "", fmt.Errorf("parse last_message_at: %w", err)
-	}
-	return thread, snippet, nil
 }
 
 func scanMessage(row rowScanner) (Message, error) {
@@ -165,7 +148,7 @@ func scanMessage(row rowScanner) (Message, error) {
 	message.Model = nullableString(model)
 	message.ReasoningEffort = nullableString(reasoningEffort)
 	var err error
-	message.CreatedAt, err = parseSQLiteTime(createdAt)
+	message.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Message{}, fmt.Errorf("parse created_at: %w", err)
 	}
@@ -192,21 +175,11 @@ func nullableTime(value sql.NullString) (*time.Time, error) {
 	if !value.Valid || value.String == "" {
 		return nil, nil
 	}
-	parsed, err := parseSQLiteTime(value.String)
+	parsed, err := sqlutil.ParseTime(value.String)
 	if err != nil {
 		return nil, err
 	}
 	return &parsed, nil
-}
-
-func parseSQLiteTime(value string) (time.Time, error) {
-	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339Nano, time.RFC3339} {
-		parsed, err := time.Parse(layout, value)
-		if err == nil {
-			return parsed, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("unsupported time format %q", value)
 }
 
 func defaultJSON(value string) json.RawMessage {

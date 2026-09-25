@@ -1,4 +1,4 @@
-import { AuthExpiredError, expectJSON } from "./http";
+import { expectJSON, expectOK } from "./http";
 import type {
   Artifact,
   ArtifactListType,
@@ -47,12 +47,7 @@ export async function listArtifacts(
 
 export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
   const response = await fetch(downloadUrl);
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to download artifact");
-  }
+  await expectOK(response, "failed to download artifact");
   return response.blob();
 }
 
@@ -67,12 +62,7 @@ export async function deleteArtifact(artifactId: string): Promise<void> {
       method: "DELETE",
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to delete artifact");
-  }
+  await expectOK(response, "failed to delete artifact");
 }
 
 // renameArtifact changes an artifact's display filename. The new name propagates
@@ -90,10 +80,5 @@ export async function renameArtifact(
       body: JSON.stringify({ displayFilename }),
     },
   );
-  if (response.status === 401) {
-    throw new AuthExpiredError();
-  }
-  if (!response.ok) {
-    throw new Error("failed to rename artifact");
-  }
+  await expectOK(response, "failed to rename artifact");
 }

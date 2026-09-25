@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -277,5 +278,41 @@ func TestStreamCancelDetailsClassifiesThreadDeleted(t *testing.T) {
 
 	if source != "thread_deleted" || reason != errStreamThreadDeleted.Error() {
 		t.Fatalf("details = %q %q, want thread deleted", source, reason)
+	}
+}
+
+// A stop ends the stream with a terminal event, so a client that did not issue
+// the stop itself does not read the closed stream as a dropped connection.
+func TestStopEndsTheStreamWithDone(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	llmClient := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: llmClient})
+
+	body := make(chan string, 1)
+	go func() {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`))
+		body <- rec.Body.String()
+	}()
+	select {
+	case <-llmClient.started:
+	case <-time.After(time.Second):
+		t.Fatal("stream did not reach llm client")
+	}
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stop", ""))
+	if rec.Code != http.StatusNoContent && rec.Code != http.StatusOK {
+		t.Fatalf("stop status = %d: %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case got := <-body:
+		if !strings.Contains(got, "event: done") {
+			t.Fatalf("stopped stream has no terminal event:\n%s", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream did not end after the stop")
 	}
 }

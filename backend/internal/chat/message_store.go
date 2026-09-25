@@ -7,37 +7,36 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
-// AddMessage adds a message to a thread. It is the thin wrapper for inserting a
-// message with only the identity, role, and content; callers that need to record
-// token usage or attachments should use the full AddMessageWith* variants.
+// AddMessage inserts a message with only identity, role and content.
 func (s *Store) AddMessage(ctx context.Context, userID, threadID string, role Role, content string) (Message, error) {
-	return s.AddMessageWithUsage(ctx, userID, threadID, role, content, MessageTokenUsage{})
+	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content})
 }
 
-// AddMessageWithUsage adds a message to a thread, recording token counts, costs,
-// and other turn-specific metrics in the usage parameter.
+// AddMessageWithUsage inserts a message and records the turn's token counts,
+// cost and other metrics.
 func (s *Store) AddMessageWithUsage(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage) (Message, error) {
-	return s.AddMessageWithArtifacts(ctx, userID, threadID, role, content, usage, nil)
+	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage})
 }
 
-// AddMessageWithArtifacts adds a message to a thread, additionally persisting any
-// generated artifacts (code snippets, visualizations, etc.) as a JSON array.
+// AddMessageWithArtifacts inserts a message together with its generated
+// artifacts (a JSON array).
 func (s *Store) AddMessageWithArtifacts(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage) (Message, error) {
-	return s.AddMessageWithActivityTrace(ctx, userID, threadID, role, content, usage, artifacts, nil)
+	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage, artifacts: artifacts})
 }
 
-// AddMessageWithActivityTrace adds a message to a thread, additionally persisting
-// the activity trace that records when tool calls were issued and how they resolved.
+// AddMessageWithActivityTrace inserts a message together with its artifacts
+// and the activity trace recording its tool calls.
 func (s *Store) AddMessageWithActivityTrace(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (Message, error) {
-	return s.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil, nil)
+	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage, artifacts: artifacts, activityTrace: activityTrace})
 }
 
-// AddMessageWithCitations is the full message insert, additionally persisting RAG
-// citations (the documents whose chunks informed the answer) and the ordered
-// content blocks (the interleaved text/trace/artifact timeline). citations and
-// contentBlocks may be nil for turns without retrieval or blocks.
+// AddMessageWithCitations is the full assistant insert: artifacts, activity
+// trace, citations (the documents and web sources behind the answer) and the
+// ordered content blocks. Any of the JSON columns may be nil.
 func (s *Store) AddMessageWithCitations(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (Message, error) {
 	return s.insertMessage(ctx, messageInsert{
 		userID:        userID,
@@ -94,51 +93,33 @@ func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, e
 	}
 	content = strings.TrimSpace(content)
 	if content == "" {
-		return Message{}, errors.New("message content is required")
+		return Message{}, validation("message content is required")
 	}
-	if len(content) > MaxMessageContentLength {
-		return Message{}, errors.New("message content is too long")
+	if len(content) > maxContentLengthForRole(role) {
+		return Message{}, validation("message content is too long")
 	}
 	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
 		return Message{}, err
 	} else if !ok {
-		return Message{}, errors.New("thread not found")
+		return Message{}, ErrThreadNotFound
 	}
-	if len(artifacts) == 0 {
-		artifacts = json.RawMessage("[]")
+	jsonColumns := []struct {
+		name string
+		raw  *json.RawMessage
+	}{
+		{"artifacts", &artifacts},
+		{"activity trace", &activityTrace},
+		{"citations", &citations},
+		{"attachments", &attachments},
+		{"content blocks", &contentBlocks},
+		{"pasted texts", &pastedTexts},
 	}
-	if !json.Valid(artifacts) {
-		return Message{}, errors.New("message artifacts must be valid JSON")
-	}
-	if len(activityTrace) == 0 {
-		activityTrace = json.RawMessage("[]")
-	}
-	if !json.Valid(activityTrace) {
-		return Message{}, errors.New("message activity trace must be valid JSON")
-	}
-	if len(citations) == 0 {
-		citations = json.RawMessage("[]")
-	}
-	if !json.Valid(citations) {
-		return Message{}, errors.New("message citations must be valid JSON")
-	}
-	if len(attachments) == 0 {
-		attachments = json.RawMessage("[]")
-	}
-	if !json.Valid(attachments) {
-		return Message{}, errors.New("message attachments must be valid JSON")
-	}
-	if len(contentBlocks) == 0 {
-		contentBlocks = json.RawMessage("[]")
-	}
-	if !json.Valid(contentBlocks) {
-		return Message{}, errors.New("message content blocks must be valid JSON")
-	}
-	if len(pastedTexts) == 0 {
-		pastedTexts = json.RawMessage("[]")
-	}
-	if !json.Valid(pastedTexts) {
-		return Message{}, errors.New("message pasted texts must be valid JSON")
+	for _, column := range jsonColumns {
+		normalized, err := normalizeJSONArray(column.name, *column.raw)
+		if err != nil {
+			return Message{}, err
+		}
+		*column.raw = normalized
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -147,7 +128,7 @@ func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, e
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	messageID := newID()
+	messageID := sqlutil.NewID()
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO messages (
     id,
@@ -254,7 +235,7 @@ func (s *Store) ListRecentMessages(ctx context.Context, userID, threadID string,
 SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
 FROM messages
 WHERE user_id = ? AND thread_id = ?
-ORDER BY created_at DESC, id DESC
+ORDER BY rowid DESC
 LIMIT ?`,
 		userID, threadID, limit,
 	)
@@ -282,8 +263,57 @@ LIMIT ?`,
 	return messages, nil
 }
 
-// ListMessages returns all messages in a thread in chronological order. The bool
-// indicates whether the thread exists; false is returned if the thread is not found.
+// ListRecentMessagesForThreads returns the last perThread messages of each of
+// the given threads, in insertion order, keyed by thread id, with one query.
+// The project digest reads the tail of every sibling thread; loading them one
+// query per thread was an N+1 over up to fifty threads.
+func (s *Store) ListRecentMessagesForThreads(ctx context.Context, userID string, threadIDs []string, perThread int) (map[string][]Message, error) {
+	out := make(map[string][]Message, len(threadIDs))
+	if len(threadIDs) == 0 {
+		return out, nil
+	}
+	if perThread <= 0 {
+		perThread = 50
+	}
+	placeholders := strings.Repeat("?,", len(threadIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, 0, len(threadIDs)+2)
+	args = append(args, userID)
+	for _, id := range threadIDs {
+		args = append(args, id)
+	}
+	args = append(args, perThread)
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
+FROM (
+	SELECT messages.*, rowid AS row_order, ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY rowid DESC) AS recency
+	FROM messages
+	WHERE user_id = ? AND thread_id IN (`+placeholders+`)
+)
+WHERE recency <= ?
+ORDER BY thread_id, row_order ASC`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list recent messages for threads: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		message, err := scanMessage(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan recent message: %w", err)
+		}
+		out[message.ThreadID] = append(out[message.ThreadID], message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent messages for threads: %w", err)
+	}
+	return out, nil
+}
+
+// ListMessages returns all messages in a thread in insertion order. rowid, not
+// created_at: the timestamp has one-second resolution and ids are random, so a
+// question and its quick reply would otherwise come back in either order. The
+// bool indicates whether the thread exists; false is returned if the thread is
+// not found.
 func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Message, bool, error) {
 	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
 		return nil, false, err
@@ -295,7 +325,7 @@ func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Me
 SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
 FROM messages
 WHERE user_id = ? AND thread_id = ?
-ORDER BY created_at ASC, id ASC`,
+ORDER BY rowid ASC`,
 		userID, threadID,
 	)
 	if err != nil {
@@ -331,4 +361,25 @@ WHERE user_id = ? AND id = ?`,
 		return Message{}, false, nil
 	}
 	return Message{}, false, fmt.Errorf("get message: %w", err)
+}
+
+// maxContentLengthForRole picks the content cap by author: user text is bounded
+// by what one send may carry, model output by the generous assistant cap.
+func maxContentLengthForRole(role Role) int {
+	if role == RoleUser {
+		return MaxMessageContentLength
+	}
+	return MaxAssistantMessageContentLength
+}
+
+// normalizeJSONArray defaults an absent JSON column to an empty array and
+// rejects one that is not valid JSON, naming the column in the error.
+func normalizeJSONArray(name string, raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 {
+		return json.RawMessage("[]"), nil
+	}
+	if !json.Valid(raw) {
+		return nil, validation("message " + name + " must be valid JSON")
+	}
+	return raw, nil
 }

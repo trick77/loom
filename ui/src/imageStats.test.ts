@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { buildImageStats } from "./ThreadShell";
+import { buildImageStats } from "./chat/artifacts";
 import type { Artifact } from "./api";
 
 function artifact(extra: Partial<Artifact>): Artifact {

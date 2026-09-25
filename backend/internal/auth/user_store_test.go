@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/loom/internal/sqlutil"
 	"github.com/trick77/loom/internal/store"
 )
 
@@ -93,11 +94,12 @@ func TestUserStore_UpsertFromClaimsAdoptsAccountWhenSubjectChanges(t *testing.T)
 
 	// Same person, same email, brand-new subject from a different provider.
 	after, err := store.UpsertFromClaims(ctx, Claims{
-		Subject:  "authelia-sub",
-		Username: "jan",
-		Email:    "JAN@example.com",
-		Name:     "Jan Saner",
-		Groups:   []string{"loom-admins"},
+		Subject:       "authelia-sub",
+		Username:      "jan",
+		Email:         "JAN@example.com",
+		Name:          "Jan Saner",
+		Groups:        []string{"loom-admins"},
+		EmailVerified: true,
 	}, "loom-admins")
 	if err != nil {
 		t.Fatalf("second upsert error: %v", err)
@@ -139,15 +141,16 @@ func TestUserStore_UpsertFromClaimsDoesNotAdoptAmbiguousEmail(t *testing.T) {
 		if _, err := db.ExecContext(ctx, `
 INSERT INTO users (id, oidc_subject, username, email, display_name, role, response_language, last_seen_at)
 VALUES (?, ?, 'jan', 'jan@example.com', 'Jan', 'user', '', datetime('now'))`,
-			newID(), subject,
+			sqlutil.NewID(), subject,
 		); err != nil {
 			t.Fatalf("seed %s: %v", subject, err)
 		}
 	}
 
 	user, err := store.UpsertFromClaims(ctx, Claims{
-		Subject: "third-sub",
-		Email:   "jan@example.com",
+		Subject:       "third-sub",
+		Email:         "jan@example.com",
+		EmailVerified: true,
 	}, "loom-admins")
 	if err != nil {
 		t.Fatalf("UpsertFromClaims() error: %v", err)
@@ -193,38 +196,51 @@ func TestUserStore_UpsertFromClaimsDoesNotAdoptWithoutEmail(t *testing.T) {
 	}
 }
 
-func TestUserStore_UpsertFromClaimsDoesNotAdoptUnverifiedEmail(t *testing.T) {
-	db := openTestDB(t)
-	store := NewUserStore(db)
-	ctx := context.Background()
+// Adoption moves an existing account to a new subject on nothing more than a
+// matching email, so the provider must have vouched for that email explicitly.
+// A missing email_verified claim is not a yes: a provider that lets users set
+// an unverified address would otherwise hand them someone else's account.
+func TestUserStore_UpsertFromClaimsAdoptsOnlyWithVerifiedEmailClaim(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		verified bool
+	}{
+		{"claim absent or false", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openTestDB(t)
+			store := NewUserStore(db)
+			ctx := context.Background()
 
-	if _, err := store.UpsertFromClaims(ctx, Claims{
-		Subject:  "old-sub",
-		Username: "jan",
-		Email:    "jan@example.com",
-	}, "loom-admins"); err != nil {
-		t.Fatalf("first upsert error: %v", err)
-	}
+			if _, err := store.UpsertFromClaims(ctx, Claims{
+				Subject:  "old-sub",
+				Username: "jan",
+				Email:    "jan@example.com",
+			}, "loom-admins"); err != nil {
+				t.Fatalf("first upsert error: %v", err)
+			}
 
-	user, err := store.UpsertFromClaims(ctx, Claims{
-		Subject:         "new-sub",
-		Username:        "jan",
-		Email:           "jan@example.com",
-		EmailUnverified: true,
-	}, "loom-admins")
-	if err != nil {
-		t.Fatalf("second upsert error: %v", err)
-	}
-	if user.OIDCSubject != "new-sub" {
-		t.Fatalf("oidc subject = %q, want a fresh new-sub row", user.OIDCSubject)
-	}
+			user, err := store.UpsertFromClaims(ctx, Claims{
+				Subject:       "new-sub",
+				Username:      "jan",
+				Email:         "jan@example.com",
+				EmailVerified: tc.verified,
+			}, "loom-admins")
+			if err != nil {
+				t.Fatalf("second upsert error: %v", err)
+			}
+			if user.OIDCSubject != "new-sub" {
+				t.Fatalf("oidc subject = %q, want a fresh new-sub row", user.OIDCSubject)
+			}
 
-	users, err := store.ListUsers(ctx)
-	if err != nil {
-		t.Fatalf("ListUsers() error: %v", err)
-	}
-	if len(users) != 2 {
-		t.Fatalf("len(users) = %d, want 2 (unverified email cannot claim an account)", len(users))
+			users, err := store.ListUsers(ctx)
+			if err != nil {
+				t.Fatalf("ListUsers() error: %v", err)
+			}
+			if len(users) != 2 {
+				t.Fatalf("len(users) = %d, want 2 (no adoption)", len(users))
+			}
+		})
 	}
 }
 
@@ -265,7 +281,7 @@ func (f failingDB) ExecContext(ctx context.Context, query string, args ...any) (
 func TestUserStore_UpsertFromClaimsCreatesUserWhenAdoptionIsLost(t *testing.T) {
 	ctx := context.Background()
 	db := failingDB{DBTX: openTestDB(t), loseRace: true}
-	claims := Claims{Subject: "old-sub", Username: "jan", Email: "jan@example.com"}
+	claims := Claims{Subject: "old-sub", Username: "jan", Email: "jan@example.com", EmailVerified: true}
 
 	if _, err := NewUserStore(db.DBTX).UpsertFromClaims(ctx, claims, "loom-admins"); err != nil {
 		t.Fatalf("seed upsert error: %v", err)
@@ -283,7 +299,7 @@ func TestUserStore_UpsertFromClaimsCreatesUserWhenAdoptionIsLost(t *testing.T) {
 
 func TestUserStore_UpsertFromClaimsReportsAdoptionFailures(t *testing.T) {
 	ctx := context.Background()
-	claims := Claims{Subject: "old-sub", Username: "jan", Email: "jan@example.com"}
+	claims := Claims{Subject: "old-sub", Username: "jan", Email: "jan@example.com", EmailVerified: true}
 
 	for name, db := range map[string]failingDB{
 		"lookup fails": {failQuery: true},

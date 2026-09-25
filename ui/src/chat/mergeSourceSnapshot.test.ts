@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Citation } from "../api";
-import { mergeSourceSnapshot } from "./ThreadShell";
+import { mergeSourceSnapshot } from "./turnHandlers";
 
 const doc = (index: number, filename: string): Citation => ({
   documentId: `d${index}`,

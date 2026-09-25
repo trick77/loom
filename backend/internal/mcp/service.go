@@ -37,7 +37,23 @@ type Service struct {
 	cfg        Config
 	origins    map[string]string
 	httpClient *http.Client
+
+	// statusMu guards the ServerStatus cache. A status call probes every server
+	// with a fresh client (a process, for stdio servers) and is reachable by any
+	// signed-in user through the /mcp and /tools slash commands, so the result
+	// is reused for statusCacheTTL.
+	statusMu    sync.Mutex
+	statusAt    time.Time
+	statusCache []ServerStatus
+	// statusProbe is closed when the in-flight probe lands; concurrent callers
+	// wait on it instead of each probing.
+	statusProbe chan struct{}
 }
+
+// statusCacheTTL is how long a ServerStatus result is reused. The panel may
+// show a server up to this much later than it changed state, which is a fair
+// trade against spawning a probe per keystroke.
+const statusCacheTTL = 30 * time.Second
 
 type toolRoute struct {
 	client Client
@@ -68,11 +84,43 @@ func (s *Service) ServerStatus(ctx context.Context) []ServerStatus {
 	if s == nil || len(s.cfg.Servers) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(s.cfg.Servers))
-	for name := range s.cfg.Servers {
-		names = append(names, name)
+	s.statusMu.Lock()
+	if s.statusCache != nil && time.Since(s.statusAt) < statusCacheTTL {
+		cached := append([]ServerStatus(nil), s.statusCache...)
+		s.statusMu.Unlock()
+		return cached
 	}
-	sort.Strings(names)
+	if s.statusProbe == nil {
+		done := make(chan struct{})
+		s.statusProbe = done
+		// The probe is detached from the caller's context: a request that goes
+		// away mid-probe (the panel was closed) must not record every server as
+		// "context canceled" for everyone else for the next TTL. Each per-server
+		// probe carries its own timeout, so the goroutine is bounded anyway.
+		go func() {
+			statuses := s.probeAll(context.WithoutCancel(ctx))
+			s.statusMu.Lock()
+			s.statusCache, s.statusAt, s.statusProbe = statuses, time.Now(), nil
+			s.statusMu.Unlock()
+			close(done)
+		}()
+	}
+	done := s.statusProbe
+	s.statusMu.Unlock()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return nil
+	}
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	return append([]ServerStatus(nil), s.statusCache...)
+}
+
+// probeAll probes every configured server concurrently and returns their
+// statuses sorted by name.
+func (s *Service) probeAll(ctx context.Context) []ServerStatus {
+	names := sortedServerNames(s.cfg.Servers)
 
 	counts := s.toolCounts()
 	statuses := make([]ServerStatus, len(names))
@@ -166,30 +214,15 @@ func endpointForServer(sc ServerConfig) string {
 // NewService creates a Service from a map of MCP clients, discovering all tools from each client.
 func NewService(clients map[string]Client) (*Service, error) {
 	service := &Service{routes: map[string]toolRoute{}}
-	names := make([]string, 0, len(clients))
-	for name := range clients {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := sortedServerNames(clients)
 	for _, serverName := range names {
 		client := clients[serverName]
 		tools, err := client.ListTools(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("list MCP tools for %s: %w", serverName, err)
 		}
-		for _, tool := range tools {
-			if _, exists := service.routes[tool.Name]; exists {
-				return nil, fmt.Errorf("duplicate MCP tool name %q", tool.Name)
-			}
-			service.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName}
-			service.tools = append(service.tools, llm.Tool{
-				Type: "function",
-				Function: llm.ToolFunction{
-					Name:        tool.Name,
-					Description: tool.Description,
-					Parameters:  tool.InputSchema,
-				},
-			})
+		if err := service.register(serverName, client, tools, failOnDuplicate); err != nil {
+			return nil, err
 		}
 	}
 	return service, nil
@@ -228,11 +261,7 @@ func NewRequiredServiceFromConfig(ctx context.Context, cfg Config, httpClient *h
 // NewRequiredServiceFromClients creates a Service from clients, failing if any client's tool discovery fails.
 func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Client) (*Service, error) {
 	service := &Service{routes: map[string]toolRoute{}}
-	names := make([]string, 0, len(clients))
-	for name := range clients {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := sortedServerNames(clients)
 	for _, serverName := range names {
 		client := clients[serverName]
 		tools, err := listToolsRequired(ctx, client)
@@ -240,19 +269,8 @@ func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Clien
 			_ = client.Close()
 			return nil, fmt.Errorf("list MCP tools for %s: %w", serverName, err)
 		}
-		for _, tool := range tools {
-			if _, exists := service.routes[tool.Name]; exists {
-				return nil, fmt.Errorf("duplicate MCP tool name %q", tool.Name)
-			}
-			service.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName}
-			service.tools = append(service.tools, llm.Tool{
-				Type: "function",
-				Function: llm.ToolFunction{
-					Name:        tool.Name,
-					Description: tool.Description,
-					Parameters:  tool.InputSchema,
-				},
-			})
+		if err := service.register(serverName, client, tools, failOnDuplicate); err != nil {
+			return nil, err
 		}
 	}
 	return service, nil
@@ -295,11 +313,7 @@ func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, htt
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(bestEffort.Servers))
-	for name := range bestEffort.Servers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := sortedServerNames(bestEffort.Servers)
 	for _, serverName := range names {
 		client := clientForServer(serverName, bestEffort.Servers[serverName], httpClient)
 		tools, err := client.ListTools(ctx)
@@ -310,23 +324,7 @@ func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, htt
 			_ = client.Close()
 			continue
 		}
-		for _, tool := range tools {
-			if _, exists := service.routes[tool.Name]; exists {
-				if logger != nil {
-					logger.Warn("skipping duplicate MCP tool name", "tool", tool.Name, "server", serverName)
-				}
-				continue
-			}
-			service.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName}
-			service.tools = append(service.tools, llm.Tool{
-				Type: "function",
-				Function: llm.ToolFunction{
-					Name:        tool.Name,
-					Description: tool.Description,
-					Parameters:  tool.InputSchema,
-				},
-			})
-		}
+		_ = service.register(serverName, client, tools, skipDuplicate(logger))
 	}
 	// Union the configs so ServerStatus live-probes best-effort servers too, and
 	// record each server's origin so status can label built-in vs file-defined.
@@ -353,11 +351,7 @@ func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient 
 		origins[name] = OriginFile
 	}
 	service := &Service{routes: map[string]toolRoute{}, cfg: cfg, origins: origins, httpClient: httpClient}
-	names := make([]string, 0, len(cfg.Servers))
-	for name := range cfg.Servers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := sortedServerNames(cfg.Servers)
 	for _, serverName := range names {
 		client := clientForServer(serverName, cfg.Servers[serverName], httpClient)
 		tools, err := client.ListTools(ctx)
@@ -368,19 +362,8 @@ func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient 
 			_ = client.Close()
 			continue
 		}
-		for _, tool := range tools {
-			if _, exists := service.routes[tool.Name]; exists {
-				return nil, fmt.Errorf("duplicate MCP tool name %q", tool.Name)
-			}
-			service.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName}
-			service.tools = append(service.tools, llm.Tool{
-				Type: "function",
-				Function: llm.ToolFunction{
-					Name:        tool.Name,
-					Description: tool.Description,
-					Parameters:  tool.InputSchema,
-				},
-			})
+		if err := service.register(serverName, client, tools, failOnDuplicate); err != nil {
+			return nil, err
 		}
 	}
 	return service, nil
@@ -456,4 +439,53 @@ func (s *Service) CallTool(ctx context.Context, name string, arguments map[strin
 		return "", fmt.Errorf("unknown MCP tool %q", name)
 	}
 	return route.client.CallTool(ctx, route.name, arguments)
+}
+
+// sortedServerNames returns a map's keys in a stable order, so discovery and
+// registration run (and log) in the same order every boot.
+func sortedServerNames[V any](servers map[string]V) []string {
+	names := make([]string, 0, len(servers))
+	for name := range servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// register exposes a server's tools to the model. onDuplicate decides what a
+// tool name already taken by another server means: an error for a required
+// server (the operator's configuration is contradictory), a logged skip for a
+// best-effort one (the built-in keeps the name).
+func (s *Service) register(serverName string, client Client, tools []Tool, onDuplicate func(serverName, tool string) error) error {
+	for _, tool := range tools {
+		if _, exists := s.routes[tool.Name]; exists {
+			if err := onDuplicate(serverName, tool.Name); err != nil {
+				return err
+			}
+			continue
+		}
+		s.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName}
+		s.tools = append(s.tools, llm.Tool{
+			Type: "function",
+			Function: llm.ToolFunction{
+				Name:        tool.Name,
+				Description: tool.Description,
+				Parameters:  tool.InputSchema,
+			},
+		})
+	}
+	return nil
+}
+
+func failOnDuplicate(_, tool string) error {
+	return fmt.Errorf("duplicate MCP tool name %q", tool)
+}
+
+func skipDuplicate(logger *slog.Logger) func(serverName, tool string) error {
+	return func(serverName, tool string) error {
+		if logger != nil {
+			logger.Warn("skipping duplicate MCP tool name", "tool", tool, "server", serverName)
+		}
+		return nil
+	}
 }

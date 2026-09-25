@@ -3,12 +3,10 @@ package httpapi
 import (
 	"context"
 	"log/slog"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/sse"
@@ -148,49 +146,15 @@ func isDownloadWorthyCode(body string) bool {
 }
 
 func (s *server) createCodeArtifact(ctx context.Context, user auth.User, thread chat.Thread, block fencedCodeBlock, ext, filename string) (artifactResponse, error) {
-	out, file, err := artifact.CreateOutputFile(artifact.OutputRequest{
-		UsersDir:        s.usersDir,
-		UserID:          user.ID,
-		ThreadID:        thread.ID,
-		ProjectID:       thread.ProjectID,
+	created, err := s.persistArtifactBytes(ctx, user, thread, artifactSpec{
 		DisplayFilename: filename,
 		Extension:       ext,
+		Data:            []byte(block.body),
 	})
 	if err != nil {
 		return artifactResponse{}, err
 	}
-	payload := []byte(block.body)
-	if _, err := file.Write(payload); err != nil {
-		_ = file.Close()
-		_ = os.Remove(out.AbsPath)
-		return artifactResponse{}, err
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(out.AbsPath)
-		return artifactResponse{}, err
-	}
-	record, err := s.artifacts.Create(ctx, artifact.CreateInput{
-		UserID:          user.ID,
-		ThreadID:        thread.ID,
-		ProjectID:       thread.ProjectID,
-		DisplayFilename: out.DisplayFilename,
-		VolumeRelPath:   out.VolumeRelPath,
-		MIMEType:        out.MIMEType,
-		SizeBytes:       int64(len(payload)),
-	})
-	if err != nil {
-		_ = os.Remove(out.AbsPath)
-		return artifactResponse{}, err
-	}
-	return artifactResponse{
-		ID:              record.ID,
-		DisplayFilename: record.DisplayFilename,
-		MIMEType:        record.MIMEType,
-		SizeBytes:       record.SizeBytes,
-		ProjectID:       record.ProjectID,
-		DownloadURL:     record.DownloadURL,
-		ThumbnailURL:    record.ThumbnailURL,
-	}, nil
+	return artifactResponseFromArtifact(created), nil
 }
 
 // codeArtifactFilename derives a meaningful name from the nearest heading above

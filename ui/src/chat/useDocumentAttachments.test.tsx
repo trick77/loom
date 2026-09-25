@@ -414,3 +414,55 @@ test("a thread's staging survives its project id resolving after mount", () => {
   rerender({ projectId: "p1" });
   expect(result.current.attachments).toHaveLength(1);
 });
+
+test("removing a chip mid-upload aborts the request and deletes a late-arriving upload", async () => {
+  let resolveUpload: (doc: {
+    id: string;
+    artifactId: string;
+  }) => void = () => {};
+  let signal: AbortSignal | undefined;
+  vi.mocked(uploadDocument).mockImplementation(
+    (_file, opts) =>
+      new Promise((resolve) => {
+        signal = opts?.signal;
+        resolveUpload = resolve as typeof resolveUpload;
+      }),
+  );
+  const { result } = renderHook(() =>
+    useDocumentAttachments({ threadId: "t1" }),
+  );
+  act(() => {
+    result.current.handleAttachFiles([file("slow.txt")]);
+  });
+  const id = result.current.attachments[0]?.id;
+  if (id === undefined) throw new Error("attachment missing");
+
+  act(() => {
+    result.current.removeAttachment(id);
+  });
+  expect(signal?.aborted).toBe(true);
+  expect(result.current.attachments).toHaveLength(0);
+
+  // The server finished the upload before the abort landed: clean it up.
+  await act(async () => {
+    resolveUpload({ id: "d-late", artifactId: "a-late" });
+    await Promise.resolve();
+  });
+  expect(deleteDocument).toHaveBeenCalledWith("d-late");
+});
+
+test("two drops in one render honour the per-message limit together", () => {
+  const { result } = renderHook(() => useDocumentAttachments({}));
+  act(() => {
+    result.current.handleAttachFiles(
+      Array.from(
+        { length: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - 1 },
+        (_, index) => file(`a-${index}.txt`),
+      ),
+    );
+    result.current.handleAttachFiles([file("b-1.txt"), file("b-2.txt")]);
+  });
+  expect(result.current.attachments).toHaveLength(
+    DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+  );
+});

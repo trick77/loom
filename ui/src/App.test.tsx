@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import App from "./App";
 import i18n from "./i18n";
-import { GeneratedArtifactCard } from "./ThreadShell";
+import { GeneratedArtifactCard } from "./chat/GeneratedArtifactCard";
 import { ICONS } from "./chat/Icon";
 import { possibleGreetings } from "./chat/threadUtils";
 import { escapeRegExp } from "./search/highlight";
@@ -1377,7 +1377,7 @@ test("retries a failed deferred new-chat image upload before streaming", async (
     ),
   );
   await waitFor(() =>
-    expect(screen.getByText("failed to upload image")).toBeInTheDocument(),
+    expect(screen.getByText(/failed to upload/i)).toBeInTheDocument(),
   );
   expect(
     fetchMock.mock.calls.some(
@@ -2040,6 +2040,70 @@ test("Escape stops the active assistant response", async () => {
   });
 });
 
+test("a stop before any answer text is not reported as a dropped connection", async () => {
+  // The server's cancel branch returns without a terminal event, so the stream
+  // body simply ends once the stop request lands, before the client aborts.
+  let stopped = false;
+  let closeStream: (() => void) | null = null;
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [threadFixture()], nextCursor: null });
+      if (url === "/api/threads/t1")
+        return Response.json({ thread: threadFixture(), messages: [] });
+      if (
+        url.startsWith("/api/threads/t1/messages:stop") &&
+        init?.method === "POST"
+      ) {
+        stopped = true;
+        closeStream?.();
+        // The closed body is observed before the stop response makes it back
+        // over the network, so the run's catch runs before the client aborts.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return new Response("", { status: 204 });
+      }
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+              ),
+            );
+            if (stopped) controller.close();
+            else closeStream = () => controller.close();
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("button", { name: "Stop response" }),
+    ).not.toBeInTheDocument();
+  });
+  expect(screen.queryByText(/connection dropped/i)).not.toBeInTheDocument();
+});
+
 test("renders artifact card from streamed artifact event", async () => {
   const artifact = {
     id: "art_1",
@@ -2122,61 +2186,9 @@ test("renders artifact card from historical assistant message", async () => {
   ).toBeInTheDocument();
 });
 
-test("renders image artifact preview from generated artifact card", async () => {
-  const objectURL = "blob:ui-image-preview";
-  const createObjectURL = vi.fn(() => objectURL);
-  const revokeObjectURL = vi.fn();
-  stubURLObjectMethods(createObjectURL, revokeObjectURL);
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/artifacts/art_1/download") {
-        return {
-          status: 200,
-          ok: true,
-          blob: async () => new Blob(["image-bytes"], { type: "image/png" }),
-        } as Response;
-      }
-      throw new Error(`unexpected fetch ${String(input)}`);
-    }),
-  );
-
-  render(
-    <GeneratedArtifactCard
-      artifact={{
-        id: "art_1",
-        displayFilename: "robot.png",
-        mimeType: "image/png",
-        sizeBytes: 12,
-        downloadUrl: "/api/artifacts/art_1/download",
-      }}
-    />,
-  );
-
-  expect(
-    await screen.findByRole("img", { name: "robot.png" }, { timeout: 3000 }),
-  ).toHaveAttribute("src", objectURL);
-  expect(createObjectURL).toHaveBeenCalledTimes(1);
-  expect(
-    screen.getByRole("button", { name: "Download robot.png" }),
-  ).toBeInTheDocument();
-});
-
-test("clicking an image artifact opens a lightbox preview in the browser", async () => {
-  const objectURL = "blob:ui-image-preview";
-  stubURLObjectMethods(
-    vi.fn(() => objectURL),
-    vi.fn(),
-  );
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    if (String(input) === "/api/artifacts/art_1/download") {
-      return {
-        status: 200,
-        ok: true,
-        blob: async () => new Blob(["image-bytes"], { type: "image/png" }),
-      } as Response;
-    }
-    throw new Error(`unexpected fetch ${String(input)}`);
+test("renders a generated image artifact from its thumbnail without downloading it", () => {
+  const fetchMock = vi.fn(async () => {
+    throw new Error("unexpected fetch");
   });
   vi.stubGlobal("fetch", fetchMock);
 
@@ -2188,23 +2200,70 @@ test("clicking an image artifact opens a lightbox preview in the browser", async
         mimeType: "image/png",
         sizeBytes: 12,
         downloadUrl: "/api/artifacts/art_1/download",
+        thumbnailUrl: "/api/artifacts/art_1/thumbnail",
       }}
     />,
   );
 
-  fireEvent.click(await screen.findByRole("img", { name: "robot.png" }));
+  expect(screen.getByRole("img", { name: "robot.png" })).toHaveAttribute(
+    "src",
+    "/api/artifacts/art_1/thumbnail",
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "Download robot.png" }),
+  ).toBeInTheDocument();
+});
 
-  // The lightbox overlay appears, showing the already-downloaded blob — no host open call.
+test("an image artifact without a thumbnail previews the full image", () => {
+  render(
+    <GeneratedArtifactCard
+      artifact={{
+        id: "art_1",
+        displayFilename: "robot.png",
+        mimeType: "image/png",
+        sizeBytes: 12,
+        downloadUrl: "/api/artifacts/art_1/download",
+      }}
+    />,
+  );
+
+  expect(screen.getByRole("img", { name: "robot.png" })).toHaveAttribute(
+    "src",
+    "/api/artifacts/art_1/download",
+  );
+});
+
+test("clicking an image artifact opens a lightbox preview in the browser", async () => {
+  const fetchMock = vi.fn(async () => {
+    throw new Error("unexpected fetch");
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <GeneratedArtifactCard
+      artifact={{
+        id: "art_1",
+        displayFilename: "robot.png",
+        mimeType: "image/png",
+        sizeBytes: 12,
+        downloadUrl: "/api/artifacts/art_1/download",
+        thumbnailUrl: "/api/artifacts/art_1/thumbnail",
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("img", { name: "robot.png" }));
+
+  // The lightbox overlay shows the full image straight from its URL: no
+  // download and no host open call.
   const dialog = await screen.findByRole("dialog", {
     name: "Preview robot.png",
   });
   expect(
     within(dialog).getByRole("img", { name: "robot.png" }),
-  ).toHaveAttribute("src", objectURL);
-  expect(fetchMock).not.toHaveBeenCalledWith(
-    "/api/artifacts/art_1/open",
-    expect.anything(),
-  );
+  ).toHaveAttribute("src", "/api/artifacts/art_1/download");
+  expect(fetchMock).not.toHaveBeenCalled();
 
   // The close button dismisses the lightbox.
   fireEvent.click(
@@ -4129,7 +4188,8 @@ test("downloads fenced generated data without markdown fences", async () => {
   );
 
   expect(createObjectURL).toHaveBeenCalledTimes(1);
-  expect(revokeObjectURL).toHaveBeenCalledWith(objectURL);
+  // The URL is revoked on the next tick so the download is not cancelled.
+  await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith(objectURL));
   const blob = downloadedBlob;
   expect(blob).toBeInstanceOf(Blob);
   if (blob === undefined) throw new Error("expected download blob");
@@ -5271,7 +5331,7 @@ test("a newer shell error replaces a failed turn's error on that thread", async 
   await waitFor(() =>
     expect(screen.queryByText(/the turn blew up/i)).toBeNull(),
   );
-  expect(screen.getByText(/failed to update thread/i)).toBeInTheDocument();
+  expect(screen.getByText(/thread failed to update/i)).toBeInTheDocument();
 });
 
 test("shows a new thread in Recents under the user's question, then swaps in the generated title", async () => {
@@ -5419,4 +5479,177 @@ test("translates the server's default title for a prompt that leaves none", asyn
   } finally {
     await i18n.changeLanguage("en");
   }
+});
+
+test("a send from the start screen does not pull the user back after they navigated away", async () => {
+  let resolveCreate: (response: Response) => void = () => {};
+  const created = new Promise<Response>((resolve) => {
+    resolveCreate = resolve;
+  });
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"What is this?","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"A thing.","createdAt":"2026-05-30T00:00:01Z"}\n\n',
+        ),
+      );
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") return created;
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST")
+        return new Response(stream, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  const textbox = await screen.findByPlaceholderText(
+    "How can I help you today?",
+  );
+  fireEvent.change(textbox, { target: { value: "What is this?" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+
+  // Creating the thread is still in flight; the user goes to Projects meanwhile.
+  fireEvent.click(await screen.findByRole("button", { name: "Projects" }));
+  expect(
+    await screen.findByRole("heading", { name: "Projects" }),
+  ).toBeInTheDocument();
+
+  resolveCreate(
+    Response.json(
+      {
+        id: "t1",
+        title: "What is this?",
+        starred: false,
+        createdAt: "2026-05-30T00:00:00Z",
+        updatedAt: "2026-05-30T00:00:00Z",
+      },
+      { status: 201 },
+    ),
+  );
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stream",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+
+  // The turn ran, the thread is in Recents, and the user was left on Projects.
+  expect(
+    await screen.findByRole("button", { name: "What is this?" }),
+  ).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/projects");
+  expect(screen.getByRole("heading", { name: "Projects" })).toBeInTheDocument();
+});
+
+test("a failed admin user list is shown as an error, not as a sign-out", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "admin" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/admin/users")
+        return Response.json({ error: "boom" }, { status: 500 });
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /admin/i }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Users failed to load.",
+  );
+  expect(screen.queryByRole("link", { name: /sign in/i })).toBeNull();
+});
+
+test("a failed deferred new-chat document upload stops the send and keeps the file staged", async () => {
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        return Response.json(
+          {
+            id: "t1",
+            title: "Summarize this",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }
+      if (url === "/api/documents/upload" && init?.method === "POST")
+        return new Response("boom", { status: 500 });
+      if (url.endsWith("/messages:stream") && init?.method === "POST")
+        throw new Error(`unexpected stream ${url}`);
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  const textbox = await screen.findByPlaceholderText(
+    "How can I help you today?",
+  );
+  const composer = textbox.closest("form");
+  const fileInput = composer?.querySelector('input[type="file"]');
+  if (fileInput === null || fileInput === undefined)
+    throw new Error("file input missing");
+  fireEvent.change(fileInput, {
+    target: {
+      files: [new File(["notes"], "notes.txt", { type: "text/plain" })],
+    },
+  });
+  fireEvent.change(textbox, { target: { value: "Summarize this" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/documents/upload",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.getByText(/failed to upload/i)).toBeInTheDocument(),
+  );
+  // The message did not go out without its file, and the file is still staged.
+  expect(
+    fetchMock.mock.calls.some(([url]) =>
+      String(url).endsWith("/messages:stream"),
+    ),
+  ).toBe(false);
+  expect(screen.getByText("notes.txt")).toBeInTheDocument();
 });

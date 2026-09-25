@@ -199,3 +199,38 @@ func TestStore_ListProjects_OrdersByRecentActivity(t *testing.T) {
 		t.Fatalf("ListProjects()[0] = %q, want %q (most recent activity first)", projects[0].ID, older.ID)
 	}
 }
+
+// Renaming a thread that already lives in a project, and the generated title
+// landing on it, are activity in that project too: the field-wise update took
+// the project id only from the request, not from the stored row.
+func TestStore_LastActivityAt_ThreadEditsTouchTheThreadsProject(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{ProjectID: &project.ID, Title: "Planning"})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	setLastActivity(t, db, project.ID, oldActivity)
+	renamed := "Renamed"
+	if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{Title: &renamed}); err != nil {
+		t.Fatalf("UpdateThread() error: %v", err)
+	}
+	if got := lastActivityRaw(t, db, project.ID); got == oldActivity {
+		t.Fatal("UpdateThread(title only) did not bump project last_activity_at")
+	}
+
+	setLastActivity(t, db, project.ID, oldActivity)
+	if _, ok, err := store.SetThreadTitleIfUnchanged(ctx, userID, thread.ID, "Renamed", "Generated"); err != nil || !ok {
+		t.Fatalf("SetThreadTitleIfUnchanged() = %v, %v; want applied", ok, err)
+	}
+	if got := lastActivityRaw(t, db, project.ID); got == oldActivity {
+		t.Fatal("SetThreadTitleIfUnchanged() did not bump project last_activity_at")
+	}
+}

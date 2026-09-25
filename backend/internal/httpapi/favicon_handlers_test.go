@@ -479,7 +479,18 @@ func TestGuardPublicAddr(t *testing.T) {
 		{"unspecified", "0.0.0.0:80", true},
 		{"ula-v6", "[fd00::1]:80", true},
 		{"public-v4", "93.184.216.34:443", false},
+		{"public-v6", "[2606:2800:220:1:248:1893:25c8:1946]:443", false},
 		{"unresolved", "example.com:443", true}, // must be a literal IP at dial time
+		// IANA special-use ranges that IsPrivate/IsLoopback do not cover.
+		{"this-network-0/8", "0.1.2.3:80", true},
+		{"cgnat-100.64/10", "100.64.0.1:443", true},
+		{"benchmark-198.18/15", "198.18.0.1:443", true},
+		{"nat64", "[64:ff9b::7f00:1]:80", true},
+		{"6to4", "[2002:7f00:1::]:80", true},
+		{"v4-compatible-v6", "[::127.0.0.1]:80", true},
+		{"v4-mapped-private", "[::ffff:10.0.0.1]:80", true},
+		// A public web server on a non-standard port is still a public web server.
+		{"public-non-standard-port", "93.184.216.34:3000", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := guardPublicAddr("tcp", tc.addr, nil)
@@ -578,5 +589,48 @@ func TestFaviconCacheDirFor(t *testing.T) {
 	}
 	if got := faviconCacheDirFor("/data/users"); !strings.HasSuffix(got, "/favicons") {
 		t.Fatalf("cache dir = %q, want sibling favicons dir", got)
+	}
+}
+
+// Icon links are taken from a page the *user* named, and the resolved icon is
+// cached under the page's host for every user. A page declaring an icon on a
+// foreign host could therefore plant that host's image (or an arbitrary URL
+// fetch) under any site's cache entry; declared candidates must stay on the
+// page's own host.
+func TestHandleFavicon_ignoresIconDeclaredOnForeignHost(t *testing.T) {
+	var foreignHits int
+	foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		foreignHits++
+		writePNG(w)
+	}))
+	defer foreign.Close()
+	var served string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = fmt.Fprintf(w, `<html><head>
+				<link rel="apple-touch-icon" sizes="180x180" href="%s/touch.png">
+				<link rel="icon" href="/favicon.ico">
+			</head></html>`, foreign.URL)
+		case "/favicon.ico":
+			served = "favicon"
+			writePNG(w)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	s := faviconServer(t)
+
+	rec := getFavicon(t, s, upstream.URL+"/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	if foreignHits != 0 {
+		t.Fatalf("foreign icon host was fetched %d times, want 0", foreignHits)
+	}
+	if served != "favicon" {
+		t.Fatalf("resolved icon = %q, want the site's own favicon", served)
 	}
 }

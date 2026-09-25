@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Thread } from "../api";
@@ -8,6 +8,7 @@ import { highlightTerms, renderSnippet } from "../search/highlight";
 import { SharedPill } from "../SharedPill";
 import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { formatTimeAgo } from "../timeago";
+import { useOutsideRefPointerDown } from "../chat/useOutsidePointerDown";
 
 export function ThreadRow({
   thread,
@@ -56,16 +57,7 @@ export function ThreadRow({
   const { t } = useTranslation();
   const rowRef = useRef<HTMLLIElement | null>(null);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || rowRef.current?.contains(target)) return;
-      onCloseMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen, onCloseMenu]);
+  useOutsideRefPointerDown(menuOpen, rowRef, onCloseMenu);
 
   const timeLabel = formatTimeAgo(thread.lastMessageAt ?? thread.updatedAt);
   const hasSnippet = snippet !== undefined && snippet !== "";

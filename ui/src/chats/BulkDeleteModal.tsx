@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useEscapeKey } from "../chat/useEscapeKey";
 
 import {
   modalCancelButtonClass,
@@ -19,13 +19,7 @@ export function BulkDeleteModal({
 }) {
   const { t } = useTranslation();
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCancel();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
+  useEscapeKey(onCancel);
 
   return (
     <div

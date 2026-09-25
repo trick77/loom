@@ -1,6 +1,6 @@
 import {
+  memo,
   type ComponentPropsWithoutRef,
-  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -64,15 +64,9 @@ import {
   isImageAttachment,
   type ComposerAttachment,
 } from "./useDocumentAttachments";
+import { downloadBlob } from "./download";
 
-export function MessageBubble({
-  message,
-  retryMessage,
-  onRetry,
-  category,
-  threadCostNanoUsd,
-  publicView = false,
-}: {
+type MessageBubbleProps = {
   message: Message & {
     attachments?: ComposerAttachment[];
     hadAttachment?: boolean;
@@ -88,7 +82,25 @@ export function MessageBubble({
   threadCostNanoUsd?: number;
   /** Read-only public share viewer: hide actions, metrics and citations. */
   publicView?: boolean;
-}) {
+};
+
+// MessageBubble routes a message to the bubble for its role. The two bubbles
+// are separate components (rather than an early return inside one) so each
+// can call its own hooks, and each is memoized: the transcript re-renders on
+// every streamed token, and nothing about a settled message changes then.
+export function MessageBubble(props: MessageBubbleProps) {
+  return props.message.role === "user" ? (
+    <UserMessageBubble {...props} />
+  ) : (
+    <AssistantMessageBubble {...props} />
+  );
+}
+
+const UserMessageBubble = memo(function UserMessageBubble({
+  message,
+  onRetry,
+  publicView = false,
+}: MessageBubbleProps) {
   const { t } = useTranslation();
   // Large pasted blocks were folded into content on send (so the model sees them);
   // strip them back out for display and render each matched block as a "Pasted"
@@ -102,51 +114,57 @@ export function MessageBubble({
       ? stripPastedBlocks(message.content, blocks)
       : { text: message.content, matched: [] as boolean[] };
   }, [message.content, message.pastedTexts]);
-  if (message.role === "user") {
-    const pastedTexts = message.pastedTexts ?? [];
-    return (
-      <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
-        {message.attachments !== undefined &&
-          message.attachments.length > 0 && (
-            <SentAttachments attachments={message.attachments} />
+  const pastedTexts = message.pastedTexts ?? [];
+  return (
+    <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
+      {message.attachments !== undefined && message.attachments.length > 0 && (
+        <SentAttachments attachments={message.attachments} />
+      )}
+      {pastedMatched.some(Boolean) && (
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          {pastedTexts.map((pasted, index) =>
+            pastedMatched[index] ? (
+              <PastedTextCard
+                key={`${message.id}-pasted-${index}`}
+                text={pasted.text}
+                lineCount={pasted.lineCount}
+              />
+            ) : null,
           )}
-        {pastedMatched.some(Boolean) && (
-          <div className="mt-2 flex flex-wrap justify-end gap-2">
-            {pastedTexts.map((pasted, index) =>
-              pastedMatched[index] ? (
-                <PastedTextCard
-                  key={`${message.id}-pasted-${index}`}
-                  text={pasted.text}
-                  lineCount={pasted.lineCount}
-                />
-              ) : null,
-            )}
-          </div>
-        )}
-        {displayContent !== "" && (
-          <div className="ui-message-text ui-user-message-text mt-2 rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
-            {displayContent}
-          </div>
-        )}
-        {publicView && message.hadAttachment === true && (
-          <AttachmentNotShared />
-        )}
-        {!publicView && (
-          <MessageActions
-            copyLabel={t("messages.copyMessage")}
-            copyText={message.content}
-            retryLabel={t("messages.retryMessage")}
-            // Retry re-stages the collapsed pastes as chips (not the inline wall):
-            // pass the stripped draft plus the blocks, so resend keeps the collapse.
-            onRetry={() => onRetry?.(displayContent, message.pastedTexts)}
-            // The sent message carries only its time (no token metrics) in the status line.
-            metricsMessage={message}
-            alignRight
-          />
-        )}
-      </div>
-    );
-  }
+        </div>
+      )}
+      {displayContent !== "" && (
+        <div className="ui-message-text ui-user-message-text mt-2 rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
+          {displayContent}
+        </div>
+      )}
+      {publicView && message.hadAttachment === true && <AttachmentNotShared />}
+      {!publicView && (
+        <MessageActions
+          copyLabel={t("messages.copyMessage")}
+          copyText={message.content}
+          retryLabel={t("messages.retryMessage")}
+          // Retry re-stages the collapsed pastes as chips (not the inline wall):
+          // pass the stripped draft plus the blocks, so resend keeps the collapse.
+          onRetry={() => onRetry?.(displayContent, message.pastedTexts)}
+          // The sent message carries only its time (no token metrics) in the status line.
+          metricsMessage={message}
+          alignRight
+        />
+      )}
+    </div>
+  );
+});
+
+const AssistantMessageBubble = memo(function AssistantMessageBubble({
+  message,
+  retryMessage,
+  onRetry,
+  category,
+  threadCostNanoUsd,
+  publicView = false,
+}: MessageBubbleProps) {
+  const { t } = useTranslation();
   // Render the assistant message as a single ordered list of content blocks
   // (text / trace / artifact) so prose, tool-activity panels and images appear in
   // the exact chronological order they arrived. The copy/retry/TTS + metrics
@@ -286,7 +304,7 @@ export function MessageBubble({
       )}
     </div>
   );
-}
+});
 
 // AttachmentNotShared is the subtle marker shown in a public share on a message
 // that originally carried an uploaded file. The file itself is never shared (it
@@ -306,7 +324,7 @@ function AttachmentNotShared() {
 // collapsed, inactive activity panel; text blocks render prose (with
 // downloadable/pending-fenced-artifact detection); artifact blocks render the
 // generated-artifact card.
-function AssistantBlock({
+const AssistantBlock = memo(function AssistantBlock({
   block,
   sources,
   display,
@@ -326,7 +344,7 @@ function AssistantBlock({
       {block.content}
     </AssistantProse>
   );
-}
+});
 
 function SentAttachments({
   attachments,
@@ -456,10 +474,12 @@ function CodeBlock({
 
   const handleCopy = useCallback(() => {
     const code = preRef.current?.textContent ?? "";
-    void copyResponse(code);
-    setCopied(true);
-    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-    resetRef.current = window.setTimeout(() => setCopied(false), 1500);
+    void copyResponse(code).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      if (resetRef.current !== null) window.clearTimeout(resetRef.current);
+      resetRef.current = window.setTimeout(() => setCopied(false), 1500);
+    });
   }, []);
 
   return (
@@ -484,7 +504,7 @@ function CodeBlock({
   );
 }
 
-export function ProseMarkdown({
+export const ProseMarkdown = memo(function ProseMarkdown({
   children,
   streaming = false,
   sources,
@@ -497,11 +517,18 @@ export function ProseMarkdown({
   /** Persisted index -> reader-facing number, from assignDisplayNumbers. */
   display?: DisplayMap;
 }) {
+  // react-markdown re-runs its whole pipeline when the plugin list or the
+  // component map changes identity, and both used to be rebuilt on every
+  // render, i.e. on every streamed token for every message on screen. The
+  // plugin list is memoized on its inputs; the component map is a constant.
   // rehypeKatex first so math renders before streamFade/sourcePills post-process the tree.
-  const rehypePlugins: PluggableList = [rehypeKatexPlugin, rehypeHighlight];
-  if (streaming) rehypePlugins.push(rehypeStreamFade);
-  if (sources !== undefined && display !== undefined)
-    rehypePlugins.push([rehypeSourcePills, sources, display]);
+  const rehypePlugins = useMemo<PluggableList>(() => {
+    const plugins: PluggableList = [rehypeKatexPlugin, rehypeHighlight];
+    if (streaming) plugins.push(rehypeStreamFade);
+    if (sources !== undefined && display !== undefined)
+      plugins.push([rehypeSourcePills, sources, display]);
+    return plugins;
+  }, [streaming, sources, display]);
   // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses.
   const normalized = useMemo(
     () => normalizeMathDelimiters(children),
@@ -512,48 +539,49 @@ export function ProseMarkdown({
       <Markdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={rehypePlugins}
-        components={
-          {
-            a({ children, ...props }) {
-              return (
-                <a {...props} target="_blank" rel="noreferrer">
-                  {children}
-                </a>
-              );
-            },
-            // Custom element emitted by rehypeSourcePills for each [n] citation.
-            // Cast: react-markdown's Components type is keyed by HTML tag names, so a
-            // custom element name isn't in the type — the runtime maps it fine.
-            // Spread rather than pick: the plugin also sets data attributes on the
-            // node (data-tight), and a hand-listed prop set silently drops them.
-            [SOURCE_PILL_TAG]: (props: Record<string, unknown>) => (
-              <SourcePill {...props} />
-            ),
-            img({ src, ...props }) {
-              // Only render images whose src is an absolute, loadable URL. The model
-              // sometimes embeds a generated image by its bare filename (e.g.
-              // `![Lego Set](lego-selfie-set.png)`), which can never resolve — the
-              // real image is already shown as an artifact card — so drop it instead
-              // of rendering a broken-image placeholder.
-              const ok =
-                typeof src === "string" && /^(https?:|data:)/i.test(src);
-              return ok ? <img src={src} {...props} /> : null;
-            },
-            pre: CodeBlock,
-          } as Components
-        }
+        components={markdownComponents}
       >
         {normalized}
       </Markdown>
     </div>
   );
-}
+});
+
+// markdownComponents maps markdown elements to the app's renderers. Nothing in
+// it depends on the message, so it is built once.
+const markdownComponents = {
+  a({ children, ...props }) {
+    return (
+      <a {...props} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    );
+  },
+  // Custom element emitted by rehypeSourcePills for each [n] citation.
+  // Cast: react-markdown's Components type is keyed by HTML tag names, so a
+  // custom element name isn't in the type — the runtime maps it fine.
+  // Spread rather than pick: the plugin also sets data attributes on the
+  // node (data-tight), and a hand-listed prop set silently drops them.
+  [SOURCE_PILL_TAG]: (props: Record<string, unknown>) => (
+    <SourcePill {...props} />
+  ),
+  img({ src, ...props }) {
+    // Only render images whose src is an absolute, loadable URL. The model
+    // sometimes embeds a generated image by its bare filename (e.g.
+    // `![Lego Set](lego-selfie-set.png)`), which can never resolve — the
+    // real image is already shown as an artifact card — so drop it instead
+    // of rendering a broken-image placeholder.
+    const ok = typeof src === "string" && /^(https?:|data:)/i.test(src);
+    return ok ? <img src={src} {...props} /> : null;
+  },
+  pre: CodeBlock,
+} as Components;
 
 // AssistantProse renders one run of assistant prose with the
 // downloadable/pending-fenced-artifact detection, but no action/metrics row — the
 // single bottom footer is rendered once per message by MessageBubble. Used for
 // each committed text block and for the live streaming text block.
-export function AssistantProse({
+export const AssistantProse = memo(function AssistantProse({
   children,
   streaming = false,
   sources,
@@ -647,7 +675,7 @@ export function AssistantProse({
       </ProseMarkdown>
     </div>
   );
-}
+});
 
 function MessageActions({
   copyLabel,
@@ -673,10 +701,22 @@ function MessageActions({
   streaming?: boolean;
 }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
+  const copied = copyState === "copied";
+  const copyResetRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (copyResetRef.current !== null)
+        window.clearTimeout(copyResetRef.current);
+    };
+  }, []);
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
-  speakingRef.current = speaking;
+  useEffect(() => {
+    speakingRef.current = speaking;
+  }, [speaking]);
 
   // Stop any in-progress narration started here when the bubble unmounts.
   useEffect(
@@ -685,9 +725,11 @@ function MessageActions({
   );
 
   async function handleCopy() {
-    await copyResponse(copyText);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+    const ok = await copyResponse(copyText);
+    setCopyState(ok ? "copied" : "failed");
+    if (copyResetRef.current !== null)
+      window.clearTimeout(copyResetRef.current);
+    copyResetRef.current = window.setTimeout(() => setCopyState("idle"), 1200);
   }
 
   function endSpeech() {
@@ -724,8 +766,10 @@ function MessageActions({
       className="grid h-6 w-5 place-items-center text-[#858178] hover:text-[#f3f0e8]"
       onClick={handleCopy}
       type="button"
-      title={t("messages.copy")}
-      aria-label={copyLabel}
+      title={
+        copyState === "failed" ? t("messages.copyFailed") : t("messages.copy")
+      }
+      aria-label={copyState === "failed" ? t("messages.copyFailed") : copyLabel}
     >
       {copied ? (
         <CheckIcon className="h-[1rem] w-[1rem]" />
@@ -949,19 +993,23 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
   );
 }
 
-async function copyResponse(content: string) {
-  await navigator.clipboard?.writeText(content);
+// copyResponse writes to the clipboard and reports whether it worked: the
+// clipboard is absent on insecure origins and the write is rejected when the
+// document is not focused or permission is denied. A rejected write used to
+// escape as an unhandled rejection while the button still said "Copied".
+async function copyResponse(content: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard === undefined) return false;
+    await navigator.clipboard.writeText(content);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function downloadEmbeddedArtifact(artifact: DownloadableResponse) {
-  const url = URL.createObjectURL(
+  downloadBlob(
     new Blob([artifact.content], { type: artifact.mimeType }),
+    `ui-response.${artifact.extension}`,
   );
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `ui-response.${artifact.extension}`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
 }

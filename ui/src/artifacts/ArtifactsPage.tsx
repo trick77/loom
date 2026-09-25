@@ -1,9 +1,9 @@
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -31,10 +31,13 @@ import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
 import { useInfiniteList } from "../useInfiniteList";
 import { ArtifactActionsMenu } from "./ArtifactActionsMenu";
+import { useEscapeKey } from "../chat/useEscapeKey";
 import {
   DeleteArtifactModal,
   RenameArtifactModal,
 } from "./ArtifactActionModals";
+import { downloadBlob } from "../chat/download";
+import { useOutsideRefPointerDown } from "../chat/useOutsidePointerDown";
 
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -483,23 +486,8 @@ function ArtifactRowFrame({
   const showMenuButton = hovered || menuOpen;
 
   // Close the menu on an outside click or Escape, mirroring the thread row menu.
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node) || rowRef.current?.contains(target)) return;
-      onCloseMenu();
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCloseMenu();
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [menuOpen, onCloseMenu]);
+  useEscapeKey(onCloseMenu, { active: menuOpen });
+  useOutsideRefPointerDown(menuOpen, rowRef, onCloseMenu);
 
   return (
     <BrowsingListRowFrame
@@ -687,14 +675,7 @@ function ImageArtifactRow({
   const { t } = useTranslation();
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setLightboxOpen(false);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightboxOpen]);
+  useEscapeKey(() => setLightboxOpen(false), { active: lightboxOpen });
 
   const openPreview = () => {
     setLightboxOpen(true);
@@ -771,13 +752,8 @@ function ImageArtifactRow({
 }
 
 async function downloadToBrowser(artifact: Artifact) {
-  const blob = await downloadArtifact(artifact.downloadUrl);
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = artifact.displayFilename;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  downloadBlob(
+    await downloadArtifact(artifact.downloadUrl),
+    artifact.displayFilename,
+  );
 }

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // CreateShare inserts a new public share row for a thread. The caller supplies the
@@ -26,7 +28,7 @@ func (s *Store) CreateShare(ctx context.Context, userID string, in CreateShareIn
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO shared_threads (id, share_id, thread_id, user_id, title, snapshot, artifact_ids)
 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		newID(), in.ShareID, in.ThreadID, userID, in.Title, snapshot, artifactIDs,
+		sqlutil.NewID(), in.ShareID, in.ThreadID, userID, in.Title, snapshot, artifactIDs,
 	)
 	if err != nil {
 		return Share{}, fmt.Errorf("insert share: %w", err)
@@ -116,12 +118,12 @@ WHERE user_id = ? AND thread_id = ?`,
 	return affected > 0, nil
 }
 
-// ListSharesForUser returns the user's shares, newest first, for the settings
-// dashboard. Snapshots are omitted from the scan-heavy listing path is not needed
-// here — the full row is small enough and the dashboard renders metadata only.
+// ListSharesForUser lists the user's shares for the settings page. The
+// snapshot column is left out (Snapshot is empty on every row): the list shows
+// metadata only, and a snapshot is the whole frozen transcript.
 func (s *Store) ListSharesForUser(ctx context.Context, userID string) ([]Share, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, share_id, thread_id, user_id, shared, title, snapshot, artifact_ids, snapshot_at, created_at, updated_at
+SELECT id, share_id, thread_id, user_id, shared, title, '' AS snapshot, artifact_ids, snapshot_at, created_at, updated_at
 FROM shared_threads
 WHERE user_id = ?
 ORDER BY created_at DESC, id DESC`,
@@ -172,15 +174,15 @@ func scanShare(row rowScanner) (Share, error) {
 		return Share{}, fmt.Errorf("parse artifact_ids: %w", err)
 	}
 	share.ArtifactIDs = ids
-	share.SnapshotAt, err = parseSQLiteTime(snapshotAt)
+	share.SnapshotAt, err = sqlutil.ParseTime(snapshotAt)
 	if err != nil {
 		return Share{}, fmt.Errorf("parse snapshot_at: %w", err)
 	}
-	share.CreatedAt, err = parseSQLiteTime(createdAt)
+	share.CreatedAt, err = sqlutil.ParseTime(createdAt)
 	if err != nil {
 		return Share{}, fmt.Errorf("parse created_at: %w", err)
 	}
-	share.UpdatedAt, err = parseSQLiteTime(updatedAt)
+	share.UpdatedAt, err = sqlutil.ParseTime(updatedAt)
 	if err != nil {
 		return Share{}, fmt.Errorf("parse updated_at: %w", err)
 	}

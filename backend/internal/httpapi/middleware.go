@@ -4,19 +4,27 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
-// recovery converts panics in downstream handlers into 500 responses.
+// recovery converts panics in downstream handlers into JSON 500 responses.
+// When the handler had already started its response (an SSE stream, a partial
+// download) nothing more is written: a trailing error would corrupt what the
+// client holds, and the stream handlers emit their own terminal error event
+// (see recoverToStream).
 func recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{ResponseWriter: w}
 		defer func() {
-			if rec := recover(); rec != nil {
-				slog.Error("panic recovered", "err", rec, "path", r.URL.Path, "stack", string(debug.Stack()))
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+			if p := recover(); p != nil {
+				slog.Error("panic recovered", "err", p, "path", logPath(r), "headers_sent", rec.status != 0, "stack", string(debug.Stack()))
+				if rec.status == 0 {
+					writeJSONError(rec, http.StatusInternalServerError, "internal server error")
+				}
 			}
 		}()
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(rec, r)
 	})
 }
 
@@ -74,9 +82,31 @@ func logging(next http.Handler) http.Handler {
 		}
 		slog.LogAttrs(r.Context(), level, "request",
 			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
+			slog.String("path", logPath(r)),
 			slog.Int("status", rec.status),
 			slog.String("dur", time.Since(start).String()),
 		)
 	})
+}
+
+// logPath is the request path as it may appear in a log line. A share id is the
+// bearer token of a public share, so the {shareID} segment is redacted; the mux
+// sets the path values on the request before the handler runs, and the logging
+// wrapper reads them after it returns.
+func logPath(r *http.Request) string {
+	path := r.URL.Path
+	shareID := r.PathValue("shareID")
+	if shareID == "" {
+		return path
+	}
+	// Replace the segment that follows "shares", not the first substring
+	// match: a short token can also occur inside an earlier segment.
+	segments := strings.Split(path, "/")
+	for i := 1; i < len(segments); i++ {
+		if segments[i-1] == "shares" && segments[i] == shareID {
+			segments[i] = "[redacted]"
+			return strings.Join(segments, "/")
+		}
+	}
+	return path
 }

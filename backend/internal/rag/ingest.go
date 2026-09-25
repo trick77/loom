@@ -152,6 +152,12 @@ func (ing *Ingester) ExtractText(ctx context.Context, userID, documentID string)
 	if err != nil {
 		return "", fmt.Errorf("extract text: %w", err)
 	}
+	// Cache what was just extracted so the next turn that inlines this
+	// attachment reads the row instead of running Tika (or the vision model)
+	// again. Best-effort: a failed write costs one more extraction later.
+	if strings.TrimSpace(text) != "" {
+		_ = ing.store.SetDocumentFullText(ctx, userID, documentID, text)
+	}
 	return text, nil
 }
 

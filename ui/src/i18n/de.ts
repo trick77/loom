@@ -12,6 +12,7 @@ export const de = {
     newThread: "Neuer Thread",
   },
   app: {
+    adminUsersLoadFailed: "Benutzer konnten nicht geladen werden.",
     loading: "Wird geladen",
     signIn: "Anmelden",
     serviceUnavailable: "Dienst nicht verfügbar",
@@ -42,6 +43,7 @@ export const de = {
     german: "Deutsch (Deutschland)",
   },
   sidebar: {
+    resize: "Seitenleiste anpassen",
     search: "Suchen",
     showSidebar: "Seitenleiste einblenden",
     hideSidebar: "Seitenleiste ausblenden",
@@ -64,6 +66,11 @@ export const de = {
     archive: "Archivieren",
   },
   composer: {
+    attachLimit_one: "Pro Nachricht kannst du bis zu {{count}} Datei anhängen.",
+    attachLimit_other:
+      "Pro Nachricht kannst du bis zu {{count}} Dateien anhängen.",
+    uploadingFile: "{{filename}} wird hochgeladen…",
+    uploadDeferred: "{{filename}} wird beim Senden hochgeladen.",
     attachments: "Anhänge",
     addAttachment: "Anhang hinzufügen",
     sendMessage: "Nachricht senden",
@@ -83,6 +90,7 @@ export const de = {
     useIncognito: "Inkognito verwenden",
   },
   thread: {
+    sendFailed: "Nachricht konnte nicht gesendet werden.",
     header: "Thread-Kopfzeile",
     manageSharing: "Freigabe verwalten",
     shareChat: "Chat teilen",
@@ -107,6 +115,9 @@ export const de = {
     removeFromProject: "Aus Projekt entfernen",
     addToProject: "Zu Projekt hinzufügen",
     stopFailed: "Nachricht konnte nicht gestoppt werden.",
+    streamInterrupted:
+      "Die Verbindung ist abgebrochen, bevor die Antwort fertig war. Was angekommen ist, steht oben.",
+    messageTooLarge: "Diese Nachricht ist zu gross zum Senden.",
     updateFailed: "Thread konnte nicht aktualisiert werden.",
     projectUpdateFailed: "Projekt konnte nicht aktualisiert werden.",
   },
@@ -149,6 +160,8 @@ export const de = {
     projects: "Projekte",
   },
   errors: {
+    uploadFailed: "{{filename}} konnte nicht hochgeladen werden.",
+    projectNotFound: "Projekt nicht gefunden.",
     unsupportedDocumentFormat: "Nicht unterstütztes Dokumentformat",
     unsupportedImageFormat: "Nicht unterstütztes Bildformat",
     fileTooLarge: "Dateien dürfen höchstens 25 MB gross sein.",
@@ -176,6 +189,7 @@ export const de = {
       "Thread konnte nicht aus dem Projekt entfernt werden.",
   },
   messages: {
+    copyFailed: "Kopieren fehlgeschlagen.",
     copyMessage: "Nachricht kopieren",
     retryMessage: "Nachricht wiederholen",
     copyResponse: "Antwort kopieren",

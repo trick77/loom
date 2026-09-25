@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Project, Thread } from "../api";
 import { Icon } from "../chat/Icon";
+import { useEscapeKey } from "../chat/useEscapeKey";
 
 export function ProjectPickerDialog({
   threads,
@@ -18,6 +19,7 @@ export function ProjectPickerDialog({
   onCancel(): void;
   onSelect(project: Project): void;
 }) {
+  useEscapeKey(onCancel);
   const { t } = useTranslation();
   const title =
     threads.length === 1

@@ -54,6 +54,12 @@ func (s *server) resolveIconCandidates(ctx context.Context, scheme, host, pageUR
 	var apple, icons []string
 	if doc, base, err := s.fetchPageHTML(ctx, pageURL); err == nil {
 		apple, icons = parseIconLinks(doc, base)
+		// The page is user-named and the result is cached under host for every
+		// user, so a declared icon must live on that host (or a subdomain of it):
+		// otherwise any page could plant a foreign image, or an arbitrary fetch,
+		// under another site's cache entry.
+		apple = keepSameSite(apple, host)
+		icons = keepSameSite(icons, host)
 	}
 	out := make([]string, 0, 8)
 	// 1. apple-touch-icons declared in the page (largest first) — the most reliably
@@ -280,6 +286,23 @@ func dedupeStrings(xs []string) []string {
 		}
 		seen[x] = struct{}{}
 		out = append(out, x)
+	}
+	return out
+}
+
+// keepSameSite drops candidate URLs whose authority is neither host itself nor
+// a subdomain of it. host is the page's lowercased authority (host[:port]).
+func keepSameSite(candidates []string, host string) []string {
+	out := candidates[:0]
+	for _, c := range candidates {
+		u, err := url.Parse(c)
+		if err != nil {
+			continue
+		}
+		h := strings.ToLower(u.Host)
+		if h == host || strings.HasSuffix(h, "."+host) {
+			out = append(out, c)
+		}
 	}
 	return out
 }

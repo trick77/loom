@@ -97,8 +97,11 @@ type mcpStatusError struct {
 	body   string
 }
 
+// Error names the method and status only. The body stays on the struct for
+// isSessionError; it is never part of the message, which reaches the user in
+// the /mcp panel and could echo request headers or tokens the server reflects.
 func (e *mcpStatusError) Error() string {
-	return fmt.Sprintf("MCP %s failed with status %d: %s", e.method, e.status, e.body)
+	return fmt.Sprintf("MCP %s failed with status %d", e.method, e.status)
 }
 
 // isSessionError reports whether err is an expired/invalid Streamable HTTP
@@ -128,7 +131,7 @@ func (c *remoteClient) ListTools(ctx context.Context) ([]Tool, error) {
 	if err := c.callWithSession(ctx, "tools/list", nil, &result); err != nil {
 		return nil, err
 	}
-	return c.exposeTools(result.Tools), nil
+	return exposeTools(c.serverName, c.cfg, result.Tools), nil
 }
 
 func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
@@ -317,30 +320,33 @@ func decodeSSEResponse(r io.Reader, id int64) (rpcResponse, error) {
 	return rpcResponse{}, fmt.Errorf("MCP response: no JSON-RPC message with id %d in SSE stream", id)
 }
 
-func (c *remoteClient) exposeTools(tools []toolResult) []Tool {
+// exposeTools maps a server's advertised tools onto loom's exposed names,
+// dropping those the server's optional allowlist (cfg.Tools) does not permit.
+// Both transports go through here so the allowlist means the same everywhere.
+func exposeTools(serverName string, cfg ServerConfig, tools []toolResult) []Tool {
 	out := make([]Tool, 0, len(tools))
 	for _, tool := range tools {
-		if !c.toolAllowed(tool.Name) {
+		if !cfg.toolAllowed(tool.Name) {
 			continue
 		}
 		out = append(out, Tool{
-			Name:         ExposedToolName(c.serverName, tool.Name),
+			Name:         ExposedToolName(serverName, tool.Name),
 			OriginalName: tool.Name,
 			Description:  tool.Description,
 			InputSchema:  tool.InputSchema,
-			ServerName:   c.serverName,
+			ServerName:   serverName,
 		})
 	}
 	return out
 }
 
 // toolAllowed reports whether a server-side tool name passes the optional
-// per-server allowlist (cfg.Tools). An empty allowlist permits every tool.
-func (c *remoteClient) toolAllowed(name string) bool {
-	if len(c.cfg.Tools) == 0 {
+// per-server allowlist (Tools). An empty allowlist permits every tool.
+func (cfg ServerConfig) toolAllowed(name string) bool {
+	if len(cfg.Tools) == 0 {
 		return true
 	}
-	for _, allowed := range c.cfg.Tools {
+	for _, allowed := range cfg.Tools {
 		if allowed == name {
 			return true
 		}
@@ -403,8 +409,16 @@ type stdioClient struct {
 	stdin      io.WriteCloser
 	scanner    *bufio.Scanner
 	startErr   error
-	initOnce   sync.Once
-	initErr    error
+	// initialized records that the CURRENT process has completed the
+	// initialize handshake. Close resets it: a cancelled call kills the shared
+	// process, and the next call starts a fresh one that must be initialized
+	// again (a sync.Once here left every later request to a restarted server
+	// failing with "not initialized").
+	initialized bool
+	// initMu serialises the check-then-initialize so two concurrent first
+	// calls send one handshake: a second "initialize" on an initialized
+	// process is an error for servers built on the reference SDKs.
+	initMu sync.Mutex
 }
 
 // NewStdioClient creates a Client that communicates with an MCP server via stdin/stdout.
@@ -420,17 +434,7 @@ func (c *stdioClient) ListTools(ctx context.Context) ([]Tool, error) {
 	if err := c.call(ctx, "tools/list", nil, &result); err != nil {
 		return nil, err
 	}
-	out := make([]Tool, 0, len(result.Tools))
-	for _, tool := range result.Tools {
-		out = append(out, Tool{
-			Name:         ExposedToolName(c.serverName, tool.Name),
-			OriginalName: tool.Name,
-			Description:  tool.Description,
-			InputSchema:  tool.InputSchema,
-			ServerName:   c.serverName,
-		})
-	}
-	return out, nil
+	return exposeTools(c.serverName, c.cfg, result.Tools), nil
 }
 
 func (c *stdioClient) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
@@ -454,6 +458,8 @@ func (c *stdioClient) Close() error {
 	c.stdin = nil
 	c.scanner = nil
 	c.cmd = nil
+	c.initialized = false
+	c.startErr = nil
 	c.mu.Unlock()
 
 	if stdin != nil {
@@ -467,17 +473,28 @@ func (c *stdioClient) Close() error {
 }
 
 func (c *stdioClient) initialize(ctx context.Context) error {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
 	if err := c.start(ctx); err != nil {
 		return err
 	}
-	c.initOnce.Do(func() {
-		c.initErr = c.call(ctx, "initialize", map[string]any{
-			"protocolVersion": "2025-06-18",
-			"capabilities":    map[string]any{},
-			"clientInfo":      map[string]string{"name": "loom", "version": "dev"},
-		}, nil)
-	})
-	return c.initErr
+	c.mu.Lock()
+	done := c.initialized
+	c.mu.Unlock()
+	if done {
+		return nil
+	}
+	if err := c.call(ctx, "initialize", map[string]any{
+		"protocolVersion": "2025-06-18",
+		"capabilities":    map[string]any{},
+		"clientInfo":      map[string]string{"name": "loom", "version": "dev"},
+	}, nil); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.initialized = true
+	c.mu.Unlock()
+	return nil
 }
 
 func (c *stdioClient) start(ctx context.Context) error {
@@ -486,7 +503,11 @@ func (c *stdioClient) start(ctx context.Context) error {
 	if c.cmd != nil || c.startErr != nil {
 		return c.startErr
 	}
-	_ = ctx
+	// The process outlives this call (it is shared by every later call), so
+	// ctx must not own it; it only decides whether to start at all.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	cmd := exec.Command(c.cfg.Command, c.cfg.Args...) //nolint:gosec // MCP servers are launched from the operator-supplied config file, never from request data
 	cmd.Env = os.Environ()
 	for key, value := range c.cfg.Env {

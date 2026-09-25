@@ -101,6 +101,20 @@ export function useStreamRuns() {
     abortsRef.current.get(key)?.abort();
   }, []);
 
+  // A user-requested stop is posted to the server before the fetch is aborted,
+  // and the server may close the stream first; the run's catch asks whether a
+  // stop was requested so that early close is not reported as a dropped
+  // connection.
+  const stopRequestedRef = useRef(new WeakSet<AbortController>());
+  const markStopRequested = useCallback((key: RunKey) => {
+    const controller = abortsRef.current.get(key);
+    if (controller !== undefined) stopRequestedRef.current.add(controller);
+  }, []);
+  const stopRequested = useCallback(
+    (controller: AbortController) => stopRequestedRef.current.has(controller),
+    [],
+  );
+
   const abortAll = useCallback(() => {
     abortsRef.current.forEach((controller) => controller.abort());
     abortsRef.current.clear();
@@ -119,6 +133,8 @@ export function useStreamRuns() {
     end,
     abort,
     abortAll,
+    markStopRequested,
+    stopRequested,
     nextProvisionalKey,
   };
 }

@@ -1,8 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ThreadShell } from "./ThreadShell";
+// The chat shell (markdown, KaTeX, highlighting, every view) is by far the
+// largest chunk; the sign-in and loading screens do not need it.
+const ThreadShell = lazy(() =>
+  import("./chat/ThreadShell").then((module) => ({
+    default: module.ThreadShell,
+  })),
+);
 import loomLogo from "./assets/loom-logo.svg";
-import { getMe, listUsers, logout, updateMe, type User } from "./api";
+import {
+  AuthExpiredError,
+  getMe,
+  listUsers,
+  logout,
+  updateMe,
+  type User,
+} from "./api";
 import { applyUserLanguage, seedLanguageFor } from "./i18n";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
@@ -13,6 +26,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [adminError, setAdminError] = useState("");
   const taglines = t("app.taglines", { returnObjects: true }) as string[];
   const [taglineIndex] = useState(() =>
     Math.floor(Math.random() * taglines.length),
@@ -62,12 +76,19 @@ export default function App() {
 
   async function handleAdmin() {
     setShowAdmin(true);
+    setAdminError("");
     if (adminUsers.length === 0) {
       try {
         setAdminUsers(await listUsers());
-      } catch {
-        setStatus("signed-out");
-        setUser(null);
+      } catch (error) {
+        // Only an expired session ends the session; a failed list is an error
+        // on the admin page, not a reason to sign the user out.
+        if (error instanceof AuthExpiredError) {
+          setStatus("signed-out");
+          setUser(null);
+          return;
+        }
+        setAdminError(t("app.adminUsersLoadFailed"));
       }
     }
   }
@@ -122,31 +143,46 @@ export default function App() {
   }
 
   return (
-    <ThreadShell
-      user={user}
-      showAdmin={showAdmin}
-      onAdmin={handleAdmin}
-      onThread={handleThread}
-      onLogout={handleLogout}
-      onSessionExpired={handleSessionExpired}
-      adminPanel={
-        <section className="h-full overflow-y-auto p-6">
-          <h1 className="font-serif text-2xl font-light tracking-tight">
-            {t("app.admin")}
-          </h1>
-          <div className="mt-4 divide-y divide-border border-y border-border">
-            {adminUsers.map((adminUser) => (
-              <div
-                key={adminUser.id}
-                className="flex justify-between py-3 text-sm"
-              >
-                <span>{adminUser.displayName || adminUser.username}</span>
-                <span className="text-muted capitalize">{adminUser.role}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+    <Suspense
+      fallback={
+        <div className="flex h-svh items-center justify-center bg-bg font-sans text-muted">
+          {t("app.loading")}
+        </div>
       }
-    />
+    >
+      <ThreadShell
+        user={user}
+        showAdmin={showAdmin}
+        onAdmin={handleAdmin}
+        onThread={handleThread}
+        onLogout={handleLogout}
+        onSessionExpired={handleSessionExpired}
+        adminPanel={
+          <section className="h-full overflow-y-auto p-6">
+            <h1 className="font-serif text-2xl font-light tracking-tight">
+              {t("app.admin")}
+            </h1>
+            <div className="mt-4 divide-y divide-border border-y border-border">
+              {adminError !== "" && (
+                <p role="alert" className="text-sm text-accent">
+                  {adminError}
+                </p>
+              )}
+              {adminUsers.map((adminUser) => (
+                <div
+                  key={adminUser.id}
+                  className="flex justify-between py-3 text-sm"
+                >
+                  <span>{adminUser.displayName || adminUser.username}</span>
+                  <span className="text-muted capitalize">
+                    {adminUser.role}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        }
+      />
+    </Suspense>
   );
 }

@@ -261,7 +261,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	var body renameArtifactRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeDecodeError(w, err)
 		return
 	}
 	if strings.TrimSpace(body.DisplayFilename) == "" {
@@ -339,12 +339,12 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	threadID := strings.TrimSpace(r.FormValue("threadId"))
 	projectID := strings.TrimSpace(r.FormValue("projectId"))
 	if projectID == "" && threadID != "" {
-		count, err := s.countThreadUploads(r.Context(), user.ID, threadID)
+		items, err := s.artifacts.ListForThread(r.Context(), user.ID, threadID)
 		if err != nil {
 			serverError(w, r, err, "count image uploads failed")
 			return
 		}
-		if count >= documents.MaxChatDocuments {
+		if artifact.CountThreadUploads(items, user.ID) >= documents.MaxChatDocuments {
 			writeJSONError(w, http.StatusConflict, "too many attachments in this thread")
 			return
 		}
@@ -404,20 +404,6 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, artifactResponseFromArtifact(created))
-}
-
-func (s *server) countThreadUploads(ctx context.Context, userID, threadID string) (int, error) {
-	items, err := s.artifacts.ListForThread(ctx, userID, threadID)
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, item := range items {
-		if item.UserID == userID && item.ProjectID == nil && item.Source == "user_uploaded" {
-			count++
-		}
-	}
-	return count, nil
 }
 
 func artifactResponseFromArtifact(item artifact.Artifact) artifactResponse {

@@ -6,20 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // CreateProject creates a new project for the user with the given name and description.
 func (s *Store) CreateProject(ctx context.Context, userID string, in CreateProjectInput) (Project, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return Project{}, errors.New("project name is required")
+		return Project{}, validation("project name is required")
 	}
 	if len(name) > MaxProjectNameLength {
-		return Project{}, errors.New("project name is too long")
+		return Project{}, validation("project name is too long")
 	}
 	description := strings.TrimSpace(in.Description)
 	if len(description) > MaxProjectDescriptionLength {
-		return Project{}, errors.New("project description is too long")
+		return Project{}, validation("project description is too long")
 	}
 	// A description the user types at creation time is user-authored, so lock it
 	// (description_user_edited = 1) exactly as a manual edit would — otherwise the
@@ -28,7 +30,7 @@ func (s *Store) CreateProject(ctx context.Context, userID string, in CreateProje
 	if description != "" {
 		userEdited = 1
 	}
-	projectID := newID()
+	projectID := sqlutil.NewID()
 
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO projects (id, user_id, name, description, description_user_edited, last_activity_at)
@@ -100,10 +102,10 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 	if in.Name != nil {
 		name = strings.TrimSpace(*in.Name)
 		if name == "" {
-			return Project{}, false, errors.New("project name is required")
+			return Project{}, false, validation("project name is required")
 		}
 		if len(name) > MaxProjectNameLength {
-			return Project{}, false, errors.New("project name is too long")
+			return Project{}, false, validation("project name is too long")
 		}
 	}
 	description := project.Description
@@ -111,7 +113,7 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 	if descriptionTouched {
 		description = strings.TrimSpace(*in.Description)
 		if len(description) > MaxProjectDescriptionLength {
-			return Project{}, false, errors.New("project description is too long")
+			return Project{}, false, validation("project description is too long")
 		}
 	}
 
@@ -260,8 +262,14 @@ WHERE user_id = ? AND id = ?`,
 }
 
 func (s *Store) projectExists(ctx context.Context, userID, projectID string) (bool, error) {
+	return projectExistsIn(ctx, s.db, userID, projectID)
+}
+
+// projectExistsIn is projectExists against an explicit handle, so a caller can
+// check inside its own transaction.
+func projectExistsIn(ctx context.Context, db execer, userID, projectID string) (bool, error) {
 	var one int
-	err := s.db.QueryRowContext(ctx, `
+	err := db.QueryRowContext(ctx, `
 SELECT 1
 FROM projects
 WHERE user_id = ? AND id = ?`,

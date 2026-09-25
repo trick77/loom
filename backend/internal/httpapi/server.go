@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -25,9 +26,11 @@ type Deps struct {
 	Version string
 	Static  http.Handler // serves the embedded SPA; may be nil in tests
 
-	OIDC       OIDCService
-	Auth       *auth.Middleware
-	Sessions   SessionService
+	OIDC     OIDCService
+	Auth     *auth.Middleware
+	Sessions SessionService
+	// SessionTTL is the login lifetime; zero means defaultSessionTTL.
+	SessionTTL time.Duration
 	Users      UserService
 	Thread     ThreadStore
 	Usage      UsageStore
@@ -57,13 +60,19 @@ type Deps struct {
 	// ProjectSummaryTokenBudget bounds the cross-thread digest returned by the
 	// read_project_threads tool.
 	ProjectSummaryTokenBudget int
+	// Background owns the goroutines that outlive a request (post-turn memory
+	// refreshes). nil means a group nobody stops, which is what tests want.
+	Background *Background
 }
 
 type server struct {
 	version                    string
+	background                 *Background
+	inflight                   inflightKeys
 	oidc                       OIDCService
 	auth                       *auth.Middleware
 	sessions                   SessionService
+	sessionTTL                 time.Duration
 	users                      UserService
 	thread                     ThreadStore
 	usage                      UsageStore
@@ -116,20 +125,18 @@ type ThreadCRUDStore interface {
 	UpdateThread(context.Context, string, string, chat.UpdateThreadInput) (chat.Thread, bool, error)
 	SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error)
 	SetThreadImageModelIfEmpty(context.Context, string, string, string) (chat.Thread, bool, error)
+	SetThreadTitleIfUnchanged(context.Context, string, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
 }
 
 // MessageStore appends messages and reads them back.
 type MessageStore interface {
-	AddMessage(context.Context, string, string, chat.Role, string) (chat.Message, error)
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage) (chat.Message, error)
-	AddMessageWithUsage(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage) (chat.Message, error)
-	AddMessageWithArtifacts(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage) (chat.Message, error)
-	AddMessageWithActivityTrace(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 	ListRecentMessages(context.Context, string, string, int) ([]chat.Message, error)
+	ListRecentMessagesForThreads(context.Context, string, []string, int) (map[string][]chat.Message, error)
 }
 
 // MessageSearchStore runs full-text search over messages and threads.
@@ -229,9 +236,7 @@ type ArtifactStore interface {
 
 // ChatClient is the LLM dependency used by chat stream handlers.
 type ChatClient interface {
-	StreamChat(context.Context, []llm.Message, func(string) error) (string, error)
 	StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error)
-	StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error)
 	GenerateThreadTitle(context.Context, string, string, string) (string, error)
 	ClassifyThread(context.Context, string) (string, error)
 	ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error)
@@ -277,11 +282,17 @@ type UserService interface {
 // also wires the HTTP routes) and NewMemoryWorker (which only needs the stores
 // and LLM client for the background refresh).
 func newServer(d Deps) *server {
+	background := d.Background
+	if background == nil {
+		background = NewBackground(context.Background())
+	}
 	return &server{
+		background:                 background,
 		version:                    d.Version,
 		oidc:                       d.OIDC,
 		auth:                       d.Auth,
 		sessions:                   d.Sessions,
+		sessionTTL:                 cmp.Or(d.SessionTTL, defaultSessionTTL),
 		users:                      d.Users,
 		thread:                     d.Thread,
 		usage:                      d.Usage,

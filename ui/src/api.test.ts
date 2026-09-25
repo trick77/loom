@@ -121,6 +121,7 @@ test("updateThread sends null project membership", async () => {
 test("streamMessage sends image attachment ids", async () => {
   const body = new ReadableStream({
     start(controller) {
+      controller.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
       controller.close();
     },
   });

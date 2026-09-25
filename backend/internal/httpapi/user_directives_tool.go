@@ -169,15 +169,7 @@ func renderDirectivesList(directives []chat.UserDirective) string {
 	if len(directives) == 0 {
 		return "(none)"
 	}
-	var b strings.Builder
-	for _, d := range directives {
-		b.WriteString("- [")
-		b.WriteString(d.ID)
-		b.WriteString("] ")
-		b.WriteString(strings.TrimSpace(d.Content))
-		b.WriteString("\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return renderDirectiveLines(directives)
 }
 
 // handleGetUserDirectives backs the read-only Memories-page directives view. There

@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"golang.org/x/net/publicsuffix"
 )
@@ -46,10 +45,6 @@ type webSourceRegistry struct {
 	offset       int
 	obscuraNavHd string // header line to prepend to the next obscura snapshot
 	obscuraNavID int    // registry index of the last obscura navigation (0 = none)
-}
-
-func newWebSourceRegistry() *webSourceRegistry {
-	return newWebSourceRegistryAfter(0)
 }
 
 // newWebSourceRegistryAfter starts numbering at offset+1.
@@ -111,14 +106,11 @@ func snippetFromText(s string) string {
 		return s
 	}
 	// Trim to the cap on a rune boundary, then back off to the last space.
-	cut := s[:maxSourceSnippetChars]
-	for len(cut) > 0 && !utf8.RuneStart(cut[len(cut)-1]) {
-		cut = cut[:len(cut)-1]
-	}
+	cut := truncateBytesOnRuneBoundary(s, maxSourceSnippetChars)
 	if sp := strings.LastIndexByte(cut, ' '); sp > maxSourceSnippetChars/2 {
 		cut = cut[:sp]
 	}
-	return strings.TrimSpace(cut) + "…"
+	return strings.TrimSpace(cut) + truncationEllipsis
 }
 
 func (r *webSourceRegistry) all() []webSource { return r.sources }
@@ -205,6 +197,13 @@ func (s *server) relabelWebToolOutput(toolName string, arguments map[string]any,
 		}
 		return fmt.Sprintf("Web source [%d]: %s\n\n%s", idx, strings.TrimSpace(argURL(arguments)), output)
 	case obscuraNavigateToolName:
+		if strings.HasPrefix(output, toolFailedPrefix) {
+			// Nothing was delivered: register no source, and disarm the header so
+			// the next snapshot is not labelled with the previously navigated page.
+			reg.obscuraNavHd = ""
+			reg.obscuraNavID = 0
+			return output
+		}
 		out := prependURLSource(argURL(arguments), output, reg)
 		if idx, ok := reg.add(argURL(arguments)); ok {
 			// Remember this source so the following browser_snapshot (the call that

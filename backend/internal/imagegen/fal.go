@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -410,8 +411,13 @@ func (c *FalClient) fetchResult(ctx context.Context, responseURL string) (falRes
 }
 
 // getJSON performs an authenticated GET against one of fal's queue URLs. The
-// URLs come from the submit/status documents, never built here.
+// URLs come from the submit/status documents, never built here, so before the
+// key is attached the URL must sit on the configured base host: a response
+// that pointed elsewhere would otherwise walk off with the credential.
 func (c *FalClient) getJSON(ctx context.Context, endpoint, stage string) ([]byte, error) {
+	if err := c.sameHostAsBase(endpoint); err != nil {
+		return nil, fmt.Errorf("fal %s: %w", stage, err)
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -504,4 +510,21 @@ func extensionForMIME(mimeType, fallbackFormat string) string {
 		}
 		return fallbackFormat
 	}
+}
+
+// sameHostAsBase reports an error when endpoint's scheme or host differs from
+// the configured base URL's.
+func (c *FalClient) sameHostAsBase(endpoint string) error {
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("invalid base url: %w", err)
+	}
+	target, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("invalid queue url: %w", err)
+	}
+	if !strings.EqualFold(target.Scheme, base.Scheme) || !strings.EqualFold(target.Host, base.Host) {
+		return fmt.Errorf("refusing to send credentials to host %q (base is %q)", target.Host, base.Host)
+	}
+	return nil
 }

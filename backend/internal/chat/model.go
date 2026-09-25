@@ -28,8 +28,13 @@ const (
 	MaxProjectDescriptionLength = 2000
 	// MaxThreadTitleLength defines the maximum length for a thread title.
 	MaxThreadTitleLength = 200
-	// MaxMessageContentLength defines the maximum length for message content.
+	// MaxMessageContentLength defines the maximum length for user-authored message
+	// content: what one send may carry, pasted text included.
 	MaxMessageContentLength = 32000
+	// MaxAssistantMessageContentLength bounds assistant and tool content. It is
+	// far above the user cap because the forced final answer may run to
+	// thousands of tokens of prose; the cap only guards against runaway output.
+	MaxAssistantMessageContentLength = 512_000
 )
 
 // Project groups related chat threads for one user.

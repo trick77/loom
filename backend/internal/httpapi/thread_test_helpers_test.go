@@ -33,6 +33,9 @@ type fakeArtifactStore struct {
 	deleted *[]string
 	// detached, when set, records the ids passed to DetachFromThread.
 	detached *[]string
+	// createErr makes Create fail; created, when set, receives Create's input.
+	createErr error
+	created   *artifact.CreateInput
 }
 
 func (f fakeArtifactStore) DetachFromThread(_ context.Context, _ string, artifactIDs []string) error {
@@ -84,8 +87,23 @@ func (f fakeArtifactStore) GetMany(_ context.Context, userID string, ids []strin
 	return out, nil
 }
 
-func (f fakeArtifactStore) Create(context.Context, artifact.CreateInput) (artifact.Artifact, error) {
-	return artifact.Artifact{}, nil
+func (f fakeArtifactStore) Create(_ context.Context, in artifact.CreateInput) (artifact.Artifact, error) {
+	if f.createErr != nil {
+		return artifact.Artifact{}, f.createErr
+	}
+	if f.created != nil {
+		*f.created = in
+	}
+	return artifact.Artifact{
+		ID:              "art_created",
+		UserID:          in.UserID,
+		ThreadID:        in.ThreadID,
+		ProjectID:       in.ProjectID,
+		DisplayFilename: in.DisplayFilename,
+		VolumeRelPath:   in.VolumeRelPath,
+		MIMEType:        in.MIMEType,
+		SizeBytes:       in.SizeBytes,
+	}, nil
 }
 
 func (f fakeArtifactStore) Get(_ context.Context, userID, artifactID string) (artifact.Artifact, bool, error) {
@@ -299,7 +317,7 @@ func (f *fakeThreadStore) UpdateThread(_ context.Context, userID, threadID strin
 	if in.Title != nil {
 		title := chat.NormalizeThreadTitle(*in.Title)
 		if title == "" {
-			return chat.Thread{}, false, errors.New("thread title is required")
+			return chat.Thread{}, false, &chat.ValidationError{Msg: "thread title is required"}
 		}
 		f.thread.Title = title
 	}
@@ -310,6 +328,14 @@ func (f *fakeThreadStore) UpdateThread(_ context.Context, userID, threadID strin
 }
 
 func (f *fakeThreadStore) SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error) {
+	return f.thread, true, nil
+}
+
+func (f *fakeThreadStore) SetThreadTitleIfUnchanged(_ context.Context, _, _, expectedTitle, title string) (chat.Thread, bool, error) {
+	if f.thread.Title != expectedTitle {
+		return f.thread, false, nil
+	}
+	f.thread.Title = chat.NormalizeThreadTitle(title)
 	return f.thread, true, nil
 }
 
@@ -424,6 +450,18 @@ func (f *fakeThreadStore) ListRecentMessages(_ context.Context, _ string, _ stri
 		msgs = msgs[len(msgs)-limit:]
 	}
 	return msgs, nil
+}
+
+func (f *fakeThreadStore) ListRecentMessagesForThreads(ctx context.Context, userID string, threadIDs []string, limit int) (map[string][]chat.Message, error) {
+	out := make(map[string][]chat.Message, len(threadIDs))
+	for _, id := range threadIDs {
+		msgs, err := f.ListRecentMessages(ctx, userID, id, limit)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = msgs
+	}
+	return out, nil
 }
 
 func (f *fakeThreadStore) SearchMessages(_ context.Context, _ string, _ string, _ *string, _ string, _ int) ([]chat.MessageSearchHit, error) {
@@ -584,6 +622,17 @@ type fakeChatClient struct {
 	titleErr            error
 	category            string
 	reasoningTitle      string
+	reasoningTitlePanic bool
+	streamPanic         bool
+	// classifyGate, when set, holds ClassifyThread open until it is closed.
+	classifyGate chan struct{}
+	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
+	// open and count how many callers got through.
+	memoryEntered chan struct{}
+	memoryGate    chan struct{}
+	memoryCalls   *atomic.Int32
+	// memoryPriors, when set, receives the prior memory passed to GenerateMemory.
+	memoryPriors        chan string
 	history             *[]llm.Message
 	streamText          *string
 	reasoningText       string
@@ -614,11 +663,6 @@ type fakeChatClient struct {
 	// was given, so a test can assert the answer reaches it rather than the empty
 	// string production used to pass.
 	titleAssistantSeen *string
-}
-
-func (f fakeChatClient) StreamChat(_ context.Context, history []llm.Message, onDelta func(string) error) (string, error) {
-	result, err := f.StreamChatResult(context.Background(), history, onDelta)
-	return result.Content, err
 }
 
 func (f fakeChatClient) StreamChatResult(_ context.Context, history []llm.Message, onDelta func(string) error) (llm.StreamResult, error) {
@@ -656,7 +700,13 @@ func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, assistantMes
 	return f.title, nil
 }
 
-func (f fakeChatClient) ClassifyThread(_ context.Context, _ string) (string, error) {
+func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, error) {
+	if f.classifyGate != nil {
+		select {
+		case <-f.classifyGate:
+		case <-ctx.Done():
+		}
+	}
 	return f.category, nil
 }
 
@@ -665,6 +715,9 @@ func (f fakeChatClient) ClassifyImageIntent(_ context.Context, _ string, _, _ bo
 }
 
 func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string) (string, error) {
+	if f.reasoningTitlePanic {
+		panic("reasoning title exploded")
+	}
 	llm.RecordUsage(ctx, f.reasoningTitleUsage)
 	if f.reasoningTitleCost > 0 {
 		llm.RecordCost(ctx, f.reasoningTitleCost, true)
@@ -672,7 +725,19 @@ func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string)
 	return f.reasoningTitle, nil
 }
 
-func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _, _ string) (string, error) {
+	if f.memoryPriors != nil {
+		f.memoryPriors <- prior
+	}
+	if f.memoryCalls != nil {
+		f.memoryCalls.Add(1)
+	}
+	if f.memoryEntered != nil {
+		f.memoryEntered <- struct{}{}
+	}
+	if f.memoryGate != nil {
+		<-f.memoryGate
+	}
 	return f.projectMemory, nil
 }
 
@@ -688,6 +753,9 @@ func (f fakeChatClient) GenerateProjectDescription(_ context.Context, _ string, 
 }
 
 func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, _ []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+	if f.streamPanic {
+		panic("stream exploded")
+	}
 	if f.history != nil {
 		*f.history = append((*f.history)[:0], history...)
 	}
@@ -732,11 +800,6 @@ type blockingChatClient struct {
 	partialContent string
 	cancelCause    error
 	titleCalls     atomic.Int32
-}
-
-func (f *blockingChatClient) StreamChat(ctx context.Context, _ []llm.Message, _ func(string) error) (string, error) {
-	result, err := f.StreamChatResult(ctx, nil, nil)
-	return result.Content, err
 }
 
 func (f *blockingChatClient) StreamChatResult(ctx context.Context, _ []llm.Message, _ func(string) error) (llm.StreamResult, error) {
@@ -794,11 +857,6 @@ type fakeToolChatClient struct {
 	imageIntent    llm.ImageIntent
 	titleResult    string
 	titleFor       func(reasoning string) string
-}
-
-func (f *fakeToolChatClient) StreamChat(context.Context, []llm.Message, func(string) error) (string, error) {
-	result, err := f.StreamChatResult(context.Background(), nil, nil)
-	return result.Content, err
 }
 
 func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error) {

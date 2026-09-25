@@ -53,6 +53,9 @@ func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) {
 	t.wg.Add(1)
 	go func() {
 		defer t.wg.Done()
+		// Outside the handler chain the recovery middleware can't catch a panic
+		// here, and one would take the process down mid-stream.
+		defer logPanic("reasoning_title")
 		inf := t.inf
 		inf.Purpose = "reasoning_title"
 		// Bound the call so a hung title request can never delay delivery of the

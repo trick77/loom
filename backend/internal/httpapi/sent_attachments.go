@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 )
 
@@ -38,22 +39,31 @@ func marshalPastedTexts(blocks []chat.MessagePastedText) json.RawMessage {
 // not resolve or are out of scope are skipped — best-effort, mirroring
 // documentInlineContext — rather than failing the send. Returns a JSON array,
 // "[]" when nothing resolved.
-func (s *server) resolveSentAttachments(ctx context.Context, userID string, thread chat.Thread, imageIDs, documentIDs []string) json.RawMessage {
+//
+// images, when non-nil, is the batch lookup the caller already made for the
+// same ids (the vision path resolves them first); nil looks them up here.
+func (s *server) resolveSentAttachments(ctx context.Context, userID string, thread chat.Thread, imageIDs, documentIDs []string, images map[string]artifact.Artifact) json.RawMessage {
 	attachments := make([]chat.MessageAttachment, 0, len(imageIDs)+len(documentIDs))
 
-	if s.artifacts != nil {
+	if s.artifacts != nil && len(imageIDs) > 0 {
+		found := images
+		if found == nil {
+			// One user-scoped batch lookup; unknown ids are absent from the map.
+			var err error
+			found, err = s.artifacts.GetMany(ctx, userID, imageIDs)
+			if err != nil {
+				slog.Warn("sent image attachment lookup failed", "err", err)
+				found = nil
+			}
+		}
 		seen := make(map[string]bool)
 		for _, id := range imageIDs {
 			if id == "" || seen[id] {
 				continue
 			}
 			seen[id] = true
-			art, ok, err := s.artifacts.Get(ctx, userID, id)
-			if err != nil {
-				slog.Warn("sent image attachment lookup failed", "artifact_id", id, "err", err)
-				continue
-			}
-			if !ok {
+			art, ok := found[id]
+			if !ok || art.Deleted {
 				slog.Warn("sent image attachment not found", "artifact_id", id)
 				continue
 			}
