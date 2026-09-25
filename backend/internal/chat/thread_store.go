@@ -319,16 +319,30 @@ WHERE user_id = ? AND id = ?`,
 	if !updated {
 		return Thread{}, false, nil
 	}
-	// Moving a thread into a project is user activity in that project.
-	if projectID != nil {
-		if err := touchProjectActivityIn(ctx, tx, userID, projectID); err != nil {
-			return Thread{}, false, err
-		}
+	// Editing a thread is user activity in the project it is in, or was just
+	// moved into.
+	if err := touchThreadProjectIn(ctx, tx, userID, threadID); err != nil {
+		return Thread{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Thread{}, false, fmt.Errorf("commit thread update: %w", err)
 	}
 	return s.GetThread(ctx, userID, threadID)
+}
+
+// touchThreadProjectIn bumps last_activity_at of the project the thread is in;
+// a thread outside any project touches nothing.
+func touchThreadProjectIn(ctx context.Context, db execer, userID, threadID string) error {
+	_, err := db.ExecContext(ctx, `
+UPDATE projects
+SET last_activity_at = datetime('now')
+WHERE user_id = ? AND id = (SELECT project_id FROM threads WHERE user_id = ? AND id = ?)`,
+		userID, userID, threadID,
+	)
+	if err != nil {
+		return fmt.Errorf("touch thread project activity: %w", err)
+	}
+	return nil
 }
 
 // touchProjectActivity bumps a project's last_activity_at to now. projectID is the
@@ -394,6 +408,12 @@ WHERE user_id = ? AND id = ? AND title = ?`,
 	updated, err := changed(result)
 	if err != nil {
 		return Thread{}, false, err
+	}
+	if updated {
+		// The generated title counts as project activity, as a rename does.
+		if err := touchThreadProjectIn(ctx, s.db, userID, threadID); err != nil {
+			return Thread{}, false, err
+		}
 	}
 	thread, ok, err := s.getThread(ctx, userID, threadID)
 	if err != nil || !ok {
