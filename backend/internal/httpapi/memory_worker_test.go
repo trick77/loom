@@ -291,3 +291,26 @@ func TestRefreshMemoryIfDue_EverythingDeletedClearsTheMemory(t *testing.T) {
 		t.Fatalf("GenerateMemory calls = %d, want 0 (nothing to summarise)", calls.Load())
 	}
 }
+
+// A long history that no longer fits the rebuild window keeps its prior after
+// a deletion: rebuilding from the newest messages alone would lose everything
+// older than the window.
+func TestRefreshMemoryIfDue_DeletionInLongHistoryKeepsThePrior(t *testing.T) {
+	store := &fakeThreadStore{
+		userMessageCount: memoryRebuildLimit + 50,
+		userMemory:       chat.UserMemory{Content: "- long-term", SourceMessageCount: memoryRebuildLimit + 60},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	}
+	priors := make(chan string, 1)
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- folded", memoryPriors: priors}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if got := <-priors; got != "- long-term" {
+		t.Fatalf("GenerateMemory prior = %q, want the long-term memory kept", got)
+	}
+	if store.listLimit != memoryRebuildLimit {
+		t.Fatalf("list limit = %d, want %d", store.listLimit, memoryRebuildLimit)
+	}
+}

@@ -99,12 +99,17 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	window := count - sourceCount
 	if count < sourceCount {
 		// Messages were deleted, and the stored memory may describe them.
-		// There is no "new since last time" delta to fold into it: rebuild from
-		// what is left, without the prior, and clear the memory when nothing is.
+		// There is no "new since last time" delta: rebuild from what is left,
+		// and clear the memory when nothing is. The prior is dropped only when
+		// the remaining transcript fits the rebuild window, so the rebuild sees
+		// all of it; past that, dropping it would lose everything older than the
+		// window, which costs more than a stale line about a deleted thread.
 		if count == 0 {
 			return scope.upsert(ctx, "", 0)
 		}
-		prior = ""
+		if count <= memoryRebuildLimit {
+			prior = ""
+		}
 		window = count
 	}
 	window = min(window, memoryRebuildLimit)
