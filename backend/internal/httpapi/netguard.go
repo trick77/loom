@@ -3,7 +3,6 @@ package httpapi
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"syscall"
 )
 
@@ -53,11 +52,12 @@ func isPublicIP(ip net.IP) bool {
 }
 
 // guardPublicAddr is a net.Dialer Control hook: it runs after DNS resolution
-// and refuses to connect to anything but a public address on a web port, so a
-// hostname that resolves to an internal service, or a redirect there, never
-// reaches it.
+// and refuses to connect to anything but a public address, so a hostname that
+// resolves to an internal service, or a redirect there, never reaches it. The
+// port is not restricted: a web source on a non-standard port is still a
+// public web server, and the address check is what keeps internal services out.
 func guardPublicAddr(_, address string, _ syscall.RawConn) error {
-	host, port, err := net.SplitHostPort(address)
+	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return err
 	}
@@ -67,9 +67,6 @@ func guardPublicAddr(_, address string, _ syscall.RawConn) error {
 	}
 	if !isPublicIP(ip) {
 		return fmt.Errorf("favicon: refusing to connect to %s", ip)
-	}
-	if p, err := strconv.Atoi(port); err != nil || (p != 80 && p != 443) {
-		return fmt.Errorf("favicon: refusing to connect to port %s", port)
 	}
 	return nil
 }

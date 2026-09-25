@@ -489,9 +489,8 @@ func TestGuardPublicAddr(t *testing.T) {
 		{"6to4", "[2002:7f00:1::]:80", true},
 		{"v4-compatible-v6", "[::127.0.0.1]:80", true},
 		{"v4-mapped-private", "[::ffff:10.0.0.1]:80", true},
-		// Only the web ports: an icon fetch has no business on SMTP or Redis.
-		{"public-but-smtp", "93.184.216.34:25", true},
-		{"public-but-redis", "93.184.216.34:6379", true},
+		// A public web server on a non-standard port is still a public web server.
+		{"public-non-standard-port", "93.184.216.34:3000", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := guardPublicAddr("tcp", tc.addr, nil)
