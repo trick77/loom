@@ -32,6 +32,7 @@ ui/dist/
 
 # Local agent/browser tooling (machine-specific)
 .claude/
+.agents/
 .playwright-mcp/
 
 # Local data & secrets
