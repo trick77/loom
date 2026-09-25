@@ -66,7 +66,12 @@ type Service struct {
 	// one (see ErrIndexInProgress), and a delete cancels it and waits.
 	inflight     sync.Map
 	indexTimeout time.Duration
+	// cancelWait bounds how long a delete waits for a cancelled ingest.
+	cancelWait time.Duration
 }
+
+// defaultCancelWait is how long a delete waits for a cancelled ingest to unwind.
+const defaultCancelWait = 10 * time.Second
 
 // ErrIndexInProgress is returned when an ingest is already running for the
 // document: a second index request is not started, and an unindex or delete
@@ -81,7 +86,7 @@ const defaultIndexTimeout = 10 * time.Minute
 
 // NewService creates a new Service with the given dependencies.
 func NewService(store *rag.Store, artifacts ArtifactStore, indexer Indexer, embedder rag.Embedder, usersDir string) *Service {
-	return &Service{store: store, artifacts: artifacts, indexer: indexer, embedder: embedder, usersDir: usersDir, indexTimeout: defaultIndexTimeout}
+	return &Service{store: store, artifacts: artifacts, indexer: indexer, embedder: embedder, usersDir: usersDir, indexTimeout: defaultIndexTimeout, cancelWait: defaultCancelWait}
 }
 
 // SetIndexTimeout overrides the per-ingest bound (tests, and operators with
@@ -258,11 +263,17 @@ func (s *Service) cancelIndexing(ctx context.Context, userID, documentID string)
 	}
 	run := value.(*inflightRun)
 	run.cancel()
+	// An ingest stuck in a call that ignores cancellation must not hang the
+	// DELETE: after a bounded wait the caller gets the 409 it can retry.
+	wait := time.NewTimer(s.cancelWait)
+	defer wait.Stop()
 	select {
 	case <-run.done:
 		return nil
+	case <-wait.C:
+		return ErrIndexInProgress
 	case <-ctx.Done():
-		return ctx.Err()
+		return ErrIndexInProgress
 	}
 }
 

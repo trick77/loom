@@ -21,12 +21,19 @@ type fakeIndexer struct {
 	// embedding call).
 	entered chan struct{}
 	block   chan struct{}
+	// ignoreCancel keeps Ingest blocked on block even after its context ends,
+	// like a Tika call whose HTTP client does not honour the context.
+	ignoreCancel bool
 }
 
 func (f *fakeIndexer) Ingest(ctx context.Context, _, documentID string) error {
 	f.called = append(f.called, documentID)
 	if f.entered != nil {
 		f.entered <- struct{}{}
+	}
+	if f.block != nil && f.ignoreCancel {
+		<-f.block
+		return ctx.Err()
 	}
 	if f.block != nil {
 		select {
@@ -374,4 +381,26 @@ func TestService_Delete_cancelsRunningIngest(t *testing.T) {
 	if svc.indexing("u", doc.ID) {
 		t.Fatal("inflight key still held after the cancelled ingest")
 	}
+}
+
+// An ingest that ignores cancellation does not hang the delete: after the
+// bounded wait the caller gets ErrIndexInProgress (a 409 it can retry).
+func TestService_Delete_givesUpOnAStuckIngest(t *testing.T) {
+	svc, idx, _ := newTestService(t)
+	svc.cancelWait = 20 * time.Millisecond
+	idx.entered = make(chan struct{}, 1)
+	idx.block = make(chan struct{})
+	idx.ignoreCancel = true
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+
+	first := make(chan error, 1)
+	go func() { first <- svc.Index(ctx, "u", doc.ID) }()
+	<-idx.entered
+
+	if err := svc.Delete(ctx, "u", doc.ID); !errors.Is(err, ErrIndexInProgress) {
+		t.Fatalf("Delete() on a stuck ingest error = %v, want ErrIndexInProgress", err)
+	}
+	close(idx.block)
+	<-first
 }
