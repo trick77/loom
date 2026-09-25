@@ -45,6 +45,9 @@ type Service struct {
 	statusMu    sync.Mutex
 	statusAt    time.Time
 	statusCache []ServerStatus
+	// statusProbe is closed when the in-flight probe lands; concurrent callers
+	// wait on it instead of each probing.
+	statusProbe chan struct{}
 }
 
 // statusCacheTTL is how long a ServerStatus result is reused. The panel may
@@ -82,14 +85,36 @@ func (s *Service) ServerStatus(ctx context.Context) []ServerStatus {
 		return nil
 	}
 	s.statusMu.Lock()
-	defer s.statusMu.Unlock()
 	if s.statusCache != nil && time.Since(s.statusAt) < statusCacheTTL {
-		return append([]ServerStatus(nil), s.statusCache...)
+		cached := append([]ServerStatus(nil), s.statusCache...)
+		s.statusMu.Unlock()
+		return cached
 	}
-	statuses := s.probeAll(ctx)
-	s.statusCache = statuses
-	s.statusAt = time.Now()
-	return append([]ServerStatus(nil), statuses...)
+	if s.statusProbe == nil {
+		done := make(chan struct{})
+		s.statusProbe = done
+		// The probe is detached from the caller's context: a request that goes
+		// away mid-probe (the panel was closed) must not record every server as
+		// "context canceled" for everyone else for the next TTL. Each per-server
+		// probe carries its own timeout, so the goroutine is bounded anyway.
+		go func() {
+			statuses := s.probeAll(context.WithoutCancel(ctx))
+			s.statusMu.Lock()
+			s.statusCache, s.statusAt, s.statusProbe = statuses, time.Now(), nil
+			s.statusMu.Unlock()
+			close(done)
+		}()
+	}
+	done := s.statusProbe
+	s.statusMu.Unlock()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return nil
+	}
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	return append([]ServerStatus(nil), s.statusCache...)
 }
 
 // probeAll probes every configured server concurrently and returns their

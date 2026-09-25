@@ -157,7 +157,10 @@ func TestRequiredServiceRetriesDiscoveryUntilStartupContextDeadline(t *testing.T
 	}
 }
 
-func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
+// newStatusTestService returns a service with one reachable server ("alpha")
+// and one that refuses connections ("zeta").
+func newStatusTestService(t *testing.T) *Service {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -186,6 +189,11 @@ func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
 	}
+	return service
+}
+
+func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
+	service := newStatusTestService(t)
 
 	statuses := service.ServerStatus(context.Background())
 	if len(statuses) != 2 {
@@ -528,5 +536,28 @@ func TestServiceFromConfigsSkipsDuplicateToolNamesFromBestEffortServers(t *testi
 	}
 	if got := len(service.Tools()); got != 1 {
 		t.Fatalf("tools = %d, want the built-in's alpha__echo only", got)
+	}
+}
+
+// A caller whose request is cancelled mid-probe gets nothing, and the probe
+// still lands for everyone else: the cache must never hold a result that
+// merely reflects the first caller's cancellation.
+func TestServiceServerStatusSurvivesCancelledCaller(t *testing.T) {
+	service := newStatusTestService(t)
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := service.ServerStatus(cancelled); got != nil {
+		t.Fatalf("ServerStatus(cancelled) = %#v, want nil", got)
+	}
+
+	statuses := service.ServerStatus(context.Background())
+	if len(statuses) != 2 {
+		t.Fatalf("ServerStatus() len = %d, want 2: %#v", len(statuses), statuses)
+	}
+	for _, st := range statuses {
+		if st.Name == "alpha" && !st.Active {
+			t.Fatalf("alpha reported inactive after a cancelled caller: %#v", statuses)
+		}
 	}
 }
