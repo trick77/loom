@@ -228,3 +228,19 @@ func TestCreateOutputFileRejectsProjectIDWithSeparator(t *testing.T) {
 		}
 	}
 }
+
+// A ".." segment is rejected even when cleaning would remove it: the sandbox
+// rule is "no ..", not "no escape after normalisation".
+func TestResolveExistingRejectsDotDotSegmentThatCleansAway(t *testing.T) {
+	usersDir := t.TempDir()
+	outputs := filepath.Join(usersDir, "user_1", "files", "outputs")
+	if err := os.MkdirAll(outputs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outputs, "a.pdf"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveExisting(usersDir, "user_1", "files/outputs/../outputs/a.pdf"); err == nil {
+		t.Fatal("ResolveExisting() accepted a path with a .. segment")
+	}
+}

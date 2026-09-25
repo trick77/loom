@@ -114,21 +114,22 @@ const reservedDir = ".loom"
 
 // cleanVolumePath normalizes a volume-relative path to slash form and rejects
 // anything that is not a plain relative path into the volume: absolute paths,
-// an empty or "." path, and any ".." segment (a ".." inside a name, as in
-// a..b.pdf, is fine).
+// an empty or "." path, and any ".." segment, checked before cleaning so that
+// "dir/../file" is refused rather than normalised away (a ".." inside a name,
+// as in a..b.pdf, is fine).
 func cleanVolumePath(rel string) (string, error) {
 	slash := filepath.ToSlash(rel)
 	if filepath.IsAbs(rel) || strings.HasPrefix(slash, "/") {
 		return "", errors.New("absolute path")
 	}
-	clean := path.Clean(slash)
-	if clean == "." || clean == "" {
-		return "", errors.New("empty path")
-	}
-	for _, segment := range strings.Split(clean, "/") {
+	for _, segment := range strings.Split(slash, "/") {
 		if segment == ".." {
 			return "", errors.New("path traversal")
 		}
+	}
+	clean := path.Clean(slash)
+	if clean == "." || clean == "" {
+		return "", errors.New("empty path")
 	}
 	return clean, nil
 }
