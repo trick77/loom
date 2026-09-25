@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -217,6 +218,10 @@ func parallel(fns ...func()) {
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
+					// The re-panic below happens on the caller's goroutine, so
+					// whoever recovers it sees that stack; log this one, which
+					// names the code that actually failed.
+					slog.Error("panic in a pre-answer load", "panic", r, "stack", string(debug.Stack()))
 					mu.Lock()
 					if panicked == nil {
 						panicked = r
