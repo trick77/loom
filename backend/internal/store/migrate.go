@@ -85,7 +85,7 @@ func applyInTransaction(db *sql.DB, name string, body []byte) error {
 	if err != nil {
 		return err
 	}
-	return runMigration(tx, name, body)
+	return runMigration(tx, name, body, false)
 }
 
 // applyWithForeignKeysOff runs one migration on a dedicated connection with
@@ -107,13 +107,15 @@ func applyWithForeignKeysOff(db *sql.DB, name string, body []byte) error {
 	if err != nil {
 		return err
 	}
-	return runMigration(tx, name, body)
+	return runMigration(tx, name, body, true)
 }
 
-// runMigration executes body and records name inside tx, checking foreign key
-// integrity before the commit; the check is a no-op cost when enforcement was
-// on throughout and the real safeguard when it was off.
-func runMigration(tx *sql.Tx, name string, body []byte) error {
+// runMigration executes body and records name inside tx. With verifyForeignKeys
+// it runs PRAGMA foreign_key_check before the commit, which is the safeguard
+// for a migration that ran with enforcement off. It is not run otherwise: the
+// check scans every child table in the database, and a legacy orphan row in
+// some unrelated table must not stop an index migration from applying.
+func runMigration(tx *sql.Tx, name string, body []byte, verifyForeignKeys bool) error {
 	if _, err := tx.Exec(string(body)); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("apply %s: %w", name, err)
@@ -122,16 +124,18 @@ func runMigration(tx *sql.Tx, name string, body []byte) error {
 		_ = tx.Rollback()
 		return fmt.Errorf("record %s: %w", name, err)
 	}
-	rows, err := tx.Query(`PRAGMA foreign_key_check`)
-	if err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("foreign key check after %s: %w", name, err)
-	}
-	violated := rows.Next()
-	_ = rows.Close()
-	if violated {
-		_ = tx.Rollback()
-		return fmt.Errorf("apply %s: foreign key check failed", name)
+	if verifyForeignKeys {
+		rows, err := tx.Query(`PRAGMA foreign_key_check`)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("foreign key check after %s: %w", name, err)
+		}
+		violated := rows.Next()
+		_ = rows.Close()
+		if violated {
+			_ = tx.Rollback()
+			return fmt.Errorf("apply %s: foreign key check failed", name)
+		}
 	}
 	return tx.Commit()
 }
