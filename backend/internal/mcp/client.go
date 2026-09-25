@@ -415,6 +415,10 @@ type stdioClient struct {
 	// again (a sync.Once here left every later request to a restarted server
 	// failing with "not initialized").
 	initialized bool
+	// initMu serialises the check-then-initialize so two concurrent first
+	// calls send one handshake: a second "initialize" on an initialized
+	// process is an error for servers built on the reference SDKs.
+	initMu sync.Mutex
 }
 
 // NewStdioClient creates a Client that communicates with an MCP server via stdin/stdout.
@@ -469,6 +473,8 @@ func (c *stdioClient) Close() error {
 }
 
 func (c *stdioClient) initialize(ctx context.Context) error {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
 	if err := c.start(ctx); err != nil {
 		return err
 	}

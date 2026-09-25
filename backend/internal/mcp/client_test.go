@@ -472,6 +472,11 @@ func runMCPTestHelper(t *testing.T) {
 		}
 		switch req.Method {
 		case "initialize":
+			// Servers built on the reference SDKs refuse a second handshake.
+			if initialized {
+				_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32600, "message": "server already initialized"}})
+				continue
+			}
 			initialized = true
 			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"protocolVersion": "2025-06-18"}})
 		case "tools/list":
@@ -605,5 +610,36 @@ func TestMCPStatusErrorDoesNotEchoRemoteBody(t *testing.T) {
 	}
 	if !strings.Contains(msg, "502") || !strings.Contains(msg, "tools/list") {
 		t.Fatalf("Error() = %q, want the method and status", msg)
+	}
+}
+
+// Two turns reaching a stdio server at once right after boot must share one
+// handshake: the initialized flag was checked outside the lock, so both sent
+// "initialize" and the second one failed on a healthy process.
+func TestStdioClientInitializesOnceUnderConcurrentFirstCalls(t *testing.T) {
+	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
+		runMCPTestHelper(t)
+		return
+	}
+	client := NewStdioClient("local", ServerConfig{
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestStdioClientInitializesOnceUnderConcurrentFirstCalls"},
+		Env:       map[string]string{"BACKEND_MCP_TEST_HELPER": "1"},
+	})
+	defer client.Close()
+
+	const callers = 4
+	errs := make(chan error, callers)
+	for range callers {
+		go func() {
+			_, err := client.ListTools(context.Background())
+			errs <- err
+		}()
+	}
+	for range callers {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent first ListTools() error: %v", err)
+		}
 	}
 }
