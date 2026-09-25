@@ -111,11 +111,20 @@ func applyWithForeignKeysOff(db *sql.DB, name string, body []byte) error {
 }
 
 // runMigration executes body and records name inside tx. With verifyForeignKeys
-// it runs PRAGMA foreign_key_check before the commit, which is the safeguard
-// for a migration that ran with enforcement off. It is not run otherwise: the
-// check scans every child table in the database, and a legacy orphan row in
-// some unrelated table must not stop an index migration from applying.
+// it counts PRAGMA foreign_key_check violations before and after, the
+// safeguard for a migration that ran with enforcement off, and rolls back only
+// when the migration added some: a legacy orphan row that was already there
+// must not stop the upgrade. Without it the check is not run at all.
 func runMigration(tx *sql.Tx, name string, body []byte, verifyForeignKeys bool) error {
+	var violationsBefore int
+	if verifyForeignKeys {
+		n, err := countForeignKeyViolations(tx)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("foreign key check before %s: %w", name, err)
+		}
+		violationsBefore = n
+	}
 	if _, err := tx.Exec(string(body)); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("apply %s: %w", name, err)
@@ -125,17 +134,28 @@ func runMigration(tx *sql.Tx, name string, body []byte, verifyForeignKeys bool) 
 		return fmt.Errorf("record %s: %w", name, err)
 	}
 	if verifyForeignKeys {
-		rows, err := tx.Query(`PRAGMA foreign_key_check`)
+		violationsAfter, err := countForeignKeyViolations(tx)
 		if err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("foreign key check after %s: %w", name, err)
 		}
-		violated := rows.Next()
-		_ = rows.Close()
-		if violated {
+		if violationsAfter > violationsBefore {
 			_ = tx.Rollback()
-			return fmt.Errorf("apply %s: foreign key check failed", name)
+			return fmt.Errorf("apply %s: foreign key check failed (%d new violations)", name, violationsAfter-violationsBefore)
 		}
 	}
 	return tx.Commit()
+}
+
+func countForeignKeyViolations(tx *sql.Tx) (int, error) {
+	rows, err := tx.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	n := 0
+	for rows.Next() {
+		n++
+	}
+	return n, rows.Err()
 }

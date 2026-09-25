@@ -56,10 +56,18 @@ func TestApplyInTransactionIgnoresPreExistingOrphans(t *testing.T) {
 }
 
 // A migration that ran with enforcement off is the one place the check
-// belongs: a table rebuild that leaves a dangling reference must roll back.
-func TestApplyWithForeignKeysOffRejectsOrphans(t *testing.T) {
+// belongs: a table rebuild that leaves a new dangling reference must roll
+// back, while an orphan that was already there does not block it.
+func TestApplyWithForeignKeysOffToleratesExistingOrphans(t *testing.T) {
 	db := openWithOrphan(t)
-	err := applyWithForeignKeysOff(db, "9002_rebuild.sql", []byte(`CREATE INDEX idx_children_parent ON children(parent_id)`))
+	if err := applyWithForeignKeysOff(db, "9002_rebuild.sql", []byte(`CREATE INDEX idx_children_parent ON children(parent_id)`)); err != nil {
+		t.Fatalf("applyWithForeignKeysOff() error = %v, want nil for a pre-existing orphan", err)
+	}
+}
+
+func TestApplyWithForeignKeysOffRejectsNewOrphans(t *testing.T) {
+	db := openWithOrphan(t)
+	err := applyWithForeignKeysOff(db, "9002_rebuild.sql", []byte(`INSERT INTO children (id, parent_id) VALUES (2, 98)`))
 	if err == nil || !strings.Contains(err.Error(), "foreign key check failed") {
 		t.Fatalf("applyWithForeignKeysOff() error = %v, want a foreign key check failure", err)
 	}
