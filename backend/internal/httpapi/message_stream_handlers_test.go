@@ -2494,20 +2494,26 @@ func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 // before the SSE stream opens: a rejected send is a plain 400 JSON response,
 // never a JSON blob inside a committed event stream with an orphaned user turn.
 func TestStreamMessageRejectsBadImageAttachmentsBeforePersisting(t *testing.T) {
+	deleted := artifact.Artifact{ID: "art_gone", UserID: testUser.ID, MIMEType: "image/png", VolumeRelPath: "files/uploads/gone.png", Deleted: true}
 	tests := []struct {
-		name string
-		body string
+		name      string
+		body      string
+		artifacts []artifact.Artifact
 	}{
-		{"too many", `{"content":"Hi","imageAttachmentIds":["a","b","c","d","e","f"]}`},
-		{"unknown id", `{"content":"Hi","imageAttachmentIds":["art_missing"]}`},
+		{"too many", `{"content":"Hi","imageAttachmentIds":["a","b","c","d","e","f"]}`, nil},
+		{"unknown id", `{"content":"Hi","imageAttachmentIds":["art_missing"]}`, nil},
+		// The batch lookup returns soft-deleted rows for the transcript overlay;
+		// they are not attachable and the 400 must not name the volume path.
+		{"deleted", `{"content":"Hi","imageAttachmentIds":["art_gone"]}`, []artifact.Artifact{deleted}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"}}
+			usersDir := t.TempDir()
 			srv := newAuthenticatedServer(t, Deps{
 				Thread:    store,
-				Artifacts: fakeArtifactStore{},
-				UsersDir:  t.TempDir(),
+				Artifacts: fakeArtifactStore{artifacts: tt.artifacts},
+				UsersDir:  usersDir,
 				LLM:       fakeChatClient{},
 			})
 			req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", tt.body)
@@ -2523,6 +2529,9 @@ func TestStreamMessageRejectsBadImageAttachmentsBeforePersisting(t *testing.T) {
 			}
 			if strings.Contains(rec.Body.String(), "event:") {
 				t.Fatalf("body carries SSE events:\n%s", rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), usersDir) {
+				t.Fatalf("body leaks the volume path:\n%s", rec.Body.String())
 			}
 			if len(store.messages) != 0 {
 				t.Fatalf("persisted messages = %d, want 0", len(store.messages))

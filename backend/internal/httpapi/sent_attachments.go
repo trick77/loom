@@ -55,7 +55,7 @@ func (s *server) resolveSentAttachments(ctx context.Context, userID string, thre
 			}
 			seen[id] = true
 			art, ok := found[id]
-			if !ok {
+			if !ok || art.Deleted {
 				slog.Warn("sent image attachment not found", "artifact_id", id)
 				continue
 			}

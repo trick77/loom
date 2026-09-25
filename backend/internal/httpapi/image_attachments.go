@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -38,8 +39,10 @@ func (s *server) imageContentParts(ctx context.Context, userID, text string, art
 	}
 	parts := make([]llm.MessageContentPart, 0, len(artifactIDs)+1)
 	for _, artifactID := range artifactIDs {
+		// GetMany deliberately returns soft-deleted rows (the transcript overlay
+		// needs them); an attachment must be a live artifact with bytes on disk.
 		item, ok := items[artifactID]
-		if !ok {
+		if !ok || item.Deleted {
 			return nil, fmt.Errorf("image attachment not found")
 		}
 		// No thread-scope check here: s.artifacts.GetMany already user-scopes the lookup,
@@ -68,7 +71,9 @@ func (s *server) imageContentParts(ctx context.Context, userID, text string, art
 		// tiling vision model would use.
 		raw, err := os.ReadFile(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 		if err != nil {
-			return nil, fmt.Errorf("read image attachment: %w", err)
+			// The os error names the absolute volume path; that stays in the log.
+			slog.Warn("image attachment unreadable", "artifact_id", artifactID, "err", err)
+			return nil, fmt.Errorf("image attachment is unreadable")
 		}
 		encoded, encodedMIME := imagescale.DownscaleForModel(raw, item.MIMEType)
 		parts = append(parts, llm.MessageContentPart{
