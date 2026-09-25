@@ -47,19 +47,31 @@ func (b *Background) Spawn(parent context.Context, label string, fn func(ctx con
 // that outlives the timeout is reported, not killed; the caller decides what
 // that means for the resources the task may still hold.
 func (b *Background) Stop(timeout time.Duration) error {
-	b.cancel()
 	done := make(chan struct{})
 	go func() {
 		b.wg.Wait()
 		close(done)
 	}()
+	// Drain first: a memory refresh that is mid model call gets to write its
+	// result. Only what is still running at the deadline is cancelled, and it
+	// gets a short grace to unwind before the caller closes the database.
 	select {
 	case <-done:
+		b.cancel()
 		return nil
 	case <-time.After(timeout):
-		return fmt.Errorf("background tasks still running after %v", timeout)
+	}
+	b.cancel()
+	select {
+	case <-done:
+		return fmt.Errorf("background tasks did not finish within %v and were cancelled", timeout)
+	case <-time.After(stopCancelGrace):
+		return fmt.Errorf("background tasks still running after %v", timeout+stopCancelGrace)
 	}
 }
+
+// stopCancelGrace is how long Stop waits for the tasks it had to cancel.
+const stopCancelGrace = 2 * time.Second
 
 // logPanic is deferred by goroutines that run outside the HTTP handler chain,
 // where the recovery middleware cannot catch a panic. It must be the deferred

@@ -9,21 +9,51 @@ import (
 
 type bgKey struct{}
 
-func TestBackgroundStopCancelsAndWaitsForTasks(t *testing.T) {
+// Stop is a drain: tasks that finish on their own within the timeout are
+// never cancelled, so an in-flight refresh gets to write its result.
+func TestBackgroundStopDrainsTasksWithoutCancellingThem(t *testing.T) {
 	bg := NewBackground(context.Background())
-	var finished atomic.Int32
+	var finished, cancelled atomic.Int32
+	release := make(chan struct{})
 	for range 2 {
 		bg.Spawn(context.Background(), "task", func(ctx context.Context) {
-			<-ctx.Done()
+			<-release
+			if ctx.Err() != nil {
+				cancelled.Add(1)
+			}
 			finished.Add(1)
 		})
 	}
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		close(release)
+	}()
 
 	if err := bg.Stop(time.Second); err != nil {
 		t.Fatalf("Stop() error = %v", err)
 	}
 	if got := finished.Load(); got != 2 {
 		t.Fatalf("finished tasks = %d, want 2", got)
+	}
+	if got := cancelled.Load(); got != 0 {
+		t.Fatalf("cancelled tasks = %d, want 0", got)
+	}
+}
+
+// What is still running at the deadline is cancelled and reported.
+func TestBackgroundStopCancelsTasksStillRunningAtTheDeadline(t *testing.T) {
+	bg := NewBackground(context.Background())
+	var finished atomic.Int32
+	bg.Spawn(context.Background(), "task", func(ctx context.Context) {
+		<-ctx.Done()
+		finished.Add(1)
+	})
+
+	if err := bg.Stop(20 * time.Millisecond); err == nil {
+		t.Fatal("Stop() error = nil, want a report of the cancelled task")
+	}
+	if got := finished.Load(); got != 1 {
+		t.Fatalf("finished tasks = %d, want 1 (cancelled and unwound)", got)
 	}
 }
 
@@ -66,7 +96,6 @@ func TestBackgroundTaskKeepsParentValuesNotItsCancellation(t *testing.T) {
 		case <-time.After(30 * time.Millisecond):
 			canceledByParent <- false
 		}
-		<-ctx.Done()
 	})
 
 	if v := <-seen; v != "v" {

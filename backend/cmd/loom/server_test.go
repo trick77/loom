@@ -94,9 +94,14 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	bg := httpapi.NewBackground(context.Background())
-	var backgroundFinished atomic.Bool
+	// The task represents an in-flight refresh: it finishes on its own shortly
+	// after the shutdown begins and must be allowed to, not cancelled.
+	var backgroundFinished, backgroundCancelled atomic.Bool
+	backgroundRelease := make(chan struct{})
 	bg.Spawn(context.Background(), "drain", func(ctx context.Context) {
-		<-ctx.Done()
+		<-backgroundRelease
+		time.Sleep(50 * time.Millisecond)
+		backgroundCancelled.Store(ctx.Err() != nil)
 		backgroundFinished.Store(true)
 	})
 
@@ -115,6 +120,7 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 	}
 
 	cancel()
+	close(backgroundRelease)
 
 	select {
 	case err := <-served:
@@ -129,5 +135,8 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 	}
 	if !backgroundFinished.Load() {
 		t.Fatal("serve() returned before the background group drained")
+	}
+	if backgroundCancelled.Load() {
+		t.Fatal("serve() cancelled a background task that would have finished on its own")
 	}
 }
