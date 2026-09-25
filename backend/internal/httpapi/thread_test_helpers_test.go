@@ -628,9 +628,11 @@ type fakeChatClient struct {
 	classifyGate chan struct{}
 	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
 	// open and count how many callers got through.
-	memoryEntered       chan struct{}
-	memoryGate          chan struct{}
-	memoryCalls         *atomic.Int32
+	memoryEntered chan struct{}
+	memoryGate    chan struct{}
+	memoryCalls   *atomic.Int32
+	// memoryPriors, when set, receives the prior memory passed to GenerateMemory.
+	memoryPriors        chan string
 	history             *[]llm.Message
 	streamText          *string
 	reasoningText       string
@@ -723,7 +725,10 @@ func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string)
 	return f.reasoningTitle, nil
 }
 
-func (f fakeChatClient) GenerateMemory(_ context.Context, _, _, _, _, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _, _ string) (string, error) {
+	if f.memoryPriors != nil {
+		f.memoryPriors <- prior
+	}
 	if f.memoryCalls != nil {
 		f.memoryCalls.Add(1)
 	}

@@ -96,10 +96,15 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	// fixed 40) avoids skipping messages when refreshes are spaced hours/days apart,
 	// up to memoryRebuildLimit — a backlog larger than that still folds only the
 	// most recent memoryRebuildLimit, but that is strictly better than the old cap.
-	// After deletions there is no "new since last time" delta; fold the whole
-	// remaining transcript instead so the memory is rebuilt from what is left.
 	window := count - sourceCount
-	if window <= 0 {
+	if count < sourceCount {
+		// Messages were deleted, and the stored memory may describe them.
+		// There is no "new since last time" delta to fold into it: rebuild from
+		// what is left, without the prior, and clear the memory when nothing is.
+		if count == 0 {
+			return scope.upsert(ctx, "", 0)
+		}
+		prior = ""
 		window = count
 	}
 	window = min(window, memoryRebuildLimit)

@@ -246,3 +246,48 @@ func TestRefreshMemoryIfDue_RefreshesWhenCountDropped(t *testing.T) {
 		t.Fatalf("SourceMessageCount = %d, want the current count 6", store.userMemory.SourceMessageCount)
 	}
 }
+
+// After deletions the memory is rebuilt from what is left, not folded into
+// the stale prior that may describe the deleted conversations; with nothing
+// left it is cleared.
+func TestRefreshMemoryIfDue_DeletionsRebuildWithoutThePrior(t *testing.T) {
+	store := &fakeThreadStore{
+		userMessageCount: 2,
+		userMemory:       chat.UserMemory{Content: "- stale", SourceMessageCount: 60},
+		messages:         []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	}
+	priors := make(chan string, 1)
+	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- fresh", memoryPriors: priors}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if got := <-priors; got != "" {
+		t.Fatalf("GenerateMemory prior = %q, want the stale memory dropped", got)
+	}
+	if store.listLimit != 2 {
+		t.Fatalf("list limit = %d, want the whole remaining transcript (2)", store.listLimit)
+	}
+	if store.userMemory.Content != "- fresh" || store.userMemory.SourceMessageCount != 2 {
+		t.Fatalf("stored memory = %+v, want the rebuilt one over 2 messages", store.userMemory)
+	}
+}
+
+func TestRefreshMemoryIfDue_EverythingDeletedClearsTheMemory(t *testing.T) {
+	var calls atomic.Int32
+	store := &fakeThreadStore{
+		userMessageCount: 0,
+		userMemory:       chat.UserMemory{Content: "- stale", SourceMessageCount: 60},
+	}
+	s := &server{thread: store, llm: fakeChatClient{memoryCalls: &calls}}
+
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error: %v", err)
+	}
+	if store.userMemory.Content != "" || store.userMemory.SourceMessageCount != 0 {
+		t.Fatalf("stored memory = %+v, want cleared", store.userMemory)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("GenerateMemory calls = %d, want 0 (nothing to summarise)", calls.Load())
+	}
+}
