@@ -118,9 +118,6 @@ WHERE user_id = ? AND thread_id = ?`,
 	return affected > 0, nil
 }
 
-// ListSharesForUser returns the user's shares, newest first, for the settings
-// dashboard. Snapshots are omitted from the scan-heavy listing path is not needed
-// here — the full row is small enough and the dashboard renders metadata only.
 // ListSharesForUser lists the user's shares for the settings page. The
 // snapshot column is left out (Snapshot is empty on every row): the list shows
 // metadata only, and a snapshot is the whole frozen transcript.

@@ -55,7 +55,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	imageParts := in.imageParts
 	// Decide how this turn routes to image generation/editing before classifying,
 	// via one semantic gate call (language-agnostic; see classifyImageTurn). When
-	// the image path will run we stamp the in.thread's category deterministically as
+	// the image path will run we stamp the thread's category deterministically as
 	// image_generation instead of letting the text classifier guess (it would
 	// mislabel and the image path discards the classifier block anyway). Computed
 	// once here and reused below.
@@ -66,19 +66,19 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	// message we classify now (synchronously, before the answer history is built)
 	// and use the fresh result; on later turns we reuse the stored category.
 	//
-	// The condition is this being the in.thread's first turn AND its category never
+	// The condition is this being the thread's first turn AND its category never
 	// having been set. It used to be shouldGenerateThreadTitle, a proxy for "first
 	// turn" that held only because the UI creates threads titled with the raw
 	// first message — and that leaked: a later turn whose text matched the stored
 	// title re-ran the classifier and overwrote the label. CreateThread never sets
 	// category, so an empty one is the honest "never classified" signal.
 	//
-	// Both halves are needed. Without the message check, every pre-existing in.thread
+	// Both halves are needed. Without the message check, every pre-existing thread
 	// with an unset category (there is no backfill migration) would classify on
-	// its next turn and stamp that turn's text as the in.thread's sticky identity —
-	// on a long in.thread that label is likely wrong, and freshlyClassified would
+	// its next turn and stamp that turn's text as the thread's sticky identity —
+	// on a long thread that label is likely wrong, and freshlyClassified would
 	// suppress the per-turn drift re-classification below on the same turn. A
-	// in.thread's category describes what it opened with, so it is set on turn one or
+	// thread's category describes what it opened with, so it is set on turn one or
 	// not at all; later drift is handled per-turn just below. Titling has moved
 	// after the answer and no longer shares this gate.
 	category := in.thread.Category
@@ -93,7 +93,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	}
 
 	// Semantic drift detection: on a continued turn whose sticky category does not
-	// already grant the coding-doc tools, re-classify THIS message so a in.thread that
+	// already grant the coding-doc tools, re-classify THIS message so a thread that
 	// drifted into coding/how-to (in any language) still gets context7 et al. This
 	// reuses the same model classifier as the first message — no hand-maintained
 	// keyword lexicon. Skipped when the turn was just classified, when the image
@@ -152,7 +152,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	}
 	history := buildLLMHistory(in.user, fileToolGuidance, classifier.Block(category), userContext, projectContext, knowledgeContext, documentContext, in.priorMessages, in.userMessage)
 	// editSourceID is the image whose original pixels are forwarded to the image
-	// model for direct editing (image-to-image). Defaults to the photo the in.user
+	// model for direct editing (image-to-image). Defaults to the photo the user
 	// attached this turn; the follow-up branch below sets it to a reused prior image.
 	editSourceID := ""
 	if len(in.body.ImageAttachmentIDs) > 0 {
@@ -160,11 +160,11 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	}
 	// Silently reuse the conversation's most recent image as the model's vision
 	// input when this turn is a follow-up edit/restyle ("make it cyberpunk",
-	// "create a variation") and the in.user attached nothing explicitly — so editing
+	// "create a variation") and the user attached nothing explicitly — so editing
 	// the just-generated image needs no manual re-attach step. Fresh creation
 	// requests never pull in a prior image. This is best-effort: if the source
 	// can't be loaded the turn proceeds text-only rather than failing, unlike an
-	// explicit attachment (handled above) whose failure is surfaced to the in.user.
+	// explicit attachment (handled above) whose failure is surfaced to the user.
 	if len(imageParts) == 0 && imageRoute.reuseSource {
 		if sourceID := latestImageArtifactID(in.priorMessages); sourceID != "" {
 			if parts, partsErr := s.imageContentParts(in.reqCtx, in.user.ID, in.userMessage.Content, []string{sourceID}); partsErr != nil {
