@@ -175,12 +175,13 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Run ingestion off the request path; the client polls status via list/get.
-	// Attribute the ingest's model calls (vision description, embedding batches):
-	// the detached context carries no metadata of its own.
-	detached := withUserAttribution(context.WithoutCancel(r.Context()), user, "")
-	go func() {
-		_ = s.documents.Index(detached, user.ID, docID)
-	}()
+	// The background group detaches it from the request, recovers a panic in
+	// the Tika or embedding path and lets shutdown drain it before the
+	// database closes. Attribute its model calls (vision description,
+	// embedding batches): the detached context carries no metadata of its own.
+	s.background.Spawn(withUserAttribution(r.Context(), user, ""), "document_index:"+docID, func(ctx context.Context) {
+		_ = s.documents.Index(ctx, user.ID, docID)
+	})
 	doc.Status = rag.StatusPending
 	writeJSON(w, toDocumentResponse(doc))
 }
