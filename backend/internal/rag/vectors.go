@@ -42,6 +42,10 @@ func (s *Store) RebuildVectorTable(ctx context.Context, width int) error {
 	if _, err := tx.ExecContext(ctx, `DROP TABLE vec_chunks`); err != nil {
 		return fmt.Errorf("drop vec_chunks: %w", err)
 	}
+	// Another model may take what the last one refused.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vector_refused`); err != nil {
+		return fmt.Errorf("clear refused chunks: %w", err)
+	}
 	// Same columns as the migration that created it; only the width moves.
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`CREATE VIRTUAL TABLE vec_chunks USING vec0(
     embedding  float[%d],
@@ -89,6 +93,25 @@ func (s *Store) HasVectors(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// MarkRefused records chunks the embedding model refused outright, so later
+// re-embedding runs skip them.
+func (s *Store) MarkRefused(ctx context.Context, chunkIDs []int64) error {
+	if len(chunkIDs) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, id := range chunkIDs {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO vector_refused (chunk_id) VALUES (?)`, id); err != nil {
+			return fmt.Errorf("mark refused chunk: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 // MissingVector is a stored chunk without an embedding.
 type MissingVector struct {
 	ChunkID int64
@@ -98,13 +121,15 @@ type MissingVector struct {
 }
 
 // ChunksMissingVectors lists up to limit chunks after afterID that have no row
-// in vec_chunks, in id order: pass the last id of one page to get the next.
+// in vec_chunks and were not refused by the model (see MarkRefused), in id
+// order: pass the last id of one page to get the next.
 func (s *Store) ChunksMissingVectors(ctx context.Context, afterID int64, limit int) ([]MissingVector, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT c.id, c.user_id, c.text, d.project_id, d.thread_id
 FROM chunks c
 JOIN documents d ON d.user_id = c.user_id AND d.id = c.document_id
 WHERE c.id > ? AND NOT EXISTS (SELECT 1 FROM vec_chunks v WHERE v.rowid = c.id)
+  AND NOT EXISTS (SELECT 1 FROM vector_refused r WHERE r.chunk_id = c.id)
 ORDER BY c.id
 LIMIT ?`, afterID, limit)
 	if err != nil {

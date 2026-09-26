@@ -72,9 +72,13 @@ func TestIngester_ReembedMissingSkipsAChunkTheModelRefuses(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("re-embedded %d chunks, want the 2 the model takes", n)
 	}
-	missing, err := s.ChunksMissingVectors(ctx, 0, 10)
-	if err != nil || len(missing) != 1 || missing[0].Text != "poison" {
-		t.Fatalf("still missing = %+v, %v; want only the refused chunk", missing, err)
+	// The refused chunk is recorded as refused, so nothing is left to re-embed.
+	if missing, err := s.ChunksMissingVectors(ctx, 0, 10); err != nil || len(missing) != 0 {
+		t.Fatalf("still missing = %+v, %v; want none (the refused chunk is recorded)", missing, err)
+	}
+	var refused string
+	if err := s.db.QueryRowContext(ctx, `SELECT c.text FROM vector_refused r JOIN chunks c ON c.id = r.chunk_id`).Scan(&refused); err != nil || refused != "poison" {
+		t.Fatalf("refused = %q, %v; want the poison chunk", refused, err)
 	}
 }
 
@@ -119,6 +123,58 @@ func TestIngester_ReembedMissingKeepsBatchesBeforeARefusal(t *testing.T) {
 	}
 	if embedded != embedBatchSize {
 		t.Fatalf("embedded %d inputs, want exactly the %d of the first batch once", embedded, embedBatchSize)
+	}
+}
+
+// A chunk the model refused in a run that embedded others is refused for good:
+// later runs skip it instead of failing on it forever.
+func TestIngester_ReembedMissingRemembersRefusedChunks(t *testing.T) {
+	emb := &poisonEmbedder{}
+	ing, s := newIngester(t, fakeExtractor{}, emb, fakeOpener{})
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "alpha", "poison")
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ing.ReembedMissing(ctx); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	calls := len(emb.gotInputs)
+	n, err := ing.ReembedMissing(ctx)
+	if err != nil || n != 0 {
+		t.Fatalf("second run: n=%d err=%v, want a no-op", n, err)
+	}
+	if len(emb.gotInputs) != calls {
+		t.Fatal("second run re-sent the refused chunk")
+	}
+
+	// A rebuild (another model) gives the refused chunk another chance.
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	missing, err := s.ChunksMissingVectors(ctx, 0, 10)
+	if err != nil || len(missing) != 2 {
+		t.Fatalf("after rebuild: missing = %+v, %v; want both chunks again", missing, err)
+	}
+}
+
+// Clearing a document forgets its refused chunks: their ids can be reused.
+func TestStore_ClearChunksForgetsRefusals(t *testing.T) {
+	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "alpha", "poison")
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ing.ReembedMissing(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ClearChunks(ctx, "u1", "d1"); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM vector_refused`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("refusals left after clear = %d, %v; want 0", n, err)
 	}
 }
 

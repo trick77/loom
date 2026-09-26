@@ -22,7 +22,8 @@ const reembedPageSize = 256
 // transient failure ends the run with an error so the caller retries. It
 // returns how many chunks it embedded.
 func (ing *Ingester) ReembedMissing(ctx context.Context) (int, error) {
-	total, skipped := 0, 0
+	total := 0
+	var refused []int64
 	var after int64
 	for {
 		missing, err := ing.store.ChunksMissingVectors(ctx, after, reembedPageSize)
@@ -30,21 +31,27 @@ func (ing *Ingester) ReembedMissing(ctx context.Context) (int, error) {
 			return total, err
 		}
 		if len(missing) == 0 {
-			if total == 0 && skipped > 0 {
-				// Nothing embedded at all: the model is refusing every input,
-				// not a few odd chunks. Fail so the run is retried.
-				return 0, fmt.Errorf("re-embed: the embedding model refused all %d chunks", skipped)
+			if total == 0 && len(refused) > 0 {
+				// Nothing embedded at all: the model is refusing every input
+				// (a wrong model or parameter), not a few odd chunks. Fail so
+				// the run is retried, and remember nothing.
+				return 0, fmt.Errorf("re-embed: the embedding model refused all %d chunks", len(refused))
 			}
-			if total > 0 || skipped > 0 {
-				slog.InfoContext(ctx, "rag: re-embedding finished", "chunks", total, "refused", skipped)
+			// The model took others, so these it will never take: remember
+			// them, or every later run would fail on them.
+			if err := ing.store.MarkRefused(ctx, refused); err != nil {
+				return total, err
+			}
+			if total > 0 || len(refused) > 0 {
+				slog.InfoContext(ctx, "rag: re-embedding finished", "chunks", total, "refused", len(refused))
 			}
 			return total, nil
 		}
 		after = missing[len(missing)-1].ChunkID
 		for _, group := range batches(groupByUser(missing)) {
-			done, refused, err := ing.reembedGroup(ctx, group)
+			done, groupRefused, err := ing.reembedGroup(ctx, group)
 			total += done
-			skipped += refused
+			refused = append(refused, groupRefused...)
 			if err != nil {
 				return total, err
 			}
@@ -56,21 +63,21 @@ func (ing *Ingester) ReembedMissing(ctx context.Context) (int, error) {
 // reembedGroup embeds one owner's chunks in a batch. When the model refuses
 // the batch as a bad request, it retries chunk by chunk so only the chunks it
 // refuses are left out.
-func (ing *Ingester) reembedGroup(ctx context.Context, group []MissingVector) (done, refused int, err error) {
+func (ing *Ingester) reembedGroup(ctx context.Context, group []MissingVector) (done int, refused []int64, err error) {
 	err = ing.embedAndStore(ctx, group)
 	switch {
 	case err == nil:
-		return len(group), 0, nil
+		return len(group), nil, nil
 	case !errors.Is(err, llmwire.ErrBadRequest):
-		return 0, 0, err
+		return 0, nil, err
 	case len(group) == 1:
 		slog.WarnContext(ctx, "rag: embedding model refused a chunk; skipped", "chunk_id", group[0].ChunkID, "err", err)
-		return 0, 1, nil
+		return 0, []int64{group[0].ChunkID}, nil
 	}
 	for _, m := range group {
 		d, r, err := ing.reembedGroup(ctx, []MissingVector{m})
 		done += d
-		refused += r
+		refused = append(refused, r...)
 		if err != nil {
 			return done, refused, err
 		}

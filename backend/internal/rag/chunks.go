@@ -40,6 +40,11 @@ func deleteChunksTx(ctx context.Context, tx *sql.Tx, userID, documentID string) 
 		if _, err := tx.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid IN (`+placeholders+`)`, args...); err != nil { //nolint:gosec // only the ?-placeholder list is interpolated; every value is bound
 			return err
 		}
+		// A refused chunk's id can be reused by a new chunk, which must not
+		// inherit the refusal.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM vector_refused WHERE chunk_id IN (`+placeholders+`)`, args...); err != nil { //nolint:gosec // only the ?-placeholder list is interpolated; every value is bound
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM chunks WHERE user_id = ? AND document_id = ?`, userID, documentID); err != nil {
 		return err
