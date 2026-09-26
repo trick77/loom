@@ -28,6 +28,23 @@ function handlers() {
 }
 
 describe("streamMessage", () => {
+  test("delivers message_cost, which the server sends after assistant_message", async () => {
+    const body = sseBody([
+      'event: assistant_message\ndata: {"id":"m2","content":"x"}\n\n',
+      'event: message_cost\ndata: {"id":"m2","costNanoUsd":1110}\n\n',
+      "event: done\ndata: {}\n\n",
+    ]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body)));
+    const h = { ...handlers(), onMessageCost: vi.fn() };
+
+    await streamMessage("t1", "hi", h);
+
+    expect(h.onMessageCost).toHaveBeenCalledWith({
+      id: "m2",
+      costNanoUsd: 1110,
+    });
+  });
+
   test("rejects with StreamInterruptedError when the body closes before a terminal event", async () => {
     const body = sseBody([
       'event: user_message\ndata: {"id":"m1"}\n\n',

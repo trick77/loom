@@ -35,6 +35,22 @@ function hasPositiveValue(value: number | undefined): value is number {
 const DOT_SEPARATOR = " \u00A0\u00B7\u00A0 ";
 
 /**
+ * Set a message's settled cost (a message_cost stream event) in place, leaving
+ * every other message untouched. Returns the same array when the id is not
+ * among the messages.
+ */
+export function applyMessageCost(
+  messages: Message[],
+  event: { id: string; costNanoUsd: number },
+): Message[] {
+  const index = messages.findIndex((message) => message.id === event.id);
+  if (index === -1) return messages;
+  const next = messages.slice();
+  next[index] = { ...messages[index], costNanoUsd: event.costNanoUsd };
+  return next;
+}
+
+/**
  * Format the context-window occupancy as a percentage (e.g. "5 %"), rounded to a
  * whole number with a narrow no-break space before the percent sign. contextTokens
  * is the final answer call's model-reported total_tokens — the true size of that

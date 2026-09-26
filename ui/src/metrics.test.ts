@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import {
+  applyMessageCost,
   formatDuration,
   buildMetricsString,
   threadCostThrough,
@@ -218,6 +219,21 @@ test("buildMetricsString omits the context % until the context window is known",
 
 test("buildMetricsString returns null without renderable metrics", () => {
   expect(buildMetricsString(assistant({ completionTokens: 100 }))).toBeNull();
+});
+
+test("applyMessageCost sets the settled cost on the matching message only", () => {
+  const messages = [
+    assistant({ id: "m1" }),
+    assistant({ id: "m2", costNanoUsd: 1000 }),
+  ];
+  const next = applyMessageCost(messages, { id: "m2", costNanoUsd: 1110 });
+  expect(next[1].costNanoUsd).toBe(1110);
+  expect(next[0]).toBe(messages[0]);
+  expect(messages[1].costNanoUsd).toBe(1000);
+  // Unknown id: nothing to patch, the same array back.
+  expect(applyMessageCost(messages, { id: "zz", costNanoUsd: 1 })).toBe(
+    messages,
+  );
 });
 
 test("formatMessageTime renders a 24-hour HH:MM clock, and empty for an unparseable timestamp", () => {

@@ -8,6 +8,7 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/sse"
 	"github.com/trick77/loom/internal/usage"
 )
 
@@ -30,6 +31,16 @@ type turnCostSettler struct {
 	// assistant is the persisted answer, nil until (unless) it is written.
 	assistant *chat.Message
 	once      sync.Once
+	// booked is the message whose cost settle changed and its new total, for
+	// the message_cost event; zero when nothing was booked.
+	booked messageCost
+}
+
+// messageCost is the message_cost SSE payload: a message's settled cost, so
+// the open thread's Σ is right without a reload.
+type messageCost struct {
+	ID          string `json:"id"`
+	CostNanoUSD int64  `json:"costNanoUsd"`
 }
 
 func (c *turnCostSettler) setAssistant(m chat.Message) { c.assistant = &m }
@@ -41,6 +52,16 @@ func (c *turnCostSettler) settle(ctx context.Context) {
 		c.rollUp(ctx)
 		c.bookOnThread(ctx)
 	})
+}
+
+// settleAndReport settles and tells the client which message's cost changed.
+// Callers run it before the turn's terminal event ("done" or "error"): the
+// client stops reading at either.
+func (c *turnCostSettler) settleAndReport(ctx context.Context, stream *sse.Writer) {
+	c.settle(ctx)
+	if c.booked.ID != "" {
+		_ = sendSSEJSON(stream, "message_cost", c.booked)
+	}
 }
 
 func (c *turnCostSettler) rollUp(ctx context.Context) {
@@ -78,5 +99,10 @@ func (c *turnCostSettler) bookOnThread(ctx context.Context) {
 	}
 	if _, err := c.s.thread.AddMessageCost(ctx, c.user.ID, messageID, delta); err != nil {
 		slog.Warn("book turn cost on thread failed", "message_id", messageID, "cost_nano_usd", delta, "err", err)
+		return
 	}
+	// The message now carries the whole turn: its own figure was either the
+	// part spent before it was written (topped up to full) or nothing (a user
+	// message, which carries no cost of its own).
+	c.booked = messageCost{ID: messageID, CostNanoUSD: full}
 }

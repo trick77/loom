@@ -9,12 +9,18 @@ import type {
   ToolResultEvent,
 } from "./types";
 
+export type MessageCostEvent = { id: string; costNanoUsd: number };
+
 export type StreamHandlers = {
   onUserMessage(message: Message): void;
   onDelta(delta: string): void;
   onReasoningDelta?(delta: string): void;
   onReasoningTitle?(event: { id: string; title: string }): void;
   onAssistantMessage(message: Message): void;
+  // A message's settled cost. The turn's last calls (the thread title) finish
+  // after assistant_message went out, and a failed turn books its spend on the
+  // user message; this is how the open thread's Σ learns either.
+  onMessageCost?(event: MessageCostEvent): void;
   onThread(thread: Thread): void;
   onToolPending?(): void;
   onToolCall?(event: ToolCallEvent): void;
@@ -243,6 +249,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers): boolean {
     case "assistant_message":
       handlers.onAssistantMessage(payload as Message);
       return true;
+    case "message_cost":
+      handlers.onMessageCost?.(payload as MessageCostEvent);
+      break;
     case "thread":
       handlers.onThread(payload as Thread);
       break;

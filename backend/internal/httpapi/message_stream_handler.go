@@ -199,6 +199,23 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// finishCosts books the turn's spend once every call has finished and tells
+	// the client, ahead of the terminal event it stops reading at.
+	finishCosts := func() {
+		titles.wait()
+		costs.settleAndReport(context.WithoutCancel(r.Context()), stream)
+	}
+	// failTurn ends a turn that has no answer to persist. The title and the
+	// cost report go out before the error event: the client stops reading at
+	// it, and the failed turn's spend must still reach the open thread's Σ.
+	// On an untitled thread's first turn that delays the error by the title
+	// call (bounded by turnGateTimeout).
+	failTurn := func(titleSource, message string) {
+		titleThread(titleSource)
+		finishCosts()
+		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
+	}
+
 	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, plan.history, inference, user, thread, plan.gate, plan.imageRoute.generate, plan.editSource, plan.imageRoute.typography, userMessage.Content, plan.sourceCount)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -213,6 +230,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			// Whatever streamed before the cancel is still the best title source
 			// available; it is simply shorter than a completed answer.
 			titleThread(assistantResult.Content)
+			finishCosts()
 			// End the stream deliberately. A client that did not issue the stop
 			// itself (the thread open in a second tab) would otherwise read an
 			// unterminated stream as a dropped connection. The write fails
@@ -220,9 +238,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			_ = stream.Send("done", "{}")
 			return
 		}
-		message := streamFailureMessage(err, assistantResult, "message", threadID)
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
-		titleThread(assistantResult.Content)
+		failTurn(assistantResult.Content, streamFailureMessage(err, assistantResult, "message", threadID))
 		return
 	}
 	assistantContent := assistantResult.Content
@@ -236,8 +252,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			"content_bytes", len(assistantResult.Content),
 			"tool_calls", len(assistantResult.ToolCalls),
 			"tool_error", assistantResult.ToolError)
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
-		titleThread(assistantContent)
+		failTurn(assistantContent, message)
 		return
 	}
 	if strings.TrimSpace(assistantContent) == "" {
@@ -248,8 +263,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			"tool_calls", len(assistantResult.ToolCalls))
 		// assistantContent is empty here by definition, so this titles from the
 		// question alone — exactly what every turn did before the reordering.
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
-		titleThread(assistantContent)
+		failTurn(assistantContent, "empty assistant response")
 		return
 	}
 
@@ -257,8 +271,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	assistantMessage, err := s.persistAssistantTurn(persistCtx, stream, titles, user, thread, &assistantResult, plan.knowledgeSources, usageTotal, turnStart)
 	if err != nil {
 		slog.Warn("persist assistant message failed", "thread_id", threadID, "err", err)
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": "persist assistant message failed"})
-		titleThread(assistantContent)
+		failTurn(assistantContent, "persist assistant message failed")
 		return
 	}
 	costs.setAssistant(assistantMessage)
@@ -291,9 +304,9 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Every call of the turn has finished (persistAssistantTurn waited for the
-	// reasoning titles, the thread title ran just above): book the spend now,
-	// before "done", so a reload right after sees the final Σ.
-	costs.settle(persistCtx)
+	// reasoning titles, the thread title ran just above): book the spend and
+	// report it before "done", so the open thread's Σ includes the title.
+	finishCosts()
 
 	// Best-effort, debounced background refresh of the project's shared memory so
 	// sibling chats stay aware of this turn (at most once per memoryProjectDebounce).

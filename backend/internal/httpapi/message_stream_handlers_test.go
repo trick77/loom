@@ -1375,6 +1375,14 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 	if delta.CostNanoUSD != 1110 {
 		t.Fatalf("lifetime CostNanoUSD = %d, want 1110 (answer, reasoning title and thread title)", delta.CostNanoUSD)
 	}
+	// The browser learns the settled figure live, before the stream ends: the
+	// title ran after assistant_message went out.
+	body := rec.Body.String()
+	costEvent := "event: message_cost\ndata: {\"id\":\"msg_2\",\"costNanoUsd\":1110}"
+	costAt, doneAt := strings.Index(body, costEvent), strings.Index(body, "event: done")
+	if costAt == -1 || doneAt == -1 || costAt > doneAt {
+		t.Fatalf("want %q before done, body:\n%s", costEvent, body)
+	}
 }
 
 // A turn that fails before it has an answer still spent money: the rounds
@@ -1408,6 +1416,13 @@ func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
 	}
 	if len(recorder.deltas) != 1 || recorder.deltas[0].CostNanoUSD != 15 {
 		t.Fatalf("lifetime deltas = %+v, want one carrying 15", recorder.deltas)
+	}
+	// The client stops reading at "error", so the cost must arrive before it.
+	body := rec.Body.String()
+	costEvent := "event: message_cost\ndata: {\"id\":\"msg_1\",\"costNanoUsd\":15}"
+	costAt, errorAt := strings.Index(body, costEvent), strings.Index(body, "event: error")
+	if costAt == -1 || errorAt == -1 || costAt > errorAt {
+		t.Fatalf("want %q before error, body:\n%s", costEvent, body)
 	}
 }
 
