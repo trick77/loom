@@ -1124,6 +1124,10 @@ func TestCleanReasoningTitleUnwrapsPrintedContentBlock(t *testing.T) {
 		{`[{'type': 'text', 'text': 'Searching how Opus 5.5 affects subscription limits'}]`, "Searching how Opus 5.5 affects subscription limits"},
 		{`{"type": "text", "text": "Explaining the user's sourdough starter"}`, "Explaining the user's sourdough starter"},
 		{`[{'type': 'text', 'text': "Weighing the user's options"}]`, "Weighing the user's options"},
+		// JSON escapes decode; a Python escape left undecoded drops the title.
+		{`{"type": "text", "text": "Erkl\u00e4ren, warum der Himmel blau ist"}`, "Erklären, warum der Himmel blau ist"},
+		{`[{'type': 'text', 'text': 'Erkl\xe4ren'}]`, ""},
+		{`[{'type': 'text', 'text': 'Weighing the user\'s options'}]`, "Weighing the user's options"},
 		// A wrapper whose value cannot be read whole yields no title at all.
 		{`[{'type': 'text', 'text': 'Searching how Opus 5.5 aff`, ""},
 		// Everything else passes through as before.

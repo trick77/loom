@@ -96,12 +96,22 @@ var (
 
 // unwrapContentBlock returns the text of a printed content block, or "" when
 // the value cannot be read whole, so a half-parsed wrapper never becomes the
-// title.
+// title. The double-quoted form is JSON and decodes fully (\u00e4, \n); the
+// single-quoted form is a Python repr, and any escape left in it beyond \' and
+// \\ drops the title rather than show a literal \xe4.
 func unwrapContentBlock(title string) string {
-	for _, re := range []*regexp.Regexp{blockTextSingle, blockTextDouble} {
-		if m := re.FindStringSubmatch(title); m != nil {
-			return strings.NewReplacer(`\'`, "'", `\"`, `"`, `\\`, `\`).Replace(m[1])
+	if m := blockTextDouble.FindStringSubmatch(title); m != nil {
+		text, err := strconv.Unquote(`"` + m[1] + `"`)
+		if err != nil {
+			return ""
 		}
+		return text
+	}
+	if m := blockTextSingle.FindStringSubmatch(title); m != nil {
+		if strings.Contains(strings.NewReplacer(`\\`, "", `\'`, "").Replace(m[1]), `\`) {
+			return ""
+		}
+		return strings.NewReplacer(`\\`, `\`, `\'`, "'").Replace(m[1])
 	}
 	return ""
 }
