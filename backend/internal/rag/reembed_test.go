@@ -78,6 +78,50 @@ func TestIngester_ReembedMissingSkipsAChunkTheModelRefuses(t *testing.T) {
 	}
 }
 
+// A model that refuses every input (it rejects the model or its parameters)
+// is not a finished run: it errors so the caller retries, instead of
+// declaring the corpus done while none of it is retrievable.
+func TestIngester_ReembedMissingFailsWhenEveryChunkIsRefused(t *testing.T) {
+	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "poison")
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ing.ReembedMissing(ctx); err == nil {
+		t.Fatal("ReembedMissing succeeded while every chunk was refused")
+	}
+}
+
+// Each embedding call stores its vectors right away: a refused batch never
+// throws away the batches before it (they were already billed).
+func TestIngester_ReembedMissingKeepsBatchesBeforeARefusal(t *testing.T) {
+	emb := &poisonEmbedder{}
+	ing, s := newIngester(t, fakeExtractor{}, emb, fakeOpener{})
+	ctx := context.Background()
+	texts := make([]string, embedBatchSize+1)
+	for i := range texts {
+		texts[i] = "chunk"
+	}
+	texts[embedBatchSize] = "poison"
+	seedEmbeddedDocument(t, s, "d1", texts...)
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ing.ReembedMissing(ctx); err != nil {
+		t.Fatalf("ReembedMissing: %v", err)
+	}
+	// One call for the first full batch, one refused call, one retry of the
+	// refused chunk alone: never the first batch again.
+	embedded := 0
+	for _, in := range emb.gotInputs {
+		embedded += len(in)
+	}
+	if embedded != embedBatchSize {
+		t.Fatalf("embedded %d inputs, want exactly the %d of the first batch once", embedded, embedBatchSize)
+	}
+}
+
 // A transient failure (the upstream is down) ends the run so it is retried.
 func TestIngester_ReembedMissingStopsOnATransientError(t *testing.T) {
 	ing, s := newIngester(t, fakeExtractor{}, &fakeEmbedder{err: &llmwire.APIError{StatusCode: 503, Class: llmwire.ErrUpstream}}, fakeOpener{})

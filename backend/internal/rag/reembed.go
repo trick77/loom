@@ -30,13 +30,18 @@ func (ing *Ingester) ReembedMissing(ctx context.Context) (int, error) {
 			return total, err
 		}
 		if len(missing) == 0 {
+			if total == 0 && skipped > 0 {
+				// Nothing embedded at all: the model is refusing every input,
+				// not a few odd chunks. Fail so the run is retried.
+				return 0, fmt.Errorf("re-embed: the embedding model refused all %d chunks", skipped)
+			}
 			if total > 0 || skipped > 0 {
 				slog.InfoContext(ctx, "rag: re-embedding finished", "chunks", total, "refused", skipped)
 			}
 			return total, nil
 		}
 		after = missing[len(missing)-1].ChunkID
-		for _, group := range groupByUser(missing) {
+		for _, group := range batches(groupByUser(missing)) {
 			done, refused, err := ing.reembedGroup(ctx, group)
 			total += done
 			skipped += refused
@@ -83,6 +88,21 @@ func (ing *Ingester) embedAndStore(ctx context.Context, group []MissingVector) e
 		return fmt.Errorf("re-embed chunks: %w", err)
 	}
 	return ing.store.InsertVectors(ctx, group, vectors)
+}
+
+// batches splits each owner's run into embedBatchSize pieces, so every piece is
+// one embedding call whose vectors are stored before the next: a refused call
+// never discards the calls before it.
+func batches(groups [][]MissingVector) [][]MissingVector {
+	var out [][]MissingVector
+	for _, g := range groups {
+		for len(g) > embedBatchSize {
+			out = append(out, g[:embedBatchSize])
+			g = g[embedBatchSize:]
+		}
+		out = append(out, g)
+	}
+	return out
 }
 
 // groupByUser splits missing chunks into runs of one owner, keeping order, so

@@ -276,7 +276,7 @@ func run() error {
 	deps := httpapi.Deps{
 		Background:                 background,
 		Version:                    version,
-		Model:                      cfg.ChatModels.Info(),
+		Model:                      chatModelInfo(cfg),
 		Static:                     web.SPAHandler(),
 		OIDC:                       oidcService,
 		Auth:                       authMW,
