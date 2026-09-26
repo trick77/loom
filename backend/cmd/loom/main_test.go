@@ -49,7 +49,7 @@ func TestChatClientConfigFromConfig(t *testing.T) {
 	}
 
 	got := chatClientConfigFromConfig(cfg)
-	// The endpoint is llmwire's (LLMWIRE_MIMO_*), never copied through config.
+	// The endpoint is llmwire's (LLMWIRE_ZAI_*), never copied through config.
 	if got.BaseURL != "" || got.APIKey != "" {
 		t.Fatalf("BaseURL/APIKey = %q/%q, want empty so llmwire reads its own variables", got.BaseURL, got.APIKey)
 	}

@@ -35,8 +35,8 @@ services:
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
       # HTML→PDF renderer, published on a localhost port (loom is host-networked here).
       BACKEND_GOTENBERG_URL: "http://localhost:3000"
-      # Optional: a MiMo key to actually chat (the host ships with llmwire).
-      LLMWIRE_MIMO_API_KEY: "${LLMWIRE_MIMO_API_KEY:-}"
+      # Optional: a Z.ai key to actually chat (the host ships with llmwire).
+      LLMWIRE_ZAI_API_KEY: "${LLMWIRE_ZAI_API_KEY:-}"
       LLMWIRE_EMULATE_OPENCODE: "${LLMWIRE_EMULATE_OPENCODE:-}"
       # Extra MCP servers from ./conf/mcp.json (standard mcpServers format; merged on top of built-ins).
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"

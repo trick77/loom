@@ -308,7 +308,7 @@ func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
 // A capability is on when its llmwire key is set.
 func TestLoad_modelCapabilitiesFollowTheKeys(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("LLMWIRE_MIMO_API_KEY", "")
+	t.Setenv("LLMWIRE_ZAI_API_KEY", "")
 	t.Setenv("LLMWIRE_OPENAI_API_KEY", "")
 	cfg, err := Load()
 	if err != nil {
@@ -317,14 +317,14 @@ func TestLoad_modelCapabilitiesFollowTheKeys(t *testing.T) {
 	if cfg.ChatEnabled || cfg.EmbedEnabled {
 		t.Fatalf("no keys: chat=%v embed=%v, want both off", cfg.ChatEnabled, cfg.EmbedEnabled)
 	}
-	t.Setenv("LLMWIRE_MIMO_API_KEY", "k1")
+	t.Setenv("LLMWIRE_ZAI_API_KEY", "k1")
 	t.Setenv("LLMWIRE_OPENAI_API_KEY", " ")
 	cfg, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.ChatEnabled || cfg.EmbedEnabled {
-		t.Fatalf("mimo key only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
+		t.Fatalf("zai key only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
 	}
 }
 

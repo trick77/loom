@@ -16,7 +16,7 @@ import (
 // TestRefreshProjectDescription_GeneratedThroughRealClient is an end-to-end guard for
 // the description path: it drives refreshProjectDescriptionIfDue with the REAL
 // *llm.Client against a fake upstream, proving the big-picture description is generated
-// from the project's thread titles and persisted. It also enforces max_completion_tokens
+// from the project's thread titles and persisted. It also enforces max_tokens
 // so a too-small cap would truncate to finish_reason=length — the description still
 // persists because it carries its own larger budget and salvages truncation.
 func TestRefreshProjectDescription_GeneratedThroughRealClient(t *testing.T) {
@@ -25,7 +25,7 @@ func TestRefreshProjectDescription_GeneratedThroughRealClient(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var req struct {
-			MaxCompletionTokens int `json:"max_completion_tokens"`
+			MaxTokens int `json:"max_tokens"`
 		}
 		_ = json.Unmarshal(body, &req)
 
@@ -33,7 +33,7 @@ func TestRefreshProjectDescription_GeneratedThroughRealClient(t *testing.T) {
 		// old 32-token title cap, which is exactly why the description used to truncate.
 		const descriptionTokensNeeded = 45
 		content, finish := wantDescription, "stop"
-		if req.MaxCompletionTokens < descriptionTokensNeeded {
+		if req.MaxTokens < descriptionTokensNeeded {
 			content, finish = "Plans a week-long", "length"
 		}
 		w.Header().Set("Content-Type", "application/json")

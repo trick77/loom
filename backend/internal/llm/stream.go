@@ -34,10 +34,10 @@ func (c *Client) StreamChatResult(ctx context.Context, messages []Message, onDel
 }
 
 // StreamChatWithTools runs one streamed model turn. llmwire owns the wire: the
-// request body, the SSE parse, the header / idle / call bounds, and the
-// recovery of tool calls MiMo writes as inline markup (its profile flag), which
-// arrive here as ordinary tool-call events with the markup already withheld
-// from the content and reasoning deltas. What loom adds is the routing (model,
+// request body, the SSE parse, the header / idle / call bounds, and, for a
+// model whose profile flags it, the recovery of tool calls written as inline
+// markup, which arrive here as ordinary tool-call events with the markup
+// already withheld from the content and reasoning deltas. What loom adds is the routing (model,
 // effort, budgets per tool set), the event shape its handlers consume, and the
 // accounting.
 func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, tools []Tool, onEvent func(StreamEvent) error) (StreamResult, error) {
@@ -64,15 +64,15 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		// narrow window. See toolCallIdleTimeout.
 		ToolCallIdleTimeout: toolCallIdleTimeout(tools),
 	}
-	// Thinking is controlled by the toggle only; no reasoning_effort is sent.
-	// Leaving Reasoning unset on a normal turn is what lets the model take its
-	// own depth, which measures deeper than any level this family accepts (see
-	// the reasoning note in client.go). The forced final answer still turns
-	// thinking off outright, because leaving it on lets the model burn the whole
-	// completion budget reasoning and emit no prose.
+	// Every turn names its effort: unset means the vendor's max (see the
+	// reasoning note in client.go). The forced final answer takes the helper
+	// level, because deep thinking there burns the whole completion budget
+	// reasoning and emits no prose.
+	effort := turnReasoningEffort
 	if meta.SuppressThinking {
-		req.Reasoning = llmwire.ReasoningOff()
+		effort = helperReasoningEffort
 	}
+	req.Reasoning = llmwire.ReasoningEffort(effort)
 	callCtx := ctx
 	if timeout := c.timeoutForTools(tools); timeout > 0 {
 		var cancel context.CancelFunc
@@ -93,7 +93,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	var toolCallOrder []int
 	// Emitted at most once per turn, the moment we first know a tool call is
 	// underway — well before the parsed call surfaces at the end of the stream.
-	// Lets the client keep showing "thinking" during MiMo's silent
+	// Lets the client keep showing "thinking" during a silent
 	// argument-serialization gap instead of settling on a reasoning summary.
 	toolPendingEmitted := false
 	// The first fragment of a call carries its id and name, then the (large)
@@ -216,9 +216,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	}
 	result.Duration = durationOr(res.Timing.Total, start)
 	result.Model = model
-	// ReasoningEffort is left blank: no level is sent, so recording one would
-	// claim a setting that never reached the wire. The column and the metrics
-	// pill's leading segment stay for messages persisted before that change.
+	result.ReasoningEffort = effort
 	result.CostNanoUSD, result.CostPriced = costFromWire(res.Usage)
 	if !result.CostPriced {
 		noteUnpriced(ctx, model)

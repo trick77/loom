@@ -1987,6 +1987,79 @@ test("renders streamed assistant response", async () => {
   expect(await screen.findByText("Hello")).toBeInTheDocument();
 });
 
+// The thread title runs after assistant_message went out; its cost reaches the
+// open thread as a message_cost event, and the Σ must show it without a reload.
+test("updates the thread cost live from a message_cost event", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(
+        encoder.encode(
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n' +
+            'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Hello","createdAt":"2026-05-30T00:00:01Z","durationMs":2000,"completionTokens":100,"costNanoUsd":10000000}\n\n' +
+            'event: message_cost\ndata: {"id":"m2","costNanoUsd":1000000000}\n\n' +
+            "event: done\ndata: {}\n\n",
+        ),
+      );
+      controller.close();
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/model")
+        return Response.json({ model: "m", contextWindow: 1_000_000 });
+      if (url === "/api/threads?limit=30") {
+        return Response.json({
+          items: [
+            {
+              id: "t1",
+              title: "Existing chat",
+              starred: false,
+              createdAt: "2026-05-30T00:00:00Z",
+              updatedAt: "2026-05-30T00:00:00Z",
+            },
+          ],
+          nextCursor: null,
+        });
+      }
+      if (url === "/api/threads/t1") {
+        return Response.json({
+          thread: {
+            id: "t1",
+            title: "Existing chat",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          messages: [],
+        });
+      }
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+  // $0.01 on assistant_message, $1.00 once the settled cost arrived.
+  expect(await screen.findByText(/Σ\s\$1\.00$/)).toBeInTheDocument();
+});
+
 test("turns the send button into a stop button while the assistant is running", async () => {
   const fetchMock = stoppingChatFetch();
   vi.stubGlobal("fetch", fetchMock);

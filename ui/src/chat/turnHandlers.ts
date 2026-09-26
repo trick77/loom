@@ -1,4 +1,10 @@
-import type { Citation, Message, StreamHandlers, Thread } from "../api";
+import type {
+  Citation,
+  Message,
+  MessageCostEvent,
+  StreamHandlers,
+  Thread,
+} from "../api";
 import {
   appendArtifactBlock,
   appendReasoningDeltaBlock,
@@ -56,6 +62,7 @@ export function createTurnHandlers(opts: {
   patch: (next: RunPatch) => void;
   onUserMessage?: (message: Message) => void;
   onAssistantMessage: (message: Message, liveBlocks: ContentBlock[]) => void;
+  onMessageCost?: (event: MessageCostEvent) => void;
   onThread?: (thread: Thread) => void;
 }): { handlers: StreamHandlers; liveBlocks: () => ContentBlock[] } {
   let liveBlocks: ContentBlock[] = [];
@@ -113,6 +120,7 @@ export function createTurnHandlers(opts: {
       // done with.
       opts.patch({ blocks: [], sources: [], toolPending: false });
     },
+    onMessageCost: (event) => opts.onMessageCost?.(event),
     onThread: (thread) => opts.onThread?.(thread),
   };
   return { handlers, liveBlocks: () => liveBlocks };

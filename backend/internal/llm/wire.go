@@ -73,14 +73,15 @@ func toWireTools(tools []Tool) []llmwire.Tool {
 // Present mirrors what the endpoint reported: an object with nothing countable
 // in it is "not reported", so a zero row never reads as a free call.
 func usageFromWire(u llmwire.Usage) TokenUsage {
-	if _, ok := u.Total(); !ok {
+	total, ok := u.Total()
+	if !ok {
 		return TokenUsage{}
 	}
 	out := TokenUsage{
 		PromptTokens:     int(llmwire.Tokens(u.Input.Total)),
 		CompletionTokens: int(llmwire.Tokens(u.Output.Total)),
+		TotalTokens:      int(total),
 	}
-	out.TotalTokens = out.PromptTokens + out.CompletionTokens
 	out.PromptTokensDetails.CachedTokens = int(llmwire.Tokens(u.Input.CacheRead))
 	out.CompletionTokenDetails.ReasoningTokens = int(llmwire.Tokens(u.Output.Reasoning))
 	return out

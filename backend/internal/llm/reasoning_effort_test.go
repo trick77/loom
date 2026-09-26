@@ -42,38 +42,41 @@ func captureReasoningFields(ctx context.Context, t *testing.T) (effort string, t
 	return c.effort, c.thinking
 }
 
-// No reasoning_effort on the wire, ever. The levels are inert on this model
-// family — measured five samples per level, every range overlapping every
-// other, with "high" the lowest mean of the three on Flash — and the no-level
-// distribution reaches deeper than any level's, so sending one only flattens
-// the model's own judgement. Omitting is deliberate, not an oversight: a
-// regression that reintroduces the field would silently cap how deep a turn
-// can think.
-func TestClient_StreamSendsNoReasoningEffort(t *testing.T) {
+// A normal turn asks for "high". glm-5.3-flash always thinks and takes only
+// low/high/max; sending nothing gets the vendor default max, which peeq
+// measured at ~5x the wall-clock of high (69.9s vs 12.8s) for the same job.
+// A regression that drops the field silently puts every turn back on max.
+func TestClient_StreamSendsHighReasoningEffort(t *testing.T) {
 	effort, _ := captureReasoningFields(context.Background(), t)
-	if effort != "" {
-		t.Fatalf("reasoning_effort = %q, want it absent", effort)
+	if effort != "high" {
+		t.Fatalf("reasoning_effort = %q, want high", effort)
 	}
 }
 
-// A normal turn sends no thinking object either: thinking is on by default at
-// the endpoint, and loom only ever reaches for the toggle to turn it OFF.
-func TestClient_StreamLeavesThinkingUnsetOnANormalTurn(t *testing.T) {
-	if _, thinkingSent := captureReasoningFields(context.Background(), t); thinkingSent {
-		t.Fatal("a thinking object was sent on a normal turn; only SuppressThinking should set one")
+// No thinking object on any streamed turn: the model refuses the disable
+// toggle outright (400, code 1210), so the effort level is the only lever.
+func TestClient_StreamNeverSendsAThinkingObject(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+	}{
+		{"normal turn", context.Background()},
+		{"suppressed turn", WithInferenceMetadata(context.Background(), InferenceMetadata{SuppressThinking: true})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, thinkingSent := captureReasoningFields(tc.ctx, t); thinkingSent {
+				t.Fatal("a thinking object was sent; glm-5.3-flash refuses it")
+			}
+		})
 	}
 }
 
-// The forced final answer is the one streaming path that disables thinking:
-// leaving it on lets the model burn the whole completion budget reasoning and
-// emit no prose. It still sends no effort level.
-func TestClient_StreamDisablesThinkingWhenSuppressed(t *testing.T) {
+// The forced final answer asks for the shallowest level the model accepts:
+// thinking cannot be switched off, and deep thinking there burns the whole
+// completion budget and emits no prose.
+func TestClient_StreamSendsLowEffortWhenSuppressed(t *testing.T) {
 	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{SuppressThinking: true})
-	effort, thinkingSent := captureReasoningFields(ctx, t)
-	if !thinkingSent {
-		t.Fatal("SuppressThinking did not send a thinking object")
-	}
-	if effort != "" {
-		t.Fatalf("reasoning_effort = %q, want it absent even when thinking is off", effort)
+	if effort, _ := captureReasoningFields(ctx, t); effort != "low" {
+		t.Fatalf("reasoning_effort = %q, want low", effort)
 	}
 }

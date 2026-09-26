@@ -62,7 +62,7 @@ func (s *server) persistAssistantTurn(ctx context.Context, stream *sse.Writer, t
 			citationsJSON = encoded
 		}
 	}
-	turnCost, turnPriced := usageTotal.Cost()
+	turnCost, turnPriced := usageTotal.TurnCost()
 	assistantMessage, err := s.thread.AddMessageWithCitations(ctx, user.ID, thread.ID, chat.RoleAssistant, result.Content, messageMetricsWithCost(result.StreamResult, usageTotal.Total(), time.Since(turnStart), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		return chat.Message{}, err

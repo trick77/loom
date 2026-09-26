@@ -134,6 +134,7 @@ type ThreadCRUDStore interface {
 type MessageStore interface {
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage) (chat.Message, error)
 	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
+	AddMessageCost(context.Context, string, string, int64) (bool, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 	ListRecentMessages(context.Context, string, string, int) ([]chat.Message, error)
 	ListRecentMessagesForThreads(context.Context, string, []string, int) (map[string][]chat.Message, error)
@@ -322,6 +323,7 @@ func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /api/health/stream", s.handleHealthStream)
+	mux.HandleFunc("GET /api/model", s.handleModel)
 	mux.HandleFunc("GET /api/auth/login", s.handleAuthLogin)
 	mux.HandleFunc("GET /api/auth/callback", s.handleAuthCallback)
 	mux.Handle("POST /api/auth/logout", s.requireAuth(http.HandlerFunc(s.handleAuthLogout)))

@@ -5,7 +5,7 @@
 #
 # Optional chat API config for local dev:
 #
-#   LLMWIRE_MIMO_API_KEY=your-api-key \
+#   LLMWIRE_ZAI_API_KEY=your-api-key \
 #   ./hack/refresh.sh
 #
 # Or place the same values in an uncommitted .env file; Docker Compose reads it

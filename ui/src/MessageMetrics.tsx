@@ -1,5 +1,6 @@
 import type { Message } from "./api";
 import { buildMetricsString, humanizeCategory } from "./metrics";
+import { useContextWindow } from "./useContextWindow";
 
 /**
  * Renders the metrics line for an assistant message, right-aligned via `ml-auto`
@@ -21,7 +22,8 @@ export function MessageMetrics({
   // The thread's cost through this message, for the Σ segment.
   threadCostNanoUsd?: number;
 }) {
-  const line = buildMetricsString(message, threadCostNanoUsd);
+  const contextWindow = useContextWindow();
+  const line = buildMetricsString(message, threadCostNanoUsd, contextWindow);
   const pill =
     category !== undefined && category !== "" ? (
       <span className="inline-flex items-center rounded-full bg-[#363632] px-2 py-0.5 font-sans text-[0.75rem] leading-[1.45rem] text-[#d6d3ca]">

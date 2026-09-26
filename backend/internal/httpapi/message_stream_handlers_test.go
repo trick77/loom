@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -1322,10 +1323,11 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
 	}
 	assistant := store.messages[1]
-	// Cost follows the same split as the tokens: the answer and the
-	// reasoning-title call on the message, the thread title only in the rollup.
-	if assistant.CostNanoUSD == nil || *assistant.CostNanoUSD != 1100 {
-		t.Fatalf("message CostNanoUSD = %v, want 1100", assistant.CostNanoUSD)
+	// Every call of the turn is on the message's cost, the thread title too:
+	// it runs after the message is written and is added onto it afterwards, so
+	// the thread's Σ counts it.
+	if assistant.CostNanoUSD == nil || *assistant.CostNanoUSD != 1110 {
+		t.Fatalf("message CostNanoUSD = %v, want 1110 (answer, reasoning title and thread title)", assistant.CostNanoUSD)
 	}
 	// 7+100 prompt, 3+1 completion, 10+101 total: the answer turn plus the
 	// reasoning-title helper, which runs during the stream. The thread-title
@@ -1373,6 +1375,115 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 	}
 	if delta.CostNanoUSD != 1110 {
 		t.Fatalf("lifetime CostNanoUSD = %d, want 1110 (answer, reasoning title and thread title)", delta.CostNanoUSD)
+	}
+	// The browser learns the settled figure live, before the stream ends: the
+	// title ran after assistant_message went out.
+	body := rec.Body.String()
+	costEvent := "event: message_cost\ndata: {\"id\":\"msg_2\",\"costNanoUsd\":1110}"
+	costAt, doneAt := strings.Index(body, costEvent), strings.Index(body, "event: done")
+	if costAt == -1 || doneAt == -1 || costAt > doneAt {
+		t.Fatalf("want %q before done, body:\n%s", costEvent, body)
+	}
+}
+
+// A turn that fails before it has an answer still spent money: the rounds
+// before the failure and the thread title. With no assistant message to carry
+// it, the cost lands on the user message (the thread's Σ sums every message)
+// and in the lifetime rollup.
+func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+	}
+	recorder := &recordingUsageStore{}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		Usage:  recorder,
+		LLM: fakeChatClient{
+			title:         "Fresh title",
+			titleCost:     10,
+			streamErr:     errors.New("upstream exploded"),
+			streamErrCost: 5,
+		},
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`))
+
+	if len(store.messages) != 1 {
+		t.Fatalf("persisted messages = %d, want only the user message", len(store.messages))
+	}
+	user := store.messages[0]
+	if user.CostNanoUSD == nil || *user.CostNanoUSD != 15 {
+		t.Fatalf("user message CostNanoUSD = %v, want 15 (failed round and thread title)", user.CostNanoUSD)
+	}
+	var lifetime int64
+	for _, d := range recorder.deltas {
+		lifetime += d.CostNanoUSD
+	}
+	if lifetime != 15 {
+		t.Fatalf("lifetime cost = %d over %+v, want 15", lifetime, recorder.deltas)
+	}
+	// The error goes out at once, not after the title call: when the upstream
+	// is down the title fails too and would use up its whole timeout first.
+	// The spend so far is reported just ahead of it (the client stops reading
+	// at "error"); the title's cost reaches the message afterwards.
+	body := rec.Body.String()
+	costEvent := "event: message_cost\ndata: {\"id\":\"msg_1\",\"costNanoUsd\":5}"
+	costAt, errorAt := strings.Index(body, costEvent), strings.Index(body, "event: error")
+	titleAt := strings.Index(body, "Fresh title")
+	if costAt == -1 || errorAt == -1 || costAt > errorAt {
+		t.Fatalf("want %q before error, body:\n%s", costEvent, body)
+	}
+	if titleAt != -1 && titleAt < errorAt {
+		t.Fatalf("thread title was sent before the error event, body:\n%s", body)
+	}
+}
+
+// A reasoning-title call still in flight when the turn fails (it goes to the
+// same dead upstream) must not hold the error back; its cost is booked later.
+func TestStreamMessageFailedTurnErrorDoesNotWaitForReasoningTitles(t *testing.T) {
+	gate := make(chan struct{})
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			reasoningText:      "Let me think about this.",
+			reasoningTitle:     "Thinking",
+			reasoningTitleGate: gate,
+			streamErr:          errors.New("upstream exploded"),
+			streamErrDelta:     "Partial",
+		},
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(gate) })
+
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	gotError := make(chan bool, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: error" {
+				gotError <- true
+				return
+			}
+		}
+		gotError <- false
+	}()
+	select {
+	case ok := <-gotError:
+		if !ok {
+			t.Fatal("stream ended without an error event")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("error event held back by an in-flight reasoning-title call")
 	}
 }
 

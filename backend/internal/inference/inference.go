@@ -29,11 +29,12 @@ type Metadata struct {
 	ThreadID string
 	Purpose  string
 	Round    int
-	// SuppressThinking turns MiMo's native thinking off for this turn
-	// ({"thinking":{"type":"disabled"}}), the same lever the utility calls use.
+	// SuppressThinking drops this turn to the shallowest reasoning effort the
+	// model accepts (it cannot switch thinking off), the same lever the utility
+	// calls use.
 	// Set on the forced-final answer turns: by then all research reasoning has
 	// already happened across the tool rounds and sits in history, so the model
-	// only needs to write the answer — leaving thinking on lets it burn the whole
+	// only needs to write the answer — deep thinking there lets it burn the whole
 	// completion budget on reasoning and emit no prose (finish_reason=length).
 	SuppressThinking bool
 	// MaxCompletionTokens overrides the turn's completion-token cap when > 0. The

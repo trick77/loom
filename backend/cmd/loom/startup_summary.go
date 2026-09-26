@@ -32,7 +32,7 @@ func logStartupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime sta
 	// boot the way a missing endpoint did: outside dev auth that is a
 	// deployment that cannot chat, and it must not pass as a routine line.
 	if !cfg.ChatEnabled && cfg.AuthMode != config.AuthModeDev {
-		slog.Warn("chat disabled: LLMWIRE_MIMO_API_KEY is unset, every turn will fail")
+		slog.Warn("chat disabled: " + llm.APIKeyEnv() + " is unset, every turn will fail")
 	}
 }
 
@@ -65,14 +65,14 @@ func authCapability(cfg config.Config) startupCapability {
 
 func chatCapability(cfg config.Config) startupCapability {
 	if !cfg.ChatEnabled {
-		return startupCapability{Name: "chat", Status: "disabled", Detail: "set LLMWIRE_MIMO_API_KEY"}
+		return startupCapability{Name: "chat", Status: "disabled", Detail: "set " + llm.APIKeyEnv()}
 	}
 	return startupCapability{Name: "chat", Status: "enabled", Detail: "model=" + llm.ModelSummary()}
 }
 
 func embeddingsCapability(cfg config.Config) startupCapability {
 	if !cfg.EmbedEnabled {
-		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set LLMWIRE_OPENAI_API_KEY"}
+		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set " + rag.EmbedAPIKeyEnv()}
 	}
 	return startupCapability{Name: "embeddings", Status: "enabled", Detail: "model=" + rag.EmbedModel}
 }

@@ -10,20 +10,18 @@ import (
 	"time"
 )
 
-// thinkingOption mirrors MiMo's native switch as llmwire renders it.
-type thinkingOption struct {
-	Type string `json:"type"`
-}
-
+// streamRequestFields reads the budget from max_tokens: glm-5.3-flash accepts
+// max_completion_tokens and then ignores it, so llmwire's profile renders the
+// cap under max_tokens.
 type streamRequestFields struct {
-	Thinking            *thinkingOption `json:"thinking"`
-	ReasoningEffort     string          `json:"reasoning_effort"`
-	MaxCompletionTokens int             `json:"max_completion_tokens"`
+	Thinking        json.RawMessage `json:"thinking"`
+	ReasoningEffort string          `json:"reasoning_effort"`
+	MaxTokens       int             `json:"max_tokens"`
 }
 
 // captureStreamRequest runs one tool-free StreamChatWithTools turn against a stub
-// endpoint and returns the thinking / reasoning_effort / max_completion_tokens
-// fields of the outbound chat-completion request, plus the resulting StreamResult.
+// endpoint and returns the thinking / reasoning_effort / max_tokens fields of the
+// outbound chat-completion request, plus the resulting StreamResult.
 func captureStreamRequest(ctx context.Context, t *testing.T) (streamRequestFields, StreamResult) {
 	t.Helper()
 	got := make(chan streamRequestFields, 1)
@@ -46,54 +44,51 @@ func captureStreamRequest(ctx context.Context, t *testing.T) (streamRequestField
 }
 
 // The forced-final answer turn sets SuppressThinking + MaxCompletionTokens on the
-// metadata. The outbound request must then disable thinking, drop reasoning_effort
-// (the two directives would otherwise conflict), and carry the widened budget.
+// metadata. The outbound request must then ask for low effort (thinking cannot
+// be disabled on this model) and carry the widened budget.
 func TestClient_StreamSuppressesThinkingAndWidensBudgetFromContext(t *testing.T) {
 	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{
 		SuppressThinking:    true,
 		MaxCompletionTokens: 4096,
 	})
 	req, result := captureStreamRequest(ctx, t)
-	if req.Thinking == nil || req.Thinking.Type != "disabled" {
-		t.Fatalf("thinking = %+v, want {type:disabled}", req.Thinking)
+	if len(req.Thinking) > 0 {
+		t.Fatalf("thinking = %s, want it absent (the model refuses the toggle)", req.Thinking)
 	}
-	if req.ReasoningEffort != "" {
-		t.Fatalf("reasoning_effort = %q, want empty on the wire when thinking is suppressed", req.ReasoningEffort)
+	if req.ReasoningEffort != "low" {
+		t.Fatalf("reasoning_effort = %q, want low", req.ReasoningEffort)
 	}
-	if req.MaxCompletionTokens != 4096 {
-		t.Fatalf("max_completion_tokens = %d, want 4096", req.MaxCompletionTokens)
+	if req.MaxTokens != 4096 {
+		t.Fatalf("max_tokens = %d, want 4096", req.MaxTokens)
 	}
-	// Nothing to preserve: no effort is sent on any turn, so none is recorded.
-	if result.ReasoningEffort != "" {
-		t.Fatalf("result.ReasoningEffort = %q, want it blank", result.ReasoningEffort)
+	// The level that reached the wire is recorded for the metrics pill.
+	if result.ReasoningEffort != "low" {
+		t.Fatalf("result.ReasoningEffort = %q, want low", result.ReasoningEffort)
 	}
 }
 
-// A normal turn (no overrides) keeps thinking on — no thinking field is sent — and
-// uses the client's default completion budget, unaffected by the override plumbing.
+// A normal turn (no overrides) asks for high effort and uses the client's default
+// completion budget, unaffected by the override plumbing.
 func TestClient_StreamKeepsThinkingWhenNotSuppressed(t *testing.T) {
-	req, _ := captureStreamRequest(context.Background(), t)
-	if req.Thinking != nil {
-		t.Fatalf("thinking = %+v, want nil for a normal turn", req.Thinking)
+	req, result := captureStreamRequest(context.Background(), t)
+	if len(req.Thinking) > 0 {
+		t.Fatalf("thinking = %s, want it absent", req.Thinking)
 	}
-	if req.ReasoningEffort != "" {
-		t.Fatalf("reasoning_effort = %q, want it absent", req.ReasoningEffort)
+	if req.ReasoningEffort != "high" {
+		t.Fatalf("reasoning_effort = %q, want high", req.ReasoningEffort)
 	}
-	if req.MaxCompletionTokens != defaultMaxCompletionTokens {
-		t.Fatalf("max_completion_tokens = %d, want default %d", req.MaxCompletionTokens, defaultMaxCompletionTokens)
+	if result.ReasoningEffort != "high" {
+		t.Fatalf("result.ReasoningEffort = %q, want high", result.ReasoningEffort)
+	}
+	if req.MaxTokens != defaultMaxCompletionTokens {
+		t.Fatalf("max_tokens = %d, want default %d", req.MaxTokens, defaultMaxCompletionTokens)
 	}
 }
 
-// The forced final answer runs on proseModel, not flash, and the routing must
-// hold even when the gathered research carried an image.
-//
-// This is the correctness rule, not a preference: the forced final answer
-// writes the answer the user actually asked for, with thinking disabled, and
-// mimo-v2.6-flash answered a one-step arithmetic prompt wrong in three runs of
-// three in that mode while Pro was correct in all three. "Total these three
-// figures" over gathered research is an ordinary request. A regression that
-// routes this turn to flash is silent: the answer still streams, it is just
-// wrong.
+// The forced final answer runs on proseModel, and the routing must hold even
+// when the gathered research carried an image. proseModel is the same
+// deployment as textModel today; the seam stays so a model that earns its keep
+// on synthesis moves this turn alone.
 func TestClient_StreamRoutesTheSuppressedTurnToTheProseModel(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -108,14 +103,14 @@ func TestClient_StreamRoutesTheSuppressedTurnToTheProseModel(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &Client{model: textModel, visionModel: visionModel, shortGateModel: shortGateModel, proseModel: proseModel}
 			if got := c.modelForMessages(tc.messages, true); got != proseModel {
-				t.Fatalf("model = %q, want %q (the suppressed turn must not run on flash)", got, proseModel)
+				t.Fatalf("model = %q, want %q", got, proseModel)
 			}
 		})
 	}
 }
 
-// With thinking on, routing is unchanged: vision model for an image part, text
-// model otherwise. The prose model is reserved for the thinking-off case.
+// Off the suppressed path, routing is unchanged: vision model for an image
+// part, text model otherwise.
 func TestClient_StreamRoutingIsUnchangedWhenThinkingIsOn(t *testing.T) {
 	c := &Client{model: textModel, visionModel: visionModel, shortGateModel: shortGateModel, proseModel: proseModel}
 	if got := c.modelForMessages([]Message{{Role: "user", Content: "hi"}}, false); got != textModel {

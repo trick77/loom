@@ -89,6 +89,7 @@ import {
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
 import { isWithinUploadSizeLimit } from "./attachmentFiles";
 import { useComposerDrafts } from "./useComposerDrafts";
+import { applyMessageCost } from "../metrics";
 import { createTurnHandlers, newTempID } from "./turnHandlers";
 
 // The secondary views and the settings modal load on first use rather than
@@ -977,6 +978,11 @@ export function ThreadShell({
           // The settled message carries its own citations and blocks, so drop the
           // live copies now rather than at endRun — the stream reader yields
           // between chunks, so waiting would flash the turn twice.
+        },
+        onMessageCost: (event) => {
+          if (isCurrentThread()) {
+            setMessages((current) => applyMessageCost(current, event));
+          }
         },
         onThread: (updatedThread) => {
           receivedThreadEvent = true;

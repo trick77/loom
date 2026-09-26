@@ -21,6 +21,11 @@ type UsageAccumulator struct {
 	// rather than zero.
 	costNanoUSD int64
 	priced      bool
+	// rolledUpNanoUSD is spend that belongs to the turn but is already in the
+	// user's lifetime totals by another path (the RAG query embedding). It
+	// counts in TurnCost, the figure the thread's Σ sums, and never in Cost,
+	// which feeds the lifetime rollup.
+	rolledUpNanoUSD int64
 }
 
 // NewUsageAccumulator creates a new accumulator for summing token usage across multiple model calls.
@@ -62,6 +67,18 @@ func (a *UsageAccumulator) Cost() (nanoUSD int64, priced bool) {
 	return a.costNanoUSD, a.priced
 }
 
+// TurnCost is everything the turn spent, the rolled-up calls included: the
+// figure a message carries into the thread's Σ. priced is true when any call
+// had a rate. Safe to call concurrently.
+func (a *UsageAccumulator) TurnCost() (nanoUSD int64, priced bool) {
+	if a == nil {
+		return 0, false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.costNanoUSD + a.rolledUpNanoUSD, a.priced || a.rolledUpNanoUSD > 0
+}
+
 // Total returns the usage summed so far. Safe to call concurrently.
 func (a *UsageAccumulator) Total() TokenUsage {
 	if a == nil {
@@ -92,4 +109,18 @@ func RecordCost(ctx context.Context, nanoUSD int64, priced bool) {
 	if acc, _ := ctx.Value(usageAccumulatorKey{}).(*UsageAccumulator); acc != nil {
 		acc.addCost(nanoUSD, priced)
 	}
+}
+
+// RecordRolledUpCost adds the priced cost of a call whose spend the caller
+// already added to the user's lifetime totals itself, so the turn's figure
+// counts it without the lifetime rollup counting it twice. No-op without an
+// accumulator on ctx or for a zero cost.
+func RecordRolledUpCost(ctx context.Context, nanoUSD int64) {
+	acc, _ := ctx.Value(usageAccumulatorKey{}).(*UsageAccumulator)
+	if acc == nil || nanoUSD <= 0 {
+		return
+	}
+	acc.mu.Lock()
+	defer acc.mu.Unlock()
+	acc.rolledUpNanoUSD += nanoUSD
 }

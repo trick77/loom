@@ -48,10 +48,9 @@ type StreamResult struct {
 	Usage            TokenUsage
 	Duration         time.Duration
 	Model            string
-	// ReasoningEffort is always empty now that loom sends no reasoning_effort
-	// (see the reasoning note in client.go). Kept so persistence and rendering
-	// still carry it for messages written before that change; the metrics pill
-	// omits the segment when it is blank.
+	// ReasoningEffort is the level this turn sent (see the reasoning note in
+	// client.go). Blank on messages persisted while loom sent none; the metrics
+	// pill omits the segment then.
 	ReasoningEffort string
 	FinishReason    string
 	// CostNanoUSD is llmwire's list-rate figure for this call, in nano-USD,
