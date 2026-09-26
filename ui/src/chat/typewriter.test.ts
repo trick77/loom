@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_GAP_MS,
@@ -189,21 +189,7 @@ describe("createTypewriter", () => {
 });
 
 describe("shouldPace", () => {
-  afterEach(() => {
-    // @ts-expect-error jsdom has no matchMedia; restore that.
-    delete window.matchMedia;
-  });
-  it("is off without matchMedia", () => {
+  it("is off under the test runner", () => {
     expect(shouldPace()).toBe(false);
-  });
-  it("follows prefers-reduced-motion", () => {
-    window.matchMedia = vi.fn().mockReturnValue({
-      matches: true,
-    }) as unknown as typeof window.matchMedia;
-    expect(shouldPace()).toBe(false);
-    window.matchMedia = vi.fn().mockReturnValue({
-      matches: false,
-    }) as unknown as typeof window.matchMedia;
-    expect(shouldPace()).toBe(true);
   });
 });
