@@ -34,7 +34,7 @@ func TestStore_InsertVectorsSkipsChunksChangedMeanwhile(t *testing.T) {
 	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
 		t.Fatal(err)
 	}
-	missing, err := s.ChunksMissingVectors(ctx, 10)
+	missing, err := s.ChunksMissingVectors(ctx, 0, 10)
 	if err != nil || len(missing) != 2 {
 		t.Fatalf("missing = %v, %v", missing, err)
 	}
@@ -79,7 +79,7 @@ func TestStore_RebuildVectorsKeepsChunksAndListsThemMissing(t *testing.T) {
 	ctx := context.Background()
 	seedEmbeddedDocument(t, s, "d1", "alpha", "beta")
 
-	if missing, err := s.ChunksMissingVectors(ctx, 10); err != nil || len(missing) != 0 {
+	if missing, err := s.ChunksMissingVectors(ctx, 0, 10); err != nil || len(missing) != 0 {
 		t.Fatalf("before rebuild: missing = %v, %v; want none", missing, err)
 	}
 	if err := s.RebuildVectorTable(ctx, 8); err != nil {
@@ -88,7 +88,7 @@ func TestStore_RebuildVectorsKeepsChunksAndListsThemMissing(t *testing.T) {
 	if width, err := s.VectorWidth(ctx); err != nil || width != 8 {
 		t.Fatalf("width after rebuild = %d, %v; want 8", width, err)
 	}
-	missing, err := s.ChunksMissingVectors(ctx, 10)
+	missing, err := s.ChunksMissingVectors(ctx, 0, 10)
 	if err != nil {
 		t.Fatalf("ChunksMissingVectors: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestStore_RebuildVectorsKeepsChunksAndListsThemMissing(t *testing.T) {
 	if err := s.InsertVectors(ctx, missing, vectors); err != nil {
 		t.Fatalf("InsertVectors: %v", err)
 	}
-	if missing, err := s.ChunksMissingVectors(ctx, 10); err != nil || len(missing) != 0 {
+	if missing, err := s.ChunksMissingVectors(ctx, 0, 10); err != nil || len(missing) != 0 {
 		t.Fatalf("after re-embed: missing = %v, %v; want none", missing, err)
 	}
 	query := make([]float32, 8)

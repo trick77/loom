@@ -448,6 +448,34 @@ func TestLoad_embeddingKeyWithoutModelFailsBootOutsideDev(t *testing.T) {
 	}
 }
 
+// The same key may be the chat model's own: a chat-only deployment on that
+// provider is valid and must boot, with embeddings off.
+func TestLoad_embeddingKeyUsedByChatIsNotAnUpgradeTrap(t *testing.T) {
+	requiredEnv(t)
+	m := anyEmbedModel(t)
+	reg := llmwire.Default()
+	var chat string
+	for _, id := range reg.ChatModels(llmwire.Needs{Tools: true, Streaming: true, Vision: true}) {
+		if p, err := reg.Lookup(id); err == nil && p.APIKeyEnv() == m.KeyEnv {
+			chat = id
+			break
+		}
+	}
+	if chat == "" {
+		t.Skip("no chat model shares the embedding provider's key")
+	}
+	t.Setenv("BACKEND_CHAT_MODEL", chat)
+	t.Setenv("BACKEND_EMBED_MODEL", "")
+	t.Setenv(m.KeyEnv, "k1")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("chat-only deployment on the embedding provider: %v", err)
+	}
+	if !cfg.ChatEnabled || cfg.EmbedEnabled {
+		t.Fatalf("chat=%v embed=%v, want chat on, embeddings off", cfg.ChatEnabled, cfg.EmbedEnabled)
+	}
+}
+
 // A model id llmwire does not know, or one short of its role, fails boot.
 func TestLoad_unusableChatModelFailsBoot(t *testing.T) {
 	requiredEnv(t)

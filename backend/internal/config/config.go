@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -213,10 +214,12 @@ func loadEmbedModel(cfg *Config) error {
 	if id == "" {
 		// A set embedding key without a model is the configuration from before
 		// the model was configurable: outside dev auth, fail boot rather than
-		// quietly switch document search off.
+		// quietly switch document search off. A key a chat role reads too is
+		// no such sign: a chat-only deployment on that provider is valid.
 		if cfg.AuthMode != AuthModeDev {
+			chatKeys := cfg.ChatModels.KeyEnvs()
 			for _, key := range rag.EmbedKeyEnvs(nil) {
-				if strings.TrimSpace(env(key, "")) != "" {
+				if strings.TrimSpace(env(key, "")) != "" && !slices.Contains(chatKeys, key) {
 					return fmt.Errorf("BACKEND_EMBED_MODEL is required when %s is set: an llmwire embedding model id (see .env.example)", key)
 				}
 			}

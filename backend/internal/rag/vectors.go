@@ -97,16 +97,16 @@ type MissingVector struct {
 	scope   string
 }
 
-// ChunksMissingVectors lists up to limit chunks that have no row in
-// vec_chunks, oldest first.
-func (s *Store) ChunksMissingVectors(ctx context.Context, limit int) ([]MissingVector, error) {
+// ChunksMissingVectors lists up to limit chunks after afterID that have no row
+// in vec_chunks, in id order: pass the last id of one page to get the next.
+func (s *Store) ChunksMissingVectors(ctx context.Context, afterID int64, limit int) ([]MissingVector, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT c.id, c.user_id, c.text, d.project_id, d.thread_id
 FROM chunks c
 JOIN documents d ON d.user_id = c.user_id AND d.id = c.document_id
-WHERE NOT EXISTS (SELECT 1 FROM vec_chunks v WHERE v.rowid = c.id)
+WHERE c.id > ? AND NOT EXISTS (SELECT 1 FROM vec_chunks v WHERE v.rowid = c.id)
 ORDER BY c.id
-LIMIT ?`, limit)
+LIMIT ?`, afterID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list chunks missing vectors: %w", err)
 	}
