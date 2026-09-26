@@ -638,7 +638,10 @@ type fakeChatClient struct {
 	category            string
 	reasoningTitle      string
 	reasoningTitlePanic bool
-	streamPanic         bool
+	// reasoningTitleGate, when set, holds GenerateReasoningTitle open until it
+	// is closed: a title call stuck on a dead upstream.
+	reasoningTitleGate chan struct{}
+	streamPanic        bool
 	// classifyGate, when set, holds ClassifyThread open until it is closed.
 	classifyGate chan struct{}
 	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
@@ -673,6 +676,8 @@ type fakeChatClient struct {
 	// streamErrCost is recorded as priced spend before streamErr is returned,
 	// modelling rounds that were billed before the turn failed.
 	streamErrCost int64
+	// streamErrDelta is emitted as content before streamErr is returned.
+	streamErrDelta string
 	// imageIntent is the canned reply of the semantic image-routing gate. Its
 	// zero value ({Action:""}) maps to ImageIntentNone, so tests that never touch
 	// images get the non-image path for free.
@@ -736,6 +741,9 @@ func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string)
 	if f.reasoningTitlePanic {
 		panic("reasoning title exploded")
 	}
+	if f.reasoningTitleGate != nil {
+		<-f.reasoningTitleGate
+	}
 	llm.RecordUsage(ctx, f.reasoningTitleUsage)
 	if f.reasoningTitleCost > 0 {
 		llm.RecordCost(ctx, f.reasoningTitleCost, true)
@@ -783,6 +791,13 @@ func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.M
 		}
 	}
 	if f.streamErr != nil {
+		// streamErrDelta: some prose streamed before the failure, which is the
+		// reasoning->content boundary where a reasoning title starts.
+		if f.streamErrDelta != "" && onEvent != nil {
+			if err := onEvent(llm.StreamEvent{Delta: f.streamErrDelta}); err != nil {
+				return llm.StreamResult{}, err
+			}
+		}
 		if f.streamErrCost > 0 {
 			llm.RecordCost(ctx, f.streamErrCost, true)
 		}

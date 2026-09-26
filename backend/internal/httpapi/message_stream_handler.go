@@ -211,8 +211,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// fails too, and waiting for it would hold the error for its whole
 	// timeout. The title's own cost is booked by the deferred settle, onto
 	// the message, visible from the next load.
+	// It does not wait for in-flight reasoning titles either, for the same
+	// reason: they go to the same upstream. Their cost, like the title's, is
+	// picked up by the deferred settle.
 	failTurn := func(titleSource, message string) {
-		finishCosts()
+		costs.settleAndReport(context.WithoutCancel(r.Context()), stream)
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		titleThread(titleSource)
 	}

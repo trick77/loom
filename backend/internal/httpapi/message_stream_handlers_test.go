@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -1434,6 +1435,55 @@ func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
 	}
 	if titleAt != -1 && titleAt < errorAt {
 		t.Fatalf("thread title was sent before the error event, body:\n%s", body)
+	}
+}
+
+// A reasoning-title call still in flight when the turn fails (it goes to the
+// same dead upstream) must not hold the error back; its cost is booked later.
+func TestStreamMessageFailedTurnErrorDoesNotWaitForReasoningTitles(t *testing.T) {
+	gate := make(chan struct{})
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			reasoningText:      "Let me think about this.",
+			reasoningTitle:     "Thinking",
+			reasoningTitleGate: gate,
+			streamErr:          errors.New("upstream exploded"),
+			streamErrDelta:     "Partial",
+		},
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(gate) })
+
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	gotError := make(chan bool, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: error" {
+				gotError <- true
+				return
+			}
+		}
+		gotError <- false
+	}()
+	select {
+	case ok := <-gotError:
+		if !ok {
+			t.Fatal("stream ended without an error event")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("error event held back by an in-flight reasoning-title call")
 	}
 }
 
