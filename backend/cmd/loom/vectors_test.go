@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/store"
@@ -76,6 +78,42 @@ func TestReconcileVectorWidth_SameWidthModelChangeRebuilds(t *testing.T) {
 	}
 	if got, _, _ := s.VectorModel(ctx); got != "m2" {
 		t.Fatalf("recorded model = %q, want m2", got)
+	}
+}
+
+// A failed re-embed (a 429, a timeout) retries after a growing wait instead
+// of leaving documents out of retrieval until the next restart.
+func TestReembedUntilDone_RetriesWithBackoff(t *testing.T) {
+	var waits []time.Duration
+	calls := 0
+	run := func(context.Context) (int, error) {
+		calls++
+		if calls < 3 {
+			return 0, errors.New("rate limited")
+		}
+		return 5, nil
+	}
+	reembedUntilDone(context.Background(), run, func(_ context.Context, d time.Duration) bool {
+		waits = append(waits, d)
+		return true
+	})
+	if calls != 3 {
+		t.Fatalf("runs = %d, want 3", calls)
+	}
+	if len(waits) != 2 || waits[1] <= waits[0] {
+		t.Fatalf("waits = %v, want two growing waits", waits)
+	}
+}
+
+// Shutdown ends the retry loop.
+func TestReembedUntilDone_StopsWhenTheWaitIsCancelled(t *testing.T) {
+	calls := 0
+	reembedUntilDone(context.Background(), func(context.Context) (int, error) {
+		calls++
+		return 0, errors.New("down")
+	}, func(context.Context, time.Duration) bool { return false })
+	if calls != 1 {
+		t.Fatalf("runs = %d, want 1", calls)
 	}
 }
 

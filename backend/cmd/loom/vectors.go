@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/trick77/loom/internal/rag"
 )
@@ -40,13 +41,45 @@ func reconcileVectorWidth(ctx context.Context, store *rag.Store, model rag.Embed
 	return store.SetVectorModel(ctx, model.ID)
 }
 
+// Retry pacing for a failed re-embed: a rate limit or an upstream outage
+// passes, and until the run completes the affected documents are missing from
+// retrieval, so it keeps trying instead of waiting for the next restart.
+const (
+	reembedFirstRetry = time.Minute
+	reembedMaxRetry   = 30 * time.Minute
+)
+
 // reembedInBackground restores every missing vector without holding up boot.
-// It runs on every boot and does nothing when no vector is missing; an
-// interrupted run resumes on the next boot.
+// It runs on every boot and does nothing when no vector is missing; a failed
+// run retries with a growing wait until it completes.
 func reembedInBackground(ingester *rag.Ingester) {
-	go func() {
-		if _, err := ingester.ReembedMissing(context.Background()); err != nil {
-			slog.Error("rag: re-embedding failed; retried on the next boot", "err", err)
+	go reembedUntilDone(context.Background(), ingester.ReembedMissing, sleepCtx)
+}
+
+// reembedUntilDone runs run until it succeeds, waiting between failures (the
+// wait doubles up to reembedMaxRetry). wait returning false ends the loop.
+func reembedUntilDone(ctx context.Context, run func(context.Context) (int, error), wait func(context.Context, time.Duration) bool) {
+	delay := reembedFirstRetry
+	for {
+		_, err := run(ctx)
+		if err == nil {
+			return
 		}
-	}()
+		slog.Error("rag: re-embedding failed; retrying", "err", err, "retry_in", delay)
+		if !wait(ctx, delay) {
+			return
+		}
+		delay = min(delay*2, reembedMaxRetry)
+	}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }

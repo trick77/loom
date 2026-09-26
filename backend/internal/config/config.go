@@ -172,9 +172,9 @@ func env(key, def string) string {
 const defaultSessionTTL = 30 * 24 * time.Hour
 
 // loadChatModels resolves the chat roles and decides whether chat is on. No
-// chat model leaves chat off (a dev boot without a model is legitimate); a
-// model llmwire does not know, or one short of its role, is a boot error
-// naming the valid choices.
+// chat model is a boot error outside dev auth and leaves chat off in dev (a UI
+// session needs no model); a model llmwire does not know, or one short of its
+// role, is a boot error naming the valid choices.
 func loadChatModels(cfg *Config) error {
 	roles := llm.Roles{
 		Chat:   strings.TrimSpace(env("BACKEND_CHAT_MODEL", "")),
@@ -182,6 +182,11 @@ func loadChatModels(cfg *Config) error {
 		Vision: strings.TrimSpace(env("BACKEND_VISION_MODEL", "")),
 	}
 	if roles.Chat == "" {
+		// Outside dev auth a deployment without a chat model cannot answer a
+		// turn; boot must say so rather than serve a chat that fails every time.
+		if cfg.AuthMode != AuthModeDev {
+			return fmt.Errorf("BACKEND_CHAT_MODEL is required: an llmwire model id (see .env.example)")
+		}
 		cfg.ChatMissing = "BACKEND_CHAT_MODEL"
 		return nil
 	}

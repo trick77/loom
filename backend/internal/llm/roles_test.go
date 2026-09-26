@@ -41,6 +41,15 @@ func TestResolveRoles_RefusesWithTheValidChoices(t *testing.T) {
 	}
 }
 
+// Image turns stream with the full tool list, so the vision model must have
+// tool calling as well as image input.
+func TestResolveRoles_VisionModelNeedsTools(t *testing.T) {
+	_, err := ResolveRoles(llmwiretest.Registry(), Roles{Chat: llmwiretest.ChatModel, Vision: llmwiretest.BudgetModel})
+	if err == nil || !strings.Contains(err.Error(), "tools") {
+		t.Fatalf("error = %v, want one naming the missing tools", err)
+	}
+}
+
 func TestResolveRoles_NoChatModelIsAnError(t *testing.T) {
 	if _, err := ResolveRoles(llmwiretest.Registry(), Roles{}); err == nil {
 		t.Fatal("ResolveRoles accepted an empty chat model")

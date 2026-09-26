@@ -23,6 +23,43 @@ func seedEmbeddedDocument(t *testing.T, s *Store, id string, texts ...string) {
 	}
 }
 
+// Re-embedding lists chunks, embeds for seconds, then inserts. A document
+// cleared or re-indexed meanwhile must not get a stale vector, and must not
+// fail the batch: those chunks are skipped.
+func TestStore_InsertVectorsSkipsChunksChangedMeanwhile(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "alpha")
+	seedEmbeddedDocument(t, s, "d2", "beta")
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	missing, err := s.ChunksMissingVectors(ctx, 10)
+	if err != nil || len(missing) != 2 {
+		t.Fatalf("missing = %v, %v", missing, err)
+	}
+
+	// d1 is unindexed (chunks gone); d2 is re-indexed (new chunks, own vectors).
+	if err := s.ClearChunks(ctx, "u1", "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplaceChunks(ctx, "u1", "d2", []TextChunk{{Ordinal: 0, Text: "beta v2"}}, [][]float32{unit()}); err != nil {
+		t.Fatal(err)
+	}
+
+	vectors := [][]float32{unit(), unit()}
+	if err := s.InsertVectors(ctx, missing, vectors); err != nil {
+		t.Fatalf("InsertVectors: %v", err)
+	}
+	res, err := s.Retrieve(ctx, "u1", nil, nil, unit(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || res[0].Text != "beta v2" {
+		t.Fatalf("retrieved %+v, want only d2's re-indexed chunk", res)
+	}
+}
+
 func TestStore_VectorWidthReadsTheTable(t *testing.T) {
 	s, _ := newTestStore(t)
 	width, err := s.VectorWidth(context.Background())

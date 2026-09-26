@@ -18,7 +18,8 @@ type Roles struct {
 	// image intent. Defaults to Chat.
 	Gate string
 	// Vision answers turns and describes images when a message carries one.
-	// Needs image input. Defaults to Chat.
+	// Needs image input and tool calling (image turns carry the tools).
+	// Defaults to Chat.
 	Vision string
 }
 
@@ -74,7 +75,7 @@ func ResolveRoles(reg *llmwire.Registry, roles Roles) (Resolved, error) {
 	if out.gate, err = require(reg, "gate", roles.Gate, llmwire.Needs{}); err != nil {
 		return Resolved{}, err
 	}
-	if out.vision, err = require(reg, "vision", roles.Vision, llmwire.Needs{Vision: true, Streaming: true}); err != nil {
+	if out.vision, err = require(reg, "vision", roles.Vision, llmwire.Needs{Vision: true, Tools: true, Streaming: true}); err != nil {
 		return Resolved{}, err
 	}
 	return out, nil

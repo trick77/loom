@@ -338,10 +338,32 @@ func anyEmbedModel(t *testing.T) rag.EmbedModel {
 	return rag.EmbedModel{}
 }
 
+// Outside dev auth a deployment without a chat model cannot answer a turn, so
+// it must not boot as if it could (an upgrade that only set the key did that).
+// Dev auth boots without one: a UI session needs no model.
+func TestLoad_chatModelRequiredOutsideDevAuth(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_CHAT_MODEL", "")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_CHAT_MODEL") {
+		t.Fatalf("oidc without a chat model: err = %v, want one naming BACKEND_CHAT_MODEL", err)
+	}
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("dev without a chat model: %v", err)
+	}
+	if cfg.ChatEnabled || cfg.ChatMissing != "BACKEND_CHAT_MODEL" {
+		t.Fatalf("dev: enabled=%v missing=%q, want off, BACKEND_CHAT_MODEL", cfg.ChatEnabled, cfg.ChatMissing)
+	}
+}
+
 // Chat is on when a chat model is configured and every key its roles' providers
 // read is set.
 func TestLoad_modelCapabilitiesFollowModelsAndKeys(t *testing.T) {
 	requiredEnv(t)
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
 	model, keyEnv := anyChatModel(t)
 	t.Setenv("BACKEND_CHAT_MODEL", "")
 	t.Setenv(keyEnv, "k1")
@@ -426,6 +448,8 @@ func requiredEnv(t *testing.T) {
 	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "s3cret")
 	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://loom.example.com/api/auth/callback")
 	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "loom-admins")
+	model, _ := anyChatModel(t)
+	t.Setenv("BACKEND_CHAT_MODEL", model)
 }
 
 // An unset auth mode with no issuer booted a server nobody could log in to.

@@ -112,7 +112,10 @@ LIMIT ?`, limit)
 }
 
 // InsertVectors writes one vector per chunk, aligned to chunks, keyed and
-// scoped exactly as ReplaceChunks writes them.
+// scoped exactly as ReplaceChunks writes them. The chunks were listed before
+// their embedding call; a chunk deleted or re-indexed meanwhile (its id may
+// even have been reused by a new chunk that already has a vector) is skipped,
+// not written and not an error.
 func (s *Store) InsertVectors(ctx context.Context, chunks []MissingVector, vectors [][]float32) error {
 	if len(chunks) != len(vectors) {
 		return fmt.Errorf("chunk/vector count mismatch: %d vs %d", len(chunks), len(vectors))
@@ -123,6 +126,17 @@ func (s *Store) InsertVectors(ctx context.Context, chunks []MissingVector, vecto
 	}
 	defer func() { _ = tx.Rollback() }()
 	for i, c := range chunks {
+		var still int
+		if err := tx.QueryRowContext(ctx, `
+SELECT count(*) FROM chunks c
+WHERE c.id = ? AND c.user_id = ? AND c.text = ?
+  AND NOT EXISTS (SELECT 1 FROM vec_chunks v WHERE v.rowid = c.id)`,
+			c.ChunkID, c.UserID, c.Text).Scan(&still); err != nil {
+			return fmt.Errorf("check chunk: %w", err)
+		}
+		if still == 0 {
+			continue
+		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, ?, ?)`,
 			c.ChunkID, vecLiteral(vectors[i]), c.UserID, c.scope); err != nil {
