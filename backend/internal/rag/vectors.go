@@ -93,6 +93,23 @@ func (s *Store) HasVectors(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// EmbeddedSample returns one chunk that has a vector, for probing whether the
+// embedding model still takes input; ok is false when none has.
+func (s *Store) EmbeddedSample(ctx context.Context) (MissingVector, bool, error) {
+	var m MissingVector
+	err := s.db.QueryRowContext(ctx, `
+SELECT c.id, c.user_id, c.text FROM chunks c
+WHERE EXISTS (SELECT 1 FROM vec_chunks v WHERE v.rowid = c.id)
+LIMIT 1`).Scan(&m.ChunkID, &m.UserID, &m.Text)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MissingVector{}, false, nil
+	}
+	if err != nil {
+		return MissingVector{}, false, fmt.Errorf("sample embedded chunk: %w", err)
+	}
+	return m, true, nil
+}
+
 // MarkRefused records chunks the embedding model refused outright, so later
 // re-embedding runs skip them.
 func (s *Store) MarkRefused(ctx context.Context, chunkIDs []int64) error {

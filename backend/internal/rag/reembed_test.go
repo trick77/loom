@@ -115,14 +115,14 @@ func TestIngester_ReembedMissingKeepsBatchesBeforeARefusal(t *testing.T) {
 	if _, err := ing.ReembedMissing(ctx); err != nil {
 		t.Fatalf("ReembedMissing: %v", err)
 	}
-	// One call for the first full batch, one refused call, one retry of the
-	// refused chunk alone: never the first batch again.
+	// One call for the first full batch, one refused call, then a one-input
+	// probe of a chunk the model already took: never the first batch again.
 	embedded := 0
 	for _, in := range emb.gotInputs {
 		embedded += len(in)
 	}
-	if embedded != embedBatchSize {
-		t.Fatalf("embedded %d inputs, want exactly the %d of the first batch once", embedded, embedBatchSize)
+	if embedded != embedBatchSize+1 {
+		t.Fatalf("embedded %d inputs, want the %d of the first batch once plus the probe", embedded, embedBatchSize)
 	}
 }
 
@@ -175,6 +175,46 @@ func TestIngester_ReembedMissingRecordsRefusalsWhenOnlyThoseRemain(t *testing.T)
 	}
 	if n, err := ing.ReembedMissing(ctx); err != nil || n != 0 {
 		t.Fatalf("second run: n=%d err=%v, want a no-op", n, err)
+	}
+}
+
+// switchableEmbedder refuses every input as a bad request once down is set: a
+// retired model, a billing error — a failure of the model, not of a chunk.
+type switchableEmbedder struct {
+	fakeEmbedder
+	down bool
+}
+
+func (e *switchableEmbedder) Embed(ctx context.Context, inputs []string) (EmbedResult, error) {
+	if e.down {
+		return EmbedResult{}, &llmwire.APIError{StatusCode: 400, Message: "model not found", Class: llmwire.ErrBadRequest}
+	}
+	return e.fakeEmbedder.Embed(ctx, inputs)
+}
+
+// A model that starts refusing everything after vectors exist is an outage,
+// not a set of bad chunks: nothing is recorded as refused and the run fails,
+// so it is retried once the model is back.
+func TestIngester_ReembedMissingDoesNotRecordAnOutageAsRefusals(t *testing.T) {
+	emb := &switchableEmbedder{}
+	ing, s := newIngester(t, fakeExtractor{}, emb, fakeOpener{})
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "alpha")
+	seedEmbeddedDocument(t, s, "d2", "beta")
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid = (SELECT id FROM chunks WHERE text = 'beta')`); err != nil {
+		t.Fatal(err)
+	}
+	emb.down = true
+	if _, err := ing.ReembedMissing(ctx); err == nil {
+		t.Fatal("ReembedMissing succeeded while the model refused everything")
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM vector_refused`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("recorded %d refusals during an outage, want 0", n)
+	}
+	emb.down = false
+	if got, err := ing.ReembedMissing(ctx); err != nil || got != 1 {
+		t.Fatalf("after recovery: n=%d err=%v, want the chunk embedded", got, err)
 	}
 }
 
