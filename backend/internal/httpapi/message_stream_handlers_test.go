@@ -190,6 +190,88 @@ func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
 	}
 }
 
+// The title fills the wait for the answer, so it goes out before the first
+// answer word even when the title call returns after the reasoning has ended.
+func TestStreamMessageSendsReasoningTitleBeforeFirstAnswerDelta(t *testing.T) {
+	gate := make(chan struct{})
+	time.AfterFunc(100*time.Millisecond, func() { close(gate) })
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+	}
+	streamText := "Answer."
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			streamText:         &streamText,
+			reasoningText:      "Short thought.",
+			reasoningTitle:     "Thinking briefly",
+			reasoningTitleGate: gate,
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	titleAt := strings.Index(body, "event: assistant_reasoning_title")
+	deltaAt := strings.Index(body, "event: assistant_delta")
+	if titleAt == -1 || deltaAt == -1 || titleAt > deltaAt {
+		t.Fatalf("title at %d, first answer delta at %d, want title first:\n%s", titleAt, deltaAt, body)
+	}
+}
+
+// A title call that hangs holds the answer for reasoningTitleHold, then the
+// answer goes out without it.
+func TestStreamMessageAnswerNotHeldPastReasoningTitleHold(t *testing.T) {
+	defer func(prev time.Duration) { reasoningTitleHold = prev }(reasoningTitleHold)
+	reasoningTitleHold = 50 * time.Millisecond
+	gate := make(chan struct{})
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+	}
+	streamText := "Answer."
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			streamText:         &streamText,
+			reasoningText:      "Short thought.",
+			reasoningTitle:     "Never arrives",
+			reasoningTitleGate: gate,
+		},
+	}))
+	t.Cleanup(srv.Close)
+	// After srv.Close in registration order, so it runs first: the handler
+	// waits on the title before it returns, and Close waits on the handler.
+	t.Cleanup(func() { close(gate) })
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	gotDelta := make(chan bool, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: assistant_delta" {
+				gotDelta <- true
+				return
+			}
+		}
+		gotDelta <- false
+	}()
+	select {
+	case ok := <-gotDelta:
+		if !ok {
+			t.Fatal("stream ended without an answer delta")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("answer held past reasoningTitleHold by a hung title call")
+	}
+}
+
 func TestStreamMessageEmitsAndPersistsReasoningTitle(t *testing.T) {
 	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
@@ -1440,7 +1522,10 @@ func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
 
 // A reasoning-title call still in flight when the turn fails (it goes to the
 // same dead upstream) must not hold the error back; its cost is booked later.
+// The first answer word waits for the title, but only for reasoningTitleHold.
 func TestStreamMessageFailedTurnErrorDoesNotWaitForReasoningTitles(t *testing.T) {
+	defer func(prev time.Duration) { reasoningTitleHold = prev }(reasoningTitleHold)
+	reasoningTitleHold = 50 * time.Millisecond
 	gate := make(chan struct{})
 	store := &fakeThreadStore{
 		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},

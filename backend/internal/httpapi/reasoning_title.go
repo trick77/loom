@@ -15,6 +15,13 @@ import (
 // client has no timeout, so without this a hung title call would stall delivery.
 const reasoningTitleTimeout = 10 * time.Second
 
+// reasoningTitleHold bounds how long the first answer word waits for its
+// round's title (see streamAssistantTurnWithContentStreaming). Measured on
+// glm-5.3-flash the title lands ~2.7s after reasoning ends; a title call on a
+// dead upstream must not hold the answer, or the turn's error, much past that.
+// A var so tests can shorten it.
+var reasoningTitleHold = 5 * time.Second
+
 // reasoningTitleTracker generates a short abstract title for each reasoning
 // round in the background. Titles are emitted over SSE as they become ready and
 // collected so they can be merged into the persisted activity trace. The zero
@@ -39,20 +46,25 @@ func newReasoningTitleTracker(ctx context.Context, s *server, stream *sse.Writer
 // no-op when there is no reasoning id or no reasoning content, and is idempotent
 // per id so the mid-turn boundary and the post-turn fallback never double-fire.
 // The caller must eventually call wait() before tearing down the stream.
-func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) {
+//
+// The returned channel closes once the title has gone out or been skipped (nil
+// when nothing was spawned), so a caller can hold the answer behind it.
+func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan struct{} {
 	if t == nil || reasoningID == "" || strings.TrimSpace(reasoning) == "" {
-		return
+		return nil
 	}
 	t.mu.Lock()
 	if t.spawned[reasoningID] {
 		t.mu.Unlock()
-		return
+		return nil
 	}
 	t.spawned[reasoningID] = true
 	t.mu.Unlock()
 	t.wg.Add(1)
+	done := make(chan struct{})
 	go func() {
 		defer t.wg.Done()
+		defer close(done)
 		// Outside the handler chain the recovery middleware can't catch a panic
 		// here, and one would take the process down mid-stream.
 		defer logPanic("reasoning_title")
@@ -72,6 +84,7 @@ func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) {
 		t.mu.Unlock()
 		_ = sendSSEJSON(t.stream, "assistant_reasoning_title", reasoningTitleResponse{ID: reasoningID, Title: title})
 	}()
+	return done
 }
 
 // wait blocks until every spawned title goroutine has finished.
