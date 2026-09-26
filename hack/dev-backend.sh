@@ -14,7 +14,7 @@
 # For real chatting, set the optional chat vars in an uncommitted .env file at the
 # repo root (Docker Compose reads it automatically):
 #
-#   LLMWIRE_MIMO_API_KEY=your-api-key
+#   LLMWIRE_ZAI_API_KEY=your-api-key
 #
 # Any extra args are passed straight to `docker compose up` (e.g. -d, --no-build).
 set -eu

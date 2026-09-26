@@ -16,9 +16,9 @@ import (
 // Keep in sync with imagegen's direct-client fallback default.
 const defaultImageGenPollTimeout = 1 * time.Minute
 
-// defaultChatMaxCompletionTokens covers reasoning plus answer: MiMo counts both
-// against the cap, and with no reasoning_effort sent mimo-v2.6-flash thinks past
-// 2048 on its own, leaving no room for the answer.
+// defaultChatMaxCompletionTokens covers reasoning plus answer: the cap counts
+// both, and glm-5.3-flash always thinks, so a tight cap leaves no room for the
+// answer (MiMo was measured thinking past 2048 on its own).
 const defaultChatMaxCompletionTokens = 16384
 
 // defaultChatTimeout is the coarse total wall-clock budget for a streamed chat
@@ -81,7 +81,7 @@ type Config struct {
 
 	// The model endpoints are llmwire's: each model's profile names a
 	// provider and ships its host, and llmwire.FromEnv reads the key from
-	// LLMWIRE_<PROVIDER>_API_KEY at boot (LLMWIRE_MIMO_API_KEY for chat,
+	// LLMWIRE_<PROVIDER>_API_KEY at boot (LLMWIRE_ZAI_API_KEY for chat,
 	// LLMWIRE_OPENAI_API_KEY for embeddings). A set key turns the capability
 	// on; only that fact is mirrored here, the key itself never passes through
 	// this struct.
@@ -169,7 +169,7 @@ func Load() (Config, error) {
 		DBPath:                  env("BACKEND_DB_PATH", "/data/loom.db"),
 		UsersDir:                env("BACKEND_USERS_DIR", "/data/users"),
 		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
-		ChatEnabled:             strings.TrimSpace(env("LLMWIRE_MIMO_API_KEY", "")) != "",
+		ChatEnabled:             strings.TrimSpace(env("LLMWIRE_ZAI_API_KEY", "")) != "",
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
 		EmbedEnabled:            strings.TrimSpace(env("LLMWIRE_OPENAI_API_KEY", "")) != "",

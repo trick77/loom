@@ -17,12 +17,12 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	var gotPath string
 	var gotAuth string
 	var gotBody struct {
-		Model               string    `json:"model"`
-		Messages            []Message `json:"messages"`
-		Stream              bool      `json:"stream"`
-		ReasoningEffort     string    `json:"reasoning_effort"`
-		MaxCompletionTokens int       `json:"max_completion_tokens"`
-		StreamOptions       struct {
+		Model           string    `json:"model"`
+		Messages        []Message `json:"messages"`
+		Stream          bool      `json:"stream"`
+		ReasoningEffort string    `json:"reasoning_effort"`
+		MaxTokens       int       `json:"max_tokens"`
+		StreamOptions   struct {
 			IncludeUsage bool `json:"include_usage"`
 		} `json:"stream_options"`
 	}
@@ -69,13 +69,12 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	if !gotBody.Stream {
 		t.Fatal("stream = false, want true")
 	}
-	// No effort level on the wire; see TestClient_StreamSendsNoReasoningEffort
-	// for why the field is omitted rather than defaulted.
-	if gotBody.ReasoningEffort != "" {
-		t.Fatalf("reasoning_effort = %q, want it absent", gotBody.ReasoningEffort)
+	// See TestClient_StreamSendsHighReasoningEffort for why the level is sent.
+	if gotBody.ReasoningEffort != "high" {
+		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
 	}
-	if gotBody.MaxCompletionTokens != 2048 {
-		t.Fatalf("max_completion_tokens = %d, want 2048", gotBody.MaxCompletionTokens)
+	if gotBody.MaxTokens != 2048 {
+		t.Fatalf("max_tokens = %d, want 2048", gotBody.MaxTokens)
 	}
 	if len(gotBody.Messages) != 1 || gotBody.Messages[0].Role != "user" || gotBody.Messages[0].Content != "Hi" {
 		t.Fatalf("messages = %#v, want user message", gotBody.Messages)
@@ -229,7 +228,7 @@ func TestClient_NeverSendsImagePartsToTextModel(t *testing.T) {
 
 func TestClient_StreamChatUsesConfiguredMaxCompletionTokens(t *testing.T) {
 	var gotBody struct {
-		MaxCompletionTokens int `json:"max_completion_tokens"`
+		MaxCompletionTokens int `json:"max_tokens"`
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
@@ -247,7 +246,7 @@ func TestClient_StreamChatUsesConfiguredMaxCompletionTokens(t *testing.T) {
 		t.Fatalf("StreamChatResult() error: %v", err)
 	}
 	if gotBody.MaxCompletionTokens != 4096 {
-		t.Fatalf("max_completion_tokens = %d, want 4096", gotBody.MaxCompletionTokens)
+		t.Fatalf("max_tokens = %d, want 4096", gotBody.MaxCompletionTokens)
 	}
 	if result.FinishReason != "stop" {
 		t.Fatalf("finish reason = %q, want stop", result.FinishReason)
@@ -323,10 +322,8 @@ func TestClient_StreamChatResultCapturesModelAndReasoningEffortOnDonePath(t *tes
 	if result.Model != textModel {
 		t.Fatalf("model = %q, want %q", result.Model, textModel)
 	}
-	// Blank: no level is sent, so none is recorded. The field stays on
-	// StreamResult only for messages persisted before that change.
-	if result.ReasoningEffort != "" {
-		t.Fatalf("reasoning effort = %q, want it blank", result.ReasoningEffort)
+	if result.ReasoningEffort != turnReasoningEffort {
+		t.Fatalf("reasoning effort = %q, want %q", result.ReasoningEffort, turnReasoningEffort)
 	}
 }
 
@@ -440,7 +437,7 @@ func TestClient_StreamChatLogsRawResponseWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestClient_StreamChatSendsNoReasoningEffort(t *testing.T) {
+func TestClient_StreamChatSendsHighReasoningEffort(t *testing.T) {
 	var gotBody struct {
 		ReasoningEffort string `json:"reasoning_effort"`
 	}
@@ -454,16 +451,13 @@ func TestClient_StreamChatSendsNoReasoningEffort(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	// Reasoning effort is no longer configurable: MiMo is hardcoded to "high".
 	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
 	if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
 		t.Fatalf("StreamChat() error: %v", err)
 	}
-	// No effort level on the wire; see TestClient_StreamSendsNoReasoningEffort
-	// for why the field is omitted rather than defaulted.
-	if gotBody.ReasoningEffort != "" {
-		t.Fatalf("reasoning_effort = %q, want it absent", gotBody.ReasoningEffort)
+	if gotBody.ReasoningEffort != "high" {
+		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
 	}
 }
 
@@ -506,7 +500,7 @@ func TestClient_StreamChatWithToolsSendsToolSchemas(t *testing.T) {
 
 func TestClient_StreamChatWithDocumentToolUsesExpandedCompletionBudget(t *testing.T) {
 	var gotBody struct {
-		MaxCompletionTokens int `json:"max_completion_tokens"`
+		MaxCompletionTokens int `json:"max_tokens"`
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -533,7 +527,7 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedCompletionBudget(t *testin
 		t.Fatalf("StreamChatWithTools() error: %v", err)
 	}
 	if gotBody.MaxCompletionTokens != documentToolMaxCompletionTokens {
-		t.Fatalf("max_completion_tokens = %d, want %d", gotBody.MaxCompletionTokens, documentToolMaxCompletionTokens)
+		t.Fatalf("max_tokens = %d, want %d", gotBody.MaxCompletionTokens, documentToolMaxCompletionTokens)
 	}
 }
 
@@ -629,7 +623,7 @@ func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotBody struct {
-				MaxCompletionTokens int `json:"max_completion_tokens"`
+				MaxCompletionTokens int `json:"max_tokens"`
 			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
@@ -655,7 +649,7 @@ func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *
 				t.Fatalf("StreamChatWithTools() error: %v", err)
 			}
 			if gotBody.MaxCompletionTokens != tt.wantCompletionTokens {
-				t.Fatalf("max_completion_tokens = %d, want %d", gotBody.MaxCompletionTokens, tt.wantCompletionTokens)
+				t.Fatalf("max_tokens = %d, want %d", gotBody.MaxCompletionTokens, tt.wantCompletionTokens)
 			}
 		})
 	}
@@ -704,143 +698,6 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	if events[2].ToolPending || events[2].ToolCall.ID != "call_1" ||
 		events[2].ToolCall.Function.Name != "search__web" || events[2].ToolCall.Function.Arguments != `{"q":"lume"}` {
 		t.Fatalf("events = %#v, want final full tool call event", events)
-	}
-}
-
-func TestClient_StreamChatWithToolsParsesMiMoInlineToolCalls(t *testing.T) {
-	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
-	}))
-	t.Cleanup(server.Close)
-
-	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
-
-	var events []StreamEvent
-	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
-	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, offeredTools, func(event StreamEvent) error {
-		events = append(events, event)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("StreamChatWithTools() error: %v", err)
-	}
-	if len(final.ToolCalls) != 1 {
-		t.Fatalf("tool calls = %#v, want 1", final.ToolCalls)
-	}
-	call := final.ToolCalls[0]
-	if call.Function.Name != "tavily__tavily_search" || call.Function.Arguments != `{"q":"colossus"}` {
-		t.Fatalf("tool call = %#v", call)
-	}
-	if final.Content != "" {
-		t.Fatalf("final content = %q, want empty (XML stripped)", final.Content)
-	}
-	sawToolCall := false
-	for _, e := range events {
-		if e.ToolCall.Function.Name == "tavily__tavily_search" {
-			sawToolCall = true
-		}
-	}
-	if !sawToolCall {
-		t.Fatalf("events = %#v, want a tool_call event", events)
-	}
-}
-
-func TestClient_StreamChatWithToolsSignalsPendingBeforeInlineToolCall(t *testing.T) {
-	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"Let me search. "}}]}` + "\n\n"))
-		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
-	}))
-	t.Cleanup(server.Close)
-
-	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
-
-	var events []StreamEvent
-	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
-	_, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, offeredTools, func(event StreamEvent) error {
-		events = append(events, event)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("StreamChatWithTools() error: %v", err)
-	}
-	// The preamble streams as content, then a pending signal fires the instant the
-	// inline marker is seen — ahead of the parsed tool call at end of stream.
-	deltaIdx, pendingIdx, callIdx := -1, -1, -1
-	for i, e := range events {
-		switch {
-		case e.ToolPending:
-			pendingIdx = i
-		case e.ToolCall.Function.Name == "tavily__tavily_search":
-			callIdx = i
-		case e.Delta != "":
-			deltaIdx = i
-		}
-	}
-	if deltaIdx == -1 || pendingIdx == -1 || callIdx == -1 {
-		t.Fatalf("events = %#v, want a content, a pending and a tool-call event", events)
-	}
-	if deltaIdx >= pendingIdx || pendingIdx >= callIdx {
-		t.Fatalf("events out of order: delta=%d pending=%d call=%d (%#v)", deltaIdx, pendingIdx, callIdx, events)
-	}
-}
-
-func TestClient_StreamChatWithoutToolsStripsInlineXML(t *testing.T) {
-	// The forced tool-free final-answer call regularly gets an inline tool call back
-	// instead of an answer. The raw <tool_call> markup must be stripped from the
-	// content (never surfaced verbatim) even with no tools offered; the resulting
-	// empty answer is the caller's concern (retry + fallback).
-	xml := "<tool_call><function=tavily__tavily_search><parameter=q>colossus</parameter></function></tool_call>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + xml + `"}}]}` + "\n\n"))
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
-	}))
-	t.Cleanup(server.Close)
-
-	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
-
-	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Answer"}}, nil, nil)
-	if err != nil {
-		t.Fatalf("StreamChatWithTools() error: %v", err)
-	}
-	if strings.Contains(final.Content, "<tool_call>") {
-		t.Fatalf("final content = %q, want inline XML stripped (not surfaced verbatim)", final.Content)
-	}
-}
-
-func TestClient_StreamChatWithToolsDoesNotStreamMiMoInlineXML(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		// Inline tool call arriving as several content chunks, marker split across two.
-		for _, c := range []string{"<tool", "_call><function=tavily__tavily_search>", "<parameter=q>x</parameter></function></tool_call>"} {
-			_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + c + `"}}]}` + "\n\n"))
-		}
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
-	}))
-	t.Cleanup(server.Close)
-
-	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
-
-	var deltas string
-	offeredTools := []Tool{{Type: "function", Function: ToolFunction{Name: "tavily__tavily_search"}}}
-	final, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Search"}}, offeredTools, func(event StreamEvent) error {
-		deltas += event.Delta
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("StreamChatWithTools() error: %v", err)
-	}
-	if deltas != "" {
-		t.Fatalf("streamed deltas = %q, want none (XML suppressed)", deltas)
-	}
-	if len(final.ToolCalls) != 1 {
-		t.Fatalf("tool calls = %#v, want 1", final.ToolCalls)
 	}
 }
 
@@ -947,7 +804,7 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	}
 }
 
-func TestClient_UtilityCallsDisableThinking(t *testing.T) {
+func TestClient_UtilityCallsAskForLowEffort(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		call func(c *Client) (string, error)
@@ -975,17 +832,17 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			// Utility calls disable thinking outright; no effort level is sent on
-			// any path, so there is nothing for them to override.
+			// Utility calls ask for the shallowest level: the model refuses the
+			// disable toggle, and a toggle sent anyway fails before the wire.
 			client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 			if _, err := tc.call(client); err != nil {
 				t.Fatalf("call error: %v", err)
 			}
-			if got.Thinking == nil || got.Thinking.Type != "disabled" {
-				t.Fatalf("thinking = %#v, want {disabled}", got.Thinking)
+			if got.Thinking != nil {
+				t.Fatalf("thinking = %#v, want it absent", got.Thinking)
 			}
-			if got.ReasoningEffort != "" {
-				t.Fatalf("reasoning_effort = %q, want empty", got.ReasoningEffort)
+			if got.ReasoningEffort != "low" {
+				t.Fatalf("reasoning_effort = %q, want low", got.ReasoningEffort)
 			}
 		})
 	}
@@ -994,11 +851,11 @@ func TestClient_UtilityCallsDisableThinking(t *testing.T) {
 func TestClient_TitlesSkippedWhenTruncatedAtTokenCap(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var got struct {
-			MaxCompletionTokens int `json:"max_completion_tokens"`
+			MaxCompletionTokens int `json:"max_tokens"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&got)
 		if got.MaxCompletionTokens == 0 {
-			t.Fatalf("utility call missing max_completion_tokens cap")
+			t.Fatalf("utility call missing max_tokens cap")
 		}
 		// Mid-phrase truncation: non-empty content but finish_reason "length".
 		_ = json.NewEncoder(w).Encode(map[string]any{

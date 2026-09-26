@@ -21,7 +21,7 @@ func TestGenerateProjectDescription_usesItsOwnLargerTokenBudget(t *testing.T) {
 		body, _ := io.ReadAll(r.Body)
 		gotBody = string(body)
 		var req struct {
-			MaxCompletionTokens int `json:"max_completion_tokens"`
+			MaxCompletionTokens int `json:"max_tokens"`
 		}
 		_ = json.Unmarshal(body, &req)
 		gotMaxTokens = req.MaxCompletionTokens
@@ -36,7 +36,7 @@ func TestGenerateProjectDescription_usesItsOwnLargerTokenBudget(t *testing.T) {
 		t.Fatalf("GenerateProjectDescription error = %v", err)
 	}
 	if gotMaxTokens != projectDescriptionMaxCompletionTokens {
-		t.Errorf("max_completion_tokens = %d, want %d (must not reuse the %d-token title cap)",
+		t.Errorf("max_tokens = %d, want %d (must not reuse the %d-token title cap)",
 			gotMaxTokens, projectDescriptionMaxCompletionTokens, utilityMaxCompletionTokens)
 	}
 	if got != "Trip planning for a week in Japan." {

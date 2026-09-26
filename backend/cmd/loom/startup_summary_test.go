@@ -19,7 +19,7 @@ func TestLogStartupCapabilitiesWarnsWithoutChatKeyOutsideDev(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	logStartupCapabilities(config.Config{AuthMode: config.AuthModeOIDC}, mcp.Config{}, startupRuntime{})
-	if !strings.Contains(buf.String(), "level=WARN msg=\"chat disabled: LLMWIRE_MIMO_API_KEY is unset") {
+	if !strings.Contains(buf.String(), "level=WARN msg=\"chat disabled: LLMWIRE_ZAI_API_KEY is unset") {
 		t.Fatalf("no warning without a chat key:\n%s", buf.String())
 	}
 	buf.Reset()
@@ -40,7 +40,7 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 		TikaURL:  "http://tika:9998",
 	}, mcp.Config{}, startupRuntime{DocToolCount: 5})
 
-	assertCapability(t, items, "chat", "disabled", "LLMWIRE_MIMO_API_KEY")
+	assertCapability(t, items, "chat", "disabled", "LLMWIRE_ZAI_API_KEY")
 	assertCapability(t, items, "embeddings", "disabled", "LLMWIRE_OPENAI_API_KEY")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
@@ -65,7 +65,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	}}, startupRuntime{DocToolCount: 5, ImageToolCount: 1, DiscoveredToolCount: 3})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
-	assertCapability(t, items, "chat", "enabled", "model=mimo-v2.6-flash")
+	assertCapability(t, items, "chat", "enabled", "model=glm-5.3-flash")
 	assertCapability(t, items, "embeddings", "enabled", "text-embedding-3-small")
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")

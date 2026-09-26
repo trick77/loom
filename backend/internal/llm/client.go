@@ -23,91 +23,55 @@ const defaultMaxCompletionTokens = 2048
 // past the cap finish_reason=length truncates the argument JSON, which both fails
 // the document tool and (when the broken call is replayed) makes the upstream
 // reject the next round. 32k clears any realistic document while leaving
-// context-window headroom for the prompt. (MiMo 2.5 Pro's real input window is
-// materially smaller than the 131072 once noted here — do not size budgets
-// against that figure; it was never verified against the deployment.)
+// context-window headroom for the prompt.
 const documentToolMaxCompletionTokens = 32768
 
 // documentToolTimeout gives model turns that are serializing complete document
 // payloads enough wall-clock time to reach the tool call. It is also the idle
 // bound once a tool call is underway on such a turn (see ChatRequest.
-// ToolCallIdleTimeout in llmwire): MiMo buffers the whole argument server-side
-// and flushes it in one burst, ~82s of silence measured for a ~10KB spec.
+// ToolCallIdleTimeout in llmwire): MiMo buffered the whole argument server-side
+// and flushed it in one burst, ~82s of silence measured for a ~10KB spec.
 const documentToolTimeout = 5 * time.Minute
 
-// Hardcoded MiMo model selection. Loom targets MiMo specifically and is not
-// model-configurable.
+// Hardcoded chat model: glm-5.3-flash on Z.ai's general host, the model peeq
+// runs. It replaced MiMo because MiMo was too slow for interactive chat;
+// llmwire's profile notes glm-5.3-flash at 1-5s per call against 25-64s on the
+// MiMo lane it measured beside it. Loom is not model-configurable.
 //
-// Flash for every chat call as of the V2.6 generation, except the three
-// thinking-off prose sites named under proseModel below. Both splits that
-// justified the old three-constant arrangement disappeared at that version
-// bump:
-//
-//   - Vision. mimo-v2.5-pro is text-only and 404s on any image_url part, which
-//     is the only reason image turns were routed to the non-Pro variant.
-//     mimo-v2.6-flash accepts image input — measured 2026-09-22 with
-//     mimo-v2.5-pro re-probed as a 404 control in the same run (llmwire
-//     FINDINGS.md, MiMoProRejectsImageInput). Nothing left to route around.
-//   - Queueing. The short gates ran on the non-Pro deployment because it
-//     answered sooner, after a Pro was measured spending 78s on a 64-token
-//     routing call. mimo-v2.6-flash measures 0.9-2.6s per call, longest
-//     data-frame gap 522ms. The gates are no longer the latency risk that
-//     split existed to contain.
-//
-// flash rather than mimo-v2.6-pro because loom's workload does not buy what Pro
-// sells. Thinking is disabled at every helper call site (see complete), the two
-// are within the same latency class, and flash is a third of the price. The
-// three constants are kept as separate names rather than collapsed into one so
-// a future split — a cheaper gate model, a Pro that earns its keep on synthesis
-// — moves one use without silently moving the others.
-//
-// proseModel is the exception, and it is a measured one. With thinking OFF,
-// flash answered a one-step arithmetic prompt wrong in three runs out of three
-// (155, 145, 195 against the correct 205), a different wrong number each time,
-// while Pro was correct in all three. llmwire's own profile comment calls this
-// out: "DISABLING THINKING COSTS CORRECTNESS HERE... ReasoningOff() is a
-// quality decision, not only a latency one."
-//
-// Three call sites write prose a reader keeps AND disable thinking: the forced
-// final answer (see InferenceMetadata.SuppressThinking), project memory and the
-// project description. The first is the dangerous one — it answers whatever the
-// user actually asked, over gathered research, and "total these three figures"
-// is a perfectly ordinary such question. Those sites stay on Pro, which is what
-// they ran on before V2.6 and what the measurement says is safe.
-//
-// The gates are NOT in that set: a category token, an intent JSON and a
-// handful-of-words title have nothing to get arithmetically wrong.
+// One model serves every role. Vision is vendor documentation only in the
+// profile (the image probe ran against MiMo), so an image turn is the first
+// thing to check if image answers go wrong. The four constants stay separate
+// names rather than one so a future split — a cheaper gate model, a model that
+// earns its keep on synthesis — moves one use without silently moving the
+// others.
 //
 // These are wire ids llmwire resolves against its profile registry; the
-// profile ships the host, and the key comes from LLMWIRE_MIMO_API_KEY, the
-// variable the profiles' provider names.
+// profile ships the host, and the key comes from LLMWIRE_ZAI_API_KEY, the
+// variable the profile's provider names. A GLM Coding Plan key does not work:
+// that host is restricted to Z.ai's own tools.
 const (
-	textModel      = "mimo-v2.6-flash"
-	visionModel    = "mimo-v2.6-flash"
-	shortGateModel = "mimo-v2.6-flash"
-	proseModel     = "mimo-v2.6-pro"
+	textModel      = "glm-5.3-flash"
+	visionModel    = "glm-5.3-flash"
+	shortGateModel = "glm-5.3-flash"
+	proseModel     = "glm-5.3-flash"
 )
 
-// No reasoning-effort default, and no effort sent at all: loom omits the
-// parameter rather than choosing a level for the caller.
+// Reasoning is steered by effort level only. glm-5.3-flash always thinks: the
+// disable toggle is refused (400, code 1210) and llmwire rejects
+// ReasoningOff() for it before the request goes out. It accepts exactly low,
+// high and max, and an absent level means the vendor default max.
 //
-// The levels are inert on this family. Measured 2026-09-22, five samples per
-// level on a variable-depth prompt (llmwire FINDINGS.md,
-// MiMoEffortLadderIsReal): every range overlaps every other on both V2.6
-// models, and on flash the three levels span 17 tokens between them with
-// "high" the LOWEST mean of the three. There is no ladder to climb.
-//
-// Omitting beats hardcoding one. On both models the no-level range reaches
-// HIGHER than any level's (flash 117-1784 against high's 104-117): sending a
-// level appears to flatten the distribution, losing the occasional deep pass
-// without buying a controllable floor. "high" — the old default here — is
-// therefore the option that most reliably suppresses deep thinking, which is
-// the opposite of what the name promises. Absent means assume nothing.
-//
-// Thinking itself is still controlled, by the toggle rather than the level:
-// llmwire.ReasoningOff at every helper site (see complete) and at the forced
-// final answer (see InferenceMetadata.SuppressThinking). Measured: the toggle
-// is honoured and beats an effort level sent in the same request.
+// turnReasoningEffort is what a normal streamed turn asks for. Not max: peeq
+// measured the same job at 12.8s on high against 69.9s on max, and speed is
+// why loom moved to this model. helperReasoningEffort is for the helper calls
+// (see complete) and the forced final answer (see
+// InferenceMetadata.SuppressThinking) — the sites that turned thinking off on
+// MiMo. low is the nearest the model allows; peeq measured it at 5 reasoning
+// tokens against 43 on high.
+const (
+	turnReasoningEffort   = "high"
+	helperReasoningEffort = "low"
+)
 
 // Config holds the chat client settings loom owns. The endpoint is llmwire's:
 // BaseURL is an explicit override for a test fake or a stand-in endpoint and
@@ -120,8 +84,8 @@ type Config struct {
 	// llmwire's default.
 	Timeout time.Duration
 	// IdleTimeout aborts a stream when no data frame arrives within the window.
-	// It also bounds the wait for response headers: MiMo Pro queues, and loom
-	// allowed this long before the first byte before the wire moved to llmwire.
+	// It also bounds the wait for response headers, so a queueing endpoint
+	// trips it before the first byte.
 	// Zero disables the watchdog: the whole-call cap is then the only bound.
 	IdleTimeout time.Duration
 	// ResponseLogDir, when set, spools every raw response to that directory
@@ -152,11 +116,11 @@ type MessageImageURL struct {
 	URL string
 }
 
-// Client calls the MiMo chat completion endpoints through llmwire.
+// Client calls the Z.ai chat completion endpoint through llmwire.
 type Client struct {
 	// wire is the one llmwire client every call goes through. One, not one per
-	// call: it presents as opencode, and that identity carries a session id
-	// llmwire mints and rotates itself.
+	// call: when it presents as opencode (LLMWIRE_EMULATE_OPENCODE), that
+	// identity carries a session id llmwire mints and rotates itself.
 	wire                *llmwire.Client
 	model               string
 	visionModel         string
@@ -166,7 +130,7 @@ type Client struct {
 	timeout             time.Duration
 }
 
-// NewClient builds the chat client. The error is a missing LLMWIRE_MIMO_API_KEY,
+// NewClient builds the chat client. The error is a missing LLMWIRE_ZAI_API_KEY,
 // named, unless cfg.BaseURL wires a test endpoint itself.
 func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
@@ -236,14 +200,10 @@ func ModelSummary() string {
 // and into StreamResult.Model so the persisted/observed model reflects what
 // actually ran.
 //
-// thinkingOff wins over the image check, and the order matters: the forced
-// final answer is the one streamed turn that writes a keeper answer with
-// thinking disabled, and flash gets arithmetic wrong in that mode (see
-// proseModel). A final answer over research that happened to include an image
-// is exactly as able to be asked for a total as one that did not. Checking the
-// image part first would have sent it to flash. This is safe only because both
-// V2.6 models accept image input — at V2.5, where -pro returned 404 on an
-// image part, these two rules were in genuine conflict.
+// thinkingOff (the forced final answer) wins over the image check, so that
+// turn stays on proseModel even when the research it summarizes carried an
+// image. Every constant names the same model today, so the order only matters
+// once they split again.
 func (c *Client) modelForMessages(messages []Message, thinkingOff bool) string {
 	if thinkingOff {
 		return c.proseModel
@@ -274,11 +234,11 @@ type completion struct {
 	Empty        bool
 }
 
-// complete runs one non-streaming call with thinking turned off via MiMo's
-// native {"thinking":{"type":"disabled"}} and a caller-chosen completion-token
-// cap. Default thinking makes MiMo overthink a trivial summarization and even
-// echo its internal "reasoning>/response>" channel format as literal text
-// instead of a clean title — besides burning ~1k reasoning tokens per call.
+// complete runs one non-streaming call at helperReasoningEffort and a
+// caller-chosen completion-token cap. Thinking cannot be switched off on this
+// model, so the shallowest level is the lever: deep thinking on a trivial
+// summarization burns the cap before the answer and adds seconds to a gate the
+// turn waits on.
 //
 // The logging is done here for every helper: the completed line with the
 // usage, or the failed line with the error. decided, when set, adds the
@@ -289,7 +249,7 @@ func (c *Client) complete(ctx context.Context, model string, messages []Message,
 	resp, warnings, err := c.wire.Chat(ctx, llmwire.ChatRequest{
 		Model:     model,
 		Messages:  toWireMessages(messages),
-		Reasoning: llmwire.ReasoningOff(),
+		Reasoning: llmwire.ReasoningEffort(helperReasoningEffort),
 		MaxTokens: &maxTokens,
 	})
 	logWarnings(ctx, model, warnings)
@@ -320,19 +280,18 @@ func (c *Client) complete(ctx context.Context, model string, messages []Message,
 
 // shortGate runs a helper call that needs a fast answer rather than a deep one
 // — the short gates a turn blocks on: image intent, thread classification, and
-// the two title generators. It routes to shortGateModel on top of disabled
-// thinking.
+// the two title generators. It routes to shortGateModel on top of the helper
+// effort.
 //
-// That routing is currently a no-op: every chat constant is mimo-v2.6-flash, so
+// That routing is currently a no-op: every chat constant is glm-5.3-flash, so
 // a gate and a main turn hit the same deployment. The seam is kept because the
 // gates are the calls a turn WAITS on before its first token — three of them
 // serialized, each on a 30s bound — so they are where a cheaper or faster model
 // would be pointed first, and pointing it wants one constant to move, not a
-// grep through the call sites. Historically the split was a Pro that spent 78s
-// queueing on a 64-token routing call.
+// grep through the call sites.
 //
 // Deliberately NOT used by anything that writes prose a reader keeps: the
-// forced final answer disables thinking too (see
+// forced final answer runs at the helper effort too (see
 // InferenceMetadata.SuppressThinking) but is a synthesis over gathered
 // research, as are project memory and the project description. The bar is that
 // the answer is a label, an id or a handful of words nobody reads as prose.
@@ -350,11 +309,10 @@ func (c *Client) maxCompletionTokensForTools(tools []Tool) int {
 // timeoutForTools is the coarse total wall-clock budget for a streamed turn. It
 // stays generous (documentToolTimeout) whenever a document tool is on offer,
 // because a turn that streams a full document payload as a tool-call argument
-// legitimately needs the room — and intent cannot be known up front (MiMo only
-// surfaces the tool name once the stream ends). The idle watchdog catches a
-// stalled reasoning/content phase in seconds; but once a document tool call is
-// underway it widens (see toolCallIdleTimeout) because MiMo buffers the argument
-// server-side, so this coarse deadline is the real backstop for that phase.
+// legitimately needs the room — and intent cannot be known up front. The idle
+// watchdog catches a stalled reasoning/content phase in seconds; but once a
+// document tool call is underway it widens (see toolCallIdleTimeout), so this
+// coarse deadline is the real backstop for that phase.
 func (c *Client) timeoutForTools(tools []Tool) time.Duration {
 	if c.timeout == 0 || !hasDocumentGenerationTool(tools) || c.timeout >= documentToolTimeout {
 		return c.timeout
@@ -363,11 +321,12 @@ func (c *Client) timeoutForTools(tools []Tool) time.Duration {
 }
 
 // toolCallIdleTimeout is the idle window to apply once a tool call is underway in
-// a turn that can generate a document. MiMo buffers tool-call arguments
-// server-side and flushes them in one delayed burst (no incremental deltas), so a
-// large document argument goes silent for far longer than the normal idle window —
-// which would falsely trip the watchdog mid-generation (measured ~82s silent for a
-// ~10KB spec). Widen to the document timeout and let the coarse total deadline
+// a turn that can generate a document. An endpoint that buffers tool-call
+// arguments server-side flushes them in one delayed burst (no incremental
+// deltas), so a large document argument goes silent for far longer than the
+// normal idle window — which would falsely trip the watchdog mid-generation
+// (measured on MiMo: ~82s silent for a ~10KB spec; not yet measured on
+// glm-5.3-flash, so the window stays until it is). Widen to the document timeout and let the coarse total deadline
 // backstop a genuine hang. Non-document turns keep the normal window: their tool
 // arguments are small and stream promptly. Zero means "no change" to llmwire.
 func toolCallIdleTimeout(tools []Tool) time.Duration {

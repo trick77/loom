@@ -9,7 +9,7 @@ import (
 )
 
 // modelRecorder captures the model each request asked for, so the tests below
-// pin WHICH calls moved to the non-Pro deployment and which deliberately did not.
+// pin WHICH calls route to the short-gate model and which deliberately do not.
 func modelRecorder(t *testing.T, body string) (*httptest.Server, *[]string) {
 	t.Helper()
 	var models []string
@@ -50,17 +50,12 @@ func TestShortGatesRunOnTheShortGateModel(t *testing.T) {
 	}
 }
 
-// TestLongFormHelpersStayOnThePro guards the line the switch must not cross: a
-// helper that writes prose a reader keeps stays on the Pro model even though its
-// thinking is disabled too. The bar is what the call produces — a label or an id,
-// not prose — and not "thinking is off", which the forced final answer also does
-// and must never be downgraded by widening this routing.
-//
-// It asserts proseModel, not textModel. Those were the same constant while one
-// model served everything; at V2.6 they diverged, and a version of this test
-// that still read textModel would have gone on passing while the helper moved
-// to flash — which is where thinking-off prose gets arithmetic wrong.
-func TestLongFormHelpersStayOnThePro(t *testing.T) {
+// TestLongFormHelpersStayOnTheProseModel guards the line the short-gate routing
+// must not cross: a helper that writes prose a reader keeps runs on proseModel,
+// not shortGateModel. The bar is what the call produces — a label or an id, not
+// prose. It asserts proseModel, not textModel, so the test keeps meaning
+// something once the constants split again.
+func TestLongFormHelpersStayOnTheProseModel(t *testing.T) {
 	server, models := modelRecorder(t, `{"choices":[{"message":{"role":"assistant","content":"a description"},"finish_reason":"stop"}]}`)
 	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
 
@@ -72,6 +67,6 @@ func TestLongFormHelpersStayOnThePro(t *testing.T) {
 		t.Fatalf("recorded %d requests, want 1", len(*models))
 	}
 	if (*models)[0] != proseModel {
-		t.Fatalf("project description used %q, want the Pro model %q", (*models)[0], proseModel)
+		t.Fatalf("project description used %q, want the prose model %q", (*models)[0], proseModel)
 	}
 }

@@ -11,9 +11,9 @@ import (
 	"github.com/trick77/loom/internal/inference"
 )
 
-// imageDescribeMaxCompletionTokens caps the vision description. With thinking
-// disabled the whole budget goes to the description itself, so a few dense
-// paragraphs incl. transcribed text fit in 2048 — well under MiMo's 131072 limit.
+// imageDescribeMaxCompletionTokens caps the vision description. At the helper
+// effort nearly the whole budget goes to the description itself, so a few dense
+// paragraphs incl. transcribed text fit in 2048.
 const imageDescribeMaxCompletionTokens = 2048
 
 // imageDescribeTimeout bounds a single description call. Ingest runs detached
@@ -48,11 +48,10 @@ func (c *Client) DescribeImage(ctx context.Context, data []byte, mime string) (s
 		},
 	}}
 
-	// Thinking disabled mirrors the title utility: MiMo otherwise overthinks the
-	// task, burns the token budget on reasoning (risking finish_reason=length),
-	// and can echo its internal reasoning/response channel markers as literal text
-	// — which would poison the stored description. Describing is perception +
-	// transcription, not reasoning.
+	// The helper effort mirrors the title utility: deep thinking overthinks the
+	// task and burns the token budget on reasoning (risking
+	// finish_reason=length). Describing is perception + transcription, not
+	// reasoning.
 	reply, err := c.complete(ctx, c.visionModel, messages, imageDescribeMaxCompletionTokens, nil)
 	if err != nil {
 		return "", err

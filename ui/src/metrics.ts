@@ -35,19 +35,18 @@ function hasPositiveValue(value: number | undefined): value is number {
 const DOT_SEPARATOR = " \u00A0\u00B7\u00A0 ";
 
 /**
- * MiMo-V2.5-Pro's context window in tokens. Hardcoded here like the model name on
- * the backend (both are fixed) and used to show how full the context window is.
- */
-const CONTEXT_WINDOW_TOKENS = 1_048_576;
-
-/**
  * Format the context-window occupancy as a percentage (e.g. "5 %"), rounded to a
  * whole number with a narrow no-break space before the percent sign. contextTokens
  * is the final answer call's model-reported total_tokens — the true size of that
  * single generation's context — so this is bounded by the window by construction.
+ * contextWindowTokens is the chat model's window from /api/model (llmwire's
+ * profile), never a UI constant.
  */
-function contextUsagePercent(contextTokens: number): string {
-  return `${Math.round((contextTokens / CONTEXT_WINDOW_TOKENS) * 100)}${THIN_SPACE}%`;
+function contextUsagePercent(
+  contextTokens: number,
+  contextWindowTokens: number,
+): string {
+  return `${Math.round((contextTokens / contextWindowTokens) * 100)}${THIN_SPACE}%`;
 }
 
 /**
@@ -132,16 +131,17 @@ export function hasRenderableMetrics(message: Message): boolean {
 
 /**
  * Build the metrics line (effort · duration · ↑in (cached/c) · ↓out (reasoning/r) · context% ·
- * Σ $thread), or null when there is nothing renderable. The leading effort segment is
- * historical: loom sends no reasoning level any more, so new messages store none and the
- * line opens on the duration. It still renders for messages persisted before that change,
- * which is why the segment stays. The cost segment is the thread's running total
+ * Σ $thread), or null when there is nothing renderable. The leading effort segment is the
+ * reasoning level the turn sent; messages persisted while loom sent none open on the
+ * duration. The context % needs `contextWindowTokens` (from /api/model) and is omitted
+ * until it is known. The cost segment is the thread's running total
  * (`threadCostNanoUsd`, from threadCostThrough), never the turn's own figure: what the
  * reader wants next to the context gauge is what the conversation has cost so far.
  */
 export function buildMetricsString(
   message: Message,
   threadCostNanoUsd?: number,
+  contextWindowTokens?: number,
 ): string | null {
   if (!hasRenderableMetrics(message)) return null;
   const durationMs = message.durationMs as number;
@@ -167,8 +167,13 @@ export function buildMetricsString(
       `↓${THIN_SPACE}${groupThousands(message.completionTokens)}${reasoningSuffix(message)}`,
     );
   }
-  if (hasPositiveValue(message.contextTokens)) {
-    segments.push(contextUsagePercent(message.contextTokens));
+  if (
+    hasPositiveValue(message.contextTokens) &&
+    hasPositiveValue(contextWindowTokens)
+  ) {
+    segments.push(
+      contextUsagePercent(message.contextTokens, contextWindowTokens),
+    );
   }
   if (hasPositiveValue(threadCostNanoUsd)) {
     segments.push(`Σ${THIN_SPACE}${formatCostNanoUsd(threadCostNanoUsd)}`);

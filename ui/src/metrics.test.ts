@@ -22,6 +22,9 @@ function assistant(extra: Partial<Message>): Message {
   };
 }
 
+// The chat model's context window as /api/model reports it (llmwire profile).
+const WINDOW = 1_000_000;
+
 test("formatDuration shows whole seconds up to 120s, then m s above", () => {
   expect(formatDuration(250)).toBe("250ms");
   expect(formatDuration(5200)).toBe("5s");
@@ -64,7 +67,7 @@ test("hasRenderableMetrics requires duration and any token usage", () => {
 test("buildMetricsString omits the lead segment when the message stored no reasoning effort", () => {
   const line = buildMetricsString(
     assistant({
-      model: "mimo",
+      model: "glm-5.3-flash",
       durationMs: 5000,
       promptTokens: 49498,
       completionTokens: 1502,
@@ -73,10 +76,12 @@ test("buildMetricsString omits the lead segment when the message stored no reaso
       cachedTokens: 38208,
       reasoningTokens: 205,
     }),
+    undefined,
+    WINDOW,
   );
   // The model name is never shown; with no reasoningEffort the line starts at duration.
   // The % comes from contextTokens (final call's model-reported total), NOT the
-  // accumulated totalTokens (249000): 51000 / 1048576 = 4.86% -> "5 %"
+  // accumulated totalTokens (249000): 51000 / 1000000 = 5.1% -> "5 %"
   expect(line).toBe("5s  ·  ↑ 49 498 (38 208/c)  ·  ↓ 1 502 (205/r)  ·  5 %");
 });
 
@@ -98,6 +103,7 @@ test("buildMetricsString ends with the thread's running cost, and omits it when 
       costNanoUsd: 3_141_593,
     }),
     3_141_593,
+    WINDOW,
   );
   expect(priced).toBe("5s  ·  ↑ 1 000  ·  ↓ 200  ·  5 %  ·  Σ $0.01");
   const unpriced = buildMetricsString(
@@ -109,7 +115,7 @@ test("buildMetricsString ends with the thread's running cost, and omits it when 
 test("buildMetricsString leads with a stored reasoning effort, without the model or parentheses", () => {
   const line = buildMetricsString(
     assistant({
-      model: "mimo-v2.5-pro",
+      model: "glm-5.3-flash",
       reasoningEffort: "high",
       durationMs: 5000,
       promptTokens: 100000,
@@ -117,8 +123,10 @@ test("buildMetricsString leads with a stored reasoning effort, without the model
       totalTokens: 104858,
       contextTokens: 104858,
     }),
+    undefined,
+    WINDOW,
   );
-  // 104858 / 1048576 = 10.0% -> "10 %"
+  // 104858 / 1000000 = 10.5% -> "10 %"
   expect(line).toBe("high  ·  5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10 %");
 });
 
@@ -143,6 +151,8 @@ test("buildMetricsString shows prompt-only token burn", () => {
       totalTokens: 52429,
       contextTokens: 52429,
     }),
+    undefined,
+    WINDOW,
   );
   expect(line).toBe("1s  ·  ↑ 52 429  ·  5 %");
 });
@@ -183,9 +193,23 @@ test("buildMetricsString formats context usage above 100% without clamping", () 
       completionTokens: 100,
       contextTokens: 2_000_000,
     }),
+    undefined,
+    WINDOW,
   );
-  // 2 000 000 / 1 048 576 = 190.7% -> "191 %"
-  expect(line).toContain("191 %");
+  // 2 000 000 / 1 000 000 = 200% -> "200 %"
+  expect(line).toContain("200 %");
+});
+
+test("buildMetricsString omits the context % until the context window is known", () => {
+  // The window comes from /api/model; before it arrives there is no honest
+  // denominator, so the segment is left out rather than guessed.
+  const line = buildMetricsString(
+    assistant({ durationMs: 1000, completionTokens: 100, contextTokens: 50_000 }),
+  );
+  expect(line).not.toContain("%");
+  expect(line).toBe(
+    buildMetricsString(assistant({ durationMs: 1000, completionTokens: 100 })),
+  );
 });
 
 test("buildMetricsString returns null without renderable metrics", () => {
