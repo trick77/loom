@@ -6,71 +6,82 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/inference"
 )
 
-// EmbedModel is the embedding model, a constant of the build: the vector
-// column width is fixed by the migration that created it (see EmbedDim), so
-// swapping the model is a re-index, not a config change. The profile ships the
-// host; the key comes from LLMWIRE_OPENAI_API_KEY, the variable the profile's
-// provider names.
-const EmbedModel = "text-embedding-3-small"
-
 const defaultEmbedTimeout = 1 * time.Minute
 
-// embedProfile is the model's llmwire profile, resolved once so a typo in the
-// constant or a model that is not an embeddings model fails at init.
-var embedProfile = mustEmbedProfile()
+// EmbedModel is the configured embedding model as its llmwire profile states
+// it: the vector width the vec_chunks table must match, and the key variable
+// its provider reads.
+type EmbedModel struct {
+	ID     string
+	Width  int
+	KeyEnv string
+}
 
-func mustEmbedProfile() *llmwire.Profile {
-	p, err := llmwire.Default().LookupEmbedding(EmbedModel)
-	if err != nil {
-		panic(err)
+// ResolveEmbedModel looks id up as an embedding model. An unknown id, or one
+// that is not an embedding model, is an error naming the valid choices.
+func ResolveEmbedModel(reg *llmwire.Registry, id string) (EmbedModel, error) {
+	if reg == nil {
+		reg = llmwire.Default()
 	}
-	return p
+	p, err := reg.LookupEmbedding(id)
+	if err != nil {
+		return EmbedModel{}, fmt.Errorf("rag: embedding model: %w; valid choices are %s",
+			err, strings.Join(embeddingModels(reg), ", "))
+	}
+	return EmbedModel{ID: p.ID, Width: p.Embedding.DefaultDimensions, KeyEnv: p.APIKeyEnv()}, nil
 }
 
-// EmbedDim is the vector width the model returns, from its profile. The
-// sqlite-vec column must match it; a test pins the migration DDL to this.
-func EmbedDim() int {
-	return embedProfile.Embedding.DefaultDimensions
-}
-
-// EmbedAPIKeyEnv is the variable the embeddings key is read from
-// (llmwire.FromEnv): the profile's provider decides the name. A set value
-// turns embeddings on.
-func EmbedAPIKeyEnv() string {
-	return embedProfile.APIKeyEnv()
+func embeddingModels(reg *llmwire.Registry) []string {
+	var out []string
+	for _, id := range reg.Models() {
+		if _, err := reg.LookupEmbedding(id); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // EmbedClient generates embeddings through llmwire.
 type EmbedClient struct {
-	wire *llmwire.Client
+	wire  *llmwire.Client
+	model string
 }
 
-// EmbedConfig holds the embedding client settings loom owns. BaseURL is an
-// explicit override for a test fake and bypasses the environment.
+// EmbedConfig holds the embedding client settings loom owns. Model is the
+// llmwire registry id; Registry is nil for llmwire's default (tests pass a
+// synthetic one). BaseURL is an explicit override for a test fake and bypasses
+// the environment.
 type EmbedConfig struct {
-	BaseURL string
-	APIKey  string
+	Model    string
+	Registry *llmwire.Registry
+	BaseURL  string
+	APIKey   string
 }
 
-// NewEmbedClient builds an EmbedClient. httpClient is optional. The error is a
-// missing LLMWIRE_OPENAI_API_KEY, named.
+// NewEmbedClient builds an EmbedClient. httpClient is optional. The error is
+// an unusable model or a missing key variable, named.
 func NewEmbedClient(cfg EmbedConfig, httpClient *http.Client) (*EmbedClient, error) {
-	wire, err := llmwire.FromEnv(EmbedModel, llmwire.Config{
+	if _, err := ResolveEmbedModel(cfg.Registry, cfg.Model); err != nil {
+		return nil, err
+	}
+	wire, err := llmwire.FromEnv(cfg.Model, llmwire.Config{
 		BaseURL:     cfg.BaseURL,
 		APIKey:      cfg.APIKey,
 		HTTPClient:  httpClient,
 		CallTimeout: defaultEmbedTimeout,
+		Registry:    cfg.Registry,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &EmbedClient{wire: wire}, nil
+	return &EmbedClient{wire: wire, model: cfg.Model}, nil
 }
 
 // EmbeddingUsage is one call's token accounting. Present says the endpoint
@@ -120,13 +131,13 @@ func (c *EmbedClient) Embed(ctx context.Context, inputs []string) (EmbedResult, 
 	start := time.Now()
 	inputCount := slog.Int("input_count", len(inputs))
 
-	resp, warnings, err := c.wire.Embed(ctx, llmwire.EmbedRequest{Model: EmbedModel, Inputs: inputs})
+	resp, warnings, err := c.wire.Embed(ctx, llmwire.EmbedRequest{Model: c.model, Inputs: inputs})
 	for _, w := range warnings {
-		slog.DebugContext(ctx, "embed: wire warning", slog.String("model", EmbedModel), slog.String("warning", w.String()))
+		slog.DebugContext(ctx, "embed: wire warning", slog.String("model", c.model), slog.String("warning", w.String()))
 	}
 	if err != nil {
 		err = embedError(err)
-		inference.LogFailed(ctx, EmbedModel, time.Since(start), err, inputCount)
+		inference.LogFailed(ctx, c.model, time.Since(start), err, inputCount)
 		return EmbedResult{}, err
 	}
 	usage := usageFromWire(resp.Usage)
@@ -144,7 +155,7 @@ func (c *EmbedClient) Embed(ctx context.Context, inputs []string) (EmbedResult, 
 	if duration == 0 {
 		duration = time.Since(start)
 	}
-	inference.LogCompleted(ctx, EmbedModel, duration, attrs...)
+	inference.LogCompleted(ctx, c.model, duration, attrs...)
 	return EmbedResult{Vectors: resp.Vectors, Usage: usage}, nil
 }
 

@@ -96,7 +96,12 @@ type Config struct {
 	ChatTimeout             time.Duration
 	ChatIdleTimeout         time.Duration
 	ChatLogDir              string
-	EmbedEnabled            bool
+	// EmbedModel is BACKEND_EMBED_MODEL resolved against llmwire's registry;
+	// embeddings are on when it is set and its key is set, EmbedMissing names
+	// what is not.
+	EmbedModel   rag.EmbedModel
+	EmbedEnabled bool
+	EmbedMissing string
 	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
 	// turn (0 disables it, falling back to pure RAG retrieval).
 	KnowledgeInlineTokenBudget int
@@ -197,6 +202,27 @@ func loadChatModels(cfg *Config) error {
 	return nil
 }
 
+// loadEmbedModel resolves BACKEND_EMBED_MODEL and decides whether embeddings
+// (document RAG) are on, the way loadChatModels does for chat.
+func loadEmbedModel(cfg *Config) error {
+	id := strings.TrimSpace(env("BACKEND_EMBED_MODEL", ""))
+	if id == "" {
+		cfg.EmbedMissing = "BACKEND_EMBED_MODEL"
+		return nil
+	}
+	m, err := rag.ResolveEmbedModel(nil, id)
+	if err != nil {
+		return err
+	}
+	cfg.EmbedModel = m
+	if strings.TrimSpace(env(m.KeyEnv, "")) == "" {
+		cfg.EmbedMissing = m.KeyEnv
+		return nil
+	}
+	cfg.EmbedEnabled = true
+	return nil
+}
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
@@ -206,7 +232,6 @@ func Load() (Config, error) {
 		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
-		EmbedEnabled:            strings.TrimSpace(env(rag.EmbedAPIKeyEnv(), "")) != "",
 		ImageGenBaseURL:         env("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
 		ImageGenAPIKey:          env("BACKEND_IMAGE_GEN_API_KEY", ""),
 		ImageGenModel:           env("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),
@@ -236,6 +261,9 @@ func Load() (Config, error) {
 		},
 	}
 	if err := loadChatModels(&cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadEmbedModel(&cfg); err != nil {
 		return Config{}, err
 	}
 	imageGenPollTimeout, err := time.ParseDuration(env("BACKEND_IMAGE_GEN_POLL_TIMEOUT", defaultImageGenPollTimeout.String()))

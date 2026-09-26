@@ -8,7 +8,6 @@ import (
 
 	"github.com/trick77/loom/internal/config"
 	"github.com/trick77/loom/internal/mcp"
-	"github.com/trick77/loom/internal/rag"
 )
 
 type startupRuntime struct {
@@ -73,9 +72,9 @@ func chatCapability(cfg config.Config) startupCapability {
 
 func embeddingsCapability(cfg config.Config) startupCapability {
 	if !cfg.EmbedEnabled {
-		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set " + rag.EmbedAPIKeyEnv()}
+		return startupCapability{Name: "embeddings", Status: "disabled", Detail: "set " + cfg.EmbedMissing}
 	}
-	return startupCapability{Name: "embeddings", Status: "enabled", Detail: "model=" + rag.EmbedModel}
+	return startupCapability{Name: "embeddings", Status: "enabled", Detail: "model=" + cfg.EmbedModel.ID}
 }
 
 func tikaCapability(cfg config.Config) startupCapability {

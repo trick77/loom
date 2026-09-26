@@ -42,7 +42,8 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - Runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and
   `.env.example`. Required to boot: `BACKEND_SESSION_SECRET` and `BACKEND_AUTH_MODE` (`oidc` with its
   issuer/client settings, or `dev` on loopback).
-- Models are config: `BACKEND_CHAT_MODEL` (+ optional `BACKEND_GATE_MODEL`, `BACKEND_VISION_MODEL`),
+- Models are config: `BACKEND_CHAT_MODEL` (+ optional `BACKEND_GATE_MODEL`, `BACKEND_VISION_MODEL`)
+  and `BACKEND_EMBED_MODEL` (width change → vector table rebuilt at boot, background re-embed),
   llmwire registry ids checked at boot (unknown/unfit id → boot error listing valid ids). Keys are
   llmwire's `LLMWIRE_<PROVIDER>_API_KEY` for each model's provider; compose loads `.env` via
   `env_file`, so a swap is `.env` only. `LLMWIRE_EMULATE_OPENCODE=true` presents every llmwire

@@ -324,14 +324,28 @@ func anyChatModel(t *testing.T) (id, keyEnv string) {
 	return ids[0], p.APIKeyEnv()
 }
 
+// anyEmbedModel is a registry embedding model, found at run time so no test
+// names a model.
+func anyEmbedModel(t *testing.T) rag.EmbedModel {
+	t.Helper()
+	reg := llmwire.Default()
+	for _, id := range reg.Models() {
+		if m, err := rag.ResolveEmbedModel(reg, id); err == nil {
+			return m
+		}
+	}
+	t.Skip("llmwire's registry has no embedding model")
+	return rag.EmbedModel{}
+}
+
 // Chat is on when a chat model is configured and every key its roles' providers
-// read is set; embeddings when their key is set.
+// read is set.
 func TestLoad_modelCapabilitiesFollowModelsAndKeys(t *testing.T) {
 	requiredEnv(t)
 	model, keyEnv := anyChatModel(t)
 	t.Setenv("BACKEND_CHAT_MODEL", "")
 	t.Setenv(keyEnv, "k1")
-	t.Setenv(rag.EmbedAPIKeyEnv(), "")
+	t.Setenv("BACKEND_EMBED_MODEL", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -351,16 +365,44 @@ func TestLoad_modelCapabilitiesFollowModelsAndKeys(t *testing.T) {
 	}
 
 	t.Setenv(keyEnv, "k1")
-	t.Setenv(rag.EmbedAPIKeyEnv(), " ")
 	cfg, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.ChatEnabled || cfg.EmbedEnabled {
-		t.Fatalf("chat key only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
+		t.Fatalf("chat only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
 	}
 	if cfg.ChatModels.Info().ID != model {
 		t.Fatalf("resolved chat model = %q, want %q", cfg.ChatModels.Info().ID, model)
+	}
+}
+
+// Embeddings are on when an embedding model is configured and its key is set;
+// an id that is not an embedding model fails boot with the valid choices.
+func TestLoad_embeddingsFollowTheModelAndItsKey(t *testing.T) {
+	requiredEnv(t)
+	m := anyEmbedModel(t)
+	t.Setenv("BACKEND_EMBED_MODEL", "")
+	t.Setenv(m.KeyEnv, "k1")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EmbedEnabled || cfg.EmbedMissing != "BACKEND_EMBED_MODEL" {
+		t.Fatalf("no model: enabled=%v missing=%q", cfg.EmbedEnabled, cfg.EmbedMissing)
+	}
+	t.Setenv("BACKEND_EMBED_MODEL", m.ID)
+	t.Setenv(m.KeyEnv, " ")
+	if cfg, err = Load(); err != nil || cfg.EmbedEnabled || cfg.EmbedMissing != m.KeyEnv {
+		t.Fatalf("no key: enabled=%v missing=%q err=%v, want off, %s", cfg.EmbedEnabled, cfg.EmbedMissing, err, m.KeyEnv)
+	}
+	t.Setenv(m.KeyEnv, "k1")
+	if cfg, err = Load(); err != nil || !cfg.EmbedEnabled || cfg.EmbedModel != m {
+		t.Fatalf("model and key: enabled=%v model=%+v err=%v, want on, %+v", cfg.EmbedEnabled, cfg.EmbedModel, err, m)
+	}
+	t.Setenv("BACKEND_EMBED_MODEL", "no-such-model")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "valid choices") {
+		t.Fatalf("unknown model: err = %v, want one listing the valid choices", err)
 	}
 }
 

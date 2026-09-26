@@ -10,6 +10,7 @@ import (
 	"github.com/trick77/loom/internal/config"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/rag"
 )
 
 // testChatModels resolves the roles onto llmwiretest's synthetic model, so no
@@ -49,13 +50,14 @@ func TestLogStartupCapabilitiesWarnsWithoutChatKeyOutsideDev(t *testing.T) {
 
 func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	items := startupCapabilities(config.Config{
-		UsersDir:    "/data/users",
-		TikaURL:     "http://tika:9998",
-		ChatMissing: "BACKEND_CHAT_MODEL",
+		UsersDir:     "/data/users",
+		TikaURL:      "http://tika:9998",
+		ChatMissing:  "BACKEND_CHAT_MODEL",
+		EmbedMissing: "BACKEND_EMBED_MODEL",
 	}, mcp.Config{}, startupRuntime{DocToolCount: 5})
 
 	assertCapability(t, items, "chat", "disabled", "BACKEND_CHAT_MODEL")
-	assertCapability(t, items, "embeddings", "disabled", "LLMWIRE_OPENAI_API_KEY")
+	assertCapability(t, items, "embeddings", "disabled", "BACKEND_EMBED_MODEL")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
 	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_API_KEY")
@@ -69,6 +71,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 		ChatEnabled:    true,
 		ChatModels:     testChatModels(t),
 		EmbedEnabled:   true,
+		EmbedModel:     rag.EmbedModel{ID: llmwiretest.EmbedModel},
 		TikaURL:        "http://tika:9998",
 		UsersDir:       "/data/users",
 		TavilyAPIKey:   "tavily-key",
@@ -81,7 +84,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
 	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)
-	assertCapability(t, items, "embeddings", "enabled", "text-embedding-3-small")
+	assertCapability(t, items, "embeddings", "enabled", "model="+llmwiretest.EmbedModel)
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")
 	assertCapability(t, items, "Image generation", "enabled", "model=fal-ai/flux-2-pro tools=1")

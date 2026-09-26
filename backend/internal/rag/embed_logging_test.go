@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/loom/internal/inference"
 )
 
@@ -85,7 +86,7 @@ func TestEmbedClient_Embed_logsCompletedInferenceWithoutInputs(t *testing.T) {
 		t.Errorf("message = %q, want %q", line.message, "llm inference completed")
 	}
 	for key, want := range map[string]string{
-		"model": EmbedModel, "user_id": "user-1", "username": "jan",
+		"model": llmwiretest.EmbedModel, "user_id": "user-1", "username": "jan",
 		"thread_id": "thread-1", "purpose": "embed_query",
 	} {
 		if got := line.attrs[key].String(); got != want {

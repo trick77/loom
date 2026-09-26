@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/trick77/llmwire/llmwiretest"
 )
 
 func TestEmbedClient_Embed_postsInputsAndReturnsVectors(t *testing.T) {
@@ -43,8 +45,8 @@ func TestEmbedClient_Embed_postsInputsAndReturnsVectors(t *testing.T) {
 	}
 	vecs := result.Vectors
 
-	if gotModel != "text-embedding-3-small" {
-		t.Errorf("model = %q, want text-embedding-3-small", gotModel)
+	if gotModel != llmwiretest.EmbedModel {
+		t.Errorf("model = %q, want %q", gotModel, llmwiretest.EmbedModel)
 	}
 	if gotAuth != "Bearer sk-test" {
 		t.Errorf("auth = %q, want Bearer sk-test", gotAuth)
