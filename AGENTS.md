@@ -55,8 +55,8 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - Never edit an already-applied migration — add a new one.
 - **vec0 never frees a deleted vector**: the chunk stays, inserts append, every KNN reads the partition's
   whole chunks. rongo hit minutes per search at 46k vectors in 380 chunks (46 needed).
-  `CompactVectorsAtBoot` rebuilds past 2x, BOOT ONLY: the rebuild holds the write lock ~10 s per 14k
-  vectors, past the busy timeout. Deletes only warn.
+  `CompactVectorsAtBoot` rebuilds past 2x, BOOT ONLY: the rebuild holds the write lock for minutes
+  (rongo production: 8m33s for 46k vectors), far past the busy timeout. Deletes only warn.
 
 ## Frontend
 - Vite + React + TS + Tailwind, **direction A (Warm Editorial)**: tokens are `--ui-*` CSS variables in
