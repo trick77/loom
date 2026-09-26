@@ -328,7 +328,7 @@ func (s *Store) ReconcileLegacyDocumentScopes(ctx context.Context) error {
 		return fmt.Errorf("collect stranded chunks: %w", err)
 	}
 	for _, st := range strays {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid = ?`, st.rowid); err != nil {
+		if _, err := tx.ExecContext(ctx, deleteVecRow, st.rowid); err != nil {
 			return fmt.Errorf("delete stranded embedding %d: %w", st.rowid, err)
 		}
 	}
