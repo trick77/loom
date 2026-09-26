@@ -280,7 +280,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		if !ok {
 			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}
-		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalAnswerInference(inference, "chat_final_retry", maxToolRounds+2), nil)
+		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalRetryInference(inference, result), nil)
 		b.addResult(titles, result)
 		if persistInterruptedPartial(result, err) {
 			return b.result(result, artifacts, ""), nil
@@ -475,6 +475,15 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writ
 		return b.result(result, nil, ""), nil
 	}
 	return b.result(result, nil, ""), err
+}
+
+// finalRetryInference picks the metadata for the retry of an empty forced final
+// answer. One that ran out at the cap spent it reasoning, so the retry asks for
+// the least reasoning; the same request again would run out the same way.
+func finalRetryInference(metadata llm.InferenceMetadata, first llm.StreamResult) llm.InferenceMetadata {
+	metadata = finalAnswerInference(metadata, "chat_final_retry", maxToolRounds+2)
+	metadata.LeastReasoning = first.FinishReason == "length"
+	return metadata
 }
 
 // incognitoRetryInference picks the metadata for the incognito empty-answer

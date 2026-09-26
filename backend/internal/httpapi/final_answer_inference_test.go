@@ -26,6 +26,22 @@ func TestFinalAnswerInferenceWidensBudget(t *testing.T) {
 	}
 }
 
+// A forced final answer that ran out at the cap spent it reasoning; its retry
+// asks for the least reasoning, or it runs out the same way. Any other empty
+// final retries at the normal level.
+func TestFinalRetryInferenceAsksForLeastReasoningOnlyAfterCapHit(t *testing.T) {
+	base := llm.InferenceMetadata{ThreadID: "thr_1"}
+
+	capped := finalRetryInference(base, llm.StreamResult{FinishReason: "length"})
+	if !capped.LeastReasoning || capped.MaxCompletionTokens != finalAnswerMaxCompletionTokens || capped.Purpose != "chat_final_retry" {
+		t.Fatalf("after cap hit: %+v, want least reasoning on the final budget", capped)
+	}
+	plain := finalRetryInference(base, llm.StreamResult{FinishReason: "stop"})
+	if plain.LeastReasoning || plain.MaxCompletionTokens != finalAnswerMaxCompletionTokens {
+		t.Fatalf("after stop: %+v, want the normal level on the final budget", plain)
+	}
+}
+
 // An incognito first turn that hit the cap spent it on reasoning, so its retry
 // gets the wider budget; any other empty turn retries unchanged.
 func TestIncognitoRetryInferenceWidensOnlyAfterCapHit(t *testing.T) {

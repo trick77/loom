@@ -30,6 +30,9 @@ services:
       - path: .env
         required: false
     environment:
+      # No Tika sidecar in this stack: keep document RAG off even when .env
+      # names an embedding model for the full stack.
+      BACKEND_EMBED_MODEL: ""
       BACKEND_AUTH_MODE: dev
       BACKEND_ADDR: "127.0.0.1:8080"
       BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-debug}"
