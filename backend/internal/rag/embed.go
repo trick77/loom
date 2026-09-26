@@ -149,12 +149,12 @@ func (c *EmbedClient) Embed(ctx context.Context, inputs []string) (EmbedResult, 
 }
 
 // embedError phrases a wire failure the way the rest of loom reads it: a
-// status error keeps the "embedding failed with status N" wording the ingest
-// path and its tests match on; everything else keeps llmwire's own naming.
+// status error reads "embedding failed with status N"; every error stays
+// wrapped so llmwire's classes remain reachable.
 func embedError(err error) error {
 	var apiErr *llmwire.APIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode != 0 {
-		return fmt.Errorf("embedding failed with status %d: %s", apiErr.StatusCode, apiErr.Message)
+		return inference.WireError(fmt.Sprintf("embedding failed with status %d: %s", apiErr.StatusCode, apiErr.Message), err)
 	}
 	return fmt.Errorf("embed request: %w", err)
 }

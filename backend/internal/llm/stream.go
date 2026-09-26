@@ -218,9 +218,6 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	result.Model = model
 	result.ReasoningEffort = effort
 	result.CostNanoUSD, result.CostPriced = costFromWire(res.Usage)
-	if !result.CostPriced {
-		noteUnpriced(ctx, model)
-	}
 	observeInference(ctx, model, result.Duration, result.Usage, result.FinishReason, progress()...)
 	RecordCost(ctx, result.CostNanoUSD, result.CostPriced)
 	return result, nil

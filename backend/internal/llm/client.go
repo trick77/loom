@@ -275,9 +275,6 @@ func (c *Client) complete(ctx context.Context, model string, messages []Message,
 	}
 	usage := usageFromWire(resp.Usage)
 	cost, priced := costFromWire(resp.Usage)
-	if !priced {
-		noteUnpriced(ctx, model)
-	}
 	reply := completion{Content: resp.Content, FinishReason: resp.FinishReason, Usage: usage}
 	var extra []slog.Attr
 	if decided != nil {
