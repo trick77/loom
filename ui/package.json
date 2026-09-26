@@ -41,7 +41,7 @@
     "jsdom": "^30.0.1",
     "oxlint": "^1.85.0",
     "postcss": "^8.5.15",
-    "prettier": "3.9.7",
+    "prettier": "3.9.9",
     "tailwindcss": "^4.3.0",
     "typescript": "^7.0.2",
     "vite": "^8.0.16",
