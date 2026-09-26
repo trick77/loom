@@ -82,21 +82,6 @@ func TestIngester_ReembedMissingSkipsAChunkTheModelRefuses(t *testing.T) {
 	}
 }
 
-// A model that refuses every input (it rejects the model or its parameters)
-// is not a finished run: it errors so the caller retries, instead of
-// declaring the corpus done while none of it is retrievable.
-func TestIngester_ReembedMissingFailsWhenEveryChunkIsRefused(t *testing.T) {
-	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
-	ctx := context.Background()
-	seedEmbeddedDocument(t, s, "d1", "poison")
-	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ing.ReembedMissing(ctx); err == nil {
-		t.Fatal("ReembedMissing succeeded while every chunk was refused")
-	}
-}
-
 // Each embedding call stores its vectors right away: a refused batch never
 // throws away the batches before it (they were already billed).
 func TestIngester_ReembedMissingKeepsBatchesBeforeARefusal(t *testing.T) {
@@ -215,6 +200,77 @@ func TestIngester_ReembedMissingDoesNotRecordAnOutageAsRefusals(t *testing.T) {
 	emb.down = false
 	if got, err := ing.ReembedMissing(ctx); err != nil || got != 1 {
 		t.Fatalf("after recovery: n=%d err=%v, want the chunk embedded", got, err)
+	}
+}
+
+// Right after a rebuild no chunk has a vector. If the only chunk is one the
+// model refuses, the run still settles: the probe needs no stored chunk, and
+// the refusal is recorded instead of failing every retry.
+func TestIngester_ReembedMissingSettlesWhenOnlyARefusedChunkExists(t *testing.T) {
+	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "poison")
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ing.ReembedMissing(ctx); err != nil {
+		t.Fatalf("ReembedMissing: %v, want the refusal recorded", err)
+	}
+	if n, err := ing.ReembedMissing(ctx); err != nil || n != 0 {
+		t.Fatalf("second run: n=%d err=%v, want a no-op", n, err)
+	}
+}
+
+// flakyEmbedder refuses every input as a bad request for its first failures
+// calls, then works: a short outage, not bad chunks.
+type flakyEmbedder struct {
+	fakeEmbedder
+	failures int
+}
+
+func (e *flakyEmbedder) Embed(ctx context.Context, inputs []string) (EmbedResult, error) {
+	if e.failures > 0 {
+		e.failures--
+		return EmbedResult{}, &llmwire.APIError{StatusCode: 400, Message: "temporarily refused", Class: llmwire.ErrBadRequest}
+	}
+	return e.fakeEmbedder.Embed(ctx, inputs)
+}
+
+// A chunk refused during a short outage is retried once the model answers the
+// probe; it gets its vector and is never recorded as refused.
+func TestIngester_ReembedMissingConfirmsRefusalsAfterTheProbe(t *testing.T) {
+	ing, s := newIngester(t, fakeExtractor{}, &flakyEmbedder{failures: 1}, fakeOpener{})
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "alpha")
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	n, err := ing.ReembedMissing(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("n=%d err=%v, want the chunk embedded on confirmation", n, err)
+	}
+	var refused int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM vector_refused`).Scan(&refused); err != nil || refused != 0 {
+		t.Fatalf("recorded %d refusals, want 0", refused)
+	}
+}
+
+// The probe is a health check of the model, not a user's embedding: it is
+// never booked on anyone.
+func TestIngester_ProbeIsNotBilled(t *testing.T) {
+	usage := &fakeUsageRecorder{}
+	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
+	ing.SetUsageRecorder(usage)
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "poison")
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ing.ReembedMissing(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if usage.calls != 0 {
+		t.Fatalf("usage recorded %d times, want none (only the probe succeeded)", usage.calls)
 	}
 }
 
