@@ -797,9 +797,6 @@ export function ThreadShell({
     // Id of the optimistic user bubble until the server confirms it; the catch reads
     // this to decide whether to drop the placeholder, so it must outlive the try block.
     let optimisticUserMessageID: string | null = null;
-    // Shows whatever the typewriter still holds; see createTurnHandlers. Set once
-    // the turn's handlers exist, called on every way out of the turn.
-    let finishTurn = () => {};
     // The thread this run belongs to, known up front for an existing thread and
     // filled in below for one created by this send. Whether the user is still
     // looking at it decides the writes into `messages`, which is a single array
@@ -1004,7 +1001,6 @@ export function ThreadShell({
           }
         },
       });
-      finishTurn = turn.finish;
       const documentAttachmentIds = options.attachments
         .filter((attachment) => attachment.documentId !== undefined)
         .map((attachment) => attachment.documentId!);
@@ -1054,9 +1050,6 @@ export function ThreadShell({
           pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
         },
       );
-      // The stream can end while the answer is still being typed out; the run
-      // stays live until it has been.
-      await turn.drained(abortController.signal);
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThread(current, fallbackThread));
@@ -1071,7 +1064,6 @@ export function ThreadShell({
         }
       }
     } catch (error) {
-      finishTurn();
       if (error instanceof DOMException && error.name === "AbortError") return;
       // A stop the user asked for closes the stream server-side before the
       // client aborts its fetch, which reads as an interruption; it is not one.
@@ -1114,7 +1106,6 @@ export function ThreadShell({
         },
       );
     } finally {
-      finishTurn();
       endStreamRun(runKey, {
         keepFailedTurnVisible: keepFailedTurnVisible && targetThreadID !== null,
         controller: abortController,
@@ -1208,9 +1199,7 @@ export function ThreadShell({
         turn.handlers,
         abortController.signal,
       );
-      await turn.drained(abortController.signal);
     } catch (error) {
-      turn.finish();
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (abortController.signal.aborted) return;
       keepFailedTurnVisible = true;
@@ -1232,7 +1221,6 @@ export function ThreadShell({
         (message) => patchStreamRun(INCOGNITO_RUN_KEY, { error: message }),
       );
     } finally {
-      turn.finish();
       endStreamRun(INCOGNITO_RUN_KEY, {
         keepFailedTurnVisible,
         controller: abortController,
