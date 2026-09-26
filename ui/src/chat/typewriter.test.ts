@@ -192,4 +192,14 @@ describe("shouldPace", () => {
   it("is off under the test runner", () => {
     expect(shouldPace()).toBe(false);
   });
+  it("is on in a browser, whatever the motion setting", () => {
+    vi.stubEnv("MODE", "production");
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    try {
+      expect(shouldPace()).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
 });
