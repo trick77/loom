@@ -4,40 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 )
+
+// deleteVecRow deletes one embedding. vec0 resolves `rowid = ?` as a point
+// lookup; `rowid IN (…)` outside a KNN query falls back to a fullscan of every
+// user's vectors, so embeddings are always deleted one row at a time.
+const deleteVecRow = `DELETE FROM vec_chunks WHERE rowid = ?`
 
 // deleteChunksTx removes a document's chunks and their vec rows within tx. The
 // vec rows must be deleted explicitly (CASCADE/triggers cannot reach a vtab).
 func deleteChunksTx(ctx context.Context, tx *sql.Tx, userID, documentID string) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM chunks WHERE user_id = ? AND document_id = ?`, userID, documentID)
+	ids, err := collectChunkRowids(ctx, tx, `SELECT id FROM chunks WHERE user_id = ? AND document_id = ?`, userID, documentID)
 	if err != nil {
 		return err
 	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		ids = append(ids, id)
-	}
-	_ = rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	// One statement for every vector row instead of one per chunk. The ids were
-	// collected above rather than expressed as a subquery because vec0 resolves
-	// each rowid through its own xUpdate; the IN list keeps that to one round
-	// trip through the driver.
-	if len(ids) > 0 {
-		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-		args := make([]any, 0, len(ids))
-		for _, id := range ids {
-			args = append(args, id)
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid IN (`+placeholders+`)`, args...); err != nil { //nolint:gosec // only the ?-placeholder list is interpolated; every value is bound
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx, deleteVecRow, id); err != nil {
 			return err
 		}
 	}
@@ -186,7 +168,7 @@ func (s *Store) deleteScopeDocuments(ctx context.Context, scope string, args ...
 		return fmt.Errorf("collect scope chunks: %w", err)
 	}
 	for _, id := range rowids {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid = ?`, id); err != nil {
+		if _, err := tx.ExecContext(ctx, deleteVecRow, id); err != nil {
 			return fmt.Errorf("delete scope embedding %d: %w", id, err)
 		}
 	}
