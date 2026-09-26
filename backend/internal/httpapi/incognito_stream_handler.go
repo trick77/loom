@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -84,8 +83,12 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 
 	assistantResult, err := s.runIncognitoAssistantTurn(streamCtx, stream, titles, history, inference)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if streamCanceled(streamCtx, err) {
+			cancelSource, cancelReason := streamCancelDetails(streamCtx)
 			slog.Info("incognito stream canceled",
+				"cancel_source", cancelSource,
+				"reason", cancelReason,
+				"err", err,
 				"content_bytes", len(assistantResult.Content),
 				"reasoning_bytes", len(assistantResult.ReasoningContent))
 			return

@@ -161,6 +161,10 @@ func run() error {
 		if err := reconcileVectorWidth(context.Background(), ragStore, cfg.EmbedModel); err != nil {
 			return err
 		}
+		// vec0 never frees a deleted vector's storage, and every search reads
+		// all of it (rag.CompactVectors). Compacted here, before the listener
+		// opens: the rebuild holds the write lock, which at boot blocks nobody.
+		ragStore.CompactVectorsAtBoot(context.Background())
 		tikaClient := documents.NewTikaClient(documents.TikaConfig{BaseURL: cfg.TikaURL})
 		// Tika is an essential dependency of document RAG: fail fast at boot rather
 		// than surface opaque extraction errors on the first upload.

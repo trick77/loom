@@ -239,6 +239,10 @@ func (s *Service) Index(ctx context.Context, userID, documentID string) error {
 		}
 		_ = s.store.UpdateStatus(context.WithoutCancel(ctx), userID, documentID, rag.StatusError, reason+err.Error())
 	}
+	if err == nil {
+		// A re-index replaced the document's vectors; the old ones' storage stays.
+		s.store.WarnVectorBloat(ctx, "user", userID, "document", documentID)
+	}
 	return err
 }
 
@@ -342,6 +346,7 @@ func (s *Service) Unindex(ctx context.Context, userID, documentID string) error 
 	if err := s.store.ClearChunks(ctx, userID, documentID); err != nil {
 		return err
 	}
+	s.store.WarnVectorBloat(ctx, "user", userID, "document", documentID)
 	return s.store.UpdateStatus(ctx, userID, documentID, rag.StatusPending, "")
 }
 
@@ -364,6 +369,7 @@ func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
 	if err := s.store.DeleteDocument(ctx, userID, documentID); err != nil {
 		return err
 	}
+	s.store.WarnVectorBloat(ctx, "user", userID, "document", documentID)
 	if doc.ArtifactID != nil {
 		_ = s.artifacts.Delete(ctx, userID, *doc.ArtifactID)
 	}
@@ -377,7 +383,11 @@ func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
 // to a deleted chat. Files on disk are cleaned up separately by the caller via
 // the artifact cleanup routine. Call before the thread row is deleted.
 func (s *Service) DeleteThreadData(ctx context.Context, userID, threadID string) error {
-	return s.store.DeleteThreadScopeDocuments(ctx, userID, threadID)
+	if err := s.store.DeleteThreadScopeDocuments(ctx, userID, threadID); err != nil {
+		return err
+	}
+	s.store.WarnVectorBloat(ctx, "user", userID, "thread", threadID)
+	return nil
 }
 
 // ArtifactIDsForThreadArtifactsInUse reports which of a thread's artifacts still
@@ -391,7 +401,11 @@ func (s *Service) ArtifactIDsForThreadArtifactsInUse(ctx context.Context, userID
 // called before chat.DeleteProject, whose FK cascade would otherwise drop the
 // chunk rows and orphan the vec0 embeddings.
 func (s *Service) DeleteProjectData(ctx context.Context, userID, projectID string) error {
-	return s.store.DeleteProjectScopeDocuments(ctx, userID, projectID)
+	if err := s.store.DeleteProjectScopeDocuments(ctx, userID, projectID); err != nil {
+		return err
+	}
+	s.store.WarnVectorBloat(ctx, "user", userID, "project", projectID)
+	return nil
 }
 
 // Retrieve embeds the query and returns the most relevant chunks for the user's

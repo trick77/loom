@@ -3,7 +3,9 @@ package rag
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 )
 
 // retrieveOverfetchFactor is how many more neighbours than k the vector search
@@ -52,6 +54,34 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 		args = append(args, sc)
 	}
 
+	start := time.Now()
+	out, err := s.scanRetrieved(ctx, query, args)
+	elapsed := time.Since(start).Round(time.Millisecond)
+	if err != nil {
+		// sqlite-vec reports an interrupt as "SQL logic error: chunks iter
+		// error", which reads as corruption. Name the cancel and how long the
+		// search had run before it.
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("vector search interrupted after %s (%w): %w", elapsed, context.Cause(ctx), err)
+		}
+		return nil, err
+	}
+	if elapsed >= slowVectorSearch {
+		slog.WarnContext(ctx, "slow vector search", "user", userID, "scopes", scopes,
+			"k", k, "hits", len(out), "took", elapsed.String())
+	}
+	if len(out) > k {
+		out = out[:k]
+	}
+	return out, nil
+}
+
+// slowVectorSearch is the duration past which a vector search is logged. A
+// healthy one takes milliseconds; one reading a bloated vec_chunks takes
+// minutes and shows nothing until the request dies (see CompactVectors).
+var slowVectorSearch = 2 * time.Second
+
+func (s *Store) scanRetrieved(ctx context.Context, query string, args []any) ([]RetrievedChunk, error) {
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve: %w", err)
@@ -65,11 +95,5 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 		}
 		out = append(out, rc)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if len(out) > k {
-		out = out[:k]
-	}
-	return out, nil
+	return out, rows.Err()
 }
