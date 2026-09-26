@@ -11,6 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/rag"
 )
 
 // Keep in sync with imagegen's direct-client fallback default.
@@ -81,8 +84,8 @@ type Config struct {
 
 	// The model endpoints are llmwire's: each model's profile names a
 	// provider and ships its host, and llmwire.FromEnv reads the key from
-	// LLMWIRE_<PROVIDER>_API_KEY at boot (LLMWIRE_ZAI_API_KEY for chat,
-	// LLMWIRE_OPENAI_API_KEY for embeddings). A set key turns the capability
+	// LLMWIRE_<PROVIDER>_API_KEY at boot (llm.APIKeyEnv() for chat,
+	// rag.EmbedAPIKeyEnv() for embeddings). A set key turns the capability
 	// on; only that fact is mirrored here, the key itself never passes through
 	// this struct.
 	// The models are constants of the build (llm.ModelSummary, rag.EmbedModel).
@@ -169,10 +172,10 @@ func Load() (Config, error) {
 		DBPath:                  env("BACKEND_DB_PATH", "/data/loom.db"),
 		UsersDir:                env("BACKEND_USERS_DIR", "/data/users"),
 		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
-		ChatEnabled:             strings.TrimSpace(env("LLMWIRE_ZAI_API_KEY", "")) != "",
+		ChatEnabled:             strings.TrimSpace(env(llm.APIKeyEnv(), "")) != "",
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
-		EmbedEnabled:            strings.TrimSpace(env("LLMWIRE_OPENAI_API_KEY", "")) != "",
+		EmbedEnabled:            strings.TrimSpace(env(rag.EmbedAPIKeyEnv(), "")) != "",
 		ImageGenBaseURL:         env("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
 		ImageGenAPIKey:          env("BACKEND_IMAGE_GEN_API_KEY", ""),
 		ImageGenModel:           env("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),

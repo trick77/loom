@@ -39,6 +39,13 @@ func EmbedDim() int {
 	return embedProfile.Embedding.DefaultDimensions
 }
 
+// EmbedAPIKeyEnv is the variable the embeddings key is read from
+// (llmwire.FromEnv): the profile's provider decides the name. A set value
+// turns embeddings on.
+func EmbedAPIKeyEnv() string {
+	return embedProfile.APIKeyEnv()
+}
+
 // EmbedClient generates embeddings through llmwire.
 type EmbedClient struct {
 	wire *llmwire.Client
