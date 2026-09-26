@@ -274,6 +274,27 @@ func TestIngester_ProbeIsNotBilled(t *testing.T) {
 	}
 }
 
+// Every way a chunk disappears (thread or project delete, cascades) forgets its
+// refusal, not only ClearChunks: a new chunk can reuse the id.
+func TestStore_AnyChunkDeleteForgetsItsRefusal(t *testing.T) {
+	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "alpha", "poison")
+	if err := s.RebuildVectorTable(ctx, len(unit())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ing.ReembedMissing(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM chunks WHERE text = 'poison'`); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM vector_refused`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("refusals left after a direct chunk delete = %d, %v; want 0", n, err)
+	}
+}
+
 // Clearing a document forgets its refused chunks: their ids can be reused.
 func TestStore_ClearChunksForgetsRefusals(t *testing.T) {
 	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
