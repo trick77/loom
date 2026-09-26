@@ -3,9 +3,10 @@ services:
     image: ghcr.io/trick77/loom:latest
     user: "1000:1000"
     restart: unless-stopped
-    # Model choice (BACKEND_CHAT_MODEL, BACKEND_GATE_MODEL, BACKEND_VISION_MODEL)
-    # and the LLMWIRE_<PROVIDER>_API_KEY a model's provider reads come from .env
-    # as they are, so a model swap never touches this file.
+    # Model choice (BACKEND_*_MODEL) and the LLMWIRE_<PROVIDER>_API_KEY a
+    # model's provider reads come from .env as they are, so a model swap never
+    # touches this file. .env is their only source: values exported in the
+    # shell are not forwarded. Needs Docker Compose 2.24+ (env_file `path`).
     env_file:
       - path: .env
         required: false

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,6 +37,26 @@ func ResolveEmbedModel(reg *llmwire.Registry, id string) (EmbedModel, error) {
 			err, strings.Join(embeddingModels(reg), ", "))
 	}
 	return EmbedModel{ID: p.ID, Width: p.Embedding.DefaultDimensions, KeyEnv: p.APIKeyEnv()}, nil
+}
+
+// EmbedKeyEnvs lists the key variables of every embedding model's provider in
+// the registry, each once: a set one without a configured embedding model is
+// how an upgrade from the key-only configuration shows.
+func EmbedKeyEnvs(reg *llmwire.Registry) []string {
+	if reg == nil {
+		reg = llmwire.Default()
+	}
+	var out []string
+	for _, id := range embeddingModels(reg) {
+		p, err := reg.LookupEmbedding(id)
+		if err != nil {
+			continue
+		}
+		if env := p.APIKeyEnv(); env != "" && !slices.Contains(out, env) {
+			out = append(out, env)
+		}
+	}
+	return out
 }
 
 func embeddingModels(reg *llmwire.Registry) []string {

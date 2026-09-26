@@ -403,6 +403,8 @@ func TestLoad_modelCapabilitiesFollowModelsAndKeys(t *testing.T) {
 // an id that is not an embedding model fails boot with the valid choices.
 func TestLoad_embeddingsFollowTheModelAndItsKey(t *testing.T) {
 	requiredEnv(t)
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
 	m := anyEmbedModel(t)
 	t.Setenv("BACKEND_EMBED_MODEL", "")
 	t.Setenv(m.KeyEnv, "k1")
@@ -425,6 +427,24 @@ func TestLoad_embeddingsFollowTheModelAndItsKey(t *testing.T) {
 	t.Setenv("BACKEND_EMBED_MODEL", "no-such-model")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "valid choices") {
 		t.Fatalf("unknown model: err = %v, want one listing the valid choices", err)
+	}
+}
+
+// An upgrade from before BACKEND_EMBED_MODEL existed has only an embedding
+// provider's key: outside dev auth that fails boot rather than quietly
+// switching document search off. Without the key, embeddings are simply off.
+func TestLoad_embeddingKeyWithoutModelFailsBootOutsideDev(t *testing.T) {
+	requiredEnv(t)
+	m := anyEmbedModel(t)
+	t.Setenv("BACKEND_EMBED_MODEL", "")
+	t.Setenv(m.KeyEnv, "k1")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_EMBED_MODEL") {
+		t.Fatalf("key without model: err = %v, want one naming BACKEND_EMBED_MODEL", err)
+	}
+	t.Setenv(m.KeyEnv, "")
+	cfg, err := Load()
+	if err != nil || cfg.EmbedEnabled {
+		t.Fatalf("no key, no model: enabled=%v err=%v, want off and booting", cfg.EmbedEnabled, err)
 	}
 }
 

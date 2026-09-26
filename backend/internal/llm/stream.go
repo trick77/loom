@@ -65,8 +65,12 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		ToolCallIdleTimeout: toolCallIdleTimeout(tools),
 	}
 	// Turns favour a fast answer over the deepest one the model can give:
-	// llmwire resolves "balanced" to the level the model's profile names.
+	// llmwire resolves "balanced" to the level the model's profile names. A
+	// retry of a turn that spent its budget reasoning asks for the least.
 	req.Reasoning = llmwire.ReasoningBalanced()
+	if meta.LeastReasoning {
+		req.Reasoning = llmwire.ReasoningMinimal()
+	}
 	callCtx := ctx
 	if timeout := c.timeoutForTools(tools); timeout > 0 {
 		var cancel context.CancelFunc

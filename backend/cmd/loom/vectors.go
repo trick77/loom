@@ -14,8 +14,9 @@ import (
 // different model of the same width (its vectors live in another space). Every
 // vector is dropped and re-embedded from the stored chunk text (see
 // reembedInBackground); until then retrieval finds nothing for those
-// documents. A database without a recorded model (from before the record
-// existed) adopts the configured one.
+// documents. Vectors without a recorded model (from before the record existed)
+// came from an unknown model and are re-embedded once; an empty table simply
+// records the configured model.
 func reconcileVectorWidth(ctx context.Context, store *rag.Store, model rag.EmbedModel) error {
 	width, err := store.VectorWidth(ctx)
 	if err != nil {
@@ -25,6 +26,12 @@ func reconcileVectorWidth(ctx context.Context, store *rag.Store, model rag.Embed
 	if err != nil {
 		return err
 	}
+	unrecordedVectors := false
+	if !known {
+		if unrecordedVectors, err = store.HasVectors(ctx); err != nil {
+			return err
+		}
+	}
 	switch {
 	case width != model.Width:
 		slog.Warn("embedding model width changed; rebuilding vectors and re-embedding every document",
@@ -32,6 +39,9 @@ func reconcileVectorWidth(ctx context.Context, store *rag.Store, model rag.Embed
 	case known && recorded != model.ID:
 		slog.Warn("embedding model changed; rebuilding vectors and re-embedding every document",
 			"model", model.ID, "from", recorded)
+	case unrecordedVectors:
+		slog.Warn("vectors from an unrecorded embedding model; re-embedding every document once",
+			"model", model.ID)
 	default:
 		return store.SetVectorModel(ctx, model.ID)
 	}

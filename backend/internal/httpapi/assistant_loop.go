@@ -479,10 +479,12 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writ
 
 // incognitoRetryInference picks the metadata for the incognito empty-answer
 // retry. A first turn that ran out at the cap spent it on reasoning, so the
-// retry gets the forced final answer's wider budget.
+// retry asks for the least reasoning on the forced final answer's budget.
 func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamResult) llm.InferenceMetadata {
 	if first.FinishReason == "length" {
-		return finalAnswerInference(metadata, "chat", 2)
+		metadata = finalAnswerInference(metadata, "chat", 2)
+		metadata.LeastReasoning = true
+		return metadata
 	}
 	return inferenceWithPurpose(metadata, "chat", 2)
 }

@@ -76,6 +76,19 @@ func (s *Store) SetVectorModel(ctx context.Context, model string) error {
 	return nil
 }
 
+// HasVectors reports whether vec_chunks holds any vector.
+func (s *Store) HasVectors(ctx context.Context) (bool, error) {
+	var one int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM vec_chunks LIMIT 1`).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check vectors: %w", err)
+	}
+	return true, nil
+}
+
 // MissingVector is a stored chunk without an embedding.
 type MissingVector struct {
 	ChunkID int64

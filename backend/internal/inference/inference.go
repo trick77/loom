@@ -29,6 +29,10 @@ type Metadata struct {
 	ThreadID string
 	Purpose  string
 	Round    int
+	// LeastReasoning asks for the least reasoning the model allows instead of
+	// its balanced level. Set on a retry of a turn that spent its whole budget
+	// reasoning: the same request again would run out the same way.
+	LeastReasoning bool
 	// MaxCompletionTokens overrides the turn's completion-token cap when > 0. The
 	// forced-final answer sets a larger budget than the default chat cap so a
 	// synthesis over many gathered sources has room to complete.

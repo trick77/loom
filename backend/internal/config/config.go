@@ -211,6 +211,16 @@ func loadChatModels(cfg *Config) error {
 func loadEmbedModel(cfg *Config) error {
 	id := strings.TrimSpace(env("BACKEND_EMBED_MODEL", ""))
 	if id == "" {
+		// A set embedding key without a model is the configuration from before
+		// the model was configurable: outside dev auth, fail boot rather than
+		// quietly switch document search off.
+		if cfg.AuthMode != AuthModeDev {
+			for _, key := range rag.EmbedKeyEnvs(nil) {
+				if strings.TrimSpace(env(key, "")) != "" {
+					return fmt.Errorf("BACKEND_EMBED_MODEL is required when %s is set: an llmwire embedding model id (see .env.example)", key)
+				}
+			}
+		}
 		cfg.EmbedMissing = "BACKEND_EMBED_MODEL"
 		return nil
 	}

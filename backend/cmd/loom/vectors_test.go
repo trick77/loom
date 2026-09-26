@@ -117,6 +117,37 @@ func TestReembedUntilDone_StopsWhenTheWaitIsCancelled(t *testing.T) {
 	}
 }
 
+// A database from before the model was recorded holds vectors from an unknown
+// model: re-embed once rather than trust them to match the configured one.
+func TestReconcileVectorWidth_UnrecordedVectorsAreReembedded(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "loom.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	s := rag.NewStore(db)
+	ctx := context.Background()
+	if err := s.RebuildVectorTable(ctx, 8); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id, oidc_subject, username, role) VALUES ('u1','s1','u1','user')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (1, '[1,0,0,0,0,0,0,0]', 'u1', '')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := reconcileVectorWidth(ctx, s, rag.EmbedModel{ID: "m1", Width: 8}); err != nil {
+		t.Fatal(err)
+	}
+	if n := vectorCount(t, db); n != 0 {
+		t.Fatalf("kept %d vectors of an unknown model", n)
+	}
+	if got, _, _ := s.VectorModel(ctx); got != "m1" {
+		t.Fatalf("recorded model = %q, want m1", got)
+	}
+}
+
 func vectorCount(t *testing.T, db *sql.DB) int {
 	t.Helper()
 	var n int

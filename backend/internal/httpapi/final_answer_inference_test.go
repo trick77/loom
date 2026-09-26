@@ -32,12 +32,12 @@ func TestIncognitoRetryInferenceWidensOnlyAfterCapHit(t *testing.T) {
 	base := llm.InferenceMetadata{ThreadID: "thr_1"}
 
 	capped := incognitoRetryInference(base, llm.StreamResult{FinishReason: "length"})
-	if capped.MaxCompletionTokens != finalAnswerMaxCompletionTokens {
-		t.Fatalf("after cap hit: MaxCompletionTokens=%d, want %d", capped.MaxCompletionTokens, finalAnswerMaxCompletionTokens)
+	if capped.MaxCompletionTokens != finalAnswerMaxCompletionTokens || !capped.LeastReasoning {
+		t.Fatalf("after cap hit: MaxCompletionTokens=%d LeastReasoning=%v, want %d/true", capped.MaxCompletionTokens, capped.LeastReasoning, finalAnswerMaxCompletionTokens)
 	}
 	plain := incognitoRetryInference(base, llm.StreamResult{FinishReason: "stop"})
-	if plain.MaxCompletionTokens != 0 {
-		t.Fatalf("after stop: MaxCompletionTokens=%d, want 0", plain.MaxCompletionTokens)
+	if plain.MaxCompletionTokens != 0 || plain.LeastReasoning {
+		t.Fatalf("after stop: MaxCompletionTokens=%d LeastReasoning=%v, want 0/false", plain.MaxCompletionTokens, plain.LeastReasoning)
 	}
 	if capped.Purpose != "chat" || capped.Round != 2 || plain.Purpose != "chat" || plain.Round != 2 {
 		t.Fatalf("purpose/round = %q/%d and %q/%d, want chat/2", capped.Purpose, capped.Round, plain.Purpose, plain.Round)

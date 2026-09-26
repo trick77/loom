@@ -47,6 +47,15 @@ func TestClient_StreamAsksForBalancedReasoning(t *testing.T) {
 	}
 }
 
+// A retry of a turn that spent its whole budget reasoning asks for the least
+// reasoning the model allows; the same request again would run out the same way.
+func TestClient_LeastReasoningAsksForMinimal(t *testing.T) {
+	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{LeastReasoning: true})
+	if sent, _ := captureReasoning(ctx, t); sent != llmwiretest.MinimalSent {
+		t.Fatalf("reasoning sent = %q, want the minimal setting %q", sent, llmwiretest.MinimalSent)
+	}
+}
+
 // The forced final answer reasons like any turn; only its budget widens.
 func TestClient_ForcedFinalAnswerReasonsLikeATurn(t *testing.T) {
 	ctx := WithInferenceMetadata(context.Background(), InferenceMetadata{MaxCompletionTokens: 4096})
