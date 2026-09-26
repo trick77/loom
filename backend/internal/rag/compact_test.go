@@ -332,11 +332,19 @@ func TestCompactVectorsAndLog_heartbeatReportsProgress(t *testing.T) {
 
 	s.CompactVectorsAndLog(context.Background(), "reason", "boot")
 
-	r, ok := logs.find("compacting the vector index, still running")
-	if !ok {
+	// The last heartbeat: the first may fire while the table is still being
+	// measured, before any step has begun.
+	var a map[string]string
+	logs.mu.Lock()
+	for _, r := range logs.records {
+		if r.Message == "compacting the vector index, still running" {
+			a = attrsOf(r)
+		}
+	}
+	logs.mu.Unlock()
+	if a == nil {
 		t.Fatalf("no heartbeat, records = %v", logs.records)
 	}
-	a := attrsOf(r)
 	for _, k := range []string{"reason", "step", "done", "total", "elapsed"} {
 		if a[k] == "" {
 			t.Errorf("heartbeat lacks %s: %v", k, a)
