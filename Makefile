@@ -1,4 +1,4 @@
-.PHONY: build test coverage coverage-gate backend-coverage fe-build fe-test fe-lint fe-coverage run dev refresh docker-dev docker-dev-down tidy
+.PHONY: build test coverage coverage-gate backend-coverage fe-build fe-test fe-lint fe-coverage model-names run dev refresh docker-dev docker-dev-down tidy
 
 tidy:
 	cd backend && go mod tidy
@@ -47,6 +47,10 @@ fe-test:
 # natively with the same rules-of-hooks / exhaustive-deps checks.
 fe-lint:
 	cd ui && npm run lint
+
+# Loom names no model outside configuration; model facts live in llmwire.
+model-names:
+	./hack/check-model-names.sh
 
 fe-coverage:
 	cd ui && npm run test:coverage

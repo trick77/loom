@@ -86,7 +86,7 @@ func TestShouldGenerateThreadTitle_PromptTitleCapitalizedOrVerbatim(t *testing.T
 // The cost is persisted only when a call in the turn was priced; an unpriced
 // turn leaves the column NULL rather than storing a free-looking zero.
 func TestMessageMetricsWithCost_UnpricedStaysNil(t *testing.T) {
-	result := llm.StreamResult{Model: "glm-5.3-flash"}
+	result := llm.StreamResult{Model: "some-model"}
 	if m := messageMetricsWithCost(result, llm.TokenUsage{}, time.Second, 0, false); m.CostNanoUSD != nil {
 		t.Fatalf("unpriced CostNanoUSD = %d, want nil", *m.CostNanoUSD)
 	}
@@ -108,7 +108,7 @@ func TestBuildHistoryDropsToolMessages(t *testing.T) {
 
 func TestMessageMetricsWithCost_ContextTokensFromFinalCallNotAccumulator(t *testing.T) {
 	result := llm.StreamResult{
-		Model: "glm-5.3-flash",
+		Model: "some-model",
 		Usage: llm.TokenUsage{PromptTokens: 48000, CompletionTokens: 1500, TotalTokens: 49500},
 	}
 	// Accumulated across the whole turn (deliberately much larger than the single
@@ -133,7 +133,7 @@ func TestMessageMetricsWithCost_ContextTokensFromFinalCallNotAccumulator(t *test
 }
 
 func TestMessageMetricsWithCost_NoContextTokensWhenFinalCallUsageAbsent(t *testing.T) {
-	result := llm.StreamResult{Model: "glm-5.3-flash"} // zero Usage
+	result := llm.StreamResult{Model: "some-model"} // zero Usage
 	accumulated := llm.TokenUsage{PromptTokens: 1000, CompletionTokens: 200, TotalTokens: 1200}
 
 	metrics := messageMetricsWithCost(result, accumulated, time.Second, 0, false)

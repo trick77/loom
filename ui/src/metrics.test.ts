@@ -68,7 +68,7 @@ test("hasRenderableMetrics requires duration and any token usage", () => {
 test("buildMetricsString omits the lead segment when the message stored no reasoning effort", () => {
   const line = buildMetricsString(
     assistant({
-      model: "glm-5.3-flash",
+      model: "some-model",
       durationMs: 5000,
       promptTokens: 49498,
       completionTokens: 1502,
@@ -116,7 +116,7 @@ test("buildMetricsString ends with the thread's running cost, and omits it when 
 test("buildMetricsString leads with a stored reasoning effort, without the model or parentheses", () => {
   const line = buildMetricsString(
     assistant({
-      model: "glm-5.3-flash",
+      model: "some-model",
       reasoningEffort: "high",
       durationMs: 5000,
       promptTokens: 100000,

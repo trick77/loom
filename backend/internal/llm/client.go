@@ -273,9 +273,9 @@ func (c *Client) timeoutForTools(tools []Tool) time.Duration {
 // arguments server-side flushes them in one delayed burst (no incremental
 // deltas), so a large document argument goes silent for far longer than the
 // normal idle window — which would falsely trip the watchdog mid-generation
-// (measured on MiMo: ~82s silent for a ~10KB spec; not yet measured on
-// glm-5.3-flash, so the window stays until it is). Widen to the document timeout and let the coarse total deadline
-// backstop a genuine hang. Non-document turns keep the normal window: their tool
+// (~82s silent measured for a ~10KB spec; whether a model buffers is its
+// llmwire profile's streaming.buffers_tool_args). Widen to the document timeout
+// and let the coarse total deadline backstop a genuine hang. Non-document turns keep the normal window: their tool
 // arguments are small and stream promptly. Zero means "no change" to llmwire.
 func toolCallIdleTimeout(tools []Tool) time.Duration {
 	if hasDocumentGenerationTool(tools) {

@@ -10,13 +10,14 @@ import (
 // finalSynthesisNotesBudgetTokens caps the research notes folded into the forced
 // final-answer turn. Sized so the synthesis call stays within the context the model
 // handles reliably (the tool rounds themselves ran ~20k-token prompts) and well
-// under MiMo's window; when the gathered notes exceed it the oldest are dropped.
+// under a chat model's window; when the gathered notes exceed it the oldest are
+// dropped.
 const finalSynthesisNotesBudgetTokens = 24000
 
 // buildFinalSynthesisHistory rebuilds the forced final-answer turn as a clean,
 // tool-free turn over the research notes already gathered. After a tool-saturated
-// research turn MiMo will not commit to prose when simply told to — it reflexively
-// emits another (unrunnable) tool call, which is stripped to empty and dead-ends the
+// research turn a model may not commit to prose when simply told to — it
+// reflexively emits another (unrunnable) tool call, which is stripped to empty and dead-ends the
 // turn. Every clean, tool-free single-purpose call in the codebase (thread titles,
 // classification, project descriptions/memory) reliably gets prose out of the same
 // model, and they all share one shape: a fresh [system, user-with-material] history.

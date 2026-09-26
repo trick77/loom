@@ -303,8 +303,8 @@ func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 
 func TestStreamMessageUsesFallbackWhenForcedFinalAnswerIsEmpty(t *testing.T) {
 	// After running a tool the model stops without producing text, so the loop
-	// forces a tool-free final answer. MiMo answers that with another inline tool
-	// call, which is stripped — leaving the content empty. The turn must not persist
+	// forces a tool-free final answer. A tool-eager model answers that with another
+	// inline tool call, which is stripped — leaving the content empty. The turn must not persist
 	// an empty (or raw-XML) message: a fallback answer is substituted instead.
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

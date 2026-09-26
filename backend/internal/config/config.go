@@ -20,8 +20,8 @@ import (
 const defaultImageGenPollTimeout = 1 * time.Minute
 
 // defaultChatMaxCompletionTokens covers reasoning plus answer: the cap counts
-// both, and glm-5.3-flash always thinks, so a tight cap leaves no room for the
-// answer (MiMo was measured thinking past 2048 on its own).
+// both, and a reasoning model can think past a few thousand tokens on its own,
+// so a tight cap leaves no room for the answer.
 const defaultChatMaxCompletionTokens = 16384
 
 // defaultChatTimeout is the coarse total wall-clock budget for a streamed chat
@@ -42,22 +42,21 @@ const defaultKnowledgeInlineTokenBudget = 24000
 // defaultProjectSummaryTokenBudget bounds the total size of the cross-thread
 // digest the read_project_threads tool returns (the source material the model
 // summarizes when asked to "summarize the threads in this project"). Kept
-// deliberately conservative: MiMo 2.5 Pro's context window is small, and the
-// digest has to coexist with the knowledge/memory/history context already in the
-// prompt — so this budget intentionally does not try to fill the window. The
-// per-thread share is this budget divided by the number of sibling threads, so
-// every thread is represented rather than the tail being dropped. Tune via
-// BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET once the real window is pinned.
+// deliberately conservative: the digest has to coexist with the
+// knowledge/memory/history context already in the prompt, and a smaller input
+// summarizes more reliably than one filling the window. The per-thread share is
+// this budget divided by the number of sibling threads, so every thread is
+// represented rather than the tail being dropped. Tune via
+// BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET.
 const defaultProjectSummaryTokenBudget = 6000
 
 // defaultChatIdleTimeout aborts a chat stream that goes silent. The binding case
-// is not inter-chunk cadence (worst gap measured against real MiMo is ~7.6s on a
-// multi-minute reasoning turn) but time-to-first-token: the watchdog is armed at
-// request entry, and only a data: line resets it (llmwire's header and idle
-// bounds, both set from this value in llm/client.go), so an upstream queue wait
-// before the first data frame counts in full as idle. MiMo 2.5 Pro queues hard
-// under concurrent load — 26s to first token on a round that succeeded, and a
-// round that produced no data frame at all inside 60s, killing the turn. 120s
+// is not inter-chunk cadence (gaps of a few seconds on a multi-minute reasoning
+// turn) but time-to-first-token: the watchdog is armed at request entry, and
+// only a data: line resets it (llmwire's header and idle bounds, both set from
+// this value in llm/client.go), so an upstream queue wait before the first data
+// frame counts in full as idle. A queueing upstream has been measured at 26s to
+// first token on a round that succeeded and past 60s on one that failed. 120s
 // roughly doubles the window over that observed stall while staying far below
 // the total ChatTimeout. Set BACKEND_CHAT_IDLE_TIMEOUT=0 to disable the
 // watchdog (the whole-call cap then remains the only bound).

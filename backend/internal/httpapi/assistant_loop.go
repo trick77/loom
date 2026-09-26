@@ -243,7 +243,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		}
 	}
 	// Force a final answer. Appending a directive to the tool-saturated history does
-	// not work: after a research turn MiMo reflexively emits another (unrunnable) tool
+	// not work: after a research turn a model may reflexively emit another (unrunnable) tool
 	// call — it is pattern-continuing the tool-call/tool-result rounds — which is
 	// stripped to empty and dead-ends the turn. Instead rebuild the final turn as a
 	// clean, tool-free synthesis over the gathered notes: the shape every reliable
@@ -457,7 +457,7 @@ func persistInterruptedPartial(result llm.StreamResult, err error) bool {
 func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata) (assistantLoopResult, error) {
 	b := &blockBuilder{}
 	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
-	// Safety net: a tool-eager model (MiMo) may still emit an inline tool call
+	// Safety net: a tool-eager model may still emit an inline tool call
 	// despite the no-tool prompt. The parser strips that markup — whether it
 	// recovers a call or the markup is truncated/malformed and none is recovered —
 	// leaving empty content. Since there are no tools to run, nudge it once to answer

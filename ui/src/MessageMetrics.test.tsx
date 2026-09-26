@@ -34,7 +34,7 @@ test("renders the metrics line when data is present, leading with a stored reaso
   render(
     <MessageMetrics
       message={assistant({
-        model: "glm-5.3-flash",
+        model: "some-model",
         reasoningEffort: "high",
         durationMs: 5000,
         promptTokens: 10,
@@ -52,7 +52,7 @@ test("shows the context % against the window /api/model reports", async () => {
     "fetch",
     vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ model: "glm-5.3-flash", contextWindow: 200_000 }),
+      json: async () => ({ model: "some-model", contextWindow: 200_000 }),
     }),
   );
   render(

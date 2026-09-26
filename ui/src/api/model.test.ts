@@ -9,13 +9,13 @@ afterEach(() => {
 test("getModelInfo reads /api/model once and shares the answer", async () => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
-    json: async () => ({ model: "glm-5.3-flash", contextWindow: 1_000_000 }),
+    json: async () => ({ model: "some-model", contextWindow: 1_000_000 }),
   });
   vi.stubGlobal("fetch", fetchMock);
 
   const [a, b] = await Promise.all([getModelInfo(), getModelInfo()]);
 
-  expect(a).toEqual({ model: "glm-5.3-flash", contextWindow: 1_000_000 });
+  expect(a).toEqual({ model: "some-model", contextWindow: 1_000_000 });
   expect(b).toBe(a);
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(fetchMock).toHaveBeenCalledWith("/api/model");
@@ -27,13 +27,13 @@ test("getModelInfo resolves null on failure and retries on the next call", async
     .mockResolvedValueOnce({ ok: false })
     .mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ model: "glm-5.3-flash", contextWindow: 1_000_000 }),
+      json: async () => ({ model: "some-model", contextWindow: 1_000_000 }),
     });
   vi.stubGlobal("fetch", fetchMock);
 
   expect(await getModelInfo()).toBeNull();
   expect(await getModelInfo()).toEqual({
-    model: "glm-5.3-flash",
+    model: "some-model",
     contextWindow: 1_000_000,
   });
 });

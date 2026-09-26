@@ -190,9 +190,9 @@ func TestClient_RoutesImageTurnsToVisionModelAndTextTurnsToTextModel(t *testing.
 	}
 }
 
-// The core invariant: no image_url part may ever be sent to the text-only model
-// (mimo-v2.5-pro 404s on image input). Any message carrying an image part must
-// route to the vision model.
+// The core invariant: no image_url part may ever be sent to the chat model when
+// a separate vision model is configured (a text-only model refuses image
+// input). Any message carrying an image part must route to the vision model.
 func TestClient_NeverSendsImagePartsToTextModel(t *testing.T) {
 	var gotModel string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -703,7 +703,7 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	}
 }
 
-func TestClient_StreamChatWithToolsStreamsNormalMiMoContent(t *testing.T) {
+func TestClient_StreamChatWithToolsStreamsNormalContent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, c := range []string{"Colossus ", "is a 1970 ", "film."} {

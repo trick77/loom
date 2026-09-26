@@ -59,7 +59,7 @@ func TestIncognitoStreamEmitsReplyAndPersistsNothing(t *testing.T) {
 	}
 }
 
-// incognitoRetryStub models a tool-eager model (MiMo): its first turn returns empty
+// incognitoRetryStub models a tool-eager model: its first turn returns empty
 // content with a recovered inline tool call, its second (the retry) returns real
 // prose. This exercises runIncognitoAssistantTurn's empty-answer safety net.
 type incognitoRetryStub struct {

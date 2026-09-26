@@ -13,8 +13,8 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - `make test` — backend Go tests (`go test ./...`)
 - `make fe-test` — frontend Vitest
 - `make fe-lint` — frontend lint (oxlint: rules-of-hooks, exhaustive-deps, unused vars)
-- `make coverage-gate` — coverage gates: 80% on lines the branch changes, plus project
-  floors. Needs `pip install diff-cover==10.3.0`. New code must be tested; legacy debt is ignored.
+- `make model-names` — fails on a model/vendor name outside `.env.example` (CI runs it)
+- `make coverage-gate` — 80% on changed lines + project floors; needs `pip install diff-cover==10.3.0`.
 - `make fe-build` — build the SPA into `backend/web/dist` (embedded by Go)
 - `make build` — full build → `bin/loom` (CGO_ENABLED=0)
 - `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_AUTH_MODE`; `make dev` sets both)
@@ -28,29 +28,25 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
   binding's ABI; `ncruces/go-sqlite3` v0.24+ breaks the current sqlite-vec binding.
 - One SQLite file; `sqlite-vec` for vectors. No separate DB service.
 - HTTP: stdlib `net/http` (Go 1.22 method routing), no web framework. Streaming: **SSE**.
-- Chat and embeddings go through `github.com/trick77/llmwire`: it owns the wire (request rendering, SSE, bounds, inline tool-call recovery, opencode identity, pricing) and every model fact (profiles); loom owns routing, budgets, prompts and accounting. **Never name a model, vendor or model behaviour in loom** (code, comments, tests, docs): ask llmwire (`ReasoningMinimal`/`ReasoningBalanced`, `MaxAnswerTokens`, profile fields); a missing fact goes into llmwire. Tests use `llmwiretest`. Extraction: Apache **Tika** sidecar.
-- Tools/agents are **first-class MCP-backed integrations**. Tavily web search is enabled with
-  `BACKEND_TAVILY_API_KEY`; the `fetch__fetch` page reader runs **in-process** (shared
-  `github.com/trick77/webfetch` module, no sidecar); the Obscura browser sidecar uses
-  `BACKEND_OBSCURA_MCP_URL`. Secondary, best-effort servers (Context7 docs, ipverse-lens whois) are
-  declared in a JSON file (standard `mcpServers` format) at `BACKEND_MCP_SERVERS_FILE` (default
-  `/conf/mcp.json`); its entries merge on top of — and override, by name — the built-ins. Keep secrets
-  out of the file: use `${VAR}` interpolation so tokens stay in env (e.g. `CONTEXT7_API_KEY`,
-  `IPVERSE_API_KEY`).
+- LLMs only via `github.com/trick77/llmwire`: it owns the wire and every model fact (profiles); loom
+  owns routing, budgets, prompts, accounting. **Never name a model, vendor or model behaviour in
+  loom**: use intents (`ReasoningMinimal`/`ReasoningBalanced`, `MaxAnswerTokens`) and profile fields;
+  a missing fact goes into llmwire. Tests use `llmwiretest`. Extraction: Apache **Tika** sidecar.
+- Tools are **MCP-backed**. Tavily via `BACKEND_TAVILY_API_KEY`; `fetch__fetch` runs **in-process**
+  (`github.com/trick77/webfetch`); Obscura sidecar via `BACKEND_OBSCURA_MCP_URL`. Best-effort extras
+  (Context7, ipverse-lens) live in `BACKEND_MCP_SERVERS_FILE` (`mcpServers` JSON, default
+  `/conf/mcp.json`, overrides built-ins by name); secrets only as `${VAR}` interpolation.
 
 ## Config
 - Runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and
   `.env.example`. Required to boot: `BACKEND_SESSION_SECRET` and `BACKEND_AUTH_MODE` (`oidc` with its
   issuer/client settings, or `dev` on loopback).
-- Models are config: `BACKEND_CHAT_MODEL` (+ optional `BACKEND_GATE_MODEL`, `BACKEND_VISION_MODEL`)
-  and `BACKEND_EMBED_MODEL` (width change → vector table rebuilt at boot, background re-embed),
-  llmwire registry ids checked at boot (unknown/unfit id → boot error listing valid ids). Keys are
-  llmwire's `LLMWIRE_<PROVIDER>_API_KEY` for each model's provider; compose loads `.env` via
-  `env_file`, so a swap is `.env` only. `LLMWIRE_EMULATE_OPENCODE=true` presents every llmwire
-  request as the opencode client.
-- Gates (titles, classification, image intent, image description) ask `ReasoningMinimal`; turns,
-  forced final answer and prose helpers `ReasoningBalanced` (minimal can mean thinking off, which
-  costs correctness on prose). Helper caps are `MaxAnswerTokens`.
+- Models are config: `BACKEND_CHAT_MODEL` (+ optional `BACKEND_GATE_MODEL`, `BACKEND_VISION_MODEL`),
+  `BACKEND_EMBED_MODEL` (width change → vector table rebuilt at boot, background re-embed); ids are
+  checked at boot against llmwire's registry. Keys: `LLMWIRE_<PROVIDER>_API_KEY`; compose loads
+  `.env` via `env_file`, so a swap is `.env` only.
+- Gates (titles, classification, image intent/description) ask `ReasoningMinimal`; turns, forced
+  final answer, prose helpers `ReasoningBalanced` (minimal may mean thinking off: wrong on prose).
 - Secrets via env only; never commit them. The `admin` account is seeded from env on first boot only.
 
 ## Database / migrations
@@ -59,11 +55,9 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - Never edit an already-applied migration — add a new one.
 
 ## Frontend
-- Vite + React + TS + Tailwind. UI is **direction A (Warm Editorial)**: design tokens are CSS variables
-  `--ui-*` in `ui/src/index.css`; use the themed Tailwind classes (`bg-bg`, `bg-panel`,
-  `text-ink`, `text-muted`, `bg-accent`, `rounded-ui`, `font-serif`/`font-sans`). The Anthropic
-  variable fonts (`Anthropic Sans`/`Serif`/`Mono`/`Icons`) are self-hosted via `@font-face` in
-  `ui/src/index.css` and wired to `--font-sans`/`--font-serif`/`--font-mono`.
+- Vite + React + TS + Tailwind, **direction A (Warm Editorial)**: tokens are `--ui-*` CSS variables in
+  `ui/src/index.css`; use the themed classes (`bg-bg`, `bg-panel`, `text-ink`, `text-muted`,
+  `bg-accent`, `rounded-ui`, `font-serif`/`font-sans`). Anthropic fonts are self-hosted there.
 - `npm run build` empties `backend/web/dist` and overwrites the tracked placeholder `index.html`.
   Do NOT commit built assets — only that placeholder is tracked; restore it
   (`git checkout -- backend/web/dist/index.html`) after a local build.

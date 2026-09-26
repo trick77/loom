@@ -2,8 +2,8 @@ package docgen
 
 import "testing"
 
-// MiMo frequently serializes the blocks array as a JSON-encoded string rather than
-// a real array; parseBlocks must decode that form instead of dropping the document.
+// Models sometimes serialize the blocks array as a JSON-encoded string rather
+// than a real array; parseBlocks must decode that form instead of dropping the document.
 func TestParseBlocks_AcceptsJSONEncodedString(t *testing.T) {
 	payload := map[string]any{
 		"blocks": `[{"type":"heading","level":1,"text":"Title"},{"type":"paragraph","text":"Body"}]`,

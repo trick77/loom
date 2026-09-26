@@ -33,6 +33,9 @@ jobs:
         with:
           version: v2.13
           working-directory: backend
+      # Model facts live in llmwire profiles; loom may name a model only in
+      # configuration (see AGENTS.md).
+      - run: ./hack/check-model-names.sh
 
   backend:
     name: Backend (build + test)
