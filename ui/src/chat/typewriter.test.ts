@@ -86,7 +86,7 @@ describe("createTypewriter", () => {
   it("spreads a burst over the learned gap between arrivals", () => {
     const { typewriter, frame, shown } = writer();
     const burst = PARAGRAPH.slice(0, 400);
-    const gapFrames = 162; // ~2.7s, glm-5.3-flash measured through loom
+    const gapFrames = 162; // ~2.7s, a bursty model measured through loom
     let finishedAt = -1;
     for (let arrival = 0; arrival < 4; arrival += 1) {
       const before = shown().length;

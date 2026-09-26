@@ -1,7 +1,7 @@
 // Typewriter pacing for streamed answer text.
 //
 // How an answer arrives depends on the model and the path to it, not on us.
-// MiMo arrives as a steady trickle of token-sized deltas. glm-5.3-flash, measured
+// One model arrives as a steady trickle of token-sized deltas. Another, measured
 // through loom in the browser, arrives as ~80 deltas (~400 chars) landing in the
 // same instant, then ~2.7s of nothing, then the next burst: appended as they
 // come, the answer jumps a paragraph at a time. The typewriter sits between the
@@ -10,10 +10,10 @@
 //
 // The rate is aimed at the NEXT arrival: the gap between arrivals is learned as
 // they come, and the backlog is spread to run out as the next one is due. A
-// fixed rate cannot serve both models: fast enough for glm's bursts it types a
+// fixed rate cannot serve both models: fast enough for bursts it types a
 // burst out and stalls until the next, slow enough to fill the gap it lags a
-// trickle. Aimed at the arrival, MiMo's ~20ms gaps put text up almost at once
-// and glm's bursts become one steady line.
+// trickle. Aimed at the arrival, a trickle's ~20ms gaps put text up almost at once
+// and bursts become one steady line.
 //
 // Pacing only ever DELAYS text, never drops it, and never by more than
 // MAX_GAP_MS. Once the stream has ended (settle) the tail is typed out against

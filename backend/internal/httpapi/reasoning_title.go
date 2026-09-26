@@ -16,8 +16,8 @@ import (
 const reasoningTitleTimeout = 10 * time.Second
 
 // reasoningTitleHold bounds how long the first answer word waits for its
-// round's title (see streamAssistantTurnWithContentStreaming). Measured on
-// glm-5.3-flash the title lands ~2.7s after reasoning ends; a title call on a
+// round's title (see streamAssistantTurnWithContentStreaming). Measured on a
+// short thinker the title lands ~2.7s after reasoning ends; a title call on a
 // dead upstream must not hold the answer, or the turn's error, much past that.
 // A var so tests can shorten it.
 var reasoningTitleHold = 5 * time.Second

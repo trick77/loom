@@ -528,7 +528,7 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 	}
 	// The title is what the reader looks at while the answer is on its way, so
 	// it goes out before the first answer word, never after. A short thinker
-	// (glm-5.3-flash) finishes reasoning ~2.7s before its title call returns,
+	// finishes reasoning ~2.7s before its title call returns,
 	// and the answer used to overtake it. Blocking here is safe: llmwire's
 	// reader never blocks on its consumer, so the deltas queue and the idle
 	// guard keeps measuring the model. reasoningTitleHold bounds the wait.
