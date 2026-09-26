@@ -4,8 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // logCapture records every log line emitted while it is the default handler.
@@ -245,37 +247,110 @@ func TestCompactVectorsAtBoot_compactsAndVacuumsABloatedTable(t *testing.T) {
 	}
 }
 
-func TestCompactVectorsAtBoot_announcesTheSlowStepsFirst(t *testing.T) {
-	// A boot sitting silent for minutes reads as a hang: the rebuild and the
-	// vacuum each say they are starting, before the line that says they ended.
+// Both rewrites take minutes on a production table and hold the boot before
+// the listener opens, so each says it started, not only that it finished.
+func TestCompactVectorsAtBoot_saysEachRewriteBeforeItRuns(t *testing.T) {
 	s, _ := newTestStore(t)
 	churnVectors(t, s, 5000, 100)
 	logs := captureLogs(t)
 
 	s.CompactVectorsAtBoot(context.Background())
 
-	var order []string
 	logs.mu.Lock()
-	for _, r := range logs.records {
-		order = append(order, r.Message)
-	}
+	records := slices.Clone(logs.records)
 	logs.mu.Unlock()
-	want := []string{
-		"vector index bloated, compacting before listening; this can take minutes",
-		"vector index compacted",
-		"vacuuming the database; this can take minutes",
-		"database vacuumed",
+	var msgs []string
+	for _, r := range records {
+		msgs = append(msgs, r.Message)
 	}
-	if !slices.Equal(order, want) {
-		t.Fatalf("log order = %q, want %q", order, want)
+	want := []string{"compacting the vector index", "copying vectors out", "writing vectors back",
+		"vector index compacted", "vacuuming the database", "database vacuumed"}
+	if !slices.Equal(msgs, want) {
+		t.Fatalf("messages = %q, want %q", msgs, want)
 	}
-	r, _ := logs.find(want[0])
-	if a := attrsOf(r); a["rows"] != "101" || a["chunks"] != "6" || a["chunks_needed"] != "2" {
-		t.Errorf("announce attrs = %v, want rows=101 chunks=6 chunks_needed=2", a)
+	a := attrsOf(records[0])
+	for k, v := range map[string]string{"reason": "boot", "rows": "101", "chunks": "6", "chunks_needed": "2"} {
+		if a[k] != v {
+			t.Errorf("attr %s = %q, want %q (all: %v)", k, a[k], v, a)
+		}
 	}
-	v, _ := logs.find(want[2])
-	if a := attrsOf(v); a["bytes_before"] == "" || a["bytes_before"] == "0" {
-		t.Errorf("vacuum announce attrs = %v, want bytes_before", a)
+	var before int64
+	records[4].Attrs(func(at slog.Attr) bool {
+		if at.Key == "bytes_before" {
+			before = at.Value.Int64()
+		}
+		return true
+	})
+	if before <= 0 {
+		t.Errorf("vacuum start line has no bytes_before: %v", records[4])
+	}
+}
+
+// vec0 answers rowid IN (…) outside a KNN query with a full scan (plan
+// "…:1"), which made rongo's batched copy walk the whole table per batch. The
+// copy-out has to read each vector with a point lookup (plan "…:2").
+func TestCompactVectors_copyOutReadsEachVectorByPointLookup(t *testing.T) {
+	s, _ := newTestStore(t)
+	churnVectors(t, s, 10, 10)
+	if _, err := s.db.Exec(`CREATE TABLE vec_compact_keep (id INTEGER PRIMARY KEY, embedding BLOB NOT NULL, user_id TEXT NOT NULL, project_id TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.db.Query(`EXPLAIN QUERY PLAN `+copyOutSQL, 0, compactBatch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	point := false
+	for _, d := range plan {
+		if strings.Contains(d, "VIRTUAL TABLE INDEX") {
+			point = strings.Contains(d, ":2")
+		}
+	}
+	if !point {
+		t.Errorf("copy-out plan = %q, want a vec0 point lookup (INDEX n:2…)", plan)
+	}
+}
+
+// A copy longer than one heartbeat says where it has got to while it runs.
+func TestCompactVectorsAndLog_heartbeatReportsProgress(t *testing.T) {
+	s, _ := newTestStore(t)
+	churnVectors(t, s, 6000, 1000)
+	defer func(d time.Duration, b int) { compactHeartbeat, compactBatch = d, b }(compactHeartbeat, compactBatch)
+	compactHeartbeat, compactBatch = time.Millisecond, 64
+	beforeU1 := nearestFor(t, s, "u1", 5999, 3)
+	beforeU2 := nearestFor(t, s, "u2", 7, 1)
+	logs := captureLogs(t)
+
+	s.CompactVectorsAndLog(context.Background(), "reason", "boot")
+
+	r, ok := logs.find("compacting the vector index, still running")
+	if !ok {
+		t.Fatalf("no heartbeat, records = %v", logs.records)
+	}
+	a := attrsOf(r)
+	for _, k := range []string{"reason", "step", "done", "total", "elapsed"} {
+		if a[k] == "" {
+			t.Errorf("heartbeat lacks %s: %v", k, a)
+		}
+	}
+	if n := countRows(t, s, `SELECT COUNT(*) FROM vec_chunks_rowids`); n != 1001 {
+		t.Errorf("rows = %d, want 1001", n)
+	}
+	// Batches carry the partition key and the metadata with every vector.
+	if got := nearestFor(t, s, "u1", 5999, 3); !slices.Equal(got, beforeU1) {
+		t.Errorf("u1 nearest = %v, want %v", got, beforeU1)
+	}
+	if got := nearestFor(t, s, "u2", 7, 1); !slices.Equal(got, beforeU2) {
+		t.Errorf("u2 nearest = %v, want %v", got, beforeU2)
 	}
 }
 
