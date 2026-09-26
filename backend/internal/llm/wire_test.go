@@ -141,14 +141,13 @@ func TestStreamChat_RecordsPricedCostIntoTheAccumulator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// glm-5.3-flash: 1000 input at 0.15 USD/M, 100 output at 0.50 USD/M,
-	// in nano-USD.
-	const want = int64(1000*150 + 100*500)
-	if !result.CostPriced || result.CostNanoUSD != want {
-		t.Fatalf("cost = %d priced=%v, want %d", result.CostNanoUSD, result.CostPriced, want)
+	// The rate is llmwire's (the test model's profile); loom's job is to carry
+	// llmwire's figure into the result and the turn's accumulator unchanged.
+	if !result.CostPriced || result.CostNanoUSD <= 0 {
+		t.Fatalf("cost = %d priced=%v, want a priced, positive figure", result.CostNanoUSD, result.CostPriced)
 	}
-	if nano, priced := acc.Cost(); !priced || nano != want {
-		t.Fatalf("accumulated = %d/%v, want %d", nano, priced, want)
+	if nano, priced := acc.Cost(); !priced || nano != result.CostNanoUSD {
+		t.Fatalf("accumulated = %d/%v, want the result's %d", nano, priced, result.CostNanoUSD)
 	}
 	if usage := acc.Total(); usage.PromptTokens != 1000 || usage.CompletionTokens != 100 {
 		t.Fatalf("accumulated usage = %#v", usage)

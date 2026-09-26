@@ -29,14 +29,6 @@ type Metadata struct {
 	ThreadID string
 	Purpose  string
 	Round    int
-	// SuppressThinking drops this turn to the shallowest reasoning effort the
-	// model accepts (it cannot switch thinking off), the same lever the utility
-	// calls use.
-	// Set on the forced-final answer turns: by then all research reasoning has
-	// already happened across the tool rounds and sits in history, so the model
-	// only needs to write the answer — deep thinking there lets it burn the whole
-	// completion budget on reasoning and emit no prose (finish_reason=length).
-	SuppressThinking bool
 	// MaxCompletionTokens overrides the turn's completion-token cap when > 0. The
 	// forced-final answer sets a larger budget than the default chat cap so a
 	// synthesis over many gathered sources has room to complete.

@@ -5,11 +5,10 @@
 #
 # Optional chat API config for local dev:
 #
-#   LLMWIRE_ZAI_API_KEY=your-api-key \
-#   ./hack/refresh.sh
+#   BACKEND_CHAT_MODEL=<llmwire model id>
+#   LLMWIRE_<PROVIDER>_API_KEY=your-api-key   # the provider that model names
 #
-# Or place the same values in an uncommitted .env file; Docker Compose reads it
-# automatically for compose.dev.yaml.
+# in an uncommitted .env file at the repo root; compose.dev.yaml loads it.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

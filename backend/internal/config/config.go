@@ -82,14 +82,16 @@ type Config struct {
 	UsersDir  string // root for per-user volumes: <UsersDir>/<user-id>/
 	PublicURL string // externally reachable base URL
 
-	// The model endpoints are llmwire's: each model's profile names a
-	// provider and ships its host, and llmwire.FromEnv reads the key from
-	// LLMWIRE_<PROVIDER>_API_KEY at boot (llm.APIKeyEnv() for chat,
-	// rag.EmbedAPIKeyEnv() for embeddings). A set key turns the capability
-	// on; only that fact is mirrored here, the key itself never passes through
-	// this struct.
-	// The models are constants of the build (llm.ModelSummary, rag.EmbedModel).
+	// The chat models are configuration: BACKEND_CHAT_MODEL, and optionally
+	// BACKEND_GATE_MODEL and BACKEND_VISION_MODEL (both default to the chat
+	// model), resolved against llmwire's registry at load. The endpoints are
+	// llmwire's: each model's profile names a provider and ships its host, and
+	// llmwire reads the key from LLMWIRE_<PROVIDER>_API_KEY. Chat is on when a
+	// chat model is set and every key its roles need is set; ChatMissing names
+	// what is not. The keys themselves never pass through this struct.
+	ChatModels              llm.Resolved
 	ChatEnabled             bool
+	ChatMissing             string
 	ChatMaxCompletionTokens int
 	ChatTimeout             time.Duration
 	ChatIdleTimeout         time.Duration
@@ -165,6 +167,36 @@ func env(key, def string) string {
 // defaultSessionTTL is the login lifetime when BACKEND_SESSION_TTL is unset.
 const defaultSessionTTL = 30 * 24 * time.Hour
 
+// loadChatModels resolves the chat roles and decides whether chat is on. No
+// chat model leaves chat off (a dev boot without a model is legitimate); a
+// model llmwire does not know, or one short of its role, is a boot error
+// naming the valid choices.
+func loadChatModels(cfg *Config) error {
+	roles := llm.Roles{
+		Chat:   strings.TrimSpace(env("BACKEND_CHAT_MODEL", "")),
+		Gate:   strings.TrimSpace(env("BACKEND_GATE_MODEL", "")),
+		Vision: strings.TrimSpace(env("BACKEND_VISION_MODEL", "")),
+	}
+	if roles.Chat == "" {
+		cfg.ChatMissing = "BACKEND_CHAT_MODEL"
+		return nil
+	}
+	resolved, err := llm.ResolveRoles(nil, roles)
+	if err != nil {
+		return err
+	}
+	cfg.ChatModels = resolved
+	var missing []string
+	for _, key := range resolved.KeyEnvs() {
+		if strings.TrimSpace(env(key, "")) == "" {
+			missing = append(missing, key)
+		}
+	}
+	cfg.ChatMissing = strings.Join(missing, ", ")
+	cfg.ChatEnabled = len(missing) == 0
+	return nil
+}
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
@@ -172,7 +204,6 @@ func Load() (Config, error) {
 		DBPath:                  env("BACKEND_DB_PATH", "/data/loom.db"),
 		UsersDir:                env("BACKEND_USERS_DIR", "/data/users"),
 		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
-		ChatEnabled:             strings.TrimSpace(env(llm.APIKeyEnv(), "")) != "",
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
 		EmbedEnabled:            strings.TrimSpace(env(rag.EmbedAPIKeyEnv(), "")) != "",
@@ -203,6 +234,9 @@ func Load() (Config, error) {
 			DisplayName: env("BACKEND_DEV_USER_NAME", "Dev Admin"),
 			Role:        "admin",
 		},
+	}
+	if err := loadChatModels(&cfg); err != nil {
+		return Config{}, err
 	}
 	imageGenPollTimeout, err := time.ParseDuration(env("BACKEND_IMAGE_GEN_POLL_TIMEOUT", defaultImageGenPollTimeout.String()))
 	if err != nil || imageGenPollTimeout <= 0 {

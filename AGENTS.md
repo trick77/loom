@@ -28,7 +28,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
   binding's ABI; `ncruces/go-sqlite3` v0.24+ breaks the current sqlite-vec binding.
 - One SQLite file; `sqlite-vec` for vectors. No separate DB service.
 - HTTP: stdlib `net/http` (Go 1.22 method routing), no web framework. Streaming: **SSE**.
-- Chat (`glm-5.3-flash`, Z.ai) and embeddings (OpenAI) go through `github.com/trick77/llmwire`: it owns the wire (request rendering, SSE, bounds, inline tool-call recovery, opencode identity, pricing) and the model profiles; loom owns routing, budgets, prompts and accounting. Models are constants (`llm.ModelSummary`, `rag.EmbedModel`). Extraction: Apache **Tika** sidecar.
+- Chat and embeddings go through `github.com/trick77/llmwire`: it owns the wire (request rendering, SSE, bounds, inline tool-call recovery, opencode identity, pricing) and every model fact (profiles); loom owns routing, budgets, prompts and accounting. **Never name a model, vendor or model behaviour in loom** (code, comments, tests, docs): ask llmwire (`ReasoningMinimal`/`ReasoningBalanced`, `MaxAnswerTokens`, profile fields); a missing fact goes into llmwire. Tests use `llmwiretest`. Extraction: Apache **Tika** sidecar.
 - Tools/agents are **first-class MCP-backed integrations**. Tavily web search is enabled with
   `BACKEND_TAVILY_API_KEY`; the `fetch__fetch` page reader runs **in-process** (shared
   `github.com/trick77/webfetch` module, no sidecar); the Obscura browser sidecar uses
@@ -42,14 +42,14 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - Runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and
   `.env.example`. Required to boot: `BACKEND_SESSION_SECRET` and `BACKEND_AUTH_MODE` (`oidc` with its
   issuer/client settings, or `dev` on loopback).
-- The model endpoints are llmwire's: `LLMWIRE_ZAI_API_KEY` (chat; Z.ai general host, a Coding Plan
-  key does not work) and `LLMWIRE_OPENAI_API_KEY` (embeddings), read by `llmwire.FromEnv` at boot;
-  the hosts ship in llmwire's profiles.yaml. A set key turns the capability on.
-  `LLMWIRE_EMULATE_OPENCODE=true` presents every llmwire request, embeddings included, as the
-  opencode client.
-- glm-5.3-flash cannot switch thinking off: `llmwire.ReasoningOff()` is refused before the wire.
-  Every call names an effort (`turnReasoningEffort` high, `helperReasoningEffort` low in
-  `llm/client.go`); unset = vendor `max`, ~5x slower.
+- Models are config: `BACKEND_CHAT_MODEL` (+ optional `BACKEND_GATE_MODEL`, `BACKEND_VISION_MODEL`),
+  llmwire registry ids checked at boot (unknown/unfit id → boot error listing valid ids). Keys are
+  llmwire's `LLMWIRE_<PROVIDER>_API_KEY` for each model's provider; compose loads `.env` via
+  `env_file`, so a swap is `.env` only. `LLMWIRE_EMULATE_OPENCODE=true` presents every llmwire
+  request as the opencode client.
+- Gates (titles, classification, image intent, image description) ask `ReasoningMinimal`; turns,
+  forced final answer and prose helpers `ReasoningBalanced` (minimal can mean thinking off, which
+  costs correctness on prose). Helper caps are `MaxAnswerTokens`.
 - Secrets via env only; never commit them. The `admin` account is seeded from env on first boot only.
 
 ## Database / migrations

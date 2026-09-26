@@ -478,9 +478,8 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writ
 }
 
 // incognitoRetryInference picks the metadata for the incognito empty-answer
-// retry. A first turn that ran out at the cap spent it on reasoning, so a retry
-// with thinking still on would most likely run out the same way; it goes out
-// with thinking off instead, like the forced final answer.
+// retry. A first turn that ran out at the cap spent it on reasoning, so the
+// retry gets the forced final answer's wider budget.
 func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamResult) llm.InferenceMetadata {
 	if first.FinishReason == "length" {
 		return finalAnswerInference(metadata, "chat", 2)
@@ -548,19 +547,15 @@ func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round 
 
 // finalAnswerMaxCompletionTokens is the completion budget for the forced final
 // answer. It matches the default chat cap: the forced final synthesizes many
-// gathered sources with thinking off, so the whole budget goes to prose, and it
-// must never be tighter than the answer a normal round could have written.
+// gathered sources, and it must never be tighter than the answer a normal
+// round could have written.
 const finalAnswerMaxCompletionTokens = 16384
 
 // finalAnswerInference builds the metadata for a forced final-answer turn: it
-// disables thinking and widens the completion budget. By this point all research
-// reasoning already happened across the tool rounds and is in history, so the
-// model only needs to write the answer — leaving thinking on lets a reasoning
-// model burn the whole budget thinking and emit no prose (finish_reason=length),
-// which is the failure this turns off.
+// widens the completion budget so a synthesis over many gathered sources has
+// room to complete after the model's reasoning.
 func finalAnswerInference(metadata llm.InferenceMetadata, purpose string, round int) llm.InferenceMetadata {
 	metadata = inferenceWithPurpose(metadata, purpose, round)
-	metadata.SuppressThinking = true
 	metadata.MaxCompletionTokens = finalAnswerMaxCompletionTokens
 	return metadata
 }

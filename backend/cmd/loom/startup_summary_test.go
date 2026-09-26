@@ -6,24 +6,37 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/loom/internal/config"
+	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 )
 
-// Outside dev auth a missing chat key is a broken deployment, not a routine
-// capability line.
+// testChatModels resolves the roles onto llmwiretest's synthetic model, so no
+// test names a real one.
+func testChatModels(t *testing.T) llm.Resolved {
+	t.Helper()
+	resolved, err := llm.ResolveRoles(llmwiretest.Registry(), llm.Roles{Chat: llmwiretest.ChatModel})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
+}
+
+// Outside dev auth a chat model or key that is missing is a broken deployment,
+// not a routine capability line; the warning names what is missing.
 func TestLogStartupCapabilitiesWarnsWithoutChatKeyOutsideDev(t *testing.T) {
 	var buf bytes.Buffer
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	logStartupCapabilities(config.Config{AuthMode: config.AuthModeOIDC}, mcp.Config{}, startupRuntime{})
-	if !strings.Contains(buf.String(), "level=WARN msg=\"chat disabled: LLMWIRE_ZAI_API_KEY is unset") {
+	logStartupCapabilities(config.Config{AuthMode: config.AuthModeOIDC, ChatMissing: "LLMWIRE_EXAMPLE_API_KEY"}, mcp.Config{}, startupRuntime{})
+	if !strings.Contains(buf.String(), "level=WARN msg=\"chat disabled: LLMWIRE_EXAMPLE_API_KEY is unset") {
 		t.Fatalf("no warning without a chat key:\n%s", buf.String())
 	}
 	buf.Reset()
-	logStartupCapabilities(config.Config{AuthMode: config.AuthModeDev}, mcp.Config{}, startupRuntime{})
+	logStartupCapabilities(config.Config{AuthMode: config.AuthModeDev, ChatMissing: "BACKEND_CHAT_MODEL"}, mcp.Config{}, startupRuntime{})
 	if strings.Contains(buf.String(), "level=WARN msg=\"chat disabled") {
 		t.Fatalf("dev auth must not warn:\n%s", buf.String())
 	}
@@ -36,11 +49,12 @@ func TestLogStartupCapabilitiesWarnsWithoutChatKeyOutsideDev(t *testing.T) {
 
 func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	items := startupCapabilities(config.Config{
-		UsersDir: "/data/users",
-		TikaURL:  "http://tika:9998",
+		UsersDir:    "/data/users",
+		TikaURL:     "http://tika:9998",
+		ChatMissing: "BACKEND_CHAT_MODEL",
 	}, mcp.Config{}, startupRuntime{DocToolCount: 5})
 
-	assertCapability(t, items, "chat", "disabled", "LLMWIRE_ZAI_API_KEY")
+	assertCapability(t, items, "chat", "disabled", "BACKEND_CHAT_MODEL")
 	assertCapability(t, items, "embeddings", "disabled", "LLMWIRE_OPENAI_API_KEY")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
@@ -53,6 +67,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	items := startupCapabilities(config.Config{
 		AuthMode:       config.AuthModeDev,
 		ChatEnabled:    true,
+		ChatModels:     testChatModels(t),
 		EmbedEnabled:   true,
 		TikaURL:        "http://tika:9998",
 		UsersDir:       "/data/users",
@@ -65,7 +80,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	}}, startupRuntime{DocToolCount: 5, ImageToolCount: 1, DiscoveredToolCount: 3})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
-	assertCapability(t, items, "chat", "enabled", "model=glm-5.3-flash")
+	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)
 	assertCapability(t, items, "embeddings", "enabled", "text-embedding-3-small")
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")

@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trick77/llmwire"
+	"github.com/trick77/loom/internal/rag"
 )
 
 func TestLoad_defaults(t *testing.T) {
@@ -305,26 +308,68 @@ func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
 	}
 }
 
-// A capability is on when its llmwire key is set.
-func TestLoad_modelCapabilitiesFollowTheKeys(t *testing.T) {
+// anyChatModel is a registry chat model loom's chat role accepts, found at run
+// time so no test names a model.
+func anyChatModel(t *testing.T) (id, keyEnv string) {
+	t.Helper()
+	reg := llmwire.Default()
+	ids := reg.ChatModels(llmwire.Needs{Tools: true, Streaming: true, Vision: true})
+	if len(ids) == 0 {
+		t.Skip("llmwire's registry has no chat model with tools and vision")
+	}
+	p, err := reg.Lookup(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ids[0], p.APIKeyEnv()
+}
+
+// Chat is on when a chat model is configured and every key its roles' providers
+// read is set; embeddings when their key is set.
+func TestLoad_modelCapabilitiesFollowModelsAndKeys(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("LLMWIRE_ZAI_API_KEY", "")
-	t.Setenv("LLMWIRE_OPENAI_API_KEY", "")
+	model, keyEnv := anyChatModel(t)
+	t.Setenv("BACKEND_CHAT_MODEL", "")
+	t.Setenv(keyEnv, "k1")
+	t.Setenv(rag.EmbedAPIKeyEnv(), "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ChatEnabled || cfg.EmbedEnabled {
-		t.Fatalf("no keys: chat=%v embed=%v, want both off", cfg.ChatEnabled, cfg.EmbedEnabled)
+	if cfg.ChatEnabled || cfg.ChatMissing != "BACKEND_CHAT_MODEL" {
+		t.Fatalf("no chat model: enabled=%v missing=%q, want off, BACKEND_CHAT_MODEL", cfg.ChatEnabled, cfg.ChatMissing)
 	}
-	t.Setenv("LLMWIRE_ZAI_API_KEY", "k1")
-	t.Setenv("LLMWIRE_OPENAI_API_KEY", " ")
+
+	t.Setenv("BACKEND_CHAT_MODEL", model)
+	t.Setenv(keyEnv, "")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ChatEnabled || cfg.ChatMissing != keyEnv {
+		t.Fatalf("no key: enabled=%v missing=%q, want off, %s", cfg.ChatEnabled, cfg.ChatMissing, keyEnv)
+	}
+
+	t.Setenv(keyEnv, "k1")
+	t.Setenv(rag.EmbedAPIKeyEnv(), " ")
 	cfg, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.ChatEnabled || cfg.EmbedEnabled {
-		t.Fatalf("zai key only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
+		t.Fatalf("chat key only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
+	}
+	if cfg.ChatModels.Info().ID != model {
+		t.Fatalf("resolved chat model = %q, want %q", cfg.ChatModels.Info().ID, model)
+	}
+}
+
+// A model id llmwire does not know, or one short of its role, fails boot.
+func TestLoad_unusableChatModelFailsBoot(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_CHAT_MODEL", "no-such-model")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "valid choices") {
+		t.Fatalf("Load() error = %v, want one listing the valid choices", err)
 	}
 }
 

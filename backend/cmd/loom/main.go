@@ -269,6 +269,7 @@ func run() error {
 	deps := httpapi.Deps{
 		Background:                 background,
 		Version:                    version,
+		Model:                      cfg.ChatModels.Info(),
 		Static:                     web.SPAHandler(),
 		OIDC:                       oidcService,
 		Auth:                       authMW,
@@ -422,6 +423,7 @@ func responseLogDirForConfig(cfg config.Config) string {
 
 func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 	return llm.Config{
+		Models:              cfg.ChatModels.Roles,
 		MaxCompletionTokens: cfg.ChatMaxCompletionTokens,
 		Timeout:             cfg.ChatTimeout,
 		IdleTimeout:         cfg.ChatIdleTimeout,

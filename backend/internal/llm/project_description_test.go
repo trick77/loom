@@ -35,7 +35,7 @@ func TestGenerateProjectDescription_usesItsOwnLargerTokenBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateProjectDescription error = %v", err)
 	}
-	if gotMaxTokens != projectDescriptionMaxCompletionTokens+helperReasoningHeadroom {
+	if gotMaxTokens <= utilityMaxCompletionTokens || gotMaxTokens < projectDescriptionMaxCompletionTokens {
 		t.Errorf("max_tokens = %d, want %d (must not reuse the %d-token title cap)",
 			gotMaxTokens, projectDescriptionMaxCompletionTokens, utilityMaxCompletionTokens)
 	}

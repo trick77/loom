@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/config"
-	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
 )
@@ -28,11 +27,11 @@ func logStartupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime sta
 	for _, item := range startupCapabilities(cfg, mcpConfig, runtime) {
 		slog.Info("startup capability", "name", item.Name, "status", item.Status, "detail", item.Detail)
 	}
-	// A key turns chat on, so a missing or misspelled variable no longer fails
+	// A model and its keys turn chat on, so a missing variable no longer fails
 	// boot the way a missing endpoint did: outside dev auth that is a
 	// deployment that cannot chat, and it must not pass as a routine line.
 	if !cfg.ChatEnabled && cfg.AuthMode != config.AuthModeDev {
-		slog.Warn("chat disabled: " + llm.APIKeyEnv() + " is unset, every turn will fail")
+		slog.Warn("chat disabled: " + cfg.ChatMissing + " is unset, every turn will fail")
 	}
 }
 
@@ -65,9 +64,11 @@ func authCapability(cfg config.Config) startupCapability {
 
 func chatCapability(cfg config.Config) startupCapability {
 	if !cfg.ChatEnabled {
-		return startupCapability{Name: "chat", Status: "disabled", Detail: "set " + llm.APIKeyEnv()}
+		return startupCapability{Name: "chat", Status: "disabled", Detail: "set " + cfg.ChatMissing}
 	}
-	return startupCapability{Name: "chat", Status: "enabled", Detail: "model=" + llm.ModelSummary()}
+	roles := cfg.ChatModels.Roles
+	return startupCapability{Name: "chat", Status: "enabled",
+		Detail: "model=" + roles.Chat + " gate=" + roles.Gate + " vision=" + roles.Vision}
 }
 
 func embeddingsCapability(cfg config.Config) startupCapability {

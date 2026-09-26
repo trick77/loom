@@ -2,6 +2,7 @@
 // Public endpoint: shared pages need the context window too.
 export interface ModelInfo {
   model: string;
+  displayName: string;
   contextWindow: number;
 }
 
