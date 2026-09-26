@@ -222,12 +222,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, plan.history, inference, user, thread, plan.gate, plan.imageRoute.generate, plan.editSource, plan.imageRoute.typography, userMessage.Content, plan.sourceCount)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if streamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
 			slog.Info("message stream canceled",
 				"thread_id", threadID,
 				"cancel_source", cancelSource,
 				"reason", cancelReason,
+				"err", err,
 				"content_bytes", len(assistantResult.Content),
 				"reasoning_bytes", len(assistantResult.ReasoningContent),
 				"tool_calls", len(assistantResult.ToolCalls))
