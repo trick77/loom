@@ -32,13 +32,21 @@ func (ing *Ingester) ReembedMissing(ctx context.Context) (int, error) {
 		}
 		if len(missing) == 0 {
 			if total == 0 && len(refused) > 0 {
-				// Nothing embedded at all: the model is refusing every input
-				// (a wrong model or parameter), not a few odd chunks. Fail so
-				// the run is retried, and remember nothing.
-				return 0, fmt.Errorf("re-embed: the embedding model refused all %d chunks", len(refused))
+				// Nothing embedded in this run. If the table holds vectors, the
+				// model works and these few it will never take (an interrupted
+				// run, or chunks an earlier version skipped). If it holds none,
+				// the model is refusing every input (a wrong model or
+				// parameter): fail so the run is retried, and remember nothing.
+				works, err := ing.store.HasVectors(ctx)
+				if err != nil {
+					return 0, err
+				}
+				if !works {
+					return 0, fmt.Errorf("re-embed: the embedding model refused all %d chunks", len(refused))
+				}
 			}
-			// The model took others, so these it will never take: remember
-			// them, or every later run would fail on them.
+			// The model takes other chunks, so these it will never take:
+			// remember them, or every later run would fail on them.
 			if err := ing.store.MarkRefused(ctx, refused); err != nil {
 				return total, err
 			}

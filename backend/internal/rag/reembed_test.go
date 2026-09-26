@@ -158,6 +158,26 @@ func TestIngester_ReembedMissingRemembersRefusedChunks(t *testing.T) {
 	}
 }
 
+// When the only chunks left without a vector are ones the model refuses (an
+// interrupted run, or an upgrade after the old code skipped them), the model
+// still works — other vectors exist — so the refusals are recorded instead of
+// failing every retry forever.
+func TestIngester_ReembedMissingRecordsRefusalsWhenOnlyThoseRemain(t *testing.T) {
+	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
+	ctx := context.Background()
+	seedEmbeddedDocument(t, s, "d1", "alpha")
+	seedEmbeddedDocument(t, s, "d2", "poison")
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid = (SELECT id FROM chunks WHERE text = 'poison')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ing.ReembedMissing(ctx); err != nil {
+		t.Fatalf("ReembedMissing: %v, want the refusal recorded", err)
+	}
+	if n, err := ing.ReembedMissing(ctx); err != nil || n != 0 {
+		t.Fatalf("second run: n=%d err=%v, want a no-op", n, err)
+	}
+}
+
 // Clearing a document forgets its refused chunks: their ids can be reused.
 func TestStore_ClearChunksForgetsRefusals(t *testing.T) {
 	ing, s := newIngester(t, fakeExtractor{}, &poisonEmbedder{}, fakeOpener{})
