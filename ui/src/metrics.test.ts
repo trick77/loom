@@ -204,7 +204,11 @@ test("buildMetricsString omits the context % until the context window is known",
   // The window comes from /api/model; before it arrives there is no honest
   // denominator, so the segment is left out rather than guessed.
   const line = buildMetricsString(
-    assistant({ durationMs: 1000, completionTokens: 100, contextTokens: 50_000 }),
+    assistant({
+      durationMs: 1000,
+      completionTokens: 100,
+      contextTokens: 50_000,
+    }),
   );
   expect(line).not.toContain("%");
   expect(line).toBe(

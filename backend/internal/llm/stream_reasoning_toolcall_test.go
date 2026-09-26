@@ -2,7 +2,6 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -10,13 +9,6 @@ import (
 	"testing"
 	"time"
 )
-
-// jsonString renders s as a JSON string literal (with surrounding quotes) for
-// embedding in a hand-built SSE chunk.
-func jsonString(s string) string {
-	b, _ := json.Marshal(s)
-	return string(b)
-}
 
 // recordCapture records every slog record so a test can assert a specific log
 // line (by message) was emitted with the expected attributes.
@@ -42,27 +34,6 @@ func (h *recordCapture) Handle(_ context.Context, r slog.Record) error {
 }
 func (h *recordCapture) WithAttrs([]slog.Attr) slog.Handler { return h }
 func (h *recordCapture) WithGroup(string) slog.Handler      { return h }
-
-func (h *recordCapture) find(msg string) (map[string]slog.Value, bool) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for _, c := range h.records {
-		if c.msg == msg {
-			return c.attrs, true
-		}
-	}
-	return nil, false
-}
-
-func (h *recordCapture) messages() []string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	var out []string
-	for _, c := range h.records {
-		out = append(out, c.msg)
-	}
-	return out
-}
 
 // levels lists the level of every record with the message, in order.
 func (h *recordCapture) levels(msg string) []slog.Level {

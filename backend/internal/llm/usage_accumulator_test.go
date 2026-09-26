@@ -35,6 +35,6 @@ func TestUsageAccumulator_RolledUpCostAlonePricesTheTurn(t *testing.T) {
 	}
 }
 
-func TestRecordRolledUpCost_NoAccumulatorIsANoOp(t *testing.T) {
+func TestRecordRolledUpCost_NoAccumulatorIsANoOp(_ *testing.T) {
 	RecordRolledUpCost(context.Background(), 20)
 }
