@@ -151,8 +151,14 @@ func run() error {
 		if err := ragStore.ScrubOutOfScopeMessageCitations(context.Background()); err != nil {
 			return err
 		}
-		embedClient, err := rag.NewEmbedClient(rag.EmbedConfig{}, http.DefaultClient)
+		embedClient, err := rag.NewEmbedClient(rag.EmbedConfig{Model: cfg.EmbedModel.ID}, http.DefaultClient)
 		if err != nil {
+			return err
+		}
+		// A new embedding model with another width: rebuild the vector table at
+		// the model's width. The chunks stay; reembedInBackground restores their
+		// vectors below.
+		if err := reconcileVectorWidth(context.Background(), ragStore, cfg.EmbedModel); err != nil {
 			return err
 		}
 		tikaClient := documents.NewTikaClient(documents.TikaConfig{BaseURL: cfg.TikaURL})
@@ -166,6 +172,7 @@ func run() error {
 		if llmClient != nil {
 			ingester.SetImageDescriber(llmClient)
 		}
+		reembedInBackground(ingester)
 		docs := documents.NewService(ragStore, artifactStore, ingester, embedClient, cfg.UsersDir)
 		docs.SetUsageRecorder(usageStore)
 		documentService = docs
@@ -269,6 +276,7 @@ func run() error {
 	deps := httpapi.Deps{
 		Background:                 background,
 		Version:                    version,
+		Model:                      chatModelInfo(cfg),
 		Static:                     web.SPAHandler(),
 		OIDC:                       oidcService,
 		Auth:                       authMW,
@@ -422,6 +430,7 @@ func responseLogDirForConfig(cfg config.Config) string {
 
 func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 	return llm.Config{
+		Models:              cfg.ChatModels.Roles,
 		MaxCompletionTokens: cfg.ChatMaxCompletionTokens,
 		Timeout:             cfg.ChatTimeout,
 		IdleTimeout:         cfg.ChatIdleTimeout,

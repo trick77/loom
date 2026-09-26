@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/imagescale"
 	"github.com/trick77/loom/internal/inference"
 )
@@ -52,7 +53,7 @@ func (c *Client) DescribeImage(ctx context.Context, data []byte, mime string) (s
 	// task and burns the token budget on reasoning (risking
 	// finish_reason=length). Describing is perception + transcription, not
 	// reasoning.
-	reply, err := c.complete(ctx, c.visionModel, messages, imageDescribeMaxCompletionTokens, nil)
+	reply, err := c.complete(ctx, c.visionModel, messages, imageDescribeMaxCompletionTokens, llmwire.ReasoningMinimal(), nil)
 	if err != nil {
 		return "", err
 	}

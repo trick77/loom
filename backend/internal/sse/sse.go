@@ -48,8 +48,8 @@ func (s *Writer) Send(event, data string) error {
 }
 
 // Heartbeat keeps the connection alive through idle proxies while the stream is
-// silent. Some upstream models (e.g. MiMo) stream nothing to the client for tens
-// of seconds while serializing a tool-call argument server-side; with no traffic
+// silent. Some upstream models stream nothing to the client for tens of seconds
+// while serializing a tool-call argument server-side; with no traffic
 // an intermediary proxy, load balancer, or edge (e.g. Cloudflare's ~100s) may
 // idle out the connection even though generation is progressing. A periodic SSE
 // comment (": ...\n\n") is ignored by EventSource clients but resets those idle

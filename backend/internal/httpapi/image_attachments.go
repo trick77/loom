@@ -71,7 +71,7 @@ func (s *server) resolveImageAttachments(ctx context.Context, userID, text strin
 		if err != nil {
 			return nil, nil, fmt.Errorf("image attachment path rejected: %w", err)
 		}
-		// MiMo's OpenAI-compatible image input accepts data URLs, so the request path
+		// OpenAI-compatible image input accepts data URLs, so the request path
 		// base64-encodes each upload in memory. This data URL rides on the message
 		// that is re-sent on every tool round of the turn, so the bytes matter:
 		// DownscaleForModel caps the longest side / recompresses to JPEG first, which

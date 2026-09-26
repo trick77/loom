@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { resetModelInfoForTest } from "../api/model";
 import { UNSUPPORTED_FILE_MESSAGE } from "./attachmentFiles";
 import { Composer } from "./Composer";
 import {
@@ -12,6 +13,36 @@ import type { ComposerAttachment } from "./useDocumentAttachments";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  resetModelInfoForTest();
+});
+
+// The label is the configured model's display name from /api/model (its
+// llmwire profile), not a name baked into the UI.
+test("labels the composer with the model's display name from /api/model", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        model: "some-model",
+        displayName: "Some Model",
+        contextWindow: 128000,
+      }),
+    }),
+  );
+  render(
+    <Composer
+      variant="thread"
+      draft=""
+      isSending={false}
+      placeholder="Write a message..."
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+    />,
+  );
+  expect(await screen.findByText("Some Model")).toBeInTheDocument();
 });
 
 test("reports unsupported picker files instead of silently ignoring them", () => {

@@ -88,9 +88,19 @@ func TestChatError_PhrasesStatusAndStall(t *testing.T) {
 	if chatError(nil) != nil {
 		t.Fatal("nil in, nil out")
 	}
-	status := chatError(&llmwire.APIError{StatusCode: 502, Message: "bad gateway"})
+	status := chatError(&llmwire.APIError{StatusCode: 502, Message: "bad gateway", Class: llmwire.ErrUpstream})
 	if status.Error() != "chat completion failed with status 502: bad gateway" {
 		t.Fatalf("status error = %q", status)
+	}
+	// The phrasing must not cost the caller llmwire's classification: a 429 is
+	// still ErrRateLimited, and the concrete *APIError is still reachable.
+	if !errors.Is(status, llmwire.ErrUpstream) {
+		t.Fatalf("status error lost its class: %v", status)
+	}
+	limited := chatError(&llmwire.APIError{StatusCode: 429, Message: "slow down", Class: llmwire.ErrRateLimited})
+	var apiErr *llmwire.APIError
+	if !errors.Is(limited, llmwire.ErrRateLimited) || !errors.As(limited, &apiErr) || apiErr.StatusCode != 429 {
+		t.Fatalf("429 lost its class or its *APIError: %v", limited)
 	}
 	idle := chatError(errors.New("llmwire: " + llmwire.ErrStreamIdle.Error() + " for 1m"))
 	if errors.Is(idle, ErrStreamStalled) {
@@ -131,14 +141,13 @@ func TestStreamChat_RecordsPricedCostIntoTheAccumulator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// glm-5.3-flash: 1000 input at 0.15 USD/M, 100 output at 0.50 USD/M,
-	// in nano-USD.
-	const want = int64(1000*150 + 100*500)
-	if !result.CostPriced || result.CostNanoUSD != want {
-		t.Fatalf("cost = %d priced=%v, want %d", result.CostNanoUSD, result.CostPriced, want)
+	// The rate is llmwire's (the test model's profile); loom's job is to carry
+	// llmwire's figure into the result and the turn's accumulator unchanged.
+	if !result.CostPriced || result.CostNanoUSD <= 0 {
+		t.Fatalf("cost = %d priced=%v, want a priced, positive figure", result.CostNanoUSD, result.CostPriced)
 	}
-	if nano, priced := acc.Cost(); !priced || nano != want {
-		t.Fatalf("accumulated = %d/%v, want %d", nano, priced, want)
+	if nano, priced := acc.Cost(); !priced || nano != result.CostNanoUSD {
+		t.Fatalf("accumulated = %d/%v, want the result's %d", nano, priced, result.CostNanoUSD)
 	}
 	if usage := acc.Total(); usage.PromptTokens != 1000 || usage.CompletionTokens != 100 {
 		t.Fatalf("accumulated usage = %#v", usage)
@@ -236,5 +245,34 @@ func TestLogWarnings_ToolCallMarkupIsAWarning(t *testing.T) {
 	levels := capture.levels("llm: wire warning")
 	if len(levels) != 2 || levels[0] != slog.LevelDebug || levels[1] != slog.LevelWarn {
 		t.Fatalf("levels = %v, want [DEBUG WARN]", levels)
+	}
+}
+
+// A cap past the model's output limit is clamped silently by the endpoint, and
+// an unpriced call leaves a hole in every cost figure: both are operator
+// problems, so they log at WARN. The cost one once per model, not per call.
+func TestLogWarnings_CapAndCostAreWarnings(t *testing.T) {
+	capture := &recordCapture{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(capture))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	model := "cost-warning-test-model"
+	warnings := []llmwire.Warning{
+		{Kind: llmwire.WarnCompatibility, Feature: "max_tokens", Details: "exceeds the output limit"},
+		{Kind: llmwire.WarnOther, Feature: "cost", Details: "no rate"},
+	}
+	logWarnings(context.Background(), model, warnings)
+	logWarnings(context.Background(), model, warnings)
+
+	levels := capture.levels("llm: wire warning")
+	want := []slog.Level{slog.LevelWarn, slog.LevelWarn, slog.LevelWarn, slog.LevelDebug}
+	if len(levels) != len(want) {
+		t.Fatalf("levels = %v, want %v", levels, want)
+	}
+	for i := range want {
+		if levels[i] != want[i] {
+			t.Fatalf("levels = %v, want %v (cost at WARN once per model)", levels, want)
+		}
 	}
 }

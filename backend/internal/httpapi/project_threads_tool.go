@@ -22,7 +22,7 @@ const projectThreadsToolName = "read_project_threads"
 const maxProjectSummaryThreads = 50
 
 // projectThreadsTool is the schema advertised to the model. The description is
-// written so MiMo's inline tool-caller reliably fires on the natural phrasings a
+// written so the tool reliably fires on the natural phrasings a
 // user reaches for ("summarize the threads in this project", "compile what we
 // found across these conversations").
 func projectThreadsTool() llm.Tool {

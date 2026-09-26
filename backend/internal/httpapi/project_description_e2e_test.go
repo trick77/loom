@@ -9,6 +9,7 @@ import (
 
 	"context"
 
+	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 )
@@ -47,7 +48,12 @@ func TestRefreshProjectDescription_GeneratedThroughRealClient(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := llm.NewClient(llm.Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	client, err := llm.NewClient(llm.Config{
+		BaseURL:  srv.URL,
+		APIKey:   "k",
+		Registry: llmwiretest.Registry(),
+		Models:   llm.Roles{Chat: llmwiretest.ChatModel},
+	}, srv.Client())
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}

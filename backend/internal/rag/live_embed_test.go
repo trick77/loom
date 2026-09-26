@@ -4,6 +4,7 @@ package rag
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,12 +12,12 @@ import (
 )
 
 // TestLiveEmbedAndRetrieve exercises the real embeddings endpoint + real
-// sqlite-vec KNN: it confirms the configured model returns 1536-dim vectors and
+// sqlite-vec KNN: it confirms the configured model's vectors fit the table and
 // that a semantically related query retrieves the right chunk. Run with:
 //
-//	LLMWIRE_OPENAI_API_KEY=... go test -tags liveembed -run TestLiveEmbedAndRetrieve ./internal/rag/ -v
+//	BACKEND_EMBED_MODEL=<id> LLMWIRE_<PROVIDER>_API_KEY=... go test -tags liveembed -run TestLiveEmbedAndRetrieve ./internal/rag/ -v
 func TestLiveEmbedAndRetrieve(t *testing.T) {
-	emb, err := NewEmbedClient(EmbedConfig{}, nil)
+	emb, err := NewEmbedClient(EmbedConfig{Model: os.Getenv("BACKEND_EMBED_MODEL")}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

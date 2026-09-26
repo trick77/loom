@@ -183,8 +183,8 @@ func buildHistory(systemContent string, messages []chat.Message, newUserMessage 
 
 // incognitoSystemPrompt is the system prompt for a tool-free incognito turn. Unlike
 // loomSystemPrompt it grants NO tools and explicitly forbids tool/search/file calls,
-// so a tool-eager model (notably MiMo, whose inline tool-call markup is stripped from
-// the content) answers directly instead of emitting a call that would be recovered
+// so a tool-eager model (one whose inline tool-call markup is stripped from the
+// content) answers directly instead of emitting a call that would be recovered
 // and stripped — leaving an empty reply on the no-tool incognito path.
 const incognitoSystemPrompt = "You are Loom in an incognito conversation. Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Reach for markdown structure only when it genuinely helps the reader: a list for a true enumeration, a table to compare items across the same dimensions, and headings only for long, multi-section answers. Keep short or simple answers as plain prose. Use **bold** sparingly for key terms, and put code in fenced markdown blocks. You have NO tools available in this conversation: do not search the web, browse or fetch URLs, look up past conversations, generate images, or create files, and never emit a tool call of any kind. Answer directly from your own knowledge. If you do not know something, or it may be out of date or beyond your knowledge, say so plainly instead of claiming to look it up or guessing."
 

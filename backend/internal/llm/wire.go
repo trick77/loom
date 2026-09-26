@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/trick77/llmwire"
+	"github.com/trick77/loom/internal/inference"
 )
 
 // The seam between loom's chat types and llmwire's.
@@ -96,37 +97,47 @@ func costFromWire(u llmwire.Usage) (nanoUSD int64, priced bool) {
 	return u.Cost.NanoUSD, true
 }
 
-// chatError phrases a wire failure the way loom's handlers already read it. A
-// status error keeps the "chat completion failed with status N" wording the
-// httpapi layer matches on; llmwire's own bounds and shape errors pass through
-// with their names, wrapped so errors.Is still holds.
+// chatError phrases a wire failure for logs and the user-facing message. A
+// status error reads "chat completion failed with status N"; every error stays
+// wrapped, so llmwire's classes (ErrRateLimited, ErrAuth, ...) and the concrete
+// *APIError remain reachable with errors.Is/As.
 func chatError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// A stall before the first byte (MiMo Pro queueing past the window) and one
-	// mid-stream are the same failure to the handlers: the model stopped
+	// A stall before the first byte (an upstream queueing past the window) and
+	// one mid-stream are the same failure to the handlers: the model stopped
 	// responding.
 	if errors.Is(err, llmwire.ErrStreamIdle) || errors.Is(err, llmwire.ErrNoResponseHeaders) {
 		return fmt.Errorf("read chat completion stream: %w", ErrStreamStalled)
 	}
 	var apiErr *llmwire.APIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode != 0 {
-		return fmt.Errorf("chat completion failed with status %d: %s", apiErr.StatusCode, apiErr.Message)
+		return inference.WireError(fmt.Sprintf("chat completion failed with status %d: %s", apiErr.StatusCode, apiErr.Message), err)
 	}
 	return fmt.Errorf("chat completion request: %w", err)
 }
 
 // logWarnings records llmwire's warnings. Most are debug noise (the common one
-// is "no usage object" on a helper call). The tool_calls feature is the
-// exception: it reports inline tool-call markup that the model leaked into its
-// text, recovered into a call or cut without one, which the operator needs to
-// see at the default log level because the client never saw that text.
+// is "no usage object" on a helper call). Three are operator problems and log
+// at WARN:
+//   - tool_calls: inline tool-call markup the model leaked into its text,
+//     recovered into a call or cut without one; the client never saw it.
+//   - max_tokens: a cap past the model's output limit, which the endpoint
+//     clamps silently.
+//   - cost: a call llmwire could not price, a hole in every cost figure. Once
+//     per process and model: every call would repeat it, and the fix is in
+//     llmwire's profile, not in loom.
 func logWarnings(ctx context.Context, model string, warnings []llmwire.Warning) {
 	for _, w := range warnings {
 		level := slog.LevelDebug
-		if w.Feature == "tool_calls" {
+		switch w.Feature {
+		case "tool_calls", "max_tokens":
 			level = slog.LevelWarn
+		case "cost":
+			if _, seen := warnedUnpriced.LoadOrStore(model, struct{}{}); !seen {
+				level = slog.LevelWarn
+			}
 		}
 		slog.LogAttrs(ctx, level, "llm: wire warning",
 			slog.String("model", model),
@@ -136,16 +147,8 @@ func logWarnings(ctx context.Context, model string, warnings []llmwire.Warning) 
 	}
 }
 
-// warnUnpricedOnce keeps the rate-table warning to one line per process and
-// model: every call would otherwise repeat it, and the fix is in llmwire's
-// profile, not in loom.
-var warnUnpricedOnce sync.Map
-
-func noteUnpriced(ctx context.Context, model string) {
-	if _, seen := warnUnpricedOnce.LoadOrStore(model, struct{}{}); !seen {
-		slog.WarnContext(ctx, "llm: no rate for model, cost not accounted", slog.String("model", model))
-	}
-}
+// warnedUnpriced holds the models whose cost warning already went out at WARN.
+var warnedUnpriced sync.Map
 
 // streamProgressAttrs reports per-stream observability so a stall is diagnosable
 // after the fact and the idle window is calibratable from healthy turns: time to

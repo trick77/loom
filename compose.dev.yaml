@@ -22,7 +22,17 @@ services:
       context: .
       dockerfile: backend/Containerfile
     network_mode: host
+    # Optional chat: BACKEND_CHAT_MODEL (and BACKEND_GATE_MODEL,
+    # BACKEND_VISION_MODEL) plus the LLMWIRE_<PROVIDER>_API_KEY its provider
+    # reads, taken from .env as they are (not from the shell). Needs Docker
+    # Compose 2.24+.
+    env_file:
+      - path: .env
+        required: false
     environment:
+      # No Tika sidecar in this stack: keep document RAG off even when .env
+      # names an embedding model for the full stack.
+      BACKEND_EMBED_MODEL: ""
       BACKEND_AUTH_MODE: dev
       BACKEND_ADDR: "127.0.0.1:8080"
       BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-debug}"
@@ -35,9 +45,6 @@ services:
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
       # HTML→PDF renderer, published on a localhost port (loom is host-networked here).
       BACKEND_GOTENBERG_URL: "http://localhost:3000"
-      # Optional: a Z.ai key to actually chat (the host ships with llmwire).
-      LLMWIRE_ZAI_API_KEY: "${LLMWIRE_ZAI_API_KEY:-}"
-      LLMWIRE_EMULATE_OPENCODE: "${LLMWIRE_EMULATE_OPENCODE:-}"
       # Extra MCP servers from ./conf/mcp.json (standard mcpServers format; merged on top of built-ins).
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"
       IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"

@@ -20,7 +20,7 @@ type pdfBlock struct {
 func parseBlocks(payload map[string]any) []pdfBlock {
 	raw, ok := payload["blocks"].([]any)
 	if !ok {
-		// MiMo frequently serializes the blocks array as a JSON-encoded string
+		// Models sometimes serialize the blocks array as a JSON-encoded string
 		// (blocks: "[{...}]") rather than a real array. Decode that form instead of
 		// silently dropping the entire document and failing "content or blocks are
 		// required".

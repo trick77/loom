@@ -25,6 +25,9 @@ import (
 type Deps struct {
 	Version string
 	Static  http.Handler // serves the embedded SPA; may be nil in tests
+	// Model describes the configured chat model for /api/model; zero when
+	// chat is off.
+	Model llm.ModelInfo
 
 	OIDC     OIDCService
 	Auth     *auth.Middleware
@@ -67,6 +70,7 @@ type Deps struct {
 
 type server struct {
 	version                    string
+	model                      llm.ModelInfo
 	background                 *Background
 	inflight                   inflightKeys
 	oidc                       OIDCService
@@ -290,6 +294,7 @@ func newServer(d Deps) *server {
 	return &server{
 		background:                 background,
 		version:                    d.Version,
+		model:                      d.Model,
 		oidc:                       d.OIDC,
 		auth:                       d.Auth,
 		sessions:                   d.Sessions,

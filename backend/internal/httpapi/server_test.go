@@ -47,25 +47,20 @@ func TestHealth_returnsOK(t *testing.T) {
 // /api/model is public: shared pages render the context-% segment too, and
 // their viewers are not signed in.
 func TestModel_returnsChatModelFactsWithoutAuth(t *testing.T) {
-	srv := New(Deps{Version: "test"})
+	info := llm.ModelInfo{ID: "some-model", DisplayName: "Some Model", ContextWindow: 128000}
+	srv := New(Deps{Version: "test", Model: info})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/model", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	var body struct {
-		Model         string `json:"model"`
-		ContextWindow int64  `json:"contextWindow"`
-	}
+	var body llm.ModelInfo
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if body.Model != llm.ModelSummary() {
-		t.Errorf("model = %q, want %q", body.Model, llm.ModelSummary())
-	}
-	if body.ContextWindow != llm.ContextWindow() {
-		t.Errorf("contextWindow = %d, want %d", body.ContextWindow, llm.ContextWindow())
+	if body != info {
+		t.Errorf("body = %+v, want %+v", body, info)
 	}
 }
 

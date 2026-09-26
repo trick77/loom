@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trick77/llmwire/llmwiretest"
 )
 
 func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
@@ -63,15 +65,15 @@ func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {
 	if gotAuth != "Bearer secret" {
 		t.Fatalf("Authorization = %q, want Bearer secret", gotAuth)
 	}
-	if gotBody.Model != textModel {
-		t.Fatalf("model = %q, want %q", gotBody.Model, textModel)
+	if gotBody.Model != testModel {
+		t.Fatalf("model = %q, want %q", gotBody.Model, testModel)
 	}
 	if !gotBody.Stream {
 		t.Fatal("stream = false, want true")
 	}
-	// See TestClient_StreamSendsHighReasoningEffort for why the level is sent.
-	if gotBody.ReasoningEffort != "high" {
-		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
+	// A turn asks for the balanced level; see TestClient_StreamAsksForBalancedReasoning.
+	if gotBody.ReasoningEffort != llmwiretest.BalancedSent {
+		t.Fatalf("reasoning_effort = %q, want %q", gotBody.ReasoningEffort, llmwiretest.BalancedSent)
 	}
 	if gotBody.MaxTokens != 2048 {
 		t.Fatalf("max_tokens = %d, want 2048", gotBody.MaxTokens)
@@ -142,7 +144,7 @@ func TestClient_RoutesImageTurnsToVisionModelAndTextTurnsToTextModel(t *testing.
 		{
 			name:      "text-only turn uses the text model",
 			messages:  []Message{{Role: "user", Content: "Hi"}},
-			wantModel: textModel,
+			wantModel: testModel,
 		},
 		{
 			name: "turn with an image part uses the vision model",
@@ -153,7 +155,7 @@ func TestClient_RoutesImageTurnsToVisionModelAndTextTurnsToTextModel(t *testing.
 					{Type: "text", Text: "What is this?"},
 				},
 			}},
-			wantModel: visionModel,
+			wantModel: testModel,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -188,9 +190,9 @@ func TestClient_RoutesImageTurnsToVisionModelAndTextTurnsToTextModel(t *testing.
 	}
 }
 
-// The core invariant: no image_url part may ever be sent to the text-only model
-// (mimo-v2.5-pro 404s on image input). Any message carrying an image part must
-// route to the vision model.
+// The core invariant: no image_url part may ever be sent to the chat model when
+// a separate vision model is configured (a text-only model refuses image
+// input). Any message carrying an image part must route to the vision model.
 func TestClient_NeverSendsImagePartsToTextModel(t *testing.T) {
 	var gotModel string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -221,8 +223,8 @@ func TestClient_NeverSendsImagePartsToTextModel(t *testing.T) {
 	if _, err := client.StreamChatWithTools(context.Background(), messages, nil, func(StreamEvent) error { return nil }); err != nil {
 		t.Fatalf("StreamChatWithTools() error: %v", err)
 	}
-	if gotModel != visionModel {
-		t.Fatalf("request model = %q, want %q (image part present)", gotModel, visionModel)
+	if gotModel != testModel {
+		t.Fatalf("request model = %q, want %q (image part present)", gotModel, testModel)
 	}
 }
 
@@ -319,11 +321,11 @@ func TestClient_StreamChatResultCapturesModelAndReasoningEffortOnDonePath(t *tes
 	if err != nil {
 		t.Fatalf("StreamChatResult() error: %v", err)
 	}
-	if result.Model != textModel {
-		t.Fatalf("model = %q, want %q", result.Model, textModel)
+	if result.Model != testModel {
+		t.Fatalf("model = %q, want %q", result.Model, testModel)
 	}
-	if result.ReasoningEffort != turnReasoningEffort {
-		t.Fatalf("reasoning effort = %q, want %q", result.ReasoningEffort, turnReasoningEffort)
+	if result.ReasoningEffort != llmwiretest.BalancedSent {
+		t.Fatalf("reasoning effort = %q, want %q", result.ReasoningEffort, llmwiretest.BalancedSent)
 	}
 }
 
@@ -437,7 +439,7 @@ func TestClient_StreamChatLogsRawResponseWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestClient_StreamChatSendsHighReasoningEffort(t *testing.T) {
+func TestClient_StreamChatSendsBalancedReasoning(t *testing.T) {
 	var gotBody struct {
 		ReasoningEffort string `json:"reasoning_effort"`
 	}
@@ -456,8 +458,8 @@ func TestClient_StreamChatSendsHighReasoningEffort(t *testing.T) {
 	if _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, nil); err != nil {
 		t.Fatalf("StreamChat() error: %v", err)
 	}
-	if gotBody.ReasoningEffort != "high" {
-		t.Fatalf("reasoning_effort = %q, want high", gotBody.ReasoningEffort)
+	if gotBody.ReasoningEffort != llmwiretest.BalancedSent {
+		t.Fatalf("reasoning_effort = %q, want %q", gotBody.ReasoningEffort, llmwiretest.BalancedSent)
 	}
 }
 
@@ -701,7 +703,7 @@ func TestClient_StreamChatWithToolsReconstructsToolCallDeltas(t *testing.T) {
 	}
 }
 
-func TestClient_StreamChatWithToolsStreamsNormalMiMoContent(t *testing.T) {
+func TestClient_StreamChatWithToolsStreamsNormalContent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, c := range []string{"Colossus ", "is a 1970 ", "film."} {
@@ -784,8 +786,8 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	}
 	// Titling is a short gate, so it runs on the non-Pro deployment, which queues
 	// less (see executeShortGateChatRequest).
-	if gotBody.Model != shortGateModel {
-		t.Fatalf("model = %q, want %q", gotBody.Model, shortGateModel)
+	if gotBody.Model != testModel {
+		t.Fatalf("model = %q, want %q", gotBody.Model, testModel)
 	}
 	// The user request and assistant reply are framed into a single user turn as
 	// material to be titled, not a turn to answer.
@@ -804,72 +806,28 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	}
 }
 
-// A helper's cap is sized for its answer; the model always thinks, and the
-// reasoning counts against max_tokens too. Without headroom a 32-token title
-// cap is spent thinking (peeq measured ~53 reasoning tokens at low on a short
-// gate) and the title comes back truncated.
-func TestClient_HelperCallsGetReasoningHeadroom(t *testing.T) {
-	var got struct {
-		MaxTokens int `json:"max_tokens"`
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&got)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{{"message": map[string]string{"content": "A title"}, "finish_reason": "stop"}},
-		})
-	}))
-	t.Cleanup(server.Close)
-	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
+// A helper's cap is an answer budget: llmwire adds the room the model needs
+// for the reasoning the call asks for. A gate asks for the least reasoning,
+// prose for the balanced level, and each gets its own allowance on top.
+func TestClient_HelperCapsAreAnswerBudgets(t *testing.T) {
+	srv := llmwiretest.NewServer(t)
+	srv.SetReply("A title")
+	client := mustClient(t, Config{BaseURL: srv.URL}, nil)
 
 	if _, err := client.GenerateThreadTitle(context.Background(), "Hi", "", ""); err != nil {
 		t.Fatalf("GenerateThreadTitle: %v", err)
 	}
-	if want := utilityMaxCompletionTokens + helperReasoningHeadroom; got.MaxTokens != want {
-		t.Fatalf("max_tokens = %d, want %d (answer cap plus reasoning headroom)", got.MaxTokens, want)
+	gate := srv.Last()
+	if got, _ := gate.MaxTokens(); gate.Reasoning() != llmwiretest.MinimalSent || got != utilityMaxCompletionTokens+llmwiretest.MinimalOverhead {
+		t.Fatalf("title: reasoning %q cap %d, want %q and %d", gate.Reasoning(), got, llmwiretest.MinimalSent, utilityMaxCompletionTokens+llmwiretest.MinimalOverhead)
 	}
-}
 
-func TestClient_UtilityCallsAskForLowEffort(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		call func(c *Client) (string, error)
-	}{
-		{"chat title", func(c *Client) (string, error) { return c.GenerateThreadTitle(context.Background(), "Hi", "", "") }},
-		{"classify", func(c *Client) (string, error) { return c.ClassifyThread(context.Background(), "Hi") }},
-		{"reasoning title", func(c *Client) (string, error) {
-			return c.GenerateReasoningTitle(context.Background(), "some reasoning", "")
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var got struct {
-				ReasoningEffort string `json:"reasoning_effort"`
-				Thinking        *struct {
-					Type string `json:"type"`
-				} `json:"thinking"`
-			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
-					t.Fatalf("decode: %v", err)
-				}
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"choices": []map[string]any{{"message": map[string]string{"content": "A title"}}},
-				})
-			}))
-			t.Cleanup(server.Close)
-
-			// Utility calls ask for the shallowest level: the model refuses the
-			// disable toggle, and a toggle sent anyway fails before the wire.
-			client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
-			if _, err := tc.call(client); err != nil {
-				t.Fatalf("call error: %v", err)
-			}
-			if got.Thinking != nil {
-				t.Fatalf("thinking = %#v, want it absent", got.Thinking)
-			}
-			if got.ReasoningEffort != "low" {
-				t.Fatalf("reasoning_effort = %q, want low", got.ReasoningEffort)
-			}
-		})
+	if _, err := client.GenerateProjectDescription(context.Background(), "Project", []string{"a title"}, ""); err != nil {
+		t.Fatalf("GenerateProjectDescription: %v", err)
+	}
+	prose := srv.Last()
+	if got, _ := prose.MaxTokens(); prose.Reasoning() != llmwiretest.BalancedSent || got != projectDescriptionMaxCompletionTokens+llmwiretest.BalancedOverhead {
+		t.Fatalf("description: reasoning %q cap %d, want %q and %d", prose.Reasoning(), got, llmwiretest.BalancedSent, projectDescriptionMaxCompletionTokens+llmwiretest.BalancedOverhead)
 	}
 }
 

@@ -43,13 +43,13 @@ func (c *Client) StreamChatResult(ctx context.Context, messages []Message, onDel
 func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, tools []Tool, onEvent func(StreamEvent) error) (StreamResult, error) {
 	start := time.Now()
 	// Per-turn overrides carried on the context (set by the httpapi layer): the
-	// forced-final answer turn disables thinking and widens the completion budget.
+	// forced-final answer turn widens the completion budget.
 	meta := inferenceMetadataFromContext(ctx)
-	// Single routing decision for the whole turn: the prose model when thinking
-	// is off, else the vision model iff the payload carries an image part, else
-	// the text model. The same `messages` slice is re-sent on every tool round
-	// within this turn, so the choice stays stable.
-	model := c.modelForMessages(messages, meta.SuppressThinking)
+	// Single routing decision for the whole turn: the vision model iff the
+	// payload carries an image part, else the chat model. The same `messages`
+	// slice is re-sent on every tool round within this turn, so the choice
+	// stays stable.
+	model := c.modelForMessages(messages)
 	maxCompletionTokens := c.maxCompletionTokensForTools(tools)
 	if meta.MaxCompletionTokens > 0 {
 		maxCompletionTokens = meta.MaxCompletionTokens
@@ -64,15 +64,13 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		// narrow window. See toolCallIdleTimeout.
 		ToolCallIdleTimeout: toolCallIdleTimeout(tools),
 	}
-	// Every turn names its effort: unset means the vendor's max (see the
-	// reasoning note in client.go). The forced final answer takes the helper
-	// level, because deep thinking there burns the whole completion budget
-	// reasoning and emits no prose.
-	effort := turnReasoningEffort
-	if meta.SuppressThinking {
-		effort = helperReasoningEffort
+	// Turns favour a fast answer over the deepest one the model can give:
+	// llmwire resolves "balanced" to the level the model's profile names. A
+	// retry of a turn that spent its budget reasoning asks for the least.
+	req.Reasoning = llmwire.ReasoningBalanced()
+	if meta.LeastReasoning {
+		req.Reasoning = llmwire.ReasoningMinimal()
 	}
-	req.Reasoning = llmwire.ReasoningEffort(effort)
 	callCtx := ctx
 	if timeout := c.timeoutForTools(tools); timeout > 0 {
 		var cancel context.CancelFunc
@@ -216,11 +214,8 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	}
 	result.Duration = durationOr(res.Timing.Total, start)
 	result.Model = model
-	result.ReasoningEffort = effort
+	result.ReasoningEffort = res.ReasoningSent
 	result.CostNanoUSD, result.CostPriced = costFromWire(res.Usage)
-	if !result.CostPriced {
-		noteUnpriced(ctx, model)
-	}
 	observeInference(ctx, model, result.Duration, result.Usage, result.FinishReason, progress()...)
 	RecordCost(ctx, result.CostNanoUSD, result.CostPriced)
 	return result, nil

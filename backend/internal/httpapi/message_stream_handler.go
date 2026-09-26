@@ -141,7 +141,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// answer with a 500.
 	defer recoverToStream(stream, r)
 	// Keep the connection alive through idle proxies during long silent gaps —
-	// notably while MiMo serializes a large tool-call argument server-side and
+	// notably while a model serializes a large tool-call argument server-side and
 	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 	// Book what the turn spent on every exit path. Deferred ahead of

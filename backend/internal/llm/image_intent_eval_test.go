@@ -10,7 +10,7 @@ import (
 // TestClassifyImageIntent_multilingualEval is the model-backed proof that the
 // semantic gate routes image intent by MEANING across languages — the property
 // the old English/German keyword lists could not guarantee. It hits a real
-// MiMo-compatible endpoint, so it is skipped unless LOOM_IMAGE_INTENT_EVAL_BASEURL
+// OpenAI-compatible endpoint, so it is skipped unless LOOM_IMAGE_INTENT_EVAL_BASEURL
 // is set (CI has no model). Run it against a live backend with:
 //
 //	LOOM_IMAGE_INTENT_EVAL_BASEURL=http://localhost:1234/v1 \

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -20,8 +21,8 @@ import (
 const defaultImageGenPollTimeout = 1 * time.Minute
 
 // defaultChatMaxCompletionTokens covers reasoning plus answer: the cap counts
-// both, and glm-5.3-flash always thinks, so a tight cap leaves no room for the
-// answer (MiMo was measured thinking past 2048 on its own).
+// both, and a reasoning model can think past a few thousand tokens on its own,
+// so a tight cap leaves no room for the answer.
 const defaultChatMaxCompletionTokens = 16384
 
 // defaultChatTimeout is the coarse total wall-clock budget for a streamed chat
@@ -42,22 +43,21 @@ const defaultKnowledgeInlineTokenBudget = 24000
 // defaultProjectSummaryTokenBudget bounds the total size of the cross-thread
 // digest the read_project_threads tool returns (the source material the model
 // summarizes when asked to "summarize the threads in this project"). Kept
-// deliberately conservative: MiMo 2.5 Pro's context window is small, and the
-// digest has to coexist with the knowledge/memory/history context already in the
-// prompt — so this budget intentionally does not try to fill the window. The
-// per-thread share is this budget divided by the number of sibling threads, so
-// every thread is represented rather than the tail being dropped. Tune via
-// BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET once the real window is pinned.
+// deliberately conservative: the digest has to coexist with the
+// knowledge/memory/history context already in the prompt, and a smaller input
+// summarizes more reliably than one filling the window. The per-thread share is
+// this budget divided by the number of sibling threads, so every thread is
+// represented rather than the tail being dropped. Tune via
+// BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET.
 const defaultProjectSummaryTokenBudget = 6000
 
 // defaultChatIdleTimeout aborts a chat stream that goes silent. The binding case
-// is not inter-chunk cadence (worst gap measured against real MiMo is ~7.6s on a
-// multi-minute reasoning turn) but time-to-first-token: the watchdog is armed at
-// request entry, and only a data: line resets it (llmwire's header and idle
-// bounds, both set from this value in llm/client.go), so an upstream queue wait
-// before the first data frame counts in full as idle. MiMo 2.5 Pro queues hard
-// under concurrent load — 26s to first token on a round that succeeded, and a
-// round that produced no data frame at all inside 60s, killing the turn. 120s
+// is not inter-chunk cadence (gaps of a few seconds on a multi-minute reasoning
+// turn) but time-to-first-token: the watchdog is armed at request entry, and
+// only a data: line resets it (llmwire's header and idle bounds, both set from
+// this value in llm/client.go), so an upstream queue wait before the first data
+// frame counts in full as idle. A queueing upstream has been measured at 26s to
+// first token on a round that succeeded and past 60s on one that failed. 120s
 // roughly doubles the window over that observed stall while staying far below
 // the total ChatTimeout. Set BACKEND_CHAT_IDLE_TIMEOUT=0 to disable the
 // watchdog (the whole-call cap then remains the only bound).
@@ -82,19 +82,26 @@ type Config struct {
 	UsersDir  string // root for per-user volumes: <UsersDir>/<user-id>/
 	PublicURL string // externally reachable base URL
 
-	// The model endpoints are llmwire's: each model's profile names a
-	// provider and ships its host, and llmwire.FromEnv reads the key from
-	// LLMWIRE_<PROVIDER>_API_KEY at boot (llm.APIKeyEnv() for chat,
-	// rag.EmbedAPIKeyEnv() for embeddings). A set key turns the capability
-	// on; only that fact is mirrored here, the key itself never passes through
-	// this struct.
-	// The models are constants of the build (llm.ModelSummary, rag.EmbedModel).
+	// The chat models are configuration: BACKEND_CHAT_MODEL, and optionally
+	// BACKEND_GATE_MODEL and BACKEND_VISION_MODEL (both default to the chat
+	// model), resolved against llmwire's registry at load. The endpoints are
+	// llmwire's: each model's profile names a provider and ships its host, and
+	// llmwire reads the key from LLMWIRE_<PROVIDER>_API_KEY. Chat is on when a
+	// chat model is set and every key its roles need is set; ChatMissing names
+	// what is not. The keys themselves never pass through this struct.
+	ChatModels              llm.Resolved
 	ChatEnabled             bool
+	ChatMissing             string
 	ChatMaxCompletionTokens int
 	ChatTimeout             time.Duration
 	ChatIdleTimeout         time.Duration
 	ChatLogDir              string
-	EmbedEnabled            bool
+	// EmbedModel is BACKEND_EMBED_MODEL resolved against llmwire's registry;
+	// embeddings are on when it is set and its key is set, EmbedMissing names
+	// what is not.
+	EmbedModel   rag.EmbedModel
+	EmbedEnabled bool
+	EmbedMissing string
 	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
 	// turn (0 disables it, falling back to pure RAG retrieval).
 	KnowledgeInlineTokenBudget int
@@ -165,6 +172,74 @@ func env(key, def string) string {
 // defaultSessionTTL is the login lifetime when BACKEND_SESSION_TTL is unset.
 const defaultSessionTTL = 30 * 24 * time.Hour
 
+// loadChatModels resolves the chat roles and decides whether chat is on. No
+// chat model is a boot error outside dev auth and leaves chat off in dev (a UI
+// session needs no model); a model llmwire does not know, or one short of its
+// role, is a boot error naming the valid choices.
+func loadChatModels(cfg *Config) error {
+	roles := llm.Roles{
+		Chat:   strings.TrimSpace(env("BACKEND_CHAT_MODEL", "")),
+		Gate:   strings.TrimSpace(env("BACKEND_GATE_MODEL", "")),
+		Vision: strings.TrimSpace(env("BACKEND_VISION_MODEL", "")),
+	}
+	if roles.Chat == "" {
+		// Outside dev auth a deployment without a chat model cannot answer a
+		// turn; boot must say so rather than serve a chat that fails every time.
+		if cfg.AuthMode != AuthModeDev {
+			return fmt.Errorf("BACKEND_CHAT_MODEL is required: an llmwire model id (see .env.example)")
+		}
+		cfg.ChatMissing = "BACKEND_CHAT_MODEL"
+		return nil
+	}
+	resolved, err := llm.ResolveRoles(nil, roles)
+	if err != nil {
+		return err
+	}
+	cfg.ChatModels = resolved
+	var missing []string
+	for _, key := range resolved.KeyEnvs() {
+		if strings.TrimSpace(env(key, "")) == "" {
+			missing = append(missing, key)
+		}
+	}
+	cfg.ChatMissing = strings.Join(missing, ", ")
+	cfg.ChatEnabled = len(missing) == 0
+	return nil
+}
+
+// loadEmbedModel resolves BACKEND_EMBED_MODEL and decides whether embeddings
+// (document RAG) are on, the way loadChatModels does for chat.
+func loadEmbedModel(cfg *Config) error {
+	id := strings.TrimSpace(env("BACKEND_EMBED_MODEL", ""))
+	if id == "" {
+		// A set embedding key without a model is the configuration from before
+		// the model was configurable: outside dev auth, fail boot rather than
+		// quietly switch document search off. A key a chat role reads too is
+		// no such sign: a chat-only deployment on that provider is valid.
+		if cfg.AuthMode != AuthModeDev {
+			chatKeys := cfg.ChatModels.KeyEnvs()
+			for _, key := range rag.EmbedKeyEnvs(nil) {
+				if strings.TrimSpace(env(key, "")) != "" && !slices.Contains(chatKeys, key) {
+					return fmt.Errorf("BACKEND_EMBED_MODEL is required when %s is set: an llmwire embedding model id (see .env.example)", key)
+				}
+			}
+		}
+		cfg.EmbedMissing = "BACKEND_EMBED_MODEL"
+		return nil
+	}
+	m, err := rag.ResolveEmbedModel(nil, id)
+	if err != nil {
+		return err
+	}
+	cfg.EmbedModel = m
+	if strings.TrimSpace(env(m.KeyEnv, "")) == "" {
+		cfg.EmbedMissing = m.KeyEnv
+		return nil
+	}
+	cfg.EmbedEnabled = true
+	return nil
+}
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (Config, error) {
 	cfg := Config{
@@ -172,10 +247,8 @@ func Load() (Config, error) {
 		DBPath:                  env("BACKEND_DB_PATH", "/data/loom.db"),
 		UsersDir:                env("BACKEND_USERS_DIR", "/data/users"),
 		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
-		ChatEnabled:             strings.TrimSpace(env(llm.APIKeyEnv(), "")) != "",
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
-		EmbedEnabled:            strings.TrimSpace(env(rag.EmbedAPIKeyEnv(), "")) != "",
 		ImageGenBaseURL:         env("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
 		ImageGenAPIKey:          env("BACKEND_IMAGE_GEN_API_KEY", ""),
 		ImageGenModel:           env("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),
@@ -203,6 +276,12 @@ func Load() (Config, error) {
 			DisplayName: env("BACKEND_DEV_USER_NAME", "Dev Admin"),
 			Role:        "admin",
 		},
+	}
+	if err := loadChatModels(&cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadEmbedModel(&cfg); err != nil {
+		return Config{}, err
 	}
 	imageGenPollTimeout, err := time.ParseDuration(env("BACKEND_IMAGE_GEN_POLL_TIMEOUT", defaultImageGenPollTimeout.String()))
 	if err != nil || imageGenPollTimeout <= 0 {

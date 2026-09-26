@@ -243,7 +243,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		}
 	}
 	// Force a final answer. Appending a directive to the tool-saturated history does
-	// not work: after a research turn MiMo reflexively emits another (unrunnable) tool
+	// not work: after a research turn a model may reflexively emit another (unrunnable) tool
 	// call — it is pattern-continuing the tool-call/tool-result rounds — which is
 	// stripped to empty and dead-ends the turn. Instead rebuild the final turn as a
 	// clean, tool-free synthesis over the gathered notes: the shape every reliable
@@ -280,7 +280,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		if !ok {
 			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}
-		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalAnswerInference(inference, "chat_final_retry", maxToolRounds+2), nil)
+		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalRetryInference(inference, result), nil)
 		b.addResult(titles, result)
 		if persistInterruptedPartial(result, err) {
 			return b.result(result, artifacts, ""), nil
@@ -457,7 +457,7 @@ func persistInterruptedPartial(result llm.StreamResult, err error) bool {
 func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata) (assistantLoopResult, error) {
 	b := &blockBuilder{}
 	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
-	// Safety net: a tool-eager model (MiMo) may still emit an inline tool call
+	// Safety net: a tool-eager model may still emit an inline tool call
 	// despite the no-tool prompt. The parser strips that markup — whether it
 	// recovers a call or the markup is truncated/malformed and none is recovered —
 	// leaving empty content. Since there are no tools to run, nudge it once to answer
@@ -477,13 +477,23 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writ
 	return b.result(result, nil, ""), err
 }
 
+// finalRetryInference picks the metadata for the retry of an empty forced final
+// answer. One that ran out at the cap spent it reasoning, so the retry asks for
+// the least reasoning; the same request again would run out the same way.
+func finalRetryInference(metadata llm.InferenceMetadata, first llm.StreamResult) llm.InferenceMetadata {
+	metadata = finalAnswerInference(metadata, "chat_final_retry", maxToolRounds+2)
+	metadata.LeastReasoning = first.FinishReason == "length"
+	return metadata
+}
+
 // incognitoRetryInference picks the metadata for the incognito empty-answer
-// retry. A first turn that ran out at the cap spent it on reasoning, so a retry
-// with thinking still on would most likely run out the same way; it goes out
-// with thinking off instead, like the forced final answer.
+// retry. A first turn that ran out at the cap spent it on reasoning, so the
+// retry asks for the least reasoning on the forced final answer's budget.
 func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamResult) llm.InferenceMetadata {
 	if first.FinishReason == "length" {
-		return finalAnswerInference(metadata, "chat", 2)
+		metadata = finalAnswerInference(metadata, "chat", 2)
+		metadata.LeastReasoning = true
+		return metadata
 	}
 	return inferenceWithPurpose(metadata, "chat", 2)
 }
@@ -548,19 +558,15 @@ func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round 
 
 // finalAnswerMaxCompletionTokens is the completion budget for the forced final
 // answer. It matches the default chat cap: the forced final synthesizes many
-// gathered sources with thinking off, so the whole budget goes to prose, and it
-// must never be tighter than the answer a normal round could have written.
+// gathered sources, and it must never be tighter than the answer a normal
+// round could have written.
 const finalAnswerMaxCompletionTokens = 16384
 
 // finalAnswerInference builds the metadata for a forced final-answer turn: it
-// disables thinking and widens the completion budget. By this point all research
-// reasoning already happened across the tool rounds and is in history, so the
-// model only needs to write the answer — leaving thinking on lets a reasoning
-// model burn the whole budget thinking and emit no prose (finish_reason=length),
-// which is the failure this turns off.
+// widens the completion budget so a synthesis over many gathered sources has
+// room to complete after the model's reasoning.
 func finalAnswerInference(metadata llm.InferenceMetadata, purpose string, round int) llm.InferenceMetadata {
 	metadata = inferenceWithPurpose(metadata, purpose, round)
-	metadata.SuppressThinking = true
 	metadata.MaxCompletionTokens = finalAnswerMaxCompletionTokens
 	return metadata
 }

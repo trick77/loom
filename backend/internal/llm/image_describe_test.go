@@ -40,8 +40,8 @@ func TestDescribeImage_usesVisionModelAndReturnsText(t *testing.T) {
 	if !strings.Contains(text, "red bicycle") {
 		t.Errorf("description = %q, want it to contain the model output", text)
 	}
-	if gotModel != visionModel {
-		t.Errorf("request model = %q, want %q", gotModel, visionModel)
+	if gotModel != testModel {
+		t.Errorf("request model = %q, want %q", gotModel, testModel)
 	}
 	if !gotHasImage {
 		t.Error("request body did not carry an image_url content part")

@@ -18,7 +18,7 @@ import {
   UNSUPPORTED_FILE_MESSAGE,
 } from "./attachmentFiles";
 import { Icon } from "./Icon";
-import { MODEL_LABEL } from "./reasoning";
+import { useModelInfo } from "../useContextWindow";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
 import { PastedTextCard } from "./PastedTextCard";
 import { shouldCollapsePaste, type PastedText } from "./pastedText";
@@ -76,6 +76,7 @@ export function Composer({
   onRemovePastedText?(id: string): void;
 }) {
   const { t } = useTranslation();
+  const modelInfo = useModelInfo();
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Slash-command typeahead: while the draft is a lone "/token", suggest matching
   // commands. `dismissed` hides the popover after Escape until the draft changes.
@@ -350,11 +351,11 @@ export function Composer({
           }}
         />
         <div className="ui-meta-text flex items-center text-[#d8d4ca]">
-          {/* Static model label — Loom serves one model, so this is a name, not
-              a picker. Hidden on the narrowest widths so the send button always
-              fits. */}
+          {/* Static label of the configured chat model (its display name from
+              /api/model) — a name, not a picker. Hidden on the narrowest widths
+              so the send button always fits. */}
           <span className="mr-2 hidden select-none text-[13px] leading-none text-[#aaa79e] sm:inline">
-            {MODEL_LABEL}
+            {modelInfo?.displayName}
           </span>
           <button
             className={`ui-composer-send ml-2 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}

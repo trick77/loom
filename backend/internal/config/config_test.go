@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trick77/llmwire"
+	"github.com/trick77/loom/internal/rag"
 )
 
 func TestLoad_defaults(t *testing.T) {
@@ -305,26 +308,180 @@ func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
 	}
 }
 
-// A capability is on when its llmwire key is set.
-func TestLoad_modelCapabilitiesFollowTheKeys(t *testing.T) {
+// anyChatModel is a registry chat model loom's chat role accepts, found at run
+// time so no test names a model.
+func anyChatModel(t *testing.T) (id, keyEnv string) {
+	t.Helper()
+	reg := llmwire.Default()
+	ids := reg.ChatModels(llmwire.Needs{Tools: true, Streaming: true, Vision: true})
+	if len(ids) == 0 {
+		t.Skip("llmwire's registry has no chat model with tools and vision")
+	}
+	p, err := reg.Lookup(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ids[0], p.APIKeyEnv()
+}
+
+// anyEmbedModel is a registry embedding model, found at run time so no test
+// names a model.
+func anyEmbedModel(t *testing.T) rag.EmbedModel {
+	t.Helper()
+	reg := llmwire.Default()
+	for _, id := range reg.Models() {
+		if m, err := rag.ResolveEmbedModel(reg, id); err == nil {
+			return m
+		}
+	}
+	t.Skip("llmwire's registry has no embedding model")
+	return rag.EmbedModel{}
+}
+
+// Outside dev auth a deployment without a chat model cannot answer a turn, so
+// it must not boot as if it could (an upgrade that only set the key did that).
+// Dev auth boots without one: a UI session needs no model.
+func TestLoad_chatModelRequiredOutsideDevAuth(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("LLMWIRE_ZAI_API_KEY", "")
-	t.Setenv("LLMWIRE_OPENAI_API_KEY", "")
+	t.Setenv("BACKEND_CHAT_MODEL", "")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_CHAT_MODEL") {
+		t.Fatalf("oidc without a chat model: err = %v, want one naming BACKEND_CHAT_MODEL", err)
+	}
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("dev without a chat model: %v", err)
+	}
+	if cfg.ChatEnabled || cfg.ChatMissing != "BACKEND_CHAT_MODEL" {
+		t.Fatalf("dev: enabled=%v missing=%q, want off, BACKEND_CHAT_MODEL", cfg.ChatEnabled, cfg.ChatMissing)
+	}
+}
+
+// Chat is on when a chat model is configured and every key its roles' providers
+// read is set.
+func TestLoad_modelCapabilitiesFollowModelsAndKeys(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
+	model, keyEnv := anyChatModel(t)
+	t.Setenv("BACKEND_CHAT_MODEL", "")
+	t.Setenv(keyEnv, "k1")
+	t.Setenv("BACKEND_EMBED_MODEL", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ChatEnabled || cfg.EmbedEnabled {
-		t.Fatalf("no keys: chat=%v embed=%v, want both off", cfg.ChatEnabled, cfg.EmbedEnabled)
+	if cfg.ChatEnabled || cfg.ChatMissing != "BACKEND_CHAT_MODEL" {
+		t.Fatalf("no chat model: enabled=%v missing=%q, want off, BACKEND_CHAT_MODEL", cfg.ChatEnabled, cfg.ChatMissing)
 	}
-	t.Setenv("LLMWIRE_ZAI_API_KEY", "k1")
-	t.Setenv("LLMWIRE_OPENAI_API_KEY", " ")
+
+	t.Setenv("BACKEND_CHAT_MODEL", model)
+	t.Setenv(keyEnv, "")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ChatEnabled || cfg.ChatMissing != keyEnv {
+		t.Fatalf("no key: enabled=%v missing=%q, want off, %s", cfg.ChatEnabled, cfg.ChatMissing, keyEnv)
+	}
+
+	t.Setenv(keyEnv, "k1")
 	cfg, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.ChatEnabled || cfg.EmbedEnabled {
-		t.Fatalf("zai key only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
+		t.Fatalf("chat only: chat=%v embed=%v", cfg.ChatEnabled, cfg.EmbedEnabled)
+	}
+	if cfg.ChatModels.Info().ID != model {
+		t.Fatalf("resolved chat model = %q, want %q", cfg.ChatModels.Info().ID, model)
+	}
+}
+
+// Embeddings are on when an embedding model is configured and its key is set;
+// an id that is not an embedding model fails boot with the valid choices.
+func TestLoad_embeddingsFollowTheModelAndItsKey(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
+	m := anyEmbedModel(t)
+	t.Setenv("BACKEND_EMBED_MODEL", "")
+	t.Setenv(m.KeyEnv, "k1")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EmbedEnabled || cfg.EmbedMissing != "BACKEND_EMBED_MODEL" {
+		t.Fatalf("no model: enabled=%v missing=%q", cfg.EmbedEnabled, cfg.EmbedMissing)
+	}
+	t.Setenv("BACKEND_EMBED_MODEL", m.ID)
+	t.Setenv(m.KeyEnv, " ")
+	if cfg, err = Load(); err != nil || cfg.EmbedEnabled || cfg.EmbedMissing != m.KeyEnv {
+		t.Fatalf("no key: enabled=%v missing=%q err=%v, want off, %s", cfg.EmbedEnabled, cfg.EmbedMissing, err, m.KeyEnv)
+	}
+	t.Setenv(m.KeyEnv, "k1")
+	if cfg, err = Load(); err != nil || !cfg.EmbedEnabled || cfg.EmbedModel != m {
+		t.Fatalf("model and key: enabled=%v model=%+v err=%v, want on, %+v", cfg.EmbedEnabled, cfg.EmbedModel, err, m)
+	}
+	t.Setenv("BACKEND_EMBED_MODEL", "no-such-model")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "valid choices") {
+		t.Fatalf("unknown model: err = %v, want one listing the valid choices", err)
+	}
+}
+
+// An upgrade from before BACKEND_EMBED_MODEL existed has only an embedding
+// provider's key: outside dev auth that fails boot rather than quietly
+// switching document search off. Without the key, embeddings are simply off.
+func TestLoad_embeddingKeyWithoutModelFailsBootOutsideDev(t *testing.T) {
+	requiredEnv(t)
+	m := anyEmbedModel(t)
+	t.Setenv("BACKEND_EMBED_MODEL", "")
+	t.Setenv(m.KeyEnv, "k1")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_EMBED_MODEL") {
+		t.Fatalf("key without model: err = %v, want one naming BACKEND_EMBED_MODEL", err)
+	}
+	t.Setenv(m.KeyEnv, "")
+	cfg, err := Load()
+	if err != nil || cfg.EmbedEnabled {
+		t.Fatalf("no key, no model: enabled=%v err=%v, want off and booting", cfg.EmbedEnabled, err)
+	}
+}
+
+// The same key may be the chat model's own: a chat-only deployment on that
+// provider is valid and must boot, with embeddings off.
+func TestLoad_embeddingKeyUsedByChatIsNotAnUpgradeTrap(t *testing.T) {
+	requiredEnv(t)
+	m := anyEmbedModel(t)
+	reg := llmwire.Default()
+	var chat string
+	for _, id := range reg.ChatModels(llmwire.Needs{Tools: true, Streaming: true, Vision: true}) {
+		if p, err := reg.Lookup(id); err == nil && p.APIKeyEnv() == m.KeyEnv {
+			chat = id
+			break
+		}
+	}
+	if chat == "" {
+		t.Skip("no chat model shares the embedding provider's key")
+	}
+	t.Setenv("BACKEND_CHAT_MODEL", chat)
+	t.Setenv("BACKEND_EMBED_MODEL", "")
+	t.Setenv(m.KeyEnv, "k1")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("chat-only deployment on the embedding provider: %v", err)
+	}
+	if !cfg.ChatEnabled || cfg.EmbedEnabled {
+		t.Fatalf("chat=%v embed=%v, want chat on, embeddings off", cfg.ChatEnabled, cfg.EmbedEnabled)
+	}
+}
+
+// A model id llmwire does not know, or one short of its role, fails boot.
+func TestLoad_unusableChatModelFailsBoot(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_CHAT_MODEL", "no-such-model")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "valid choices") {
+		t.Fatalf("Load() error = %v, want one listing the valid choices", err)
 	}
 }
 
@@ -339,6 +496,8 @@ func requiredEnv(t *testing.T) {
 	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "s3cret")
 	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://loom.example.com/api/auth/callback")
 	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "loom-admins")
+	model, _ := anyChatModel(t)
+	t.Setenv("BACKEND_CHAT_MODEL", model)
 }
 
 // An unset auth mode with no issuer booted a server nobody could log in to.

@@ -6,17 +6,14 @@ import (
 	"github.com/trick77/loom/internal/llm"
 )
 
-// finalAnswerInference must disable thinking and widen the completion budget on
-// top of the normal purpose/round metadata, so the forced final answer writes
-// prose instead of burning the whole budget on reasoning.
-func TestFinalAnswerInferenceSuppressesThinkingAndWidensBudget(t *testing.T) {
+// finalAnswerInference must widen the completion budget on top of the normal
+// purpose/round metadata, so a synthesis over many sources has room to finish
+// after the model's reasoning.
+func TestFinalAnswerInferenceWidensBudget(t *testing.T) {
 	base := llm.InferenceMetadata{ThreadID: "thr_1"}
 
 	got := finalAnswerInference(base, "chat_final", maxToolRounds+1)
 
-	if !got.SuppressThinking {
-		t.Fatalf("SuppressThinking = false, want true")
-	}
 	if got.MaxCompletionTokens != finalAnswerMaxCompletionTokens {
 		t.Fatalf("MaxCompletionTokens = %d, want %d", got.MaxCompletionTokens, finalAnswerMaxCompletionTokens)
 	}
@@ -29,18 +26,34 @@ func TestFinalAnswerInferenceSuppressesThinkingAndWidensBudget(t *testing.T) {
 	}
 }
 
+// A forced final answer that ran out at the cap spent it reasoning; its retry
+// asks for the least reasoning, or it runs out the same way. Any other empty
+// final retries at the normal level.
+func TestFinalRetryInferenceAsksForLeastReasoningOnlyAfterCapHit(t *testing.T) {
+	base := llm.InferenceMetadata{ThreadID: "thr_1"}
+
+	capped := finalRetryInference(base, llm.StreamResult{FinishReason: "length"})
+	if !capped.LeastReasoning || capped.MaxCompletionTokens != finalAnswerMaxCompletionTokens || capped.Purpose != "chat_final_retry" {
+		t.Fatalf("after cap hit: %+v, want least reasoning on the final budget", capped)
+	}
+	plain := finalRetryInference(base, llm.StreamResult{FinishReason: "stop"})
+	if plain.LeastReasoning || plain.MaxCompletionTokens != finalAnswerMaxCompletionTokens {
+		t.Fatalf("after stop: %+v, want the normal level on the final budget", plain)
+	}
+}
+
 // An incognito first turn that hit the cap spent it on reasoning, so its retry
-// must run with thinking off; any other empty turn retries unchanged.
-func TestIncognitoRetryInferenceSuppressesThinkingOnlyAfterCapHit(t *testing.T) {
+// gets the wider budget; any other empty turn retries unchanged.
+func TestIncognitoRetryInferenceWidensOnlyAfterCapHit(t *testing.T) {
 	base := llm.InferenceMetadata{ThreadID: "thr_1"}
 
 	capped := incognitoRetryInference(base, llm.StreamResult{FinishReason: "length"})
-	if !capped.SuppressThinking || capped.MaxCompletionTokens != finalAnswerMaxCompletionTokens {
-		t.Fatalf("after cap hit: SuppressThinking=%v MaxCompletionTokens=%d, want true/%d", capped.SuppressThinking, capped.MaxCompletionTokens, finalAnswerMaxCompletionTokens)
+	if capped.MaxCompletionTokens != finalAnswerMaxCompletionTokens || !capped.LeastReasoning {
+		t.Fatalf("after cap hit: MaxCompletionTokens=%d LeastReasoning=%v, want %d/true", capped.MaxCompletionTokens, capped.LeastReasoning, finalAnswerMaxCompletionTokens)
 	}
 	plain := incognitoRetryInference(base, llm.StreamResult{FinishReason: "stop"})
-	if plain.SuppressThinking || plain.MaxCompletionTokens != 0 {
-		t.Fatalf("after stop: SuppressThinking=%v MaxCompletionTokens=%d, want false/0", plain.SuppressThinking, plain.MaxCompletionTokens)
+	if plain.MaxCompletionTokens != 0 || plain.LeastReasoning {
+		t.Fatalf("after stop: MaxCompletionTokens=%d LeastReasoning=%v, want 0/false", plain.MaxCompletionTokens, plain.LeastReasoning)
 	}
 	if capped.Purpose != "chat" || capped.Round != 2 || plain.Purpose != "chat" || plain.Round != 2 {
 		t.Fatalf("purpose/round = %q/%d and %q/%d, want chat/2", capped.Purpose, capped.Round, plain.Purpose, plain.Round)

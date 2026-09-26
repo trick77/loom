@@ -136,8 +136,8 @@ func TestDescribeImage_logsWithADefaultPurpose(t *testing.T) {
 	if got := line.attrs["purpose"].String(); got != "image_describe" {
 		t.Errorf("purpose = %q, want image_describe", got)
 	}
-	if got := line.attrs["model"].String(); got != visionModel {
-		t.Errorf("model = %q, want %q", got, visionModel)
+	if got := line.attrs["model"].String(); got != testModel {
+		t.Errorf("model = %q, want %q", got, testModel)
 	}
 }
 
