@@ -1117,3 +1117,25 @@ func TestClient_GenerateTitleHonorsResponseLanguage(t *testing.T) {
 		t.Fatalf("system prompt = %q, want source-language directive when unset", got)
 	}
 }
+
+func TestCleanReasoningTitleUnwrapsPrintedContentBlock(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		// The reply as it arrived: a printed content block instead of the title.
+		{`[{'type': 'text', 'text': 'Searching how Opus 5.5 affects subscription limits'}]`, "Searching how Opus 5.5 affects subscription limits"},
+		{`{"type": "text", "text": "Explaining the user's sourdough starter"}`, "Explaining the user's sourdough starter"},
+		{`[{'type': 'text', 'text': "Weighing the user's options"}]`, "Weighing the user's options"},
+		// JSON escapes decode; a Python escape left undecoded drops the title.
+		{`{"type": "text", "text": "Erkl\u00e4ren, warum der Himmel blau ist"}`, "Erklären, warum der Himmel blau ist"},
+		{`[{'type': 'text', 'text': 'Erkl\xe4ren'}]`, ""},
+		{`[{'type': 'text', 'text': 'Weighing the user\'s options'}]`, "Weighing the user's options"},
+		// A wrapper whose value cannot be read whole yields no title at all.
+		{`[{'type': 'text', 'text': 'Searching how Opus 5.5 aff`, ""},
+		// Everything else passes through as before.
+		{"Contrasting TCP and UDP protocols", "Contrasting TCP and UDP protocols"},
+		{"[Draft] Planning the release", "[Draft] Planning the release"},
+	} {
+		if got := cleanReasoningTitle(tc.in); got != tc.want {
+			t.Errorf("cleanReasoningTitle(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
