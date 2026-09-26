@@ -43,12 +43,18 @@ export type TypewriterClock = {
   requestFrame: (callback: (now: number) => void) => number;
   cancelFrame: (handle: number) => void;
   now: () => number;
+  // after runs callback once in ms and returns its cancel.
+  after: (ms: number, callback: () => void) => () => void;
 };
 
 const browserClock: TypewriterClock = {
   requestFrame: (callback) => requestAnimationFrame(callback),
   cancelFrame: (handle) => cancelAnimationFrame(handle),
   now: () => performance.now(),
+  after: (ms, callback) => {
+    const handle = setTimeout(callback, ms);
+    return () => clearTimeout(handle);
+  },
 };
 
 // shouldPace says whether this browser gets the effect. Reduced motion opts
@@ -106,11 +112,14 @@ export function createTypewriter(
   let gap = FIRST_GAP_MS;
   let settleBy: number | null = null;
   let onSettled: (() => void) | null = null;
+  let cancelBackstop: (() => void) | null = null;
 
   const finishSettle = () => {
     const done = onSettled;
     onSettled = null;
     settleBy = null;
+    cancelBackstop?.();
+    cancelBackstop = null;
     done?.();
   };
 
@@ -149,7 +158,7 @@ export function createTypewriter(
     if (frame === null) frame = clock.requestFrame(tick);
   };
 
-  return {
+  const api: Typewriter = {
     push(text) {
       if (text === "") return;
       const now = clock.now();
@@ -170,6 +179,10 @@ export function createTypewriter(
       }
       settleBy = clock.now() + SETTLE_MS;
       schedule();
+      // A hidden tab gets no animation frames, and a turn waiting on them
+      // would stay streaming until the tab came back. The timer still fires
+      // there (throttled), so the deadline holds either way.
+      cancelBackstop = clock.after(SETTLE_MS + 100, () => api.flush());
     },
     flush() {
       if (frame !== null) clock.cancelFrame(frame);
@@ -181,4 +194,5 @@ export function createTypewriter(
     },
     idle: () => backlog === "" && onSettled === null,
   };
+  return api;
 }

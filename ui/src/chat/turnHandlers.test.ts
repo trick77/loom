@@ -111,6 +111,7 @@ function pacedHarness() {
       frames = [];
     },
     now: () => now,
+    after: () => () => {},
   };
   const frame = () => {
     now += 1000 / 60;

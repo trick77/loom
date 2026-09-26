@@ -24,6 +24,10 @@ function fakeClock() {
       frames.delete(handle);
     },
     now: () => now,
+    after: (ms, callback) => {
+      const handle = setTimeout(callback, ms);
+      return () => clearTimeout(handle);
+    },
   };
   const frame = () => {
     now += 1000 / 60;
@@ -141,6 +145,21 @@ describe("createTypewriter", () => {
     expect(shown()).toBe(big);
     expect(done).toHaveBeenCalledOnce();
     expect(typewriter.idle()).toBe(true);
+  });
+
+  it("settle still finishes when no frame ever runs (a hidden tab)", () => {
+    vi.useFakeTimers();
+    try {
+      const { typewriter, shown } = writer();
+      typewriter.push(PARAGRAPH);
+      const done = vi.fn();
+      typewriter.settle(done);
+      vi.advanceTimersByTime(SETTLE_MS + 100);
+      expect(shown()).toBe(PARAGRAPH);
+      expect(done).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("settle on an empty backlog calls back at once", () => {
