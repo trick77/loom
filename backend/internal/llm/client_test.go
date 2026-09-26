@@ -804,6 +804,31 @@ func TestClient_GenerateTitleUsesNonStreamingRequest(t *testing.T) {
 	}
 }
 
+// A helper's cap is sized for its answer; the model always thinks, and the
+// reasoning counts against max_tokens too. Without headroom a 32-token title
+// cap is spent thinking (peeq measured ~53 reasoning tokens at low on a short
+// gate) and the title comes back truncated.
+func TestClient_HelperCallsGetReasoningHeadroom(t *testing.T) {
+	var got struct {
+		MaxTokens int `json:"max_tokens"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]string{"content": "A title"}, "finish_reason": "stop"}},
+		})
+	}))
+	t.Cleanup(server.Close)
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
+
+	if _, err := client.GenerateThreadTitle(context.Background(), "Hi", "", ""); err != nil {
+		t.Fatalf("GenerateThreadTitle: %v", err)
+	}
+	if want := utilityMaxCompletionTokens + helperReasoningHeadroom; got.MaxTokens != want {
+		t.Fatalf("max_tokens = %d, want %d (answer cap plus reasoning headroom)", got.MaxTokens, want)
+	}
+}
+
 func TestClient_UtilityCallsAskForLowEffort(t *testing.T) {
 	for _, tc := range []struct {
 		name string

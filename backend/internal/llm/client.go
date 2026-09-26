@@ -73,6 +73,14 @@ const (
 	helperReasoningEffort = "low"
 )
 
+// helperReasoningHeadroom is added to every helper call's answer cap (see
+// complete): the model always thinks and the reasoning counts against
+// max_tokens, so a cap sized for a title alone is spent thinking and the
+// reply comes back truncated. peeq measured ~53 reasoning tokens at low on a
+// short gate; 1024 leaves wide room. Only generated tokens are billed, and a
+// runaway reply still hits the cap and is discarded as truncated.
+const helperReasoningHeadroom = 1024
+
 // Config holds the chat client settings loom owns. The endpoint is llmwire's:
 // BaseURL is an explicit override for a test fake or a stand-in endpoint and
 // bypasses the environment entirely (no key is sent unless APIKey is set too).
@@ -246,6 +254,8 @@ type completion struct {
 // is the one attribute that tells a mis-route from a correct one in the logs.
 func (c *Client) complete(ctx context.Context, model string, messages []Message, maxTokens int, decided func(completion) []slog.Attr) (completion, error) {
 	start := time.Now()
+	// maxTokens is sized for the answer; the reasoning gets its own room.
+	maxTokens += helperReasoningHeadroom
 	resp, warnings, err := c.wire.Chat(ctx, llmwire.ChatRequest{
 		Model:     model,
 		Messages:  toWireMessages(messages),
