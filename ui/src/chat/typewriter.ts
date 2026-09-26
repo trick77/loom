@@ -57,17 +57,15 @@ const browserClock: TypewriterClock = {
   },
 };
 
-// shouldPace says whether this browser gets the effect. Reduced motion opts
-// out, and so does an environment with no matchMedia or animation frames (jsdom),
-// where text then lands synchronously as it always did.
+// shouldPace says whether answers are typed out: always in a browser,
+// whatever the OS motion setting says. Off under the test runner, where text
+// lands synchronously as it always did and the typewriter is tested directly.
 export function shouldPace(): boolean {
-  if (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function" ||
-    typeof window.requestAnimationFrame !== "function"
-  )
-    return false;
-  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return (
+    import.meta.env.MODE !== "test" &&
+    typeof window !== "undefined" &&
+    typeof window.requestAnimationFrame === "function"
+  );
 }
 
 // cutAt returns how many characters of text to release for a budget of want:
