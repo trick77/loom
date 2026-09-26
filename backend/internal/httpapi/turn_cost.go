@@ -12,8 +12,8 @@ import (
 	"github.com/trick77/loom/internal/usage"
 )
 
-// turnCostSettler books everything a streamed turn spent, once, whichever way
-// the turn ends. Two ledgers:
+// turnCostSettler books everything a streamed turn spent, whichever way the
+// turn ends. Two ledgers:
 //
 //   - The user's lifetime totals get the turn's tokens and chat cost
 //     (UsageAccumulator.Cost); rolled-up costs such as the query embedding
@@ -23,6 +23,10 @@ import (
 //     carries what was spent before it was written; anything later (the
 //     thread title) is added onto it. A turn that never wrote an answer puts
 //     its whole cost on the user message instead.
+//
+// settle books only what arrived since the previous call, so a turn can
+// settle before its terminal event and again once a late call (the title of
+// a failed turn) has finished, without counting anything twice.
 type turnCostSettler struct {
 	s             *server
 	user          auth.User
@@ -30,9 +34,13 @@ type turnCostSettler struct {
 	acc           *llm.UsageAccumulator
 	// assistant is the persisted answer, nil until (unless) it is written.
 	assistant *chat.Message
-	once      sync.Once
-	// booked is the message whose cost settle changed and its new total, for
-	// the message_cost event; zero when nothing was booked.
+
+	mu sync.Mutex
+	// rolledUsage and rolledCost are what the lifetime totals already have.
+	rolledUsage llm.TokenUsage
+	rolledCost  int64
+	// booked is the target message and the total it carries now, which is
+	// also the message_cost payload; ID is empty until something was booked.
 	booked messageCost
 }
 
@@ -45,40 +53,45 @@ type messageCost struct {
 
 func (c *turnCostSettler) setAssistant(m chat.Message) { c.assistant = &m }
 
-// settle runs at most once. It must run after every call of the turn has
-// finished, the thread title and the reasoning-title goroutines included.
+// settle books what the turn spent since the last settle. Safe to call more
+// than once and from the deferred exit path.
 func (c *turnCostSettler) settle(ctx context.Context) {
-	c.once.Do(func() {
-		c.rollUp(ctx)
-		c.bookOnThread(ctx)
-	})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.rollUp(ctx)
+	c.bookOnThread(ctx)
 }
 
-// settleAndReport settles and tells the client which message's cost changed.
+// settleAndReport settles and tells the client the message's new cost.
 // Callers run it before the turn's terminal event ("done" or "error"): the
 // client stops reading at either.
 func (c *turnCostSettler) settleAndReport(ctx context.Context, stream *sse.Writer) {
 	c.settle(ctx)
-	if c.booked.ID != "" {
-		_ = sendSSEJSON(stream, "message_cost", c.booked)
+	c.mu.Lock()
+	booked := c.booked
+	c.mu.Unlock()
+	if booked.ID != "" {
+		_ = sendSSEJSON(stream, "message_cost", booked)
 	}
 }
 
 func (c *turnCostSettler) rollUp(ctx context.Context) {
-	turnUsage := c.acc.Total()
-	turnCost, _ := c.acc.Cost()
-	if !turnUsage.Present() && turnCost == 0 {
+	total := c.acc.Total()
+	cost, _ := c.acc.Cost()
+	delta := usage.TokenDelta{
+		PromptTokens:     total.PromptTokens - c.rolledUsage.PromptTokens,
+		CompletionTokens: total.CompletionTokens - c.rolledUsage.CompletionTokens,
+		CachedTokens:     total.PromptTokensDetails.CachedTokens - c.rolledUsage.PromptTokensDetails.CachedTokens,
+		ReasoningTokens:  total.CompletionTokenDetails.ReasoningTokens - c.rolledUsage.CompletionTokenDetails.ReasoningTokens,
+		TotalTokens:      total.TotalTokens - c.rolledUsage.TotalTokens,
+		CostNanoUSD:      cost - c.rolledCost,
+	}
+	if delta.PromptTokens == 0 && delta.CompletionTokens == 0 && delta.TotalTokens == 0 && delta.CostNanoUSD == 0 {
 		return
 	}
+	c.rolledUsage, c.rolledCost = total, cost
 	c.s.recordUsage("tokens", func() error {
-		return c.s.usage.AddTokens(ctx, c.user.ID, usage.TokenDelta{
-			PromptTokens:     turnUsage.PromptTokens,
-			CompletionTokens: turnUsage.CompletionTokens,
-			CachedTokens:     turnUsage.PromptTokensDetails.CachedTokens,
-			ReasoningTokens:  turnUsage.CompletionTokenDetails.ReasoningTokens,
-			TotalTokens:      turnUsage.TotalTokens,
-			CostNanoUSD:      turnCost,
-		})
+		return c.s.usage.AddTokens(ctx, c.user.ID, delta)
 	})
 }
 
@@ -87,22 +100,25 @@ func (c *turnCostSettler) bookOnThread(ctx context.Context) {
 	if !priced || full <= 0 || c.s.thread == nil {
 		return
 	}
-	messageID, delta := c.userMessageID, full
-	if c.assistant != nil {
-		messageID = c.assistant.ID
-		if c.assistant.CostNanoUSD != nil {
-			delta -= *c.assistant.CostNanoUSD
+	if c.booked.ID == "" {
+		// First booking: the target is the answer when there is one, which
+		// already carries what was spent before it was written; otherwise the
+		// user message, which carries no cost of its own.
+		c.booked.ID = c.userMessageID
+		if c.assistant != nil {
+			c.booked.ID = c.assistant.ID
+			if c.assistant.CostNanoUSD != nil {
+				c.booked.CostNanoUSD = *c.assistant.CostNanoUSD
+			}
 		}
 	}
+	delta := full - c.booked.CostNanoUSD
 	if delta <= 0 {
 		return
 	}
-	if _, err := c.s.thread.AddMessageCost(ctx, c.user.ID, messageID, delta); err != nil {
-		slog.Warn("book turn cost on thread failed", "message_id", messageID, "cost_nano_usd", delta, "err", err)
+	if _, err := c.s.thread.AddMessageCost(ctx, c.user.ID, c.booked.ID, delta); err != nil {
+		slog.Warn("book turn cost on thread failed", "message_id", c.booked.ID, "cost_nano_usd", delta, "err", err)
 		return
 	}
-	// The message now carries the whole turn: its own figure was either the
-	// part spent before it was written (topped up to full) or nothing (a user
-	// message, which carries no cost of its own).
-	c.booked = messageCost{ID: messageID, CostNanoUSD: full}
+	c.booked.CostNanoUSD = full
 }

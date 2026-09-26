@@ -1414,15 +1414,26 @@ func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
 	if user.CostNanoUSD == nil || *user.CostNanoUSD != 15 {
 		t.Fatalf("user message CostNanoUSD = %v, want 15 (failed round and thread title)", user.CostNanoUSD)
 	}
-	if len(recorder.deltas) != 1 || recorder.deltas[0].CostNanoUSD != 15 {
-		t.Fatalf("lifetime deltas = %+v, want one carrying 15", recorder.deltas)
+	var lifetime int64
+	for _, d := range recorder.deltas {
+		lifetime += d.CostNanoUSD
 	}
-	// The client stops reading at "error", so the cost must arrive before it.
+	if lifetime != 15 {
+		t.Fatalf("lifetime cost = %d over %+v, want 15", lifetime, recorder.deltas)
+	}
+	// The error goes out at once, not after the title call: when the upstream
+	// is down the title fails too and would use up its whole timeout first.
+	// The spend so far is reported just ahead of it (the client stops reading
+	// at "error"); the title's cost reaches the message afterwards.
 	body := rec.Body.String()
-	costEvent := "event: message_cost\ndata: {\"id\":\"msg_1\",\"costNanoUsd\":15}"
+	costEvent := "event: message_cost\ndata: {\"id\":\"msg_1\",\"costNanoUsd\":5}"
 	costAt, errorAt := strings.Index(body, costEvent), strings.Index(body, "event: error")
+	titleAt := strings.Index(body, "Fresh title")
 	if costAt == -1 || errorAt == -1 || costAt > errorAt {
 		t.Fatalf("want %q before error, body:\n%s", costEvent, body)
+	}
+	if titleAt != -1 && titleAt < errorAt {
+		t.Fatalf("thread title was sent before the error event, body:\n%s", body)
 	}
 }
 

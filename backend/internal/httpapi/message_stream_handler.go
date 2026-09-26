@@ -205,15 +205,16 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		titles.wait()
 		costs.settleAndReport(context.WithoutCancel(r.Context()), stream)
 	}
-	// failTurn ends a turn that has no answer to persist. The title and the
-	// cost report go out before the error event: the client stops reading at
-	// it, and the failed turn's spend must still reach the open thread's Σ.
-	// On an untitled thread's first turn that delays the error by the title
-	// call (bounded by turnGateTimeout).
+	// failTurn ends a turn that has no answer to persist. The spend so far is
+	// reported just before the error event (the client stops reading at it),
+	// and the error goes out at once: when the upstream is down the title call
+	// fails too, and waiting for it would hold the error for its whole
+	// timeout. The title's own cost is booked by the deferred settle, onto
+	// the message, visible from the next load.
 	failTurn := func(titleSource, message string) {
-		titleThread(titleSource)
 		finishCosts()
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
+		titleThread(titleSource)
 	}
 
 	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, plan.history, inference, user, thread, plan.gate, plan.imageRoute.generate, plan.editSource, plan.imageRoute.typography, userMessage.Content, plan.sourceCount)
