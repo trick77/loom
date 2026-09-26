@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/store"
 )
@@ -58,7 +59,7 @@ func (fakeEmbedder) Embed(_ context.Context, inputs []string) (rag.EmbedResult, 
 		v[0] = 1
 		out[i] = v
 	}
-	return rag.EmbedResult{Vectors: out, Usage: rag.EmbeddingUsage{PromptTokens: len(inputs), TotalTokens: len(inputs), Present: true}}, nil
+	return rag.EmbedResult{Vectors: out, Usage: rag.EmbeddingUsage{PromptTokens: len(inputs), TotalTokens: len(inputs), Present: true, CostNanoUSD: 42 * int64(len(inputs)), CostPriced: true}}, nil
 }
 
 func newTestService(t *testing.T) (*Service, *fakeIndexer, string) {
@@ -248,6 +249,31 @@ func (r *recordingUsage) AddEmbeddingUsage(_ context.Context, userID string, tok
 	r.tokens += tokens
 	r.requests += requests
 	return nil
+}
+
+// The query embedding is a call of the chat turn, so its cost reaches the
+// turn's accumulator (the thread's Σ) — as rolled-up cost, because it is
+// already in the user's embedding totals.
+func TestService_Retrieve_recordsQueryEmbeddingCostOnTheTurn(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	svc.SetUsageRecorder(&recordingUsage{})
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	v := make([]float32, 1536)
+	v[0] = 1
+	if err := svc.store.ReplaceChunks(ctx, "u", doc.ID, []rag.TextChunk{{Text: "hello"}}, [][]float32{v}); err != nil {
+		t.Fatalf("seed chunks: %v", err)
+	}
+	acc := llm.NewUsageAccumulator()
+	if _, err := svc.Retrieve(llm.WithUsageAccumulator(ctx, acc), "u", nil, nil, "what is hello", 5); err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if nano, _ := acc.TurnCost(); nano != 42 {
+		t.Fatalf("turn cost = %d, want 42", nano)
+	}
+	if nano, _ := acc.Cost(); nano != 0 {
+		t.Fatalf("rollup cost = %d, want 0 (already in the embedding totals)", nano)
+	}
 }
 
 func TestService_Retrieve_skipsEmbeddingWhenNoChunks(t *testing.T) {

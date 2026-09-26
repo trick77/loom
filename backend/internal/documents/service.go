@@ -14,6 +14,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/inference"
+	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 )
 
@@ -412,6 +413,12 @@ func (s *Service) Retrieve(ctx context.Context, userID string, projectID, thread
 		return nil, nil
 	}
 	s.recordEmbeddingUsage(ctx, userID, result.Usage)
+	// A call of the chat turn: its cost belongs in the turn's figure, the
+	// thread's Σ. Rolled-up, because the line above already put it in the
+	// user's lifetime totals.
+	if result.Usage.CostPriced {
+		llm.RecordRolledUpCost(ctx, result.Usage.CostNanoUSD)
+	}
 	return s.store.Retrieve(ctx, userID, projectID, threadID, result.Vectors[0], k)
 }
 

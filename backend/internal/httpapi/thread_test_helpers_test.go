@@ -387,6 +387,21 @@ func (f *fakeThreadStore) AddMessageWithAttachments(_ context.Context, _ string,
 	return message, nil
 }
 
+func (f *fakeThreadStore) AddMessageCost(_ context.Context, _ string, messageID string, nanoUSD int64) (bool, error) {
+	for i := range f.messages {
+		if f.messages[i].ID != messageID {
+			continue
+		}
+		total := nanoUSD
+		if f.messages[i].CostNanoUSD != nil {
+			total += *f.messages[i].CostNanoUSD
+		}
+		f.messages[i].CostNanoUSD = &total
+		return true, nil
+	}
+	return false, nil
+}
+
 func (f *fakeThreadStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
 	return f.AddMessageWithArtifacts(ctx, "", threadID, role, content, usage, nil)
 }
@@ -655,6 +670,9 @@ type fakeChatClient struct {
 	// streamErr, when set, makes StreamChatWithTools emit any reasoning then return
 	// the error (no content), modelling a turn that fails/stalls mid-stream.
 	streamErr error
+	// streamErrCost is recorded as priced spend before streamErr is returned,
+	// modelling rounds that were billed before the turn failed.
+	streamErrCost int64
 	// imageIntent is the canned reply of the semantic image-routing gate. Its
 	// zero value ({Action:""}) maps to ImageIntentNone, so tests that never touch
 	// images get the non-image path for free.
@@ -765,6 +783,9 @@ func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.M
 		}
 	}
 	if f.streamErr != nil {
+		if f.streamErrCost > 0 {
+			llm.RecordCost(ctx, f.streamErrCost, true)
+		}
 		return llm.StreamResult{ReasoningContent: f.reasoningText}, f.streamErr
 	}
 	content := "Hello"

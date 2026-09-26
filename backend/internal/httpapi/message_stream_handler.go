@@ -14,7 +14,6 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/sse"
-	"github.com/trick77/loom/internal/usage"
 )
 
 const loomSystemPrompt = "Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Reach for markdown structure only when it genuinely helps the reader: a list when the content is a true enumeration the user would naturally keep as a list (steps to follow, distinct parameters, a checklist), a table to compare several items across the same dimensions, and headings only for genuinely long, multi-section answers. Keep short or simple answers as plain prose — do not add structure for its own sake. Use **bold** sparingly to mark key terms. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. When the user refers to an earlier discussion or decision, or before answering a question that your past conversations together likely already covered, call conversation_search to find the relevant prior threads, then read_thread with a result's thread id to read one in full. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Long code or data you include inline is fine and is offered for download automatically. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use the browser navigation tool only when fetch cannot access useful content or the page needs JavaScript rendering; it navigates to the URL and reads back the rendered page. Web search results, fetched pages and excerpts from the user's uploaded documents are all labeled with a bracketed number like [1] or [2]. Whenever a sentence or paragraph in your answer draws on one of these sources, append its marker at the end of that sentence — [1], or several like [1][3]. The numbers form one sequence across documents and web sources, so a marker is never ambiguous. Use only numbers that actually appear in the material provided; never invent a citation number, and do not cite anything that was not given to you as a numbered source. Ignore the language of tool results and retrieved documents."
@@ -124,8 +123,9 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	streamCtx = llm.WithInferenceMetadata(streamCtx, turnAttribution)
 	// The prompt-assembly helpers below run on the request context rather than
-	// streamCtx, so they need the same attribution attached separately.
-	turnCtx := llm.WithInferenceMetadata(r.Context(), turnAttribution)
+	// streamCtx, so they need the same attribution attached separately — and the
+	// accumulator, so their calls (the RAG query embedding) count in the turn.
+	turnCtx := llm.WithUsageAccumulator(llm.WithInferenceMetadata(r.Context(), turnAttribution), usageTotal)
 	turnStart := time.Now()
 	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream)
 	defer unregisterStream()
@@ -144,6 +144,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// notably while MiMo serializes a large tool-call argument server-side and
 	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
+	// Book what the turn spent on every exit path. Deferred ahead of
+	// titles.wait below so it runs after it: the reasoning-title calls must have
+	// finished before the turn's cost is read. The success path settles
+	// explicitly before "done"; this is then a no-op.
+	costs := &turnCostSettler{s: s, user: user, userMessageID: userMessage.ID, acc: usageTotal}
+	defer costs.settle(context.WithoutCancel(r.Context()))
 	if err := sendSSEJSON(stream, "user_message", userMessage); err != nil {
 		return
 	}
@@ -255,6 +261,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		titleThread(assistantContent)
 		return
 	}
+	costs.setAssistant(assistantMessage)
 	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
 		return
 	}
@@ -268,8 +275,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// call is bounded by turnGateTimeout, and a slow short-gate endpoint would
 	// otherwise hold the just-streamed answer unpersisted — and the UI in its
 	// streaming state — for up to that long. The cost is that the title call's
-	// tokens miss the per-message stats; they still reach the lifetime rollup
-	// below, which is read after this.
+	// tokens miss the per-message stats; its cost is added onto the message and
+	// its tokens reach the lifetime rollup when the turn settles below.
 	titleThread(assistantContent)
 
 	// Bump the thread to the top of the sidebar live. last_message_at was just
@@ -283,26 +290,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sendSSEJSON(stream, "thread", updated)
 	}
 
-	// Add this turn's token burn to the user's lifetime totals. usageTotal was
-	// summed across the answer, tool rounds, and the title/reasoning helpers, and
-	// is read here after titles.wait() above so helper-call tokens are included —
-	// matching the per-message stats persisted just above.
-	turnUsage := usageTotal.Total()
-	// Re-read the cost next to the tokens: the per-message figure above was
-	// taken before the title call, whose cost belongs in the rollup too.
-	turnCost, _ := usageTotal.Cost()
-	if turnUsage.Present() {
-		s.recordUsage("tokens", func() error {
-			return s.usage.AddTokens(persistCtx, user.ID, usage.TokenDelta{
-				PromptTokens:     turnUsage.PromptTokens,
-				CompletionTokens: turnUsage.CompletionTokens,
-				CachedTokens:     turnUsage.PromptTokensDetails.CachedTokens,
-				ReasoningTokens:  turnUsage.CompletionTokenDetails.ReasoningTokens,
-				TotalTokens:      turnUsage.TotalTokens,
-				CostNanoUSD:      turnCost,
-			})
-		})
-	}
+	// Every call of the turn has finished (persistAssistantTurn waited for the
+	// reasoning titles, the thread title ran just above): book the spend now,
+	// before "done", so a reload right after sees the final Σ.
+	costs.settle(persistCtx)
 
 	// Best-effort, debounced background refresh of the project's shared memory so
 	// sibling chats stay aware of this turn (at most once per memoryProjectDebounce).

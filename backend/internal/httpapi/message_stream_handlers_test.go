@@ -1322,10 +1322,11 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
 	}
 	assistant := store.messages[1]
-	// Cost follows the same split as the tokens: the answer and the
-	// reasoning-title call on the message, the thread title only in the rollup.
-	if assistant.CostNanoUSD == nil || *assistant.CostNanoUSD != 1100 {
-		t.Fatalf("message CostNanoUSD = %v, want 1100", assistant.CostNanoUSD)
+	// Every call of the turn is on the message's cost, the thread title too:
+	// it runs after the message is written and is added onto it afterwards, so
+	// the thread's Σ counts it.
+	if assistant.CostNanoUSD == nil || *assistant.CostNanoUSD != 1110 {
+		t.Fatalf("message CostNanoUSD = %v, want 1110 (answer, reasoning title and thread title)", assistant.CostNanoUSD)
 	}
 	// 7+100 prompt, 3+1 completion, 10+101 total: the answer turn plus the
 	// reasoning-title helper, which runs during the stream. The thread-title
@@ -1373,6 +1374,40 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 	}
 	if delta.CostNanoUSD != 1110 {
 		t.Fatalf("lifetime CostNanoUSD = %d, want 1110 (answer, reasoning title and thread title)", delta.CostNanoUSD)
+	}
+}
+
+// A turn that fails before it has an answer still spent money: the rounds
+// before the failure and the thread title. With no assistant message to carry
+// it, the cost lands on the user message (the thread's Σ sums every message)
+// and in the lifetime rollup.
+func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+	}
+	recorder := &recordingUsageStore{}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		Usage:  recorder,
+		LLM: fakeChatClient{
+			title:         "Fresh title",
+			titleCost:     10,
+			streamErr:     errors.New("upstream exploded"),
+			streamErrCost: 5,
+		},
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`))
+
+	if len(store.messages) != 1 {
+		t.Fatalf("persisted messages = %d, want only the user message", len(store.messages))
+	}
+	user := store.messages[0]
+	if user.CostNanoUSD == nil || *user.CostNanoUSD != 15 {
+		t.Fatalf("user message CostNanoUSD = %v, want 15 (failed round and thread title)", user.CostNanoUSD)
+	}
+	if len(recorder.deltas) != 1 || recorder.deltas[0].CostNanoUSD != 15 {
+		t.Fatalf("lifetime deltas = %+v, want one carrying 15", recorder.deltas)
 	}
 }
 
