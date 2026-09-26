@@ -2,6 +2,8 @@ package rag
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -49,6 +51,29 @@ func (s *Store) RebuildVectorTable(ctx context.Context, width int) error {
 		return fmt.Errorf("create vec_chunks: %w", err)
 	}
 	return tx.Commit()
+}
+
+// VectorModel is the embedding model recorded as having written vec_chunks;
+// ok is false when none is recorded yet.
+func (s *Store) VectorModel(ctx context.Context) (model string, ok bool, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT model FROM vector_model WHERE id = 1`).Scan(&model)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read vector model: %w", err)
+	}
+	return model, true, nil
+}
+
+// SetVectorModel records the embedding model that writes vec_chunks.
+func (s *Store) SetVectorModel(ctx context.Context, model string) error {
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO vector_model (id, model) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET model = excluded.model`,
+		model); err != nil {
+		return fmt.Errorf("record vector model: %w", err)
+	}
+	return nil
 }
 
 // MissingVector is a stored chunk without an embedding.
