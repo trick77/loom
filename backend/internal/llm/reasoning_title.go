@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -60,6 +61,9 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning, response
 // empty or unusable result yields "" so the caller omits the title entirely.
 func cleanReasoningTitle(title string) string {
 	title = strings.TrimSpace(title)
+	if contentBlockTitle.MatchString(title) {
+		title = unwrapContentBlock(title)
+	}
 	title = titletext.NormalizeQuotes(title)
 	if unquoted, err := strconv.Unquote(title); err == nil {
 		title = strings.TrimSpace(unquoted)
@@ -74,4 +78,30 @@ func cleanReasoningTitle(title string) string {
 		title = string(runes[:80])
 	}
 	return title
+}
+
+// A title call has been seen answering with the title wrapped in a printed
+// content block instead of plain text, 30 tokens where the title alone was 9:
+//
+//	[{'type': 'text', 'text': 'Searching how Opus 5.5 affects subscription limits'}]
+//
+// Cut at 80 runes it rendered as the reasoning title, braces and all. Only a
+// reply opening with exactly that shape is touched; every other title passes
+// through unchanged.
+var (
+	contentBlockTitle = regexp.MustCompile(`^\[?\s*\{\s*['"]type['"]\s*:\s*['"]text['"]\s*,\s*['"]text['"]\s*:`)
+	blockTextSingle   = regexp.MustCompile(`^\[?\s*\{\s*['"]type['"]\s*:\s*['"]text['"]\s*,\s*['"]text['"]\s*:\s*'((?:[^'\\]|\\.)*)'`)
+	blockTextDouble   = regexp.MustCompile(`^\[?\s*\{\s*['"]type['"]\s*:\s*['"]text['"]\s*,\s*['"]text['"]\s*:\s*"((?:[^"\\]|\\.)*)"`)
+)
+
+// unwrapContentBlock returns the text of a printed content block, or "" when
+// the value cannot be read whole, so a half-parsed wrapper never becomes the
+// title.
+func unwrapContentBlock(title string) string {
+	for _, re := range []*regexp.Regexp{blockTextSingle, blockTextDouble} {
+		if m := re.FindStringSubmatch(title); m != nil {
+			return strings.NewReplacer(`\'`, "'", `\"`, `"`, `\\`, `\`).Replace(m[1])
+		}
+	}
+	return ""
 }
