@@ -515,15 +515,39 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 	callCtx := llm.WithInferenceMetadata(ctx, meta)
 	var reasoningBuf strings.Builder
 	titleSpawned := false
+	var titleDone <-chan struct{}
 	// The reasoning->content (or reasoning->tool) boundary: the model has
 	// finished thinking, so the round's reasoning is complete and its title can
-	// generate while the answer streams.
+	// generate.
 	spawnTitle := func() {
 		if titleSpawned {
 			return
 		}
 		titleSpawned = true
-		titles.spawn(reasoningID, reasoningBuf.String())
+		titleDone = titles.spawn(reasoningID, reasoningBuf.String())
+	}
+	// The title is what the reader looks at while the answer is on its way, so
+	// it goes out before the first answer word, never after. A short thinker
+	// finishes reasoning ~2.7s before its title call returns,
+	// and the answer used to overtake it. Blocking here is safe: llmwire's
+	// reader never blocks on its consumer, so the deltas queue and the idle
+	// guard keeps measuring the model. reasoningTitleHold bounds the wait.
+	awaitTitle := func() error {
+		if titleDone == nil {
+			return nil
+		}
+		done := titleDone
+		titleDone = nil
+		hold := time.NewTimer(reasoningTitleHold)
+		defer hold.Stop()
+		select {
+		case <-done:
+			return nil
+		case <-hold.C:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
@@ -536,6 +560,9 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 		}
 		if event.Delta != "" && streamContent {
 			spawnTitle()
+			if err := awaitTitle(); err != nil {
+				return err
+			}
 			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
 		}
 		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
