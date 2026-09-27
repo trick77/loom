@@ -400,108 +400,51 @@ body {
   transform: rotate(45deg);
 }
 
-/* Tail "working" dots (see WorkingDot.tsx): three clay dots orbiting on a plane
-   tilted toward the viewer, at the bottom of a live turn during the
-   thinking/tool gap. Three motions layered, all CSS:
-   - orbit: each .ui-working-orbit swings x as a sine (ease-in-out alternate,
-     1.8s each way = 3.6s per turn, dots 120deg apart); its .ui-working-dot runs
-     depth a quarter turn ahead, so a dot is biggest crossing the middle in front
-     and rides higher (smaller, dimmer) behind;
-   - breathing: the radius --ui-working-r swells 3.5px..9.5px on 2.6s, out of step
-     with the orbit so the two never lock into a visible loop;
-   - precession: the whole plane turns once per 7s.
-   --ui-working-r is registered so it can animate; the slots inherit each frame. */
-@property --ui-working-r {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 8px;
-}
-
+/* Tail "working" dots (see WorkingDot.tsx): three clay dots bouncing in sequence
+   at the bottom of a live turn during the thinking/tool gap. 6px dots, 5px gap,
+   ~4px bounce, in the clay accent. */
 .ui-working-dots {
-  position: relative;
-  width: 28px;
-  height: 20px;
-  margin: 3px 0;
-  animation:
-    ui-working-breathe 2.6s ease-in-out infinite,
-    ui-working-precess 7s linear infinite;
+  display: flex;
+  gap: 5px;
+  align-items: flex-end;
+  height: 10px;
+  padding: 3px 0;
 }
 
-.ui-working-orbit {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 5px;
-  height: 5px;
-  margin: -2.5px 0 0 -2.5px;
-  animation: ui-working-x 1.8s ease-in-out infinite alternate;
-  animation-delay: var(--ui-working-d);
-}
-
-.ui-working-orbit:nth-child(1) {
-  --ui-working-d: 0s;
-}
-
-.ui-working-orbit:nth-child(2) {
-  --ui-working-d: -1.2s;
-}
-
-.ui-working-orbit:nth-child(3) {
-  --ui-working-d: -2.4s;
-}
-
-.ui-working-dot {
-  display: block;
-  width: 100%;
-  height: 100%;
+/* The dots are the empty spans; the trailing .sr-only span carries the
+   screen-reader announcement and must not be styled/animated as a dot. */
+.ui-working-dots span:not(.sr-only) {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--color-accent-strong);
-  animation: ui-working-depth 3.6s ease-in-out infinite;
-  animation-delay: calc(var(--ui-working-d) - 0.9s);
+  animation: ui-working-bounce 1.2s ease-in-out infinite;
 }
 
-@keyframes ui-working-x {
-  from {
-    transform: translateX(calc(var(--ui-working-r) * -1));
-  }
-
-  to {
-    transform: translateX(var(--ui-working-r));
-  }
+.ui-working-dots span:nth-child(2) {
+  animation-delay: 0.15s;
 }
 
-@keyframes ui-working-depth {
+.ui-working-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes ui-working-bounce {
   0%,
+  80%,
   100% {
-    transform: translateY(calc(var(--ui-working-r) * -0.44)) scale(0.55);
-    opacity: 0.35;
+    transform: translateY(0);
+    opacity: 0.3;
   }
 
-  50% {
-    transform: translateY(calc(var(--ui-working-r) * 0.44)) scale(1.25);
+  40% {
+    transform: translateY(-4px);
     opacity: 1;
   }
 }
 
-@keyframes ui-working-breathe {
-  0%,
-  100% {
-    --ui-working-r: 3.5px;
-  }
-
-  50% {
-    --ui-working-r: 9.5px;
-  }
-}
-
-@keyframes ui-working-precess {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Reduced motion: no orbit, breathing or turning. The dots hold still in a row
-   and keep a gentle staggered opacity pulse so the "still working" cue survives. */
+/* Reduced motion: drop the vertical bounce, keep a gentle opacity pulse so the
+   "still working" cue survives without movement. */
 @keyframes ui-working-pulse {
   0%,
   100% {
@@ -514,25 +457,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ui-working-dots {
-    animation: none;
-  }
-
-  .ui-working-orbit {
-    animation: none;
-  }
-
-  .ui-working-orbit:nth-child(1) {
-    transform: translateX(-8px);
-  }
-
-  .ui-working-orbit:nth-child(3) {
-    transform: translateX(8px);
-  }
-
-  .ui-working-dot {
-    animation: ui-working-pulse 1.2s ease-in-out infinite;
-    animation-delay: calc(var(--ui-working-d) * -0.125);
+  .ui-working-dots span:not(.sr-only) {
+    animation-name: ui-working-pulse;
   }
 }
 
