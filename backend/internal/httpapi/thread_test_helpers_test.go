@@ -652,6 +652,10 @@ type fakeChatClient struct {
 	streamPanic     bool
 	// classifyGate, when set, holds ClassifyThread open until it is closed.
 	classifyGate chan struct{}
+	// classifyEntered, when set (buffered), is signalled as ClassifyThread starts.
+	classifyEntered chan struct{}
+	// imageIntentGate, when set, holds ClassifyImageIntent open until it is closed.
+	imageIntentGate chan struct{}
 	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
 	// open and count how many callers got through.
 	memoryEntered chan struct{}
@@ -732,6 +736,12 @@ func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, assistantMes
 }
 
 func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, error) {
+	if f.classifyEntered != nil {
+		select {
+		case f.classifyEntered <- struct{}{}:
+		default:
+		}
+	}
 	if f.classifyGate != nil {
 		select {
 		case <-f.classifyGate:
@@ -741,7 +751,13 @@ func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, e
 	return f.category, nil
 }
 
-func (f fakeChatClient) ClassifyImageIntent(_ context.Context, _ string, _, _ bool) (llm.ImageIntent, error) {
+func (f fakeChatClient) ClassifyImageIntent(ctx context.Context, _ string, _, _ bool) (llm.ImageIntent, error) {
+	if f.imageIntentGate != nil {
+		select {
+		case <-f.imageIntentGate:
+		case <-ctx.Done():
+		}
+	}
 	return f.imageIntent, nil
 }
 

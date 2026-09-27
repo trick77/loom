@@ -2883,6 +2883,68 @@ func TestStreamMessageKeepsRenameMadeDuringStream(t *testing.T) {
 	}
 }
 
+// The image-intent gate and the first-turn classifier are both model round
+// trips the answer waits on; they must overlap rather than add up. The image
+// gate is held until the classifier has started, which the old order (image
+// gate first, classifier after it) never reached.
+func TestPrepareTurnRunsImageGateAndClassifierConcurrently(t *testing.T) {
+	imageGate := make(chan struct{})
+	classifyEntered := make(chan struct{}, 1)
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Hi"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread:     store,
+		Artifacts:  fakeArtifactStore{},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        fakeChatClient{category: "coding", imageIntentGate: imageGate, classifyEntered: classifyEntered},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	done := make(chan struct{})
+	go func() {
+		srv.ServeHTTP(rec, req)
+		close(done)
+	}()
+	select {
+	case <-classifyEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the classifier did not start while the image-intent gate was pending")
+	}
+	close(imageGate)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("turn did not finish")
+	}
+	if got := store.updateThreadInput.Category; got == nil || *got != "coding" {
+		t.Fatalf("persisted category = %v, want the classifier's", got)
+	}
+}
+
+// The classifier runs alongside the image gate, so on an image turn its guess
+// is already in; the image category must still win, as it did when the
+// classifier was skipped for image turns.
+func TestPrepareTurnImageTurnKeepsImageCategoryOverClassifier(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Draw"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread:     store,
+		Artifacts:  fakeArtifactStore{},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM: fakeChatClient{
+			category:    "coding",
+			imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		},
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Draw a robot"}`))
+
+	if got := store.updateThreadInput.Category; got == nil || *got != string(classifier.ImageGeneration) {
+		t.Fatalf("persisted category = %v, want %q", got, classifier.ImageGeneration)
+	}
+}
+
 // The pre-answer loads (drift classification, user and project context, the
 // document chain) are independent and each may be a slow round trip; they must
 // overlap. The classifier is held open until the attached document's text has
