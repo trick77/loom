@@ -53,6 +53,7 @@ export function ThreadPanel({
   streamingBlocks,
   streamingSources,
   toolPending,
+  workingTitle = "",
   sendError,
   isSending,
   sendDisabled,
@@ -85,6 +86,8 @@ export function ThreadPanel({
   /** Web/RAG sources gathered so far in the live turn, pushed as the tools run. */
   streamingSources: Citation[];
   toolPending: boolean;
+  /** The live turn's first sweep line, from the user's message; "" until it arrives. */
+  workingTitle?: string;
   sendError: string;
   isSending: boolean;
   sendDisabled: boolean;
@@ -189,18 +192,20 @@ export function ThreadPanel({
       block.content !== "" &&
       index > lastTraceBlockIndex,
   );
-  // While the turn is live, the activity panel is shown only once a real reasoning
-  // title exists — before that the tail dots are the sole cue (no "Thinking"
-  // placeholder, and never the raw-first-sentence summary fallback, which would
-  // flash a half-formed heading). Once the turn ends (`!isSending`, e.g. a failed
-  // or reasoning-free turn) the trace renders unconditionally with its static
+  // While the turn is live, the activity panel is shown only once a real title
+  // exists — the working title from the user's message or a reasoning title.
+  // Before that the tail dots are the sole cue (no "Thinking" placeholder, and
+  // never the raw-first-sentence summary fallback, which would flash a
+  // half-formed heading). Once the turn ends (`!isSending`, e.g. a failed or
+  // reasoning-free turn) the trace renders unconditionally with its static
   // summary so a completed/failed timeline is never swallowed. Because the live
   // panel only appears with a title, its label is always a title and always sweeps.
   const hasReasoningTitle = activeTraceEvents.some(
     (event) => event.type === "reasoning" && (event.title?.trim() ?? "") !== "",
   );
+  const hasLiveTitle = hasReasoningTitle || workingTitle !== "";
   const activeTraceVisible =
-    hasActiveActivityTrace && (hasReasoningTitle || !isSending);
+    hasActiveActivityTrace && (hasLiveTitle || !isSending);
   // The live thinking window manages its own open/closed state: it opens once per
   // turn when there is something to show and stays open through the answer, then
   // collapses when the turn ends. There is no persisted preference; past traces
@@ -568,6 +573,7 @@ export function ThreadPanel({
                     active={isActiveTrace ? liveTraceThinking : false}
                     streaming={isActiveTrace ? isSending : false}
                     sweep={isActiveTrace ? working : false}
+                    workingTitle={isActiveTrace ? workingTitle : ""}
                     expanded={isActiveTrace ? liveTraceExpanded : undefined}
                     onExpandedChange={
                       isActiveTrace ? setLiveTraceExpanded : undefined
@@ -575,6 +581,27 @@ export function ThreadPanel({
                   />,
                 );
               });
+              // The working title arrives while the pre-answer gates still run,
+              // before the model has streamed any reasoning or tool, so there is
+              // no trace block to carry it yet. It gets the live panel on its
+              // own, under the same key, so the first trace block takes over
+              // this very node.
+              if (
+                lastTraceBlockIndex === -1 &&
+                working &&
+                workingTitle !== ""
+              ) {
+                elements.push(
+                  <ActivityTracePanel
+                    key="live-active-trace"
+                    events={[]}
+                    active
+                    streaming
+                    sweep
+                    workingTitle={workingTitle}
+                  />,
+                );
+              }
               return elements;
             })()}
             {/* No Sources row while streaming: the favicon pile appearing before

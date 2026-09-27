@@ -32,6 +32,7 @@ export function ActivityTracePanel({
   active,
   streaming = false,
   sweep = false,
+  workingTitle = "",
   expanded: controlledExpanded,
   initiallyExpanded = false,
   onExpandedChange,
@@ -42,8 +43,11 @@ export function ActivityTracePanel({
   // Whether the reasoning-title label should shimmer. Passed true only for the
   // live active panel while the turn is still working (thinking / running tools,
   // no answer prose yet). The bouncing tail dots carry the generic "still
-  // working" cue; the sweep is reserved for a real reasoning title.
+  // working" cue; the sweep is reserved for a real title.
   sweep?: boolean;
+  // The live turn's first sweep line, generated from the user's message. It
+  // stands in until the first reasoning title arrives.
+  workingTitle?: string;
   expanded?: boolean;
   initiallyExpanded?: boolean;
   onExpandedChange?(expanded: boolean): void;
@@ -62,13 +66,17 @@ export function ActivityTracePanel({
     return () => window.clearTimeout(timer);
   }, [expanded]);
   if (events.length === 0 && !active) return null;
-  const generatedTitle = latestReasoningTitle(events);
+  // A reasoning title wins; until one exists the live panel shows the working
+  // title from the user's message.
+  const generatedTitle =
+    latestReasoningTitle(events) ??
+    (workingTitle !== "" ? workingTitle : undefined);
   // No "Thinking" fallback: the live active panel is only rendered once a real
-  // reasoning title exists (before that, the tail dots are the sole cue), so the
-  // live label is always a title. `summarizeTrace` covers past/completed panels
+  // title exists (before that, the tail dots are the sole cue), so the live
+  // label is always a title. `summarizeTrace` covers past/completed panels
   // (and the rare tool-first case), shown statically.
   const label = generatedTitle ?? summarizeTrace(events);
-  // Only a reasoning title ever shimmers, and only while the turn is working
+  // Only a generated title ever shimmers, and only while the turn is working
   // (sweep). It stops the moment answer prose streams and at done — the tail dots
   // likewise vanish then. Tool titles and the status pill never sweep.
   const sweeping = sweep && generatedTitle !== undefined;

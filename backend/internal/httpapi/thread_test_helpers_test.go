@@ -656,6 +656,10 @@ type fakeChatClient struct {
 	classifyEntered chan struct{}
 	// imageIntentGate, when set, holds ClassifyImageIntent open until it is closed.
 	imageIntentGate chan struct{}
+	// workingTitle is the reply of GenerateWorkingTitle; workingTitleCost is
+	// recorded as priced spend when non-zero.
+	workingTitle     string
+	workingTitleCost int64
 	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
 	// open and count how many callers got through.
 	memoryEntered chan struct{}
@@ -759,6 +763,13 @@ func (f fakeChatClient) ClassifyImageIntent(ctx context.Context, _ string, _, _ 
 		}
 	}
 	return f.imageIntent, nil
+}
+
+func (f fakeChatClient) GenerateWorkingTitle(ctx context.Context, _, _ string) (string, error) {
+	if f.workingTitleCost > 0 {
+		llm.RecordCost(ctx, f.workingTitleCost, true)
+	}
+	return f.workingTitle, nil
 }
 
 func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, reasoning, _ string) (string, error) {
@@ -911,6 +922,10 @@ func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string, str
 	return "", nil
 }
 
+func (f *blockingChatClient) GenerateWorkingTitle(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
 func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string, string, string) (string, error) {
 	return "", nil
 }
@@ -1010,6 +1025,10 @@ func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning
 	if f.titleFor != nil {
 		return f.titleFor(reasoning), nil
 	}
+	return "", nil
+}
+
+func (f *fakeToolChatClient) GenerateWorkingTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
 

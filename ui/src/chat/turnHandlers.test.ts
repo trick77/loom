@@ -77,6 +77,20 @@ test("the assistant message receives the live blocks and the run is reset", () =
   expect(run().toolPending).toBe(false);
 });
 
+test("the working title lands on the run and clears with the assistant message", () => {
+  const { turn, run } = harness();
+  turn.handlers.onWorkingTitle?.("Checking whether 1001 is prime");
+  expect(run().workingTitle).toBe("Checking whether 1001 is prime");
+  turn.handlers.onAssistantMessage({
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "answer",
+    createdAt: "x",
+  });
+  expect(run().workingTitle).toBe("");
+});
+
 test("source snapshots replace only their own kind", () => {
   const { turn, run } = harness();
   turn.handlers.onKnowledgeSources?.([

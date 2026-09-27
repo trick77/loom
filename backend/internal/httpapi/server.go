@@ -246,6 +246,7 @@ type ChatClient interface {
 	ClassifyThread(context.Context, string) (string, error)
 	ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error)
 	GenerateReasoningTitle(context.Context, string, string) (string, error)
+	GenerateWorkingTitle(context.Context, string, string) (string, error)
 	GenerateMemory(context.Context, string, string, string, string, string, string) (string, error)
 	ApplyMemoryEdit(context.Context, string, string, string, string, string) (string, error)
 	GenerateProjectDescription(context.Context, string, []string, string) (string, error)

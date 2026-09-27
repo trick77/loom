@@ -154,6 +154,15 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
+	// Background sweep-line generation: the working title from the question
+	// right away, alongside the pre-answer gates, then one title per reasoning
+	// round. The deferred wait is a safety net so no title goroutine writes to
+	// the SSE stream after the handler returns on an early error path.
+	titles := newReasoningTitleTracker(streamCtx, s, stream, inference, userResponseLanguage(user))
+	defer titles.wait()
+	titles.spawnWorking(userMessage.Content)
+
 	plan := s.prepareTurn(turnInput{
 		streamCtx:     streamCtx,
 		turnCtx:       turnCtx,
@@ -166,12 +175,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		userMessage:   userMessage,
 		imageParts:    imageParts,
 	})
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
-	// Background reasoning-title generation. The deferred wait is a safety net so
-	// no title goroutine writes to the SSE stream after the handler returns on an
-	// early error path.
-	titles := newReasoningTitleTracker(streamCtx, s, stream, inference, userResponseLanguage(user))
-	defer titles.wait()
 	// titleThread names an as-yet-untitled thread. It runs after the answer so the
 	// title model can see the reply, not just the question — passing an empty
 	// assistantMessage reproduces the input-only titling this handler did for

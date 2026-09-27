@@ -273,6 +273,70 @@ func TestStreamMessageAnswerNotHeldPastReasoningTitleHold(t *testing.T) {
 	}
 }
 
+// The first sweep line comes from the question, not the reasoning, so it can
+// go out while the pre-answer gates are still running: the classifier is held
+// until the working title has been read off the stream.
+func TestStreamMessageSendsWorkingTitleWhileGatesRun(t *testing.T) {
+	classifyGate := make(chan struct{})
+	var release sync.Once
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Is 1001 prime?"}}
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{workingTitle: "Checking whether 1001 is prime", classifyGate: classifyGate},
+	}))
+	t.Cleanup(srv.Close)
+	// After srv.Close in registration order, so it runs first: Close waits on
+	// the handler, which waits on the held classifier.
+	t.Cleanup(func() { release.Do(func() { close(classifyGate) }) })
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Is 1001 prime?"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	got := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: assistant_working_title" && scanner.Scan() {
+				got <- scanner.Text()
+				for scanner.Scan() {
+				}
+				return
+			}
+		}
+		got <- ""
+	}()
+	select {
+	case data := <-got:
+		if data != `data: {"title":"Checking whether 1001 is prime"}` {
+			t.Fatalf("working title event data = %q", data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("working title held back behind the pre-answer gates")
+	}
+}
+
+// The working title is a call of the turn like the reasoning title: its cost
+// lands on the answer.
+func TestStreamMessageBooksWorkingTitleCost(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{workingTitle: "Greeting the user", workingTitleCost: 7, cost: 1000},
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`))
+
+	if len(store.messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	}
+	if cost := store.messages[1].CostNanoUSD; cost == nil || *cost != 1007 {
+		t.Fatalf("assistant CostNanoUSD = %v, want 1007 (answer and working title)", cost)
+	}
+}
+
 // The reasoning title is the first thing the reader sees of a turn, so it must
 // not wait for the model to stop thinking: once enough reasoning has streamed
 // to name the subject, the title generates from it while the model thinks on.

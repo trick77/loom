@@ -94,6 +94,7 @@ export function createTurnHandlers(opts: {
       applyBlocks((current) =>
         applyReasoningTitleBlock(current, event.id, event.title),
       ),
+    onWorkingTitle: (title) => opts.patch({ workingTitle: title }),
     onToolPending: () => opts.patch({ toolPending: true }),
     onToolCall: (event) => {
       opts.patch({ toolPending: false });
@@ -118,7 +119,12 @@ export function createTurnHandlers(opts: {
       opts.onAssistantMessage(message, liveBlocks);
       // The persisted message now carries the blocks; the run's live copy is
       // done with.
-      opts.patch({ blocks: [], sources: [], toolPending: false });
+      opts.patch({
+        blocks: [],
+        sources: [],
+        toolPending: false,
+        workingTitle: "",
+      });
     },
     onMessageCost: (event) => opts.onMessageCost?.(event),
     onThread: (thread) => opts.onThread?.(thread),
