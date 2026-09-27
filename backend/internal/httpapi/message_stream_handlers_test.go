@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -269,6 +270,78 @@ func TestStreamMessageAnswerNotHeldPastReasoningTitleHold(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("answer held past reasoningTitleHold by a hung title call")
+	}
+}
+
+// The reasoning title is the first thing the reader sees of a turn, so it must
+// not wait for the model to stop thinking: once enough reasoning has streamed
+// to name the subject, the title generates from it while the model thinks on.
+func TestStreamMessageSendsReasoningTitleWhileStillReasoning(t *testing.T) {
+	// A cleanup registered first runs last: after srv.Close has waited out the
+	// handler that reads the threshold.
+	prev := reasoningTitleStartBytes
+	t.Cleanup(func() { reasoningTitleStartBytes = prev })
+	reasoningTitleStartBytes = 20
+	hold := make(chan struct{})
+	var release sync.Once
+	seen := make(chan string, 4)
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+	}
+	streamText := "Answer."
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			streamText:         &streamText,
+			reasoningDeltas:    []string{"The user asks why the sky is blue.", " Rayleigh scattering explains it."},
+			reasoningHold:      hold,
+			reasoningTitle:     "Explaining the blue sky",
+			reasoningTitleSeen: seen,
+		},
+	}))
+	t.Cleanup(srv.Close)
+	// After srv.Close in registration order, so it runs first: Close waits on
+	// the handler, which waits on the held reasoning.
+	t.Cleanup(func() { release.Do(func() { close(hold) }) })
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Why is the sky blue?"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	gotTitle := make(chan bool, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: assistant_reasoning_title" {
+				gotTitle <- true
+				// Drain so the handler can finish once the reasoning resumes.
+				for scanner.Scan() {
+				}
+				return
+			}
+		}
+		gotTitle <- false
+	}()
+	select {
+	case ok := <-gotTitle:
+		if !ok {
+			t.Fatal("stream ended without a reasoning title")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("reasoning title held back until the model stopped reasoning")
+	}
+	release.Do(func() { close(hold) })
+	if got := <-seen; got != "The user asks why the sky is blue." {
+		t.Fatalf("title generated from %q, want the reasoning streamed so far", got)
+	}
+	// The round is titled once: the boundary at the first answer word finds it
+	// already spawned.
+	select {
+	case got := <-seen:
+		t.Fatalf("second reasoning title call with %q, want one per round", got)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 

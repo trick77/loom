@@ -500,9 +500,9 @@ func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamRes
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
 // tool-call events to the SSE stream. titles/reasoningID let it spawn the
-// reasoning abstract the instant the model stops reasoning and starts answering
-// (or calling a tool), so the title overlaps the answer stream instead of
-// waiting for the turn to finish.
+// reasoning abstract while the model is still reasoning (see
+// reasoningTitleStartBytes), or at the latest when it starts answering or
+// calling a tool, so the title overlaps the turn instead of trailing it.
 func (s *server) streamAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
 	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, true)
 }
@@ -516,9 +516,10 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 	var reasoningBuf strings.Builder
 	titleSpawned := false
 	var titleDone <-chan struct{}
-	// The reasoning->content (or reasoning->tool) boundary: the model has
-	// finished thinking, so the round's reasoning is complete and its title can
-	// generate.
+	// Called once reasoningTitleStartBytes of reasoning have streamed, and at
+	// the reasoning->content (or reasoning->tool) boundary for a round that
+	// never got that far. The first call wins; the title names the subject,
+	// which the opening of the reasoning already carries.
 	spawnTitle := func() {
 		if titleSpawned {
 			return
@@ -552,7 +553,13 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
 			reasoningBuf.WriteString(event.ReasoningDelta)
-			return sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta})
+			if err := sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
+				return err
+			}
+			if reasoningBuf.Len() >= reasoningTitleStartBytes {
+				spawnTitle()
+			}
+			return nil
 		}
 		if event.ToolPending {
 			spawnTitle()

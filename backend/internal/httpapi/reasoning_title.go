@@ -22,6 +22,15 @@ const reasoningTitleTimeout = 10 * time.Second
 // A var so tests can shorten it.
 var reasoningTitleHold = 5 * time.Second
 
+// reasoningTitleStartBytes is how much of a round's reasoning must have
+// streamed before its title generates. The title names the subject, which the
+// opening of the reasoning already carries, so it need not wait for the model
+// to stop thinking: that wait kept the first sweep line off screen for the
+// whole thinking phase, and past the first answer words whenever the title
+// call was slower than reasoningTitleHold. A round with less reasoning is
+// titled at its end, as before. A var so tests can shorten it.
+var reasoningTitleStartBytes = 300
+
 // reasoningTitleTracker generates a short abstract title for each reasoning
 // round in the background. Titles are emitted over SSE as they become ready and
 // collected so they can be merged into the persisted activity trace. The zero

@@ -641,7 +641,15 @@ type fakeChatClient struct {
 	// reasoningTitleGate, when set, holds GenerateReasoningTitle open until it
 	// is closed: a title call stuck on a dead upstream.
 	reasoningTitleGate chan struct{}
-	streamPanic        bool
+	// reasoningTitleSeen, when set, receives the reasoning every
+	// GenerateReasoningTitle call was given.
+	reasoningTitleSeen chan string
+	// reasoningDeltas, when set, streams the reasoning as these deltas in place
+	// of reasoningText, pausing on reasoningHold (when set) after the first:
+	// a model still thinking.
+	reasoningDeltas []string
+	reasoningHold   chan struct{}
+	streamPanic     bool
 	// classifyGate, when set, holds ClassifyThread open until it is closed.
 	classifyGate chan struct{}
 	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
@@ -737,9 +745,12 @@ func (f fakeChatClient) ClassifyImageIntent(_ context.Context, _ string, _, _ bo
 	return f.imageIntent, nil
 }
 
-func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, reasoning, _ string) (string, error) {
 	if f.reasoningTitlePanic {
 		panic("reasoning title exploded")
+	}
+	if f.reasoningTitleSeen != nil {
+		f.reasoningTitleSeen <- reasoning
 	}
 	if f.reasoningTitleGate != nil {
 		<-f.reasoningTitleGate
@@ -788,6 +799,18 @@ func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.M
 	if f.reasoningText != "" && onEvent != nil {
 		if err := onEvent(llm.StreamEvent{ReasoningDelta: f.reasoningText}); err != nil {
 			return llm.StreamResult{}, err
+		}
+	}
+	for i, delta := range f.reasoningDeltas {
+		if err := onEvent(llm.StreamEvent{ReasoningDelta: delta}); err != nil {
+			return llm.StreamResult{}, err
+		}
+		if i == 0 && f.reasoningHold != nil {
+			select {
+			case <-f.reasoningHold:
+			case <-ctx.Done():
+				return llm.StreamResult{}, ctx.Err()
+			}
 		}
 	}
 	if f.streamErr != nil {
