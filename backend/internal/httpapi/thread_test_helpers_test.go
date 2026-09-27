@@ -660,6 +660,9 @@ type fakeChatClient struct {
 	// recorded as priced spend when non-zero.
 	workingTitle     string
 	workingTitleCost int64
+	// workingTitleGate, when set, holds GenerateWorkingTitle open until it is
+	// closed: a working-title call on a slow endpoint.
+	workingTitleGate chan struct{}
 	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
 	// open and count how many callers got through.
 	memoryEntered chan struct{}
@@ -766,6 +769,13 @@ func (f fakeChatClient) ClassifyImageIntent(ctx context.Context, _ string, _, _ 
 }
 
 func (f fakeChatClient) GenerateWorkingTitle(ctx context.Context, _, _ string) (string, error) {
+	if f.workingTitleGate != nil {
+		select {
+		case <-f.workingTitleGate:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
 	if f.workingTitleCost > 0 {
 		llm.RecordCost(ctx, f.workingTitleCost, true)
 	}

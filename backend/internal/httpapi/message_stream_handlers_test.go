@@ -318,6 +318,51 @@ func TestStreamMessageSendsWorkingTitleWhileGatesRun(t *testing.T) {
 	}
 }
 
+// The working title is worthless once the answer exists, so a slow working
+// title call must not hold the finished answer unpersisted: assistant_message
+// goes out while the call is still pending.
+func TestStreamMessageAnswerNotHeldByWorkingTitle(t *testing.T) {
+	gate := make(chan struct{})
+	var release sync.Once
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{workingTitle: "Greeting the user", workingTitleGate: gate},
+	}))
+	t.Cleanup(srv.Close)
+	// After srv.Close in registration order, so it runs first: Close waits on
+	// the handler, whose teardown waits on the held call.
+	t.Cleanup(func() { release.Do(func() { close(gate) }) })
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	gotAnswer := make(chan bool, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: assistant_message" {
+				gotAnswer <- true
+				for scanner.Scan() {
+				}
+				return
+			}
+		}
+		gotAnswer <- false
+	}()
+	select {
+	case ok := <-gotAnswer:
+		if !ok {
+			t.Fatal("stream ended without an assistant message")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("finished answer held back by a pending working title call")
+	}
+}
+
 // The working title is a call of the turn like the reasoning title: its cost
 // lands on the answer.
 func TestStreamMessageBooksWorkingTitleCost(t *testing.T) {

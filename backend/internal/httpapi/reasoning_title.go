@@ -42,9 +42,13 @@ type reasoningTitleTracker struct {
 	inf      llm.InferenceMetadata
 	language string // user's response language; "" for the English default
 	wg       sync.WaitGroup
-	mu       sync.Mutex
-	titles   map[string]string // reasoning id -> title
-	spawned  map[string]bool   // reasoning id -> already generating
+	// working tracks the working-title call apart from wg: wait() gates the
+	// answer on the reasoning titles, and the working title is worthless once
+	// the answer exists, so only the stream's teardown waits for it.
+	working sync.WaitGroup
+	mu      sync.Mutex
+	titles  map[string]string // reasoning id -> title
+	spawned map[string]bool   // reasoning id -> already generating
 }
 
 func newReasoningTitleTracker(ctx context.Context, s *server, stream *sse.Writer, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
@@ -105,15 +109,15 @@ type workingTitleResponse struct {
 // user's message the moment it is sent. The reasoning titles need reasoning to
 // exist; before any does, the reader would see nothing but the dots through
 // the pre-answer gates and the model's first seconds. The client shows it until
-// the first reasoning title replaces it. It is never persisted. Like spawn, the
-// caller must eventually call wait() before tearing down the stream.
+// the first reasoning title replaces it. It is never persisted. The caller must
+// eventually call waitWorking() before tearing down the stream.
 func (t *reasoningTitleTracker) spawnWorking(userMessage string) {
 	if t == nil || strings.TrimSpace(userMessage) == "" {
 		return
 	}
-	t.wg.Add(1)
+	t.working.Add(1)
 	go func() {
-		defer t.wg.Done()
+		defer t.working.Done()
 		defer logPanic("working_title")
 		inf := t.inf
 		inf.Purpose = "working_title"
@@ -125,6 +129,14 @@ func (t *reasoningTitleTracker) spawnWorking(userMessage string) {
 		}
 		_ = sendSSEJSON(t.stream, "assistant_working_title", workingTitleResponse{Title: title})
 	}()
+}
+
+// waitWorking blocks until the working-title call has finished.
+func (t *reasoningTitleTracker) waitWorking() {
+	if t == nil {
+		return
+	}
+	t.working.Wait()
 }
 
 // wait blocks until every spawned title goroutine has finished.

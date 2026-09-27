@@ -157,10 +157,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	// Background sweep-line generation: the working title from the question
 	// right away, alongside the pre-answer gates, then one title per reasoning
-	// round. The deferred wait is a safety net so no title goroutine writes to
-	// the SSE stream after the handler returns on an early error path.
+	// round. The deferred waits keep any title goroutine from writing to the
+	// SSE stream after the handler returns. They run before costs.settle, so a
+	// working title that outlived the answer still has its cost booked.
 	titles := newReasoningTitleTracker(streamCtx, s, stream, inference, userResponseLanguage(user))
 	defer titles.wait()
+	defer titles.waitWorking()
 	titles.spawnWorking(userMessage.Content)
 
 	plan := s.prepareTurn(turnInput{
