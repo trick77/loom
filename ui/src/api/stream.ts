@@ -16,6 +16,9 @@ export type StreamHandlers = {
   onDelta(delta: string): void;
   onReasoningDelta?(delta: string): void;
   onReasoningTitle?(event: { id: string; title: string }): void;
+  // The turn's first sweep line, generated from the user's message while the
+  // answer is prepared; shown until the first reasoning title replaces it.
+  onWorkingTitle?(title: string): void;
   onAssistantMessage(message: Message): void;
   // A message's settled cost. The turn's last calls (the thread title) finish
   // after assistant_message went out, and a failed turn books its spend on the
@@ -245,6 +248,9 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers): boolean {
       break;
     case "assistant_reasoning_title":
       handlers.onReasoningTitle?.(payload as { id: string; title: string });
+      break;
+    case "assistant_working_title":
+      handlers.onWorkingTitle?.((payload as { title: string }).title);
       break;
     case "assistant_message":
       handlers.onAssistantMessage(payload as Message);

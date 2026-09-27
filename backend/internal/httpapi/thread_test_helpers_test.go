@@ -641,9 +641,28 @@ type fakeChatClient struct {
 	// reasoningTitleGate, when set, holds GenerateReasoningTitle open until it
 	// is closed: a title call stuck on a dead upstream.
 	reasoningTitleGate chan struct{}
-	streamPanic        bool
+	// reasoningTitleSeen, when set, receives the reasoning every
+	// GenerateReasoningTitle call was given.
+	reasoningTitleSeen chan string
+	// reasoningDeltas, when set, streams the reasoning as these deltas in place
+	// of reasoningText, pausing on reasoningHold (when set) after the first:
+	// a model still thinking.
+	reasoningDeltas []string
+	reasoningHold   chan struct{}
+	streamPanic     bool
 	// classifyGate, when set, holds ClassifyThread open until it is closed.
 	classifyGate chan struct{}
+	// classifyEntered, when set (buffered), is signalled as ClassifyThread starts.
+	classifyEntered chan struct{}
+	// imageIntentGate, when set, holds ClassifyImageIntent open until it is closed.
+	imageIntentGate chan struct{}
+	// workingTitle is the reply of GenerateWorkingTitle; workingTitleCost is
+	// recorded as priced spend when non-zero.
+	workingTitle     string
+	workingTitleCost int64
+	// workingTitleGate, when set, holds GenerateWorkingTitle open until it is
+	// closed: a working-title call on a slow endpoint.
+	workingTitleGate chan struct{}
 	// memoryEntered, memoryGate and memoryCalls let a test hold GenerateMemory
 	// open and count how many callers got through.
 	memoryEntered chan struct{}
@@ -724,6 +743,12 @@ func (f fakeChatClient) GenerateThreadTitle(ctx context.Context, _, assistantMes
 }
 
 func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, error) {
+	if f.classifyEntered != nil {
+		select {
+		case f.classifyEntered <- struct{}{}:
+		default:
+		}
+	}
 	if f.classifyGate != nil {
 		select {
 		case <-f.classifyGate:
@@ -733,13 +758,36 @@ func (f fakeChatClient) ClassifyThread(ctx context.Context, _ string) (string, e
 	return f.category, nil
 }
 
-func (f fakeChatClient) ClassifyImageIntent(_ context.Context, _ string, _, _ bool) (llm.ImageIntent, error) {
+func (f fakeChatClient) ClassifyImageIntent(ctx context.Context, _ string, _, _ bool) (llm.ImageIntent, error) {
+	if f.imageIntentGate != nil {
+		select {
+		case <-f.imageIntentGate:
+		case <-ctx.Done():
+		}
+	}
 	return f.imageIntent, nil
 }
 
-func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, _, _ string) (string, error) {
+func (f fakeChatClient) GenerateWorkingTitle(ctx context.Context, _, _ string) (string, error) {
+	if f.workingTitleGate != nil {
+		select {
+		case <-f.workingTitleGate:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	if f.workingTitleCost > 0 {
+		llm.RecordCost(ctx, f.workingTitleCost, true)
+	}
+	return f.workingTitle, nil
+}
+
+func (f fakeChatClient) GenerateReasoningTitle(ctx context.Context, reasoning, _ string) (string, error) {
 	if f.reasoningTitlePanic {
 		panic("reasoning title exploded")
+	}
+	if f.reasoningTitleSeen != nil {
+		f.reasoningTitleSeen <- reasoning
 	}
 	if f.reasoningTitleGate != nil {
 		<-f.reasoningTitleGate
@@ -788,6 +836,18 @@ func (f fakeChatClient) StreamChatWithTools(ctx context.Context, history []llm.M
 	if f.reasoningText != "" && onEvent != nil {
 		if err := onEvent(llm.StreamEvent{ReasoningDelta: f.reasoningText}); err != nil {
 			return llm.StreamResult{}, err
+		}
+	}
+	for i, delta := range f.reasoningDeltas {
+		if err := onEvent(llm.StreamEvent{ReasoningDelta: delta}); err != nil {
+			return llm.StreamResult{}, err
+		}
+		if i == 0 && f.reasoningHold != nil {
+			select {
+			case <-f.reasoningHold:
+			case <-ctx.Done():
+				return llm.StreamResult{}, ctx.Err()
+			}
 		}
 	}
 	if f.streamErr != nil {
@@ -869,6 +929,10 @@ func (f *blockingChatClient) ClassifyImageIntent(context.Context, string, bool, 
 }
 
 func (f *blockingChatClient) GenerateReasoningTitle(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func (f *blockingChatClient) GenerateWorkingTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
 
@@ -971,6 +1035,10 @@ func (f *fakeToolChatClient) GenerateReasoningTitle(_ context.Context, reasoning
 	if f.titleFor != nil {
 		return f.titleFor(reasoning), nil
 	}
+	return "", nil
+}
+
+func (f *fakeToolChatClient) GenerateWorkingTitle(context.Context, string, string) (string, error) {
 	return "", nil
 }
 

@@ -22,6 +22,15 @@ const reasoningTitleTimeout = 10 * time.Second
 // A var so tests can shorten it.
 var reasoningTitleHold = 5 * time.Second
 
+// reasoningTitleStartBytes is how much of a round's reasoning must have
+// streamed before its title generates. The title names the subject, which the
+// opening of the reasoning already carries, so it need not wait for the model
+// to stop thinking: that wait kept the first sweep line off screen for the
+// whole thinking phase, and past the first answer words whenever the title
+// call was slower than reasoningTitleHold. A round with less reasoning is
+// titled at its end, as before. A var so tests can shorten it.
+var reasoningTitleStartBytes = 300
+
 // reasoningTitleTracker generates a short abstract title for each reasoning
 // round in the background. Titles are emitted over SSE as they become ready and
 // collected so they can be merged into the persisted activity trace. The zero
@@ -33,9 +42,13 @@ type reasoningTitleTracker struct {
 	inf      llm.InferenceMetadata
 	language string // user's response language; "" for the English default
 	wg       sync.WaitGroup
-	mu       sync.Mutex
-	titles   map[string]string // reasoning id -> title
-	spawned  map[string]bool   // reasoning id -> already generating
+	// working tracks the working-title call apart from wg: wait() gates the
+	// answer on the reasoning titles, and the working title is worthless once
+	// the answer exists, so only the stream's teardown waits for it.
+	working sync.WaitGroup
+	mu      sync.Mutex
+	titles  map[string]string // reasoning id -> title
+	spawned map[string]bool   // reasoning id -> already generating
 }
 
 func newReasoningTitleTracker(ctx context.Context, s *server, stream *sse.Writer, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
@@ -85,6 +98,45 @@ func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan stru
 		_ = sendSSEJSON(t.stream, "assistant_reasoning_title", reasoningTitleResponse{ID: reasoningID, Title: title})
 	}()
 	return done
+}
+
+// workingTitleResponse is the payload of assistant_working_title.
+type workingTitleResponse struct {
+	Title string `json:"title"`
+}
+
+// spawnWorking kicks off the turn's first sweep line, generated from the
+// user's message the moment it is sent. The reasoning titles need reasoning to
+// exist; before any does, the reader would see nothing but the dots through
+// the pre-answer gates and the model's first seconds. The client shows it until
+// the first reasoning title replaces it. It is never persisted. The caller must
+// eventually call waitWorking() before tearing down the stream.
+func (t *reasoningTitleTracker) spawnWorking(userMessage string) {
+	if t == nil || strings.TrimSpace(userMessage) == "" {
+		return
+	}
+	t.working.Add(1)
+	go func() {
+		defer t.working.Done()
+		defer logPanic("working_title")
+		inf := t.inf
+		inf.Purpose = "working_title"
+		ctx, cancel := context.WithTimeout(t.ctx, reasoningTitleTimeout)
+		defer cancel()
+		title, err := t.s.llm.GenerateWorkingTitle(llm.WithInferenceMetadata(ctx, inf), userMessage, t.language)
+		if err != nil || strings.TrimSpace(title) == "" {
+			return
+		}
+		_ = sendSSEJSON(t.stream, "assistant_working_title", workingTitleResponse{Title: title})
+	}()
+}
+
+// waitWorking blocks until the working-title call has finished.
+func (t *reasoningTitleTracker) waitWorking() {
+	if t == nil {
+		return
+	}
+	t.working.Wait()
 }
 
 // wait blocks until every spawned title goroutine has finished.

@@ -29,6 +29,8 @@ export type RunState = {
   blocks: ContentBlock[];
   sources: Citation[];
   toolPending: boolean;
+  // The first sweep line, from the user's message; "" until it arrives.
+  workingTitle: string;
   status: "idle" | "streaming" | "failed";
   error: string;
 };
@@ -40,6 +42,7 @@ export const EMPTY_RUN: RunState = Object.freeze({
   blocks: Object.freeze([]) as unknown as ContentBlock[],
   sources: Object.freeze([]) as unknown as Citation[],
   toolPending: false,
+  workingTitle: "",
   status: "idle",
   error: "",
 }) as RunState;
@@ -77,6 +80,7 @@ export function beginRun(runs: StreamRuns, key: RunKey): StreamRuns {
       blocks: [],
       sources: [],
       toolPending: false,
+      workingTitle: "",
       status: "streaming",
       error: "",
     },

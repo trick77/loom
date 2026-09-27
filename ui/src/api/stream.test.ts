@@ -45,6 +45,22 @@ describe("streamMessage", () => {
     });
   });
 
+  test("delivers the working title, the turn's first sweep line", async () => {
+    const body = sseBody([
+      'event: assistant_working_title\ndata: {"title":"Checking whether 1001 is prime"}\n\n',
+      'event: assistant_message\ndata: {"id":"m2","content":"x"}\n\n',
+      "event: done\ndata: {}\n\n",
+    ]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body)));
+    const h = { ...handlers(), onWorkingTitle: vi.fn() };
+
+    await streamMessage("t1", "hi", h);
+
+    expect(h.onWorkingTitle).toHaveBeenCalledWith(
+      "Checking whether 1001 is prime",
+    );
+  });
+
   test("rejects with StreamInterruptedError when the body closes before a terminal event", async () => {
     const body = sseBody([
       'event: user_message\ndata: {"id":"m1"}\n\n',

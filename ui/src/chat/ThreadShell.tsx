@@ -1517,6 +1517,7 @@ export function ThreadShell({
             streamingBlocks={activeRun.blocks}
             streamingSources={activeRun.sources}
             toolPending={activeRun.toolPending}
+            workingTitle={activeRun.workingTitle}
             sendError={visibleSendError}
             isSending={activeThreadIsStreaming}
             sendDisabled={false}

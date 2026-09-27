@@ -230,7 +230,7 @@ func (c *Client) complete(ctx context.Context, model string, messages []Message,
 
 // shortGate runs a helper call that needs a fast answer rather than a deep one
 // — the short gates a turn blocks on: image intent, thread classification, and
-// the two title generators. They run on the gate model with the least
+// the title generators. They run on the gate model with the least
 // reasoning it allows: the answer is a label, an id or a handful of words, and
 // the turn waits on them before its first token.
 //

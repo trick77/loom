@@ -54,18 +54,9 @@ type turnPlan struct {
 // the first token.
 func (s *server) prepareTurn(in turnInput) turnPlan {
 	imageParts := in.imageParts
-	// Decide how this turn routes to image generation/editing before classifying,
-	// via one semantic gate call (language-agnostic; see classifyImageTurn). When
-	// the image path will run we stamp the thread's category deterministically as
-	// image_generation instead of letting the text classifier guess (it would
-	// mislabel and the image path discards the classifier block anyway). Computed
-	// once here and reused below.
-	imageRoute := s.classifyImageTurn(in.streamCtx, in.user, in.thread.ID, in.body.Content, len(in.body.ImageAttachmentIDs) > 0, in.priorMessages)
-	imageArtifactRequired := imageRoute.generate
-
 	// category drives the prompt-classifier block injected below. On the first
-	// message we classify now (synchronously, before the answer history is built)
-	// and use the fresh result; on later turns we reuse the stored category.
+	// message we classify now (before the answer history is built) and use the
+	// fresh result; on later turns we reuse the stored category.
 	//
 	// The condition is this being the thread's first turn AND its category never
 	// having been set. It used to be shouldGenerateThreadTitle, a proxy for "first
@@ -83,31 +74,25 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	// not at all; later drift is handled per-turn just below. Titling has moved
 	// after the answer and no longer shares this gate.
 	category := in.thread.Category
-	freshlyClassified := false
-	if len(in.priorMessages) == 0 && strings.TrimSpace(category) == "" {
-		categoryOverride := ""
-		if imageArtifactRequired {
-			categoryOverride = string(classifier.ImageGeneration)
-		}
-		category = s.classifyThreadForTurn(in.streamCtx, context.WithoutCancel(in.reqCtx), in.user, in.thread.ID, in.userMessage.Content, categoryOverride)
-		freshlyClassified = true
-	}
+	freshlyClassified := len(in.priorMessages) == 0 && strings.TrimSpace(category) == ""
 
-	// Semantic drift detection: on a continued turn whose sticky category does not
-	// already grant the coding-doc tools, re-classify THIS message so a thread that
-	// drifted into coding/how-to (in any language) still gets context7 et al. This
-	// reuses the same model classifier as the first message — no hand-maintained
-	// keyword lexicon. Skipped when the turn was just classified, when the image
-	// path will run (its tools are forced), or when the sticky category already
-	// grants those tools. Fail-safe: ClassifyThread returns General on failure, so
-	// a failed classification simply adds nothing.
-	// The pre-answer loads below are independent of one another and each may
-	// be a model or database round trip (the drift classifier alone is bounded
-	// by turnGateTimeout), so they run concurrently; the tool gate and the
-	// history need all of them and are built after the join. The document
-	// chain stays sequential inside its goroutine: attached documents, then
-	// project knowledge, then RAG share the [n] numbering in docIdx.
+	// Every pre-answer load below is independent of the others, and each may be
+	// a model or database round trip, so they run concurrently: the answer
+	// waits for the slowest, not their sum. The tool gate and the history need
+	// all of them and are built after the join. The document chain stays
+	// sequential inside its goroutine: attached documents, then project
+	// knowledge, then RAG share the [n] numbering in docIdx.
+	//
+	// The image-intent gate (language-agnostic; see classifyImageTurn) decides
+	// whether this turn routes to image generation/editing. An image turn's
+	// category is stamped deterministically as image_generation and its tools
+	// are forced, so the two classifiers are wasted on it — but image turns are
+	// rare, and running the classifiers alongside the gate instead of after it
+	// takes a whole gate round trip off every other first turn. Their results
+	// are simply dropped on an image turn below.
 	var (
+		imageRoute                        imageRouting
+		classified                        string
 		turnCategory                      string
 		userContext                       string
 		projectContext                    string
@@ -117,7 +102,23 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	)
 	parallel(
 		func() {
-			if freshlyClassified || imageArtifactRequired || categoryGrantsCodingDocs(category) {
+			imageRoute = s.classifyImageTurn(in.streamCtx, in.user, in.thread.ID, in.body.Content, len(in.body.ImageAttachmentIDs) > 0, in.priorMessages)
+		},
+		func() {
+			if freshlyClassified {
+				classified = s.classifyFirstTurn(in.streamCtx, in.user, in.thread.ID, in.userMessage.Content)
+			}
+		},
+		// Semantic drift detection: on a continued turn whose sticky category does
+		// not already grant the coding-doc tools, re-classify THIS message so a
+		// thread that drifted into coding/how-to (in any language) still gets
+		// context7 et al. This reuses the same model classifier as the first
+		// message — no hand-maintained keyword lexicon. Skipped when the turn is
+		// being classified fresh or when the sticky category already grants those
+		// tools. Fail-safe: ClassifyThread returns General on failure, so a failed
+		// classification simply adds nothing.
+		func() {
+			if freshlyClassified || categoryGrantsCodingDocs(category) {
 				return
 			}
 			driftInference := llm.InferenceMetadata{UserID: in.user.ID, Username: in.user.Username, ThreadID: in.thread.ID, Purpose: "classify_drift", Round: 1}
@@ -142,6 +143,18 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 			knowledgeSources = append(append([]citation(nil), attachmentSources...), knowledgeSources...)
 		},
 	)
+	imageArtifactRequired := imageRoute.generate
+	if imageArtifactRequired {
+		// The image path forces its own tools; the drift guess adds nothing.
+		turnCategory = ""
+	}
+	if freshlyClassified {
+		category = classified
+		if imageArtifactRequired {
+			category = string(classifier.ImageGeneration)
+		}
+		s.persistThreadCategory(context.WithoutCancel(in.reqCtx), in.user, in.thread.ID, category)
+	}
 
 	gate := newToolGate(category, turnCategory, in.userMessage.Content)
 	fileToolGuidance := ""

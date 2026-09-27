@@ -57,28 +57,20 @@ func strPtr(value string) *string {
 	return &value
 }
 
-// classifyThreadForTurn classifies the first message and persists the category
-// onto the thread. It returns the chosen category so the caller can inject the
-// matching system-prompt block on this very turn, which is why it must run
+// classifyFirstTurn classifies the thread's first message. The caller injects
+// the matching system-prompt block on this very turn, which is why it must run
 // before the answer history is built — and why it is bounded like the other turn
 // gates: a General category beats holding the answer behind a slow endpoint.
-// Classification is best-effort and falls back to General.
-//
-// When categoryOverride is non-empty the classify call is skipped entirely and
-// the override is used as the category. The caller passes this for requests it
-// has already routed deterministically (e.g. image generation), where the
-// text-classifier's guess would be both wrong and pointless.
+// Classification is best-effort and falls back to General. It persists nothing:
+// the caller stores the category once the image gate has said whether this is
+// an image turn, whose category is fixed rather than classified.
 //
 // The title is deliberately NOT generated here. It used to be, purely so the two
 // utility calls could share one goroutine pair, and the cost was that the title
 // model only ever saw the bare question — production always passed an empty
 // assistant message. See generateAndSendThreadTitle, which now runs once the
 // answer exists.
-func (s *server) classifyThreadForTurn(requestCtx, persistCtx context.Context, user auth.User, threadID, userMessage, categoryOverride string) string {
-	if categoryOverride != "" {
-		s.persistThreadCategory(persistCtx, user, threadID, categoryOverride)
-		return categoryOverride
-	}
+func (s *server) classifyFirstTurn(requestCtx context.Context, user auth.User, threadID, userMessage string) string {
 	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
 	requestCtx, cancelClassify := context.WithTimeout(requestCtx, turnGateTimeout)
 	defer cancelClassify()
@@ -88,7 +80,6 @@ func (s *server) classifyThreadForTurn(requestCtx, persistCtx context.Context, u
 	if category == "" {
 		category = string(classifier.General)
 	}
-	s.persistThreadCategory(persistCtx, user, threadID, category)
 	return category
 }
 

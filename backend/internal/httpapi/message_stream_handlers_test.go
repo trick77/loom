@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -269,6 +270,187 @@ func TestStreamMessageAnswerNotHeldPastReasoningTitleHold(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("answer held past reasoningTitleHold by a hung title call")
+	}
+}
+
+// The first sweep line comes from the question, not the reasoning, so it can
+// go out while the pre-answer gates are still running: the classifier is held
+// until the working title has been read off the stream.
+func TestStreamMessageSendsWorkingTitleWhileGatesRun(t *testing.T) {
+	classifyGate := make(chan struct{})
+	var release sync.Once
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Is 1001 prime?"}}
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{workingTitle: "Checking whether 1001 is prime", classifyGate: classifyGate},
+	}))
+	t.Cleanup(srv.Close)
+	// After srv.Close in registration order, so it runs first: Close waits on
+	// the handler, which waits on the held classifier.
+	t.Cleanup(func() { release.Do(func() { close(classifyGate) }) })
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Is 1001 prime?"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	got := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: assistant_working_title" && scanner.Scan() {
+				got <- scanner.Text()
+				for scanner.Scan() {
+				}
+				return
+			}
+		}
+		got <- ""
+	}()
+	select {
+	case data := <-got:
+		if data != `data: {"title":"Checking whether 1001 is prime"}` {
+			t.Fatalf("working title event data = %q", data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("working title held back behind the pre-answer gates")
+	}
+}
+
+// The working title is worthless once the answer exists, so a slow working
+// title call must not hold the finished answer unpersisted: assistant_message
+// goes out while the call is still pending.
+func TestStreamMessageAnswerNotHeldByWorkingTitle(t *testing.T) {
+	gate := make(chan struct{})
+	var release sync.Once
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{workingTitle: "Greeting the user", workingTitleGate: gate},
+	}))
+	t.Cleanup(srv.Close)
+	// After srv.Close in registration order, so it runs first: Close waits on
+	// the handler, whose teardown waits on the held call.
+	t.Cleanup(func() { release.Do(func() { close(gate) }) })
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	gotAnswer := make(chan bool, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: assistant_message" {
+				gotAnswer <- true
+				for scanner.Scan() {
+				}
+				return
+			}
+		}
+		gotAnswer <- false
+	}()
+	select {
+	case ok := <-gotAnswer:
+		if !ok {
+			t.Fatal("stream ended without an assistant message")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("finished answer held back by a pending working title call")
+	}
+}
+
+// The working title is a call of the turn like the reasoning title: its cost
+// lands on the answer.
+func TestStreamMessageBooksWorkingTitleCost(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{workingTitle: "Greeting the user", workingTitleCost: 7, cost: 1000},
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`))
+
+	if len(store.messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	}
+	if cost := store.messages[1].CostNanoUSD; cost == nil || *cost != 1007 {
+		t.Fatalf("assistant CostNanoUSD = %v, want 1007 (answer and working title)", cost)
+	}
+}
+
+// The reasoning title is the first thing the reader sees of a turn, so it must
+// not wait for the model to stop thinking: once enough reasoning has streamed
+// to name the subject, the title generates from it while the model thinks on.
+func TestStreamMessageSendsReasoningTitleWhileStillReasoning(t *testing.T) {
+	// A cleanup registered first runs last: after srv.Close has waited out the
+	// handler that reads the threshold.
+	prev := reasoningTitleStartBytes
+	t.Cleanup(func() { reasoningTitleStartBytes = prev })
+	reasoningTitleStartBytes = 20
+	hold := make(chan struct{})
+	var release sync.Once
+	seen := make(chan string, 4)
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+	}
+	streamText := "Answer."
+	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM: fakeChatClient{
+			streamText:         &streamText,
+			reasoningDeltas:    []string{"The user asks why the sky is blue.", " Rayleigh scattering explains it."},
+			reasoningHold:      hold,
+			reasoningTitle:     "Explaining the blue sky",
+			reasoningTitleSeen: seen,
+		},
+	}))
+	t.Cleanup(srv.Close)
+	// After srv.Close in registration order, so it runs first: Close waits on
+	// the handler, which waits on the held reasoning.
+	t.Cleanup(func() { release.Do(func() { close(hold) }) })
+	req := authenticatedRequest(http.MethodPost, srv.URL+"/api/threads/thr_1/messages:stream", `{"content":"Why is the sky blue?"}`)
+	req.RequestURI = ""
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	gotTitle := make(chan bool, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if scanner.Text() == "event: assistant_reasoning_title" {
+				gotTitle <- true
+				// Drain so the handler can finish once the reasoning resumes.
+				for scanner.Scan() {
+				}
+				return
+			}
+		}
+		gotTitle <- false
+	}()
+	select {
+	case ok := <-gotTitle:
+		if !ok {
+			t.Fatal("stream ended without a reasoning title")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("reasoning title held back until the model stopped reasoning")
+	}
+	release.Do(func() { close(hold) })
+	if got := <-seen; got != "The user asks why the sky is blue." {
+		t.Fatalf("title generated from %q, want the reasoning streamed so far", got)
+	}
+	// The round is titled once: the boundary at the first answer word finds it
+	// already spawned.
+	select {
+	case got := <-seen:
+		t.Fatalf("second reasoning title call with %q, want one per round", got)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
@@ -2807,6 +2989,68 @@ func TestStreamMessageKeepsRenameMadeDuringStream(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), `"title":"Generated"`) {
 		t.Fatalf("stream announced the generated title over the rename:\n%s", rec.Body.String())
+	}
+}
+
+// The image-intent gate and the first-turn classifier are both model round
+// trips the answer waits on; they must overlap rather than add up. The image
+// gate is held until the classifier has started, which the old order (image
+// gate first, classifier after it) never reached.
+func TestPrepareTurnRunsImageGateAndClassifierConcurrently(t *testing.T) {
+	imageGate := make(chan struct{})
+	classifyEntered := make(chan struct{}, 1)
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Hi"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread:     store,
+		Artifacts:  fakeArtifactStore{},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        fakeChatClient{category: "coding", imageIntentGate: imageGate, classifyEntered: classifyEntered},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
+
+	done := make(chan struct{})
+	go func() {
+		srv.ServeHTTP(rec, req)
+		close(done)
+	}()
+	select {
+	case <-classifyEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the classifier did not start while the image-intent gate was pending")
+	}
+	close(imageGate)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("turn did not finish")
+	}
+	if got := store.updateThreadInput.Category; got == nil || *got != "coding" {
+		t.Fatalf("persisted category = %v, want the classifier's", got)
+	}
+}
+
+// The classifier runs alongside the image gate, so on an image turn its guess
+// is already in; the image category must still win, as it did when the
+// classifier was skipped for image turns.
+func TestPrepareTurnImageTurnKeepsImageCategoryOverClassifier(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Draw"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread:     store,
+		Artifacts:  fakeArtifactStore{},
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM: fakeChatClient{
+			category:    "coding",
+			imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		},
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Draw a robot"}`))
+
+	if got := store.updateThreadInput.Category; got == nil || *got != string(classifier.ImageGeneration) {
+		t.Fatalf("persisted category = %v, want %q", got, classifier.ImageGeneration)
 	}
 }
 
