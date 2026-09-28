@@ -6,6 +6,27 @@ import type { Message } from "../api";
 import { MessageBubble } from "./messages";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 
+test("user message keeps its line breaks and indentation", () => {
+  const message: Message = {
+    id: "m1",
+    threadId: "t1",
+    role: "user",
+    content: "First line\n\n  indented second",
+    createdAt: "2026-06-14T00:00:00Z",
+  };
+
+  render(
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
+  );
+
+  const text = screen.getByText(
+    (_, element) =>
+      element?.textContent === "First line\n\n  indented second" &&
+      element.classList.contains("ui-user-message-text"),
+  );
+  expect(text).toHaveClass("whitespace-pre-wrap");
+});
+
 test("renders sent attachments above the user message text", () => {
   const message: Message & { attachments: ComposerAttachment[] } = {
     id: "m1",

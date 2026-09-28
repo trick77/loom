@@ -134,7 +134,7 @@ const UserMessageBubble = memo(function UserMessageBubble({
         </div>
       )}
       {displayContent !== "" && (
-        <div className="ui-message-text ui-user-message-text mt-2 rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
+        <div className="ui-message-text ui-user-message-text mt-2 whitespace-pre-wrap break-words rounded-xl bg-[#111110] px-4 py-3 text-[#f3f0e8]">
           {displayContent}
         </div>
       )}
