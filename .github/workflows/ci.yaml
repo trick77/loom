@@ -35,7 +35,7 @@ jobs:
           working-directory: backend
       # Model facts live in llmwire profiles; loom may name a model only in
       # configuration (see AGENTS.md).
-      - run: ./hack/check-model-names.sh
+      - run: ./scripts/check-model-names.sh
 
   backend:
     name: Backend (build + test)
@@ -64,7 +64,7 @@ jobs:
       # gofmt is not covered by `go vet`. Nine files had already drifted out of
       # gofmt shape before this check existed, so it is worth enforcing rather
       # than trusting editors to do it.
-      # From the repo root, not backend/: hack/strip-comment-lines.go is outside
+      # From the repo root, not backend/: scripts/strip-comment-lines.go is outside
       # the module, so `go vet ./...` above never sees it, and patch-coverage.sh
       # runs it on every build.
       - name: gofmt
@@ -86,12 +86,12 @@ jobs:
       # why.
       - name: Gate self-tests
         run: |
-          ./hack/coverage-gate.test.sh
-          ./hack/strip-comment-lines.test.sh
+          ./scripts/coverage-gate.test.sh
+          ./scripts/strip-comment-lines.test.sh
       - name: Project floor
-        run: ./hack/coverage-gate.sh backend
+        run: ./scripts/coverage-gate.sh backend
       - name: Patch coverage
-        run: ./hack/patch-coverage.sh origin/${{ github.base_ref }}
+        run: ./scripts/patch-coverage.sh origin/${{ github.base_ref }}
 
   ui:
     name: UI (build + test)
@@ -119,6 +119,6 @@ jobs:
         # checks out the merge ref, not the base branch.
         run: git fetch --no-tags origin +refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
       - name: Project floor
-        run: ./hack/coverage-gate.sh ui
+        run: ./scripts/coverage-gate.sh ui
       - name: Patch coverage
-        run: ./hack/patch-coverage.sh origin/${{ github.base_ref }}
+        run: ./scripts/patch-coverage.sh origin/${{ github.base_ref }}

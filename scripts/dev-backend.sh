@@ -3,7 +3,7 @@
 # Start the backend (with built-in Tavily web search) for UI development,
 # WITHOUT building the embedded frontend. Run the UI separately with Vite/HMR:
 #
-#   ./hack/dev-backend.sh                 # backend on http://localhost:8080
+#   ./scripts/dev-backend.sh                 # backend on http://localhost:8080
 #   cd frontend && npm run dev            # UI with hot-reload on http://localhost:5173
 #
 # Open http://localhost:5173 (NOT :8080). The Vite proxy forwards /api to the
