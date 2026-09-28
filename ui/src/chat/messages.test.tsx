@@ -19,9 +19,10 @@ test("user message keeps its line breaks and indentation", () => {
     <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
   );
 
-  const text = screen.getByText((_, element) =>
-    element?.textContent === "First line\n\n  indented second" &&
-    element.classList.contains("ui-user-message-text"),
+  const text = screen.getByText(
+    (_, element) =>
+      element?.textContent === "First line\n\n  indented second" &&
+      element.classList.contains("ui-user-message-text"),
   );
   expect(text).toHaveClass("whitespace-pre-wrap");
 });
