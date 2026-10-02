@@ -38,7 +38,10 @@ func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.T
 	durationMS := time.Since(start).Milliseconds()
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
-		if fallback, ok := s.fetchObscuraFallback(callCtx, user, call.Function.Name, arguments, round, reg); ok {
+		// A fresh budget: callCtx is already expired when fetch failed on its deadline.
+		fallbackCtx, cancelFallback := context.WithTimeout(ctx, maxToolCallDuration)
+		defer cancelFallback()
+		if fallback, ok := s.fetchObscuraFallback(fallbackCtx, user, call.Function.Name, arguments, round, reg); ok {
 			return fallback
 		}
 		return capToolOutput("tool failed: " + err.Error())

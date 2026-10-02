@@ -1425,6 +1425,35 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 		}
 	})
 
+	// A fetch that ran into its deadline leaves an expired context behind; the
+	// fallback must get its own budget or it can never rescue a timed-out fetch.
+	t.Run("fallback gets its own deadline", func(t *testing.T) {
+		var fetchDeadline, navigateDeadline time.Time
+		srv := &server{mcp: fakeMCPService{
+			available: map[string]bool{
+				obscuraNavigateToolName: true,
+				obscuraSnapshotToolName: true,
+			},
+			callFunc: func(ctx context.Context, name string, _ map[string]any) (string, error) {
+				switch name {
+				case fetchToolName:
+					fetchDeadline, _ = ctx.Deadline()
+					time.Sleep(2 * time.Millisecond)
+					return "", errFakeTool
+				case obscuraNavigateToolName:
+					navigateDeadline, _ = ctx.Deadline()
+				}
+				return "ok", nil
+			},
+		}}
+
+		srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
+
+		if !navigateDeadline.After(fetchDeadline) {
+			t.Fatalf("navigate deadline %v not after fetch deadline %v", navigateDeadline, fetchDeadline)
+		}
+	})
+
 	t.Run("surfaces fetch failure when obscura is unavailable", func(t *testing.T) {
 		srv := &server{mcp: fakeMCPService{err: errFakeTool}}
 
