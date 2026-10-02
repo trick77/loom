@@ -162,8 +162,8 @@ func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 // single routing decision; callers thread the returned name through the
 // request body and into StreamResult.Model so the persisted/observed model
 // reflects what actually ran.
-func (c *Client) modelForMessages(messages []Message) string {
-	for _, m := range toWireMessages(messages) {
+func (c *Client) modelForMessages(messages []llmwire.Message) string {
+	for _, m := range messages {
 		if m.HasImage() {
 			return c.visionModel
 		}
