@@ -143,3 +143,23 @@ func rawFieldString(raw json.RawMessage) string {
 	}
 	return string(raw)
 }
+
+// Content blocks carry the whole answer and its traces. A message that embeds
+// no artifact has nothing to refresh and must pass through untouched, not be
+// decoded and re-encoded on every thread load.
+func TestOverlayLeavesBlocksWithoutArtifactsUntouched(t *testing.T) {
+	// Keys deliberately not in the order a re-encode would produce.
+	raw := json.RawMessage(`[{"type":"text","text":"about an \"artifact\""},{"type":"trace","events":[]}]`)
+	messages := []chat.Message{{ID: "m1", Artifacts: json.RawMessage(`[]`), ContentBlocks: raw}}
+
+	ids, err := collectArtifactIDs(messages)
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("collectArtifactIDs() = %v, %v, want none", ids, err)
+	}
+	if err := overlayMessageArtifacts(messages, nil); err != nil {
+		t.Fatalf("overlayMessageArtifacts() error: %v", err)
+	}
+	if string(messages[0].ContentBlocks) != string(raw) {
+		t.Fatalf("content blocks were rewritten:\n got %s\nwant %s", messages[0].ContentBlocks, raw)
+	}
+}

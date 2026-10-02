@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -86,8 +87,22 @@ func overlayArtifactArray(raw json.RawMessage, byID map[string]artifact.Artifact
 	return json.Marshal(objs)
 }
 
+// artifactKey is how an artifact block announces itself in encoded content
+// blocks: as the block type's value and as the key of the embedded snapshot.
+var artifactKey = []byte(`"artifact"`)
+
+// mayEmbedArtifact is a cheap pre-check for content blocks: only an encoded
+// array that contains the artifact key can hold an artifact block. Blocks carry
+// the full answer text and its traces, and most messages embed no artifact, so
+// this spares them a decode and re-encode on every thread load. The word inside
+// a text block is escaped (\"artifact\") and does not match; a false positive
+// would only take the full path.
+func mayEmbedArtifact(raw json.RawMessage) bool {
+	return !isEmptyJSON(raw) && bytes.Contains(raw, artifactKey)
+}
+
 func overlayContentBlocks(raw json.RawMessage, byID map[string]artifact.Artifact) (json.RawMessage, error) {
-	if isEmptyJSON(raw) {
+	if !mayEmbedArtifact(raw) {
 		return raw, nil
 	}
 	var blocks []map[string]json.RawMessage
@@ -156,7 +171,7 @@ func decodeArtifactObjects(raw json.RawMessage) ([]map[string]json.RawMessage, e
 }
 
 func decodeContentBlockArtifacts(raw json.RawMessage) ([]map[string]json.RawMessage, error) {
-	if isEmptyJSON(raw) {
+	if !mayEmbedArtifact(raw) {
 		return nil, nil
 	}
 	var blocks []map[string]json.RawMessage

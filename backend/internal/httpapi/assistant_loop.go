@@ -565,12 +565,15 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 	}
 	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
-			reasoningBuf.WriteString(event.ReasoningDelta)
 			if err := sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
 				return err
 			}
-			if reasoningBuf.Len() >= reasoningTitleStartBytes {
-				spawnTitle()
+			// The buffer only feeds the title, so it stops growing once that is spawned.
+			if !titleSpawned {
+				reasoningBuf.WriteString(event.ReasoningDelta)
+				if reasoningBuf.Len() >= reasoningTitleStartBytes {
+					spawnTitle()
+				}
 			}
 			return nil
 		}
