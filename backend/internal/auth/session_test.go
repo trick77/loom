@@ -135,6 +135,37 @@ func TestSessionStore_LookupThrottlesLastSeenWrites(t *testing.T) {
 	}
 }
 
+// execCounter counts the write statements a store issues.
+type execCounter struct {
+	DBTX
+	execs int
+}
+
+func (c *execCounter) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	c.execs++
+	return c.DBTX.ExecContext(ctx, query, args...)
+}
+
+// Every authenticated request looks its session up. A statement that matches no
+// row still takes the write lock, so a fresh session must not issue one at all.
+func TestSessionStore_LookupIssuesNoWriteWithinThrottleWindow(t *testing.T) {
+	db := &execCounter{DBTX: openTestDB(t)}
+	user := insertTestUser(t, db, RoleUser)
+	store := NewSessionStore(db, false)
+	session, err := store.Create(context.Background(), user.ID, time.Hour)
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	db.execs = 0
+	if _, ok, err := store.Lookup(context.Background(), session.Token); err != nil || !ok {
+		t.Fatalf("Lookup() ok=%v err=%v", ok, err)
+	}
+	if db.execs != 0 {
+		t.Fatalf("Lookup() issued %d write statements for a fresh session, want 0", db.execs)
+	}
+}
+
 func TestSessionStore_DeleteExpiredRemovesOldSessions(t *testing.T) {
 	db := openTestDB(t)
 	user := insertTestUser(t, db, RoleUser)

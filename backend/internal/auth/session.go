@@ -56,12 +56,14 @@ VALUES (?, ?, ?)`,
 func (s *SessionStore) Lookup(ctx context.Context, token string) (Session, bool, error) {
 	var session Session
 	var expires string
+	var stale bool
+	tokenHash := hashToken(token)
 	err := s.db.QueryRowContext(ctx, `
-SELECT user_id, expires_at
+SELECT user_id, expires_at, last_seen_at < datetime('now', '-1 minute')
 FROM sessions
 WHERE token_hash = ? AND expires_at > datetime('now')`,
-		hashToken(token),
-	).Scan(&session.UserID, &expires)
+		tokenHash,
+	).Scan(&session.UserID, &expires, &stale)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, false, nil
 	}
@@ -74,12 +76,16 @@ WHERE token_hash = ? AND expires_at > datetime('now')`,
 	}
 	session.Token = token
 	session.ExpiresAt = expiresAt
-	_, _ = s.db.ExecContext(ctx, `
+	// Only when due: an UPDATE that matches no row still takes the write lock,
+	// which would queue every request behind any open write transaction.
+	if stale {
+		_, _ = s.db.ExecContext(ctx, `
 UPDATE sessions
 SET last_seen_at = datetime('now')
 WHERE token_hash = ? AND last_seen_at < datetime('now', '-1 minute')`,
-		hashToken(token),
-	)
+			tokenHash,
+		)
+	}
 	return session, true, nil
 }
 
