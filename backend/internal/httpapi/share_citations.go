@@ -115,10 +115,7 @@ func isPublicHost(host string) bool {
 	}
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	if ip := net.ParseIP(host); ip != nil {
-		// Loopback, RFC1918 / unique-local, link-local (incl. cloud metadata at
-		// 169.254.169.254), unspecified, and multicast are all unreachable to a reader.
-		return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() &&
-			!ip.IsLinkLocalMulticast() && !ip.IsUnspecified() && !ip.IsMulticast()
+		return isPublicIP(ip)
 	}
 	// A single-label host ("intranet", "localhost") is only resolvable inside the
 	// owner's network, so it cannot be a page a stranger could open.
