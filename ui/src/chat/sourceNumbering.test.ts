@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Citation } from "../api";
-import { assignDisplayNumbers } from "./sourceNumbering";
+import { assignDisplayNumbers, stableDisplayNumbers } from "./sourceNumbering";
 
 function web(index: number, host: string): Citation {
   return {
@@ -92,7 +92,7 @@ describe("assignDisplayNumbers", () => {
   // text can only append, never renumber what is already on screen.
   it("is append-only as the streamed text grows", () => {
     const full = "First [3]. Then [1]. Finally [2].";
-    let previous = new Map<number, number>();
+    let previous: ReadonlyMap<number, number> = new Map<number, number>();
 
     for (let i = 1; i <= full.length; i++) {
       const { display } = assignDisplayNumbers(full.slice(0, i), SOURCES);
@@ -177,6 +177,61 @@ describe("assignDisplayNumbers", () => {
 
       expect(display.get(1)).toBe(1);
       expect(display.has(2)).toBe(false);
+    });
+  });
+
+  // The map is a prop of every live prose block: a new identity re-parses the
+  // markdown of text that has not changed.
+  describe("map identity", () => {
+    it("shares one empty map when there is nothing to number", () => {
+      const none = assignDisplayNumbers("Plain text.", undefined);
+      const empty = assignDisplayNumbers("Other text [1].", []);
+
+      expect(none.display.size).toBe(0);
+      expect(empty.display).toBe(none.display);
+    });
+
+    it("returns the previous numbering while more text cites nothing new", () => {
+      const first = assignDisplayNumbers("Claim [2].", SOURCES);
+      const second = assignDisplayNumbers(
+        "Claim [2]. And more words, again [2].",
+        SOURCES,
+        first,
+      );
+
+      expect(second).toBe(first);
+    });
+
+    it("returns a new numbering once a source is cited for the first time", () => {
+      const first = assignDisplayNumbers("Claim [2].", SOURCES);
+      const second = assignDisplayNumbers(
+        "Claim [2]. Next [3].",
+        SOURCES,
+        first,
+      );
+
+      expect(second).not.toBe(first);
+      expect(second.display.get(2)).toBe(1);
+      expect(second.display.get(3)).toBe(2);
+      expect(first.display.has(3)).toBe(false);
+    });
+
+    it("stableDisplayNumbers keeps the map across calls until a new citation", () => {
+      const number = stableDisplayNumbers();
+
+      const first = number("Claim [2].", SOURCES);
+      expect(number("Claim [2]. More.", SOURCES).display).toBe(first.display);
+      expect(number("Claim [2]. More [1].", SOURCES).display).not.toBe(
+        first.display,
+      );
+    });
+
+    it("does not reuse a previous numbering that maps differently", () => {
+      const first = assignDisplayNumbers("Claim [2].", SOURCES);
+      const second = assignDisplayNumbers("Claim [3].", SOURCES, first);
+
+      expect(second).not.toBe(first);
+      expect(second.display.get(3)).toBe(1);
     });
   });
 });

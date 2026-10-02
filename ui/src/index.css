@@ -326,34 +326,6 @@ body {
   line-height: 1.4;
 }
 
-.ui-thinking-panel {
-  max-width: 46rem;
-  color: #9b9790;
-  font-family: var(--font-sans);
-  font-size: 0.8125rem;
-  line-height: 1.45rem;
-}
-
-.ui-thinking-panel-toggle {
-  display: flex;
-  width: fit-content;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.125rem 0;
-  color: #9b9790;
-  transition: color 0.16s ease;
-}
-
-.ui-thinking-panel-toggle:hover {
-  color: #c7c5bd;
-}
-
-.ui-thinking-panel-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
 .ui-thinking-label-active {
   position: relative;
   display: inline-block;
@@ -614,12 +586,6 @@ body {
   stroke-width: 1.6;
 }
 
-/* The dissolved upper-left arc is drawn as filled dots, not strokes. */
-.ui-activity-clock-dot {
-  fill: currentColor;
-  stroke: none;
-}
-
 .ui-activity-trace-icon-reasoning::after {
   display: block;
   width: 0.25rem;
@@ -820,8 +786,7 @@ a.ui-activity-tool-url:hover {
   padding: 0.3rem 0.35rem;
 }
 
-.ui-activity-result-title,
-.ui-activity-result-snippet {
+.ui-activity-result-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -841,10 +806,6 @@ a.ui-activity-tool-url:hover {
   color: #f3f0e8;
   text-decoration: underline;
   text-underline-offset: 0.14em;
-}
-
-.ui-activity-result-snippet {
-  color: #aaa79e;
 }
 
 .ui-activity-result-domain {
@@ -876,15 +837,6 @@ a.ui-activity-tool-url:hover {
  * this mirrors that exactly. The loudspeaker is excluded (always visible).
  */
 
-.ui-thinking-panel-body {
-  margin-left: 0.5rem;
-  margin-top: 0.45rem;
-  border-left: 1px solid #4a4741;
-  padding: 0.2rem 0 0.35rem 1.25rem;
-  color: #b8b3aa;
-}
-
-.ui-thinking-panel-body :where(p, ul, ol, blockquote, pre, table),
 .ui-activity-trace-body :where(p, ul, ol, blockquote, pre, table) {
   margin-block: 0.45rem;
 }
@@ -1195,13 +1147,13 @@ a.ui-activity-tool-url:hover {
   padding-left: 0.9rem;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) hr {
+:is(.ui-markdown, .ui-activity-trace-body) hr {
   border: 0;
   border-top: 1px solid #4a4741;
   margin-block: 1.8rem;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) code {
+:is(.ui-markdown, .ui-activity-trace-body) code {
   border-radius: 0.25rem;
   background: #2a2a28;
   font-family: var(--font-mono);
@@ -1210,7 +1162,7 @@ a.ui-activity-tool-url:hover {
   padding: 0.1rem 0.28rem;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) pre {
+:is(.ui-markdown, .ui-activity-trace-body) pre {
   overflow-x: auto;
   border: 1px solid #3e3d39;
   border-radius: 0.5rem;
@@ -1218,7 +1170,7 @@ a.ui-activity-tool-url:hover {
   padding: 0.85rem 1rem;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) pre code {
+:is(.ui-markdown, .ui-activity-trace-body) pre code {
   border-radius: 0;
   background: transparent;
   padding: 0;
@@ -1340,100 +1292,73 @@ a.ui-activity-tool-url:hover {
 }
 
 /* Syntax-Highlighting (highlight.js) — an Loom-Dunkeltheme angepasst */
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs {
   color: #f3f0e8;
   background: transparent;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-comment,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-quote {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-comment,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-quote {
   color: #7d8a72;
   font-style: italic;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-keyword,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-selector-tag,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-literal,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-doctag {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-keyword,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-selector-tag,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-literal,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-doctag {
   color: #e0915f;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-string,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-regexp,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-addition {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-string,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-regexp,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-addition {
   color: #a3b565;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-number,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-symbol,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-bullet {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-number,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-symbol,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-bullet {
   color: #c08bc4;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-title,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-title.function_,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-section,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-name {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-title,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-title.function_,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-section,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-name {
   color: #6fb3c9;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-built_in,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-class
-  .hljs-title,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-title.class_,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-type {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-built_in,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-class .hljs-title,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-title.class_,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-type {
   color: #d8c06a;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-attr,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-attribute,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-variable,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-template-variable,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-property {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-attr,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-attribute,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-variable,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-template-variable,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-property {
   color: #d2b07a;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body) .hljs-meta,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-operator,
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-punctuation {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-meta,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-operator,
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-punctuation {
   color: #9b9789;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-deletion {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-deletion {
   color: #d97c6b;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-emphasis {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-emphasis {
   font-style: italic;
 }
 
-:is(.ui-markdown, .ui-thinking-panel-body, .ui-activity-trace-body)
-  .hljs-strong {
+:is(.ui-markdown, .ui-activity-trace-body) .hljs-strong {
   font-weight: 600;
 }
 

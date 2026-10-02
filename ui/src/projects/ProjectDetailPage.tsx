@@ -4,12 +4,8 @@ import { useTranslation } from "react-i18next";
 import type { Project, Thread } from "../api";
 import { Composer } from "../chat/Composer";
 import type { PastedText } from "../chat/pastedText";
-import {
-  isImageAttachment,
-  toSentAttachment,
-  useDocumentAttachments,
-  type ComposerAttachment,
-} from "../chat/useDocumentAttachments";
+import { useComposerAttachments } from "../chat/useComposerAttachments";
+import type { ComposerAttachment } from "../chat/useDocumentAttachments";
 import { WindowFileDrop } from "../chat/WindowFileDrop";
 import { Icon } from "../chat/Icon";
 import { ThreadRow } from "../chats/ThreadRow";
@@ -27,8 +23,6 @@ export function ProjectDetailPage({
   threads,
   draft,
   sendError,
-  isSending,
-  sendDisabled = false,
   openThreadMenuID,
   onBack,
   onSessionExpired,
@@ -56,8 +50,6 @@ export function ProjectDetailPage({
   threads: Thread[];
   draft: string;
   sendError: string;
-  isSending: boolean;
-  sendDisabled?: boolean;
   openThreadMenuID: string | null;
   onBack(): void;
   onSessionExpired?(): void;
@@ -88,25 +80,12 @@ export function ProjectDetailPage({
   const {
     attachNote,
     attachments,
-    clearAttachments,
     handleAttachError,
     handleAttachFiles,
+    handleSendRequest,
+    imageUploadPending,
     removeAttachment,
-  } = useDocumentAttachments({
-    projectId: project.id,
-  });
-  const imageUploadPending = attachments.some(
-    (attachment) =>
-      isImageAttachment(attachment) &&
-      attachment.artifactId === undefined &&
-      attachment.status !== "error",
-  );
-  const handleSendRequest = () => {
-    const sentAttachments = attachments.map(toSentAttachment);
-    if (sentAttachments.length > 0)
-      clearAttachments({ revokePreviewUrls: false });
-    onSend(sentAttachments);
-  };
+  } = useComposerAttachments({ projectId: project.id }, onSend);
 
   useOutsidePointerDown(
     openThreadMenuID === projectMenuKey,
@@ -199,8 +178,9 @@ export function ProjectDetailPage({
               <Composer
                 variant="start"
                 draft={draft}
-                isSending={isSending}
-                sendDisabled={sendDisabled || imageUploadPending}
+                // Never "sending": a turn started here moves to its own thread.
+                isSending={false}
+                sendDisabled={imageUploadPending}
                 placeholder={t("projects.detail.composerPlaceholder")}
                 autoFocus
                 onDraftChange={onDraftChange}

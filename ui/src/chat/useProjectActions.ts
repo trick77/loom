@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
   archiveProject,
@@ -47,11 +47,34 @@ export function useProjectActions({
   );
   const [isMutatingProject, setIsMutatingProject] = useState(false);
 
-  function openProjectDialog(project: Project | null) {
-    setEditingProject(project);
-    setModalError("");
-    setOpenThreadMenuID(null);
-  }
+  // The openers are stable so the memoized sidebar, which hands them to every
+  // project row, does not re-render with the shell.
+  const openProjectDialog = useCallback(
+    (project: Project | null) => {
+      setEditingProject(project);
+      setModalError("");
+      setOpenThreadMenuID(null);
+    },
+    [setModalError, setOpenThreadMenuID],
+  );
+
+  const openArchiveProjectModal = useCallback(
+    (project: Project) => {
+      setArchivingProject(project);
+      setModalError("");
+      setOpenThreadMenuID(null);
+    },
+    [setModalError, setOpenThreadMenuID],
+  );
+
+  const openDeleteProjectModal = useCallback(
+    (project: Project) => {
+      setDeletingProject(project);
+      setModalError("");
+      setOpenThreadMenuID(null);
+    },
+    [setModalError, setOpenThreadMenuID],
+  );
 
   async function handleProjectDialogSubmit(input: {
     name: string;
@@ -174,6 +197,8 @@ export function useProjectActions({
     deletingProject,
     editingProject,
     isMutatingProject,
+    openArchiveProjectModal,
+    openDeleteProjectModal,
     openProjectDialog,
     setArchivingProject,
     setDeletingProject,

@@ -126,6 +126,5 @@ export function useInfiniteList<T>(
     hasMore,
     error,
     sentinelRef,
-    loadMore,
   };
 }

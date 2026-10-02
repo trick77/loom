@@ -59,21 +59,46 @@ function legacyTraceEvents(message: Message): ActivityTraceEvent[] | undefined {
   return undefined;
 }
 
+// Block lists that have been through normalizeContentBlocks. Normalizing parses
+// tool arguments and output and builds new objects, so it must run once per
+// message, not once per read: a renderer handed fresh blocks re-renders them.
+const normalizedBlockLists = new WeakSet<ContentBlock[]>();
+
+// The backend persists tool events raw (name/rawArguments only, no summary), so
+// normalise each persisted trace block — exactly as the legacy path does — to
+// compute the summary/preview the renderer reads via event.summary.kind.
+function normalizeContentBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  if (normalizedBlockLists.has(blocks)) return blocks;
+  const normalized = blocks.map((block): ContentBlock =>
+    block.type === "trace"
+      ? {
+          type: "trace",
+          events: normalizeActivityTrace(block.events) ?? block.events,
+        }
+      : block,
+  );
+  normalizedBlockLists.add(normalized);
+  return normalized;
+}
+
+// withNormalizedBlocks is called where a message enters state (thread load, a
+// settled turn, the share page), so that every later messageBlocks read returns
+// the same blocks.
+export function withNormalizedBlocks<T extends Message>(message: T): T {
+  if (message.contentBlocks === undefined || message.contentBlocks.length === 0)
+    return message;
+  const contentBlocks = normalizeContentBlocks(message.contentBlocks);
+  return contentBlocks === message.contentBlocks
+    ? message
+    : { ...message, contentBlocks };
+}
+
 // messageBlocks is the single source the renderer reads: the backend-persisted
-// ordered blocks when present, otherwise lazily synthesized legacy blocks.
+// ordered blocks when present, otherwise lazily synthesized legacy blocks. A
+// message that skipped withNormalizedBlocks is still normalized here, per call.
 export function messageBlocks(message: Message): ContentBlock[] {
   if (message.contentBlocks !== undefined && message.contentBlocks.length > 0) {
-    // The backend persists tool events raw (name/rawArguments only, no summary),
-    // so normalise each persisted trace block — exactly as the legacy path does —
-    // to compute the summary/preview the renderer reads via event.summary.kind.
-    return message.contentBlocks.map((block) =>
-      block.type === "trace"
-        ? {
-            type: "trace",
-            events: normalizeActivityTrace(block.events) ?? block.events,
-          }
-        : block,
-    );
+    return normalizeContentBlocks(message.contentBlocks);
   }
   return blocksFromLegacyMessage(message);
 }
@@ -189,7 +214,7 @@ export function completeBlocks(blocks: ContentBlock[]): ContentBlock[] {
 
 // graftStreamedBlocks reconciles a just-settled assistant message with the blocks
 // reconstructed live from the stream. When the backend already sent ordered
-// contentBlocks they win untouched. Otherwise the streamed blocks (settled to
+// contentBlocks they win, normalized. Otherwise the streamed blocks (settled to
 // done) become the message's contentBlocks, preserving chronological order — and
 // when the answer text arrived only on the assistant_message itself (not as
 // streamed deltas, so the streamed blocks carry no prose) the message content is
@@ -199,7 +224,7 @@ export function graftStreamedBlocks(
   streamedBlocks: ContentBlock[],
 ): Message {
   if (message.contentBlocks !== undefined && message.contentBlocks.length > 0)
-    return message;
+    return withNormalizedBlocks(message);
   if (streamedBlocks.length === 0) return message;
   const completed = completeBlocks(streamedBlocks);
   // The authoritative final answer text lives on the settled message, not the
@@ -222,5 +247,5 @@ export function graftStreamedBlocks(
       contentBlocks[lastTextIndex] = { type: "text", content: message.content };
     }
   }
-  return { ...message, contentBlocks };
+  return withNormalizedBlocks({ ...message, contentBlocks });
 }

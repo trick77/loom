@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ContentBlock } from "../api";
@@ -10,10 +10,10 @@ import { ActivityTracePanel } from "./ActivityTracePanel";
 import type { MessagePastedText } from "../api";
 import type { PastedText } from "./pastedText";
 import type { MessageWithActivityTrace } from "./types";
-import { previousUserMessage } from "./threadUtils";
+import { previousUserMessages } from "./threadUtils";
 import { WorkingDot } from "./WorkingDot";
 import loomLogo from "../assets/loom-logo.svg";
-import { threadCostThrough } from "../metrics";
+import { threadCostPrefix } from "../metrics";
 import { useEscapeKey } from "./useEscapeKey";
 
 // IncognitoPanel is the standalone ephemeral-chat view. It never touches the
@@ -56,6 +56,13 @@ export function IncognitoPanel({
   const { t } = useTranslation();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const isEmpty = messages.length === 0 && !isSending;
+  // Per-bubble derived data in one pass, as in ThreadPanel: the per-row helpers
+  // walked the transcript from the start for every bubble.
+  const cumulativeCost = useMemo(() => threadCostPrefix(messages), [messages]);
+  const previousUser = useMemo(
+    () => previousUserMessages(messages),
+    [messages],
+  );
 
   // Keep the transcript pinned to the latest content as it streams. Incognito has
   // no read-back affordance to preserve, so a plain stick-to-bottom is enough.
@@ -171,12 +178,10 @@ export function IncognitoPanel({
                   <MessageBubble
                     message={message}
                     retryMessage={
-                      message.role === "assistant"
-                        ? previousUserMessage(messages, index)
-                        : null
+                      message.role === "assistant" ? previousUser[index] : null
                     }
                     onRetry={onRetry}
-                    threadCostNanoUsd={threadCostThrough(messages, index)}
+                    threadCostNanoUsd={cumulativeCost[index]}
                   />
                 </div>
               ))}

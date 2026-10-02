@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { disableShare, getMyShares, type ShareListItem } from "../api";
 import { Icon } from "../chat/Icon";
+import { useCopyFeedback } from "../useCopyFeedback";
 
 // SharedChatsPanel lists the user's active and disabled shares with copy-link and
 // revoke controls. It is the management surface referenced from Settings.
@@ -10,7 +11,8 @@ export function SharedChatsPanel() {
   const { t } = useTranslation();
   const [shares, setShares] = useState<ShareListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const { copiedKey: copiedId, copy: copyToClipboard } =
+    useCopyFeedback<string>(1500);
 
   useEffect(() => {
     let active = true;
@@ -39,16 +41,8 @@ export function SharedChatsPanel() {
     const url = item.shareUrl.startsWith("http")
       ? item.shareUrl
       : window.location.origin + item.shareUrl;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopiedId(item.shareId);
-      window.setTimeout(
-        () => setCopiedId((id) => (id === item.shareId ? null : id)),
-        1500,
-      );
-    } catch {
+    if (!(await copyToClipboard(url, item.shareId)))
       setError(t("settings.copyLinkFailed"));
-    }
   }
 
   return (

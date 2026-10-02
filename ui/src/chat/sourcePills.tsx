@@ -58,7 +58,7 @@ type Ctx = {
 
 // DisplayMap maps a persisted citation index to the number shown to the reader —
 // 1, 2, 3… in order of first citation. See sourceNumbering.ts.
-export type DisplayMap = Map<number, number>;
+export type DisplayMap = ReadonlyMap<number, number>;
 
 // rehypeSourcePills replaces [n] citation markers in prose with the reader-facing
 // number, linked to its source. Markers whose number is not a known source (out of

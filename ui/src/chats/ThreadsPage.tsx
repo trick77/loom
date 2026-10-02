@@ -8,6 +8,7 @@ import {
   listThreads,
   type Thread,
 } from "../api";
+import { useDebouncedValue } from "../useDebouncedValue";
 import { useInfiniteList } from "../useInfiniteList";
 import { useThreadSearch } from "../search/useThreadSearch";
 import { BulkDeleteModal } from "./BulkDeleteModal";
@@ -53,7 +54,8 @@ export function ThreadsPage({
   const { t } = useTranslation();
   const [loadError, setLoadError] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  // The raw input, debounced into the term that actually hits the API.
+  const searchTerm = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [openMenuID, setOpenMenuID] = useState<string | null>(null);
@@ -61,15 +63,6 @@ export function ThreadsPage({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
-
-  // Debounce the raw input into the term that actually hits the API.
-  useEffect(() => {
-    const handle = window.setTimeout(
-      () => setSearchTerm(searchInput.trim()),
-      SEARCH_DEBOUNCE_MS,
-    );
-    return () => window.clearTimeout(handle);
-  }, [searchInput]);
 
   // Infinite scroll: load page one (and reset to it) whenever the search changes
   // or an external mutation (star/rename/single-delete from a row menu) or a bulk

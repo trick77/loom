@@ -33,5 +33,5 @@ export function useRouteState() {
     setRoute(next);
   }, []);
 
-  return { route, setRoute, routeRef, go };
+  return { route, routeRef, go };
 }

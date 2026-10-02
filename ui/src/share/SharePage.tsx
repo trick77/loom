@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -8,6 +8,7 @@ import {
   type PublicShare,
   type PublicShareMessage,
 } from "../api";
+import { withNormalizedBlocks } from "../chat/contentBlocks";
 import { MessageBubble } from "../chat/messages";
 import loomLogo from "../assets/loom-logo.svg";
 
@@ -52,6 +53,13 @@ export function SharePage({ shareId }: { shareId: string }) {
     };
   }, [shareId]);
 
+  // Adapted once per snapshot, not per render: the bubbles are memoized on the
+  // message object.
+  const messages = useMemo(
+    () => share?.messages.map(toRenderMessage) ?? [],
+    [share],
+  );
+
   if (status === "loading") {
     return <CenteredNotice>{t("share.loading")}</CenteredNotice>;
   }
@@ -81,13 +89,9 @@ export function SharePage({ shareId }: { shareId: string }) {
       <div className="flex-1 overflow-y-auto px-6 pt-8 [scrollbar-gutter:stable_both-edges] md:px-8">
         <div className="ui-thread-rail mx-auto w-full max-w-[720px] space-y-6 pb-16">
           <ShareNotice />
-          {share.messages.map((message) => (
+          {messages.map((message) => (
             <div key={message.id} className="space-y-6">
-              <MessageBubble
-                message={toRenderMessage(message)}
-                retryMessage={null}
-                publicView
-              />
+              <MessageBubble message={message} retryMessage={null} publicView />
             </div>
           ))}
         </div>
@@ -132,7 +136,7 @@ function CenteredNotice({ children }: { children: React.ReactNode }) {
 function toRenderMessage(
   message: PublicShareMessage,
 ): Message & { hadAttachment?: boolean } {
-  return {
+  return withNormalizedBlocks({
     id: message.id,
     threadId: "",
     role: message.role,
@@ -142,5 +146,5 @@ function toRenderMessage(
     citations: message.citations,
     createdAt: message.createdAt,
     hadAttachment: message.hadAttachment,
-  };
+  });
 }
