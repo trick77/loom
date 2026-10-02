@@ -284,9 +284,7 @@ type UserService interface {
 	UpdateResponseLanguage(ctx context.Context, id, language string) error
 }
 
-// newServer builds the server struct from its dependencies. Shared by New (which
-// also wires the HTTP routes) and NewMemoryWorker (which only needs the stores
-// and LLM client for the background refresh).
+// newServer builds the server struct from its dependencies.
 func newServer(d Deps) *server {
 	background := d.Background
 	if background == nil {
@@ -324,6 +322,14 @@ func newServer(d Deps) *server {
 
 // New returns the fully wired HTTP handler.
 func New(d Deps) http.Handler {
+	handler, _ := NewWithMemoryWorker(d)
+	return handler
+}
+
+// NewWithMemoryWorker returns the HTTP handler and the background memory worker
+// on one shared server, so the worker's sweep and the request path's refreshes
+// hold the same single-flight guard.
+func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	s := newServer(d)
 
 	mux := http.NewServeMux()
@@ -399,7 +405,7 @@ func New(d Deps) http.Handler {
 		mux.Handle("/", d.Static)
 	}
 
-	return logging(recovery(mux))
+	return logging(recovery(mux)), &MemoryWorker{s: s}
 }
 
 type activeStreamRegistry struct {

@@ -305,8 +305,7 @@ func run() error {
 		KnowledgeInlineTokenBudget: cfg.KnowledgeInlineTokenBudget,
 		ProjectSummaryTokenBudget:  cfg.ProjectSummaryTokenBudget,
 	}
-	handler := httpapi.New(deps)
-	memoryWorker := httpapi.NewMemoryWorker(deps)
+	handler, memoryWorker := httpapi.NewWithMemoryWorker(deps)
 
 	srv := newServer(cfg.Addr, handler)
 	// Bind synchronously so "address in use" fails startup here instead of
