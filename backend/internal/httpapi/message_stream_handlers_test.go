@@ -7,12 +7,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2490,12 +2493,15 @@ func TestStreamMessageDefersCheapToolCallsBeyondHigherCap(t *testing.T) {
 		{Content: "Fetched the links."},
 	}}
 	calls := map[string]int{}
+	var callsMu sync.Mutex // a round's fetches run concurrently
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
 			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: fetchToolName}}},
 			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+				callsMu.Lock()
+				defer callsMu.Unlock()
 				calls[name]++
 				return "page contents", nil
 			},
@@ -2515,6 +2521,73 @@ func TestStreamMessageDefersCheapToolCallsBeyondHigherCap(t *testing.T) {
 	}
 	if !strings.Contains(body, "Deferred:") {
 		t.Fatalf("SSE body missing deferred tool result:\n%s", body)
+	}
+	if store.assistantContent != "Fetched the links." {
+		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
+	}
+}
+
+// A round's web fetches are independent network reads: they run concurrently,
+// but their results reach the browser, the history and the [n] source numbering
+// in the order the model issued them.
+func TestStreamMessageRunsARoundsFetchesConcurrentlyInCallOrder(t *testing.T) {
+	store := &fakeThreadStore{
+		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+	}
+	urls := []string{"https://a.example/1", "https://b.example/2", "https://c.example/3"}
+	round1 := make([]llm.ToolCall, len(urls))
+	for i, u := range urls {
+		round1[i] = llm.ToolCall{ID: fmt.Sprintf("call_%d", i+1), Function: llm.ToolCallFunction{Name: fetchToolName, Arguments: fmt.Sprintf(`{"url":%q}`, u)}}
+	}
+	llmClient := &fakeToolChatClient{results: []llm.StreamResult{
+		{ToolCalls: round1},
+		{Content: "Fetched the links."},
+	}}
+	// Every fetch blocks until all of them are in flight, so a serial loop
+	// would only get past the first one by timing out.
+	var inFlight sync.WaitGroup
+	inFlight.Add(len(urls))
+	allStarted := make(chan struct{})
+	go func() { inFlight.Wait(); close(allStarted) }()
+	var serial atomic.Bool
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    llmClient,
+		MCP: fakeMCPService{
+			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: fetchToolName}}},
+			callFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
+				inFlight.Done()
+				select {
+				case <-allStarted:
+				case <-time.After(2 * time.Second):
+					serial.Store(true)
+				}
+				url, _ := args["url"].(string)
+				// The first call finishes last: completion order is the reverse of call order.
+				time.Sleep(time.Duration(len(urls)-slices.Index(urls, url)) * 5 * time.Millisecond)
+				return "page " + url, nil
+			},
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Fetch these"}`)
+
+	srv.ServeHTTP(rec, req)
+
+	if serial.Load() {
+		t.Fatal("fetches ran one after another, want them in flight together")
+	}
+	body := rec.Body.String()
+	last := -1
+	for i, u := range urls {
+		at := strings.Index(body, fmt.Sprintf(`Web source [%d]: %s`, i+1, u))
+		if at < 0 {
+			t.Fatalf("missing tool result numbering %s as source [%d]:\n%s", u, i+1, body)
+		}
+		if at < last {
+			t.Fatalf("tool results out of call order at %s:\n%s", u, body)
+		}
+		last = at
 	}
 	if store.assistantContent != "Fetched the links." {
 		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
@@ -3124,4 +3197,76 @@ func TestPrepareTurnLoadsContextsConcurrently(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "event: assistant_message") {
 		t.Fatalf("status = %d body:\n%s", rec.Code, rec.Body.String())
 	}
+}
+
+func TestStartToolRuns(t *testing.T) {
+	fetch := func(url string) llm.ToolCall {
+		return llm.ToolCall{Function: llm.ToolCallFunction{Name: fetchToolName, Arguments: fmt.Sprintf(`{"url":%q}`, url)}}
+	}
+	search := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}
+
+	t.Run("a lone eligible call stays on the sequential path", func(t *testing.T) {
+		srv := &server{mcp: fakeMCPService{result: "ok"}}
+		runs := srv.startToolRuns(context.Background(), []llm.ToolCall{fetch("https://a.example"), search}, []bool{false, false})
+		if runs[0] != nil || runs[1] != nil {
+			t.Fatalf("runs = %v, want none started", runs)
+		}
+	})
+
+	t.Run("skipped and stateful calls are not started", func(t *testing.T) {
+		srv := &server{mcp: fakeMCPService{result: "ok"}}
+		calls := []llm.ToolCall{fetch("https://a.example"), search, fetch("https://b.example"), fetch("https://c.example")}
+		runs := srv.startToolRuns(context.Background(), calls, []bool{false, false, false, true})
+		if runs[0] == nil || runs[2] == nil || runs[1] != nil || runs[3] != nil {
+			t.Fatalf("runs = %v, want only the two live fetches started", runs)
+		}
+		if got := <-runs[0]; got.err != nil || got.output != "ok" {
+			t.Fatalf("run = %+v, want the tool output", got)
+		}
+		<-runs[2]
+	})
+
+	t.Run("a panicking call fails that call only", func(t *testing.T) {
+		srv := &server{mcp: fakeMCPService{callFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
+			if args["url"] == "https://a.example" {
+				panic("boom")
+			}
+			return "ok", nil
+		}}}
+		runs := srv.startToolRuns(context.Background(), []llm.ToolCall{fetch("https://a.example"), fetch("https://b.example")}, []bool{false, false})
+		if got := <-runs[0]; got.err == nil {
+			t.Fatal("panicking run reported no error")
+		}
+		if got := <-runs[1]; got.err != nil || got.output != "ok" {
+			t.Fatalf("run = %+v, want the tool output", got)
+		}
+	})
+
+	t.Run("a cancelled round releases the calls still waiting for a slot", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		release := make(chan struct{})
+		srv := &server{mcp: fakeMCPService{callFunc: func(context.Context, string, map[string]any) (string, error) {
+			<-release
+			return "ok", nil
+		}}}
+		calls := make([]llm.ToolCall, concurrentToolRuns+1)
+		for i := range calls {
+			calls[i] = fetch(fmt.Sprintf("https://%d.example", i))
+		}
+		runs := srv.startToolRuns(ctx, calls, make([]bool, len(calls)))
+		merged := make(chan toolRun, len(runs))
+		for _, run := range runs {
+			go func() { merged <- <-run }()
+		}
+		cancel()
+		// Every slot holder is still blocked in its call, so the first run to
+		// finish can only be the one that was waiting for a slot.
+		if got := <-merged; !errors.Is(got.err, context.Canceled) {
+			t.Fatalf("first finished run = %+v, want the cancelled waiter", got)
+		}
+		close(release)
+		for range len(runs) - 1 {
+			<-merged
+		}
+	})
 }
