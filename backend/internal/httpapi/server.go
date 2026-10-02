@@ -203,7 +203,6 @@ type ThreadStore interface {
 // best-effort from the caller's side; see server.recordUsage.
 type UsageStore interface {
 	AddTokens(context.Context, string, usage.TokenDelta) error
-	AddEmbeddingUsage(context.Context, string, int, int, int64) error
 	IncWebSearch(context.Context, string) error
 	IncWebFetch(context.Context, string) error
 	IncObscuraFetch(context.Context, string) error
@@ -270,7 +269,6 @@ type OIDCService interface {
 // SessionService is the session dependency used by auth handlers.
 type SessionService interface {
 	Create(context.Context, string, time.Duration) (auth.Session, error)
-	Lookup(context.Context, string) (auth.Session, bool, error)
 	Revoke(context.Context, string) error
 	CookieFor(string, time.Time) *http.Cookie
 	ClearCookie() *http.Cookie
@@ -334,7 +332,6 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.handleHealth)
-	mux.HandleFunc("GET /api/health/stream", s.handleHealthStream)
 	mux.HandleFunc("GET /api/model", s.handleModel)
 	mux.HandleFunc("GET /api/auth/login", s.handleAuthLogin)
 	mux.HandleFunc("GET /api/auth/callback", s.handleAuthCallback)

@@ -228,21 +228,6 @@ func NewService(clients map[string]Client) (*Service, error) {
 	return service, nil
 }
 
-// NewServiceFromConfig creates a Service from a Config, with best-effort client initialization.
-func NewServiceFromConfig(cfg Config, httpClient *http.Client) (*Service, error) {
-	clients := map[string]Client{}
-	for name, server := range cfg.Servers {
-		clients[name] = clientForServer(name, server, httpClient)
-	}
-	service, err := NewService(clients)
-	if err != nil {
-		return nil, err
-	}
-	service.cfg = cfg
-	service.httpClient = httpClient
-	return service, nil
-}
-
 // NewRequiredServiceFromConfig creates a Service from a Config, failing if any client's tool discovery fails.
 func NewRequiredServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client) (*Service, error) {
 	clients := map[string]Client{}
