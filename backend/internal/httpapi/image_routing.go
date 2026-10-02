@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -144,11 +145,14 @@ func priorConversationHasImageArtifact(messages []chat.Message) bool {
 
 // latestImageArtifactID returns the id of the most recent image artifact across
 // the conversation, or "" when there is none. Messages arrive oldest-first
-// (ORDER BY created_at ASC), so the last image artifact seen is the newest — the
-// one a follow-up edit ("make it cyberpunk") should silently reuse as its source.
+// (ORDER BY created_at ASC), so the scan runs from the end and stops at the first
+// message that carries one: the newest, which a follow-up edit ("make it
+// cyberpunk") should silently reuse as its source.
 func latestImageArtifactID(messages []chat.Message) string {
-	latest := ""
-	for _, message := range messages {
+	for _, message := range slices.Backward(messages) {
+		if isEmptyJSON(message.Artifacts) {
+			continue
+		}
 		var artifacts []struct {
 			ID            string `json:"id"`
 			MIMEType      string `json:"mimeType"`
@@ -157,14 +161,14 @@ func latestImageArtifactID(messages []chat.Message) string {
 		if err := json.Unmarshal(message.Artifacts, &artifacts); err != nil {
 			continue
 		}
-		for _, item := range artifacts {
+		for _, item := range slices.Backward(artifacts) {
 			if item.ID == "" {
 				continue
 			}
 			if strings.HasPrefix(item.MIMEType, "image/") || strings.HasPrefix(item.SnakeMIMEType, "image/") {
-				latest = item.ID
+				return item.ID
 			}
 		}
 	}
-	return latest
+	return ""
 }

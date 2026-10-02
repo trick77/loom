@@ -242,6 +242,8 @@ func TestProjectCitationsForShare_rejectsNonPublicHosts(t *testing.T) {
 		"http://192.168.1.10/router",
 		"http://172.16.4.9/app",
 		"http://169.254.169.254/latest/meta-data/",
+		"http://100.64.0.7/cgnat",
+		"http://[::ffff:10.0.0.5]/mapped",
 		"http://0.0.0.0/",
 		"http://intranet/wiki",
 		"http://nas.local/files",

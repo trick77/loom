@@ -176,17 +176,26 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		// them — the next round has a fresh cap, so the leftovers are picked up
 		// automatically within the round budget.
 		perToolCount := map[string]int{}
-		lastRoundDeferred = false
-		for _, call := range result.ToolCalls {
-			var output string
+		deferred := make([]bool, len(result.ToolCalls))
+		for i, call := range result.ToolCalls {
 			perToolCount[call.Function.Name]++
+			deferred[i] = perToolCount[call.Function.Name] > toolCallCapPerRound(call.Function.Name)
+		}
+		// The round's independent web reads start now and overlap; everything
+		// below still handles the calls one at a time, in the model's order.
+		runsCtx, cancelRuns := context.WithCancel(ctx)
+		runs := s.startToolRuns(runsCtx, result.ToolCalls, deferred)
+		lastRoundDeferred = false
+		for i, call := range result.ToolCalls {
+			var output string
 			// The one-image-per-turn skip is checked first: generate_image is bounded
 			// by imageGenerated, not the per-round cap, so it must never fall through
 			// to the "reissue it next round" deferral message (which would be wrong —
 			// a reissued image call is only skipped again).
 			if call.Function.Name == "generate_image" && imageGenerated {
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
-			} else if cap := toolCallCapPerRound(call.Function.Name); perToolCount[call.Function.Name] > cap {
+			} else if deferred[i] {
+				cap := toolCallCapPerRound(call.Function.Name)
 				// The instruction rides with the deferral in history so the model sees
 				// it on every exit path — including when it concludes with prose without
 				// reissuing (which never reaches the forced-final directive below).
@@ -204,11 +213,14 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 							imageGenerated = true
 						}
 					}
+				} else if runs[i] != nil {
+					output = s.finishToolCall(ctx, user, call, round, reg, <-runs[i])
 				} else {
 					output = s.executeToolCall(ctx, user, call, round, reg)
 				}
 			}
 			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+				cancelRuns()
 				return assistantLoopResult{}, err
 			}
 			b.setToolResult(call.ID, output)
@@ -218,6 +230,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 				Content:    output,
 			})
 		}
+		cancelRuns()
 		// Push the sources gathered so far so the browser can resolve [n] markers
 		// while the next round's answer streams, instead of waiting for the settled
 		// message. A full snapshot, not a delta: idempotent, and the frontend just
@@ -552,12 +565,15 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 	}
 	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
-			reasoningBuf.WriteString(event.ReasoningDelta)
 			if err := sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
 				return err
 			}
-			if reasoningBuf.Len() >= reasoningTitleStartBytes {
-				spawnTitle()
+			// The buffer only feeds the title, so it stops growing once that is spawned.
+			if !titleSpawned {
+				reasoningBuf.WriteString(event.ReasoningDelta)
+				if reasoningBuf.Len() >= reasoningTitleStartBytes {
+					spawnTitle()
+				}
 			}
 			return nil
 		}

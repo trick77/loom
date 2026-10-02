@@ -65,6 +65,7 @@ import {
   type ComposerAttachment,
 } from "./useDocumentAttachments";
 import { downloadBlob } from "./download";
+import { useCopyFeedback } from "../useCopyFeedback";
 
 type MessageBubbleProps = {
   message: Message & {
@@ -170,14 +171,19 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
   // the exact chronological order they arrived. The copy/retry/TTS + metrics
   // footer renders ONCE at the bottom; past trace panels render collapsed and
   // inactive.
-  const blocks = messageBlocks(message);
-  const proseText = blocks
-    .filter(
-      (block): block is Extract<ContentBlock, { type: "text" }> =>
-        block.type === "text",
-    )
-    .map((block) => block.content)
-    .join("\n\n");
+  const blocks = useMemo(() => messageBlocks(message), [message]);
+  const proseText = useMemo(
+    () =>
+      blocks
+        .filter(
+          (block): block is Extract<ContentBlock, { type: "text" }> =>
+            block.type === "text",
+        )
+        .map((block) => block.content)
+        .join("\n\n"),
+    [blocks],
+  );
+  const copyText = useMemo(() => markdownToPlainText(proseText), [proseText]);
   // Build the [n] -> web-source map once per message so inline citation markers in
   // any text block resolve to source pills. Memoized so its identity is stable
   // across re-renders — a fresh Map each render would force react-markdown to
@@ -221,13 +227,14 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
       setHoveredSource(undefined);
     }
   };
-  const openSources = (numbers: number[]) => {
+  // Stable: it is the SourcesOpener context value every marker in the prose reads.
+  const openSources = useCallback((numbers: number[]) => {
     setSourcesOpen(true);
     setSelection((current) => ({
       numbers: new Set(numbers),
       nonce: current.nonce + 1,
     }));
-  };
+  }, []);
   const highlight = useMemo(
     () => ({ selected: selection.numbers, hovered: hoveredSource }),
     [selection.numbers, hoveredSource],
@@ -283,7 +290,7 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
       {!publicView && (
         <MessageActions
           copyLabel={t("messages.copyResponse")}
-          copyText={markdownToPlainText(proseText)}
+          copyText={copyText}
           retryLabel={t("messages.retryResponse")}
           onRetry={
             retryMessage === null
@@ -463,24 +470,12 @@ function CodeBlock({
 }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
   const { t } = useTranslation();
   const preRef = useRef<HTMLPreElement | null>(null);
-  const [copied, setCopied] = useState(false);
-  const resetRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-    };
-  }, []);
+  const { status, copy } = useCopyFeedback(1500);
+  const copied = status === "copied";
 
   const handleCopy = useCallback(() => {
-    const code = preRef.current?.textContent ?? "";
-    void copyResponse(code).then((ok) => {
-      if (!ok) return;
-      setCopied(true);
-      if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-      resetRef.current = window.setTimeout(() => setCopied(false), 1500);
-    });
-  }, []);
+    void copy(preRef.current?.textContent ?? "");
+  }, [copy]);
 
   return (
     <div className="ui-codeblock">
@@ -517,10 +512,11 @@ export const ProseMarkdown = memo(function ProseMarkdown({
   /** Persisted index -> reader-facing number, from assignDisplayNumbers. */
   display?: DisplayMap;
 }) {
-  // react-markdown re-runs its whole pipeline when the plugin list or the
-  // component map changes identity, and both used to be rebuilt on every
-  // render, i.e. on every streamed token for every message on screen. The
-  // plugin list is memoized on its inputs; the component map is a constant.
+  // react-markdown runs its whole pipeline on every render, whatever its props:
+  // what keeps a settled message from re-parsing on each streamed token is the
+  // memo() around this component. The plugin list is memoized on its inputs and
+  // the component map is a constant so they do not hand new work to the renderers
+  // below; neither spares a parse.
   // rehypeKatex first so math renders before streamFade/sourcePills post-process the tree.
   const rehypePlugins = useMemo<PluggableList>(() => {
     const plugins: PluggableList = [rehypeKatexPlugin, rehypeHighlight];
@@ -687,7 +683,6 @@ function MessageActions({
   threadCostNanoUsd,
   speakable = false,
   alignRight = false,
-  streaming = false,
 }: {
   copyLabel: string;
   copyText: string;
@@ -698,20 +693,12 @@ function MessageActions({
   threadCostNanoUsd?: number;
   speakable?: boolean;
   alignRight?: boolean;
-  streaming?: boolean;
 }) {
   const { t } = useTranslation();
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
-    "idle",
-  );
+  const { status: copyState, copy } = useCopyFeedback(1200, {
+    showFailure: true,
+  });
   const copied = copyState === "copied";
-  const copyResetRef = useRef<number | null>(null);
-  useEffect(() => {
-    return () => {
-      if (copyResetRef.current !== null)
-        window.clearTimeout(copyResetRef.current);
-    };
-  }, []);
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   useEffect(() => {
@@ -724,12 +711,8 @@ function MessageActions({
     [],
   );
 
-  async function handleCopy() {
-    const ok = await copyResponse(copyText);
-    setCopyState(ok ? "copied" : "failed");
-    if (copyResetRef.current !== null)
-      window.clearTimeout(copyResetRef.current);
-    copyResetRef.current = window.setTimeout(() => setCopyState("idle"), 1200);
+  function handleCopy() {
+    void copy(copyText);
   }
 
   function endSpeech() {
@@ -755,11 +738,6 @@ function MessageActions({
     synth.speak(utterance);
     setSpeaking(true);
   }
-
-  // While the answer is still streaming we render no action row at all: the
-  // speaker, copy and retry icons appear together with the metrics footer
-  // (model name, token cost) only once the message has settled.
-  if (streaming) return null;
 
   const copyButton = (
     <button
@@ -991,20 +969,6 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
       )}
     </div>
   );
-}
-
-// copyResponse writes to the clipboard and reports whether it worked: the
-// clipboard is absent on insecure origins and the write is rejected when the
-// document is not focused or permission is denied. A rejected write used to
-// escape as an unhandled rejection while the button still said "Copied".
-async function copyResponse(content: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard === undefined) return false;
-    await navigator.clipboard.writeText(content);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function downloadEmbeddedArtifact(artifact: DownloadableResponse) {

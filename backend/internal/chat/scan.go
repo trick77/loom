@@ -92,6 +92,35 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	return thread, nil
 }
 
+// messageColumns is the full messages projection scanMessage reads.
+const messageColumns = "id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at"
+
+// transcriptColumns is the narrow projection for callers that only render a
+// "Role: content" transcript (thread digests, memory generation). It leaves out
+// the reasoning, trace and content-block columns, which carry several copies of
+// every answer and are the bulk of a row.
+const transcriptColumns = "id, thread_id, role, content, created_at"
+
+// transcriptColumnsM is transcriptColumns for a query that aliases messages as m.
+const transcriptColumnsM = "m.id, m.thread_id, m.role, m.content, m.created_at"
+
+// scanTranscriptMessage reads a transcriptColumns row. Only ID, ThreadID, Role,
+// Content and CreatedAt are set on the result.
+func scanTranscriptMessage(row rowScanner) (Message, error) {
+	var message Message
+	var role, createdAt string
+	if err := row.Scan(&message.ID, &message.ThreadID, &role, &message.Content, &createdAt); err != nil {
+		return Message{}, err
+	}
+	message.Role = Role(role)
+	var err error
+	message.CreatedAt, err = sqlutil.ParseTime(createdAt)
+	if err != nil {
+		return Message{}, fmt.Errorf("parse created_at: %w", err)
+	}
+	return message, nil
+}
+
 func scanMessage(row rowScanner) (Message, error) {
 	var message Message
 	var role string

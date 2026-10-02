@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Project, Thread, User } from "../api";
@@ -11,7 +12,10 @@ import {
   SidebarSection,
 } from "./SidebarItems";
 
-export function Sidebar({
+// Memoized: the shell re-renders on every keystroke and streamed token, and
+// nothing the sidebar shows changes then. Every prop the shell passes must keep
+// its identity across those renders for this to hold.
+export const Sidebar = memo(function Sidebar({
   user,
   displayName,
   route,
@@ -358,7 +362,7 @@ export function Sidebar({
       )}
     </>
   );
-}
+});
 
 function roleLabel(_role: User["role"]): string {
   return i18n.t("sidebar.plan");

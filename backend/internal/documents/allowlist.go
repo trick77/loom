@@ -38,13 +38,3 @@ func AllowedFormat(filename string) (mime string, ok bool) {
 	mime, ok = allowedFormats[ext]
 	return mime, ok
 }
-
-// AllowedExtensions returns the accepted extensions (each with leading dot),
-// useful for building the frontend file-chooser `accept` attribute.
-func AllowedExtensions() []string {
-	exts := make([]string, 0, len(allowedFormats))
-	for ext := range allowedFormats {
-		exts = append(exts, ext)
-	}
-	return exts
-}

@@ -185,7 +185,7 @@ func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if project == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	memory, _, err := s.thread.GetProjectMemory(r.Context(), user.ID, projectID)
@@ -215,7 +215,7 @@ func (s *server) handleEditProjectMemory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if project == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	instruction, ok := decodeMemoryInstruction(w, r)
@@ -252,7 +252,7 @@ func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if project == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	count, err := s.thread.CountProjectMessages(r.Context(), user.ID, projectID)

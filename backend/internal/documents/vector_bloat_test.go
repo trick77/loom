@@ -48,8 +48,9 @@ func (c *bloatLogs) bloatWarning() (map[string]string, bool) {
 
 // bloatedService is a Service over a vec_chunks that re-indexing has left with
 // far more storage chunks than its live rows need: vec0 never frees a deleted
-// vector's chunk.
-func bloatedService(t *testing.T) *Service {
+// vector's chunk. The rag store is returned too, so a test can give a document
+// real vectors (the fake indexer writes none).
+func bloatedService(t *testing.T) (*Service, *rag.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "db.sqlite"))
@@ -86,33 +87,39 @@ func bloatedService(t *testing.T) *Service {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(rs, artifact.NewStore(db), &fakeIndexer{}, fakeEmbedder{}, filepath.Join(dir, "users"))
+	return NewService(rs, artifact.NewStore(db), &fakeIndexer{}, fakeEmbedder{}, filepath.Join(dir, "users")), rs
 }
 
 func TestService_vectorDeletesWarnOfBloat(t *testing.T) {
 	// Every path that deletes vectors can leave vec_chunks bloated, and the
-	// rebuild only runs at boot: each says so, naming what it deleted.
+	// rebuild only runs at boot: each says so, naming what it deleted. (A
+	// re-index replaces vectors inside rag.Store.ReplaceChunks, tested there.)
+	projectID := "p1"
 	for _, tc := range []struct {
-		name string
-		run  func(*Service, string) error
-		want map[string]string
+		name   string
+		upload UploadInput
+		run    func(*Service, string) error
+		want   map[string]string
 	}{
-		{"index", func(s *Service, id string) error { return s.Index(context.Background(), "u", id) },
+		{"unindex", UploadInput{}, func(s *Service, id string) error { return s.Unindex(context.Background(), "u", id) },
 			map[string]string{"user": "u", "document": "<doc>"}},
-		{"unindex", func(s *Service, id string) error { return s.Unindex(context.Background(), "u", id) },
+		{"delete", UploadInput{}, func(s *Service, id string) error { return s.Delete(context.Background(), "u", id) },
 			map[string]string{"user": "u", "document": "<doc>"}},
-		{"delete", func(s *Service, id string) error { return s.Delete(context.Background(), "u", id) },
-			map[string]string{"user": "u", "document": "<doc>"}},
-		{"thread", func(s *Service, _ string) error { return s.DeleteThreadData(context.Background(), "u", "thread_1") },
+		{"thread", UploadInput{ThreadID: "thread_1"}, func(s *Service, _ string) error { return s.DeleteThreadData(context.Background(), "u", "thread_1") },
 			map[string]string{"user": "u", "thread": "thread_1"}},
-		{"project", func(s *Service, _ string) error { return s.DeleteProjectData(context.Background(), "u", "p1") },
+		{"project", UploadInput{ProjectID: &projectID}, func(s *Service, _ string) error { return s.DeleteProjectData(context.Background(), "u", "p1") },
 			map[string]string{"user": "u", "project": "p1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := bloatedService(t)
-			doc, _, err := svc.Upload(context.Background(), UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("a")})
+			svc, rs := bloatedService(t)
+			in := tc.upload
+			in.UserID, in.Filename, in.Reader = "u", "a.txt", strings.NewReader("a")
+			doc, _, err := svc.Upload(context.Background(), in)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if err := rs.ReplaceChunks(context.Background(), "u", doc.ID, []rag.TextChunk{{Text: "a"}}, [][]float32{{1, 0, 0, 0}}); err != nil {
+				t.Fatalf("seed vectors: %v", err)
 			}
 			logs := &bloatLogs{}
 			restore := slog.Default()
@@ -136,5 +143,24 @@ func TestService_vectorDeletesWarnOfBloat(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A delete that removed no vector has nothing to report and must not pay for
+// the whole-table measurement: deleting a chat without attachments is the
+// common case.
+func TestService_deleteWithoutVectorsSkipsTheBloatCheck(t *testing.T) {
+	svc, _ := bloatedService(t)
+	logs := &bloatLogs{}
+	restore := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	t.Cleanup(func() { slog.SetDefault(restore) })
+
+	if err := svc.DeleteThreadData(context.Background(), "u", "thread_1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := logs.bloatWarning(); ok {
+		t.Fatalf("bloat warning for a delete that removed nothing, records = %v", logs.records)
 	}
 }

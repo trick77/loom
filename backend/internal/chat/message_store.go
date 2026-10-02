@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/trick77/loom/internal/sqlutil"
@@ -227,12 +228,13 @@ WHERE user_id = ? AND id = (
 // whole transcript, so callers that only need the tail (e.g. the cross-thread
 // summary digest, which keeps each thread's final turns) don't pull hundreds of
 // messages — including large tool-result blobs — just to discard them.
+// Only the transcript fields are loaded (see transcriptColumns).
 func (s *Store) ListRecentMessages(ctx context.Context, userID, threadID string, limit int) ([]Message, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
+SELECT `+transcriptColumns+`
 FROM messages
 WHERE user_id = ? AND thread_id = ?
 ORDER BY rowid DESC
@@ -246,7 +248,7 @@ LIMIT ?`,
 
 	messages := make([]Message, 0)
 	for rows.Next() {
-		message, err := scanMessage(rows)
+		message, err := scanTranscriptMessage(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan recent message: %w", err)
 		}
@@ -257,9 +259,7 @@ LIMIT ?`,
 	}
 	// Fetched newest-first to apply the cap; reverse to chronological so the tail
 	// reads in conversation order.
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
+	slices.Reverse(messages)
 	return messages, nil
 }
 
@@ -267,6 +267,7 @@ LIMIT ?`,
 // the given threads, in insertion order, keyed by thread id, with one query.
 // The project digest reads the tail of every sibling thread; loading them one
 // query per thread was an N+1 over up to fifty threads.
+// Only the transcript fields are loaded (see transcriptColumns).
 func (s *Store) ListRecentMessagesForThreads(ctx context.Context, userID string, threadIDs []string, perThread int) (map[string][]Message, error) {
 	out := make(map[string][]Message, len(threadIDs))
 	if len(threadIDs) == 0 {
@@ -275,8 +276,7 @@ func (s *Store) ListRecentMessagesForThreads(ctx context.Context, userID string,
 	if perThread <= 0 {
 		perThread = 50
 	}
-	placeholders := strings.Repeat("?,", len(threadIDs))
-	placeholders = placeholders[:len(placeholders)-1]
+	placeholders := sqlutil.Placeholders(len(threadIDs))
 	args := make([]any, 0, len(threadIDs)+2)
 	args = append(args, userID)
 	for _, id := range threadIDs {
@@ -284,9 +284,9 @@ func (s *Store) ListRecentMessagesForThreads(ctx context.Context, userID string,
 	}
 	args = append(args, perThread)
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
+SELECT `+transcriptColumns+`
 FROM (
-	SELECT messages.*, rowid AS row_order, ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY rowid DESC) AS recency
+	SELECT `+transcriptColumns+`, rowid AS row_order, ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY rowid DESC) AS recency
 	FROM messages
 	WHERE user_id = ? AND thread_id IN (`+placeholders+`)
 )
@@ -297,7 +297,7 @@ ORDER BY thread_id, row_order ASC`, args...)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		message, err := scanMessage(rows)
+		message, err := scanTranscriptMessage(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan recent message: %w", err)
 		}
@@ -322,7 +322,7 @@ func (s *Store) ListMessages(ctx context.Context, userID, threadID string) ([]Me
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
+SELECT `+messageColumns+`
 FROM messages
 WHERE user_id = ? AND thread_id = ?
 ORDER BY rowid ASC`,
@@ -349,7 +349,7 @@ ORDER BY rowid ASC`,
 
 func (s *Store) getMessage(ctx context.Context, userID, messageID string) (Message, bool, error) {
 	message, err := scanMessage(s.db.QueryRowContext(ctx, `
-SELECT id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at
+SELECT `+messageColumns+`
 FROM messages
 WHERE user_id = ? AND id = ?`,
 		userID, messageID,

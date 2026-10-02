@@ -49,14 +49,15 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// payload carries an image part, else the chat model. The same `messages`
 	// slice is re-sent on every tool round within this turn, so the choice
 	// stays stable.
-	model := c.modelForMessages(messages)
+	wireMessages := toWireMessages(messages)
+	model := c.modelForMessages(wireMessages)
 	maxCompletionTokens := c.maxCompletionTokensForTools(tools)
 	if meta.MaxCompletionTokens > 0 {
 		maxCompletionTokens = meta.MaxCompletionTokens
 	}
 	req := llmwire.ChatRequest{
 		Model:     model,
-		Messages:  toWireMessages(messages),
+		Messages:  wireMessages,
 		Tools:     toWireTools(tools),
 		MaxTokens: &maxCompletionTokens,
 		// Once a tool call is underway on a document-capable turn the idle

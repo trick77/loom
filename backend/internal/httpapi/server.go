@@ -203,7 +203,6 @@ type ThreadStore interface {
 // best-effort from the caller's side; see server.recordUsage.
 type UsageStore interface {
 	AddTokens(context.Context, string, usage.TokenDelta) error
-	AddEmbeddingUsage(context.Context, string, int, int, int64) error
 	IncWebSearch(context.Context, string) error
 	IncWebFetch(context.Context, string) error
 	IncObscuraFetch(context.Context, string) error
@@ -270,7 +269,6 @@ type OIDCService interface {
 // SessionService is the session dependency used by auth handlers.
 type SessionService interface {
 	Create(context.Context, string, time.Duration) (auth.Session, error)
-	Lookup(context.Context, string) (auth.Session, bool, error)
 	Revoke(context.Context, string) error
 	CookieFor(string, time.Time) *http.Cookie
 	ClearCookie() *http.Cookie
@@ -284,9 +282,7 @@ type UserService interface {
 	UpdateResponseLanguage(ctx context.Context, id, language string) error
 }
 
-// newServer builds the server struct from its dependencies. Shared by New (which
-// also wires the HTTP routes) and NewMemoryWorker (which only needs the stores
-// and LLM client for the background refresh).
+// newServer builds the server struct from its dependencies.
 func newServer(d Deps) *server {
 	background := d.Background
 	if background == nil {
@@ -324,11 +320,18 @@ func newServer(d Deps) *server {
 
 // New returns the fully wired HTTP handler.
 func New(d Deps) http.Handler {
+	handler, _ := NewWithMemoryWorker(d)
+	return handler
+}
+
+// NewWithMemoryWorker returns the HTTP handler and the background memory worker
+// on one shared server, so the worker's sweep and the request path's refreshes
+// hold the same single-flight guard.
+func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	s := newServer(d)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.handleHealth)
-	mux.HandleFunc("GET /api/health/stream", s.handleHealthStream)
 	mux.HandleFunc("GET /api/model", s.handleModel)
 	mux.HandleFunc("GET /api/auth/login", s.handleAuthLogin)
 	mux.HandleFunc("GET /api/auth/callback", s.handleAuthCallback)
@@ -399,7 +402,7 @@ func New(d Deps) http.Handler {
 		mux.Handle("/", d.Static)
 	}
 
-	return logging(recovery(mux))
+	return logging(recovery(mux)), &MemoryWorker{s: s}
 }
 
 type activeStreamRegistry struct {

@@ -21,7 +21,7 @@ import type { Citation } from "../api";
 
 export type DisplayNumbering = {
   // persisted citation.index -> display number
-  display: Map<number, number>;
+  display: ReadonlyMap<number, number>;
 };
 
 const MARKER = /\[(\d+)\]/g;
@@ -62,16 +62,38 @@ function indexCitations(citations: Citation[]): Map<number, Citation> {
   return byIndex;
 }
 
+// The numbering of an answer that cites nothing. One shared, read-only instance:
+// the map is a prop of every prose block, so a fresh empty one per call would
+// re-parse markdown that has not changed.
+const NO_NUMBERING: DisplayNumbering = Object.freeze({
+  display: new Map<number, number>(),
+});
+
+function sameDisplay(
+  a: ReadonlyMap<number, number>,
+  b: ReadonlyMap<number, number>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [index, shown] of a) {
+    if (b.get(index) !== shown) return false;
+  }
+  return true;
+}
+
+// `previous` is the numbering of the last call for the same answer. It is handed
+// back, same identity, when the text grew without citing a new source — which
+// mid-stream is nearly every delta.
 export function assignDisplayNumbers(
   content: string,
   citations?: Citation[],
+  previous?: DisplayNumbering,
 ): DisplayNumbering {
-  const display = new Map<number, number>();
-  if (citations === undefined || citations.length === 0) return { display };
+  if (citations === undefined || citations.length === 0) return NO_NUMBERING;
 
   const byIndex = indexCitations(citations);
-  if (byIndex.size === 0) return { display };
+  if (byIndex.size === 0) return NO_NUMBERING;
 
+  const display = new Map<number, number>();
   const text = stripCode(content);
   MARKER.lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -82,5 +104,22 @@ export function assignDisplayNumbers(
     if (!byIndex.has(index) || display.has(index)) continue;
     display.set(index, display.size + 1);
   }
+  if (display.size === 0) return NO_NUMBERING;
+  if (previous !== undefined && sameDisplay(previous.display, display))
+    return previous;
   return { display };
+}
+
+// stableDisplayNumbers returns an assignDisplayNumbers that feeds each result
+// into the next call, for a caller that numbers the same growing answer over and
+// over (the live turn).
+export function stableDisplayNumbers(): (
+  content: string,
+  citations?: Citation[],
+) => DisplayNumbering {
+  let previous: DisplayNumbering | undefined;
+  return (content, citations) => {
+    previous = assignDisplayNumbers(content, citations, previous);
+    return previous;
+  };
 }

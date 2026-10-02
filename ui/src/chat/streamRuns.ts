@@ -53,10 +53,6 @@ export function threadRunKey(threadID: string): RunKey {
 
 export const INCOGNITO_RUN_KEY: RunKey = "incognito";
 
-export function provisionalRunKey(counter: number): RunKey {
-  return `new:${counter}`;
-}
-
 export function selectRun(runs: StreamRuns, key: RunKey | null): RunState {
   if (key === null) return EMPTY_RUN;
   return runs[key] ?? EMPTY_RUN;

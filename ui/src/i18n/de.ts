@@ -8,7 +8,6 @@ export const de = {
     cancel: "Abbrechen",
     delete: "Löschen",
     save: "Speichern",
-    loading: "Wird geladen",
     newThread: "Neuer Thread",
   },
   app: {
@@ -508,7 +507,6 @@ export const de = {
     download: "{{filename}} herunterladen",
     preview: "Vorschau von {{filename}}",
     thumbnailAlt: "Miniatur von {{filename}}",
-    closePreview: "Vorschau schliessen",
     renameTitle: "Artefakt umbenennen",
     filenameLabel: "Dateiname",
     deleteTitle: "Artefakt löschen",

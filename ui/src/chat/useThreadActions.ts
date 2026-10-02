@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { deleteThread, updateThread, type Project, type Thread } from "../api";
 import i18n from "../i18n";
@@ -46,20 +46,36 @@ export function useThreadActions({
   const [renameTitle, setRenameTitle] = useState("");
   const [isMutatingThread, setIsMutatingThread] = useState(false);
 
-  function openRenameModal(thread: Thread) {
-    onOpenThreadModal();
-    setRenamingThread(thread);
-    setRenameTitle(thread.title);
-    setModalError("");
-    setOpenThreadMenuID(null);
-  }
+  // The openers are stable so the memoized sidebar, which hands them to every
+  // thread row, does not re-render with the shell.
+  const openRenameModal = useCallback(
+    (thread: Thread) => {
+      onOpenThreadModal();
+      setRenamingThread(thread);
+      setRenameTitle(thread.title);
+      setModalError("");
+      setOpenThreadMenuID(null);
+    },
+    [onOpenThreadModal, setModalError, setOpenThreadMenuID],
+  );
 
-  function openDeleteModal(thread: Thread) {
-    onOpenThreadModal();
-    setDeletingThread(thread);
-    setModalError("");
-    setOpenThreadMenuID(null);
-  }
+  const openDeleteModal = useCallback(
+    (thread: Thread) => {
+      onOpenThreadModal();
+      setDeletingThread(thread);
+      setModalError("");
+      setOpenThreadMenuID(null);
+    },
+    [onOpenThreadModal, setModalError, setOpenThreadMenuID],
+  );
+
+  const openMoveModal = useCallback(
+    (threads: Thread[]) => {
+      setMovingThreads(threads);
+      setModalError("");
+    },
+    [setModalError],
+  );
 
   async function handleRenameSubmit() {
     if (renamingThread === null || isMutatingThread) return;
@@ -231,6 +247,7 @@ export function useThreadActions({
     handleRemoveThreadFromProject,
     handleRenameSubmit,
     openDeleteModal,
+    openMoveModal,
     openRenameModal,
     setDeletingThread,
     setMovingThreads,

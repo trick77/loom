@@ -34,7 +34,7 @@ func (s *server) handleGetPublicShare(w http.ResponseWriter, r *http.Request) {
 	}
 	// Uniform 404 for missing OR disabled OR (cascade-)deleted — no existence oracle.
 	if !ok || !share.Shared {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	var stored struct {
@@ -206,7 +206,7 @@ func (s *server) authorizePublicShareArtifact(w http.ResponseWriter, r *http.Req
 	}
 	artifactID := r.PathValue("artifactID")
 	if !ok || !share.Shared || !share.ContainsArtifactID(artifactID) {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return chat.Share{}, "", false
 	}
 	return share, artifactID, true
@@ -226,7 +226,7 @@ func (s *server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	// If a share row already exists (active or previously disabled), re-sharing
@@ -237,25 +237,7 @@ func (s *server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "get share failed")
 		return
 	} else if has {
-		snapshot, artifactIDs, err := s.buildThreadSnapshot(r.Context(), user, threadID, thread.Title, existing.ShareID)
-		if err != nil {
-			serverError(w, r, err, "build share snapshot failed")
-			return
-		}
-		share, updated, err := s.thread.UpdateShareSnapshot(r.Context(), user.ID, threadID, chat.UpdateShareInput{
-			Title:       thread.Title,
-			Snapshot:    snapshot,
-			ArtifactIDs: artifactIDs,
-		})
-		if err != nil {
-			serverError(w, r, err, "update share failed")
-			return
-		}
-		if !updated {
-			writeJSONError(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeJSON(w, s.shareSummaryOf(share))
+		s.refreezeShare(w, r, user, thread, existing)
 		return
 	}
 
@@ -292,7 +274,7 @@ func (s *server) handleUpdateShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	existing, has, err := s.thread.GetShareByThreadID(r.Context(), user.ID, threadID)
@@ -301,15 +283,21 @@ func (s *server) handleUpdateShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !has {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
-	snapshot, artifactIDs, err := s.buildThreadSnapshot(r.Context(), user, threadID, thread.Title, existing.ShareID)
+	s.refreezeShare(w, r, user, thread, existing)
+}
+
+// refreezeShare rebuilds an existing share's snapshot from the thread as it is
+// now and writes the updated share, keeping the public link.
+func (s *server) refreezeShare(w http.ResponseWriter, r *http.Request, user auth.User, thread chat.Thread, existing chat.Share) {
+	snapshot, artifactIDs, err := s.buildThreadSnapshot(r.Context(), user, thread.ID, thread.Title, existing.ShareID)
 	if err != nil {
 		serverError(w, r, err, "build share snapshot failed")
 		return
 	}
-	share, updated, err := s.thread.UpdateShareSnapshot(r.Context(), user.ID, threadID, chat.UpdateShareInput{
+	share, updated, err := s.thread.UpdateShareSnapshot(r.Context(), user.ID, thread.ID, chat.UpdateShareInput{
 		Title:       thread.Title,
 		Snapshot:    snapshot,
 		ArtifactIDs: artifactIDs,
@@ -319,7 +307,7 @@ func (s *server) handleUpdateShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !updated {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	writeJSON(w, s.shareSummaryOf(share))
@@ -338,7 +326,7 @@ func (s *server) handleDisableShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !disabled {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

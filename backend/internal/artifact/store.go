@@ -148,7 +148,7 @@ func (s *Store) GetMany(ctx context.Context, userID string, ids []string) (map[s
 	if len(ids) == 0 {
 		return out, nil
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	placeholders := sqlutil.Placeholders(len(ids))
 	args := make([]any, 0, len(ids)+1)
 	args = append(args, userID)
 	for _, id := range ids {

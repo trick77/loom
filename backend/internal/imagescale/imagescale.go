@@ -59,29 +59,26 @@ func DownscaleForEditInput(data []byte, mimeType string) ([]byte, string) {
 // when the input exceeds maxDimension or byteCap; otherwise it returns the bytes
 // and MIME unchanged.
 func fitWithin(data []byte, mimeType string, maxDimension, byteCap int) ([]byte, string) {
+	// The header alone says whether there is anything to do: an image that
+	// already fits is the common case and never pays for a full decode. No pixel
+	// cap here, unlike Thumbnail: a very long screenshot is a legitimate input
+	// and must still be scaled down, or the model would get it at full size.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return data, mimeType
+	}
+	if max(cfg.Width, cfg.Height) <= maxDimension && len(data) <= byteCap {
+		return data, mimeType
+	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return data, mimeType
 	}
 	src := img.Bounds()
-	w, h := src.Dx(), src.Dy()
-	if w == 0 || h == 0 {
+	if src.Dx() == 0 || src.Dy() == 0 {
 		return data, mimeType
 	}
-	longest := w
-	if h > longest {
-		longest = h
-	}
-	if longest <= maxDimension && len(data) <= byteCap {
-		return data, mimeType
-	}
-
-	nw, nh := w, h
-	if longest > maxDimension {
-		scale := float64(maxDimension) / float64(longest)
-		nw = max(1, int(float64(w)*scale))
-		nh = max(1, int(float64(h)*scale))
-	}
+	nw, nh := fitDims(src.Dx(), src.Dy(), maxDimension)
 
 	out, err := scaleToJPEG(img, src, nw, nh)
 	if err != nil {
@@ -91,6 +88,17 @@ func fitWithin(data []byte, mimeType string, maxDimension, byteCap int) ([]byte,
 		return data, mimeType
 	}
 	return out, "image/jpeg"
+}
+
+// fitDims scales w×h down so the longest side is at most maxDimension, keeping
+// the aspect ratio. Dimensions already within the bound come back unchanged.
+func fitDims(w, h, maxDimension int) (int, int) {
+	longest := max(w, h)
+	if longest <= maxDimension {
+		return w, h
+	}
+	scale := float64(maxDimension) / float64(longest)
+	return max(1, int(float64(w)*scale)), max(1, int(float64(h)*scale))
 }
 
 // maxThumbnailSourcePixels caps the pixel area of an image we will fully decode to
@@ -126,16 +134,7 @@ func Thumbnail(data []byte, maxDimension int) ([]byte, error) {
 	if w == 0 || h == 0 {
 		return nil, errors.New("imagescale: image has zero dimension")
 	}
-	nw, nh := w, h
-	longest := w
-	if h > longest {
-		longest = h
-	}
-	if longest > maxDimension {
-		scale := float64(maxDimension) / float64(longest)
-		nw = max(1, int(float64(w)*scale))
-		nh = max(1, int(float64(h)*scale))
-	}
+	nw, nh := fitDims(w, h, maxDimension)
 	return scaleToJPEG(img, src, nw, nh)
 }
 

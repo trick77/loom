@@ -170,3 +170,16 @@ func pngHeaderWithDimensions(w, h uint32) []byte {
 	buf.Write(chunk.Bytes())
 	return buf.Bytes()
 }
+
+func TestFitDims(t *testing.T) {
+	for _, tc := range []struct{ w, h, max, wantW, wantH int }{
+		{100, 50, 200, 100, 50},
+		{4000, 2000, 1000, 1000, 500},
+		{2000, 4000, 1000, 500, 1000},
+		{5000, 1, 1000, 1000, 1},
+	} {
+		if w, h := fitDims(tc.w, tc.h, tc.max); w != tc.wantW || h != tc.wantH {
+			t.Errorf("fitDims(%d, %d, %d) = %d, %d, want %d, %d", tc.w, tc.h, tc.max, w, h, tc.wantW, tc.wantH)
+		}
+	}
+}

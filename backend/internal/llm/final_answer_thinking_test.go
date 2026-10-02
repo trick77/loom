@@ -40,14 +40,14 @@ func TestClient_StreamUsesTheDefaultBudget(t *testing.T) {
 // model otherwise.
 func TestClient_StreamRoutesImagesToTheVisionModel(t *testing.T) {
 	c := &Client{model: "chat-model", visionModel: "vision-model", gateModel: "gate-model"}
-	if got := c.modelForMessages([]Message{{Role: "user", Content: "hi"}}); got != "chat-model" {
+	if got := c.modelForMessages(toWireMessages([]Message{{Role: "user", Content: "hi"}})); got != "chat-model" {
 		t.Fatalf("model = %q, want the chat model", got)
 	}
 	withImage := []Message{{
 		Role:         "user",
 		ContentParts: []MessageContentPart{{Type: "image_url", ImageURL: &MessageImageURL{URL: "data:image/png;base64,iVBORw0KGgo="}}},
 	}}
-	if got := c.modelForMessages(withImage); got != "vision-model" {
+	if got := c.modelForMessages(toWireMessages(withImage)); got != "vision-model" {
 		t.Fatalf("model = %q, want the vision model", got)
 	}
 }

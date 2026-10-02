@@ -27,14 +27,10 @@ import { Icon } from "./Icon";
 import type { MessagePastedText } from "../api";
 import { AssistantProse, MessageBubble } from "./messages";
 import { webSourceMap } from "./sourcePills";
-import { assignDisplayNumbers } from "./sourceNumbering";
+import { stableDisplayNumbers } from "./sourceNumbering";
 import type { PastedText } from "./pastedText";
-import {
-  isImageAttachment,
-  toSentAttachment,
-  useDocumentAttachments,
-  type ComposerAttachment,
-} from "./useDocumentAttachments";
+import { useComposerAttachments } from "./useComposerAttachments";
+import type { ComposerAttachment } from "./useDocumentAttachments";
 import { isNearBottom, previousUserMessages } from "./threadUtils";
 import type { MessageWithActivityTrace } from "./types";
 import { WindowFileDrop } from "./WindowFileDrop";
@@ -56,7 +52,6 @@ export function ThreadPanel({
   workingTitle = "",
   sendError,
   isSending,
-  sendDisabled,
   openThreadMenuID,
   onOpenSidebar,
   onDraftChange,
@@ -90,7 +85,6 @@ export function ThreadPanel({
   workingTitle?: string;
   sendError: string;
   isSending: boolean;
-  sendDisabled: boolean;
   openThreadMenuID: string | null;
   onDraftChange(value: string): void;
   pastedTexts: PastedText[];
@@ -178,10 +172,14 @@ export function ThreadPanel({
     [streamingBlocks],
   );
   // Only `display` is used while streaming — it numbers the inline markers. The
-  // ordered source list is not rendered until the message settles.
+  // ordered source list is not rendered until the message settles. The numberer
+  // remembers its last result so the map keeps its identity while the text grows
+  // without a new citation: it is a prop of every live prose block, and a new one
+  // per token re-parsed the blocks that were already finished.
+  const [numberStreamingSources] = useState(stableDisplayNumbers);
   const streamingNumbering = useMemo(
-    () => assignDisplayNumbers(streamingProse, streamingSources),
-    [streamingProse, streamingSources],
+    () => numberStreamingSources(streamingProse, streamingSources),
+    [numberStreamingSources, streamingProse, streamingSources],
   );
   // Answer prose has begun once a non-empty text block exists after the active
   // trace block (the reasoning-free turn has no trace block, so any text block
@@ -331,30 +329,24 @@ export function ThreadPanel({
     scrollToLatest();
   }, [scrollToLatest]);
 
+  const sendPinned = useCallback(
+    (sentAttachments: ComposerAttachment[]) => {
+      pinToLatest();
+      onSend(sentAttachments);
+    },
+    [onSend, pinToLatest],
+  );
   const {
     attachNote,
     attachments,
-    clearAttachments,
     handleAttachError,
     handleAttachFiles,
+    handleSendRequest,
+    imageUploadPending,
     removeAttachment,
-  } = useDocumentAttachments({
-    threadId: thread?.id,
-    projectId: threadProject?.id,
-  });
-
-  const handleSendRequest = useCallback(() => {
-    const sentAttachments = attachments.map(toSentAttachment);
-    if (sentAttachments.length > 0)
-      clearAttachments({ revokePreviewUrls: false });
-    pinToLatest();
-    onSend(sentAttachments);
-  }, [attachments, clearAttachments, onSend, pinToLatest]);
-  const imageUploadPending = attachments.some(
-    (attachment) =>
-      isImageAttachment(attachment) &&
-      attachment.artifactId === undefined &&
-      attachment.status !== "error",
+  } = useComposerAttachments(
+    { threadId: thread?.id, projectId: threadProject?.id },
+    sendPinned,
   );
 
   const handleRetryRequest = useCallback(
@@ -628,7 +620,7 @@ export function ThreadPanel({
                 draft={draft}
                 focusSignal={focusSignal}
                 isSending={isSending}
-                sendDisabled={sendDisabled || imageUploadPending}
+                sendDisabled={imageUploadPending}
                 placeholder={t("thread.messagePlaceholder")}
                 onDraftChange={onDraftChange}
                 pastedTexts={pastedTexts}

@@ -488,22 +488,22 @@ WHERE user_id = ? AND id = ?`,
 }
 
 func (s *Store) getThread(ctx context.Context, userID, threadID string) (Thread, bool, error) {
-	thread, err := scanThread(s.db.QueryRowContext(ctx, `
-SELECT id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at
+	// Carry the share flag on single-thread fetches too: the frontend upserts
+	// the returned thread back into its lists (on rename, star, title
+	// generation, and the post-message "thread" SSE event), so a missing flag
+	// here would clobber the SharedPill on the next mutation. One thread needs
+	// one probe, not the user's whole share list.
+	var shared bool
+	thread, err := scanThreadRow(s.db.QueryRowContext(ctx, `
+SELECT id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at,
+       EXISTS (SELECT 1 FROM shared_threads sh WHERE sh.user_id = threads.user_id AND sh.thread_id = threads.id AND sh.shared = 1)
 FROM threads
 WHERE user_id = ? AND id = ?`,
 		userID, threadID,
-	))
+	), &shared)
 	if err == nil {
-		// Carry the share flag on single-thread fetches too: the frontend upserts
-		// the returned thread back into its lists (on rename, star, title
-		// generation, and the post-message "thread" SSE event), so a missing flag
-		// here would clobber the SharedPill on the next mutation.
-		threads := []Thread{thread}
-		if err := s.markSharedThreads(ctx, userID, threads); err != nil {
-			return Thread{}, false, err
-		}
-		return threads[0], true, nil
+		thread.Shared = shared
+		return thread, true, nil
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Thread{}, false, nil

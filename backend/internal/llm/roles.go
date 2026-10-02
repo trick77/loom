@@ -3,6 +3,7 @@ package llm
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/trick77/llmwire"
@@ -39,7 +40,7 @@ func (r Roles) withDefaults() Roles {
 func (r Roles) ids() []string {
 	var out []string
 	for _, id := range []string{r.Chat, r.Gate, r.Vision} {
-		if id != "" && !containsString(out, id) {
+		if id != "" && !slices.Contains(out, id) {
 			out = append(out, id)
 		}
 	}
@@ -103,7 +104,7 @@ func (r Resolved) KeyEnvs() []string {
 		if p == nil {
 			continue
 		}
-		if env := p.APIKeyEnv(); env != "" && !containsString(out, env) {
+		if env := p.APIKeyEnv(); env != "" && !slices.Contains(out, env) {
 			out = append(out, env)
 		}
 	}
@@ -123,13 +124,4 @@ func (r Resolved) Info() ModelInfo {
 		return ModelInfo{}
 	}
 	return ModelInfo{ID: r.chat.ID, DisplayName: r.chat.DisplayName, ContextWindow: r.chat.Limits.Context}
-}
-
-func containsString(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

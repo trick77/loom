@@ -19,12 +19,22 @@ import (
 	"github.com/trick77/loom/internal/sse"
 )
 
-func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry) string {
-	args := summarizeForLog(call.Function.Arguments)
+// toolRun is the outcome of an MCP tool call's network half: everything
+// finishToolCall needs to account for the call and label its result.
+type toolRun struct {
+	arguments  map[string]any
+	argsErr    error
+	output     string
+	err        error
+	durationMS int64
+}
+
+// runToolCall performs the MCP call itself. It touches no per-turn state, so a
+// round's independent web reads can run it concurrently (see startToolRuns).
+func (s *server) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	arguments, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
-		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", err)
-		return capToolOutput("tool failed: invalid arguments: " + err.Error())
+		return toolRun{argsErr: err}
 	}
 	// Ask Tavily for each result's favicon regardless of what the model requested,
 	// so the sources sidebar can show real icons. Harmless if the model already set it.
@@ -35,10 +45,30 @@ func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.T
 	defer cancel()
 	start := time.Now()
 	output, err := s.mcp.CallTool(callCtx, call.Function.Name, arguments)
-	durationMS := time.Since(start).Milliseconds()
+	return toolRun{arguments: arguments, output: output, err: err, durationMS: time.Since(start).Milliseconds()}
+}
+
+func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry) string {
+	return s.finishToolCall(ctx, user, call, round, reg, s.runToolCall(ctx, call))
+}
+
+// finishToolCall turns a finished run into the tool result the model sees:
+// the obscura fallback for a failed fetch, the usage count, and the [n] source
+// labels. It writes to the source registry and the shared obscura browser, so
+// it runs one call at a time, in the order the model issued the calls.
+func (s *server) finishToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) string {
+	args := summarizeForLog(call.Function.Arguments)
+	if run.argsErr != nil {
+		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", run.argsErr)
+		return capToolOutput("tool failed: invalid arguments: " + run.argsErr.Error())
+	}
+	arguments, output, err, durationMS := run.arguments, run.output, run.err, run.durationMS
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
-		if fallback, ok := s.fetchObscuraFallback(callCtx, user, call.Function.Name, arguments, round, reg); ok {
+		// A fresh budget: callCtx is already expired when fetch failed on its deadline.
+		fallbackCtx, cancelFallback := context.WithTimeout(ctx, maxToolCallDuration)
+		defer cancelFallback()
+		if fallback, ok := s.fetchObscuraFallback(fallbackCtx, user, call.Function.Name, arguments, round, reg); ok {
 			return fallback
 		}
 		return capToolOutput("tool failed: " + err.Error())
@@ -48,6 +78,65 @@ func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.T
 	// Annotate web-search/fetch results with [n] citation markers and register
 	// their source URLs before capping, so the model can cite them inline.
 	return capToolOutput(s.relabelWebToolOutput(call.Function.Name, arguments, output, reg))
+}
+
+// concurrentToolRuns bounds how many of a round's web reads are in flight at
+// once: enough to turn a dozen pasted links from a serial wait into a short
+// one, small enough not to hammer a single host.
+const concurrentToolRuns = 4
+
+// runsConcurrently reports whether a tool is a stateless web read whose calls
+// are independent of one another. Everything else keeps its place in the
+// round's sequence: obscura drives one shared browser, the built-in tools
+// write per-turn state.
+func runsConcurrently(name string) bool {
+	return name == fetchToolName || name == tavilySearchExposedName
+}
+
+// startToolRuns starts the network half of every call in the round that may
+// run concurrently and is not skipped, and returns one channel per call (nil
+// for a call that runs in sequence). The caller still consumes the runs in
+// call order, so results, source numbering and history keep the model's order;
+// only the waiting overlaps. A lone eligible call gains nothing and is left to
+// the sequential path.
+func (s *server) startToolRuns(ctx context.Context, calls []llm.ToolCall, skipped []bool) []<-chan toolRun {
+	runs := make([]<-chan toolRun, len(calls))
+	eligible := 0
+	for i, call := range calls {
+		if !skipped[i] && runsConcurrently(call.Function.Name) {
+			eligible++
+		}
+	}
+	if eligible < 2 {
+		return runs
+	}
+	slots := make(chan struct{}, concurrentToolRuns)
+	for i, call := range calls {
+		if skipped[i] || !runsConcurrently(call.Function.Name) {
+			continue
+		}
+		done := make(chan toolRun, 1)
+		runs[i] = done
+		go func() {
+			// A panic here would otherwise take the process down: this goroutine
+			// is outside the request's recovery middleware.
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("tool call panicked", "tool", call.Function.Name, "panic", r)
+					done <- toolRun{err: fmt.Errorf("tool call panicked: %v", r)}
+				}
+			}()
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+				done <- toolRun{err: context.Cause(ctx)}
+				return
+			}
+			done <- s.runToolCall(ctx, call)
+		}()
+	}
+	return runs
 }
 
 // countToolCall increments the per-user counter for a successfully completed

@@ -146,6 +146,12 @@ func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeNotFound answers a missing resource, and equally one the caller does not
+// own: the two must be indistinguishable.
+func writeNotFound(w http.ResponseWriter) {
+	writeJSONError(w, http.StatusNotFound, "not found")
+}
+
 func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

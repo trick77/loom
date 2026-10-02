@@ -21,6 +21,7 @@ import {
 import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
 import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
+import { ImageLightbox } from "../chat/ImageLightbox";
 import { PdfLightbox } from "../chat/PdfLightbox";
 import {
   isImageAttachment,
@@ -29,6 +30,7 @@ import {
 import { AttachmentPreview } from "../components/AttachmentPreview";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
+import { useDebouncedValue } from "../useDebouncedValue";
 import { useInfiniteList } from "../useInfiniteList";
 import { ArtifactActionsMenu } from "./ArtifactActionsMenu";
 import { useEscapeKey } from "../chat/useEscapeKey";
@@ -55,7 +57,7 @@ export function ArtifactsPage({
 }) {
   const { t } = useTranslation();
   const [searchInput, setSearchInput] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const searchTerm = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
   const [type, setType] = useState<ArtifactListType>("all");
   const [sort, setSort] = useState<ArtifactSort>("modified");
   const [order, setOrder] = useState<SortOrder>("desc");
@@ -67,14 +69,6 @@ export function ArtifactsPage({
   const [deleteTarget, setDeleteTarget] = useState<Artifact | null>(null);
   const [actionError, setActionError] = useState("");
   const [actionPending, setActionPending] = useState(false);
-
-  useEffect(() => {
-    const handle = window.setTimeout(
-      () => setSearchTerm(searchInput.trim()),
-      SEARCH_DEBOUNCE_MS,
-    );
-    return () => window.clearTimeout(handle);
-  }, [searchInput]);
 
   // The server owns filtering and ordering; the client renders pages in the
   // exact order they arrive so cursor boundaries stay aligned (no client re-sort).
@@ -675,8 +669,6 @@ function ImageArtifactRow({
   const { t } = useTranslation();
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  useEscapeKey(() => setLightboxOpen(false), { active: lightboxOpen });
-
   const openPreview = () => {
     setLightboxOpen(true);
   };
@@ -721,31 +713,11 @@ function ImageArtifactRow({
         }
       />
       {lightboxOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-6 backdrop-blur-[2px]"
-          onClick={() => setLightboxOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("artifacts.preview", {
-            filename: artifact.displayFilename,
-          })}
-        >
-          <button
-            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-black/40 text-[#f3f0e8] transition-colors hover:bg-black/60"
-            onClick={() => setLightboxOpen(false)}
-            type="button"
-            title={t("artifacts.closePreview")}
-            aria-label={t("artifacts.closePreview")}
-          >
-            <Icon name="close" size="20px" />
-          </button>
-          <img
-            className="max-h-full max-w-full object-contain"
-            src={artifact.downloadUrl}
-            alt={artifact.displayFilename}
-            onClick={(event) => event.stopPropagation()}
-          />
-        </div>
+        <ImageLightbox
+          src={artifact.downloadUrl}
+          alt={artifact.displayFilename}
+          onClose={() => setLightboxOpen(false)}
+        />
       )}
     </>
   );

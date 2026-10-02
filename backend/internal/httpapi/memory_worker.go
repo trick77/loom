@@ -21,12 +21,6 @@ type MemoryWorker struct {
 	s *server
 }
 
-// NewMemoryWorker builds the background memory worker from the same dependencies
-// as the HTTP server.
-func NewMemoryWorker(d Deps) *MemoryWorker {
-	return &MemoryWorker{s: newServer(d)}
-}
-
 // Run sweeps every memoryBatchInterval until ctx is cancelled. Intended to be
 // launched in its own goroutine at server startup with the process-lifetime
 // context, so it stops cleanly on shutdown.

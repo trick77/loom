@@ -11,22 +11,35 @@ import (
 // user's vectors, so embeddings are always deleted one row at a time.
 const deleteVecRow = `DELETE FROM vec_chunks WHERE rowid = ?`
 
+// insertVecRow writes one embedding, keyed by its chunk's rowid.
+const insertVecRow = `INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, ?, ?)`
+
 // deleteChunksTx removes a document's chunks and their vec rows within tx. The
 // vec rows must be deleted explicitly (CASCADE/triggers cannot reach a vtab).
-func deleteChunksTx(ctx context.Context, tx *sql.Tx, userID, documentID string) error {
+// It returns how many embeddings it removed.
+func deleteChunksTx(ctx context.Context, tx *sql.Tx, userID, documentID string) (int, error) {
 	ids, err := collectChunkRowids(ctx, tx, `SELECT id FROM chunks WHERE user_id = ? AND document_id = ?`, userID, documentID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx, deleteVecRow, id); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM chunks WHERE user_id = ? AND document_id = ?`, userID, documentID); err != nil {
-		return err
+		return 0, err
 	}
-	return nil
+	return len(ids), nil
+}
+
+// warnBloatAfterDelete runs the bloat check once a delete has committed, and
+// only when it removed embeddings: the check measures the whole table, and a
+// delete that freed nothing cannot have bloated it.
+func (s *Store) warnBloatAfterDelete(ctx context.Context, deleted int, args ...any) {
+	if deleted > 0 {
+		s.WarnVectorBloat(ctx, args...)
+	}
 }
 
 // ReplaceChunks atomically replaces a document's chunks and embeddings, then
@@ -48,15 +61,25 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := deleteChunksTx(ctx, tx, userID, documentID); err != nil {
+	replaced, err := deleteChunksTx(ctx, tx, userID, documentID)
+	if err != nil {
 		return fmt.Errorf("clear existing chunks: %w", err)
 	}
 
+	insertChunk, err := tx.PrepareContext(ctx,
+		`INSERT INTO chunks (document_id, user_id, project_id, ordinal, text, token_count)
+		 VALUES (?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("prepare chunk insert: %w", err)
+	}
+	defer func() { _ = insertChunk.Close() }()
+	insertVec, err := tx.PrepareContext(ctx, insertVecRow)
+	if err != nil {
+		return fmt.Errorf("prepare embedding insert: %w", err)
+	}
+	defer func() { _ = insertVec.Close() }()
 	for i, c := range chunks {
-		res, err := tx.ExecContext(ctx,
-			`INSERT INTO chunks (document_id, user_id, project_id, ordinal, text, token_count)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			documentID, userID, projectID, c.Ordinal, c.Text, c.TokenCount)
+		res, err := insertChunk.ExecContext(ctx, documentID, userID, projectID, c.Ordinal, c.Text, c.TokenCount)
 		if err != nil {
 			return fmt.Errorf("insert chunk: %w", err)
 		}
@@ -64,9 +87,7 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 		if err != nil {
 			return fmt.Errorf("chunk rowid: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, ?, ?)`,
-			rowid, vecLiteral(embeddings[i]), userID, scope); err != nil {
+		if _, err := insertVec.ExecContext(ctx, rowid, vecBlob(embeddings[i]), userID, scope); err != nil {
 			return fmt.Errorf("insert embedding: %w", err)
 		}
 	}
@@ -76,7 +97,12 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 		StatusEmbedded, userID, documentID); err != nil {
 		return fmt.Errorf("mark embedded: %w", err)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// A re-index replaced the document's vectors; the old ones' storage stays.
+	s.warnBloatAfterDelete(ctx, replaced, "user", userID, "document", documentID)
+	return nil
 }
 
 // ClearChunks removes a document's chunks and embeddings but keeps the document
@@ -87,10 +113,15 @@ func (s *Store) ClearChunks(ctx context.Context, userID, documentID string) erro
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := deleteChunksTx(ctx, tx, userID, documentID); err != nil {
+	deleted, err := deleteChunksTx(ctx, tx, userID, documentID)
+	if err != nil {
 		return fmt.Errorf("clear chunks: %w", err)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.warnBloatAfterDelete(ctx, deleted, "user", userID, "document", documentID)
+	return nil
 }
 
 // collectChunkRowids materialises chunk rowids from a query so the caller can
@@ -123,7 +154,7 @@ func collectChunkRowids(ctx context.Context, tx *sql.Tx, query string, args ...a
 // the chunk and document rows are removed.
 func (s *Store) DeleteThreadScopeDocuments(ctx context.Context, userID, threadID string) error {
 	const scope = `d.user_id = ? AND d.project_id IS NULL AND d.thread_id = ?`
-	return s.deleteScopeDocuments(ctx, scope, userID, threadID)
+	return s.deleteScopeDocuments(ctx, []any{"user", userID, "thread", threadID}, scope, userID, threadID)
 }
 
 // DeleteProjectScopeDocuments removes every document, chunk, and embedding for a
@@ -144,14 +175,15 @@ func (s *Store) DeleteProjectScopeDocuments(ctx context.Context, userID, project
 		d.project_id = ?
 		OR (d.project_id IS NULL AND d.thread_id IN (
 			SELECT t.id FROM threads t WHERE t.user_id = ? AND t.project_id = ?)))`
-	return s.deleteScopeDocuments(ctx, scope, userID, projectID, userID, projectID)
+	return s.deleteScopeDocuments(ctx, []any{"user", userID, "project", projectID}, scope, userID, projectID, userID, projectID)
 }
 
 // deleteScopeDocuments deletes the embeddings, chunks, and documents matching a
 // documents-table predicate (referenced as alias d) in one transaction, in the
 // vtab-safe order: collect rowids, delete vec_chunks, delete chunks, delete
-// documents. args bind the predicate's placeholders.
-func (s *Store) deleteScopeDocuments(ctx context.Context, scope string, args ...any) error {
+// documents. args bind the predicate's placeholders; occasion names the scope
+// in the bloat warning.
+func (s *Store) deleteScopeDocuments(ctx context.Context, occasion []any, scope string, args ...any) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -187,7 +219,11 @@ func (s *Store) deleteScopeDocuments(ctx context.Context, scope string, args ...
 	if _, err := tx.ExecContext(ctx, deleteDocs, args...); err != nil {
 		return fmt.Errorf("delete scope documents: %w", err)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.warnBloatAfterDelete(ctx, len(rowids), occasion...)
+	return nil
 }
 
 // DeleteDocument removes a document, its chunks, and their embeddings.
@@ -197,11 +233,16 @@ func (s *Store) DeleteDocument(ctx context.Context, userID, id string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := deleteChunksTx(ctx, tx, userID, id); err != nil {
+	deleted, err := deleteChunksTx(ctx, tx, userID, id)
+	if err != nil {
 		return fmt.Errorf("delete chunks: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM documents WHERE user_id = ? AND id = ?`, userID, id); err != nil {
 		return fmt.Errorf("delete document: %w", err)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.warnBloatAfterDelete(ctx, deleted, "user", userID, "document", id)
+	return nil
 }

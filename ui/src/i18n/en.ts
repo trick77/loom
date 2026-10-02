@@ -6,7 +6,6 @@ export const en = {
     cancel: "Cancel",
     delete: "Delete",
     save: "Save",
-    loading: "Loading",
     newThread: "New thread",
   },
   app: {
@@ -498,7 +497,6 @@ export const en = {
     download: "Download {{filename}}",
     preview: "Preview {{filename}}",
     thumbnailAlt: "{{filename}} thumbnail",
-    closePreview: "Close preview",
     renameTitle: "Rename artifact",
     filenameLabel: "Artifact filename",
     deleteTitle: "Delete artifact",

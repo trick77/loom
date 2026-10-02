@@ -24,10 +24,16 @@ func ParseTime(value string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unsupported time format %q", value)
 }
 
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
 // EscapeLike escapes a term for use inside a LIKE pattern with ESCAPE '\'.
 func EscapeLike(term string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(term)
+	return likeEscaper.Replace(term)
+}
+
+// Placeholders returns n comma-separated "?" for an IN (...) list.
+func Placeholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
 
 // NewID returns an opaque, unguessable 128-bit id as 22 base64url characters.

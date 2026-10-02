@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -8,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
+import type { PluggableList } from "unified";
 import rehypeHighlight from "rehype-highlight";
 
 import {
@@ -164,7 +166,20 @@ export function ActivityTracePanel({
 // .ui-activity-reasoning-clamp (12rem @ 16px root).
 const REASONING_CAP_PX = 192;
 
-function ReasoningContent({
+// Module constants so the plugin lists keep one identity across renders.
+// rehypeKatex first so math renders before streamFade post-processes the tree.
+const reasoningRehypePlugins: PluggableList = [
+  rehypeKatexPlugin,
+  rehypeHighlight,
+];
+const streamingReasoningRehypePlugins: PluggableList = [
+  ...reasoningRehypePlugins,
+  rehypeStreamFade,
+];
+
+// Memoized: react-markdown parses on every render, and the panel re-renders on
+// every delta of the round that is streaming. Earlier rounds must sit that out.
+const ReasoningContent = memo(function ReasoningContent({
   content,
   streaming = false,
 }: {
@@ -200,9 +215,7 @@ function ReasoningContent({
         <Markdown
           remarkPlugins={markdownRemarkPlugins}
           rehypePlugins={
-            streaming
-              ? [rehypeKatexPlugin, rehypeHighlight, rehypeStreamFade]
-              : [rehypeKatexPlugin, rehypeHighlight]
+            streaming ? streamingReasoningRehypePlugins : reasoningRehypePlugins
           }
         >
           {normalized}
@@ -219,7 +232,7 @@ function ReasoningContent({
       )}
     </>
   );
-}
+});
 
 function ActivityTraceRow({
   event,

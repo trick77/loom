@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { createShare, disableShare, updateShare, type ShareInfo } from "../api";
 import { Icon, type IconName } from "../chat/Icon";
 import { useEscapeKey } from "../chat/useEscapeKey";
+import { useCopyFeedback } from "../useCopyFeedback";
 
 // ShareDialog is the owner-facing share modal. It copies Claude's flow 1:1, minus
 // "Share with your team" and minus "Report": Keep private ⇄ Create public link,
@@ -29,7 +30,8 @@ export function ShareDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { status: copyStatus, copy } = useCopyFeedback(1500);
+  const copied = copyStatus === "copied";
 
   useEffect(() => {
     setChoice(share?.shared === true ? "public" : "private");
@@ -80,13 +82,7 @@ export function ShareDialog({
 
   async function copyLink() {
     if (!absoluteUrl) return;
-    try {
-      await navigator.clipboard.writeText(absoluteUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setError(t("share.copyFailed"));
-    }
+    if (!(await copy(absoluteUrl))) setError(t("share.copyFailed"));
   }
 
   return (

@@ -226,7 +226,29 @@ export function ThreadShell({
   // On mobile the sidebar is an overlay drawer that always shows the full
   // content; the rail-collapse only applies on desktop.
   const railCollapsed = !isMobile && sidebarCollapsed;
-  useEscapeKey(() => setMobileSidebarOpen(false), {
+  // Stable handlers for the sidebar and the thread menus. The sidebar is
+  // memoized and the shell re-renders on every keystroke and streamed token, so
+  // an inline arrow here would re-render every thread row each time.
+  const openMobileSidebar = useCallback(() => setMobileSidebarOpen(true), []);
+  const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
+  const toggleDesktopCollapsed = useCallback(
+    () => setSidebarCollapsed((value) => !value),
+    [],
+  );
+  const toggleUserMenu = useCallback(
+    () => setUserMenuOpen((open) => !open),
+    [],
+  );
+  const closeUserMenu = useCallback(() => setUserMenuOpen(false), []);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const toggleThreadMenu = useCallback(
+    (menuKey: string) =>
+      setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey)),
+    [],
+  );
+  const closeThreadMenu = useCallback(() => setOpenThreadMenuID(null), []);
+  useEscapeKey(closeMobileSidebar, {
     active: mobileSidebarOpen,
   });
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
@@ -369,7 +391,7 @@ export function ThreadShell({
     ],
   );
 
-  useEscapeKey(() => setOpenThreadMenuID(null), {
+  useEscapeKey(closeThreadMenu, {
     active: openThreadMenuID !== null,
   });
 
@@ -505,6 +527,8 @@ export function ThreadShell({
     deletingProject,
     editingProject,
     isMutatingProject,
+    openArchiveProjectModal,
+    openDeleteProjectModal,
     openProjectDialog,
     setArchivingProject,
     setDeletingProject,
@@ -536,6 +560,7 @@ export function ThreadShell({
     handleRemoveThreadFromProject,
     handleRenameSubmit,
     openDeleteModal,
+    openMoveModal,
     openRenameModal,
     setDeletingThread,
     setMovingThreads,
@@ -552,55 +577,62 @@ export function ThreadShell({
     setThreads,
     handleActionError,
     onActiveThreadArchived: navigateToNew,
-    onOpenThreadModal: () => setMobileSidebarOpen(false),
+    onOpenThreadModal: closeMobileSidebar,
     route,
   });
 
-  function openArchiveProjectModal(project: Project) {
-    setArchivingProject(project);
-    setModalError("");
-    setOpenThreadMenuID(null);
-  }
+  const openMoveThreadModal = useCallback(
+    (thread: Thread) => openMoveModal([thread]),
+    [openMoveModal],
+  );
 
   function unarchiveProjectAndReload(project: Project) {
     void handleUnarchiveProject(project).then(reloadThreads);
   }
 
-  async function selectThread(threadID: string) {
-    onThread();
-    setMobileSidebarOpen(false);
-    go({ view: "thread", threadID });
-  }
+  const selectThread = useCallback(
+    async (threadID: string) => {
+      onThread();
+      setMobileSidebarOpen(false);
+      go({ view: "thread", threadID });
+    },
+    [go, onThread],
+  );
 
-  async function handleSetThreadStarred(
-    thread: Thread,
-    starred: boolean,
-    menuKey?: string,
-  ) {
-    if (isUpdatingStar) return;
-    setIsUpdatingStar(true);
-    try {
-      const updatedThread = await setThreadStarred(thread.id, starred);
-      if (activeThreadIDRef.current === updatedThread.id) {
-        setActiveThread(updatedThread);
+  const handleSetThreadStarred = useCallback(
+    async (thread: Thread, starred: boolean, menuKey?: string) => {
+      if (isUpdatingStar) return;
+      setIsUpdatingStar(true);
+      try {
+        const updatedThread = await setThreadStarred(thread.id, starred);
+        if (activeThreadIDRef.current === updatedThread.id) {
+          setActiveThread(updatedThread);
+        }
+        setThreads((current) => replaceThreadById(current, updatedThread));
+        setProjectThreads((current) =>
+          replaceThreadById(current, updatedThread),
+        );
+        setThreadMutationVersion((value) => value + 1);
+        if (menuKey !== undefined) {
+          setOpenThreadMenuID(null);
+        }
+        setSendError("");
+      } catch (error) {
+        handleActionError(error, t("thread.updateFailed"), reportShellError);
+      } finally {
+        setIsUpdatingStar(false);
       }
-      setThreads((current) =>
-        current.map((item) =>
-          item.id === updatedThread.id ? updatedThread : item,
-        ),
-      );
-      setProjectThreads((current) => replaceThreadById(current, updatedThread));
-      setThreadMutationVersion((value) => value + 1);
-      if (menuKey !== undefined) {
-        setOpenThreadMenuID(null);
-      }
-      setSendError("");
-    } catch (error) {
-      handleActionError(error, t("thread.updateFailed"), reportShellError);
-    } finally {
-      setIsUpdatingStar(false);
-    }
-  }
+    },
+    [
+      handleActionError,
+      isUpdatingStar,
+      reportShellError,
+      setActiveThread,
+      setProjectThreads,
+      setThreads,
+      t,
+    ],
+  );
 
   // Sharing/unsharing from the dialog updates activeShare, but the SharedPill in
   // the chat lists reads thread.shared — so mirror the new share state onto the
@@ -622,34 +654,33 @@ export function ThreadShell({
     [setActiveShare, setThreads, setProjectThreads],
   );
 
-  async function handleSetProjectStarred(
-    project: Project,
-    starred: boolean,
-    menuKey?: string,
-  ) {
-    if (isUpdatingStar) return;
-    setIsUpdatingStar(true);
-    try {
-      const updatedProject = await setProjectStarred(project.id, starred);
-      setProjects((current) =>
-        current.map((item) =>
-          item.id === updatedProject.id ? updatedProject : item,
-        ),
-      );
-      if (menuKey !== undefined) {
-        setOpenThreadMenuID(null);
+  const handleSetProjectStarred = useCallback(
+    async (project: Project, starred: boolean, menuKey?: string) => {
+      if (isUpdatingStar) return;
+      setIsUpdatingStar(true);
+      try {
+        const updatedProject = await setProjectStarred(project.id, starred);
+        setProjects((current) =>
+          current.map((item) =>
+            item.id === updatedProject.id ? updatedProject : item,
+          ),
+        );
+        if (menuKey !== undefined) {
+          setOpenThreadMenuID(null);
+        }
+        setSendError("");
+      } catch (error) {
+        handleActionError(
+          error,
+          t("thread.projectUpdateFailed"),
+          reportShellError,
+        );
+      } finally {
+        setIsUpdatingStar(false);
       }
-      setSendError("");
-    } catch (error) {
-      handleActionError(
-        error,
-        t("thread.projectUpdateFailed"),
-        reportShellError,
-      );
-    } finally {
-      setIsUpdatingStar(false);
-    }
-  }
+    },
+    [handleActionError, isUpdatingStar, reportShellError, setProjects, t],
+  );
 
   function handleAttachPendingFiles(files: File[]) {
     setSendError("");
@@ -743,18 +774,25 @@ export function ThreadShell({
   // Retry loads the message back into the composer for the user to edit and send
   // manually, rather than re-sending it immediately. Collapsed pastes are re-staged
   // as chips (not the folded inline text), so a resend keeps the same collapse.
-  function handleRetry(content: string, pastedTexts?: MessagePastedText[]) {
-    const blocks = pastedTexts ?? [];
-    if ((content.trim() === "" && blocks.length === 0) || activeThread === null)
-      return;
-    setDrafts((current) =>
-      setScopedDraft(current, draftScope, {
-        text: content,
-        pastedTexts: blocks.map(pastedTextFromBlock),
-      }),
-    );
-    requestComposerFocus();
-  }
+  // Stable across renders: it reaches every message bubble, and the shell
+  // re-renders on each keystroke and streamed token, so a fresh identity here
+  // would defeat the bubbles' memo.
+  const hasActiveThread = activeThread !== null;
+  const handleRetry = useCallback(
+    (content: string, pastedTexts?: MessagePastedText[]) => {
+      const blocks = pastedTexts ?? [];
+      if ((content.trim() === "" && blocks.length === 0) || !hasActiveThread)
+        return;
+      setDrafts((current) =>
+        setScopedDraft(current, draftScope, {
+          text: content,
+          pastedTexts: blocks.map(pastedTextFromBlock),
+        }),
+      );
+      requestComposerFocus();
+    },
+    [draftScope, hasActiveThread, requestComposerFocus, setDrafts],
+  );
 
   async function sendContent(
     content: string,
@@ -851,7 +889,7 @@ export function ThreadShell({
             ? { ...targetThread, title: t("common.newThread") }
             : targetThread;
         createdThreadForFallback = createdThread;
-        setThreads((current) => upsertThread(current, createdThread));
+        setThreads((current) => upsertThreadById(current, createdThread));
         if (
           projectIDForNewThread !== null &&
           createdThread.projectId === projectIDForNewThread
@@ -987,7 +1025,7 @@ export function ThreadShell({
         onThread: (updatedThread) => {
           receivedThreadEvent = true;
           if (isCurrentThread()) setActiveThread(updatedThread);
-          setThreads((current) => upsertThread(current, updatedThread));
+          setThreads((current) => upsertThreadById(current, updatedThread));
           // Compare against the project captured when this send started, never a
           // live `route` read: a run outlives navigation now.
           if (
@@ -1052,7 +1090,7 @@ export function ThreadShell({
       );
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
-        setThreads((current) => upsertThread(current, fallbackThread));
+        setThreads((current) => upsertThreadById(current, fallbackThread));
         if (
           projectIDForNewThread !== null &&
           fallbackThread.projectId !== undefined &&
@@ -1239,26 +1277,46 @@ export function ThreadShell({
     });
   }
 
-  function handleIncognitoRetry(
-    content: string,
-    pastedTexts?: MessagePastedText[],
-  ) {
-    const blocks = pastedTexts ?? [];
-    if (content.trim() === "" && blocks.length === 0) return;
-    setDrafts((current) =>
-      setScopedDraft(current, INCOGNITO_DRAFT_SCOPE, {
-        text: content,
-        pastedTexts: blocks.map(pastedTextFromBlock),
-      }),
-    );
-    requestComposerFocus();
-  }
+  const handleIncognitoRetry = useCallback(
+    (content: string, pastedTexts?: MessagePastedText[]) => {
+      const blocks = pastedTexts ?? [];
+      if (content.trim() === "" && blocks.length === 0) return;
+      setDrafts((current) =>
+        setScopedDraft(current, INCOGNITO_DRAFT_SCOPE, {
+          text: content,
+          pastedTexts: blocks.map(pastedTextFromBlock),
+        }),
+      );
+      requestComposerFocus();
+    },
+    [requestComposerFocus, setDrafts],
+  );
 
   // A failed turn's error belongs to its own thread; everything else (starring,
   // attaching, loading) belongs to the shell and shows wherever you are. The turn
   // error takes precedence only because reportShellError clears it first — so what
   // this really resolves to is whichever error happened most recently.
   const visibleSendError = activeRun.error !== "" ? activeRun.error : sendError;
+
+  // The project list, for /projects and for a /projects/:id that names no
+  // project we know; the two differ only in the error they show.
+  function renderProjectsPage(projectsLoadError: string) {
+    return (
+      <Suspense fallback={null}>
+        <ProjectsPage
+          projects={projects}
+          loadError={projectsLoadError}
+          onOpenSidebar={openMobileSidebar}
+          onCreateProject={() => openProjectDialog(null)}
+          onOpenProject={navigateToProject}
+          onEditProject={openProjectDialog}
+          onArchiveProject={openArchiveProjectModal}
+          onUnarchiveProject={unarchiveProjectAndReload}
+          onDeleteProject={openDeleteProjectModal}
+        />
+      </Suspense>
+    );
+  }
 
   // Incognito takes over the whole surface with no sidebar or modals — it is a
   // self-contained, ephemeral view reachable only from the /new start screen.
@@ -1318,11 +1376,11 @@ export function ThreadShell({
         starredProjects={starredProjects}
         unstarredProjects={unstarredProjects}
         openThreadMenuID={openThreadMenuID}
-        onToggleDesktopCollapsed={() => setSidebarCollapsed((value) => !value)}
-        onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
-        onToggleUserMenu={() => setUserMenuOpen((open) => !open)}
-        onCloseUserMenu={() => setUserMenuOpen(false)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onToggleDesktopCollapsed={toggleDesktopCollapsed}
+        onCloseMobileSidebar={closeMobileSidebar}
+        onToggleUserMenu={toggleUserMenu}
+        onCloseUserMenu={closeUserMenu}
+        onOpenSettings={openSettings}
         onLogout={onLogout}
         onAdmin={onAdmin}
         onNewThread={navigateToNew}
@@ -1330,30 +1388,19 @@ export function ThreadShell({
         onArtifacts={navigateToArtifacts}
         onProjects={navigateToProjects}
         onMemory={navigateToMemory}
-        onOpenSearch={() => setSearchOpen(true)}
+        onOpenSearch={openSearch}
         onSelectThread={selectThread}
         onDeleteThread={openDeleteModal}
         onRenameThread={openRenameModal}
-        onAddThreadToProject={(thread) => {
-          setMovingThreads([thread]);
-          setModalError("");
-        }}
+        onAddThreadToProject={openMoveThreadModal}
         onStarThread={handleSetThreadStarred}
         onNavigateProject={navigateToProject}
         onStarProject={handleSetProjectStarred}
         onEditProject={openProjectDialog}
         onArchiveProject={openArchiveProjectModal}
-        onDeleteProject={(project) => {
-          setDeletingProject(project);
-          setModalError("");
-          setOpenThreadMenuID(null);
-        }}
-        onToggleThreadMenu={(menuKey) =>
-          setOpenThreadMenuID((current) =>
-            current === menuKey ? null : menuKey,
-          )
-        }
-        onCloseThreadMenu={() => setOpenThreadMenuID(null)}
+        onDeleteProject={openDeleteProjectModal}
+        onToggleThreadMenu={toggleThreadMenu}
+        onCloseThreadMenu={closeThreadMenu}
       />
       {/* The sidebar's right edge, draggable from md up. Not while collapsed:
           the rail is a fixed 56px then, and there is nothing to size. */}
@@ -1365,7 +1412,7 @@ export function ThreadShell({
           <ThreadsPage
             mutationVersion={threadMutationVersion}
             projectsAvailable={projects.length > 0}
-            onOpenSidebar={() => setMobileSidebarOpen(true)}
+            onOpenSidebar={openMobileSidebar}
             onNewThread={navigateToNew}
             onSelectThread={(threadID) => void selectThread(threadID)}
             onRenameThread={openRenameModal}
@@ -1373,78 +1420,38 @@ export function ThreadShell({
             onStarThread={(thread, starred, menuKey) =>
               void handleSetThreadStarred(thread, starred, menuKey)
             }
-            onAddThreadToProject={(thread) => {
-              setMovingThreads([thread]);
-              setModalError("");
-            }}
-            onMoveSelectedToProject={(selectedThreads) => {
-              setMovingThreads(selectedThreads);
-              setModalError("");
-            }}
+            onAddThreadToProject={openMoveThreadModal}
+            onMoveSelectedToProject={openMoveModal}
             onAfterBulkDelete={reloadThreads}
             onSessionExpired={onSessionExpired}
           />
         ) : route.view === "artifacts" ? (
           <Suspense fallback={null}>
             <ArtifactsPage
-              onOpenSidebar={() => setMobileSidebarOpen(true)}
+              onOpenSidebar={openMobileSidebar}
               onSessionExpired={onSessionExpired}
               onUseInThread={handleUseArtifactInThread}
             />
           </Suspense>
         ) : route.view === "memory" ? (
           <Suspense fallback={null}>
-            <MemoryPage onOpenSidebar={() => setMobileSidebarOpen(true)} />
+            <MemoryPage onOpenSidebar={openMobileSidebar} />
           </Suspense>
         ) : route.view === "projects" ? (
-          <Suspense fallback={null}>
-            <ProjectsPage
-              projects={projects}
-              loadError={loadError}
-              onOpenSidebar={() => setMobileSidebarOpen(true)}
-              onCreateProject={() => openProjectDialog(null)}
-              onOpenProject={navigateToProject}
-              onEditProject={openProjectDialog}
-              onArchiveProject={openArchiveProjectModal}
-              onUnarchiveProject={unarchiveProjectAndReload}
-              onDeleteProject={(project) => {
-                setDeletingProject(project);
-                setModalError("");
-                setOpenThreadMenuID(null);
-              }}
-            />
-          </Suspense>
+          renderProjectsPage(loadError)
         ) : route.view === "project" ? (
           activeProject === null ? (
-            <Suspense fallback={null}>
-              <ProjectsPage
-                projects={projects}
-                loadError={
-                  loadError === "" && threadDataLoaded
-                    ? t("errors.projectNotFound")
-                    : loadError
-                }
-                onOpenSidebar={() => setMobileSidebarOpen(true)}
-                onCreateProject={() => openProjectDialog(null)}
-                onOpenProject={navigateToProject}
-                onEditProject={openProjectDialog}
-                onArchiveProject={openArchiveProjectModal}
-                onUnarchiveProject={unarchiveProjectAndReload}
-                onDeleteProject={(project) => {
-                  setDeletingProject(project);
-                  setModalError("");
-                  setOpenThreadMenuID(null);
-                }}
-              />
-            </Suspense>
+            renderProjectsPage(
+              loadError === "" && threadDataLoaded
+                ? t("errors.projectNotFound")
+                : loadError,
+            )
           ) : (
             <ProjectDetailPage
               project={activeProject}
               threads={projectThreads}
               draft={draft.text}
               sendError={visibleSendError}
-              isSending={false}
-              sendDisabled={false}
               openThreadMenuID={openThreadMenuID}
               onBack={navigateToProjects}
               onSessionExpired={onSessionExpired}
@@ -1463,36 +1470,26 @@ export function ThreadShell({
               onRemoveFromProject={(thread) =>
                 void handleRemoveThreadFromProject(thread)
               }
-              onToggleThreadMenu={(menuKey) =>
-                setOpenThreadMenuID((current) =>
-                  current === menuKey ? null : menuKey,
-                )
-              }
-              onCloseThreadMenu={() => setOpenThreadMenuID(null)}
+              onToggleThreadMenu={toggleThreadMenu}
+              onCloseThreadMenu={closeThreadMenu}
               onEditProject={openProjectDialog}
               onArchiveProject={openArchiveProjectModal}
               onUnarchiveProject={unarchiveProjectAndReload}
-              onDeleteProject={(project) => {
-                setDeletingProject(project);
-                setModalError("");
-                setOpenThreadMenuID(null);
-              }}
+              onDeleteProject={openDeleteProjectModal}
               onToggleStar={(project, starred) =>
                 void handleSetProjectStarred(project, starred)
               }
-              onOpenSidebar={() => setMobileSidebarOpen(true)}
+              onOpenSidebar={openMobileSidebar}
             />
           )
         ) : route.view === "new" ? (
           <StartPanel
             displayName={displayName}
             draft={draft.text}
-            isSending={false}
-            sendDisabled={false}
             sendError={visibleSendError}
             attachments={pendingAttachments}
             attachNote={pendingAttachNote}
-            onOpenSidebar={() => setMobileSidebarOpen(true)}
+            onOpenSidebar={openMobileSidebar}
             onDraftChange={(text) => setDraftText(draftScope, text)}
             pastedTexts={draft.pastedTexts}
             onAddPastedText={handleAddPastedText}
@@ -1511,7 +1508,7 @@ export function ThreadShell({
             share={activeShare}
             onShareChange={handleShareChange}
             deferredAttachNote={deferredAttachNote}
-            onOpenSidebar={() => setMobileSidebarOpen(true)}
+            onOpenSidebar={openMobileSidebar}
             messages={messages}
             draft={draft.text}
             streamingBlocks={activeRun.blocks}
@@ -1520,7 +1517,6 @@ export function ThreadShell({
             workingTitle={activeRun.workingTitle}
             sendError={visibleSendError}
             isSending={activeThreadIsStreaming}
-            sendDisabled={false}
             openThreadMenuID={openThreadMenuID}
             onDraftChange={(text) => setDraftText(draftScope, text)}
             pastedTexts={draft.pastedTexts}
@@ -1534,22 +1530,13 @@ export function ThreadShell({
             onDeleteThread={openDeleteModal}
             onRenameThread={openRenameModal}
             onAddToProject={
-              projects.length === 0
-                ? undefined
-                : (thread) => {
-                    setMovingThreads([thread]);
-                    setModalError("");
-                  }
+              projects.length === 0 ? undefined : openMoveThreadModal
             }
             onStarThread={(thread, starred, menuKey) =>
               void handleSetThreadStarred(thread, starred, menuKey)
             }
-            onToggleThreadMenu={(menuKey) =>
-              setOpenThreadMenuID((current) =>
-                current === menuKey ? null : menuKey,
-              )
-            }
-            onCloseThreadMenu={() => setOpenThreadMenuID(null)}
+            onToggleThreadMenu={toggleThreadMenu}
+            onCloseThreadMenu={closeThreadMenu}
           />
         )}
       </main>
@@ -1630,8 +1617,4 @@ export function ThreadShell({
       )}
     </div>
   );
-}
-
-function upsertThread(current: Thread[], thread: Thread): Thread[] {
-  return [thread, ...current.filter((item) => item.id !== thread.id)];
 }

@@ -11,6 +11,7 @@ import {
   messageBlocks,
   upsertToolCallBlock,
   upsertToolResultBlock,
+  withNormalizedBlocks,
 } from "./contentBlocks";
 
 const artifact: Artifact = {
@@ -200,7 +201,53 @@ describe("blocksFromLegacyMessage", () => {
     expect(event.summary).toBeDefined();
     expect(event.summary.kind).toBe("search");
   });
+
+  // Normalizing parses tool arguments and output, and hands the renderer new
+  // objects. It happens once, where a message enters state; after that
+  // messageBlocks must keep returning the very same blocks.
+  test("a message normalized on entry keeps one block list across reads", () => {
+    const message = withNormalizedBlocks(
+      baseMessage({ contentBlocks: [rawToolBlock()] }),
+    );
+
+    const blocks = messageBlocks(message);
+    expect(blocks).toBe(message.contentBlocks);
+    expect(messageBlocks(message)).toBe(blocks);
+    const trace = blocks[0];
+    if (trace.type !== "trace") throw new Error("expected trace block");
+    const event = trace.events[0];
+    if (event.type !== "tool") throw new Error("expected tool event");
+    expect(event.summary.kind).toBe("search");
+  });
+
+  test("normalizing twice is a no-op", () => {
+    const once = withNormalizedBlocks(
+      baseMessage({ contentBlocks: [rawToolBlock()] }),
+    );
+    expect(withNormalizedBlocks(once)).toBe(once);
+  });
+
+  test("a message without content blocks passes through normalization", () => {
+    const message = baseMessage({ content: "legacy" });
+    expect(withNormalizedBlocks(message)).toBe(message);
+  });
 });
+
+// The backend persists tool events raw: name and rawArguments, no summary.
+function rawToolBlock(): ContentBlock {
+  return {
+    type: "trace",
+    events: [
+      {
+        id: "c1",
+        type: "tool",
+        name: "search__web",
+        status: "done",
+        rawArguments: '{"query":"x"}',
+      },
+    ],
+  } as unknown as ContentBlock;
+}
 
 describe("graftStreamedBlocks", () => {
   test("replaces the trailing partial text block with the authoritative final answer", () => {
@@ -257,5 +304,25 @@ describe("graftStreamedBlocks", () => {
       graftStreamedBlocks(message, [{ type: "text", content: "streamed" }])
         .contentBlocks,
     ).toEqual(persisted);
+  });
+
+  test("normalizes the backend's contentBlocks once, on the way into state", () => {
+    const message = baseMessage({ id: "m2", contentBlocks: [rawToolBlock()] });
+
+    const grafted = graftStreamedBlocks(message, []);
+
+    expect(messageBlocks(grafted)).toBe(grafted.contentBlocks);
+    const trace = grafted.contentBlocks?.[0];
+    if (trace?.type !== "trace") throw new Error("expected trace block");
+    expect(trace.events[0]).toMatchObject({ summary: { kind: "search" } });
+  });
+
+  test("grafted stream blocks are returned as they are by messageBlocks", () => {
+    const grafted = graftStreamedBlocks(
+      baseMessage({ id: "m2", content: "Answer." }),
+      [{ type: "text", content: "Ans" }],
+    );
+
+    expect(messageBlocks(grafted)).toBe(grafted.contentBlocks);
   });
 });

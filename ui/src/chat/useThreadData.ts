@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { normalizeActivityTrace } from "../activityTrace";
 import i18n from "../i18n";
+import { withNormalizedBlocks } from "./contentBlocks";
 import type { RouteState } from "./routing";
 import { composerAttachmentFromMessageAttachment } from "./useDocumentAttachments";
 import type { MessageWithActivityTrace } from "./types";
@@ -199,25 +200,25 @@ export function useThreadData({
     setThreads,
     starredProjects,
     starredThreads,
-    threads,
     unstarredProjects,
   };
 }
 
 // rehydrateLoadedMessage turns a message as it arrives from the backend into the
-// rendered/stateful shape: it normalizes the activity trace and converts the
-// persisted attachments (MessageAttachment[]) into the ComposerAttachment[] the
-// sent-message renderer expects, so a reloaded message's previews look identical
-// to one that was just sent.
+// rendered/stateful shape: it normalizes the activity trace and the trace blocks
+// (once, here, so the renderer reads the same blocks on every render) and
+// converts the persisted attachments (MessageAttachment[]) into the
+// ComposerAttachment[] the sent-message renderer expects, so a reloaded
+// message's previews look identical to one that was just sent.
 function rehydrateLoadedMessage(
   message: LoadedMessage,
 ): MessageWithActivityTrace {
-  return {
+  return withNormalizedBlocks({
     ...message,
     activityTrace: normalizeActivityTrace(message.activityTrace),
     attachments:
       message.attachments !== undefined && message.attachments.length > 0
         ? message.attachments.map(composerAttachmentFromMessageAttachment)
         : undefined,
-  };
+  });
 }

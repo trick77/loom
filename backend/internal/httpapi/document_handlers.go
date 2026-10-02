@@ -76,7 +76,7 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.documents == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 
@@ -133,7 +133,7 @@ func (s *server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.documents == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	docs, err := s.documents.List(r.Context(), user.ID, optionalQueryValue(r, "projectId"))
@@ -154,7 +154,7 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.documents == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	docID := r.PathValue("documentID")
@@ -164,7 +164,7 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	// Idempotency gate: if an ingestion is already in flight for this document,
@@ -192,7 +192,7 @@ func (s *server) handleUnindexDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.documents == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	if err := s.documents.Unindex(r.Context(), user.ID, r.PathValue("documentID")); err != nil {
@@ -212,7 +212,7 @@ func (s *server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.documents == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	if err := s.documents.Delete(r.Context(), user.ID, r.PathValue("documentID")); err != nil {

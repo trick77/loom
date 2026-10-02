@@ -68,7 +68,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	priorMessages, found, err := s.thread.ListMessages(r.Context(), user.ID, threadID)
@@ -77,7 +77,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	// Resolve the attached images into model content parts BEFORE anything is
@@ -341,7 +341,7 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	s.activeStreams.stop(user.ID, threadID, stopCause(r.URL.Query().Get("source")))

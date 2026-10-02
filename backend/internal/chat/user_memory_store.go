@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/trick77/loom/internal/sqlutil"
 )
@@ -70,12 +71,13 @@ WHERE user_id = ?`,
 // ListUserMessages returns the user's most recent messages across all threads
 // (chronological order), capped at limit. Used for the full memory rebuild; the
 // cap keeps the rebuild bounded so it never loads the entire history.
+// Only the transcript fields are loaded (see transcriptColumns).
 func (s *Store) ListUserMessages(ctx context.Context, userID string, limit int) ([]Message, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT m.id, m.thread_id, m.role, m.content, m.reasoning_content, m.tool_calls, m.citations, m.artifacts, m.attachments, m.pasted_texts, m.activity_trace, m.content_blocks, m.prompt_tokens, m.completion_tokens, m.total_tokens, m.cached_tokens, m.reasoning_tokens, m.context_tokens, m.cost_nano_usd, m.duration_ms, m.model, m.reasoning_effort, m.created_at
+SELECT `+transcriptColumnsM+`
 FROM messages m
 WHERE m.user_id = ?
 ORDER BY m.created_at DESC, m.rowid DESC
@@ -89,7 +91,7 @@ LIMIT ?`,
 
 	messages := make([]Message, 0)
 	for rows.Next() {
-		message, err := scanMessage(rows)
+		message, err := scanTranscriptMessage(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan user message: %w", err)
 		}
@@ -100,9 +102,7 @@ LIMIT ?`,
 	}
 	// Fetched newest-first to apply the cap; reverse to chronological so the
 	// summary reads the conversation in order.
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
+	slices.Reverse(messages)
 	return messages, nil
 }
 

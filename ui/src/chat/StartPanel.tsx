@@ -14,8 +14,6 @@ import loomLogo from "../assets/loom-logo.svg";
 export function StartPanel({
   displayName,
   draft,
-  isSending,
-  sendDisabled,
   sendError,
   attachments,
   attachNote,
@@ -33,8 +31,6 @@ export function StartPanel({
 }: {
   displayName: string;
   draft: string;
-  isSending: boolean;
-  sendDisabled: boolean;
   sendError: string;
   attachments: ComposerAttachment[];
   attachNote: string;
@@ -101,8 +97,9 @@ export function StartPanel({
             variant="start"
             autoFocus
             draft={draft}
-            isSending={isSending}
-            sendDisabled={sendDisabled}
+            // Never "sending": a turn started here moves to its own thread, and
+            // the start screen stays free for the next one.
+            isSending={false}
             placeholder={t("startPanel.placeholder")}
             onDraftChange={onDraftChange}
             pastedTexts={pastedTexts}

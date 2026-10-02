@@ -90,13 +90,13 @@ func churnVectors(t *testing.T, s *Store, n, keep int) {
 	for i := 1; i <= n; i++ {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, 'u1', 'p1')`,
-			i, vecLiteral(compactVec(float32(i)))); err != nil {
+			i, vecBlob(compactVec(float32(i)))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, 'u2', '')`,
-		n+1, vecLiteral(compactVec(7))); err != nil {
+		n+1, vecBlob(compactVec(7))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid <= ?`, n-keep); err != nil {
@@ -116,7 +116,7 @@ func nearestFor(t *testing.T, s *Store, user string, marker float32, k int) []ne
 	t.Helper()
 	rows, err := s.db.Query(`SELECT rowid, project_id FROM vec_chunks
 		WHERE embedding MATCH ? AND k = ? AND user_id = ? ORDER BY distance`,
-		vecLiteral(compactVec(marker)), k, user)
+		vecBlob(compactVec(marker)), k, user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,5 +439,67 @@ func TestWarnVectorBloat_aFailedMeasureWarns(t *testing.T) {
 
 	if _, ok := logs.find("measuring the vector index failed"); !ok {
 		t.Errorf("records = %v, want the failure", logs.records)
+	}
+}
+
+// A delete that removed no vector cannot have bloated anything: it must not pay
+// for the whole-table measurement (every thread delete runs one).
+func TestScopeDelete_withoutVectorsSkipsTheBloatCheck(t *testing.T) {
+	s, _ := newTestStore(t)
+	churnVectors(t, s, 5000, 100)
+	logs := captureLogs(t)
+
+	if err := s.DeleteThreadScopeDocuments(context.Background(), "u1", "no-documents"); err != nil {
+		t.Fatal(err)
+	}
+
+	if logs.len() != 0 {
+		t.Errorf("records = %v, want none", logs.records)
+	}
+}
+
+func TestDeleteDocument_warnsWhenTheTableIsBloated(t *testing.T) {
+	s, _ := newTestStore(t)
+	churnVectors(t, s, 5000, 100)
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "u/d1.txt", Filename: "d1.txt", MIME: "text/plain", Status: StatusPending})
+	if err := s.ReplaceChunks(ctx, "u1", "d1", []TextChunk{{Text: "one"}}, [][]float32{compactVec(3)}); err != nil {
+		t.Fatalf("seed d1: %v", err)
+	}
+	logs := captureLogs(t)
+
+	if err := s.DeleteDocument(ctx, "u1", "d1"); err != nil {
+		t.Fatal(err)
+	}
+
+	r, ok := logs.find("vector index bloated, compacted at next boot")
+	if !ok {
+		t.Fatalf("want a bloat warning, records = %v", logs.records)
+	}
+	if a := attrsOf(r); a["document"] != "d1" || a["user"] != "u1" {
+		t.Errorf("attrs = %v, want user u1 and document d1", a)
+	}
+}
+
+func TestReplaceChunks_reindexWarnsWhenTheTableIsBloated(t *testing.T) {
+	s, _ := newTestStore(t)
+	churnVectors(t, s, 5000, 100)
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "u/d1.txt", Filename: "d1.txt", MIME: "text/plain", Status: StatusPending})
+	seed := func() {
+		t.Helper()
+		if err := s.ReplaceChunks(ctx, "u1", "d1", []TextChunk{{Text: "one"}}, [][]float32{compactVec(3)}); err != nil {
+			t.Fatalf("ReplaceChunks: %v", err)
+		}
+	}
+	logs := captureLogs(t)
+
+	seed()
+	if logs.len() != 0 {
+		t.Fatalf("first index replaced nothing, records = %v", logs.records)
+	}
+	seed()
+	if _, ok := logs.find("vector index bloated, compacted at next boot"); !ok {
+		t.Fatalf("want a bloat warning after the re-index, records = %v", logs.records)
 	}
 }
