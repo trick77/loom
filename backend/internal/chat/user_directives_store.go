@@ -179,13 +179,25 @@ WHERE user_id = ? AND id = ?`,
 // excluding one id (used by Replace so the row being overwritten isn't
 // double-counted). It runs inside the caller's transaction.
 func directivesTotalLength(ctx context.Context, tx *sql.Tx, userID, excludeID string) (int, error) {
-	// length() of a TEXT value counts characters, i.e. runes.
-	var total int
-	if err := tx.QueryRowContext(ctx, `
-SELECT COALESCE(SUM(length(content)), 0) FROM user_directives WHERE user_id = ? AND id != ?`,
+	rows, err := tx.QueryContext(ctx, `
+SELECT content FROM user_directives WHERE user_id = ? AND id != ?`,
 		userID, excludeID,
-	).Scan(&total); err != nil {
+	)
+	if err != nil {
 		return 0, fmt.Errorf("directives total length: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	total := 0
+	for rows.Next() {
+		var content string
+		if err := rows.Scan(&content); err != nil {
+			return 0, fmt.Errorf("directives total length: scan: %w", err)
+		}
+		total += len([]rune(content))
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("directives total length: iterate: %w", err)
 	}
 	return total, nil
 }

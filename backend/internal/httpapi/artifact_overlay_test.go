@@ -163,3 +163,22 @@ func TestOverlayLeavesBlocksWithoutArtifactsUntouched(t *testing.T) {
 		t.Fatalf("content blocks were rewritten:\n got %s\nwant %s", messages[0].ContentBlocks, raw)
 	}
 }
+
+// The pre-check matches on the encoded form, so it must hold for what the
+// block encoder actually writes: an artifact block always passes it.
+func TestMayEmbedArtifactMatchesEncodedArtifactBlocks(t *testing.T) {
+	raw, err := json.Marshal([]contentBlock{
+		{Type: "text", Content: "before"},
+		{Type: "artifact", Artifact: &artifactResponse{ID: "art_1"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mayEmbedArtifact(raw) {
+		t.Fatalf("encoded artifact block not recognised: %s", raw)
+	}
+	objs, err := decodeContentBlockArtifacts(raw)
+	if err != nil || len(objs) != 1 {
+		t.Fatalf("decodeContentBlockArtifacts() = %v, %v, want the one artifact", objs, err)
+	}
+}

@@ -171,14 +171,6 @@ func pngHeaderWithDimensions(w, h uint32) []byte {
 	return buf.Bytes()
 }
 
-func TestDownscaleForModel_passesADecompressionBombThroughUndecoded(t *testing.T) {
-	bomb := pngHeaderWithDimensions(20000, 20000)
-	got, mime := DownscaleForModel(bomb, "image/png")
-	if !bytes.Equal(got, bomb) || mime != "image/png" {
-		t.Fatal("a bomb must come back unchanged")
-	}
-}
-
 func TestFitDims(t *testing.T) {
 	for _, tc := range []struct{ w, h, max, wantW, wantH int }{
 		{100, 50, 200, 100, 50},

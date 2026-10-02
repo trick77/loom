@@ -77,7 +77,7 @@ func (s *Store) ListUserMessages(ctx context.Context, userID string, limit int) 
 		limit = 200
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT m.id, m.thread_id, m.role, m.content, m.created_at
+SELECT `+transcriptColumnsM+`
 FROM messages m
 WHERE m.user_id = ?
 ORDER BY m.created_at DESC, m.rowid DESC

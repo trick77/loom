@@ -98,16 +98,19 @@ func (s *Store) DetachFromThread(ctx context.Context, userID string, artifactIDs
 	if len(artifactIDs) == 0 {
 		return nil
 	}
-	args := make([]any, 0, len(artifactIDs)+1)
-	args = append(args, userID)
-	for _, id := range artifactIDs {
-		args = append(args, id)
-	}
-	query := `UPDATE artifacts SET thread_id = NULL WHERE user_id = ? AND id IN (` + sqlutil.Placeholders(len(artifactIDs)) + `)` //nolint:gosec // only the ?-placeholder list is interpolated; every value is bound
-	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
 		return fmt.Errorf("detach artifacts from thread: %w", err)
 	}
-	return nil
+	defer func() { _ = tx.Rollback() }()
+	for _, id := range artifactIDs {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE artifacts SET thread_id = NULL WHERE user_id = ? AND id = ?`,
+			userID, id); err != nil {
+			return fmt.Errorf("detach artifact %s from thread: %w", id, err)
+		}
+	}
+	return tx.Commit()
 }
 
 // Rename changes an artifact's display filename, scoped to the user. Only live

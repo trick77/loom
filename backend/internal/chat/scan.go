@@ -101,6 +101,9 @@ const messageColumns = "id, thread_id, role, content, reasoning_content, tool_ca
 // every answer and are the bulk of a row.
 const transcriptColumns = "id, thread_id, role, content, created_at"
 
+// transcriptColumnsM is transcriptColumns for a query that aliases messages as m.
+const transcriptColumnsM = "m.id, m.thread_id, m.role, m.content, m.created_at"
+
 // scanTranscriptMessage reads a transcriptColumns row. Only ID, ThreadID, Role,
 // Content and CreatedAt are set on the result.
 func scanTranscriptMessage(row rowScanner) (Message, error) {
