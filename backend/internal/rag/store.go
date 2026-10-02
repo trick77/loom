@@ -2,8 +2,8 @@ package rag
 
 import (
 	"database/sql"
-	"strconv"
-	"strings"
+	"encoding/binary"
+	"math"
 )
 
 // Store persists documents, their chunks, and chunk embeddings, and retrieves
@@ -42,16 +42,13 @@ func scopeKey(projectID, threadID *string) string {
 	return scopeValue(projectID)
 }
 
-// vecLiteral encodes a float32 vector as the JSON-array text sqlite-vec accepts.
-func vecLiteral(v []float32) string {
-	var b strings.Builder
-	b.WriteByte('[')
-	for i, f := range v {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(strconv.FormatFloat(float64(f), 'g', -1, 32))
+// vecBlob encodes a float32 vector as the little-endian blob sqlite-vec reads
+// directly. The JSON-array text form it also accepts costs a float format here
+// and a parse there for every element.
+func vecBlob(v []float32) []byte {
+	b := make([]byte, 0, 4*len(v))
+	for _, f := range v {
+		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(f))
 	}
-	b.WriteByte(']')
-	return b.String()
+	return b
 }

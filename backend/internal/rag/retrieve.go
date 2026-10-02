@@ -49,7 +49,7 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 	// The status filter runs after the nearest-neighbour search: asking vec0 for
 	// exactly k neighbours and then dropping the ones whose document is still
 	// indexing returned fewer than k. Over-fetch, then trim to k below.
-	args := []any{vecLiteral(queryEmbedding), k * retrieveOverfetchFactor, userID}
+	args := []any{vecBlob(queryEmbedding), k * retrieveOverfetchFactor, userID}
 	for _, sc := range scopes {
 		args = append(args, sc)
 	}

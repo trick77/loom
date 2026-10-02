@@ -90,13 +90,13 @@ func churnVectors(t *testing.T, s *Store, n, keep int) {
 	for i := 1; i <= n; i++ {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, 'u1', 'p1')`,
-			i, vecLiteral(compactVec(float32(i)))); err != nil {
+			i, vecBlob(compactVec(float32(i)))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, 'u2', '')`,
-		n+1, vecLiteral(compactVec(7))); err != nil {
+		n+1, vecBlob(compactVec(7))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM vec_chunks WHERE rowid <= ?`, n-keep); err != nil {
@@ -116,7 +116,7 @@ func nearestFor(t *testing.T, s *Store, user string, marker float32, k int) []ne
 	t.Helper()
 	rows, err := s.db.Query(`SELECT rowid, project_id FROM vec_chunks
 		WHERE embedding MATCH ? AND k = ? AND user_id = ? ORDER BY distance`,
-		vecLiteral(compactVec(marker)), k, user)
+		vecBlob(compactVec(marker)), k, user)
 	if err != nil {
 		t.Fatal(err)
 	}

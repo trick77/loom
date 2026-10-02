@@ -104,8 +104,13 @@ func (s *Store) MarkRefused(ctx context.Context, chunkIDs []int64) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	mark, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO vector_refused (chunk_id) VALUES (?)`)
+	if err != nil {
+		return fmt.Errorf("prepare refused mark: %w", err)
+	}
+	defer func() { _ = mark.Close() }()
 	for _, id := range chunkIDs {
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO vector_refused (chunk_id) VALUES (?)`, id); err != nil {
+		if _, err := mark.ExecContext(ctx, id); err != nil {
 			return fmt.Errorf("mark refused chunk: %w", err)
 		}
 	}
@@ -163,21 +168,28 @@ func (s *Store) InsertVectors(ctx context.Context, chunks []MissingVector, vecto
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for i, c := range chunks {
-		var still int
-		if err := tx.QueryRowContext(ctx, `
+	check, err := tx.PrepareContext(ctx, `
 SELECT count(*) FROM chunks c
 WHERE c.id = ? AND c.user_id = ? AND c.text = ?
-  AND NOT EXISTS (SELECT 1 FROM vec_chunks v WHERE v.rowid = c.id)`,
-			c.ChunkID, c.UserID, c.Text).Scan(&still); err != nil {
+  AND NOT EXISTS (SELECT 1 FROM vec_chunks v WHERE v.rowid = c.id)`)
+	if err != nil {
+		return fmt.Errorf("prepare chunk check: %w", err)
+	}
+	defer func() { _ = check.Close() }()
+	insertVec, err := tx.PrepareContext(ctx, insertVecRow)
+	if err != nil {
+		return fmt.Errorf("prepare vector insert: %w", err)
+	}
+	defer func() { _ = insertVec.Close() }()
+	for i, c := range chunks {
+		var still int
+		if err := check.QueryRowContext(ctx, c.ChunkID, c.UserID, c.Text).Scan(&still); err != nil {
 			return fmt.Errorf("check chunk: %w", err)
 		}
 		if still == 0 {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, ?, ?)`,
-			c.ChunkID, vecLiteral(vectors[i]), c.UserID, c.scope); err != nil {
+		if _, err := insertVec.ExecContext(ctx, c.ChunkID, vecBlob(vectors[i]), c.UserID, c.scope); err != nil {
 			return fmt.Errorf("insert vector: %w", err)
 		}
 	}

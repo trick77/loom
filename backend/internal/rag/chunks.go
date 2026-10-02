@@ -11,6 +11,9 @@ import (
 // user's vectors, so embeddings are always deleted one row at a time.
 const deleteVecRow = `DELETE FROM vec_chunks WHERE rowid = ?`
 
+// insertVecRow writes one embedding, keyed by its chunk's rowid.
+const insertVecRow = `INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, ?, ?)`
+
 // deleteChunksTx removes a document's chunks and their vec rows within tx. The
 // vec rows must be deleted explicitly (CASCADE/triggers cannot reach a vtab).
 // It returns how many embeddings it removed.
@@ -63,11 +66,20 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 		return fmt.Errorf("clear existing chunks: %w", err)
 	}
 
+	insertChunk, err := tx.PrepareContext(ctx,
+		`INSERT INTO chunks (document_id, user_id, project_id, ordinal, text, token_count)
+		 VALUES (?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("prepare chunk insert: %w", err)
+	}
+	defer func() { _ = insertChunk.Close() }()
+	insertVec, err := tx.PrepareContext(ctx, insertVecRow)
+	if err != nil {
+		return fmt.Errorf("prepare embedding insert: %w", err)
+	}
+	defer func() { _ = insertVec.Close() }()
 	for i, c := range chunks {
-		res, err := tx.ExecContext(ctx,
-			`INSERT INTO chunks (document_id, user_id, project_id, ordinal, text, token_count)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			documentID, userID, projectID, c.Ordinal, c.Text, c.TokenCount)
+		res, err := insertChunk.ExecContext(ctx, documentID, userID, projectID, c.Ordinal, c.Text, c.TokenCount)
 		if err != nil {
 			return fmt.Errorf("insert chunk: %w", err)
 		}
@@ -75,9 +87,7 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 		if err != nil {
 			return fmt.Errorf("chunk rowid: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO vec_chunks (rowid, embedding, user_id, project_id) VALUES (?, ?, ?, ?)`,
-			rowid, vecLiteral(embeddings[i]), userID, scope); err != nil {
+		if _, err := insertVec.ExecContext(ctx, rowid, vecBlob(embeddings[i]), userID, scope); err != nil {
 			return fmt.Errorf("insert embedding: %w", err)
 		}
 	}
