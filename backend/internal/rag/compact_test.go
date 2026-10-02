@@ -441,3 +441,65 @@ func TestWarnVectorBloat_aFailedMeasureWarns(t *testing.T) {
 		t.Errorf("records = %v, want the failure", logs.records)
 	}
 }
+
+// A delete that removed no vector cannot have bloated anything: it must not pay
+// for the whole-table measurement (every thread delete runs one).
+func TestScopeDelete_withoutVectorsSkipsTheBloatCheck(t *testing.T) {
+	s, _ := newTestStore(t)
+	churnVectors(t, s, 5000, 100)
+	logs := captureLogs(t)
+
+	if err := s.DeleteThreadScopeDocuments(context.Background(), "u1", "no-documents"); err != nil {
+		t.Fatal(err)
+	}
+
+	if logs.len() != 0 {
+		t.Errorf("records = %v, want none", logs.records)
+	}
+}
+
+func TestDeleteDocument_warnsWhenTheTableIsBloated(t *testing.T) {
+	s, _ := newTestStore(t)
+	churnVectors(t, s, 5000, 100)
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "u/d1.txt", Filename: "d1.txt", MIME: "text/plain", Status: StatusPending})
+	if err := s.ReplaceChunks(ctx, "u1", "d1", []TextChunk{{Text: "one"}}, [][]float32{compactVec(3)}); err != nil {
+		t.Fatalf("seed d1: %v", err)
+	}
+	logs := captureLogs(t)
+
+	if err := s.DeleteDocument(ctx, "u1", "d1"); err != nil {
+		t.Fatal(err)
+	}
+
+	r, ok := logs.find("vector index bloated, compacted at next boot")
+	if !ok {
+		t.Fatalf("want a bloat warning, records = %v", logs.records)
+	}
+	if a := attrsOf(r); a["document"] != "d1" || a["user"] != "u1" {
+		t.Errorf("attrs = %v, want user u1 and document d1", a)
+	}
+}
+
+func TestReplaceChunks_reindexWarnsWhenTheTableIsBloated(t *testing.T) {
+	s, _ := newTestStore(t)
+	churnVectors(t, s, 5000, 100)
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "u/d1.txt", Filename: "d1.txt", MIME: "text/plain", Status: StatusPending})
+	seed := func() {
+		t.Helper()
+		if err := s.ReplaceChunks(ctx, "u1", "d1", []TextChunk{{Text: "one"}}, [][]float32{compactVec(3)}); err != nil {
+			t.Fatalf("ReplaceChunks: %v", err)
+		}
+	}
+	logs := captureLogs(t)
+
+	seed()
+	if logs.len() != 0 {
+		t.Fatalf("first index replaced nothing, records = %v", logs.records)
+	}
+	seed()
+	if _, ok := logs.find("vector index bloated, compacted at next boot"); !ok {
+		t.Fatalf("want a bloat warning after the re-index, records = %v", logs.records)
+	}
+}
