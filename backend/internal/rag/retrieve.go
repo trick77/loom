@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
+
+	"github.com/trick77/loom/internal/sqlutil"
 )
 
 // retrieveOverfetchFactor is how many more neighbours than k the vector search
@@ -28,7 +29,7 @@ func (s *Store) Retrieve(ctx context.Context, userID string, projectID, threadID
 	if threadID != nil && *threadID != "" {
 		scopes = append(scopes, threadScopePrefix+*threadID)
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(scopes)), ",")
+	placeholders := sqlutil.Placeholders(len(scopes))
 
 	// KNN over the partition-keyed vtab, joined back to chunks/documents. The
 	// vec0 MATCH/k drive the search; user_id (partition key) and project_id

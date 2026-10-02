@@ -276,8 +276,7 @@ func (s *Store) ListRecentMessagesForThreads(ctx context.Context, userID string,
 	if perThread <= 0 {
 		perThread = 50
 	}
-	placeholders := strings.Repeat("?,", len(threadIDs))
-	placeholders = placeholders[:len(placeholders)-1]
+	placeholders := sqlutil.Placeholders(len(threadIDs))
 	args := make([]any, 0, len(threadIDs)+2)
 	args = append(args, userID)
 	for _, id := range threadIDs {

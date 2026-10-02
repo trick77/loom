@@ -42,3 +42,11 @@ func TestNewIDIsOpaqueAndUnique(t *testing.T) {
 		t.Fatal("two ids collided")
 	}
 }
+
+func TestPlaceholders(t *testing.T) {
+	for n, want := range map[int]string{0: "", 1: "?", 3: "?,?,?"} {
+		if got := Placeholders(n); got != want {
+			t.Fatalf("Placeholders(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
