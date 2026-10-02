@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/trick77/loom/internal/sqlutil"
 )
@@ -221,13 +222,5 @@ WHERE id = ? AND oidc_subject = ?`,
 }
 
 func contains(values []string, needle string) bool {
-	if needle == "" {
-		return false
-	}
-	for _, value := range values {
-		if value == needle {
-			return true
-		}
-	}
-	return false
+	return needle != "" && slices.Contains(values, needle)
 }

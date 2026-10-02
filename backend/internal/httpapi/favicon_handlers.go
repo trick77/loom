@@ -338,13 +338,13 @@ func (s *server) faviconDir() (string, error) {
 func serveFaviconFile(w http.ResponseWriter, r *http.Request, path, contentType, etag string) {
 	f, err := os.Open(path) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
 	if err != nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	if contentType != "" {

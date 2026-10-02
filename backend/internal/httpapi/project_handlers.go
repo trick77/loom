@@ -82,7 +82,7 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	writeJSON(w, project)
@@ -107,7 +107,7 @@ func (s *server) handleSetProjectStarred(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	writeJSON(w, project)
@@ -132,7 +132,7 @@ func (s *server) handleSetProjectArchived(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -169,7 +169,7 @@ func (s *server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	s.cleanupArtifactFiles(user.ID, artifacts, nil)

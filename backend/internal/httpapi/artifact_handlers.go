@@ -29,7 +29,7 @@ func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.artifacts == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	opts, err := listArtifactsOptionsFromRequest(r)
@@ -78,7 +78,7 @@ func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) 
 // file-serving logic lives in exactly one place.
 func (s *server) serveArtifactDownload(w http.ResponseWriter, r *http.Request, userID, artifactID string) {
 	if s.artifacts == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	found, exists, err := s.artifacts.Get(r.Context(), userID, artifactID)
@@ -87,7 +87,7 @@ func (s *server) serveArtifactDownload(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 	if !exists {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	abs, err := artifact.ResolveExisting(s.usersDir, userID, found.VolumeRelPath)
@@ -144,7 +144,7 @@ func (s *server) handleThumbnailArtifact(w http.ResponseWriter, r *http.Request)
 // it for older artifacts). Shared by the authed and public share-scoped handlers.
 func (s *server) serveArtifactThumbnail(w http.ResponseWriter, r *http.Request, userID, artifactID string) {
 	if s.artifacts == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	found, exists, err := s.artifacts.Get(r.Context(), userID, artifactID)
@@ -153,17 +153,17 @@ func (s *server) serveArtifactThumbnail(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if !exists || !artifact.IsThumbnailableMIME(found.MIMEType) {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	abs, err := s.resolveOrCreateThumbnail(r.Context(), userID, found)
 	if err != nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	file, err := os.Open(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if err != nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -218,7 +218,7 @@ func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.artifacts == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
@@ -227,7 +227,7 @@ func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !exists {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	if err := s.artifacts.Delete(r.Context(), user.ID, found.ID); err != nil {
@@ -256,7 +256,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.artifacts == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	var body renameArtifactRequest
@@ -282,7 +282,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !exists {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	// Lock the extension to the artifact's original so a rename can't change the
@@ -305,7 +305,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if s.artifacts == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes+multipartUploadOverheadBytes)

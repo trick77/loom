@@ -130,7 +130,7 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	messages, found, err := s.thread.ListMessages(r.Context(), user.ID, threadID)
@@ -139,7 +139,7 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	if err := s.refreshMessageArtifacts(r.Context(), user.ID, messages); err != nil {
@@ -197,7 +197,7 @@ func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	writeJSON(w, thread)
@@ -222,7 +222,7 @@ func (s *server) handleSetThreadStarred(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	writeJSON(w, thread)
@@ -247,7 +247,7 @@ func (s *server) handleSetThreadArchived(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -264,7 +264,7 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeJSONError(w, http.StatusNotFound, "not found")
+		writeNotFound(w)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
