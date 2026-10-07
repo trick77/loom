@@ -72,10 +72,11 @@ func setupChild(args []string) error {
 	// Limits last, right before exec: lowering them needs no privilege, and the
 	// address-space cap must not starve this Go process first. Setting
 	// RLIMIT_NOFILE explicitly also stops Go from restoring the inherited value
-	// on exec. No RLIMIT_NPROC: without a user namespace it counts every
-	// process of the uid on the whole host, so a busy uid elsewhere would break
-	// every job. Forks are refused by the seccomp filter; threads are bounded
-	// by the address space and the container's pids_limit.
+	// on exec. RLIMIT_NPROC caps the job's threads (forks are refused by the
+	// seccomp filter) below the container's shared pids_limit, so one job
+	// cannot starve the other slot or the runner. Without a user namespace it
+	// counts the uid's tasks on the whole host, which is why slot uids sit far
+	// above any uid a host process would use.
 	limits := []struct {
 		resource int
 		value    uint64
@@ -83,6 +84,7 @@ func setupChild(args []string) error {
 		{unix.RLIMIT_CORE, 0},
 		{unix.RLIMIT_CPU, cpu},
 		{unix.RLIMIT_FSIZE, 64 << 20},
+		{unix.RLIMIT_NPROC, jobThreadLimit},
 		{unix.RLIMIT_NOFILE, 256},
 		{unix.RLIMIT_AS, memLimit},
 	}

@@ -610,21 +610,30 @@ func TestLoad_sandbox(t *testing.T) {
 		t.Fatalf("overrides: %+v", cfg)
 	}
 
+	// Too long is capped at the sidecar's maximum, not a reason to turn off.
+	t.Run("long timeout", func(t *testing.T) {
+		t.Setenv("BACKEND_SANDBOX_TIMEOUT", "2m")
+		cfg, err := Load()
+		if err != nil || cfg.SandboxURL == "" || cfg.SandboxTimeout != 60*time.Second || cfg.SandboxProblem != "" {
+			t.Fatalf("long timeout: %+v %v", cfg, err)
+		}
+	})
+
 	for name, env := range map[string][2]string{
 		"short token":  {"BACKEND_SANDBOX_TOKEN", "short"},
 		"relative url": {"BACKEND_SANDBOX_URL", "sandbox:8070"},
-		"long timeout": {"BACKEND_SANDBOX_TIMEOUT", "2m"},
 		"bad timeout":  {"BACKEND_SANDBOX_TIMEOUT", "soon"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(env[0], env[1])
-			// The sandbox never blocks boot: a bad value turns the tool off.
+			// The sandbox never blocks boot: a bad value turns the tool off and
+			// says why.
 			cfg, err := Load()
 			if err != nil {
 				t.Fatalf("a bad sandbox value must not fail boot: %v", err)
 			}
-			if cfg.SandboxURL != "" {
-				t.Fatalf("a bad sandbox value must disable the tool, URL %q", cfg.SandboxURL)
+			if cfg.SandboxURL != "" || cfg.SandboxProblem == "" {
+				t.Fatalf("a bad sandbox value must disable the tool with a reason: %+v", cfg)
 			}
 		})
 	}

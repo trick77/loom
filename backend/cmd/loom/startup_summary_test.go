@@ -70,6 +70,9 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 func TestStartupCapabilitiesSandboxConfigured(t *testing.T) {
 	items := startupCapabilities(config.Config{SandboxURL: "http://sandbox:8070", SandboxTimeout: time.Minute}, mcp.Config{}, startupRuntime{})
 	assertCapability(t, items, "Python sandbox", "configured", "url=http://sandbox:8070 timeout=1m0s")
+
+	items = startupCapabilities(config.Config{SandboxProblem: "BACKEND_SANDBOX_URL must be an absolute http(s) URL"}, mcp.Config{}, startupRuntime{})
+	assertCapability(t, items, "Python sandbox", "misconfigured", "absolute http(s) URL")
 }
 
 func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {

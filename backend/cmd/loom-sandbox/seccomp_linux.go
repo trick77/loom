@@ -20,8 +20,11 @@ import (
 //     RLIMIT_AS bounds one process, so only this keeps a job's memory fixed.
 //   - no network: socket() only for AF_UNIX; io_uring, which can open
 //     sockets behind the filter's back, is refused.
-//   - no memory outside RLIMIT_AS: memfd_create (anonymous files), System V
-//     and POSIX IPC objects, and new namespaces (a private tmpfs) are refused.
+//   - no unbounded memory outside RLIMIT_AS: memfd_create (anonymous files),
+//     System V IPC, POSIX message queues and new namespaces (a private tmpfs)
+//     are refused. What remains are files on the slot's tmpfs and on
+//     /dev/shm (POSIX shared memory), both sized by compose, counted in the
+//     memory budget and emptied after the job.
 //   - nothing that reaches other processes or kernel surfaces a job never
 //     needs.
 
