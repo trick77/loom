@@ -58,7 +58,7 @@ func readRegularFile(path string, budget int) ([]byte, string) {
 	if err != nil || !fi.Mode().IsRegular() {
 		return nil, "not a regular file"
 	}
-	if st, ok := fi.Sys().(*syscall.Stat_t); ok && uint64(st.Nlink) != 1 {
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && st.Nlink != 1 {
 		return nil, "hard links are not allowed"
 	}
 	if fi.Size() > int64(budget) {
