@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/loom/internal/config"
@@ -63,6 +64,12 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_API_KEY")
 	assertCapability(t, items, "document generation", "enabled", "tools=5")
 	assertCapability(t, items, "artifacts", "enabled", "users_dir=/data/users")
+	assertCapability(t, items, "Python sandbox", "disabled", "BACKEND_SANDBOX_URL")
+}
+
+func TestStartupCapabilitiesSandboxConfigured(t *testing.T) {
+	items := startupCapabilities(config.Config{SandboxURL: "http://sandbox:8070", SandboxTimeout: time.Minute}, mcp.Config{}, startupRuntime{})
+	assertCapability(t, items, "Python sandbox", "configured", "url=http://sandbox:8070 timeout=1m0s")
 }
 
 func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {

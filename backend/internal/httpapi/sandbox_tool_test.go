@@ -1,0 +1,397 @@
+package httpapi
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/loom/internal/sandbox"
+	"github.com/trick77/loom/internal/sse"
+)
+
+type fakeSandbox struct {
+	available bool
+	result    sandbox.Result
+	err       error
+	got       []sandbox.Request
+}
+
+func (f *fakeSandbox) Available() bool        { return f.available }
+func (f *fakeSandbox) Timeout() time.Duration { return time.Minute }
+func (f *fakeSandbox) Run(_ context.Context, r sandbox.Request) (sandbox.Result, error) {
+	f.got = append(f.got, r)
+	return f.result, f.err
+}
+
+// listDocuments is a document service whose List returns several documents.
+type listDocuments struct {
+	fakeDocumentService
+	docs []rag.Document
+}
+
+func (l *listDocuments) List(context.Context, string, *string) ([]rag.Document, error) {
+	return l.docs, nil
+}
+
+func strp(s string) *string { return &s }
+
+type sandboxFixture struct {
+	srv    *server
+	box    *fakeSandbox
+	thread chat.Thread
+	body   *httptest.ResponseRecorder
+	stream *sse.Writer
+}
+
+func newSandboxFixture(t *testing.T) sandboxFixture {
+	t.Helper()
+	usersDir := t.TempDir()
+	write := func(rel, data string) {
+		abs := filepath.Join(usersDir, testUser.ID, rel)
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("files/umsatz.csv", "kunde,umsatz\nA,10\n")
+	write("files/other.csv", "secret")
+	write("projects/p1/notes.md", "# notes")
+	thread := chat.Thread{ID: "t1", ProjectID: strp("p1")}
+	docs := &listDocuments{docs: []rag.Document{
+		{ID: "doc-aaaa1111", ThreadID: strp("t1"), Filename: "Umsatz Übersicht (2025).csv", VolumeRelpath: "files/umsatz.csv"},
+		{ID: "doc-bbbb2222", ProjectID: strp("p1"), Filename: "notes.md", VolumeRelpath: "projects/p1/notes.md"},
+		// Same user, another thread: never offered, never readable.
+		{ID: "doc-cccc3333", ThreadID: strp("t2"), Filename: "other.csv", VolumeRelpath: "files/other.csv"},
+		// Not a type the sandbox reads.
+		{ID: "doc-dddd4444", ThreadID: strp("t1"), Filename: "report.pdf", VolumeRelpath: "files/report.pdf"},
+		// Gone from the volume.
+		{ID: "doc-eeee5555", ThreadID: strp("t1"), Filename: "stale.csv", VolumeRelpath: "files/stale.csv", Status: rag.StatusStale},
+	}}
+	box := &fakeSandbox{available: true}
+	rec := httptest.NewRecorder()
+	stream, err := sse.NewWriter(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &server{
+		sandbox:   box,
+		documents: docs,
+		usersDir:  usersDir,
+		usage:     stubUsageStore{},
+		artifacts: fakeArtifactStore{},
+	}
+	return sandboxFixture{srv: srv, box: box, thread: thread, body: rec, stream: stream}
+}
+
+func runCall(args string) llm.ToolCall {
+	return llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: sandboxToolName, Arguments: args}}
+}
+
+func TestSandboxOfferedFollowsHealthAndConfig(t *testing.T) {
+	f := newSandboxFixture(t)
+	if !f.srv.sandboxOffered() {
+		t.Fatal("healthy sandbox not offered")
+	}
+	names := toolNames(f.srv.availableTools(f.thread, toolGate{category: "general"}))
+	if !names[sandboxToolName] {
+		t.Fatalf("run_python missing from %v", names)
+	}
+
+	f.box.available = false
+	if f.srv.sandboxOffered() || toolNames(f.srv.availableTools(f.thread, toolGate{category: "general"}))[sandboxToolName] {
+		t.Fatal("unhealthy sandbox still offered")
+	}
+	f.box.available = true
+	f.srv.artifacts = nil
+	if f.srv.sandboxOffered() {
+		t.Fatal("offered without an artifact store")
+	}
+	if (&server{}).sandboxOffered() {
+		t.Fatal("offered without a sandbox")
+	}
+}
+
+func toolNames(tools []llm.Tool) map[string]bool {
+	out := map[string]bool{}
+	for _, tool := range tools {
+		out[tool.Function.Name] = true
+	}
+	return out
+}
+
+func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
+	f := newSandboxFixture(t)
+	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, []string{"doc-bbbb2222"})
+	if !strings.HasPrefix(g, sandboxGuidancePrompt) {
+		t.Fatal("guidance must start with the rule")
+	}
+	notes := strings.Index(g, aliasNotes)
+	umsatz := strings.Index(g, aliasUmsatz)
+	if notes < 0 || umsatz < 0 || notes > umsatz {
+		t.Fatalf("want the turn attachment first, then the thread file:\n%s", g)
+	}
+	for _, never := range []string{"other.csv", "report.pdf", "stale.csv"} {
+		if strings.Contains(g, never) {
+			t.Fatalf("%s must not be offered:\n%s", never, g)
+		}
+	}
+
+	empty := &server{sandbox: f.box}
+	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil); got != sandboxGuidancePrompt {
+		t.Fatalf("no documents: %q", got)
+	}
+}
+
+func TestSandboxGuidanceCapsTheList(t *testing.T) {
+	var docs []rag.Document
+	for i := 0; i < maxSandboxInputsListed+3; i++ {
+		docs = append(docs, rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv"})
+	}
+	s := &server{documents: &listDocuments{docs: docs}}
+	g := s.sandboxGuidance(context.Background(), testUser.ID, chat.Thread{ID: "t1"}, nil)
+	if strings.Count(g, "\n- ") != maxSandboxInputsListed+1 || !strings.Contains(g, "and 3 more") {
+		t.Fatalf("list not capped:\n%s", g)
+	}
+}
+
+var (
+	aliasUmsatz = sandboxAlias(rag.Document{ID: "doc-aaaa1111", Filename: "Umsatz Übersicht (2025).csv"})
+	aliasNotes  = sandboxAlias(rag.Document{ID: "doc-bbbb2222", Filename: "notes.md"})
+)
+
+func TestSandboxAlias(t *testing.T) {
+	// "x" stands for the six hex digits of the id hash.
+	cases := map[string]string{
+		"Übersicht (2025).xlsx":         "Ubersicht_2025_x.xlsx",
+		"data.CSV":                      "data_x.csv",
+		"???.json":                      "file_x.json",
+		"a/../../etc.txt":               "a_etc_x.txt",
+		strings.Repeat("y", 80) + ".md": strings.Repeat("y", 40) + "_x.md",
+	}
+	hash := regexp.MustCompile(`_[0-9a-f]{6}\.`)
+	for name, want := range cases {
+		got := sandboxAlias(rag.Document{ID: "AbC-123_def", Filename: name})
+		if hash.ReplaceAllString(got, "_x.") != want {
+			t.Errorf("sandboxAlias(%q) = %q, want the shape %q", name, got, want)
+		}
+	}
+	a := sandboxAlias(rag.Document{ID: "one", Filename: "data.csv"})
+	b := sandboxAlias(rag.Document{ID: "two", Filename: "data.csv"})
+	if a == b || a != sandboxAlias(rag.Document{ID: "one", Filename: "data.csv"}) {
+		t.Fatalf("aliases must be stable per id and differ across ids: %s %s", a, b)
+	}
+}
+
+func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
+	f := newSandboxFixture(t)
+	var pngBuf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	img.Set(1, 1, color.Black)
+	if err := png.Encode(&pngBuf, img); err != nil {
+		t.Fatal(err)
+	}
+	f.box.result = sandbox.Result{
+		Stdout: "Top: A 10\n",
+		Files: []sandbox.File{
+			{Name: "chart.png", Data: pngBuf.Bytes()},
+			{Name: "top.csv", Data: []byte("kunde,umsatz\nA,10\n")},
+			{Name: "fake.png", Data: []byte("<svg onload=alert(1)>")},
+			{Name: "x.svg", Data: []byte("<svg/>")},
+		},
+		Dropped: []string{"link.txt: not a regular file"},
+	}
+	out, created, handled := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread,
+		runCall(`{"code":"print(1)","files":["`+aliasUmsatz+`","/work/in/`+aliasNotes+`"]}`), nil, false)
+	if !handled {
+		t.Fatal("run_python not handled")
+	}
+	req := f.box.got[0]
+	if req.Code != "print(1)" || len(req.Files) != 2 || string(req.Files[0].Data) != "kunde,umsatz\nA,10\n" || req.Files[1].Name != aliasNotes {
+		t.Fatalf("request %+v", req)
+	}
+	if len(created) != 2 || created[0].DisplayFilename != "chart.png" || created[1].DisplayFilename != "top.csv" {
+		t.Fatalf("created %+v", created)
+	}
+	for _, want := range []string{"exit_code: 0", "Top: A 10", "created artifact chart.png", "created artifact top.csv",
+		"fake.png: not a valid PNG", "x.svg: file type not allowed", "link.txt: not a regular file"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Count(f.body.Body.String(), "event: artifact") != 2 {
+		t.Fatalf("want two artifact events:\n%s", f.body.Body.String())
+	}
+}
+
+func TestRunSandboxToolRejectsOutOfScopeFiles(t *testing.T) {
+	f := newSandboxFixture(t)
+	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread,
+		runCall(`{"code":"print(1)","files":["`+sandboxAlias(rag.Document{ID: "doc-cccc3333", Filename: "other.csv"})+`"]}`), nil, false)
+	if !strings.HasPrefix(out, "tool failed: unknown input file") || strings.Contains(out[strings.Index(out, "Available"):], "other_") {
+		t.Fatalf("output %q", out)
+	}
+	if !strings.Contains(out, aliasUmsatz) {
+		t.Fatalf("the valid names must be listed: %q", out)
+	}
+	if len(f.box.got) != 0 {
+		t.Fatal("job ran with an unknown file")
+	}
+}
+
+func TestRunSandboxToolReportsFailures(t *testing.T) {
+	cases := []struct {
+		name, args string
+		err        error
+		want       string
+	}{
+		{"bad json", `{nope`, nil, "tool failed: invalid arguments"},
+		{"no code", `{"code":"  "}`, nil, "code is required"},
+		{"busy", `{"code":"1"}`, sandbox.ErrBusy, "busy"},
+		{"down", `{"code":"1"}`, errors.New("connection refused"), "unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSandboxFixture(t)
+			f.box.err = tc.err
+			out, created, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread, runCall(tc.args), nil, false)
+			if !strings.HasPrefix(out, toolFailedPrefix) || !strings.Contains(out, tc.want) || created != nil {
+				t.Fatalf("output %q created %v", out, created)
+			}
+		})
+	}
+
+	f := newSandboxFixture(t)
+	f.box.available = false
+	if out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread, runCall(`{"code":"1"}`), nil, false); !strings.Contains(out, "not available") {
+		t.Fatalf("withdrawn sandbox: %q", out)
+	}
+
+	f = newSandboxFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	f.box.err = context.Canceled
+	if out, _, _ := f.srv.executeBuiltInTool(ctx, f.stream, testUser, f.thread, runCall(`{"code":"1"}`), nil, false); out != "tool failed: cancelled" {
+		t.Fatalf("cancelled: %q", out)
+	}
+}
+
+func TestRunSandboxToolNonZeroExitIsAResult(t *testing.T) {
+	f := newSandboxFixture(t)
+	f.box.result = sandbox.Result{ExitCode: 1, Stderr: "Traceback\nKeyError: 'Umsatz'\n", TimedOut: true}
+	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread, runCall(`{"code":"x"}`), nil, false)
+	if strings.HasPrefix(out, toolFailedPrefix) {
+		t.Fatalf("a failing program is not a tool failure: %q", out)
+	}
+	for _, want := range []string{"exit_code: 1", "timed out", "(nothing printed)", "stderr (tail):", "KeyError: 'Umsatz'"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRunSandboxToolInputBudget(t *testing.T) {
+	f := newSandboxFixture(t)
+	big := filepath.Join(f.srv.usersDir, testUser.ID, "files/umsatz.csv")
+	if err := os.WriteFile(big, make([]byte, maxSandboxInputBytes+1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread,
+		runCall(`{"code":"1","files":["`+aliasUmsatz+`"]}`), nil, false)
+	if !strings.Contains(out, "too large") || len(f.box.got) != 0 {
+		t.Fatalf("output %q", out)
+	}
+}
+
+func TestSandboxToolSchema(t *testing.T) {
+	tool := sandboxTool()
+	raw, err := json.Marshal(tool.Function.Parameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"code"`, `"files"`, `"required":["code"]`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("schema lacks %s: %s", want, raw)
+		}
+	}
+	if toolCallCapPerRound(sandboxToolName) != sandboxToolCallsPerRound {
+		t.Fatal("per-round cap")
+	}
+}
+
+func TestStreamMessageRunsPythonAndAnswers(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &fakeToolChatClient{results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{{ID: "call_py", Type: "function", Function: llm.ToolCallFunction{
+			Name: sandboxToolName, Arguments: `{"code":"print('strawberry'.count('r'))"}`,
+		}}}},
+		{Content: "There are 3."},
+	}}
+	box := &fakeSandbox{available: true, result: sandbox.Result{Stdout: "3\n"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread:    store,
+		LLM:       llmClient,
+		Sandbox:   box,
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"How many r in strawberry?"}`))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"name":"run_python"`) || !strings.Contains(rec.Body.String(), `exit_code: 0\nstdout:\n3`) {
+		t.Fatalf("SSE body lacks the run:\n%s", rec.Body.String())
+	}
+	if store.assistantContent != "There are 3." {
+		t.Fatalf("answer %q", store.assistantContent)
+	}
+	if !toolNames(llmClient.tools[0])[sandboxToolName] {
+		t.Fatal("run_python not offered to the model")
+	}
+	if !strings.Contains(llmClient.histories[0][0].Content, sandboxGuidancePrompt) {
+		t.Fatal("guidance missing from the system prompt")
+	}
+	if len(box.got) != 1 || box.got[0].Code != "print('strawberry'.count('r'))" {
+		t.Fatalf("sandbox requests %+v", box.got)
+	}
+}
+
+func TestStreamMessageOmitsPythonWhenSandboxDown(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &fakeToolChatClient{results: []llm.StreamResult{{Content: "Hi."}}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread:    store,
+		LLM:       llmClient,
+		Sandbox:   &fakeSandbox{available: false},
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hello"}`))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if toolNames(llmClient.tools[0])[sandboxToolName] || strings.Contains(llmClient.histories[0][0].Content, "run_python") {
+		t.Fatal("run_python offered or named while the sandbox is down")
+	}
+}

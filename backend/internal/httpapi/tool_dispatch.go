@@ -255,6 +255,14 @@ func (s *server) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 				})
 			}
 		}
+		// run_python is one small schema with its own guidance block, offered
+		// in every category: exact math or counting comes up anywhere. It is
+		// absent while the sidecar is unconfigured or unhealthy.
+		if s.sandboxOffered() {
+			tool := sandboxTool()
+			names[tool.Function.Name] = "built_in"
+			tools = append(tools, tool)
+		}
 		for _, gen := range s.imageTools {
 			schema := gen.Schema()
 			if owner, exists := names[schema.Name]; exists {
@@ -305,7 +313,10 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 	return nil
 }
 
-func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource, typography bool) (string, *artifactResponse, bool) {
+// executeBuiltInTool runs a tool loom implements itself. It returns the
+// model-facing output, the artifacts the call created (run_python can write
+// several) and whether the name was a built-in at all.
+func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource, typography bool) (string, []artifactResponse, bool) {
 	if call.Function.Name == projectThreadsToolName {
 		return s.projectThreadsDigest(ctx, user.ID, thread), nil, true
 	}
@@ -316,15 +327,26 @@ func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, use
 		}
 		return s.runArgTool(ctx, user, thread, call.Function.Name, args), nil, true
 	}
+	if call.Function.Name == sandboxToolName {
+		output, created := s.runSandboxTool(ctx, stream, user, thread, call)
+		return output, created, true
+	}
 	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call, editSource, typography); handled {
-		return output, response, true
+		return output, oneArtifact(response), true
 	}
 	generator := s.docGenerator(call.Function.Name)
 	if generator == nil {
 		return "", nil, false
 	}
 	output, resp := s.runDocGenerator(ctx, stream, user, thread, call, generator)
-	return output, resp, true
+	return output, oneArtifact(resp), true
+}
+
+func oneArtifact(resp *artifactResponse) []artifactResponse {
+	if resp == nil {
+		return nil
+	}
+	return []artifactResponse{*resp}
 }
 
 // runDocGenerator executes a file-generating built-in tool (create_pdf_file,

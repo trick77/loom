@@ -41,6 +41,7 @@ type Totals struct {
 	WebFetches        int `json:"webFetches"`
 	ObscuraFetches    int `json:"obscuraFetches"`
 	ImageGens         int `json:"imageGens"`
+	CodeRuns          int `json:"codeRuns"`
 	// CostNanoUSD is the lifetime list-rate cost across chat and embedding
 	// calls, priced calls only.
 	CostNanoUSD     int64 `json:"costNanoUsd"`
@@ -108,6 +109,11 @@ func (s *Store) IncImageGen(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "image_gens")
 }
 
+// IncCodeRun increments the user's run_python sandbox job counter.
+func (s *Store) IncCodeRun(ctx context.Context, userID string) error {
+	return s.bump(ctx, userID, "code_runs")
+}
+
 // IncThreadCreated increments the user's thread creation counter.
 func (s *Store) IncThreadCreated(ctx context.Context, userID string) error {
 	return s.bump(ctx, userID, "chats_created")
@@ -132,14 +138,14 @@ func (s *Store) bump(ctx context.Context, userID, column string) error {
 func (s *Store) Get(ctx context.Context, userID string) (Totals, error) {
 	const q = `SELECT prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, total_tokens,
 		embedding_tokens, embedding_requests,
-		web_searches, web_fetches, obscura_fetches, image_gens, chats_created, projects_created,
+		web_searches, web_fetches, obscura_fetches, image_gens, code_runs, chats_created, projects_created,
 		cost_nano_usd
 		FROM user_usage_totals WHERE user_id = ?`
 	var t Totals
 	err := s.db.QueryRowContext(ctx, q, userID).Scan(
 		&t.PromptTokens, &t.CompletionTokens, &t.CachedTokens, &t.ReasoningTokens, &t.TotalTokens,
 		&t.EmbeddingTokens, &t.EmbeddingRequests,
-		&t.WebSearches, &t.WebFetches, &t.ObscuraFetches, &t.ImageGens, &t.ThreadsCreated, &t.ProjectsCreated,
+		&t.WebSearches, &t.WebFetches, &t.ObscuraFetches, &t.ImageGens, &t.CodeRuns, &t.ThreadsCreated, &t.ProjectsCreated,
 		&t.CostNanoUSD,
 	)
 	if errors.Is(err, sql.ErrNoRows) {

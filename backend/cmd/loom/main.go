@@ -25,6 +25,7 @@ import (
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/loom/internal/sandbox"
 	"github.com/trick77/loom/internal/store"
 	"github.com/trick77/loom/internal/usage"
 	"github.com/trick77/loom/web"
@@ -209,6 +210,9 @@ func run() error {
 		})
 		imageTools = append(imageTools, imagegen.NewTool(imageProvider))
 	}
+	// The Python sandbox is optional and never blocks boot: its health probe
+	// (a worker below) offers run_python while the sidecar answers.
+	sandboxRunner, sandboxWatch := sandboxForConfig(cfg)
 	var chatClient httpapi.ChatClient
 	if llmClient != nil {
 		chatClient = llmClient
@@ -295,6 +299,7 @@ func run() error {
 		MCP:                        toolService,
 		DocTools:                   docTools,
 		ImageTools:                 imageTools,
+		Sandbox:                    sandboxRunner,
 		ImageDefaultModel:          cfg.ImageGenModel,
 		ImageGenTypographyModel:    cfg.ImageGenTypographyModel,
 		UsersDir:                   cfg.UsersDir,
@@ -319,7 +324,22 @@ func run() error {
 	defer stop()
 	return serve(ctx, srv, ln, background, memoryWorker.Run, func(ctx context.Context) {
 		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
-	})
+	}, sandboxWatch)
+}
+
+// sandboxProbeInterval is how quickly run_python follows the sidecar going
+// down or coming back.
+const sandboxProbeInterval = time.Minute
+
+// sandboxForConfig builds the run_python client when BACKEND_SANDBOX_URL is
+// set. The runner is nil otherwise (never a typed nil inside the interface),
+// and the watch worker then returns at once.
+func sandboxForConfig(cfg config.Config) (httpapi.SandboxRunner, func(context.Context)) {
+	if cfg.SandboxURL == "" {
+		return nil, func(context.Context) {}
+	}
+	client := sandbox.New(cfg.SandboxURL, cfg.SandboxToken, cfg.SandboxTimeout)
+	return client, func(ctx context.Context) { client.Watch(ctx, sandboxProbeInterval) }
 }
 
 // sessionJanitorInterval is how often expired sessions are purged while the

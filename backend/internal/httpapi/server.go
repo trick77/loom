@@ -43,6 +43,8 @@ type Deps struct {
 	MCP        ToolService
 	DocTools   []docgen.Generator
 	ImageTools []imagegen.Tool
+	// Sandbox runs run_python; nil keeps the tool off.
+	Sandbox SandboxRunner
 	// ImageDefaultModel is the configured baseline image model (e.g.
 	// "flux-2-klein-4b"); ImageGenTypographyModel (e.g. "flux-2-flex") is used instead
 	// for the first image of a thread when it reads as typography/logo/text work.
@@ -86,6 +88,7 @@ type server struct {
 	mcp                        ToolService
 	docTools                   []docgen.Generator
 	imageTools                 []imagegen.Tool
+	sandbox                    SandboxRunner
 	imageDefaultModel          string
 	imageTypographyModel       string
 	usersDir                   string
@@ -207,6 +210,7 @@ type UsageStore interface {
 	IncWebFetch(context.Context, string) error
 	IncObscuraFetch(context.Context, string) error
 	IncImageGen(context.Context, string) error
+	IncCodeRun(context.Context, string) error
 	IncThreadCreated(context.Context, string) error
 	IncProjectCreated(context.Context, string) error
 	Get(context.Context, string) (usage.Totals, error)
@@ -305,6 +309,7 @@ func newServer(d Deps) *server {
 		mcp:                        d.MCP,
 		docTools:                   d.DocTools,
 		imageTools:                 d.ImageTools,
+		sandbox:                    d.Sandbox,
 		imageDefaultModel:          d.ImageDefaultModel,
 		imageTypographyModel:       d.ImageGenTypographyModel,
 		usersDir:                   d.UsersDir,

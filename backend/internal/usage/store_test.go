@@ -91,7 +91,7 @@ func TestCounters_areAdditiveAndCreateRow(t *testing.T) {
 	}
 	for _, inc := range []func(context.Context, string) error{
 		st.IncWebSearch, st.IncWebFetch, st.IncObscuraFetch,
-		st.IncImageGen, st.IncThreadCreated, st.IncProjectCreated,
+		st.IncImageGen, st.IncCodeRun, st.IncThreadCreated, st.IncProjectCreated,
 	} {
 		if err := inc(ctx, "u1"); err != nil {
 			t.Fatalf("inc: %v", err)
@@ -106,7 +106,7 @@ func TestCounters_areAdditiveAndCreateRow(t *testing.T) {
 		EmbeddingTokens: 16, EmbeddingRequests: 3,
 		// Chat cost plus both embedding calls: 2 500 000 + 700 + 300.
 		CostNanoUSD: 2_501_000,
-		WebSearches: 1, WebFetches: 1, ObscuraFetches: 1, ImageGens: 1, ThreadsCreated: 1, ProjectsCreated: 1,
+		WebSearches: 1, WebFetches: 1, ObscuraFetches: 1, ImageGens: 1, CodeRuns: 1, ThreadsCreated: 1, ProjectsCreated: 1,
 	}
 	if got != want {
 		t.Fatalf("totals mismatch:\n got %+v\nwant %+v", got, want)
