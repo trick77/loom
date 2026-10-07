@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"runtime/coverage"
+	"syscall"
 )
 
 // The CI escape test runs a -cover build with this tag, so the code that only
@@ -17,6 +18,10 @@ func coverageFlush() {
 	if dir == "" {
 		return
 	}
+	// The child flushes after dropping to the slot uid with umask 077; the
+	// counter files must stay readable for the CI step that merges them.
+	old := syscall.Umask(0o022)
+	defer syscall.Umask(old)
 	_ = coverage.WriteMetaDir(dir)
 	_ = coverage.WriteCountersDir(dir)
 }
