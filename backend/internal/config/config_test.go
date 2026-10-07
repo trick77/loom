@@ -618,8 +618,13 @@ func TestLoad_sandbox(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(env[0], env[1])
-			if _, err := Load(); err == nil {
-				t.Fatal("want an error")
+			// The sandbox never blocks boot: a bad value turns the tool off.
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("a bad sandbox value must not fail boot: %v", err)
+			}
+			if cfg.SandboxURL != "" {
+				t.Fatalf("a bad sandbox value must disable the tool, URL %q", cfg.SandboxURL)
 			}
 		})
 	}

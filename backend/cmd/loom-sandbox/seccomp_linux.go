@@ -20,8 +20,8 @@ import (
 //     RLIMIT_AS bounds one process, so only this keeps a job's memory fixed.
 //   - no network: socket() only for AF_UNIX; io_uring, which can open
 //     sockets behind the filter's back, is refused.
-//   - no memory outside RLIMIT_AS: memfd_create (anonymous files) and new
-//     namespaces (a private tmpfs) are refused.
+//   - no memory outside RLIMIT_AS: memfd_create (anonymous files), System V
+//     and POSIX IPC objects, and new namespaces (a private tmpfs) are refused.
 //   - nothing that reaches other processes or kernel surfaces a job never
 //     needs.
 
@@ -49,6 +49,13 @@ var deniedSyscalls = []uint32{
 	unix.SYS_USERFAULTFD, unix.SYS_BPF, unix.SYS_PERF_EVENT_OPEN,
 	unix.SYS_KEYCTL, unix.SYS_ADD_KEY, unix.SYS_REQUEST_KEY,
 	unix.SYS_OPEN_BY_HANDLE_AT, unix.SYS_NAME_TO_HANDLE_AT,
+	// System V and POSIX IPC objects hold memory outside RLIMIT_AS and outlive
+	// the job (the next job on the same uid could read them).
+	unix.SYS_SHMGET, unix.SYS_SHMAT, unix.SYS_SHMCTL, unix.SYS_SHMDT,
+	unix.SYS_MSGGET, unix.SYS_MSGSND, unix.SYS_MSGRCV, unix.SYS_MSGCTL,
+	unix.SYS_SEMGET, unix.SYS_SEMOP, unix.SYS_SEMCTL, unix.SYS_SEMTIMEDOP,
+	unix.SYS_MQ_OPEN, unix.SYS_MQ_UNLINK, unix.SYS_MQ_TIMEDSEND, unix.SYS_MQ_TIMEDRECEIVE,
+	unix.SYS_MQ_NOTIFY, unix.SYS_MQ_GETSETATTR,
 }
 
 func bpfStmt(code uint16, k uint32) unix.SockFilter {

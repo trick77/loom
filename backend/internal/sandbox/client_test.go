@@ -104,6 +104,44 @@ func TestTokenMismatchWithdrawsTheTool(t *testing.T) {
 	}
 }
 
+// A failed run withdraws the tool; Watch must then probe on the short down
+// interval instead of finishing its long up-interval wait.
+func TestWatchRecoversQuicklyAfterAFailedRun(t *testing.T) {
+	var runs atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/run" {
+			runs.Add(1)
+			// Drop the connection: a transport error, as from a restarting sidecar.
+			hj, _ := w.(http.Hijacker)
+			conn, _, _ := hj.Hijack()
+			_ = conn.Close()
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "", time.Second)
+	c.down = 20 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Watch(ctx, time.Hour)
+	deadline := time.Now().Add(time.Second)
+	for !c.Available() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if _, err := c.Run(context.Background(), Request{Code: "x"}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("run: %v", err)
+	}
+	deadline = time.Now().Add(time.Second)
+	for !c.Available() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !c.Available() || runs.Load() != 1 {
+		t.Fatalf("tool not back within a second (runs %d)", runs.Load())
+	}
+}
+
 func TestRunWithoutTokenSendsNoHeader(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := r.Header["X-Sandbox-Token"]; ok {

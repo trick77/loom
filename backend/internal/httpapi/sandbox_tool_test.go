@@ -142,14 +142,18 @@ func toolNames(tools []llm.Tool) map[string]bool {
 
 func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 	f := newSandboxFixture(t)
-	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, []string{"doc-bbbb2222"})
+	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread)
 	if !strings.HasPrefix(g, sandboxGuidancePrompt) {
 		t.Fatal("guidance must start with the rule")
 	}
 	notes := strings.Index(g, aliasNotes)
 	umsatz := strings.Index(g, aliasUmsatz)
-	if notes < 0 || umsatz < 0 || notes > umsatz {
-		t.Fatalf("want the turn attachment first, then the thread file:\n%s", g)
+	if notes < 0 || umsatz < 0 || umsatz > notes {
+		t.Fatalf("want the store's order (thread file, then project file):\n%s", g)
+	}
+	// The same list on the next turn: the block must not change between turns.
+	if again := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread); again != g {
+		t.Fatal("guidance changed between identical turns")
 	}
 	for _, never := range []string{"other.csv", "report.pdf", "stale.csv"} {
 		if strings.Contains(g, never) {
@@ -158,14 +162,14 @@ func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 	}
 
 	empty := &server{sandbox: f.box}
-	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil); got != sandboxGuidancePrompt {
+	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread); got != sandboxGuidancePrompt {
 		t.Fatalf("no documents: %q", got)
 	}
 }
 
 func TestSandboxGuidanceOffersUserGlobalDocuments(t *testing.T) {
 	f := newSandboxFixture(t)
-	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil)
+	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread)
 	if !strings.Contains(g, sandboxAlias(rag.Document{ID: "doc-ffff6666", Filename: "global.json"})) {
 		t.Fatalf("user-global document missing:\n%s", g)
 	}
@@ -223,7 +227,7 @@ func TestSandboxGuidanceCapsTheList(t *testing.T) {
 		docs = append(docs, rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv"})
 	}
 	s := &server{documents: &listDocuments{docs: docs}}
-	g := s.sandboxGuidance(context.Background(), testUser.ID, chat.Thread{ID: "t1"}, nil)
+	g := s.sandboxGuidance(context.Background(), testUser.ID, chat.Thread{ID: "t1"})
 	if strings.Count(g, "\n- ") != maxSandboxInputsListed+1 || !strings.Contains(g, "and 3 more") {
 		t.Fatalf("list not capped:\n%s", g)
 	}

@@ -72,7 +72,10 @@ func setupChild(args []string) error {
 	// Limits last, right before exec: lowering them needs no privilege, and the
 	// address-space cap must not starve this Go process first. Setting
 	// RLIMIT_NOFILE explicitly also stops Go from restoring the inherited value
-	// on exec.
+	// on exec. No RLIMIT_NPROC: without a user namespace it counts every
+	// process of the uid on the whole host, so a busy uid elsewhere would break
+	// every job. Forks are refused by the seccomp filter; threads are bounded
+	// by the address space and the container's pids_limit.
 	limits := []struct {
 		resource int
 		value    uint64
@@ -80,7 +83,6 @@ func setupChild(args []string) error {
 		{unix.RLIMIT_CORE, 0},
 		{unix.RLIMIT_CPU, cpu},
 		{unix.RLIMIT_FSIZE, 64 << 20},
-		{unix.RLIMIT_NPROC, 64},
 		{unix.RLIMIT_NOFILE, 256},
 		{unix.RLIMIT_AS, memLimit},
 	}
@@ -99,8 +101,8 @@ func setupChild(args []string) error {
 		"MPLBACKEND=Agg",
 		"MPLCONFIGDIR=" + home + "/.config/matplotlib",
 		"XDG_CACHE_HOME=" + home + "/.cache",
-		// BLAS and OpenMP otherwise start a thread per host CPU, each counting
-		// against RLIMIT_NPROC.
+		// BLAS and OpenMP otherwise start a thread per host CPU, each with its
+		// own stack in the address space.
 		"OPENBLAS_NUM_THREADS=1",
 		"OMP_NUM_THREADS=1",
 		"MKL_NUM_THREADS=1",

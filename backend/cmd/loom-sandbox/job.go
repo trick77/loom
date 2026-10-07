@@ -40,7 +40,7 @@ type job struct {
 	slot    int
 }
 
-// executor runs one job. The Linux implementation spawns the namespaced child;
+// executor runs one job. The Linux implementation starts exec-child as the slot uid;
 // tests substitute a fake.
 type executor interface {
 	run(ctx context.Context, j job) (runResponse, error)

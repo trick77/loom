@@ -224,7 +224,7 @@ func populateJobDir(jobDir string, j job, uid int, mplConfig string) error {
 // cleanupJob removes the job's directory and whatever it left in /dev/shm,
 // the one other place it can write. Nothing of a job outlives it.
 func cleanupJob(jobDir string, uid int) {
-	_ = os.RemoveAll(jobDir) //nolint:gosec // jobDir is workDir/jobs/<random hex> built by prepareJobDir
+	_ = os.RemoveAll(jobDir) //nolint:gosec // jobDir is <slot tmpfs>/<random hex>, built by prepareJobDir
 	entries, err := os.ReadDir("/dev/shm")
 	if err != nil {
 		return

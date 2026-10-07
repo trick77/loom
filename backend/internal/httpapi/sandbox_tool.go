@@ -11,7 +11,6 @@ import (
 	_ "image/png" // DecodeConfig for sandbox PNG output
 	"io"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
@@ -114,9 +114,11 @@ type sandboxInput struct {
 const sandboxGuidanceScan = 50
 
 // sandboxInputs lists the documents in the thread's scope that run_python can
-// read, the turn's attachments first, then newest first. Aliases derive from
-// the document id, so they are stable across turns.
-func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.Thread, turnAttachmentIDs []string, limit int) []sandboxInput {
+// read, in the store's order: the thread's own, then the project's, then the
+// user-global ones, each newest first. The order (and aliases derived from
+// the document id) stay the same from turn to turn until something is
+// uploaded, so the guidance block does not break the prompt cache.
+func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.Thread, limit int) []sandboxInput {
 	if s.documents == nil {
 		return nil
 	}
@@ -126,13 +128,7 @@ func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.T
 		slog.Warn("sandbox input listing failed", "thread_id", thread.ID, "err", err)
 		return nil
 	}
-	first := map[string]int{}
-	for i, id := range turnAttachmentIDs {
-		if _, ok := first[id]; !ok {
-			first[id] = i
-		}
-	}
-	var attached, rest []sandboxInput
+	var inputs []sandboxInput
 	seen := map[string]bool{}
 	for _, d := range docs {
 		// The query already scoped by user, thread and project; the check stays as
@@ -148,19 +144,9 @@ func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.T
 			continue
 		}
 		seen[in.alias] = true
-		if _, ok := first[d.ID]; ok {
-			attached = append(attached, in)
-		} else {
-			rest = append(rest, in)
-		}
+		inputs = append(inputs, in)
 	}
-	// Attachments in the order the user attached them.
-	for i := 1; i < len(attached); i++ {
-		for j := i; j > 0 && first[attached[j].doc.ID] < first[attached[j-1].doc.ID]; j-- {
-			attached[j], attached[j-1] = attached[j-1], attached[j]
-		}
-	}
-	return append(attached, rest...)
+	return inputs
 }
 
 // sandboxAlias maps an upload name to the ASCII shape the sidecar accepts,
@@ -200,8 +186,8 @@ func sandboxAlias(d rag.Document) string {
 
 // sandboxGuidance is the prompt block that comes with the tool: the rule and
 // the input files of this thread.
-func (s *server) sandboxGuidance(ctx context.Context, userID string, thread chat.Thread, turnAttachmentIDs []string) string {
-	inputs := s.sandboxInputs(ctx, userID, thread, turnAttachmentIDs, sandboxGuidanceScan)
+func (s *server) sandboxGuidance(ctx context.Context, userID string, thread chat.Thread) string {
+	inputs := s.sandboxInputs(ctx, userID, thread, sandboxGuidanceScan)
 	if len(inputs) == 0 {
 		return sandboxGuidancePrompt
 	}
@@ -298,7 +284,7 @@ func (s *server) sandboxFiles(ctx context.Context, userID string, thread chat.Th
 	if len(list) == 0 {
 		return nil, ""
 	}
-	inputs := s.sandboxInputs(ctx, userID, thread, nil, 0)
+	inputs := s.sandboxInputs(ctx, userID, thread, 0)
 	byAlias := map[string]sandboxInput{}
 	for _, in := range inputs {
 		byAlias[in.alias] = in
@@ -340,12 +326,12 @@ func (s *server) sandboxFiles(ctx context.Context, userID string, thread chat.Th
 
 var errSandboxInputTooLarge = errors.New("the input files together are too large for the sandbox")
 
+// readSandboxInput reads a document's bytes through the documents package's
+// sandboxed opener (user root only, no traversal or symlink escape), always
+// under the requesting user.
 func (s *server) readSandboxInput(userID string, doc rag.Document, budget int) ([]byte, error) {
-	abs, err := artifact.ResolveExisting(s.usersDir, userID, doc.VolumeRelpath)
-	if err != nil {
-		return nil, errors.New("not readable")
-	}
-	f, err := os.Open(abs) //nolint:gosec // abs passed ResolveExisting: inside the user's root, no traversal or symlink escape
+	doc.UserID = userID
+	f, err := documents.VolumeOpener{UsersDir: s.usersDir}.OpenDocument(doc)
 	if err != nil {
 		return nil, errors.New("not readable")
 	}

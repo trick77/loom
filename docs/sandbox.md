@@ -26,7 +26,7 @@ container each layer holds on its own:
   (multiprocessing and subprocess fail with `BlockingIOError`).
 - **No network**: the filter allows only `AF_UNIX` sockets and refuses io_uring. The `sandbox`
   compose network is `internal` (no egress) and holds only loom and the sidecar.
-- **No way around the limits**: the filter also refuses `memfd_create`, new namespaces, mount,
+- **No way around the limits**: the filter also refuses `memfd_create`, System V and POSIX IPC, new namespaces, mount,
   ptrace and other kernel surfaces a job never needs; the image has no setuid programs; the
   container has no `SYS_ADMIN` and only the capabilities the runner needs to switch uids.
 - **Fixed memory and disk per job**: one process with a 1.25 GiB address space, and its slot's

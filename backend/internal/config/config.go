@@ -321,9 +321,7 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET must be an integer greater than 0")
 	}
 	cfg.ProjectSummaryTokenBudget = projectSummaryTokenBudget
-	if err := loadSandbox(&cfg); err != nil {
-		return Config{}, err
-	}
+	loadSandbox(&cfg)
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
 	}
@@ -430,25 +428,33 @@ func isAbsoluteHTTPURL(raw string) bool {
 // would only be clamped there.
 const maxSandboxTimeout = 60 * time.Second
 
-func loadSandbox(cfg *Config) error {
+// loadSandbox reads the optional run_python settings. The sandbox never
+// blocks boot: a bad value turns the tool off with a warning instead.
+func loadSandbox(cfg *Config) {
 	cfg.SandboxTimeout = maxSandboxTimeout
-	// The sandbox is optional: its settings are checked only once it is
-	// enabled, so a stray value for a disabled feature never blocks boot.
 	if cfg.SandboxURL == "" {
-		return nil
+		return
 	}
+	if problem := sandboxProblem(cfg); problem != "" {
+		slog.Warn("run_python disabled: " + problem)
+		cfg.SandboxURL, cfg.SandboxToken = "", ""
+		cfg.SandboxTimeout = maxSandboxTimeout
+	}
+}
+
+func sandboxProblem(cfg *Config) string {
 	timeout, err := time.ParseDuration(env("BACKEND_SANDBOX_TIMEOUT", maxSandboxTimeout.String()))
 	if err != nil || timeout <= 0 || timeout > maxSandboxTimeout {
-		return fmt.Errorf("BACKEND_SANDBOX_TIMEOUT must be a duration greater than 0 and at most %s", maxSandboxTimeout)
+		return fmt.Sprintf("BACKEND_SANDBOX_TIMEOUT must be a duration greater than 0 and at most %s", maxSandboxTimeout)
 	}
 	cfg.SandboxTimeout = timeout
 	if !isAbsoluteHTTPURL(cfg.SandboxURL) {
-		return fmt.Errorf("BACKEND_SANDBOX_URL must be an absolute http(s) URL")
+		return "BACKEND_SANDBOX_URL must be an absolute http(s) URL"
 	}
 	// The token is optional: the sidecar sits on a network only loom shares
 	// and its jobs cannot open network sockets.
 	if cfg.SandboxToken != "" && len(cfg.SandboxToken) < 16 {
-		return fmt.Errorf("BACKEND_SANDBOX_TOKEN, when set, must be at least 16 characters")
+		return "BACKEND_SANDBOX_TOKEN, when set, must be at least 16 characters"
 	}
-	return nil
+	return ""
 }

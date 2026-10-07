@@ -70,6 +70,10 @@ type Client struct {
 	// tokenRejected remembers that the last probe failed on the token, so the
 	// error is logged once rather than every probe.
 	tokenRejected atomic.Bool
+	// wake tells Watch that a run withdrew the tool, so it probes on the
+	// down interval instead of finishing a long up-interval wait.
+	wake chan struct{}
+	down time.Duration // downProbeInterval; tests shorten it
 }
 
 // New returns a client for the sidecar at baseURL. timeout is the longest a
@@ -80,6 +84,8 @@ func New(baseURL, token string, timeout time.Duration) *Client {
 		token:   token,
 		timeout: timeout,
 		http:    &http.Client{},
+		wake:    make(chan struct{}, 1),
+		down:    downProbeInterval,
 	}
 }
 
@@ -162,12 +168,14 @@ func (c *Client) Watch(ctx context.Context, interval time.Duration) {
 	}
 	for {
 		next := interval
-		if !c.Available() && downProbeInterval < next {
-			next = downProbeInterval
+		if !c.Available() && c.down < next {
+			next = c.down
 		}
 		select {
 		case <-ctx.Done():
 			return
+		case <-c.wake:
+			// A run just withdrew the tool: start the faster down rhythm now.
 		case <-time.After(next):
 			c.Probe(ctx)
 		}
@@ -203,7 +211,7 @@ func (c *Client) Run(ctx context.Context, r Request) (Result, error) {
 		if ctx.Err() != nil && errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
 			return Result{}, fmt.Errorf("%w: no response in time", ErrUnavailable)
 		}
-		if ctx.Err() == nil && c.available.Swap(false) {
+		if ctx.Err() == nil && c.withdraw() {
 			// The sidecar is gone: withdraw the tool now rather than at the next
 			// probe; Watch brings it back once it answers again.
 			slog.Warn("sandbox unreachable, run_python withdrawn", "url", c.baseURL, "err", err)
@@ -225,7 +233,7 @@ func (c *Client) Run(ctx context.Context, r Request) (Result, error) {
 	case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
 		return Result{}, fmt.Errorf("%w: %s", ErrRejected, errorMessage(data))
 	case http.StatusUnauthorized:
-		if c.available.Swap(false) {
+		if c.withdraw() {
 			slog.Error("sandbox rejected loom's token, run_python withdrawn", "url", c.baseURL)
 		}
 		return Result{}, fmt.Errorf("%w: %w", ErrUnavailable, errTokenMismatch)
@@ -247,4 +255,16 @@ func errorMessage(data []byte) string {
 		return e.Error
 	}
 	return "invalid request"
+}
+
+// withdraw takes the tool away after a failed run and wakes Watch, so it
+// brings the tool back on the short down interval. It reports whether the
+// tool was offered until now.
+func (c *Client) withdraw() bool {
+	was := c.available.Swap(false)
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+	return was
 }

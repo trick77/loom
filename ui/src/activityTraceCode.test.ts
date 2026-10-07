@@ -98,6 +98,20 @@ describe("run_python trace rows", () => {
     });
   });
 
+  test("another tool's output starting with exit_code is not a failure", () => {
+    let events: ActivityTraceEvent[] = upsertTraceToolCall([], {
+      id: "f1",
+      name: "fetch__fetch",
+      arguments: JSON.stringify({ url: "https://ci.example/log" }),
+    });
+    events = upsertTraceToolResult(events, {
+      id: "f1",
+      name: "fetch__fetch",
+      content: "exit_code: 1\nbuild failed",
+    });
+    expect((events[0] as ActivityTraceToolEvent).status).toBe("done");
+  });
+
   test("an infrastructure failure is failed with its message", () => {
     const event = runWithResult("tool failed: the Python sandbox is busy");
     expect(event.status).toBe("failed");

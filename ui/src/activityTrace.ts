@@ -6,11 +6,12 @@ const SANDBOX_TOOL = "run_python";
 
 // toolOutputFailed marks a step failed: an infrastructure failure, or a
 // run_python program that exited non-zero (its output still reaches the model,
-// which may fix the code and run it again).
-function toolOutputFailed(output: string): boolean {
+// which may fix the code and run it again). The exit-code check applies to
+// run_python alone: another tool's output may begin with the same text.
+function toolOutputFailed(name: string, output: string): boolean {
   return (
     output.startsWith(TOOL_FAILED_PREFIX) ||
-    /^exit_code: (?!0\n|0$)-?\d+/.test(output)
+    (name === SANDBOX_TOOL && /^exit_code: (?!0\n|0$)-?\d+/.test(output))
   );
 }
 
@@ -114,7 +115,7 @@ export function upsertTraceToolResult(
 ): ActivityTraceEvent[] {
   return events.map((item) => {
     if (item.type !== "tool" || item.id !== event.id) return item;
-    const failed = toolOutputFailed(event.content);
+    const failed = toolOutputFailed(item.name, event.content);
     return {
       ...item,
       status: failed ? "failed" : "done",
@@ -159,7 +160,7 @@ export function normalizeActivityTrace(
       summary,
     };
     if (event.rawOutput !== undefined && event.preview === undefined) {
-      const failed = toolOutputFailed(event.rawOutput);
+      const failed = toolOutputFailed(event.name, event.rawOutput);
       normalized.status = failed ? "failed" : normalized.status;
       normalized.preview = summarizeToolResult(normalized, event.rawOutput);
     }

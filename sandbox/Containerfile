@@ -6,12 +6,13 @@
 FROM golang:1.27-alpine AS build
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
-RUN go mod download
 COPY backend/cmd/loom-sandbox/ ./cmd/loom-sandbox/
 # SANDBOX_COVER=1 builds the coverage-instrumented binary the CI escape test
-# measures (see cover_on.go); releases never set it.
+# measures (see cover_on.go); releases never set it. go build fetches only
+# the modules this binary imports (golang.org/x/sys), not all of loom's.
 ARG SANDBOX_COVER=""
-RUN if [ -n "$SANDBOX_COVER" ]; then \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    if [ -n "$SANDBOX_COVER" ]; then \
       CGO_ENABLED=0 go build -cover -covermode=atomic -tags sandboxcover -o /out/loom-sandbox ./cmd/loom-sandbox; \
     else \
       CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/loom-sandbox ./cmd/loom-sandbox; \

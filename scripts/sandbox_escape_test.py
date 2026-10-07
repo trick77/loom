@@ -108,6 +108,8 @@ for name, code in {
     "become root": "import os; os.setuid(0)",
     "mount": "import ctypes, os; l=ctypes.CDLL(None, use_errno=True)\nif l.mount(b'none', b'/tmp', b'tmpfs', 0, None) != 0: raise OSError(ctypes.get_errno(), 'mount')",
     "anonymous memory file": "import os; os.memfd_create('x')",
+    "System V shared memory": "import ctypes; l=ctypes.CDLL(None, use_errno=True)\nif l.shmget(0, 1 << 30, 0o1600) < 0: raise OSError(ctypes.get_errno(), 'shmget')",
+    "POSIX message queue": "import ctypes; l=ctypes.CDLL(None, use_errno=True)\nif l.mq_open(b'/q', 0o100 | 2, 0o600, None) < 0: raise OSError(ctypes.get_errno(), 'mq_open')",
     "new user namespace": "import os; os.unshare(os.CLONE_NEWUSER)",
     "ptrace": "import ctypes; l=ctypes.CDLL(None, use_errno=True)\nif l.ptrace(16, 1, 0, 0) != 0: raise OSError(ctypes.get_errno(), 'ptrace')",
 }.items():
