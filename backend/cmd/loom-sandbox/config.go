@@ -39,6 +39,9 @@ const (
 	maxDroppedReported = 20
 
 	slotUIDBase = 10000
+
+	// jobShmBytes is the size of each job's private /dev/shm.
+	jobShmBytes = 64 << 20
 )
 
 type config struct {
@@ -85,7 +88,24 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if cfg.diskLimit, err = megabytes(or("SANDBOX_DISK_LIMIT_MB", "320")); err != nil {
 		return config{}, fmt.Errorf("SANDBOX_DISK_LIMIT_MB: %w", err)
 	}
+	total, err := megabytes(or("SANDBOX_TOTAL_MEMORY_MB", "3584"))
+	if err != nil {
+		return config{}, fmt.Errorf("SANDBOX_TOTAL_MEMORY_MB: %w", err)
+	}
+	// Every job is one process (see seccomp_linux.go), so its worst case is
+	// fixed: address space, its tmpfs, its /dev/shm. All slots full must fit
+	// the total, which leaves the container's mem_limit room for the server
+	// and gVisor itself; a job that wants more fails alone with MemoryError.
+	if need := uint64(cfg.slots) * cfg.jobMemoryCeiling(); need > total { //nolint:gosec // slots passed positiveInt
+		return config{}, fmt.Errorf("%d slots × %d MiB per job = %d MiB exceeds SANDBOX_TOTAL_MEMORY_MB (%d MiB)",
+			cfg.slots, cfg.jobMemoryCeiling()>>20, need>>20, total>>20)
+	}
 	return cfg, nil
+}
+
+// jobMemoryCeiling is the most memory one job can hold at once.
+func (c config) jobMemoryCeiling() uint64 {
+	return c.memLimit + c.diskLimit + jobShmBytes
 }
 
 func megabytes(s string) (uint64, error) {

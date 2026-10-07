@@ -82,7 +82,7 @@ func sandboxTool() llm.Tool {
 		Type: "function",
 		Function: llm.ToolFunction{
 			Name:        sandboxToolName,
-			Description: "Run a Python 3 program in an isolated sandbox and return what it prints (stdout, the tail of stderr, the exit code). Stateless and offline. Input files appear at /work/in/<name>; files saved to /work/out/ are delivered to the user.",
+			Description: "Run a Python 3 program in an isolated sandbox and return what it prints (stdout, the tail of stderr, the exit code). Stateless, offline, single process (threads work; subprocess and multiprocessing do not). Input files appear at /work/in/<name>; files saved to /work/out/ are delivered to the user.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

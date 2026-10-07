@@ -110,6 +110,28 @@ check("healthy after fork bomb", healthy())
 r = run("b = bytearray(4 << 30)")
 check("4 GiB allocation fails", "MemoryError" in r["stderr"], r)
 
+# One process per job keeps every job's memory under a fixed ceiling.
+r = run("import multiprocessing as mp\nwith mp.Pool(4) as p: print(p.map(abs, [-1, -2]))")
+check("multiprocessing is refused", r["exit_code"] != 0 and "BlockingIOError" in r["stderr"], r)
+r = run("import subprocess\nsubprocess.run(['true'])")
+check("subprocess is refused", r["exit_code"] != 0, r)
+r = run("import threading\nout = []\nts = [threading.Thread(target=out.append, args=(i,)) for i in range(4)]\n"
+        "[t.start() for t in ts]; [t.join() for t in ts]\nprint(sorted(out))")
+check("threads still work", r["stdout"].strip() == "[0, 1, 2, 3]", r)
+
+big = {}
+
+
+def big_job(key):
+    big[key] = run("b = bytearray(1100 << 20)\nb[-1] = 1\nimport time; time.sleep(3)\nprint('held')", timeout_ms=30000)
+
+
+ts = [threading.Thread(target=big_job, args=(k,)) for k in ("a", "b")]
+[t.start() for t in ts]
+[t.join() for t in ts]
+check("two 1.1 GiB jobs run side by side within the budget",
+      all(big[k]["stdout"].strip() == "held" for k in ("a", "b")), big)
+
 r = run("while True: pass", timeout_ms=3000)
 check("busy loop killed at timeout", r["timed_out"], r)
 

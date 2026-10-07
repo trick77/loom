@@ -82,6 +82,22 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatalf("overrides: %+v %v", cfg, err)
 	}
 
+	// The budget: 2 slots × (2560 + 320 + 64) MiB does not fit 3584 MiB.
+	env["SANDBOX_SLOTS"] = "2"
+	if _, err := loadConfig(getenv); err == nil || !strings.Contains(err.Error(), "SANDBOX_TOTAL_MEMORY_MB") {
+		t.Fatalf("over-budget slots accepted: %v", err)
+	}
+	env["SANDBOX_MEM_LIMIT_MB"] = "1280"
+	cfg, err = loadConfig(getenv)
+	if err != nil || cfg.jobMemoryCeiling()*2 > 3584<<20 {
+		t.Fatalf("default budget: %v", err)
+	}
+	env["SANDBOX_TOTAL_MEMORY_MB"] = "x"
+	if _, err := loadConfig(getenv); err == nil {
+		t.Fatal("bad total accepted")
+	}
+	env["SANDBOX_TOTAL_MEMORY_MB"] = ""
+
 	env["SANDBOX_TOKEN"] = "short"
 	if _, err := loadConfig(getenv); err == nil {
 		t.Error("short token accepted")

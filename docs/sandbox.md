@@ -49,8 +49,12 @@ Each layer holds on its own:
   job's own processes. Other jobs' directories are hidden.
 - **Unprivileged**: the job runs as a per-slot uid with no groups, `no_new_privs`, a read-only root
   file system, read-only inputs.
-- **Limits**: 60 s wall clock and CPU, 1.25 GiB address space, 64 processes, 64 MiB per file, a
-  320 MiB tmpfs per job, two concurrent jobs, 4 GiB for the container.
+- **Limits**: 60 s wall clock and CPU, 1.25 GiB address space, 64 MiB per file, a 320 MiB tmpfs
+  and a 64 MiB `/dev/shm` per job, two concurrent jobs. A job is **one process**: a seccomp filter
+  allows threads but refuses fork, vfork and process clones (multiprocessing and subprocess fail
+  with `BlockingIOError`). Every job therefore has a fixed memory ceiling, and all slots together
+  stay within `SANDBOX_TOTAL_MEMORY_MB` (3.5 GiB; the runner refuses to start otherwise) inside the
+  container's 4 GiB. A job that wants more gets a `MemoryError`; the other job is unaffected.
 - **Stateless**: every call starts from nothing; the job's tmpfs is unmounted afterwards. No user
   id, path or volume reaches the sidecar: loom sends the bytes of in-scope uploads and stores the
   outputs itself.
@@ -71,7 +75,10 @@ pull request.
 | `SANDBOX_MEM_LIMIT_MB` | `1280` | address space per job |
 | `SANDBOX_DISK_LIMIT_MB` | `320` | tmpfs per job (inputs, outputs, home) |
 
-Raising slots or limits needs a matching `mem_limit` on the `sandbox` service.
+| `SANDBOX_TOTAL_MEMORY_MB` | `3584` | slots × (memory + tmpfs + 64 MiB) must fit |
+
+Raising slots or limits needs a matching `SANDBOX_TOTAL_MEMORY_MB` and `mem_limit` on the
+`sandbox` service.
 
 ## Libraries
 

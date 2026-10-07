@@ -159,7 +159,9 @@ services:
     read_only: true
     tmpfs:
       - /work:size=16m,mode=0711
-    # Two job slots of 1.25 GiB address space plus their 320 MiB tmpfs each.
+    # Hard ceiling for everything in the sandbox. Each job is one process
+    # (1.25 GiB address space, 320 MiB tmpfs, 64 MiB /dev/shm); two slots fit
+    # the runner's 3.5 GiB budget, the rest is the server and gVisor.
     mem_limit: 4g
     cpus: 2
     pids_limit: 1024

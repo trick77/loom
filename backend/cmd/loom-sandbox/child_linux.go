@@ -84,7 +84,7 @@ func setupChild(args []string) error {
 	// outlive a job; a CLONE_NEWIPC namespace does not cover them. Each job gets
 	// its own, gone with its mount namespace.
 	if err := syscall.Mount("tmpfs", "/dev/shm", "tmpfs",
-		syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "size=64m,mode=1777"); err != nil {
+		syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, fmt.Sprintf("size=%d,mode=1777", jobShmBytes)); err != nil {
 		return fmt.Errorf("private /dev/shm: %w", err)
 	}
 	if _, err := os.Stat("/dev/mqueue"); err == nil {
@@ -150,6 +150,9 @@ func setupChild(args []string) error {
 	// -u: unbuffered, so output printed before a kill still arrives.
 	argv := []string{"python3", "-I", "-B", "-u", "-X", "utf8", sandboxMain}
 	coverageFlush()
+	if err := installNoProcessFilter(); err != nil {
+		return err
+	}
 	return syscall.Exec(python, argv, env) //nolint:gosec // python is the operator-configured interpreter path; running untrusted code is this binary's purpose
 }
 
