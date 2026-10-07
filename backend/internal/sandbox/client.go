@@ -168,7 +168,10 @@ func (c *Client) Watch(ctx context.Context, interval time.Duration) {
 	}
 	for {
 		next := interval
-		if !c.Available() && c.down < next {
+		// Down: probe often so the tool comes back soon. A rejected token is a
+		// configuration error that no amount of probing fixes; keep the normal
+		// rhythm for it.
+		if !c.Available() && !c.tokenRejected.Load() && c.down < next {
 			next = c.down
 		}
 		select {
@@ -178,6 +181,13 @@ func (c *Client) Watch(ctx context.Context, interval time.Duration) {
 			// A run just withdrew the tool: start the faster down rhythm now.
 		case <-time.After(next):
 			c.Probe(ctx)
+			if c.Available() {
+				// A wake left from a run that failed during this probe is stale.
+				select {
+				case <-c.wake:
+				default:
+				}
+			}
 		}
 	}
 }
@@ -233,6 +243,7 @@ func (c *Client) Run(ctx context.Context, r Request) (Result, error) {
 	case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
 		return Result{}, fmt.Errorf("%w: %s", ErrRejected, errorMessage(data))
 	case http.StatusUnauthorized:
+		c.tokenRejected.Store(true)
 		if c.withdraw() {
 			slog.Error("sandbox rejected loom's token, run_python withdrawn", "url", c.baseURL)
 		}

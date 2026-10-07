@@ -134,7 +134,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		// off, the prompt never mentions it.
 		func() {
 			if sandboxOn {
-				sandboxGuidance = s.sandboxGuidance(in.reqCtx, in.user.ID, in.thread)
+				sandboxGuidance = s.sandboxGuidance(in.reqCtx, in.user.ID, in.thread, in.body.DocumentAttachmentIDs)
 			}
 		},
 		func() {

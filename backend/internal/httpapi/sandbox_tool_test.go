@@ -42,7 +42,8 @@ func (f *fakeSandbox) Run(_ context.Context, r sandbox.Request) (sandbox.Result,
 // listDocuments is a document service whose List returns several documents.
 type listDocuments struct {
 	fakeDocumentService
-	docs []rag.Document
+	docs  []rag.Document
+	extra []rag.Document // found by Get only, outside the scope listing
 }
 
 func (l *listDocuments) DocumentsInScope(context.Context, string, *string, *string, int) ([]rag.Document, error) {
@@ -142,7 +143,7 @@ func toolNames(tools []llm.Tool) map[string]bool {
 
 func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 	f := newSandboxFixture(t)
-	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread)
+	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil)
 	if !strings.HasPrefix(g, sandboxGuidancePrompt) {
 		t.Fatal("guidance must start with the rule")
 	}
@@ -152,7 +153,7 @@ func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 		t.Fatalf("want the store's order (thread file, then project file):\n%s", g)
 	}
 	// The same list on the next turn: the block must not change between turns.
-	if again := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread); again != g {
+	if again := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil); again != g {
 		t.Fatal("guidance changed between identical turns")
 	}
 	for _, never := range []string{"other.csv", "report.pdf", "stale.csv"} {
@@ -162,14 +163,14 @@ func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 	}
 
 	empty := &server{sandbox: f.box}
-	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread); got != sandboxGuidancePrompt {
+	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil); got != sandboxGuidancePrompt {
 		t.Fatalf("no documents: %q", got)
 	}
 }
 
 func TestSandboxGuidanceOffersUserGlobalDocuments(t *testing.T) {
 	f := newSandboxFixture(t)
-	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread)
+	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil)
 	if !strings.Contains(g, sandboxAlias(rag.Document{ID: "doc-ffff6666", Filename: "global.json"})) {
 		t.Fatalf("user-global document missing:\n%s", g)
 	}
@@ -221,13 +222,55 @@ func TestFormatSandboxResultPutsStdoutLast(t *testing.T) {
 	}
 }
 
+func (l *listDocuments) Get(_ context.Context, _ string, id string) (rag.Document, bool, error) {
+	for _, d := range l.docs {
+		if d.ID == id {
+			return d, true, nil
+		}
+	}
+	for _, d := range l.extra {
+		if d.ID == id {
+			return d, true, nil
+		}
+	}
+	return rag.Document{}, false, nil
+}
+
+// A file attached this turn is named even when the stable list is full and
+// the file lies outside the scan (an older project file).
+func TestSandboxGuidanceNamesTheTurnsAttachment(t *testing.T) {
+	var docs []rag.Document
+	for i := 0; i < maxSandboxInputsListed+2; i++ {
+		docs = append(docs, rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv"})
+	}
+	old := rag.Document{ID: "old-project-file", ProjectID: strp("p1"), Filename: "budget.xlsx"}
+	s := &server{documents: &listDocuments{docs: docs, extra: []rag.Document{old}}}
+	thread := chat.Thread{ID: "t1", ProjectID: strp("p1")}
+	g := s.sandboxGuidance(context.Background(), testUser.ID, thread, []string{"old-project-file", "d00"})
+	if !strings.Contains(g, sandboxAlias(old)+` (attached now as "budget.xlsx")`) {
+		t.Fatalf("attachment past the cap not named:\n%s", g)
+	}
+	if strings.Count(g, sandboxAlias(docs[0])) != 1 {
+		t.Fatal("an attachment already in the list must not repeat")
+	}
+	if !strings.Contains(g, "and 2 more") {
+		t.Fatalf("remaining count:\n%s", g)
+	}
+	// Out-of-scope or unreadable attachments stay out.
+	other := rag.Document{ID: "x", ThreadID: strp("t9"), Filename: "x.csv"}
+	s.documents = &listDocuments{extra: []rag.Document{other}}
+	if g := s.sandboxGuidance(context.Background(), testUser.ID, thread, []string{"x", "missing"}); g != sandboxGuidancePrompt {
+		t.Fatalf("out-of-scope attachment named:\n%s", g)
+	}
+}
+
 func TestSandboxGuidanceCapsTheList(t *testing.T) {
 	var docs []rag.Document
 	for i := 0; i < maxSandboxInputsListed+3; i++ {
 		docs = append(docs, rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv"})
 	}
 	s := &server{documents: &listDocuments{docs: docs}}
-	g := s.sandboxGuidance(context.Background(), testUser.ID, chat.Thread{ID: "t1"})
+	g := s.sandboxGuidance(context.Background(), testUser.ID, chat.Thread{ID: "t1"}, nil)
 	if strings.Count(g, "\n- ") != maxSandboxInputsListed+1 || !strings.Contains(g, "and 3 more") {
 		t.Fatalf("list not capped:\n%s", g)
 	}

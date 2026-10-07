@@ -56,7 +56,7 @@ def denied(code):
 
 # --- smoke ---------------------------------------------------------------
 r = run("import os\nprint(os.getuid(), os.getgid(), os.getgroups())")
-check("runs as a slot uid with no groups", r["stdout"].strip() in ("10000 10000 []", "10001 10001 []"), r)
+check("runs as a slot uid with no groups", r["stdout"].strip() in ("3000000000 3000000000 []", "3000000001 3000000001 []"), r)
 
 r = run("import matplotlib.pyplot as plt, pandas as pd, numpy as np, scipy, sympy, openpyxl, pint\n"
         "plt.plot([1,2,3]); plt.savefig('out/a.png'); print('ok')")
@@ -106,15 +106,23 @@ for name, code in {
     "write to /usr": "open('/usr/x','w').write('x')",
     "write a new file into in/": "open('in/x','w').write('x')",
     "become root": "import os; os.setuid(0)",
+}.items():
+    r = denied(code)
+    check(f"denied: {name}", r["stdout"].startswith("DENIED"), r)
+
+# Calls the seccomp filter refuses: they must fail with EPERM itself, not with
+# some unrelated error (a small SHMMAX, a missing mqueue) that would hide a
+# gap in the deny list.
+for name, code in {
     "mount": "import ctypes, os; l=ctypes.CDLL(None, use_errno=True)\nif l.mount(b'none', b'/tmp', b'tmpfs', 0, None) != 0: raise OSError(ctypes.get_errno(), 'mount')",
     "anonymous memory file": "import os; os.memfd_create('x')",
-    "System V shared memory": "import ctypes; l=ctypes.CDLL(None, use_errno=True)\nif l.shmget(0, 1 << 30, 0o1600) < 0: raise OSError(ctypes.get_errno(), 'shmget')",
+    "System V shared memory": "import ctypes; l=ctypes.CDLL(None, use_errno=True)\nif l.shmget(0, 4096, 0o1600) < 0: raise OSError(ctypes.get_errno(), 'shmget')",
     "POSIX message queue": "import ctypes; l=ctypes.CDLL(None, use_errno=True)\nif l.mq_open(b'/q', 0o100 | 2, 0o600, None) < 0: raise OSError(ctypes.get_errno(), 'mq_open')",
     "new user namespace": "import os; os.unshare(os.CLONE_NEWUSER)",
     "ptrace": "import ctypes; l=ctypes.CDLL(None, use_errno=True)\nif l.ptrace(16, 1, 0, 0) != 0: raise OSError(ctypes.get_errno(), 'ptrace')",
 }.items():
     r = denied(code)
-    check(f"denied: {name}", r["stdout"].startswith("DENIED"), r)
+    check(f"seccomp refuses: {name}", r["stdout"].startswith("DENIED") and "[Errno 1]" in r["stdout"], r)
 
 # --- resource exhaustion -------------------------------------------------
 r = run("import os\nwhile True:\n    os.fork()", timeout_ms=10000)
@@ -132,6 +140,26 @@ check("subprocess is refused", r["exit_code"] != 0, r)
 r = run("import threading\nout = []\nts = [threading.Thread(target=out.append, args=(i,)) for i in range(4)]\n"
         "[t.start() for t in ts]; [t.join() for t in ts]\nprint(sorted(out))")
 check("threads still work", r["stdout"].strip() == "[0, 1, 2, 3]", r)
+
+# A thread flood stops at the job's own cap, below the container's shared
+# pids_limit: the other slot keeps working while it runs.
+flood = {}
+
+
+def thread_flood():
+    flood["a"] = run("import threading, time\nthreading.stack_size(262144)\nn = 0\ntry:\n"
+                     "    while True:\n        threading.Thread(target=time.sleep, args=(5,), daemon=True).start(); n += 1\n"
+                     "except RuntimeError:\n    pass\nprint(n)\ntime.sleep(3)", timeout_ms=30000)
+
+
+t = threading.Thread(target=thread_flood)
+t.start()
+time.sleep(2)
+r = run("print('other slot ok')")
+t.join()
+check("a thread flood stops at the job's cap", flood["a"]["stdout"].strip().isdigit()
+      and int(flood["a"]["stdout"].strip()) < 64, flood["a"])
+check("the other slot runs during a thread flood", r["stdout"].strip() == "other slot ok", r)
 
 big = {}
 

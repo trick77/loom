@@ -22,8 +22,10 @@ container each layer holds on its own:
   directory belongs to root with the slot's group (`0750`): the job can read it but not rename or
   replace anything, so `out/` stays what the runner collects from (read without following links).
   It cannot read the other slot's files or processes, nor the runner's environment.
-- **One process**: a seccomp filter allows threads but refuses fork, vfork and process clones
-  (multiprocessing and subprocess fail with `BlockingIOError`).
+- **One process, at most 64 threads**: a seccomp filter allows threads but refuses fork, vfork
+  and process clones (multiprocessing and subprocess fail with `BlockingIOError`).
+  `RLIMIT_NPROC` caps the threads below the container's shared `pids_limit`; slot uids start at
+  3,000,000,000 because the limit counts a uid's tasks host-wide.
 - **No network**: the filter allows only `AF_UNIX` sockets and refuses io_uring. The `sandbox`
   compose network is `internal` (no egress) and holds only loom and the sidecar.
 - **No way around the limits**: the filter also refuses `memfd_create`, System V and POSIX IPC, new namespaces, mount,

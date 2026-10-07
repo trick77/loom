@@ -129,6 +129,8 @@ type Config struct {
 	SandboxURL     string
 	SandboxToken   string
 	SandboxTimeout time.Duration
+	// SandboxProblem says why a configured sandbox was turned off at boot.
+	SandboxProblem string
 	// MCPServersFile points at an optional JSON file (standard `mcpServers`
 	// format) whose servers are merged on top of the built-in MCP servers.
 	// Defaults to /conf/mcp.json (the mounted conf dir); an absent file is a
@@ -436,16 +438,23 @@ func loadSandbox(cfg *Config) {
 		return
 	}
 	if problem := sandboxProblem(cfg); problem != "" {
-		slog.Warn("run_python disabled: " + problem)
+		// Loud, and repeated in the startup summary: a misconfigured optional
+		// feature must not stop chat, but it must not go unnoticed either.
+		slog.Error("run_python disabled: " + problem)
 		cfg.SandboxURL, cfg.SandboxToken = "", ""
 		cfg.SandboxTimeout = maxSandboxTimeout
+		cfg.SandboxProblem = problem
 	}
 }
 
 func sandboxProblem(cfg *Config) string {
 	timeout, err := time.ParseDuration(env("BACKEND_SANDBOX_TIMEOUT", maxSandboxTimeout.String()))
-	if err != nil || timeout <= 0 || timeout > maxSandboxTimeout {
-		return fmt.Sprintf("BACKEND_SANDBOX_TIMEOUT must be a duration greater than 0 and at most %s", maxSandboxTimeout)
+	if err != nil || timeout <= 0 {
+		return "BACKEND_SANDBOX_TIMEOUT must be a duration greater than 0"
+	}
+	if timeout > maxSandboxTimeout {
+		slog.Warn("BACKEND_SANDBOX_TIMEOUT above the sidecar's maximum; using it", "max", maxSandboxTimeout, "given", timeout)
+		timeout = maxSandboxTimeout
 	}
 	cfg.SandboxTimeout = timeout
 	if !isAbsoluteHTTPURL(cfg.SandboxURL) {

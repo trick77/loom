@@ -35,7 +35,13 @@ const (
 	maxOutputEntries   = 200
 	maxDroppedReported = 20
 
-	slotUIDBase = 10000
+	// slotUIDBase is far above any uid a host process uses: without a user
+	// namespace, RLIMIT_NPROC counts the uid's tasks host-wide, and a job must
+	// never share that count with something outside the sandbox.
+	slotUIDBase = 3_000_000_000
+	// jobThreadLimit caps one job's threads (RLIMIT_NPROC), well below the
+	// container's pids_limit of 256 shared by both slots and the runner.
+	jobThreadLimit = 64
 
 	// sharedShmBytes is the container's /dev/shm (compose shm_size), shared by
 	// the slots and emptied of a job's files after it.

@@ -213,7 +213,7 @@ const maxDocumentsInScope = 1000
 // a thread can use: its own, its project's and the user-global ones (the scope
 // IndexedDocsInScope uses for knowledge), whatever their indexing status. The
 // thread's come first, then the project's, then the global ones, each newest
-// first.
+// first (id breaks ties: created_at has one-second resolution).
 func (s *Store) DocumentsInScope(ctx context.Context, userID string, projectID, threadID *string, limit int) ([]Document, error) {
 	if limit <= 0 || limit > maxDocumentsInScope {
 		limit = maxDocumentsInScope
@@ -233,7 +233,7 @@ func (s *Store) DocumentsInScope(ctx context.Context, userID string, projectID, 
 	if threadID != nil {
 		thread = *threadID
 	}
-	query += `) ORDER BY CASE WHEN thread_id = ? THEN 0 WHEN project_id IS NOT NULL THEN 1 ELSE 2 END, created_at DESC LIMIT ?`
+	query += `) ORDER BY CASE WHEN thread_id = ? THEN 0 WHEN project_id IS NOT NULL THEN 1 ELSE 2 END, created_at DESC, id LIMIT ?`
 	args = append(args, thread, limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

@@ -134,6 +134,9 @@ func imageGenCapability(cfg config.Config, runtime startupRuntime) startupCapabi
 // sandboxCapability reports the configuration only: whether run_python is
 // actually offered follows the sidecar's health probe at run time.
 func sandboxCapability(cfg config.Config) startupCapability {
+	if cfg.SandboxProblem != "" {
+		return startupCapability{Name: "Python sandbox", Status: "misconfigured", Detail: cfg.SandboxProblem}
+	}
 	if cfg.SandboxURL == "" {
 		return startupCapability{Name: "Python sandbox", Status: "disabled", Detail: "set BACKEND_SANDBOX_URL"}
 	}

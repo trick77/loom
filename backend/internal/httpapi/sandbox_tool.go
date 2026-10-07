@@ -115,9 +115,9 @@ const sandboxGuidanceScan = 50
 
 // sandboxInputs lists the documents in the thread's scope that run_python can
 // read, in the store's order: the thread's own, then the project's, then the
-// user-global ones, each newest first. The order (and aliases derived from
-// the document id) stay the same from turn to turn until something is
-// uploaded, so the guidance block does not break the prompt cache.
+// user-global ones, each newest first. Between uploads the list (and the
+// aliases, derived from the document id) is the same on every turn, so the
+// guidance block keeps the prompt cache; an upload changes it once.
 func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.Thread, limit int) []sandboxInput {
 	if s.documents == nil {
 		return nil
@@ -131,22 +131,27 @@ func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.T
 	var inputs []sandboxInput
 	seen := map[string]bool{}
 	for _, d := range docs {
-		// The query already scoped by user, thread and project; the check stays as
-		// the second line of defence, with user-global documents allowed as in
-		// knowledge.
-		global := d.ProjectID == nil && d.ThreadID == nil
-		if (!global && !documentInThreadScope(d.ProjectID, d.ThreadID, thread)) ||
-			d.Status == rag.StatusStale || !sandboxInputExt[strings.ToLower(filepath.Ext(d.Filename))] {
-			continue
-		}
-		in := sandboxInput{alias: sandboxAlias(d), doc: d}
-		if seen[in.alias] {
+		in, ok := sandboxInputFor(d, thread)
+		if !ok || seen[in.alias] {
 			continue
 		}
 		seen[in.alias] = true
 		inputs = append(inputs, in)
 	}
 	return inputs
+}
+
+// sandboxInputFor maps a document to its sandbox input when run_python may
+// read it. The store already scoped by user, thread and project; this check
+// is the second line of defence, with user-global documents allowed as in
+// knowledge.
+func sandboxInputFor(d rag.Document, thread chat.Thread) (sandboxInput, bool) {
+	global := d.ProjectID == nil && d.ThreadID == nil
+	if (!global && !documentInThreadScope(d.ProjectID, d.ThreadID, thread)) ||
+		d.Status == rag.StatusStale || !sandboxInputExt[strings.ToLower(filepath.Ext(d.Filename))] {
+		return sandboxInput{}, false
+	}
+	return sandboxInput{alias: sandboxAlias(d), doc: d}, true
 }
 
 // sandboxAlias maps an upload name to the ASCII shape the sidecar accepts,
@@ -186,22 +191,72 @@ func sandboxAlias(d rag.Document) string {
 
 // sandboxGuidance is the prompt block that comes with the tool: the rule and
 // the input files of this thread.
-func (s *server) sandboxGuidance(ctx context.Context, userID string, thread chat.Thread) string {
+func (s *server) sandboxGuidance(ctx context.Context, userID string, thread chat.Thread, turnAttachmentIDs []string) string {
 	inputs := s.sandboxInputs(ctx, userID, thread, sandboxGuidanceScan)
-	if len(inputs) == 0 {
+	listed := inputs
+	if len(listed) > maxSandboxInputsListed {
+		listed = listed[:maxSandboxInputsListed]
+	}
+	// A file attached this turn is always named, even past the cap or outside
+	// the scan (an older project or user-global file): it is the one the
+	// user is most likely asking about. The stable list above stays first.
+	attached := s.missingAttachments(ctx, userID, thread, listed, turnAttachmentIDs)
+	if len(listed) == 0 && len(attached) == 0 {
 		return sandboxGuidancePrompt
 	}
 	var b strings.Builder
 	b.WriteString(sandboxGuidancePrompt)
 	b.WriteString("\n\nInput files available to run_python (pass the name in `files`; read it at in/<name>):\n")
-	for i, in := range inputs {
-		if i == maxSandboxInputsListed {
-			fmt.Fprintf(&b, "- … and %d more in this conversation\n", len(inputs)-i)
-			break
-		}
+	for _, in := range listed {
 		fmt.Fprintf(&b, "- %s (uploaded as %q)\n", in.alias, in.doc.Filename)
 	}
+	for _, in := range attached {
+		fmt.Fprintf(&b, "- %s (attached now as %q)\n", in.alias, in.doc.Filename)
+	}
+	if more := len(inputs) - len(listed) - countIn(inputs[len(listed):], attached); more > 0 {
+		fmt.Fprintf(&b, "- … and %d more in this conversation\n", more)
+	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// missingAttachments returns the turn's attachments that run_python can read
+// but listed does not name.
+func (s *server) missingAttachments(ctx context.Context, userID string, thread chat.Thread, listed []sandboxInput, ids []string) []sandboxInput {
+	if s.documents == nil || len(ids) == 0 {
+		return nil
+	}
+	named := map[string]bool{}
+	for _, in := range listed {
+		named[in.doc.ID] = true
+	}
+	var out []sandboxInput
+	for _, id := range ids {
+		if named[id] {
+			continue
+		}
+		named[id] = true
+		d, ok, err := s.documents.Get(ctx, userID, id)
+		if err != nil || !ok {
+			continue
+		}
+		if in, ok := sandboxInputFor(d, thread); ok {
+			out = append(out, in)
+		}
+	}
+	return out
+}
+
+func countIn(inputs, of []sandboxInput) int {
+	n := 0
+	for _, in := range inputs {
+		for _, o := range of {
+			if in.doc.ID == o.doc.ID {
+				n++
+				break
+			}
+		}
+	}
+	return n
 }
 
 // runSandboxTool executes one run_python call: resolve the input files, run
