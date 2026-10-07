@@ -49,11 +49,11 @@ func collectOutputs(dir string) (files []wireFile, dropped []string, err error) 
 }
 
 func readRegularFile(path string, budget int) ([]byte, string) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0) //nolint:gosec // path is the job's out dir plus a name that passed validName; O_NOFOLLOW refuses a symlink
 	if err != nil {
 		return nil, "not a regular file"
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	fi, err := f.Stat()
 	if err != nil || !fi.Mode().IsRegular() {
 		return nil, "not a regular file"

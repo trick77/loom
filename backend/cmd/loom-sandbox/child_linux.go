@@ -133,7 +133,7 @@ func setupChild(args []string) error {
 	// -u: unbuffered, so output printed before a kill still arrives.
 	argv := []string{"python3", "-I", "-B", "-u", "-X", "utf8", sandboxMain}
 	coverageFlush()
-	return syscall.Exec(python, argv, env)
+	return syscall.Exec(python, argv, env) //nolint:gosec // python is the operator-configured interpreter path; running untrusted code is this binary's purpose
 }
 
 func bindMount(src, dst string, ro bool) error {

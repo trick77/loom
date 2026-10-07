@@ -75,17 +75,21 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if cfg.slots, err = positiveInt(or("SANDBOX_SLOTS", "2")); err != nil {
 		return config{}, fmt.Errorf("SANDBOX_SLOTS: %w", err)
 	}
-	mem, err := positiveInt(or("SANDBOX_MEM_LIMIT_MB", "1280"))
-	if err != nil {
+	if cfg.memLimit, err = megabytes(or("SANDBOX_MEM_LIMIT_MB", "1280")); err != nil {
 		return config{}, fmt.Errorf("SANDBOX_MEM_LIMIT_MB: %w", err)
 	}
-	disk, err := positiveInt(or("SANDBOX_DISK_LIMIT_MB", "320"))
-	if err != nil {
+	if cfg.diskLimit, err = megabytes(or("SANDBOX_DISK_LIMIT_MB", "320")); err != nil {
 		return config{}, fmt.Errorf("SANDBOX_DISK_LIMIT_MB: %w", err)
 	}
-	cfg.memLimit = uint64(mem) << 20
-	cfg.diskLimit = uint64(disk) << 20
 	return cfg, nil
+}
+
+func megabytes(s string) (uint64, error) {
+	n, err := strconv.ParseUint(s, 10, 32)
+	if err != nil || n == 0 {
+		return 0, fmt.Errorf("want a positive number of megabytes, got %q", s)
+	}
+	return n << 20, nil
 }
 
 func positiveInt(s string) (int, error) {

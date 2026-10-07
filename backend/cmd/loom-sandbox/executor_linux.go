@@ -39,11 +39,11 @@ func newExecutor(cfg config) (executor, error) {
 	// tmpfs (the root file system is read-only), so these are recreated on every
 	// container start.
 	for _, d := range []string{filepath.Join(workDir, "jobs"), sandboxInDir, sandboxOutDir, sandboxHomeDir} {
-		if err := os.MkdirAll(d, 0o711); err != nil {
+		if err := os.MkdirAll(d, 0o711); err != nil { //nolint:gosec // mount points the unprivileged slot uid must traverse
 			return nil, err
 		}
 	}
-	f, err := os.OpenFile(sandboxMain, os.O_CREATE|os.O_WRONLY, 0o444)
+	f, err := os.OpenFile(sandboxMain, os.O_CREATE|os.O_WRONLY, 0o444) //nolint:gosec // bind target for the job script, read by the slot uid
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (e *linuxExecutor) run(ctx context.Context, j job) (runResponse, error) {
 	stdout := &headBuffer{max: maxStdoutBytes}
 	stderr := &tailBuffer{max: maxStderrBytes}
 	cpu := int(j.timeout/time.Second) + 1
-	cmd := exec.Command("/proc/self/exe", childCommand,
+	cmd := exec.Command("/proc/self/exe", childCommand, //nolint:gosec // re-exec of this binary; the arguments are server-made
 		jobDir, strconv.Itoa(uid), strconv.FormatUint(e.cfg.memLimit, 10), strconv.Itoa(cpu), e.cfg.python)
 	cmd.Env = childEnv()
 	cmd.Stdout = stdout
@@ -162,11 +162,11 @@ func (e *linuxExecutor) prepare(j job, uid int) (string, func(), error) {
 
 func populateJobDir(jobDir string, j job, uid int, mplConfig string) error {
 	in := filepath.Join(jobDir, "in")
-	if err := os.Mkdir(in, 0o755); err != nil {
+	if err := os.Mkdir(in, 0o755); err != nil { //nolint:gosec // inputs are read by the slot uid, written only here
 		return err
 	}
 	for _, f := range j.inputs {
-		if err := os.WriteFile(filepath.Join(in, f.Name), f.Data, 0o444); err != nil {
+		if err := os.WriteFile(filepath.Join(in, f.Name), f.Data, 0o444); err != nil { //nolint:gosec // read-only input for the slot uid; the name passed validName
 			return err
 		}
 	}
@@ -179,7 +179,7 @@ func populateJobDir(jobDir string, j job, uid int, mplConfig string) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(filepath.Join(jobDir, "main.py"), []byte(j.code), 0o444); err != nil {
+	if err := os.WriteFile(filepath.Join(jobDir, "main.py"), []byte(j.code), 0o444); err != nil { //nolint:gosec // the job script, read by the slot uid
 		return err
 	}
 	if mplConfig != "" {
@@ -194,7 +194,7 @@ func populateJobDir(jobDir string, j job, uid int, mplConfig string) error {
 // and hands it to uid. A missing source is not an error: matplotlib then
 // rebuilds its cache, only slower.
 func copyTree(src, dst string, uid int) error {
-	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) { //nolint:gosec // src is the image's matplotlib cache from config, not job input
 		return nil
 	}
 	for _, d := range []string{filepath.Dir(dst), dst} {
@@ -205,7 +205,7 @@ func copyTree(src, dst string, uid int) error {
 			return err
 		}
 	}
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error { //nolint:gosec // see above: a trusted image directory
 		if err != nil {
 			return err
 		}
@@ -223,12 +223,12 @@ func copyTree(src, dst string, uid int) error {
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		in, err := os.Open(path)
+		in, err := os.Open(path) //nolint:gosec // inside the trusted image directory
 		if err != nil {
 			return err
 		}
-		defer in.Close()
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		defer func() { _ = in.Close() }()
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // target is under the fresh job home
 		if err != nil {
 			return err
 		}
