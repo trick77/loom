@@ -73,6 +73,37 @@ func TestRunUnreachableIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestTokenMismatchWithdrawsTheTool(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Sandbox-Token") != "right-token-0123456" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path == "/run" {
+			_ = json.NewEncoder(w).Encode(Result{Stdout: "ok"})
+		}
+	}))
+	defer srv.Close()
+
+	good := New(srv.URL, "right-token-0123456", time.Second)
+	good.Probe(context.Background())
+	if !good.Available() {
+		t.Fatal("matching token: probe must pass")
+	}
+
+	bad := New(srv.URL, "wrong-token-0123456", time.Second)
+	bad.Probe(context.Background())
+	bad.Probe(context.Background()) // logged once, still off
+	if bad.Available() {
+		t.Fatal("a rejected token must keep the tool withdrawn")
+	}
+	bad.available.Store(true)
+	_, err := bad.Run(context.Background(), Request{Code: "x"})
+	if !errors.Is(err, ErrUnavailable) || !errors.Is(err, errTokenMismatch) || bad.Available() {
+		t.Fatalf("run with a rejected token: %v, available %v", err, bad.Available())
+	}
+}
+
 func TestRunWithoutTokenSendsNoHeader(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := r.Header["X-Sandbox-Token"]; ok {

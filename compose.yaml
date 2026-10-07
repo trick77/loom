@@ -153,12 +153,15 @@ services:
     image: ghcr.io/trick77/loom-sandbox:latest
     restart: unless-stopped
     read_only: true
-    # Job directories: 2 slots × 320 MiB (SANDBOX_DISK_LIMIT_MB).
+    # Job directories: one tmpfs per slot, so the kernel enforces each slot's
+    # 320 MiB share. The runner checks they are separate mounts and counts
+    # their sizes in its memory budget.
     tmpfs:
-      - /work:size=640m,mode=0711
+      - /work/slot0:size=320m,mode=0711
+      - /work/slot1:size=320m,mode=0711
     shm_size: 64m
     # Hard ceiling for everything in the sandbox. Each job is one process
-    # (1.25 GiB address space) with a 320 MiB share of /work; two slots plus
+    # (1.25 GiB address space) with its slot's 320 MiB tmpfs; two slots plus
     # /dev/shm fit the runner's 3.5 GiB budget, the rest is the server.
     mem_limit: 4g
     cpus: 2

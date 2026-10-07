@@ -100,8 +100,28 @@ func TestCollectOutputsBoundsAFlood(t *testing.T) {
 	}
 }
 
-func TestCollectOutputsMissingDir(t *testing.T) {
-	if _, _, err := collectOutputs(filepath.Join(t.TempDir(), "nope")); err == nil {
-		t.Fatal("want an error")
+func TestCollectOutputsMissingOrReplacedDir(t *testing.T) {
+	files, dropped, err := collectOutputs(filepath.Join(t.TempDir(), "nope"))
+	if err != nil || len(files) != 0 || len(dropped) != 1 {
+		t.Fatalf("missing out/: %v %v %v", files, dropped, err)
+	}
+
+	// out/ swapped for a symlink to a directory with a readable file: never
+	// followed, so nothing outside the job comes back.
+	base := t.TempDir()
+	secret := filepath.Join(base, "secret")
+	if err := os.Mkdir(secret, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(secret, "data.csv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "out")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Fatal(err)
+	}
+	files, dropped, err = collectOutputs(link)
+	if err != nil || len(files) != 0 || len(dropped) != 1 {
+		t.Fatalf("symlinked out/: %v %v %v", files, dropped, err)
 	}
 }

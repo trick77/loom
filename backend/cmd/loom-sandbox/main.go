@@ -27,9 +27,10 @@ func main() {
 	case "serve":
 		err = serve()
 	case "healthcheck":
-		err = healthcheck(envOr("SANDBOX_ADDR", defaultAddr))
+		err = healthcheck(envOr("SANDBOX_ADDR", defaultAddr), os.Getenv("SANDBOX_TOKEN"))
 	case childCommand:
-		// Only reached in a fresh namespace set; on success it never returns.
+		// Started by the executor for one job; on success it becomes the
+		// interpreter and never returns.
 		err = execChild(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
@@ -61,7 +62,7 @@ func serve() error {
 	return srv.ListenAndServe()
 }
 
-func healthcheck(addr string) error {
+func healthcheck(addr, token string) error {
 	host := addr
 	if len(host) > 0 && host[0] == ':' {
 		host = "127.0.0.1" + host
@@ -71,6 +72,9 @@ func healthcheck(addr string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/healthz", nil)
 	if err != nil {
 		return err
+	}
+	if token != "" {
+		req.Header.Set("X-Sandbox-Token", token)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

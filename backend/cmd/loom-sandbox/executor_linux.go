@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // setupErrFD is the descriptor exec-child reports a setup failure on. It is
@@ -32,9 +34,39 @@ func newExecutor(cfg config) (executor, error) {
 	if os.Geteuid() != 0 {
 		return nil, errors.New("serve must run as root inside the sandbox container")
 	}
-	// Traversable but not listable: a job finds its own directory, never the
-	// other slot's.
-	if err := os.MkdirAll(filepath.Join(workDir, "jobs"), 0o711); err != nil { //nolint:gosec // see above
+	var root unix.Stat_t
+	if err := unix.Stat("/", &root); err != nil {
+		return nil, err
+	}
+	sizes := make([]uint64, cfg.slots)
+	for slot := range sizes {
+		dir := slotDir(slot)
+		var fs unix.Statfs_t
+		var st unix.Stat_t
+		if err := unix.Statfs(dir, &fs); err != nil {
+			return nil, fmt.Errorf("slot %d needs its own tmpfs at %s (compose.yaml): %w", slot, dir, err)
+		}
+		if err := unix.Stat(dir, &st); err != nil {
+			return nil, err
+		}
+		// Its own tmpfs, not a directory on the root or a shared mount: only a
+		// separate mount makes the kernel enforce the slot's disk share.
+		if fs.Type != unix.TMPFS_MAGIC || st.Dev == root.Dev {
+			return nil, fmt.Errorf("slot %d needs its own tmpfs at %s (compose.yaml)", slot, dir)
+		}
+		for other := range slot {
+			var ost unix.Stat_t
+			if err := unix.Stat(slotDir(other), &ost); err == nil && ost.Dev == st.Dev {
+				return nil, fmt.Errorf("slots %d and %d share one tmpfs; each needs its own", other, slot)
+			}
+		}
+		// Traversable, not listable: a job reaches its own directory only.
+		if err := os.Chmod(dir, 0o711); err != nil { //nolint:gosec // see above
+			return nil, err
+		}
+		sizes[slot] = fs.Blocks * uint64(fs.Bsize) //nolint:gosec // Bsize is positive
+	}
+	if err := checkMemoryBudget(cfg, sizes); err != nil {
 		return nil, err
 	}
 	return &linuxExecutor{cfg: cfg}, nil
@@ -56,7 +88,10 @@ func (e *linuxExecutor) run(ctx context.Context, j job) (runResponse, error) {
 
 	stdout := &headBuffer{max: maxStdoutBytes}
 	stderr := &tailBuffer{max: maxStderrBytes}
-	cpu := int(j.timeout/time.Second) + 1
+	// CPU time adds up across threads; the wall clock is the real limit, the
+	// CPU limit only a backstop that must not fire first for a job using both
+	// of the container's CPUs.
+	cpu := int(4*j.timeout/time.Second) + 1
 	cmd := exec.Command("/proc/self/exe", childCommand, //nolint:gosec // re-exec of this binary; the arguments are server-made
 		jobDir, strconv.Itoa(uid), strconv.FormatUint(e.cfg.memLimit, 10), strconv.Itoa(cpu), e.cfg.python)
 	cmd.Env = childEnv()
@@ -127,15 +162,17 @@ func (e *linuxExecutor) run(ctx context.Context, j job) (runResponse, error) {
 	}, nil
 }
 
-// prepareJobDir builds /work/jobs/<random>, owned by the slot uid and closed
-// to everyone else: in/ (read-only inputs), out/, home/ and main.py. The job
-// runs with it as its working directory.
+// prepareJobDir builds <slot tmpfs>/<random>: in/ (read-only inputs), out/,
+// home/ and main.py. The job runs with it as its working directory. The
+// directory belongs to root with the slot's group and mode 0750: the job can
+// enter and read it but not rename or replace anything in it, so out/ stays
+// the directory the server collects from. The other slot cannot enter it.
 func prepareJobDir(j job, uid int, mplConfig string) (string, error) {
 	id := make([]byte, 12)
 	if _, err := rand.Read(id); err != nil {
 		return "", err
 	}
-	jobDir := filepath.Join(workDir, "jobs", hex.EncodeToString(id))
+	jobDir := filepath.Join(slotDir(j.slot), hex.EncodeToString(id))
 	if err := os.Mkdir(jobDir, 0o700); err != nil {
 		return "", err
 	}
@@ -143,7 +180,11 @@ func prepareJobDir(j job, uid int, mplConfig string) (string, error) {
 		_ = os.RemoveAll(jobDir)
 		return "", err
 	}
-	if err := os.Chown(jobDir, uid, uid); err != nil {
+	if err := os.Chown(jobDir, 0, uid); err != nil {
+		_ = os.RemoveAll(jobDir)
+		return "", err
+	}
+	if err := os.Chmod(jobDir, 0o750); err != nil { //nolint:gosec // group is the slot's own
 		_ = os.RemoveAll(jobDir)
 		return "", err
 	}

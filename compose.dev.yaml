@@ -111,15 +111,19 @@ services:
       retries: 6
 
   sandbox:
-    # run_python sidecar, built from source; same settings as compose.yaml.
+    # run_python sidecar, built from source; the limits of compose.yaml, but
+    # published on a localhost port instead of the internal network (jobs
+    # cannot open network sockets either way).
     build:
       context: .
       dockerfile: sandbox/Containerfile
     read_only: true
     tmpfs:
-      - /work:size=640m,mode=0711
+      - /work/slot0:size=320m,mode=0711
+      - /work/slot1:size=320m,mode=0711
     shm_size: 64m
     mem_limit: 4g
+    cpus: 2
     pids_limit: 256
     cap_drop: [ALL]
     cap_add: [SETUID, SETGID, KILL, CHOWN, DAC_OVERRIDE, FOWNER]

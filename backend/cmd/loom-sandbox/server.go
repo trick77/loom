@@ -22,7 +22,13 @@ func newServer(cfg config, exec executor) *server {
 	for i := 0; i < cfg.slots; i++ {
 		s.slots <- i
 	}
-	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	// /healthz checks the token too: loom's probe then fails on a mismatch and
+	// withdraws the tool, instead of offering it while every run gets 401.
+	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		if !s.authorized(r) {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	s.mux.HandleFunc("POST /run", s.handleRun)
@@ -33,14 +39,19 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+func (s *server) authorized(r *http.Request) bool {
+	if s.cfg.token == "" {
+		return true
+	}
+	got := r.Header.Get("X-Sandbox-Token")
+	return subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.token)) == 1
+}
+
 func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	defer coverageFlush()
-	if s.cfg.token != "" {
-		got := r.Header.Get("X-Sandbox-Token")
-		if subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.token)) != 1 {
-			writeError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
+	if !s.authorized(r) {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
 	}
 
 	// The slot comes first: a request waiting for one holds only its headers,
@@ -76,6 +87,12 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	resp, err := s.exec.run(r.Context(), j)
 	if err != nil {
+		if r.Context().Err() != nil {
+			// loom gave up (the user pressed stop): the job is killed and nobody
+			// is left to read a response. Not a sandbox fault.
+			slog.Info("sandbox job cancelled by the client")
+			return
+		}
 		slog.Error("sandbox job failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "sandbox error")
 		return

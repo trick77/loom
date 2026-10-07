@@ -179,21 +179,31 @@ func TestRunExecutorErrorIs500(t *testing.T) {
 	}
 }
 
-func TestHealthz(t *testing.T) {
-	rec := httptest.NewRecorder()
-	testServer(&fakeExecutor{}, 1).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d", rec.Code)
+func TestHealthzChecksTheToken(t *testing.T) {
+	s := testServer(&fakeExecutor{}, 1)
+	for token, want := range map[string]int{testToken: http.StatusOK, "": http.StatusUnauthorized, "wrong": http.StatusUnauthorized} {
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		if token != "" {
+			req.Header.Set("X-Sandbox-Token", token)
+		}
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("token %q: status %d, want %d", token, rec.Code, want)
+		}
 	}
 }
 
 func TestHealthcheckCommand(t *testing.T) {
 	ts := httptest.NewServer(testServer(&fakeExecutor{}, 1))
 	defer ts.Close()
-	if err := healthcheck(strings.TrimPrefix(ts.URL, "http://")); err != nil {
+	if err := healthcheck(strings.TrimPrefix(ts.URL, "http://"), testToken); err != nil {
 		t.Fatal(err)
 	}
-	if err := healthcheck("127.0.0.1:1"); err == nil {
+	if err := healthcheck(strings.TrimPrefix(ts.URL, "http://"), "wrong-token-value-123"); err == nil {
+		t.Fatal("a wrong token must fail the healthcheck")
+	}
+	if err := healthcheck("127.0.0.1:1", ""); err == nil {
 		t.Fatal("want an error for a closed port")
 	}
 }

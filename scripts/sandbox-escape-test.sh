@@ -44,7 +44,7 @@ wb.save('/o/big.xlsx')"
 
 # Keep in step with the sandbox service in compose.yaml.
 docker run -d --rm --name "$name" \
-  --read-only --tmpfs /work:size=640m,mode=0711 --shm-size 64m \
+  --read-only --tmpfs /work/slot0:size=320m,mode=0711 --tmpfs /work/slot1:size=320m,mode=0711 --shm-size 64m \
   --memory 4g --cpus 2 --pids-limit 256 \
   --cap-drop ALL \
   --cap-add SETUID --cap-add SETGID --cap-add KILL \
@@ -54,10 +54,10 @@ docker run -d --rm --name "$name" \
   -p "127.0.0.1:$port:8070" "$image" >/dev/null
 
 for _ in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null 2>&1; then break; fi
+  if curl -fsS -H "X-Sandbox-Token: $token" "http://127.0.0.1:$port/healthz" >/dev/null 2>&1; then break; fi
   sleep 1
 done
-if ! curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null; then
+if ! curl -fsS -H "X-Sandbox-Token: $token" "http://127.0.0.1:$port/healthz" >/dev/null; then
   docker logs "$name"
   exit 1
 fi

@@ -329,8 +329,8 @@ func (s *Service) Get(ctx context.Context, userID, documentID string) (rag.Docum
 
 // DocumentsInScope returns the documents a thread can use (its own, its
 // project's, the user-global ones), newest first, whatever their status.
-func (s *Service) DocumentsInScope(ctx context.Context, userID string, projectID, threadID *string) ([]rag.Document, error) {
-	return s.store.DocumentsInScope(ctx, userID, projectID, threadID)
+func (s *Service) DocumentsInScope(ctx context.Context, userID string, projectID, threadID *string, limit int) ([]rag.Document, error) {
+	return s.store.DocumentsInScope(ctx, userID, projectID, threadID, limit)
 }
 
 // IndexedDocsInScope returns the embedded documents in the thread's knowledge

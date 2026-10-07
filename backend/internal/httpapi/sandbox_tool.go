@@ -108,15 +108,20 @@ type sandboxInput struct {
 	doc   rag.Document
 }
 
+// sandboxGuidanceScan is how many in-scope documents a turn looks at to build
+// the guidance list; the thread's own sort first, so its uploads are always
+// among them. A tool call that names files looks at all of them.
+const sandboxGuidanceScan = 50
+
 // sandboxInputs lists the documents in the thread's scope that run_python can
 // read, the turn's attachments first, then newest first. Aliases derive from
 // the document id, so they are stable across turns.
-func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.Thread, turnAttachmentIDs []string) []sandboxInput {
+func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.Thread, turnAttachmentIDs []string, limit int) []sandboxInput {
 	if s.documents == nil {
 		return nil
 	}
 	threadID := thread.ID
-	docs, err := s.documents.DocumentsInScope(ctx, userID, thread.ProjectID, &threadID)
+	docs, err := s.documents.DocumentsInScope(ctx, userID, thread.ProjectID, &threadID, limit)
 	if err != nil {
 		slog.Warn("sandbox input listing failed", "thread_id", thread.ID, "err", err)
 		return nil
@@ -196,7 +201,7 @@ func sandboxAlias(d rag.Document) string {
 // sandboxGuidance is the prompt block that comes with the tool: the rule and
 // the input files of this thread.
 func (s *server) sandboxGuidance(ctx context.Context, userID string, thread chat.Thread, turnAttachmentIDs []string) string {
-	inputs := s.sandboxInputs(ctx, userID, thread, turnAttachmentIDs)
+	inputs := s.sandboxInputs(ctx, userID, thread, turnAttachmentIDs, sandboxGuidanceScan)
 	if len(inputs) == 0 {
 		return sandboxGuidancePrompt
 	}
@@ -293,7 +298,7 @@ func (s *server) sandboxFiles(ctx context.Context, userID string, thread chat.Th
 	if len(list) == 0 {
 		return nil, ""
 	}
-	inputs := s.sandboxInputs(ctx, userID, thread, nil)
+	inputs := s.sandboxInputs(ctx, userID, thread, nil, 0)
 	byAlias := map[string]sandboxInput{}
 	for _, in := range inputs {
 		byAlias[in.alias] = in

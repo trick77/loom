@@ -90,8 +90,16 @@ for family in ("AF_INET", "AF_INET6", "AF_NETLINK", "AF_PACKET"):
 r = denied("print(open('/proc/1/environ','rb').read())")
 check("runner environment unreadable", r["stdout"].startswith("DENIED") and TOKEN not in r["stdout"], r)
 
-r = denied("import os\nprint(os.listdir('/work/jobs'))")
-check("job directories not listable", r["stdout"].startswith("DENIED"), r)
+for slot in ("/work/slot0", "/work/slot1"):
+    r = denied(f"import os\nprint(os.listdir({slot!r}))")
+    check(f"{slot} not listable", r["stdout"].startswith("DENIED"), r)
+
+# The job directory is root's: out/ cannot be swapped for a link that would
+# make the server collect files from elsewhere.
+r = denied("import os\nos.rename('out', 'x')")
+check("out/ cannot be renamed", r["stdout"].startswith("DENIED"), r)
+r = denied("import shutil, os\nshutil.rmtree('out')\nos.symlink('/work', 'out')")
+check("out/ cannot be replaced by a link", r["stdout"].startswith("DENIED"), r)
 
 for name, code in {
     "read /etc/shadow": "open('/etc/shadow').read()",
@@ -147,6 +155,24 @@ check("100 MB of stdout truncated", r["truncated"] and len(r["stdout"]) < 30_000
 
 r = run("open('home/f','wb').write(b'x' * (100 << 20))")
 check("a file over 64 MiB is refused", r["exit_code"] != 0, r)
+
+# Each slot has its own tmpfs: one job filling its disk leaves the other's.
+fill = {}
+
+
+def filler():
+    fill["a"] = run("n = 0\ntry:\n    while True:\n        open(f'home/f{n}', 'wb').write(b'x' * (32 << 20)); n += 1\n"
+                    "except OSError:\n    pass\nprint(n * 32)\nimport time; time.sleep(4)", timeout_ms=30000)
+
+
+t = threading.Thread(target=filler)
+t.start()
+time.sleep(2)
+r = run("open('home/g', 'wb').write(b'y' * (50 << 20)); print('wrote')")
+t.join()
+check("a job filling its disk stops at its slot's share", fill["a"]["stdout"].strip().isdigit()
+      and int(fill["a"]["stdout"].strip()) <= 320, fill["a"])
+check("the other slot can still write", r["stdout"].strip() == "wrote", r)
 
 # --- output files --------------------------------------------------------
 r = run("import os\n"

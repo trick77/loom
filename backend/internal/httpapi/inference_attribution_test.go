@@ -48,7 +48,7 @@ func (s *attributionStub) Retrieve(ctx context.Context, _ string, _, _ *string, 
 	s.retrieveMetadata = inference.MetadataFromContext(ctx)
 	return nil, nil
 }
-func (s *attributionStub) DocumentsInScope(context.Context, string, *string, *string) ([]rag.Document, error) {
+func (s *attributionStub) DocumentsInScope(context.Context, string, *string, *string, int) ([]rag.Document, error) {
 	return nil, nil
 }
 

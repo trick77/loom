@@ -9,18 +9,23 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // collectOutputs reads the files the job left in dir. The job is untrusted and
-// already dead, but its directory is not: entries are opened without following
-// symlinks and without blocking on a FIFO, and only single-link regular files
+// already dead, but its directory is not: dir itself is opened without
+// following a symlink, entries are opened relative to that handle without
+// following symlinks or blocking on a FIFO, and only single-link regular files
 // with a safe name and an allowed extension come back. Everything else is named
-// in dropped so the model learns why a file did not arrive.
+// in dropped so the model learns why a file did not arrive. A missing or
+// replaced out/ means no files, never a failed run.
 func collectOutputs(dir string) (files []wireFile, dropped []string, err error) {
-	d, err := os.Open(dir) //nolint:gosec // the job's own out dir, built by the server
+	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return nil, nil, err
+		return nil, []string{"out/ is missing or not a directory; no files delivered"}, nil
 	}
+	d := os.NewFile(uintptr(fd), dir) //nolint:gosec // fd comes from a successful open
 	defer func() { _ = d.Close() }()
 	// A job can create any number of empty files; look at a bounded number so
 	// a flood cannot blow up the server's memory or the response.
@@ -58,7 +63,7 @@ func collectOutputs(dir string) (files []wireFile, dropped []string, err error) 
 			dropped = append(dropped, displayName(name)+": "+reason)
 			continue
 		}
-		data, why := readRegularFile(filepath.Join(dir, name), maxOutputBytes-total)
+		data, why := readRegularFile(fd, name, maxOutputBytes-total)
 		if why != "" {
 			dropped = append(dropped, name+": "+why)
 			continue
@@ -69,11 +74,14 @@ func collectOutputs(dir string) (files []wireFile, dropped []string, err error) 
 	return files, dropped, nil
 }
 
-func readRegularFile(path string, budget int) ([]byte, string) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0) //nolint:gosec // path is the job's out dir plus a name that passed validName; O_NOFOLLOW refuses a symlink
+// readRegularFile opens name inside the directory dirFD, never following a
+// symlink and never blocking on a FIFO.
+func readRegularFile(dirFD int, name string, budget int) ([]byte, string) {
+	fd, err := unix.Openat(dirFD, name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, "not a regular file"
 	}
+	f := os.NewFile(uintptr(fd), name) //nolint:gosec // fd comes from a successful openat
 	defer func() { _ = f.Close() }()
 	fi, err := f.Stat()
 	if err != nil || !fi.Mode().IsRegular() {

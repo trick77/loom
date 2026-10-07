@@ -45,7 +45,7 @@ type listDocuments struct {
 	docs []rag.Document
 }
 
-func (l *listDocuments) DocumentsInScope(context.Context, string, *string, *string) ([]rag.Document, error) {
+func (l *listDocuments) DocumentsInScope(context.Context, string, *string, *string, int) ([]rag.Document, error) {
 	return l.docs, nil
 }
 

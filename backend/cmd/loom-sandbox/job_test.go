@@ -42,11 +42,12 @@ func TestValidateRequestAcceptsAliases(t *testing.T) {
 
 func TestClampTimeout(t *testing.T) {
 	cases := map[int64]time.Duration{
-		0:         maxTimeout,
-		-5:        maxTimeout,
-		10:        minTimeout,
-		5000:      5 * time.Second,
-		3_600_000: maxTimeout,
+		0:                  maxTimeout,
+		-5:                 maxTimeout,
+		10:                 minTimeout,
+		5000:               5 * time.Second,
+		3_600_000:          maxTimeout,
+		10_000_000_000_000: maxTimeout,
 	}
 	for ms, want := range cases {
 		if got := clampTimeout(ms); got != want {
@@ -62,8 +63,12 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.slots != 2 || cfg.memLimit != 1280<<20 || cfg.diskLimit != 320<<20 || cfg.addr != defaultAddr {
+	if cfg.slots != 2 || cfg.memLimit != 1280<<20 || cfg.totalMemory != 3584<<20 || cfg.addr != defaultAddr {
 		t.Fatalf("defaults: %+v", cfg)
+	}
+	// compose's defaults: two 320 MiB slot tmpfs fit the budget.
+	if err := checkMemoryBudget(cfg, []uint64{320 << 20, 320 << 20}); err != nil {
+		t.Fatalf("default budget: %v", err)
 	}
 
 	env["SANDBOX_SLOTS"] = "0"
@@ -81,15 +86,14 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatalf("overrides: %+v %v", cfg, err)
 	}
 
-	// The budget: 2 slots × (2560 + 320) MiB + 64 MiB shm does not fit 3584 MiB.
-	env["SANDBOX_SLOTS"] = "2"
-	if _, err := loadConfig(getenv); err == nil || !strings.Contains(err.Error(), "SANDBOX_TOTAL_MEMORY_MB") {
-		t.Fatalf("over-budget slots accepted: %v", err)
+	// 2 slots × (2560 MiB + a 320 MiB tmpfs) + 64 MiB shm does not fit 3584 MiB,
+	// nor do bigger slot tmpfs than compose's.
+	if err := checkMemoryBudget(cfg, []uint64{320 << 20, 320 << 20}); err == nil || !strings.Contains(err.Error(), "SANDBOX_TOTAL_MEMORY_MB") {
+		t.Fatalf("over-budget address space accepted: %v", err)
 	}
-	env["SANDBOX_MEM_LIMIT_MB"] = "1280"
-	cfg, err = loadConfig(getenv)
-	if err != nil || cfg.jobMemoryCeiling()*2+sharedShmBytes > 3584<<20 {
-		t.Fatalf("default budget: %v", err)
+	cfg.memLimit = 1280 << 20
+	if err := checkMemoryBudget(cfg, []uint64{1 << 30, 1 << 30}); err == nil {
+		t.Fatal("over-budget slot tmpfs accepted")
 	}
 	env["SANDBOX_TOTAL_MEMORY_MB"] = "x"
 	if _, err := loadConfig(getenv); err == nil {

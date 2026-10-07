@@ -53,14 +53,14 @@ func TestStore_documentsInScope(t *testing.T) {
 		return out
 	}
 
-	got, err := s.DocumentsInScope(ctx, "u1", nil, &t1)
+	got, err := s.DocumentsInScope(ctx, "u1", nil, &t1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if g := ids(got); len(g) != 2 || !g["global"] || !g["thread"] {
 		t.Fatalf("thread scope = %v", g)
 	}
-	got, err = s.DocumentsInScope(ctx, "u1", &p1, &t2)
+	got, err = s.DocumentsInScope(ctx, "u1", &p1, &t2, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,12 @@ func TestStore_documentsInScope(t *testing.T) {
 	if got[0].ID != "other-thread" || got[1].ID != "project" || got[2].ID != "global" {
 		t.Fatalf("order = %s, %s, %s", got[0].ID, got[1].ID, got[2].ID)
 	}
-	got, _ = s.DocumentsInScope(ctx, "u2", &p1, &t1)
+	// A limit keeps the thread's own documents, which sort first.
+	got, _ = s.DocumentsInScope(ctx, "u1", &p1, &t2, 1)
+	if len(got) != 1 || got[0].ID != "other-thread" {
+		t.Fatalf("limit 1 = %v", ids(got))
+	}
+	got, _ = s.DocumentsInScope(ctx, "u2", &p1, &t1, 0)
 	if g := ids(got); len(g) != 1 || !g["other-user"] {
 		t.Fatalf("u2 must see only its own documents, got %v", g)
 	}

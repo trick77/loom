@@ -67,6 +67,9 @@ type Client struct {
 	timeout   time.Duration
 	http      *http.Client
 	available atomic.Bool
+	// tokenRejected remembers that the last probe failed on the token, so the
+	// error is logged once rather than every probe.
+	tokenRejected atomic.Bool
 }
 
 // New returns a client for the sidecar at baseURL. timeout is the longest a
@@ -92,17 +95,28 @@ func (c *Client) Ping(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The sidecar checks the token on /healthz too, so a mismatch fails the
+	// probe and keeps the tool withdrawn.
+	if c.token != "" {
+		req.Header.Set("X-Sandbox-Token", c.token)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized:
+		return errTokenMismatch
+	default:
 		return fmt.Errorf("healthz returned %d", resp.StatusCode)
 	}
-	return nil
 }
+
+var errTokenMismatch = errors.New("token rejected: BACKEND_SANDBOX_TOKEN must match the sidecar's SANDBOX_TOKEN")
 
 // Probe runs one health check and records the outcome, logging only changes.
 func (c *Client) Probe(ctx context.Context) {
@@ -114,6 +128,16 @@ func (c *Client) Probe(ctx context.Context) {
 		return
 	}
 	was := c.available.Swap(err == nil)
+	// A wrong token is a configuration error, not an outage: say so loudly,
+	// once, whether or not the tool was offered before.
+	mismatch := errors.Is(err, errTokenMismatch)
+	if mismatch && !c.tokenRejected.Swap(true) {
+		slog.Error("sandbox rejects loom's token; run_python stays off", "url", c.baseURL, "err", err)
+		return
+	}
+	if !mismatch {
+		c.tokenRejected.Store(false)
+	}
 	switch {
 	case err == nil && !was:
 		slog.Info("sandbox available, run_python offered", "url", c.baseURL)
@@ -200,6 +224,11 @@ func (c *Client) Run(ctx context.Context, r Request) (Result, error) {
 		return Result{}, ErrBusy
 	case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
 		return Result{}, fmt.Errorf("%w: %s", ErrRejected, errorMessage(data))
+	case http.StatusUnauthorized:
+		if c.available.Swap(false) {
+			slog.Error("sandbox rejected loom's token, run_python withdrawn", "url", c.baseURL)
+		}
+		return Result{}, fmt.Errorf("%w: %w", ErrUnavailable, errTokenMismatch)
 	default:
 		return Result{}, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode)
 	}

@@ -88,7 +88,9 @@ func validateRequest(req runRequest) (job, error) {
 }
 
 func clampTimeout(ms int64) time.Duration {
-	if ms <= 0 {
+	// Compare in milliseconds first: multiplying an untrusted value could
+	// overflow into a negative duration.
+	if ms <= 0 || ms >= maxTimeout.Milliseconds() {
 		return maxTimeout
 	}
 	d := time.Duration(ms) * time.Millisecond

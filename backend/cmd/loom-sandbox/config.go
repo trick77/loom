@@ -4,15 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
 
 const (
 	defaultAddr = ":8070"
-	// workDir is the container's tmpfs for job directories (workDir/jobs/<id>,
-	// the job's working directory with in/, out/ and home/). compose sizes it
-	// to slots × SANDBOX_DISK_LIMIT_MB.
+	// workDir holds one tmpfs per slot (workDir/slot<N>, mounted by compose);
+	// a job's working directory with in/, out/ and home/ lives on its slot's.
+	// Separate mounts make the kernel enforce each slot's disk share.
 	workDir = "/work"
 
 	maxTimeout     = 60 * time.Second
@@ -45,11 +46,11 @@ type config struct {
 	addr  string
 	token string // optional; empty accepts any request on the internal network
 	slots int
-	// Per job: address space of the interpreter, and its share of the /work
-	// tmpfs (inputs, outputs and home together).
-	memLimit  uint64
-	diskLimit uint64
-	queueWait time.Duration
+	// memLimit is the address space of one job's interpreter; totalMemory the
+	// budget all slots must fit (see checkMemoryBudget).
+	memLimit    uint64
+	totalMemory uint64
+	queueWait   time.Duration
 	// python is the interpreter; mplConfig the prebuilt matplotlib cache copied
 	// into each job's home so a run does not rebuild the font list.
 	python    string
@@ -80,28 +81,33 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if cfg.memLimit, err = megabytes(or("SANDBOX_MEM_LIMIT_MB", "1280")); err != nil {
 		return config{}, fmt.Errorf("SANDBOX_MEM_LIMIT_MB: %w", err)
 	}
-	if cfg.diskLimit, err = megabytes(or("SANDBOX_DISK_LIMIT_MB", "320")); err != nil {
-		return config{}, fmt.Errorf("SANDBOX_DISK_LIMIT_MB: %w", err)
-	}
-	total, err := megabytes(or("SANDBOX_TOTAL_MEMORY_MB", "3584"))
-	if err != nil {
+	if cfg.totalMemory, err = megabytes(or("SANDBOX_TOTAL_MEMORY_MB", "3584")); err != nil {
 		return config{}, fmt.Errorf("SANDBOX_TOTAL_MEMORY_MB: %w", err)
-	}
-	// Every job is one process with no anonymous files (see seccomp_linux.go),
-	// so its worst case is fixed: its address space and its share of the
-	// /work tmpfs. All slots full plus the shared /dev/shm must fit the total,
-	// which leaves the container's mem_limit room for the server; a job that
-	// wants more fails alone with MemoryError.
-	if need := uint64(cfg.slots)*cfg.jobMemoryCeiling() + sharedShmBytes; need > total { //nolint:gosec // slots passed positiveInt
-		return config{}, fmt.Errorf("%d slots × %d MiB per job + %d MiB /dev/shm = %d MiB exceeds SANDBOX_TOTAL_MEMORY_MB (%d MiB)",
-			cfg.slots, cfg.jobMemoryCeiling()>>20, sharedShmBytes>>20, need>>20, total>>20)
 	}
 	return cfg, nil
 }
 
-// jobMemoryCeiling is the most memory one job can hold at once.
-func (c config) jobMemoryCeiling() uint64 {
-	return c.memLimit + c.diskLimit
+// slotDir is the tmpfs a slot's jobs live on.
+func slotDir(slot int) string {
+	return filepath.Join(workDir, fmt.Sprintf("slot%d", slot))
+}
+
+// checkMemoryBudget fails unless every slot full fits the total. A job is
+// one process with no anonymous files (see seccomp_linux.go), so its worst
+// case is fixed: its address space plus its slot's tmpfs, whose sizes come
+// from the mounts themselves. With the shared /dev/shm on top, the total
+// leaves the container's mem_limit room for the server; a job that wants
+// more fails alone with MemoryError.
+func checkMemoryBudget(cfg config, slotDisk []uint64) error {
+	need := uint64(sharedShmBytes)
+	for _, disk := range slotDisk {
+		need += cfg.memLimit + disk
+	}
+	if need > cfg.totalMemory {
+		return fmt.Errorf("%d slots (%d MiB address space each, slot tmpfs %v bytes) + %d MiB /dev/shm = %d MiB exceeds SANDBOX_TOTAL_MEMORY_MB (%d MiB)",
+			len(slotDisk), cfg.memLimit>>20, slotDisk, sharedShmBytes>>20, need>>20, cfg.totalMemory>>20)
+	}
+	return nil
 }
 
 func megabytes(s string) (uint64, error) {

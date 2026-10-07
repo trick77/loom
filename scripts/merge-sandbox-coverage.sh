@@ -4,7 +4,7 @@
 # Folds the counters of the -cover loom-sandbox binary (written by
 # scripts/sandbox-escape-test.sh under SANDBOX_COVER_DIR) into the backend
 # coverage report, then rebuilds the Cobertura XML the gates read. The
-# runner's namespace, mount and uid-drop code only runs as root inside the
+# runner's uid-drop and seccomp code only runs as root inside the
 # container, so `go test` alone can never cover it.
 #
 # Run after `make backend-coverage`. Both profiles use covermode atomic;
