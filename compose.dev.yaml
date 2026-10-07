@@ -45,6 +45,8 @@ services:
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
       # HTML→PDF renderer, published on a localhost port (loom is host-networked here).
       BACKEND_GOTENBERG_URL: "http://localhost:3000"
+      # Python sandbox (run_python), published on a localhost port.
+      BACKEND_SANDBOX_URL: "http://localhost:8070"
       # Extra MCP servers from ./conf/mcp.json (standard mcpServers format; merged on top of built-ins).
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"
       IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"
@@ -107,6 +109,35 @@ services:
       start_period: 30s
       start_interval: 5s
       retries: 6
+
+  sandbox:
+    # run_python sidecar, built from source; the limits of compose.yaml, but
+    # published on a localhost port instead of the internal network (jobs
+    # cannot open network sockets either way).
+    build:
+      context: .
+      dockerfile: sandbox/Containerfile
+    read_only: true
+    tmpfs:
+      - /work/slot0:size=320m,mode=0711
+      - /work/slot1:size=320m,mode=0711
+    shm_size: 64m
+    mem_limit: 4g
+    cpus: 2
+    pids_limit: 256
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL, CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8070:8070"
+    healthcheck:
+      test: ["CMD", "/loom-sandbox", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
 
 volumes:
   loom-dev-data:

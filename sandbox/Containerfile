@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+# Code sandbox for loom's run_python tool. Build from the repository root:
+#   docker build -f sandbox/Containerfile -t loom-sandbox .
+# A plain container (default runtime, nothing on the host); see compose.yaml.
+
+FROM golang:1.27-alpine AS build
+WORKDIR /app/backend
+COPY backend/go.mod backend/go.sum ./
+COPY backend/cmd/loom-sandbox/ ./cmd/loom-sandbox/
+# SANDBOX_COVER=1 builds the coverage-instrumented binary the CI escape test
+# measures (see cover_on.go); releases never set it. go build fetches only
+# the modules this binary imports (golang.org/x/sys), not all of loom's.
+ARG SANDBOX_COVER=""
+RUN --mount=type=cache,target=/go/pkg/mod \
+    if [ -n "$SANDBOX_COVER" ]; then \
+      CGO_ENABLED=0 go build -cover -covermode=atomic -tags sandboxcover -o /out/loom-sandbox ./cmd/loom-sandbox; \
+    else \
+      CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/loom-sandbox ./cmd/loom-sandbox; \
+    fi
+
+FROM python:3.13-slim
+COPY sandbox/requirements.lock /tmp/requirements.lock
+# Hash-pinned wheels only; no pip at run time. compileall writes the .pyc files
+# now, because jobs run with -B on a read-only root.
+RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r /tmp/requirements.lock \
+    && rm /tmp/requirements.lock \
+    && python -m compileall -q /usr/local/lib/python3.13
+# Prebuilt matplotlib font cache; each job gets a copy in its home.
+RUN MPLCONFIGDIR=/opt/mplconfig MPLBACKEND=Agg python -c "import matplotlib.pyplot as plt; plt.figure()" \
+    && chmod -R a+rX /opt/mplconfig
+# No setuid or setgid programs (su, mount, passwd): jobs run with no_new_privs
+# anyway, this removes the targets.
+RUN find / -xdev -type f -perm /6000 -exec chmod a-s {} +
+COPY --from=build /out/loom-sandbox /loom-sandbox
+EXPOSE 8070
+ENTRYPOINT ["/loom-sandbox"]
+CMD ["serve"]

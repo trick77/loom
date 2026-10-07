@@ -130,6 +130,8 @@ export const de = {
     failed: "Fehlgeschlagen",
     results_one: "{{count}} Ergebnis",
     results_other: "{{count}} Ergebnisse",
+    showCode: "Code anzeigen",
+    hideCode: "Code ausblenden",
     trace: {
       searchPastConversations: "Frühere Unterhaltungen werden durchsucht",
       readingConversation: "Unterhaltung wird gelesen",
@@ -141,6 +143,7 @@ export const de = {
       browsingWeb: "Web wird durchstöbert",
       fetchingWebPage: "Webseite wird abgerufen",
       creating: "{{name}} wird erstellt",
+      runningPython: "Python wird ausgeführt",
       activityComplete: "Aktivität abgeschlossen",
       gen: {
         image: "Bild",
@@ -457,6 +460,7 @@ export const de = {
     webFetches: "Web-Abrufe",
     obscuraFetches: "Obscura-Abrufe",
     imageGenerations: "Bildgenerierungen",
+    codeRuns: "Python-Ausführungen",
     threadsCreated: "Erstellte Threads",
     projectsCreated: "Erstellte Projekte",
   },

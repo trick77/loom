@@ -127,6 +127,8 @@ export const en = {
     failed: "Failed",
     results_one: "{{count}} result",
     results_other: "{{count}} results",
+    showCode: "Show code",
+    hideCode: "Hide code",
     trace: {
       searchPastConversations: "Searching past conversations",
       readingConversation: "Reading a conversation",
@@ -138,6 +140,7 @@ export const en = {
       browsingWeb: "Browsing the web",
       fetchingWebPage: "Fetching a web page",
       creating: "Creating {{name}}",
+      runningPython: "Running Python",
       activityComplete: "Activity complete",
       gen: {
         image: "image",
@@ -447,6 +450,7 @@ export const en = {
     webFetches: "Web fetches",
     obscuraFetches: "Obscura fetches",
     imageGenerations: "Image generations",
+    codeRuns: "Python runs",
     threadsCreated: "Threads created",
     projectsCreated: "Projects created",
   },

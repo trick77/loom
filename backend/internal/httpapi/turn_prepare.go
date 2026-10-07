@@ -96,9 +96,11 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		turnCategory                      string
 		userContext                       string
 		projectContext                    string
+		sandboxGuidance                   string
 		docIdx                            = newDocIndexer()
 		documentContext, knowledgeContext string
 		knowledgeSources                  []citation
+		sandboxOn                         = s.sandboxOffered()
 	)
 	parallel(
 		func() {
@@ -128,6 +130,13 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		},
 		func() { userContext = s.userContextForUser(in.reqCtx, in.user.ID) },
 		func() { projectContext = s.projectContextForThread(in.reqCtx, in.user.ID, in.thread) },
+		// run_python's guidance travels with the tool: when the sidecar is
+		// off, the prompt never mentions it.
+		func() {
+			if sandboxOn {
+				sandboxGuidance = s.sandboxGuidance(in.reqCtx, in.user.ID, in.thread)
+			}
+		},
 		func() {
 			var inlinedDocIDs, knowledgeInlinedIDs map[string]bool
 			var attachmentSources []citation
@@ -157,6 +166,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	}
 
 	gate := newToolGate(category, turnCategory, in.userMessage.Content)
+	gate.sandbox = sandboxOn
 	fileToolGuidance := ""
 	if gate.docgenEnabled() {
 		fileToolGuidance = fileToolGuardrailPrompt
@@ -164,7 +174,8 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	if len(knowledgeSources) > 0 {
 		_ = sendSSEJSON(in.stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
-	history := buildLLMHistory(in.user, fileToolGuidance, classifier.Block(category), userContext, projectContext, knowledgeContext, documentContext, in.priorMessages, in.userMessage)
+	toolGuidance := joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance)
+	history := buildLLMHistory(in.user, toolGuidance, classifier.Block(category), userContext, projectContext, knowledgeContext, documentContext, in.priorMessages, in.userMessage)
 	// editSourceID is the image whose original pixels are forwarded to the image
 	// model for direct editing (image-to-image). Defaults to the photo the user
 	// attached this turn; the follow-up branch below sets it to a reused prior image.

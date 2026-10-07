@@ -1,0 +1,13 @@
+# The libraries run_python offers; everything else is the standard library.
+# Regenerate requirements.lock after a change (from this directory):
+#   docker run --rm -v "$PWD:/w" -w /w ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
+#     uv pip compile --universal --generate-hashes --python-version 3.13 requirements.in -o requirements.lock
+numpy
+pandas
+scipy
+sympy
+matplotlib
+openpyxl
+python-dateutil
+pint
+tabulate

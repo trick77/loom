@@ -26,6 +26,62 @@ func newTestStore(t *testing.T) (*Store, *sql.DB) {
 	return NewStore(db), db
 }
 
+func TestStore_documentsInScope(t *testing.T) {
+	s, db := newTestStore(t)
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO threads (id, user_id, title) VALUES ('t1','u1','a'), ('t2','u1','b')`); err != nil {
+		t.Fatalf("seed threads: %v", err)
+	}
+	p1, t1, t2 := "p1", "t1", "t2"
+	for _, d := range []Document{
+		{ID: "global", UserID: "u1", Filename: "g.csv"},
+		{ID: "thread", UserID: "u1", ThreadID: &t1, Filename: "t.csv"},
+		{ID: "other-thread", UserID: "u1", ThreadID: &t2, Filename: "o.csv"},
+		{ID: "project", UserID: "u1", ProjectID: &p1, Filename: "p.csv"},
+		{ID: "other-user", UserID: "u2", Filename: "x.csv"},
+	} {
+		d.VolumeRelpath, d.MIME, d.Status = "files/"+d.Filename, "text/csv", StatusPending
+		if err := s.CreateDocument(ctx, d); err != nil {
+			t.Fatalf("CreateDocument %s: %v", d.ID, err)
+		}
+	}
+	ids := func(docs []Document) map[string]bool {
+		out := map[string]bool{}
+		for _, d := range docs {
+			out[d.ID] = true
+		}
+		return out
+	}
+
+	got, err := s.DocumentsInScope(ctx, "u1", nil, &t1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := ids(got); len(g) != 2 || !g["global"] || !g["thread"] {
+		t.Fatalf("thread scope = %v", g)
+	}
+	got, err = s.DocumentsInScope(ctx, "u1", &p1, &t2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := ids(got); len(g) != 3 || !g["global"] || !g["project"] || !g["other-thread"] {
+		t.Fatalf("project scope = %v", g)
+	}
+	// The thread's own documents come first, then the project's, then global.
+	if got[0].ID != "other-thread" || got[1].ID != "project" || got[2].ID != "global" {
+		t.Fatalf("order = %s, %s, %s", got[0].ID, got[1].ID, got[2].ID)
+	}
+	// A limit keeps the thread's own documents, which sort first.
+	got, _ = s.DocumentsInScope(ctx, "u1", &p1, &t2, 1)
+	if len(got) != 1 || got[0].ID != "other-thread" {
+		t.Fatalf("limit 1 = %v", ids(got))
+	}
+	got, _ = s.DocumentsInScope(ctx, "u2", &p1, &t1, 0)
+	if g := ids(got); len(g) != 1 || !g["other-user"] {
+		t.Fatalf("u2 must see only its own documents, got %v", g)
+	}
+}
+
 func unit() []float32 {
 	v := make([]float32, 1536)
 	v[0] = 1

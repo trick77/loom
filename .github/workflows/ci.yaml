@@ -76,6 +76,16 @@ jobs:
             exit 1
           fi
       - run: make backend-coverage
+      # The run_python sandbox runs model-written code. Its escape tests run the
+      # image with the production settings from compose, on plain Docker as in
+      # production; any hostile snippet that gets through fails the build. The
+      # image is the -cover build, and its counters join the backend report:
+      # the runner's uid-drop and seccomp code only runs as root in the
+      # container.
+      - name: Sandbox escape tests
+        run: SANDBOX_COVER_DIR=coverage/sandbox-raw ./scripts/sandbox-escape-test.sh
+      - name: Merge sandbox coverage
+        run: ./scripts/merge-sandbox-coverage.sh coverage/sandbox-raw
       - name: Fetch base ref
         # Guarantee refs/remotes/origin/<base> exists; a pull_request build
         # checks out the merge ref, not the base branch.

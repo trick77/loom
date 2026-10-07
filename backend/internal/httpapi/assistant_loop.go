@@ -28,6 +28,7 @@ const (
 	// fetch/obscura tools: a single paste can carry a dozen links, and fetching
 	// them is essentially free, so they should not share the conservative default.
 	cheapToolCallsPerRound    = 12
+	sandboxToolCallsPerRound  = 3
 	maxToolCallDuration       = 30 * time.Second
 	maxToolResultContentBytes = 32 << 10
 	toolFailedPrefix          = "tool failed"
@@ -40,6 +41,10 @@ func toolCallCapPerRound(name string) int {
 	switch name {
 	case fetchToolName, obscuraNavigateToolName, obscuraSnapshotToolName:
 		return cheapToolCallsPerRound
+	case sandboxToolName:
+		// Each job can hold a sandbox slot for up to a minute; a round that
+		// wants more is better split across rounds.
+		return sandboxToolCallsPerRound
 	default:
 		return maxToolCallsPerRound
 	}
@@ -202,16 +207,16 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 				output = fmt.Sprintf("Deferred: at most %d %s call(s) run per round, so this call was not run. Reissue it in a later round to process it. If you finish answering before it runs, tell the user that not everything was processed and offer to continue.", cap, call.Function.Name)
 				lastRoundDeferred = true
 			} else {
-				var response *artifactResponse
+				var created []artifactResponse
 				var handled bool
-				output, response, handled = s.executeBuiltInTool(ctx, stream, user, thread, call, editSource, typography)
+				output, created, handled = s.executeBuiltInTool(ctx, stream, user, thread, call, editSource, typography)
 				if handled {
-					if response != nil {
-						artifacts = append(artifacts, *response)
-						b.addArtifact(*response)
-						if call.Function.Name == "generate_image" {
-							imageGenerated = true
-						}
+					for _, response := range created {
+						artifacts = append(artifacts, response)
+						b.addArtifact(response)
+					}
+					if len(created) > 0 && call.Function.Name == "generate_image" {
+						imageGenerated = true
 					}
 				} else if runs[i] != nil {
 					output = s.finishToolCall(ctx, user, call, round, reg, <-runs[i])
@@ -374,7 +379,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		Role:      "assistant",
 		ToolCalls: []llm.ToolCall{call},
 	})
-	output, response, handled := s.executeBuiltInTool(ctx, stream, user, thread, call, editSource, typography)
+	output, created, handled := s.executeBuiltInTool(ctx, stream, user, thread, call, editSource, typography)
 	if !handled {
 		output = capToolOutput("tool failed: generate_image is not available")
 	}
@@ -387,12 +392,12 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		ToolCallID: call.ID,
 		Content:    output,
 	})
-	if response == nil {
+	if len(created) == 0 {
 		return b.result(result, nil, output), nil
 	}
 
-	b.addArtifact(*response)
-	artifacts := []artifactResponse{*response}
+	b.addArtifact(created[0])
+	artifacts := created[:1]
 	finalHistory := append(history[:len(history):len(history)], llm.Message{
 		Role:    "system",
 		Content: "Provide a brief final response that refers to the created artifact. Do not call any more tools. Never claim an image was created unless the tool result confirms an artifact.",
@@ -403,7 +408,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		return b.result(final, artifacts, ""), nil
 	}
 	if err == nil && strings.TrimSpace(final.Content) == "" {
-		final.Content = fallbackImageArtifactResponse(*response)
+		final.Content = fallbackImageArtifactResponse(created[0])
 		// addResult skipped the empty final turn's text; surface the fallback prose
 		// so the timeline matches the persisted content column.
 		b.addText(final.Content)

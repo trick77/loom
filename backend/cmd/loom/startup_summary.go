@@ -46,6 +46,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		mcpFileCapability(cfg),
 		tavilyCapability(cfg),
 		imageGenCapability(cfg, runtime),
+		sandboxCapability(cfg),
 		responseLoggingCapability(cfg),
 	}
 }
@@ -128,6 +129,15 @@ func imageGenCapability(cfg config.Config, runtime startupRuntime) startupCapabi
 		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "set BACKEND_IMAGE_GEN_API_KEY"}
 	}
 	return startupCapability{Name: "Image generation", Status: "enabled", Detail: fmt.Sprintf("model=%s tools=%d", cfg.ImageGenModel, runtime.ImageToolCount)}
+}
+
+// sandboxCapability reports the configuration only: whether run_python is
+// actually offered follows the sidecar's health probe at run time.
+func sandboxCapability(cfg config.Config) startupCapability {
+	if cfg.SandboxURL == "" {
+		return startupCapability{Name: "Python sandbox", Status: "disabled", Detail: "set BACKEND_SANDBOX_URL"}
+	}
+	return startupCapability{Name: "Python sandbox", Status: "configured", Detail: fmt.Sprintf("url=%s timeout=%s (offered while healthy)", cfg.SandboxURL, cfg.SandboxTimeout)}
 }
 
 func responseLoggingCapability(cfg config.Config) startupCapability {

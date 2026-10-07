@@ -55,3 +55,27 @@ jobs:
           # caught by a concurrently scheduled cleanup.
           cut-off: 1h
           dry-run: ${{ github.event.inputs.dry-run || 'false' }}
+
+      # Same policy for the run_python sidecar image, published by every release.
+      - id: sandbox-package-check
+        name: Check whether the loom-sandbox package exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "users/${{ github.repository_owner }}/packages/container/loom-sandbox" --silent 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No loom-sandbox container package yet — nothing to clean." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.sandbox-package-check.outputs.exists == 'true'
+        uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: "loom-sandbox"
+          tag-selection: both
+          keep-n-most-recent: 10
+          cut-off: 1h
+          dry-run: ${{ github.event.inputs.dry-run || 'false' }}

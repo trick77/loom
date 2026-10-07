@@ -36,6 +36,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
   (`github.com/trick77/webfetch`); Obscura sidecar via `BACKEND_OBSCURA_MCP_URL`. Best-effort extras
   (Context7, ipverse-lens) live in `BACKEND_MCP_SERVERS_FILE` (`mcpServers` JSON, default
   `/conf/mcp.json`, overrides built-ins by name); secrets only as `${VAR}` interpolation.
+- Except `run_python` → `loom-sandbox` (`docs/sandbox.md`); isolation change → `make sandbox-escape-test`.
 
 ## Config
 - Runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and

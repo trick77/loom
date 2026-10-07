@@ -123,6 +123,12 @@ type Config struct {
 	TavilyURL     string // hosted Tavily MCP endpoint for built-in web search
 	TavilyAPIKey  string // enables built-in Tavily web search when set
 	ObscuraMCPURL string
+	// SandboxURL is the loom-sandbox sidecar that runs run_python; empty keeps
+	// the tool off. SandboxToken authenticates loom to it, SandboxTimeout caps
+	// one job.
+	SandboxURL     string
+	SandboxToken   string
+	SandboxTimeout time.Duration
 	// MCPServersFile points at an optional JSON file (standard `mcpServers`
 	// format) whose servers are merged on top of the built-in MCP servers.
 	// Defaults to /conf/mcp.json (the mounted conf dir); an absent file is a
@@ -258,6 +264,8 @@ func Load() (Config, error) {
 		TavilyURL:               env("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
 		TavilyAPIKey:            env("BACKEND_TAVILY_API_KEY", ""),
 		ObscuraMCPURL:           env("BACKEND_OBSCURA_MCP_URL", ""),
+		SandboxURL:              env("BACKEND_SANDBOX_URL", ""),
+		SandboxToken:            env("BACKEND_SANDBOX_TOKEN", ""),
 		MCPServersFile:          env("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
 		SessionSecret:           env("BACKEND_SESSION_SECRET", ""),
 		AuthMode:                AuthMode(env("BACKEND_AUTH_MODE", "")),
@@ -313,6 +321,7 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET must be an integer greater than 0")
 	}
 	cfg.ProjectSummaryTokenBudget = projectSummaryTokenBudget
+	loadSandbox(&cfg)
 	if cfg.SessionSecret == "" {
 		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
 	}
@@ -413,4 +422,39 @@ func isAbsoluteHTTPURL(raw string) bool {
 		return false
 	}
 	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+}
+
+// maxSandboxTimeout is the sidecar's own ceiling for one job; a longer value
+// would only be clamped there.
+const maxSandboxTimeout = 60 * time.Second
+
+// loadSandbox reads the optional run_python settings. The sandbox never
+// blocks boot: a bad value turns the tool off with a warning instead.
+func loadSandbox(cfg *Config) {
+	cfg.SandboxTimeout = maxSandboxTimeout
+	if cfg.SandboxURL == "" {
+		return
+	}
+	if problem := sandboxProblem(cfg); problem != "" {
+		slog.Warn("run_python disabled: " + problem)
+		cfg.SandboxURL, cfg.SandboxToken = "", ""
+		cfg.SandboxTimeout = maxSandboxTimeout
+	}
+}
+
+func sandboxProblem(cfg *Config) string {
+	timeout, err := time.ParseDuration(env("BACKEND_SANDBOX_TIMEOUT", maxSandboxTimeout.String()))
+	if err != nil || timeout <= 0 || timeout > maxSandboxTimeout {
+		return fmt.Sprintf("BACKEND_SANDBOX_TIMEOUT must be a duration greater than 0 and at most %s", maxSandboxTimeout)
+	}
+	cfg.SandboxTimeout = timeout
+	if !isAbsoluteHTTPURL(cfg.SandboxURL) {
+		return "BACKEND_SANDBOX_URL must be an absolute http(s) URL"
+	}
+	// The token is optional: the sidecar sits on a network only loom shares
+	// and its jobs cannot open network sockets.
+	if cfg.SandboxToken != "" && len(cfg.SandboxToken) < 16 {
+		return "BACKEND_SANDBOX_TOKEN, when set, must be at least 16 characters"
+	}
+	return ""
 }

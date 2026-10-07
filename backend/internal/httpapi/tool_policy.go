@@ -23,6 +23,10 @@ type toolGate struct {
 	category        string
 	turnCategory    string
 	escalatedDocgen bool
+	// sandbox is whether run_python is offered this turn, decided once in
+	// prepareTurn so the tool and its guidance never disagree when the health
+	// probe flips mid-turn.
+	sandbox bool
 }
 
 // newToolGate builds the gate from the sticky category, the fresh per-turn

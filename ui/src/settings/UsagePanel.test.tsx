@@ -18,6 +18,7 @@ const sample: api.Usage = {
   webFetches: 7,
   obscuraFetches: 2,
   imageGens: 1,
+  codeRuns: 13,
   threadsCreated: 9,
   projectsCreated: 3,
   userMemoryLength: 1234,
@@ -42,6 +43,8 @@ describe("UsagePanel", () => {
     expect(screen.getByText("88")).toBeInTheDocument(); // embedding tokens
     expect(screen.getByText("6")).toBeInTheDocument(); // embedding requests
     expect(screen.getByText("4")).toBeInTheDocument(); // web searches
+    expect(screen.getByText("Python runs")).toBeInTheDocument();
+    expect(screen.getByText("13")).toBeInTheDocument(); // code runs
     expect(screen.getByText("$0.01")).toBeInTheDocument(); // lifetime cost, nano-USD as dollars, to the cent
     // getByText normalizes the thin space (U+202F) to a regular space.
     expect(screen.getByText("1 234 / 2 000 (62%)")).toBeInTheDocument(); // length + capacity %

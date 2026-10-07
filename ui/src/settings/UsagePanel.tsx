@@ -116,6 +116,7 @@ function sectionsFor(u: Usage, t: TFunction): { group: string; rows: Row[] }[] {
         { label: t("settings.webFetches"), value: fmt(u.webFetches) },
         { label: t("settings.obscuraFetches"), value: fmt(u.obscuraFetches) },
         { label: t("settings.imageGenerations"), value: fmt(u.imageGens) },
+        { label: t("settings.codeRuns"), value: fmt(u.codeRuns) },
       ],
     },
     {

@@ -205,6 +205,53 @@ func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID, 
 	return true, nil
 }
 
+// maxDocumentsInScope bounds DocumentsInScope. The thread's own documents sort
+// first, so the cap only ever trims old project and user-global ones.
+const maxDocumentsInScope = 1000
+
+// DocumentsInScope returns up to limit (at most maxDocumentsInScope) documents
+// a thread can use: its own, its project's and the user-global ones (the scope
+// IndexedDocsInScope uses for knowledge), whatever their indexing status. The
+// thread's come first, then the project's, then the global ones, each newest
+// first.
+func (s *Store) DocumentsInScope(ctx context.Context, userID string, projectID, threadID *string, limit int) ([]Document, error) {
+	if limit <= 0 || limit > maxDocumentsInScope {
+		limit = maxDocumentsInScope
+	}
+	query := `SELECT ` + documentColumns + ` FROM documents
+		WHERE user_id = ? AND ((project_id IS NULL AND thread_id IS NULL)`
+	args := []any{userID}
+	if projectID != nil {
+		query += ` OR project_id = ?`
+		args = append(args, *projectID)
+	}
+	if threadID != nil && *threadID != "" {
+		query += ` OR thread_id = ?`
+		args = append(args, *threadID)
+	}
+	thread := ""
+	if threadID != nil {
+		thread = *threadID
+	}
+	query += `) ORDER BY CASE WHEN thread_id = ? THEN 0 WHEN project_id IS NOT NULL THEN 1 ELSE 2 END, created_at DESC LIMIT ?`
+	args = append(args, thread, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list documents in scope: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var docs []Document
+	for rows.Next() {
+		d, err := scanDocument(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan document: %w", err)
+		}
+		docs = append(docs, d)
+	}
+	return docs, rows.Err()
+}
+
 // IndexedDocsInScope returns every embedded document in the thread's knowledge
 // scope (mirroring Retrieve/HasIndexedChunks: global, plus the project and/or the
 // thread when present), each with the sum of its chunks' token counts. Ordered

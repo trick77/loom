@@ -32,6 +32,7 @@ func (s stubUsageStore) IncWebSearch(context.Context, string) error             
 func (s stubUsageStore) IncWebFetch(context.Context, string) error                 { return nil }
 func (s stubUsageStore) IncObscuraFetch(context.Context, string) error             { return nil }
 func (s stubUsageStore) IncImageGen(context.Context, string) error                 { return nil }
+func (s stubUsageStore) IncCodeRun(context.Context, string) error                  { return nil }
 func (s stubUsageStore) IncThreadCreated(context.Context, string) error            { return nil }
 func (s stubUsageStore) IncProjectCreated(context.Context, string) error           { return nil }
 func (s stubUsageStore) Get(context.Context, string) (usage.Totals, error)         { return s.totals, nil }

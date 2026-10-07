@@ -335,6 +335,7 @@ export type Usage = {
   webFetches: number;
   obscuraFetches: number;
   imageGens: number;
+  codeRuns: number;
   threadsCreated: number;
   projectsCreated: number;
   userMemoryLength: number;

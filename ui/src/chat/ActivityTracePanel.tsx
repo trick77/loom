@@ -24,6 +24,7 @@ import {
   summarizeTrace,
   type ActivityTraceEvent,
   type ActivityTraceToolEvent,
+  type ToolResultPreview,
 } from "../activityTrace";
 import i18n from "../i18n";
 import { Icon } from "./Icon";
@@ -176,6 +177,58 @@ const streamingReasoningRehypePlugins: PluggableList = [
   ...reasoningRehypePlugins,
   rehypeStreamFade,
 ];
+const codeRehypePlugins: PluggableList = [rehypeHighlight];
+
+// fencedPython wraps run_python's code in a fence longer than any backtick run
+// inside it, so the code cannot close the fence early.
+export function fencedPython(code: string): string {
+  const longest = Math.max(
+    2,
+    ...Array.from(code.matchAll(/`+/g), (m) => m[0].length),
+  );
+  const fence = "`".repeat(longest + 1);
+  return `${fence}python\n${code}\n${fence}`;
+}
+
+// CodeRunDetails shows what a run_python step printed (or its error tail) and,
+// on request, the code the model ran.
+function CodeRunDetails({
+  code,
+  preview,
+}: {
+  code: string;
+  preview: ToolResultPreview | undefined;
+}) {
+  const { t } = useTranslation();
+  const [showCode, setShowCode] = useState(false);
+  const output = preview?.kind === "codeResult" ? preview.output : "";
+  return (
+    <>
+      {output !== "" && <pre className="ui-activity-code-output">{output}</pre>}
+      {code.trim() !== "" && (
+        <>
+          <button
+            type="button"
+            className="ui-activity-code-toggle"
+            aria-expanded={showCode}
+            onClick={() => setShowCode((value) => !value)}
+          >
+            {showCode
+              ? t("activityTrace.hideCode")
+              : t("activityTrace.showCode")}
+          </button>
+          {showCode && (
+            <div className="ui-activity-code">
+              <Markdown rehypePlugins={codeRehypePlugins}>
+                {fencedPython(code)}
+              </Markdown>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
 
 // Memoized: react-markdown parses on every render, and the panel re-renders on
 // every delta of the round that is streaming. Earlier rounds must sit that out.
@@ -290,6 +343,8 @@ function ActivityTraceRow({
       <LookupTraceIcon />
     ) : event.summary.kind === "generated" ? (
       <GeneratedTraceIcon />
+    ) : event.summary.kind === "code" ? (
+      <Icon name="code" size="1.125rem" />
     ) : (
       <ActivityFavicon
         url={fetchUrl}
@@ -335,6 +390,9 @@ function ActivityTraceRow({
           ) : (
             <span className="ui-activity-tool-url">{fetchUrl}</span>
           ))}
+        {event.summary.kind === "code" && (
+          <CodeRunDetails code={event.summary.code} preview={event.preview} />
+        )}
         {event.preview?.kind === "searchResults" &&
           event.preview.results.length > 0 && (
             <>

@@ -579,3 +579,53 @@ func TestLoad_sessionTTL(t *testing.T) {
 		t.Fatalf("Load() error = %v, want a session TTL error", err)
 	}
 }
+
+func TestLoad_sandbox(t *testing.T) {
+	requiredEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.SandboxURL != "" || cfg.SandboxTimeout != 60*time.Second {
+		t.Fatalf("defaults: url %q timeout %s", cfg.SandboxURL, cfg.SandboxTimeout)
+	}
+	// A bad value for the disabled sandbox does not block boot.
+	t.Setenv("BACKEND_SANDBOX_TIMEOUT", "2m")
+	if _, err := Load(); err != nil {
+		t.Fatalf("disabled sandbox with a bad timeout: %v", err)
+	}
+
+	t.Setenv("BACKEND_SANDBOX_TIMEOUT", "60s")
+	t.Setenv("BACKEND_SANDBOX_URL", "http://sandbox:8070")
+	if _, err := Load(); err != nil {
+		t.Fatalf("a sandbox URL without a token must load: %v", err)
+	}
+	t.Setenv("BACKEND_SANDBOX_TOKEN", "0123456789abcdef")
+	t.Setenv("BACKEND_SANDBOX_TIMEOUT", "30s")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.SandboxURL != "http://sandbox:8070" || cfg.SandboxToken != "0123456789abcdef" || cfg.SandboxTimeout != 30*time.Second {
+		t.Fatalf("overrides: %+v", cfg)
+	}
+
+	for name, env := range map[string][2]string{
+		"short token":  {"BACKEND_SANDBOX_TOKEN", "short"},
+		"relative url": {"BACKEND_SANDBOX_URL", "sandbox:8070"},
+		"long timeout": {"BACKEND_SANDBOX_TIMEOUT", "2m"},
+		"bad timeout":  {"BACKEND_SANDBOX_TIMEOUT", "soon"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(env[0], env[1])
+			// The sandbox never blocks boot: a bad value turns the tool off.
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("a bad sandbox value must not fail boot: %v", err)
+			}
+			if cfg.SandboxURL != "" {
+				t.Fatalf("a bad sandbox value must disable the tool, URL %q", cfg.SandboxURL)
+			}
+		})
+	}
+}

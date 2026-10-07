@@ -182,7 +182,7 @@ func TestProductionComposeDefinesTraefikEntrypoint(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"tika", "obscura"} {
+	for _, name := range []string{"tika", "obscura", "sandbox"} {
 		service := composeService(t, compose, name)
 		if !strings.Contains(service, `traefik.enable: "false"`) {
 			t.Fatalf("%s service must disable Traefik", name)
@@ -229,7 +229,7 @@ func TestProductionComposeHealthchecksUseSixtySecondIntervals(t *testing.T) {
 	}
 	compose := string(data)
 
-	for _, name := range []string{"loom", "tika", "obscura"} {
+	for _, name := range []string{"loom", "tika", "obscura", "sandbox"} {
 		service := composeService(t, compose, name)
 		if !strings.Contains(service, "\n    healthcheck:") {
 			t.Fatalf("%s service missing healthcheck", name)
@@ -265,6 +265,55 @@ func TestProductionComposeUsesPhysicalDataDirectory(t *testing.T) {
 	}
 	if strings.Contains(compose, "loom-data") {
 		t.Fatal("production compose must use ./data, not the loom-data named volume")
+	}
+}
+
+// The sandbox runs model-written code. Its isolation is part of compose, so
+// these settings are pinned: a plain container with nothing on the host, no
+// SYS_ADMIN, no egress, no data volume.
+func TestProductionComposeIsolatesTheSandbox(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	compose := string(data)
+	service := composeService(t, compose, "sandbox")
+	for _, want := range []string{
+		"image: ghcr.io/trick77/loom-sandbox:latest",
+		"read_only: true",
+		"cap_drop: [ALL]",
+		"- no-new-privileges:true",
+		"mem_limit: 4g",
+	} {
+		if !strings.Contains(service, want) {
+			t.Fatalf("sandbox service missing %q", want)
+		}
+	}
+	networks := service[strings.Index(service, "\n    networks:"):]
+	networks = networks[:strings.Index(networks, "\n    labels:")]
+	if strings.TrimSpace(networks) != "networks:\n      - sandbox" {
+		t.Fatalf("sandbox must join only the sandbox network, got:\n%s", networks)
+	}
+	for _, unwanted := range []string{"volumes:", "/data", "SYS_ADMIN", "runtime:", "profiles:", "privileged", "ports:"} {
+		if strings.Contains(service, unwanted) {
+			t.Fatalf("sandbox service must not contain %q", unwanted)
+		}
+	}
+	if !strings.Contains(compose, "\n  sandbox:\n    internal: true") {
+		t.Fatal("the sandbox network must be internal (no egress)")
+	}
+	loom := composeService(t, compose, "loom")
+	for _, want := range []string{
+		"- sandbox",
+		`BACKEND_SANDBOX_URL: "http://sandbox:8070"`,
+	} {
+		if !strings.Contains(loom, want) {
+			t.Fatalf("loom service missing %q", want)
+		}
+	}
+	// loom must boot even when the sidecar does not.
+	if strings.Contains(loom, "      sandbox:\n        condition") {
+		t.Fatal("loom must not depend on the sandbox service")
 	}
 }
 
@@ -348,6 +397,22 @@ func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
 	if idx > tagStep {
 		t.Fatal("backend image build must run before the git tag step")
 	}
+	sandbox := strings.Index(workflow, "- name: Build and push sandbox image")
+	if sandbox < 0 || sandbox > tagStep {
+		t.Fatal("release workflow must build the sandbox image before the git tag step")
+	}
+	for _, want := range []string{
+		"file: ./sandbox/Containerfile",
+		`ghcr.io/${{ github.repository }}-sandbox:latest`,
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Fatalf("release workflow missing sandbox image fragment %q", want)
+		}
+	}
+	// The coverage-instrumented runner is for CI only.
+	if strings.Contains(workflow, "SANDBOX_COVER") {
+		t.Fatal("release must never build the -cover sandbox runner")
+	}
 }
 
 func TestReleaseWorkflowBuildsProductionImages(t *testing.T) {
@@ -404,6 +469,9 @@ func TestCleanupWorkflowManagesOnlyTheLoomImage(t *testing.T) {
 	}
 	if !strings.Contains(workflow, `image-names: "loom"`) {
 		t.Fatal("cleanup workflow must manage the loom image")
+	}
+	if !strings.Contains(workflow, `image-names: "loom-sandbox"`) {
+		t.Fatal("cleanup workflow must manage the loom-sandbox image")
 	}
 	if strings.Contains(workflow, "loom-ui") {
 		t.Fatal("cleanup workflow must not manage the removed loom-ui image")
