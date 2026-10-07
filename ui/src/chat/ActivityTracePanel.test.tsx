@@ -1,8 +1,54 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
-import { ActivityTracePanel } from "./ActivityTracePanel";
+import { ActivityTracePanel, fencedPython } from "./ActivityTracePanel";
+
+test("renders a run_python step with its output and the code on request", () => {
+  render(
+    <ActivityTracePanel
+      active
+      initiallyExpanded
+      events={[
+        {
+          id: "py1",
+          type: "tool",
+          name: "run_python",
+          status: "failed",
+          summary: {
+            kind: "code",
+            title: "Running Python",
+            code: "print(df['Umsatz'].sum())",
+          },
+          preview: {
+            kind: "codeResult",
+            exitCode: 1,
+            output: "KeyError: 'Umsatz'",
+          },
+        },
+      ]}
+    />,
+  );
+
+  const trace = screen.getByRole("status", { name: /loom activity trace/i });
+  expect(within(trace).getByText("Running Python")).toBeInTheDocument();
+  expect(within(trace).getByText("KeyError: 'Umsatz'")).toBeInTheDocument();
+  expect(within(trace).getByText("Failed")).toBeInTheDocument();
+  expect(within(trace).queryByText(/df\['Umsatz'\]/)).toBeNull();
+
+  const toggle = within(trace).getByRole("button", { name: "Show code" });
+  fireEvent.click(toggle);
+  expect(trace.querySelector(".ui-activity-code code")).toHaveTextContent(
+    "print(df['Umsatz'].sum())",
+  );
+  fireEvent.click(within(trace).getByRole("button", { name: "Hide code" }));
+  expect(trace.querySelector(".ui-activity-code")).toBeNull();
+});
+
+test("fencedPython outlasts backtick runs inside the code", () => {
+  expect(fencedPython("x = 1")).toBe("```python\nx = 1\n```");
+  expect(fencedPython('s = "````"')).toBe('`````python\ns = "````"\n`````');
+});
 
 test("renders generated tools with a creation label and artifact glyph", () => {
   render(

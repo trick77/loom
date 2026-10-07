@@ -761,6 +761,46 @@ a.ui-activity-tool-url:hover {
   text-underline-offset: 0.14em;
 }
 
+.ui-activity-code-output {
+  margin-top: 0.25rem;
+  max-height: 12rem;
+  overflow: auto;
+  border: 1px solid #4a4741;
+  border-radius: 0.375rem;
+  background: #1f1f1d;
+  padding: 0.45rem 0.6rem;
+  color: #d6d3ca;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ui-activity-code-toggle {
+  margin-top: 0.3rem;
+  color: #88857d;
+  font-size: 0.75rem;
+}
+
+.ui-activity-code-toggle:hover {
+  color: #aaa79e;
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+.ui-activity-code {
+  margin-top: 0.25rem;
+  max-height: 16rem;
+  overflow: auto;
+  font-size: 0.75rem;
+}
+
+.ui-activity-code pre {
+  margin: 0;
+  border-radius: 0.375rem;
+}
+
 .ui-activity-result-count {
   margin-top: 0.25rem;
   color: #88857d;

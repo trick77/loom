@@ -2,6 +2,17 @@ import type { ToolCallEvent, ToolResultEvent } from "./api";
 import i18n from "./i18n";
 
 const TOOL_FAILED_PREFIX = "tool failed";
+const SANDBOX_TOOL = "run_python";
+
+// toolOutputFailed marks a step failed: an infrastructure failure, or a
+// run_python program that exited non-zero (its output still reaches the model,
+// which may fix the code and run it again).
+function toolOutputFailed(output: string): boolean {
+  return (
+    output.startsWith(TOOL_FAILED_PREFIX) ||
+    /^exit_code: (?!0\n|0$)-?\d+/.test(output)
+  );
+}
 
 export type ActivityTraceEvent =
   | {
@@ -31,6 +42,7 @@ export type ToolSummary =
   | { kind: "fetch"; title: string; url?: string }
   | { kind: "file"; title: string }
   | { kind: "generated"; title: string }
+  | { kind: "code"; title: string; code: string }
   | { kind: "generic"; title: string };
 
 export type ToolResultPreview =
@@ -42,6 +54,11 @@ export type ToolResultPreview =
   | {
       kind: "text";
       detail: string;
+    }
+  | {
+      kind: "codeResult";
+      exitCode?: number;
+      output: string;
     };
 
 export type SearchResultPreview = {
@@ -97,7 +114,7 @@ export function upsertTraceToolResult(
 ): ActivityTraceEvent[] {
   return events.map((item) => {
     if (item.type !== "tool" || item.id !== event.id) return item;
-    const failed = event.content.startsWith(TOOL_FAILED_PREFIX);
+    const failed = toolOutputFailed(event.content);
     return {
       ...item,
       status: failed ? "failed" : "done",
@@ -142,7 +159,7 @@ export function normalizeActivityTrace(
       summary,
     };
     if (event.rawOutput !== undefined && event.preview === undefined) {
-      const failed = event.rawOutput.startsWith(TOOL_FAILED_PREFIX);
+      const failed = toolOutputFailed(event.rawOutput);
       normalized.status = failed ? "failed" : normalized.status;
       normalized.preview = summarizeToolResult(normalized, event.rawOutput);
     }
@@ -186,6 +203,13 @@ export function summarizeToolCall(
   rawArguments: string,
 ): ToolSummary {
   const args = parseJSONRecord(rawArguments);
+  if (name === SANDBOX_TOOL) {
+    return {
+      kind: "code",
+      title: i18n.t("activityTrace.trace.runningPython"),
+      code: stringValue(args, ["code"]) ?? "",
+    };
+  }
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
   if (/conversation_search/i.test(name)) {
     // Distinct kind so the trace renders a loupe (own-history search) rather than
@@ -272,6 +296,9 @@ export function summarizeToolResult(
   tool: ActivityTraceToolEvent,
   rawOutput: string,
 ): ToolResultPreview {
+  if (tool.summary.kind === "code") {
+    return summarizeCodeResult(rawOutput);
+  }
   const parsed = parseJSONValue(rawOutput);
   const searchResults = extractSearchResults(parsed);
   if (searchResults.length > 0 || isSearchTool(tool.name)) {
@@ -283,6 +310,31 @@ export function summarizeToolResult(
   }
   const text = truncateText(rawOutput.trim(), 500);
   return { kind: "text", detail: text };
+}
+
+// summarizeCodeResult reads the run_python result format: "exit_code: N",
+// then "stdout:" and the printed text, then optional "stderr (tail):" and file
+// lines. The preview shows what the program printed, or the error tail.
+function summarizeCodeResult(rawOutput: string): ToolResultPreview {
+  const exit = rawOutput.match(/^exit_code: (-?\d+)/);
+  if (exit === null) {
+    return { kind: "codeResult", output: truncateText(rawOutput.trim(), 500) };
+  }
+  const exitCode = Number(exit[1]);
+  const stdout =
+    rawOutput.match(
+      /\nstdout:\n([\s\S]*?)(?=\nstderr \(tail\):\n|\nfile: created artifact |\nfile not delivered: |$)/,
+    )?.[1] ?? "";
+  const stderr =
+    rawOutput.match(
+      /\nstderr \(tail\):\n([\s\S]*?)(?=\nfile: created artifact |\nfile not delivered: |$)/,
+    )?.[1] ?? "";
+  const shown = exitCode !== 0 && stderr.trim() !== "" ? stderr : stdout;
+  return {
+    kind: "codeResult",
+    exitCode,
+    output: truncateText(shown.trim(), 1500),
+  };
 }
 
 export function domainFromURL(value: string): string | undefined {
