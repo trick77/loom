@@ -40,7 +40,7 @@ describe("run_python trace rows", () => {
 
   test("a clean run shows its stdout and is done", () => {
     const event = runWithResult(
-      "exit_code: 0\nstdout:\n3\nfile: created artifact chart.png (10 bytes), shown to the user",
+      "exit_code: 0\nfile: created artifact chart.png (10 bytes), shown to the user\nstdout:\n3",
     );
     expect(event.status).toBe("done");
     expect(event.preview).toEqual({
@@ -52,7 +52,7 @@ describe("run_python trace rows", () => {
 
   test("a non-zero exit is failed and shows the error tail", () => {
     const event = runWithResult(
-      "exit_code: 1\nstdout:\n(nothing printed)\nstderr (tail):\nTraceback\nKeyError: 'Umsatz'",
+      "exit_code: 1\nstderr (tail):\nTraceback\nKeyError: 'Umsatz'\nstdout:\n(nothing printed)",
     );
     expect(event.status).toBe("failed");
     expect(event.preview).toEqual({
@@ -62,9 +62,25 @@ describe("run_python trace rows", () => {
     });
   });
 
-  test("a printed line starting with 'file' stays in the output", () => {
-    const event = runWithResult("exit_code: 0\nstdout:\nfiles: 3\nfile ok");
-    expect(event.preview).toMatchObject({ output: "files: 3\nfile ok" });
+  test("printed lines that look like markers stay in the output", () => {
+    const event = runWithResult(
+      "exit_code: 0\nstdout:\nfiles: 3\nfile: created artifact x\nstderr (tail):\nno",
+    );
+    expect(event.preview).toMatchObject({
+      output: "files: 3\nfile: created artifact x\nstderr (tail):\nno",
+    });
+  });
+
+  test("a run that printed nothing shows no output, not the marker", () => {
+    const event = runWithResult(
+      "exit_code: 0\nfile: created artifact a.png (1 bytes), shown to the user\nstdout:\n(nothing printed)",
+    );
+    expect(event.status).toBe("done");
+    expect(event.preview).toEqual({
+      kind: "codeResult",
+      exitCode: 0,
+      output: "",
+    });
   });
 
   test("an infrastructure failure is failed with its message", () => {

@@ -258,7 +258,7 @@ func (s *server) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 		// run_python is one small schema with its own guidance block, offered
 		// in every category: exact math or counting comes up anywhere. It is
 		// absent while the sidecar is unconfigured or unhealthy.
-		if s.sandboxOffered() {
+		if gate.sandbox {
 			tool := sandboxTool()
 			names[tool.Function.Name] = "built_in"
 			tools = append(tools, tool)

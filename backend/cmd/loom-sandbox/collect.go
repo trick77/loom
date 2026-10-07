@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,11 +17,31 @@ import (
 // with a safe name and an allowed extension come back. Everything else is named
 // in dropped so the model learns why a file did not arrive.
 func collectOutputs(dir string) (files []wireFile, dropped []string, err error) {
-	entries, err := os.ReadDir(dir)
+	d, err := os.Open(dir) //nolint:gosec // the job's own out dir, built by the server
 	if err != nil {
 		return nil, nil, err
 	}
+	defer func() { _ = d.Close() }()
+	// A job can create any number of empty files; look at a bounded number so
+	// a flood cannot blow up the server's memory or the response.
+	entries, err := d.ReadDir(maxOutputEntries + 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, nil, err
+	}
+	more := len(entries) > maxOutputEntries
+	if more {
+		entries = entries[:maxOutputEntries]
+	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	defer func() {
+		if len(dropped) > maxDroppedReported {
+			rest := len(dropped) - maxDroppedReported
+			dropped = append(dropped[:maxDroppedReported], fmt.Sprintf("%d more files not delivered", rest))
+		}
+		if more {
+			dropped = append(dropped, fmt.Sprintf("more than %d entries in /work/out; the rest were not examined", maxOutputEntries))
+		}
+	}()
 	total := 0
 	for _, e := range entries {
 		name := e.Name()

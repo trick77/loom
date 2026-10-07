@@ -36,9 +36,8 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
   (`github.com/trick77/webfetch`); Obscura sidecar via `BACKEND_OBSCURA_MCP_URL`. Best-effort extras
   (Context7, ipverse-lens) live in `BACKEND_MCP_SERVERS_FILE` (`mcpServers` JSON, default
   `/conf/mcp.json`, overrides built-ins by name); secrets only as `${VAR}` interpolation.
-- Exception: `run_python` is built in → `loom-sandbox` sidecar (`docs/sandbox.md`): gVisor, internal
-  network + empty netns per job, token, stateless. Never give it `/data`, egress or a user id;
-  isolation changes need `make sandbox-escape-test` green.
+- Except `run_python` → `loom-sandbox` (`docs/sandbox.md`): gVisor, netns per job, stateless; never
+  `/data`, egress or a user id. Isolation change → `make sandbox-escape-test`.
 
 ## Config
 - Runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and

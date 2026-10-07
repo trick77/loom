@@ -589,6 +589,11 @@ func TestLoad_sandbox(t *testing.T) {
 	if cfg.SandboxURL != "" || cfg.SandboxTimeout != 60*time.Second {
 		t.Fatalf("defaults: url %q timeout %s", cfg.SandboxURL, cfg.SandboxTimeout)
 	}
+	// A bad value for the disabled sandbox does not block boot.
+	t.Setenv("BACKEND_SANDBOX_TIMEOUT", "2m")
+	if _, err := Load(); err != nil {
+		t.Fatalf("disabled sandbox with a bad timeout: %v", err)
+	}
 
 	t.Setenv("BACKEND_SANDBOX_URL", "http://sandbox:8070")
 	t.Setenv("BACKEND_SANDBOX_TOKEN", "0123456789abcdef")

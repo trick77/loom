@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"syscall"
 
@@ -27,6 +28,9 @@ func execChild(args []string) error {
 }
 
 func setupChild(args []string) error {
+	// no_new_privs is per thread: setup and exec must stay on one OS thread,
+	// or the interpreter may start on a thread that never got the flag.
+	runtime.LockOSThread()
 	if len(args) != 5 {
 		return fmt.Errorf("want 5 arguments, got %d", len(args))
 	}
@@ -75,6 +79,19 @@ func setupChild(args []string) error {
 	if err := syscall.Mount("tmpfs", filepath.Join(workDir, "jobs"), "tmpfs",
 		syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC|syscall.MS_RDONLY, "size=4k,mode=0555"); err != nil {
 		return fmt.Errorf("hide job directories: %w", err)
+	}
+	// Docker's /dev/shm (and /dev/mqueue) are shared, world-writable and
+	// outlive a job; a CLONE_NEWIPC namespace does not cover them. Each job gets
+	// its own, gone with its mount namespace.
+	if err := syscall.Mount("tmpfs", "/dev/shm", "tmpfs",
+		syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "size=64m,mode=1777"); err != nil {
+		return fmt.Errorf("private /dev/shm: %w", err)
+	}
+	if _, err := os.Stat("/dev/mqueue"); err == nil {
+		if err := syscall.Mount("tmpfs", "/dev/mqueue", "tmpfs",
+			syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC|syscall.MS_RDONLY, "size=4k,mode=0555"); err != nil {
+			return fmt.Errorf("hide /dev/mqueue: %w", err)
+		}
 	}
 	_ = syscall.Sethostname([]byte("sandbox"))
 

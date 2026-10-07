@@ -27,12 +27,16 @@ const (
 	maxRequestBody = 42 << 20 // base64 inflates the inputs by a third
 
 	// stdout keeps its head (the answer is printed first), stderr its tail (the
-	// traceback ends there). Together they fit loom's 32 KiB tool result cap.
-	maxStdoutBytes = 24 << 10
-	maxStderrBytes = 6 << 10
+	// traceback ends there). Together with the headers and file lines they stay
+	// well under loom's 32 KiB tool result cap.
+	maxStdoutBytes = 20 << 10
+	maxStderrBytes = 4 << 10
 
 	maxOutputFiles = 10
 	maxOutputBytes = 25 << 20
+	// Bounds on what a job can make the server scan and report from /work/out.
+	maxOutputEntries   = 200
+	maxDroppedReported = 20
 
 	slotUIDBase = 10000
 )

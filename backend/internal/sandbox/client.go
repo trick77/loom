@@ -22,6 +22,8 @@ import (
 var (
 	ErrBusy        = errors.New("sandbox busy")
 	ErrUnavailable = errors.New("sandbox unavailable")
+	// ErrRejected wraps the sidecar's reason for refusing a malformed job.
+	ErrRejected = errors.New("sandbox rejected the job")
 )
 
 const (
@@ -183,7 +185,7 @@ func (c *Client) Run(ctx context.Context, r Request) (Result, error) {
 	case http.StatusTooManyRequests:
 		return Result{}, ErrBusy
 	case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
-		return Result{}, fmt.Errorf("sandbox rejected the job: %s", errorMessage(data))
+		return Result{}, fmt.Errorf("%w: %s", ErrRejected, errorMessage(data))
 	default:
 		return Result{}, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode)
 	}

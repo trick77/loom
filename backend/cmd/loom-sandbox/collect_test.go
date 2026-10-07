@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,26 @@ func TestCollectOutputsEnforcesLimits(t *testing.T) {
 	files, dropped, _ = collectOutputs(bigDir)
 	if len(files) != 0 || len(dropped) != 1 || !strings.Contains(dropped[0], "size") {
 		t.Fatalf("big file: %v %v", files, dropped)
+	}
+}
+
+func TestCollectOutputsBoundsAFlood(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < maxOutputEntries+50; i++ {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%04d.bin", i)), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, dropped, err := collectOutputs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 || len(dropped) != maxDroppedReported+2 {
+		t.Fatalf("files %d, dropped %d: %v", len(files), len(dropped), dropped[len(dropped)-2:])
+	}
+	if !strings.Contains(dropped[maxDroppedReported], "more files not delivered") ||
+		!strings.Contains(dropped[maxDroppedReported+1], "not examined") {
+		t.Fatalf("summary lines: %v", dropped[maxDroppedReported:])
 	}
 }
 

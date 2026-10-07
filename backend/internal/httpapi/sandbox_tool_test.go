@@ -45,7 +45,7 @@ type listDocuments struct {
 	docs []rag.Document
 }
 
-func (l *listDocuments) List(context.Context, string, *string) ([]rag.Document, error) {
+func (l *listDocuments) DocumentsInScope(context.Context, string, *string, *string) ([]rag.Document, error) {
 	return l.docs, nil
 }
 
@@ -74,6 +74,7 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 	write("files/umsatz.csv", "kunde,umsatz\nA,10\n")
 	write("files/other.csv", "secret")
 	write("projects/p1/notes.md", "# notes")
+	write("files/global.json", "{}")
 	thread := chat.Thread{ID: "t1", ProjectID: strp("p1")}
 	docs := &listDocuments{docs: []rag.Document{
 		{ID: "doc-aaaa1111", ThreadID: strp("t1"), Filename: "Umsatz Übersicht (2025).csv", VolumeRelpath: "files/umsatz.csv"},
@@ -84,6 +85,8 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 		{ID: "doc-dddd4444", ThreadID: strp("t1"), Filename: "report.pdf", VolumeRelpath: "files/report.pdf"},
 		// Gone from the volume.
 		{ID: "doc-eeee5555", ThreadID: strp("t1"), Filename: "stale.csv", VolumeRelpath: "files/stale.csv", Status: rag.StatusStale},
+		// User-global: in every thread's scope, as for knowledge.
+		{ID: "doc-ffff6666", Filename: "global.json", VolumeRelpath: "files/global.json"},
 	}}
 	box := &fakeSandbox{available: true}
 	rec := httptest.NewRecorder()
@@ -110,13 +113,13 @@ func TestSandboxOfferedFollowsHealthAndConfig(t *testing.T) {
 	if !f.srv.sandboxOffered() {
 		t.Fatal("healthy sandbox not offered")
 	}
-	names := toolNames(f.srv.availableTools(f.thread, toolGate{category: "general"}))
+	names := toolNames(f.srv.availableTools(f.thread, toolGate{category: "general", sandbox: true}))
 	if !names[sandboxToolName] {
 		t.Fatalf("run_python missing from %v", names)
 	}
 
 	f.box.available = false
-	if f.srv.sandboxOffered() || toolNames(f.srv.availableTools(f.thread, toolGate{category: "general"}))[sandboxToolName] {
+	if f.srv.sandboxOffered() || toolNames(f.srv.availableTools(f.thread, toolGate{category: "general", sandbox: false}))[sandboxToolName] {
 		t.Fatal("unhealthy sandbox still offered")
 	}
 	f.box.available = true
@@ -157,6 +160,60 @@ func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 	empty := &server{sandbox: f.box}
 	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil); got != sandboxGuidancePrompt {
 		t.Fatalf("no documents: %q", got)
+	}
+}
+
+func TestSandboxGuidanceOffersUserGlobalDocuments(t *testing.T) {
+	f := newSandboxFixture(t)
+	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil)
+	if !strings.Contains(g, sandboxAlias(rag.Document{ID: "doc-ffff6666", Filename: "global.json"})) {
+		t.Fatalf("user-global document missing:\n%s", g)
+	}
+}
+
+func TestRunSandboxToolArgumentErrors(t *testing.T) {
+	f := newSandboxFixture(t)
+	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread,
+		runCall(`{"code":"1","files":"`+aliasUmsatz+`"}`), nil, false)
+	if !strings.Contains(out, "files must be an array") {
+		t.Fatalf("string files: %q", out)
+	}
+
+	var docs []rag.Document
+	var names []string
+	for i := 0; i < maxSandboxInputFiles+1; i++ {
+		d := rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv", VolumeRelpath: "files/umsatz.csv"}
+		docs = append(docs, d)
+		names = append(names, `"`+sandboxAlias(d)+`"`)
+	}
+	f.srv.documents = &listDocuments{docs: docs}
+	out, _, _ = f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, chat.Thread{ID: "t1"},
+		runCall(`{"code":"1","files":[`+strings.Join(names, ",")+`]}`), nil, false)
+	if !strings.Contains(out, fmt.Sprintf("at most %d input files", maxSandboxInputFiles)) || len(f.box.got) != 0 {
+		t.Fatalf("too many files: %q", out)
+	}
+}
+
+func TestRunSandboxToolPassesRejectionReason(t *testing.T) {
+	f := newSandboxFixture(t)
+	f.box.err = fmt.Errorf("%w: code exceeds 262144 bytes", sandbox.ErrRejected)
+	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread, runCall(`{"code":"1"}`), nil, false)
+	if !strings.Contains(out, "code exceeds 262144 bytes") || strings.Contains(out, "unavailable") {
+		t.Fatalf("output %q", out)
+	}
+}
+
+func TestFormatSandboxResultPutsStdoutLast(t *testing.T) {
+	out := formatSandboxResult(sandbox.Result{ExitCode: 1, Stdout: strings.Repeat("x", 40<<10), Stderr: "KeyError"},
+		[]artifactResponse{{DisplayFilename: "chart.png", SizeBytes: 3}}, []string{"x.svg: file type not allowed"}, time.Minute)
+	capped := capToolOutput(out)
+	for _, want := range []string{"exit_code: 1", "created artifact chart.png", "x.svg: file type not allowed", "KeyError"} {
+		if !strings.Contains(capped, want) {
+			t.Fatalf("capping lost %q", want)
+		}
+	}
+	if !strings.HasPrefix(capped[strings.Index(capped, "stdout:\n"):], "stdout:\nxxx") {
+		t.Fatal("stdout must come last")
 	}
 }
 

@@ -100,6 +100,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		docIdx                            = newDocIndexer()
 		documentContext, knowledgeContext string
 		knowledgeSources                  []citation
+		sandboxOn                         = s.sandboxOffered()
 	)
 	parallel(
 		func() {
@@ -132,7 +133,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		// run_python's guidance travels with the tool: when the sidecar is
 		// off, the prompt never mentions it.
 		func() {
-			if s.sandboxOffered() {
+			if sandboxOn {
 				sandboxGuidance = s.sandboxGuidance(in.reqCtx, in.user.ID, in.thread, in.body.DocumentAttachmentIDs)
 			}
 		},
@@ -165,6 +166,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	}
 
 	gate := newToolGate(category, turnCategory, in.userMessage.Content)
+	gate.sandbox = sandboxOn
 	fileToolGuidance := ""
 	if gate.docgenEnabled() {
 		fileToolGuidance = fileToolGuardrailPrompt

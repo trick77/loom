@@ -327,6 +327,12 @@ func (s *Service) Get(ctx context.Context, userID, documentID string) (rag.Docum
 	return s.store.GetDocument(ctx, userID, documentID)
 }
 
+// DocumentsInScope returns the documents a thread can use (its own, its
+// project's, the user-global ones), newest first, whatever their status.
+func (s *Service) DocumentsInScope(ctx context.Context, userID string, projectID, threadID *string) ([]rag.Document, error) {
+	return s.store.DocumentsInScope(ctx, userID, projectID, threadID)
+}
+
 // IndexedDocsInScope returns the embedded documents in the thread's knowledge
 // scope with their token counts, for deciding which to inject in full.
 func (s *Service) IndexedDocsInScope(ctx context.Context, userID string, projectID, threadID *string) ([]rag.IndexedDoc, error) {

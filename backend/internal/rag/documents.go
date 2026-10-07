@@ -205,6 +205,44 @@ func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID, 
 	return true, nil
 }
 
+// maxDocumentsInScope bounds DocumentsInScope: a thread's scope beyond this is
+// not a list anyone reads through.
+const maxDocumentsInScope = 200
+
+// DocumentsInScope returns the documents a thread can use, newest first: its
+// own, its project's and the user-global ones (the scope IndexedDocsInScope
+// uses for knowledge), whatever their indexing status.
+func (s *Store) DocumentsInScope(ctx context.Context, userID string, projectID, threadID *string) ([]Document, error) {
+	query := `SELECT ` + documentColumns + ` FROM documents
+		WHERE user_id = ? AND ((project_id IS NULL AND thread_id IS NULL)`
+	args := []any{userID}
+	if projectID != nil {
+		query += ` OR project_id = ?`
+		args = append(args, *projectID)
+	}
+	if threadID != nil && *threadID != "" {
+		query += ` OR thread_id = ?`
+		args = append(args, *threadID)
+	}
+	query += `) ORDER BY created_at DESC LIMIT ?`
+	args = append(args, maxDocumentsInScope)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list documents in scope: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var docs []Document
+	for rows.Next() {
+		d, err := scanDocument(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan document: %w", err)
+		}
+		docs = append(docs, d)
+	}
+	return docs, rows.Err()
+}
+
 // IndexedDocsInScope returns every embedded document in the thread's knowledge
 // scope (mirroring Retrieve/HasIndexedChunks: global, plus the project and/or the
 // thread when present), each with the sum of its chunks' token counts. Ordered

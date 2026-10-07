@@ -431,14 +431,17 @@ func isAbsoluteHTTPURL(raw string) bool {
 const maxSandboxTimeout = 60 * time.Second
 
 func loadSandbox(cfg *Config) error {
+	cfg.SandboxTimeout = maxSandboxTimeout
+	// The sandbox is optional: its settings are checked only once it is
+	// enabled, so a stray value for a disabled feature never blocks boot.
+	if cfg.SandboxURL == "" {
+		return nil
+	}
 	timeout, err := time.ParseDuration(env("BACKEND_SANDBOX_TIMEOUT", maxSandboxTimeout.String()))
 	if err != nil || timeout <= 0 || timeout > maxSandboxTimeout {
 		return fmt.Errorf("BACKEND_SANDBOX_TIMEOUT must be a duration greater than 0 and at most %s", maxSandboxTimeout)
 	}
 	cfg.SandboxTimeout = timeout
-	if cfg.SandboxURL == "" {
-		return nil
-	}
 	if !isAbsoluteHTTPURL(cfg.SandboxURL) {
 		return fmt.Errorf("BACKEND_SANDBOX_URL must be an absolute http(s) URL")
 	}

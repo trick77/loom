@@ -41,6 +41,10 @@ func (s *inlineStub) DeleteProjectData(context.Context, string, string) error { 
 func (s *inlineStub) Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error) {
 	return nil, nil
 }
+func (s *inlineStub) DocumentsInScope(context.Context, string, *string, *string) ([]rag.Document, error) {
+	return nil, nil
+}
+
 func (s *inlineStub) IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error) {
 	return s.indexed, nil
 }

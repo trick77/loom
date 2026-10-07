@@ -312,23 +312,26 @@ export function summarizeToolResult(
   return { kind: "text", detail: text };
 }
 
+// The backend's marker for a run that printed nothing; not shown in the trace.
+const NOTHING_PRINTED = "(nothing printed)";
+
 // summarizeCodeResult reads the run_python result format: "exit_code: N",
-// then "stdout:" and the printed text, then optional "stderr (tail):" and file
-// lines. The preview shows what the program printed, or the error tail.
+// file lines, an optional "stderr (tail):" block, and "stdout:" with the
+// printed text last. The preview shows what the program printed, or the error
+// tail of a failed run.
 function summarizeCodeResult(rawOutput: string): ToolResultPreview {
   const exit = rawOutput.match(/^exit_code: (-?\d+)/);
   if (exit === null) {
     return { kind: "codeResult", output: truncateText(rawOutput.trim(), 500) };
   }
   const exitCode = Number(exit[1]);
-  const stdout =
-    rawOutput.match(
-      /\nstdout:\n([\s\S]*?)(?=\nstderr \(tail\):\n|\nfile: created artifact |\nfile not delivered: |$)/,
-    )?.[1] ?? "";
+  const stdoutAt = rawOutput.indexOf("\nstdout:\n");
+  const printed =
+    stdoutAt < 0 ? "" : rawOutput.slice(stdoutAt + "\nstdout:\n".length);
+  const stdout = printed.trim() === NOTHING_PRINTED ? "" : printed;
   const stderr =
-    rawOutput.match(
-      /\nstderr \(tail\):\n([\s\S]*?)(?=\nfile: created artifact |\nfile not delivered: |$)/,
-    )?.[1] ?? "";
+    rawOutput.match(/\nstderr \(tail\):\n([\s\S]*?)(?=\nstdout:\n|$)/)?.[1] ??
+    "";
   const shown = exitCode !== 0 && stderr.trim() !== "" ? stderr : stdout;
   return {
     kind: "codeResult",

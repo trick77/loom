@@ -40,6 +40,18 @@ func TestTailBufferKeepsTheEnd(t *testing.T) {
 	}
 }
 
+func TestBinaryOutputDoesNotGrow(t *testing.T) {
+	h := &headBuffer{max: 64}
+	bin := make([]byte, 64)
+	for i := range bin {
+		bin[i] = byte(0x80 + i%0x40) // continuation bytes: invalid on their own
+	}
+	_, _ = h.Write(bin)
+	if got := h.String(); len(got) > 64 || strings.ContainsRune(got, '�') {
+		t.Fatalf("binary output grew to %d bytes: %q", len(got), got)
+	}
+}
+
 func TestBuffersDoNotSplitRunes(t *testing.T) {
 	h := &headBuffer{max: 5}
 	_, _ = h.Write([]byte("abcdé")) // é is two bytes: the cut lands inside it

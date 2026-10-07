@@ -54,10 +54,13 @@ const (
 	// accepts every in-scope file and names them all when one is not found.
 	maxSandboxInputsListed = 15
 	maxSandboxInputBytes   = 30 << 20
+	// maxSandboxInputFiles matches the sidecar's per-job limit.
+	maxSandboxInputFiles = 10
 	// maxSandboxImageSide bounds a PNG the sandbox produced before the
-	// thumbnailer decodes it: the file is untrusted, a tiny file can declare a
-	// huge canvas.
-	maxSandboxImageSide = 8000
+	// thumbnailer decodes it: the file is untrusted, and a tiny file can declare
+	// a huge canvas. 4000 px keeps one 16-bit decode near 128 MiB; a chart is
+	// far smaller.
+	maxSandboxImageSide = 4000
 )
 
 // sandboxInputExt are the uploads worth handing to Python as bytes; the stack
@@ -112,7 +115,8 @@ func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.T
 	if s.documents == nil {
 		return nil
 	}
-	docs, err := s.documents.List(ctx, userID, nil)
+	threadID := thread.ID
+	docs, err := s.documents.DocumentsInScope(ctx, userID, thread.ProjectID, &threadID)
 	if err != nil {
 		slog.Warn("sandbox input listing failed", "thread_id", thread.ID, "err", err)
 		return nil
@@ -126,7 +130,11 @@ func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.T
 	var attached, rest []sandboxInput
 	seen := map[string]bool{}
 	for _, d := range docs {
-		if !documentInThreadScope(d.ProjectID, d.ThreadID, thread) ||
+		// The query already scoped by user, thread and project; the check stays as
+		// the second line of defence, with user-global documents allowed as in
+		// knowledge.
+		global := d.ProjectID == nil && d.ThreadID == nil
+		if (!global && !documentInThreadScope(d.ProjectID, d.ThreadID, thread)) ||
 			d.Status == rag.StatusStale || !sandboxInputExt[strings.ToLower(filepath.Ext(d.Filename))] {
 			continue
 		}
@@ -150,14 +158,15 @@ func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.T
 	return append(attached, rest...)
 }
 
-var stripMarks = transform.Chain(norm.NFKD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-
 // sandboxAlias maps an upload name to the ASCII shape the sidecar accepts,
 // with a short hash of the document id that keeps two "data.csv" apart:
 // "Übersicht (2025).xlsx" → "Ubersicht_2025_3fa9c1.xlsx".
 func sandboxAlias(d rag.Document) string {
 	ext := strings.ToLower(filepath.Ext(d.Filename))
 	stem := strings.TrimSuffix(d.Filename, filepath.Ext(d.Filename))
+	// A transform.Chain keeps buffers between calls, so each call builds its
+	// own: concurrent turns compute aliases at the same time.
+	stripMarks := transform.Chain(norm.NFKD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	if plain, _, err := transform.String(stripMarks, stem); err == nil {
 		stem = plain
 	}
@@ -247,6 +256,11 @@ func (s *server) runSandboxTool(ctx context.Context, stream *sse.Writer, user au
 		if errors.Is(err, sandbox.ErrBusy) {
 			return "tool failed: the Python sandbox is busy; try again in a moment or answer without it", nil
 		}
+		if errors.Is(err, sandbox.ErrRejected) {
+			// The job itself was wrong (too much code, too many files): the model
+			// can fix that, so it gets the reason instead of "unavailable".
+			return capToolOutput("tool failed: " + err.Error() + "; fix the call and try again"), nil
+		}
 		return "tool failed: the Python sandbox is unavailable; answer without it", nil
 	}
 	s.recordUsage("code_run", func() error { return s.usage.IncCodeRun(ctx, user.ID) })
@@ -269,7 +283,13 @@ func (s *server) runSandboxTool(ctx context.Context, stream *sse.Writer, user au
 // documents. The second result is a model-facing message when a name is
 // unknown or the files are too large.
 func (s *server) sandboxFiles(ctx context.Context, userID string, thread chat.Thread, raw any) ([]sandbox.File, string) {
-	list, _ := raw.([]any)
+	if raw == nil {
+		return nil, ""
+	}
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, `tool failed: invalid arguments: files must be an array of names, e.g. ["data_1a2b3c.csv"]`
+	}
 	if len(list) == 0 {
 		return nil, ""
 	}
@@ -297,6 +317,9 @@ func (s *server) sandboxFiles(ctx context.Context, userID string, thread chat.Th
 		}
 		if seen[name] {
 			continue
+		}
+		if len(files) == maxSandboxInputFiles {
+			return nil, fmt.Sprintf("tool failed: at most %d input files per call; split the work across calls", maxSandboxInputFiles)
 		}
 		seen[name] = true
 		data, err := s.readSandboxInput(userID, in.doc, maxSandboxInputBytes-total)
@@ -368,6 +391,9 @@ func (s *server) persistSandboxFile(ctx context.Context, user auth.User, thread 
 	return artifactResponseFromArtifact(created), ""
 }
 
+// sandboxNothingPrinted marks an empty stdout; the UI recognises it.
+const sandboxNothingPrinted = "(nothing printed)"
+
 // formatSandboxResult is what the model reads back. The UI parses the first
 // line ("exit_code: N") to mark a failed run.
 func formatSandboxResult(res sandbox.Result, created []artifactResponse, notes []string, timeout time.Duration) string {
@@ -376,20 +402,22 @@ func formatSandboxResult(res sandbox.Result, created []artifactResponse, notes [
 	if res.TimedOut {
 		fmt.Fprintf(&b, "timed out: the program was killed after %s\n", timeout)
 	}
-	b.WriteString("stdout:\n")
-	if strings.TrimSpace(res.Stdout) == "" {
-		b.WriteString("(nothing printed)\n")
-	} else {
-		b.WriteString(strings.TrimRight(res.Stdout, "\n") + "\n")
-	}
-	if strings.TrimSpace(res.Stderr) != "" {
-		b.WriteString("stderr (tail):\n" + strings.TrimRight(res.Stderr, "\n") + "\n")
-	}
+	// stdout goes last: capToolOutput keeps the head, so if anything is cut it
+	// is printed output, never the file lines or the traceback.
 	for _, c := range created {
 		fmt.Fprintf(&b, "file: created artifact %s (%d bytes), shown to the user\n", c.DisplayFilename, c.SizeBytes)
 	}
 	for _, n := range notes {
 		b.WriteString("file not delivered: " + n + "\n")
 	}
-	return strings.TrimRight(b.String(), "\n")
+	if strings.TrimSpace(res.Stderr) != "" {
+		b.WriteString("stderr (tail):\n" + strings.TrimRight(res.Stderr, "\n") + "\n")
+	}
+	b.WriteString("stdout:\n")
+	if strings.TrimSpace(res.Stdout) == "" {
+		b.WriteString(sandboxNothingPrinted)
+	} else {
+		b.WriteString(strings.TrimRight(res.Stdout, "\n"))
+	}
+	return b.String()
 }

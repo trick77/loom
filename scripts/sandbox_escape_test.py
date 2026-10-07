@@ -132,19 +132,25 @@ r = run("import os\n"
 names = [f["name"] for f in r.get("files") or []]
 check("only the safe output returned", names == ["good.csv"], r)
 
+# --- nothing survives a job -----------------------------------------------
+run("open('/dev/shm/left-behind','w').write('x')\nimport os\nos.listdir('/dev/mqueue') if os.path.isdir('/dev/mqueue') else None")
+r = run("import os\nprint(os.listdir('/dev/shm'))")
+check("a job's /dev/shm is gone for the next job", r["stdout"].strip() == "[]", r)
+
 # --- concurrency and cancel ----------------------------------------------
 secret = "s3cr3t-" + str(time.time())
 results = {}
 
 
 def job_a():
-    results["a"] = run(f"open('/work/home/secret.txt','w').write({secret!r})\nimport time; time.sleep(4)")
+    results["a"] = run(f"open('/work/home/secret.txt','w').write({secret!r})\n"
+                       f"open('/dev/shm/secret','w').write({secret!r})\nimport time; time.sleep(4)")
 
 
 t = threading.Thread(target=job_a)
 t.start()
 time.sleep(1.5)
-r = run(f"import os\nfound=[]\nfor root, ds, fs in os.walk('/work'):\n    for f in fs:\n"
+r = run(f"import os\nfound=[]\nfor top in ('/work', '/dev/shm', '/tmp'):\n  for root, ds, fs in os.walk(top):\n    for f in fs:\n"
         f"        try:\n            if {secret!r} in open(os.path.join(root,f), errors='ignore').read(): found.append(f)\n"
         f"        except Exception: pass\nprint(found)")
 t.join()

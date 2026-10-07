@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"sync"
 	"unicode/utf8"
 )
@@ -70,7 +71,7 @@ func (t *tailBuffer) String() string {
 }
 
 // trimInvalidUTF8 drops a rune cut in half at the cut edge (the end for a
-// head, the start for a tail) and replaces any other invalid bytes.
+// head, the start for a tail) and replaces any other invalid byte with "?".
 func trimInvalidUTF8(b []byte, cutAtStart bool) string {
 	if cutAtStart {
 		for i := 0; i < len(b) && i < utf8.UTFMax; i++ {
@@ -88,5 +89,7 @@ func trimInvalidUTF8(b []byte, cutAtStart bool) string {
 			b = b[:len(b)-1]
 		}
 	}
-	return string([]rune(string(b)))
+	// "?" rather than U+FFFD: a replacement must not triple the size of binary
+	// output that the budget above already counted byte for byte.
+	return strings.ToValidUTF8(string(b), "?")
 }

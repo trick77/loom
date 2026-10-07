@@ -35,6 +35,10 @@ func (s *stubDocs) ArtifactIDsForThreadArtifactsInUse(context.Context, string, s
 	return nil, nil
 }
 func (s *stubDocs) DeleteProjectData(context.Context, string, string) error { return nil }
+func (s *stubDocs) DocumentsInScope(context.Context, string, *string, *string) ([]rag.Document, error) {
+	return nil, nil
+}
+
 func (s *stubDocs) IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error) {
 	return nil, nil
 }
