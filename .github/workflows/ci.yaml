@@ -77,23 +77,11 @@ jobs:
           fi
       - run: make backend-coverage
       # The run_python sandbox runs model-written code. Its escape tests run the
-      # image under gVisor with the production cap set, exactly as compose
-      # does; any hostile snippet that gets through fails the build. The image
-      # is the -cover build, and its counters join the backend report: the
-      # runner's namespace and uid-drop code only runs as root in the container.
-      # GitHub's runners have no KVM; runsc's default systrap platform needs none.
-      - name: Install gVisor
-        run: |
-          set -euo pipefail
-          url="https://storage.googleapis.com/gvisor/releases/release/latest/$(uname -m)"
-          cd "$RUNNER_TEMP"
-          curl -fsSLO "$url/gvisor.tar.zstd"
-          curl -fsSLO "$url/gvisor.tar.zstd.sha512"
-          sha512sum -c gvisor.tar.zstd.sha512
-          sudo tar --zstd -xf gvisor.tar.zstd -C /usr/local/bin
-          sudo /usr/local/bin/runsc install
-          sudo systemctl restart docker
-          docker run --rm --runtime=runsc alpine cat /proc/version
+      # image with the production settings from compose, on plain Docker as in
+      # production; any hostile snippet that gets through fails the build. The
+      # image is the -cover build, and its counters join the backend report:
+      # the runner's uid-drop and seccomp code only runs as root in the
+      # container.
       - name: Sandbox escape tests
         run: SANDBOX_COVER_DIR=coverage/sandbox-raw ./scripts/sandbox-escape-test.sh
       - name: Merge sandbox coverage

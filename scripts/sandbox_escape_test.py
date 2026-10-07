@@ -14,7 +14,6 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.error
 import urllib.request
 
 URL, TOKEN, CONTAINER, XLSX = sys.argv[1:5]
@@ -49,13 +48,18 @@ def healthy():
         return False
 
 
+def denied(code):
+    """Runs code that must raise; prints DENIED if it did."""
+    body = "\n".join("    " + line for line in code.splitlines())
+    return run(f"try:\n{body}\n    print('ALLOWED')\nexcept Exception as e:\n    print('DENIED', type(e).__name__, e)")
+
+
 # --- smoke ---------------------------------------------------------------
-r = run("import os\nprint(os.getuid(), os.getgid(), os.getpid(), os.getgroups())")
-check("runs as slot uid, PID 1, no groups", r["stdout"].split()[:3] == ["10000", "10000", "1"]
-      or r["stdout"].split()[:3] == ["10001", "10001", "1"], r)
+r = run("import os\nprint(os.getuid(), os.getgid(), os.getgroups())")
+check("runs as a slot uid with no groups", r["stdout"].strip() in ("10000 10000 []", "10001 10001 []"), r)
 
 r = run("import matplotlib.pyplot as plt, pandas as pd, numpy as np, scipy, sympy, openpyxl, pint\n"
-        "plt.plot([1,2,3]); plt.savefig('/work/out/a.png'); print('ok')")
+        "plt.plot([1,2,3]); plt.savefig('out/a.png'); print('ok')")
 pngs = [f for f in r.get("files") or [] if f["name"] == "a.png"]
 check("data stack imports, chart lands as artifact",
       r["stdout"].strip() == "ok" and pngs and base64.b64decode(pngs[0]["data"])[:8] == b"\x89PNG\r\n\x1a\n", r)
@@ -64,43 +68,43 @@ r = run("from zoneinfo import ZoneInfo\nimport datetime as d\n"
         "print(d.datetime(2027,3,30,14,30,tzinfo=ZoneInfo('Europe/Zurich')).astimezone(ZoneInfo('Asia/Tokyo')).strftime('%H:%M'))")
 check("time zone database present", r["stdout"].strip() == "21:30", r)
 
-r = run("print(open('/work/in/data.csv').read().strip())", files={"data.csv": b"a,b\n1,2"})
-check("input file readable at /work/in", r["stdout"].strip() == "a,b\n1,2", r)
+r = run("print(open('in/data.csv').read().strip())", files={"data.csv": b"a,b\n1,2"})
+check("input file readable at in/", r["stdout"].strip() == "a,b\n1,2", r)
 
 with open(XLSX, "rb") as fh:
     xlsx = fh.read()
-r = run("import pandas as pd\ndf = pd.read_excel('/work/in/big.xlsx')\nprint(len(df))",
+r = run("import pandas as pd\ndf = pd.read_excel('in/big.xlsx')\nprint(len(df))",
         files={"big.xlsx": xlsx}, timeout_ms=60000)
 check(f"read_excel on a {len(xlsx) >> 20} MiB xlsx fits the memory limit",
       r["exit_code"] == 0 and r["stdout"].strip().isdigit(), {k: r[k] for k in ("stderr", "exit_code", "timed_out")})
 
-# --- network -------------------------------------------------------------
-for target in [("1.1.1.1", 443), ("127.0.0.1", 8070), ("172.17.0.1", 8070), ("loom", 8080)]:
-    r = run(f"import socket\ntry:\n    socket.create_connection({target!r}, timeout=3)\n    print('CONNECTED')\n"
-            f"except Exception as e:\n    print('blocked', type(e).__name__)")
-    check(f"no connection to {target[0]}:{target[1]}", r["stdout"].startswith("blocked"), r)
+# --- network: no sockets but AF_UNIX -------------------------------------
+for target in [("1.1.1.1", 443), ("127.0.0.1", 8070), ("loom", 8080)]:
+    r = denied(f"import socket\nsocket.create_connection({target!r}, timeout=3)")
+    check(f"no connection to {target[0]}:{target[1]}", r["stdout"].startswith("DENIED"), r)
+for family in ("AF_INET", "AF_INET6", "AF_NETLINK", "AF_PACKET"):
+    r = denied(f"import socket\nsocket.socket(socket.{family}, socket.SOCK_RAW if '{family}' == 'AF_PACKET' else socket.SOCK_DGRAM)")
+    check(f"no {family} socket", r["stdout"].startswith("DENIED"), r)
 
-r = run("import socket\nprint(socket.if_nameindex())")
-check("only loopback exists", "eth" not in r["stdout"], r)
+# --- the runner and other jobs -------------------------------------------
+r = denied("print(open('/proc/1/environ','rb').read())")
+check("runner environment unreadable", r["stdout"].startswith("DENIED") and TOKEN not in r["stdout"], r)
 
-# --- host and other jobs -------------------------------------------------
-r = run("import os\nprint(sorted(p for p in os.listdir('/proc') if p.isdigit()))\n"
-        "print(open('/proc/1/environ','rb').read())")
-check("only own processes visible", r["stdout"].splitlines()[0] in ("['1']",), r)
-check("runner token not visible", TOKEN not in r["stdout"], r)
-
-r = run("import os\nprint(os.listdir('/work/jobs'))")
-check("job directories hidden", r["stdout"].strip() == "[]", r)
+r = denied("import os\nprint(os.listdir('/work/jobs'))")
+check("job directories not listable", r["stdout"].startswith("DENIED"), r)
 
 for name, code in {
     "read /etc/shadow": "open('/etc/shadow').read()",
     "write to /usr": "open('/usr/x','w').write('x')",
-    "write to /work/in": "open('/work/in/x','w').write('x')",
+    "write a new file into in/": "open('in/x','w').write('x')",
     "become root": "import os; os.setuid(0)",
-    "mount": "import ctypes; l=ctypes.CDLL(None); assert l.mount(b'none', b'/mnt', b'tmpfs', 0, None) == 0",
+    "mount": "import ctypes, os; l=ctypes.CDLL(None, use_errno=True)\nif l.mount(b'none', b'/tmp', b'tmpfs', 0, None) != 0: raise OSError(ctypes.get_errno(), 'mount')",
+    "anonymous memory file": "import os; os.memfd_create('x')",
+    "new user namespace": "import os; os.unshare(os.CLONE_NEWUSER)",
+    "ptrace": "import ctypes; l=ctypes.CDLL(None, use_errno=True)\nif l.ptrace(16, 1, 0, 0) != 0: raise OSError(ctypes.get_errno(), 'ptrace')",
 }.items():
-    r = run(code)
-    check(f"denied: {name}", r["exit_code"] != 0, r)
+    r = denied(code)
+    check(f"denied: {name}", r["stdout"].startswith("DENIED"), r)
 
 # --- resource exhaustion -------------------------------------------------
 r = run("import os\nwhile True:\n    os.fork()", timeout_ms=10000)
@@ -141,23 +145,23 @@ check("sleep killed at timeout", r["timed_out"], r)
 r = run("import sys\nfor _ in range(100): sys.stdout.write('x' * 1_000_000)")
 check("100 MB of stdout truncated", r["truncated"] and len(r["stdout"]) < 30_000, len(r["stdout"]))
 
-r = run("open('/work/home/f','wb').write(b'x' * (400 << 20))")
-check("job disk quota enforced", r["exit_code"] != 0, r)
+r = run("open('home/f','wb').write(b'x' * (100 << 20))")
+check("a file over 64 MiB is refused", r["exit_code"] != 0, r)
 
 # --- output files --------------------------------------------------------
 r = run("import os\n"
-        "os.symlink('/etc/passwd', '/work/out/passwd.txt')\n"
-        "os.mkfifo('/work/out/pipe.txt')\n"
-        "open('/work/out/a.txt','w').write('a'); os.link('/work/out/a.txt', '/work/out/b.txt')\n"
-        "open('/work/out/x.svg','w').write('<svg/>')\n"
-        "open('/work/out/good.csv','w').write('1')")
+        "os.symlink('/etc/passwd', 'out/passwd.txt')\n"
+        "os.mkfifo('out/pipe.txt')\n"
+        "open('out/a.txt','w').write('a'); os.link('out/a.txt', 'out/b.txt')\n"
+        "open('out/x.svg','w').write('<svg/>')\n"
+        "open('out/good.csv','w').write('1')")
 names = [f["name"] for f in r.get("files") or []]
 check("only the safe output returned", names == ["good.csv"], r)
 
 # --- nothing survives a job -----------------------------------------------
-run("open('/dev/shm/left-behind','w').write('x')\nimport os\nos.listdir('/dev/mqueue') if os.path.isdir('/dev/mqueue') else None")
+run("open('/dev/shm/left-behind','w').write('x')")
 r = run("import os\nprint(os.listdir('/dev/shm'))")
-check("a job's /dev/shm is gone for the next job", r["stdout"].strip() == "[]", r)
+check("a job's /dev/shm files are gone for the next job", r["stdout"].strip() == "[]", r)
 
 # --- concurrency and cancel ----------------------------------------------
 secret = "s3cr3t-" + str(time.time())
@@ -165,7 +169,7 @@ results = {}
 
 
 def job_a():
-    results["a"] = run(f"open('/work/home/secret.txt','w').write({secret!r})\n"
+    results["a"] = run(f"open('home/secret.txt','w').write({secret!r})\n"
                        f"open('/dev/shm/secret','w').write({secret!r})\nimport time; time.sleep(4)")
 
 
@@ -174,9 +178,12 @@ t.start()
 time.sleep(1.5)
 r = run(f"import os\nfound=[]\nfor top in ('/work', '/dev/shm', '/tmp'):\n  for root, ds, fs in os.walk(top):\n    for f in fs:\n"
         f"        try:\n            if {secret!r} in open(os.path.join(root,f), errors='ignore').read(): found.append(f)\n"
-        f"        except Exception: pass\nprint(found)")
+        f"        except Exception: pass\n"
+        f"readable = []\nfor p in os.listdir('/proc'):\n  if p.isdigit() and int(p) != os.getpid():\n"
+        f"    try:\n      open(f'/proc/{{p}}/environ','rb').read(); readable.append(p)\n    except Exception: pass\n"
+        f"print(found, readable)")
 t.join()
-check("concurrent job cannot see another job's files", r["stdout"].strip() == "[]", r)
+check("concurrent job cannot read another job's files or processes", r["stdout"].strip() == "[] []", r)
 
 try:
     run("import time; time.sleep(30)", timeout_ms=60000, client_timeout=2)

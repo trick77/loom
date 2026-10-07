@@ -316,9 +316,10 @@ export function summarizeToolResult(
 const NOTHING_PRINTED = "(nothing printed)";
 
 // summarizeCodeResult reads the run_python result format: "exit_code: N",
-// file lines, an optional "stderr (tail):" block, and "stdout:" with the
-// printed text last. The preview shows what the program printed, or the error
-// tail of a failed run.
+// file lines, an optional "stderr (tail):" block whose lines all start with
+// "| ", and "stdout:" with the printed text last. Because of that prefix the
+// first "stdout:" line is always the marker. The preview shows what the
+// program printed, or the error tail of a failed run.
 function summarizeCodeResult(rawOutput: string): ToolResultPreview {
   const exit = rawOutput.match(/^exit_code: (-?\d+)/);
   if (exit === null) {
@@ -329,9 +330,13 @@ function summarizeCodeResult(rawOutput: string): ToolResultPreview {
   const printed =
     stdoutAt < 0 ? "" : rawOutput.slice(stdoutAt + "\nstdout:\n".length);
   const stdout = printed.trim() === NOTHING_PRINTED ? "" : printed;
-  const stderr =
+  const stderrBlock =
     rawOutput.match(/\nstderr \(tail\):\n([\s\S]*?)(?=\nstdout:\n|$)/)?.[1] ??
     "";
+  const stderr = stderrBlock
+    .split("\n")
+    .map((line) => line.replace(/^\| ?/, ""))
+    .join("\n");
   const shown = exitCode !== 0 && stderr.trim() !== "" ? stderr : stdout;
   return {
     kind: "codeResult",

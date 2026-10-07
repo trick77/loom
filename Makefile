@@ -77,7 +77,7 @@ docker-dev:
 docker-dev-down:
 	docker compose -f compose.dev.yaml down
 
-# Hostile-code checks against the run_python sandbox image, under gVisor by
-# default. Without runsc (Docker Desktop): SANDBOX_RUNTIME=runc make sandbox-escape-test
+# Hostile-code checks against the run_python sandbox image, started with the
+# production settings from compose.yaml on plain Docker.
 sandbox-escape-test:
 	./scripts/sandbox-escape-test.sh

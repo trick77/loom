@@ -62,9 +62,29 @@ func TestRunMapsStatuses(t *testing.T) {
 }
 
 func TestRunUnreachableIsUnavailable(t *testing.T) {
-	_, err := New("http://127.0.0.1:1", "tok", time.Second).Run(context.Background(), Request{Code: "x"})
+	c := New("http://127.0.0.1:1", "tok", time.Second)
+	c.available.Store(true)
+	_, err := c.Run(context.Background(), Request{Code: "x"})
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("err %v", err)
+	}
+	if c.Available() {
+		t.Fatal("a refused connection must withdraw the tool at once")
+	}
+}
+
+func TestRunWithoutTokenSendsNoHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := r.Header["X-Sandbox-Token"]; ok {
+			http.Error(w, "unexpected token", http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(Result{Stdout: "ok"})
+	}))
+	defer srv.Close()
+	res, err := New(srv.URL, "", time.Second).Run(context.Background(), Request{Code: "x"})
+	if err != nil || res.Stdout != "ok" {
+		t.Fatalf("%+v %v", res, err)
 	}
 }
 

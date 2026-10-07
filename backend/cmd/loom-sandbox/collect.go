@@ -39,7 +39,7 @@ func collectOutputs(dir string) (files []wireFile, dropped []string, err error) 
 			dropped = append(dropped[:maxDroppedReported], fmt.Sprintf("%d more files not delivered", rest))
 		}
 		if more {
-			dropped = append(dropped, fmt.Sprintf("more than %d entries in /work/out; the rest were not examined", maxOutputEntries))
+			dropped = append(dropped, fmt.Sprintf("more than %d entries in out/; the rest were not examined", maxOutputEntries))
 		}
 	}()
 	total := 0

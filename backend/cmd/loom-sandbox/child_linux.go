@@ -15,21 +15,23 @@ import (
 
 const childCommand = "exec-child"
 
-// execChild runs as PID 1 of a fresh PID, mount, network, IPC and UTS
-// namespace set, still as root. It shapes the file system the job sees, drops
-// to the slot uid, applies the resource limits and becomes the interpreter.
-// It returns only on failure.
+// execChild runs as root in the job's directory. It drops to the slot uid,
+// applies the resource limits and the seccomp filter, and becomes the
+// interpreter. It returns only on failure.
 func execChild(args []string) error {
 	if err := setupChild(args); err != nil {
-		fmt.Fprintf(os.Stderr, "%s%v\n", childSetupMarker, err)
-		os.Exit(childSetupExit)
+		// The private setup pipe, not stderr: the server must tell a sandbox
+		// failure apart from anything the job's own code could print.
+		_, _ = fmt.Fprintf(os.NewFile(setupErrFD, "setup"), "%v\n", err)
+		os.Exit(1)
 	}
 	return nil
 }
 
 func setupChild(args []string) error {
-	// no_new_privs is per thread: setup and exec must stay on one OS thread,
-	// or the interpreter may start on a thread that never got the flag.
+	// no_new_privs and the seccomp filter are per thread: setup and exec must
+	// stay on one OS thread, or the interpreter may start on a thread that
+	// never got them.
 	runtime.LockOSThread()
 	if len(args) != 5 {
 		return fmt.Errorf("want 5 arguments, got %d", len(args))
@@ -47,53 +49,6 @@ func setupChild(args []string) error {
 	if err != nil {
 		return fmt.Errorf("bad cpu limit %q", args[3])
 	}
-	if os.Getpid() != 1 {
-		return fmt.Errorf("not PID 1 of a new PID namespace")
-	}
-
-	// Nothing mounted here may leak back into the server's namespace.
-	if err := syscall.Mount("", "/", "", syscall.MS_REC|syscall.MS_PRIVATE, ""); err != nil {
-		return fmt.Errorf("make mounts private: %w", err)
-	}
-	// A /proc of the new PID namespace: the job sees only its own processes,
-	// never the server and its environment.
-	if err := syscall.Mount("proc", "/proc", "proc", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, ""); err != nil {
-		return fmt.Errorf("mount /proc: %w", err)
-	}
-	binds := []struct {
-		src, dst string
-		ro       bool
-	}{
-		{filepath.Join(jobDir, "in"), sandboxInDir, true},
-		{filepath.Join(jobDir, "out"), sandboxOutDir, false},
-		{filepath.Join(jobDir, "home"), sandboxHomeDir, false},
-		{filepath.Join(jobDir, "main.py"), sandboxMain, true},
-	}
-	for _, b := range binds {
-		if err := bindMount(b.src, b.dst, b.ro); err != nil {
-			return err
-		}
-	}
-	// Hide every job directory, this one included, behind an empty tmpfs: the
-	// job reaches its files only through the fixed paths above.
-	if err := syscall.Mount("tmpfs", filepath.Join(workDir, "jobs"), "tmpfs",
-		syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC|syscall.MS_RDONLY, "size=4k,mode=0555"); err != nil {
-		return fmt.Errorf("hide job directories: %w", err)
-	}
-	// Docker's /dev/shm (and /dev/mqueue) are shared, world-writable and
-	// outlive a job; a CLONE_NEWIPC namespace does not cover them. Each job gets
-	// its own, gone with its mount namespace.
-	if err := syscall.Mount("tmpfs", "/dev/shm", "tmpfs",
-		syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, fmt.Sprintf("size=%d,mode=1777", jobShmBytes)); err != nil {
-		return fmt.Errorf("private /dev/shm: %w", err)
-	}
-	if _, err := os.Stat("/dev/mqueue"); err == nil {
-		if err := syscall.Mount("tmpfs", "/dev/mqueue", "tmpfs",
-			syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC|syscall.MS_RDONLY, "size=4k,mode=0555"); err != nil {
-			return fmt.Errorf("hide /dev/mqueue: %w", err)
-		}
-	}
-	_ = syscall.Sethostname([]byte("sandbox"))
 
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return fmt.Errorf("no_new_privs: %w", err)
@@ -107,7 +62,10 @@ func setupChild(args []string) error {
 	if err := syscall.Setresuid(uid, uid, uid); err != nil {
 		return fmt.Errorf("setresuid: %w", err)
 	}
-	if err := os.Chdir(sandboxHomeDir); err != nil {
+	// Everything the job creates (here, in /dev/shm, anywhere writable) is
+	// private to its uid, so the other slot cannot read it.
+	syscall.Umask(0o077)
+	if err := os.Chdir(jobDir); err != nil {
 		return fmt.Errorf("chdir: %w", err)
 	}
 
@@ -132,40 +90,29 @@ func setupChild(args []string) error {
 		}
 	}
 
+	home := filepath.Join(jobDir, "home")
 	env := []string{
 		"PATH=/usr/local/bin:/usr/bin:/bin",
-		"HOME=" + sandboxHomeDir,
-		"TMPDIR=" + sandboxHomeDir,
+		"HOME=" + home,
+		"TMPDIR=" + home,
 		"LANG=C.UTF-8",
 		"MPLBACKEND=Agg",
-		"MPLCONFIGDIR=" + sandboxHomeDir + "/.config/matplotlib",
-		"XDG_CACHE_HOME=" + sandboxHomeDir + "/.cache",
+		"MPLCONFIGDIR=" + home + "/.config/matplotlib",
+		"XDG_CACHE_HOME=" + home + "/.cache",
 		// BLAS and OpenMP otherwise start a thread per host CPU, each counting
-		// against RLIMIT_NPROC and the address-space cap.
+		// against RLIMIT_NPROC.
 		"OPENBLAS_NUM_THREADS=1",
 		"OMP_NUM_THREADS=1",
 		"MKL_NUM_THREADS=1",
 	}
 	// -I: ignore PYTHON* variables and the user site; -B: no .pyc writes;
 	// -u: unbuffered, so output printed before a kill still arrives.
-	argv := []string{"python3", "-I", "-B", "-u", "-X", "utf8", sandboxMain}
+	argv := []string{"python3", "-I", "-B", "-u", "-X", "utf8", "main.py"}
 	coverageFlush()
-	if err := installNoProcessFilter(); err != nil {
+	if err := installJobFilter(); err != nil {
 		return err
 	}
+	// The setup pipe closes on exec: the interpreter never holds it.
+	unix.CloseOnExec(setupErrFD)
 	return syscall.Exec(python, argv, env) //nolint:gosec // python is the operator-configured interpreter path; running untrusted code is this binary's purpose
-}
-
-func bindMount(src, dst string, ro bool) error {
-	if err := syscall.Mount(src, dst, "", syscall.MS_BIND, ""); err != nil {
-		return fmt.Errorf("bind %s: %w", dst, err)
-	}
-	flags := uintptr(syscall.MS_BIND | syscall.MS_REMOUNT | syscall.MS_NOSUID | syscall.MS_NODEV)
-	if ro {
-		flags |= syscall.MS_RDONLY
-	}
-	if err := syscall.Mount("", dst, "", flags, ""); err != nil {
-		return fmt.Errorf("remount %s: %w", dst, err)
-	}
-	return nil
 }

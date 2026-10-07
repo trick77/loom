@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Code sandbox for loom's run_python tool. Build from the repository root:
 #   docker build -f sandbox/Containerfile -t loom-sandbox .
-# Runs only under gVisor (runtime: runsc); see compose.yaml.
+# A plain container (default runtime, nothing on the host); see compose.yaml.
 
 FROM golang:1.27-alpine AS build
 WORKDIR /app/backend
@@ -27,6 +27,9 @@ RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r /tmp/requ
 # Prebuilt matplotlib font cache; each job gets a copy in its home.
 RUN MPLCONFIGDIR=/opt/mplconfig MPLBACKEND=Agg python -c "import matplotlib.pyplot as plt; plt.figure()" \
     && chmod -R a+rX /opt/mplconfig
+# No setuid or setgid programs (su, mount, passwd): jobs run with no_new_privs
+# anyway, this removes the targets.
+RUN find / -xdev -type f -perm /6000 -exec chmod a-s {} +
 COPY --from=build /out/loom-sandbox /loom-sandbox
 EXPOSE 8070
 ENTRYPOINT ["/loom-sandbox"]

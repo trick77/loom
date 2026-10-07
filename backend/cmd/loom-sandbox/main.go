@@ -1,11 +1,11 @@
 // Command loom-sandbox runs untrusted Python for loom's run_python tool.
 //
-// It is the only process in the sandbox container. `serve` takes jobs over
-// HTTP; each job runs as a re-exec of this binary (`exec-child`) in fresh
-// network, PID, mount, IPC and UTS namespaces, which drops to an unprivileged
-// slot uid and then becomes the Python interpreter. The container must run
-// under gVisor (runsc): the namespaces and rlimits are defence in depth, gVisor
-// is the boundary to the host kernel.
+// It is the only process in the sandbox container, a plain Docker (runc)
+// container with nothing installed on the host. `serve` takes jobs over HTTP;
+// each job runs as a re-exec of this binary (`exec-child`) that drops to an
+// unprivileged slot uid in its own directory, sets rlimits and a seccomp
+// filter (one process, no network sockets, no anonymous memory files), and
+// then becomes the Python interpreter.
 package main
 
 import (
@@ -45,12 +45,8 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	if !cfg.insecureDev {
-		if err := requireGVisor(); err != nil {
-			return err
-		}
-	} else {
-		slog.Warn("SANDBOX_INSECURE_DEV is set: running without gVisor, for local development only")
+	if cfg.token == "" {
+		slog.Info("SANDBOX_TOKEN not set: any client on the sandbox network may run jobs")
 	}
 	exec, err := newExecutor(cfg)
 	if err != nil {

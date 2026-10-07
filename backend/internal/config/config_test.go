@@ -595,7 +595,11 @@ func TestLoad_sandbox(t *testing.T) {
 		t.Fatalf("disabled sandbox with a bad timeout: %v", err)
 	}
 
+	t.Setenv("BACKEND_SANDBOX_TIMEOUT", "60s")
 	t.Setenv("BACKEND_SANDBOX_URL", "http://sandbox:8070")
+	if _, err := Load(); err != nil {
+		t.Fatalf("a sandbox URL without a token must load: %v", err)
+	}
 	t.Setenv("BACKEND_SANDBOX_TOKEN", "0123456789abcdef")
 	t.Setenv("BACKEND_SANDBOX_TIMEOUT", "30s")
 	cfg, err = Load()

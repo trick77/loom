@@ -22,9 +22,9 @@ services:
       BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY}"
       BACKEND_OBSCURA_MCP_URL: "http://obscura:8090/mcp"
-      # run_python: on once BACKEND_SANDBOX_TOKEN is set (and the sandbox
-      # profile is active); otherwise the URL stays empty and the tool off.
-      BACKEND_SANDBOX_URL: "${BACKEND_SANDBOX_TOKEN:+http://sandbox:8070}"
+      # run_python sidecar; the tool is offered while it answers. The token is
+      # optional (set the same BACKEND_SANDBOX_TOKEN for both services).
+      BACKEND_SANDBOX_URL: "http://sandbox:8070"
       BACKEND_SANDBOX_TOKEN: "${BACKEND_SANDBOX_TOKEN:-}"
       BACKEND_OIDC_ISSUER: "${BACKEND_OIDC_ISSUER}"
       BACKEND_OIDC_CLIENT_ID: "${BACKEND_OIDC_CLIENT_ID}"
@@ -146,30 +146,27 @@ services:
       traefik.enable: "false"
 
   sandbox:
-    # Runs run_python jobs. Opt-in: needs gVisor registered as the runsc
-    # runtime on the Docker host (see docs/sandbox.md). Enable with
-    # COMPOSE_PROFILES=sandbox and BACKEND_SANDBOX_TOKEN in .env. loom does
-    # not depend on it: it offers the tool while the sidecar answers.
+    # Runs run_python jobs (docs/sandbox.md): a plain container, nothing on the
+    # host. Each job runs as its own uid, in its own directory, as one process
+    # with no network sockets (seccomp). loom does not depend on it: it
+    # offers the tool while the sidecar answers.
     image: ghcr.io/trick77/loom-sandbox:latest
-    profiles: ["sandbox"]
-    # gVisor is the boundary to the host kernel; the runner refuses to start
-    # without it.
-    runtime: runsc
     restart: unless-stopped
     read_only: true
+    # Job directories: 2 slots × 320 MiB (SANDBOX_DISK_LIMIT_MB).
     tmpfs:
-      - /work:size=16m,mode=0711
+      - /work:size=640m,mode=0711
+    shm_size: 64m
     # Hard ceiling for everything in the sandbox. Each job is one process
-    # (1.25 GiB address space, 320 MiB tmpfs, 64 MiB /dev/shm); two slots fit
-    # the runner's 3.5 GiB budget, the rest is the server and gVisor.
+    # (1.25 GiB address space) with a 320 MiB share of /work; two slots plus
+    # /dev/shm fit the runner's 3.5 GiB budget, the rest is the server.
     mem_limit: 4g
     cpus: 2
-    pids_limit: 1024
+    pids_limit: 256
     cap_drop: [ALL]
-    # Capabilities inside gVisor's kernel only: namespaces and mounts per job
-    # (SYS_ADMIN), the drop to a slot uid (SETUID, SETGID), killing and
-    # cleaning up that uid's job (KILL, CHOWN, DAC_OVERRIDE, FOWNER).
-    cap_add: [SYS_ADMIN, SETUID, SETGID, KILL, CHOWN, DAC_OVERRIDE, FOWNER]
+    # The drop to a slot uid (SETUID, SETGID) and killing and cleaning up that
+    # uid's job (KILL, CHOWN, DAC_OVERRIDE, FOWNER). Nothing else.
+    cap_add: [SETUID, SETGID, KILL, CHOWN, DAC_OVERRIDE, FOWNER]
     security_opt:
       - no-new-privileges:true
     environment:
@@ -182,7 +179,7 @@ services:
       start_interval: 5s
       retries: 3
     # Only on the internal sandbox network: no egress, reachable from loom
-    # alone. Each job also runs in its own empty network namespace.
+    # alone. Jobs cannot open network sockets at all.
     networks:
       - sandbox
     labels:
@@ -190,8 +187,8 @@ services:
 
 networks:
   loom:
-  # internal: no route out of the network, so nothing in the sandbox reaches
-  # the internet even if a job escaped its network namespace.
+  # internal: no route out of the network, so not even the sandbox's runner
+  # reaches the internet.
   sandbox:
     internal: true
   traefik:

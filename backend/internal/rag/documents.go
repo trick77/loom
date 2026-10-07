@@ -205,13 +205,14 @@ func (s *Store) HasIndexedChunks(ctx context.Context, userID string, projectID, 
 	return true, nil
 }
 
-// maxDocumentsInScope bounds DocumentsInScope: a thread's scope beyond this is
-// not a list anyone reads through.
-const maxDocumentsInScope = 200
+// maxDocumentsInScope bounds DocumentsInScope. The thread's own documents sort
+// first, so the cap only ever trims old project and user-global ones.
+const maxDocumentsInScope = 1000
 
-// DocumentsInScope returns the documents a thread can use, newest first: its
-// own, its project's and the user-global ones (the scope IndexedDocsInScope
-// uses for knowledge), whatever their indexing status.
+// DocumentsInScope returns the documents a thread can use: its own, its
+// project's and the user-global ones (the scope IndexedDocsInScope uses for
+// knowledge), whatever their indexing status. The thread's come first, then
+// the project's, then the global ones, each newest first.
 func (s *Store) DocumentsInScope(ctx context.Context, userID string, projectID, threadID *string) ([]Document, error) {
 	query := `SELECT ` + documentColumns + ` FROM documents
 		WHERE user_id = ? AND ((project_id IS NULL AND thread_id IS NULL)`
@@ -224,8 +225,12 @@ func (s *Store) DocumentsInScope(ctx context.Context, userID string, projectID, 
 		query += ` OR thread_id = ?`
 		args = append(args, *threadID)
 	}
-	query += `) ORDER BY created_at DESC LIMIT ?`
-	args = append(args, maxDocumentsInScope)
+	thread := ""
+	if threadID != nil {
+		thread = *threadID
+	}
+	query += `) ORDER BY CASE WHEN thread_id = ? THEN 0 WHEN project_id IS NOT NULL THEN 1 ELSE 2 END, created_at DESC LIMIT ?`
+	args = append(args, thread, maxDocumentsInScope)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

@@ -4,6 +4,9 @@ package main
 
 import "golang.org/x/sys/unix"
 
-const auditArch = unix.AUDIT_ARCH_X86_64
+const (
+	auditArch = unix.AUDIT_ARCH_X86_64
+	hasX32    = true
+)
 
 var forkSyscalls = []uint32{unix.SYS_FORK, unix.SYS_VFORK}

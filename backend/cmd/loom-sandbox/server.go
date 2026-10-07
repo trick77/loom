@@ -35,11 +35,23 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	defer coverageFlush()
-	got := r.Header.Get("X-Sandbox-Token")
-	if subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.token)) != 1 {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+	if s.cfg.token != "" {
+		got := r.Header.Get("X-Sandbox-Token")
+		if subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.token)) != 1 {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+	}
+
+	// The slot comes first: a request waiting for one holds only its headers,
+	// so queued requests cannot add up to more memory than the slots allow.
+	slot, ok := s.acquire(r.Context())
+	if !ok {
+		writeError(w, http.StatusTooManyRequests, "sandbox busy")
 		return
 	}
+	defer func() { s.slots <- slot }()
+
 	var req runRequest
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBody))
 	if err := dec.Decode(&req); err != nil {
@@ -57,12 +69,6 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slot, ok := s.acquire(r.Context())
-	if !ok {
-		writeError(w, http.StatusTooManyRequests, "sandbox busy")
-		return
-	}
-	defer func() { s.slots <- slot }()
 	j.slot = slot
 
 	// The request context ends when loom gives up (the user pressed stop); the

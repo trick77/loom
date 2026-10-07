@@ -62,7 +62,7 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.slots != 2 || cfg.memLimit != 1280<<20 || cfg.diskLimit != 320<<20 || cfg.addr != defaultAddr || cfg.insecureDev {
+	if cfg.slots != 2 || cfg.memLimit != 1280<<20 || cfg.diskLimit != 320<<20 || cfg.addr != defaultAddr {
 		t.Fatalf("defaults: %+v", cfg)
 	}
 
@@ -76,20 +76,19 @@ func TestLoadConfig(t *testing.T) {
 		t.Error("bad memory limit accepted")
 	}
 	env["SANDBOX_MEM_LIMIT_MB"] = "2560"
-	env["SANDBOX_INSECURE_DEV"] = "1"
 	cfg, err = loadConfig(getenv)
-	if err != nil || cfg.memLimit != 2560<<20 || cfg.slots != 1 || !cfg.insecureDev {
+	if err != nil || cfg.memLimit != 2560<<20 || cfg.slots != 1 {
 		t.Fatalf("overrides: %+v %v", cfg, err)
 	}
 
-	// The budget: 2 slots × (2560 + 320 + 64) MiB does not fit 3584 MiB.
+	// The budget: 2 slots × (2560 + 320) MiB + 64 MiB shm does not fit 3584 MiB.
 	env["SANDBOX_SLOTS"] = "2"
 	if _, err := loadConfig(getenv); err == nil || !strings.Contains(err.Error(), "SANDBOX_TOTAL_MEMORY_MB") {
 		t.Fatalf("over-budget slots accepted: %v", err)
 	}
 	env["SANDBOX_MEM_LIMIT_MB"] = "1280"
 	cfg, err = loadConfig(getenv)
-	if err != nil || cfg.jobMemoryCeiling()*2 > 3584<<20 {
+	if err != nil || cfg.jobMemoryCeiling()*2+sharedShmBytes > 3584<<20 {
 		t.Fatalf("default budget: %v", err)
 	}
 	env["SANDBOX_TOTAL_MEMORY_MB"] = "x"
@@ -101,5 +100,9 @@ func TestLoadConfig(t *testing.T) {
 	env["SANDBOX_TOKEN"] = "short"
 	if _, err := loadConfig(getenv); err == nil {
 		t.Error("short token accepted")
+	}
+	env["SANDBOX_TOKEN"] = ""
+	if cfg, err := loadConfig(getenv); err != nil || cfg.token != "" {
+		t.Errorf("no token must be allowed: %v", err)
 	}
 }

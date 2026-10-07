@@ -52,7 +52,7 @@ describe("run_python trace rows", () => {
 
   test("a non-zero exit is failed and shows the error tail", () => {
     const event = runWithResult(
-      "exit_code: 1\nstderr (tail):\nTraceback\nKeyError: 'Umsatz'\nstdout:\n(nothing printed)",
+      "exit_code: 1\nstderr (tail):\n| Traceback\n| KeyError: 'Umsatz'\nstdout:\n(nothing printed)",
     );
     expect(event.status).toBe("failed");
     expect(event.preview).toEqual({
@@ -69,6 +69,21 @@ describe("run_python trace rows", () => {
     expect(event.preview).toMatchObject({
       output: "files: 3\nfile: created artifact x\nstderr (tail):\nno",
     });
+  });
+
+  test("a stderr line reading 'stdout:' cannot move the split", () => {
+    const event = runWithResult(
+      "exit_code: 1\nstderr (tail):\n| stdout:\n| boom\nstdout:\nreal output",
+    );
+    expect(event.preview).toEqual({
+      kind: "codeResult",
+      exitCode: 1,
+      output: "stdout:\nboom",
+    });
+    const ok = runWithResult(
+      "exit_code: 0\nstderr (tail):\n| stdout:\n| warn\nstdout:\nreal output",
+    );
+    expect(ok.preview).toMatchObject({ output: "real output" });
   });
 
   test("a run that printed nothing shows no output, not the marker", () => {

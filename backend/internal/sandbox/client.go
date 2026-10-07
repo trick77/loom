@@ -1,5 +1,5 @@
 // Package sandbox is loom's client for the loom-sandbox sidecar, which runs the
-// model's run_python code under gVisor. The sidecar is optional: when it is
+// model's run_python code. The sidecar is optional: when it is
 // unconfigured or unhealthy the tool is simply not offered, and chat works as
 // before.
 package sandbox
@@ -124,20 +124,27 @@ func (c *Client) Probe(ctx context.Context) {
 	}
 }
 
-// Watch probes now and then every interval until ctx ends, so the tool
-// appears once the sidecar comes up and disappears while it is down.
+// downProbeInterval is how often Watch probes while the sidecar is down, so
+// the tool comes back soon after it does (at boot, loom may start first).
+const downProbeInterval = 10 * time.Second
+
+// Watch probes now and then until ctx ends: every interval while the sidecar
+// is up, every downProbeInterval while it is down. The tool appears once the
+// sidecar answers and disappears while it does not.
 func (c *Client) Watch(ctx context.Context, interval time.Duration) {
 	c.Probe(ctx)
 	if !c.Available() {
-		slog.Warn("sandbox not reachable at boot; run_python stays off until it is", "url", c.baseURL)
+		slog.Info("sandbox not reachable yet; run_python is offered once it is", "url", c.baseURL)
 	}
-	t := time.NewTicker(interval)
-	defer t.Stop()
 	for {
+		next := interval
+		if !c.Available() && downProbeInterval < next {
+			next = downProbeInterval
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-time.After(next):
 			c.Probe(ctx)
 		}
 	}
@@ -164,11 +171,18 @@ func (c *Client) Run(ctx context.Context, r Request) (Result, error) {
 		return Result{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Sandbox-Token", c.token)
+	if c.token != "" {
+		req.Header.Set("X-Sandbox-Token", c.token)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		if ctx.Err() != nil && errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
 			return Result{}, fmt.Errorf("%w: no response in time", ErrUnavailable)
+		}
+		if ctx.Err() == nil && c.available.Swap(false) {
+			// The sidecar is gone: withdraw the tool now rather than at the next
+			// probe; Watch brings it back once it answers again.
+			slog.Warn("sandbox unreachable, run_python withdrawn", "url", c.baseURL, "err", err)
 		}
 		return Result{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}

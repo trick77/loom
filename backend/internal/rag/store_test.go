@@ -67,6 +67,10 @@ func TestStore_documentsInScope(t *testing.T) {
 	if g := ids(got); len(g) != 3 || !g["global"] || !g["project"] || !g["other-thread"] {
 		t.Fatalf("project scope = %v", g)
 	}
+	// The thread's own documents come first, then the project's, then global.
+	if got[0].ID != "other-thread" || got[1].ID != "project" || got[2].ID != "global" {
+		t.Fatalf("order = %s, %s, %s", got[0].ID, got[1].ID, got[2].ID)
+	}
 	got, _ = s.DocumentsInScope(ctx, "u2", &p1, &t1)
 	if g := ids(got); len(g) != 1 || !g["other-user"] {
 		t.Fatalf("u2 must see only its own documents, got %v", g)

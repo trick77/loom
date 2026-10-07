@@ -269,7 +269,8 @@ func TestProductionComposeUsesPhysicalDataDirectory(t *testing.T) {
 }
 
 // The sandbox runs model-written code. Its isolation is part of compose, so
-// these settings are pinned: gVisor, no egress, no data volume, opt-in.
+// these settings are pinned: a plain container with nothing on the host, no
+// SYS_ADMIN, no egress, no data volume.
 func TestProductionComposeIsolatesTheSandbox(t *testing.T) {
 	data, err := os.ReadFile("../../../compose.yaml")
 	if err != nil {
@@ -279,8 +280,6 @@ func TestProductionComposeIsolatesTheSandbox(t *testing.T) {
 	service := composeService(t, compose, "sandbox")
 	for _, want := range []string{
 		"image: ghcr.io/trick77/loom-sandbox:latest",
-		`profiles: ["sandbox"]`,
-		"runtime: runsc",
 		"read_only: true",
 		"cap_drop: [ALL]",
 		"- no-new-privileges:true",
@@ -295,7 +294,7 @@ func TestProductionComposeIsolatesTheSandbox(t *testing.T) {
 	if strings.TrimSpace(networks) != "networks:\n      - sandbox" {
 		t.Fatalf("sandbox must join only the sandbox network, got:\n%s", networks)
 	}
-	for _, unwanted := range []string{"volumes:", "/data", "SANDBOX_INSECURE_DEV", "runtime: runc", "ports:"} {
+	for _, unwanted := range []string{"volumes:", "/data", "SYS_ADMIN", "runtime:", "profiles:", "privileged", "ports:"} {
 		if strings.Contains(service, unwanted) {
 			t.Fatalf("sandbox service must not contain %q", unwanted)
 		}
@@ -306,15 +305,15 @@ func TestProductionComposeIsolatesTheSandbox(t *testing.T) {
 	loom := composeService(t, compose, "loom")
 	for _, want := range []string{
 		"- sandbox",
-		`BACKEND_SANDBOX_URL: "${BACKEND_SANDBOX_TOKEN:+http://sandbox:8070}"`,
+		`BACKEND_SANDBOX_URL: "http://sandbox:8070"`,
 	} {
 		if !strings.Contains(loom, want) {
 			t.Fatalf("loom service missing %q", want)
 		}
 	}
-	// loom must boot without the opt-in sidecar.
+	// loom must boot even when the sidecar does not.
 	if strings.Contains(loom, "      sandbox:\n        condition") {
-		t.Fatal("loom must not depend on the optional sandbox service")
+		t.Fatal("loom must not depend on the sandbox service")
 	}
 }
 

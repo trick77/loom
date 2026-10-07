@@ -134,6 +134,44 @@ func TestRunBusyWhenSlotsTaken(t *testing.T) {
 	}
 }
 
+func TestRunWithoutTokenAcceptsAnyClient(t *testing.T) {
+	s := newServer(config{slots: 1, queueWait: 50 * time.Millisecond}, &fakeExecutor{})
+	if rec := post(t, s, "", runRequest{Code: "1"}); rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+// A request waiting for a slot must not have its body read yet: queued
+// requests would otherwise hold their full inputs in memory.
+func TestRunTakesTheSlotBeforeReadingTheBody(t *testing.T) {
+	f := &fakeExecutor{block: make(chan struct{}), started: make(chan struct{}, 1)}
+	s := testServer(f, 1)
+	first := make(chan int, 1)
+	go func() { first <- post(t, s, testToken, runRequest{Code: "1"}).Code }()
+	<-f.started
+	body := &countingReader{r: strings.NewReader(`{"code":"2"}`)}
+	req := httptest.NewRequest(http.MethodPost, "/run", body)
+	req.Header.Set("X-Sandbox-Token", testToken)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	close(f.block)
+	<-first
+	if rec.Code != http.StatusTooManyRequests || body.n != 0 {
+		t.Fatalf("status %d, %d body bytes read while waiting", rec.Code, body.n)
+	}
+}
+
+type countingReader struct {
+	r *strings.Reader
+	n int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += n
+	return n, err
+}
+
 func TestRunExecutorErrorIs500(t *testing.T) {
 	rec := post(t, testServer(&fakeExecutor{err: errors.New("boom")}, 1), testToken, runRequest{Code: "1"})
 	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "boom") {

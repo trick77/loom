@@ -10,13 +10,9 @@ import (
 
 const (
 	defaultAddr = ":8070"
-	// The model's code sees these fixed paths whatever the job directory is.
-	sandboxInDir   = "/work/in"
-	sandboxOutDir  = "/work/out"
-	sandboxHomeDir = "/work/home"
-	sandboxMain    = "/work/main.py"
-	// workDir is a small tmpfs in the container; each job mounts its own sized
-	// tmpfs below workDir/jobs.
+	// workDir is the container's tmpfs for job directories (workDir/jobs/<id>,
+	// the job's working directory with in/, out/ and home/). compose sizes it
+	// to slots × SANDBOX_DISK_LIMIT_MB.
 	workDir = "/work"
 
 	maxTimeout     = 60 * time.Second
@@ -34,23 +30,23 @@ const (
 
 	maxOutputFiles = 10
 	maxOutputBytes = 25 << 20
-	// Bounds on what a job can make the server scan and report from /work/out.
+	// Bounds on what a job can make the server scan and report from out/.
 	maxOutputEntries   = 200
 	maxDroppedReported = 20
 
 	slotUIDBase = 10000
 
-	// jobShmBytes is the size of each job's private /dev/shm.
-	jobShmBytes = 64 << 20
+	// sharedShmBytes is the container's /dev/shm (compose shm_size), shared by
+	// the slots and emptied of a job's files after it.
+	sharedShmBytes = 64 << 20
 )
 
 type config struct {
-	addr        string
-	token       string
-	slots       int
-	insecureDev bool
-	// Per job: address space of the interpreter and size of its private tmpfs
-	// (inputs, outputs and home together).
+	addr  string
+	token string // optional; empty accepts any request on the internal network
+	slots int
+	// Per job: address space of the interpreter, and its share of the /work
+	// tmpfs (inputs, outputs and home together).
 	memLimit  uint64
 	diskLimit uint64
 	queueWait time.Duration
@@ -68,15 +64,14 @@ func loadConfig(getenv func(string) string) (config, error) {
 		return def
 	}
 	cfg := config{
-		addr:        or("SANDBOX_ADDR", defaultAddr),
-		token:       getenv("SANDBOX_TOKEN"),
-		insecureDev: getenv("SANDBOX_INSECURE_DEV") == "1",
-		queueWait:   10 * time.Second,
-		python:      or("SANDBOX_PYTHON", "/usr/local/bin/python3"),
-		mplConfig:   or("SANDBOX_MPLCONFIG", "/opt/mplconfig"),
+		addr:      or("SANDBOX_ADDR", defaultAddr),
+		token:     getenv("SANDBOX_TOKEN"),
+		queueWait: 10 * time.Second,
+		python:    or("SANDBOX_PYTHON", "/usr/local/bin/python3"),
+		mplConfig: or("SANDBOX_MPLCONFIG", "/opt/mplconfig"),
 	}
-	if len(cfg.token) < 16 {
-		return config{}, errors.New("SANDBOX_TOKEN must be set to at least 16 characters")
+	if cfg.token != "" && len(cfg.token) < 16 {
+		return config{}, errors.New("SANDBOX_TOKEN, when set, must be at least 16 characters")
 	}
 	var err error
 	if cfg.slots, err = positiveInt(or("SANDBOX_SLOTS", "2")); err != nil {
@@ -92,20 +87,21 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if err != nil {
 		return config{}, fmt.Errorf("SANDBOX_TOTAL_MEMORY_MB: %w", err)
 	}
-	// Every job is one process (see seccomp_linux.go), so its worst case is
-	// fixed: address space, its tmpfs, its /dev/shm. All slots full must fit
-	// the total, which leaves the container's mem_limit room for the server
-	// and gVisor itself; a job that wants more fails alone with MemoryError.
-	if need := uint64(cfg.slots) * cfg.jobMemoryCeiling(); need > total { //nolint:gosec // slots passed positiveInt
-		return config{}, fmt.Errorf("%d slots × %d MiB per job = %d MiB exceeds SANDBOX_TOTAL_MEMORY_MB (%d MiB)",
-			cfg.slots, cfg.jobMemoryCeiling()>>20, need>>20, total>>20)
+	// Every job is one process with no anonymous files (see seccomp_linux.go),
+	// so its worst case is fixed: its address space and its share of the
+	// /work tmpfs. All slots full plus the shared /dev/shm must fit the total,
+	// which leaves the container's mem_limit room for the server; a job that
+	// wants more fails alone with MemoryError.
+	if need := uint64(cfg.slots)*cfg.jobMemoryCeiling() + sharedShmBytes; need > total { //nolint:gosec // slots passed positiveInt
+		return config{}, fmt.Errorf("%d slots × %d MiB per job + %d MiB /dev/shm = %d MiB exceeds SANDBOX_TOTAL_MEMORY_MB (%d MiB)",
+			cfg.slots, cfg.jobMemoryCeiling()>>20, sharedShmBytes>>20, need>>20, total>>20)
 	}
 	return cfg, nil
 }
 
 // jobMemoryCeiling is the most memory one job can hold at once.
 func (c config) jobMemoryCeiling() uint64 {
-	return c.memLimit + c.diskLimit + jobShmBytes
+	return c.memLimit + c.diskLimit
 }
 
 func megabytes(s string) (uint64, error) {

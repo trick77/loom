@@ -445,8 +445,10 @@ func loadSandbox(cfg *Config) error {
 	if !isAbsoluteHTTPURL(cfg.SandboxURL) {
 		return fmt.Errorf("BACKEND_SANDBOX_URL must be an absolute http(s) URL")
 	}
-	if len(cfg.SandboxToken) < 16 {
-		return fmt.Errorf("BACKEND_SANDBOX_TOKEN must be at least 16 characters when BACKEND_SANDBOX_URL is set")
+	// The token is optional: the sidecar sits on a network only loom shares
+	// and its jobs cannot open network sockets.
+	if cfg.SandboxToken != "" && len(cfg.SandboxToken) < 16 {
+		return fmt.Errorf("BACKEND_SANDBOX_TOKEN, when set, must be at least 16 characters")
 	}
 	return nil
 }
