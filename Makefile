@@ -1,4 +1,4 @@
-.PHONY: build test coverage coverage-gate backend-coverage fe-build fe-test fe-lint fe-coverage model-names run dev refresh docker-dev docker-dev-down tidy
+.PHONY: build test coverage coverage-gate backend-coverage fe-build fe-test fe-lint fe-coverage model-names run dev refresh docker-dev docker-dev-down tidy sandbox-escape-test
 
 tidy:
 	cd backend && go mod tidy
@@ -76,3 +76,8 @@ docker-dev:
 
 docker-dev-down:
 	docker compose -f compose.dev.yaml down
+
+# Hostile-code checks against the run_python sandbox image, under gVisor by
+# default. Without runsc (Docker Desktop): SANDBOX_RUNTIME=runc make sandbox-escape-test
+sandbox-escape-test:
+	./scripts/sandbox-escape-test.sh
