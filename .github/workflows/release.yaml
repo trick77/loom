@@ -102,6 +102,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The run_python sidecar (sandbox/Containerfile) ships with every release
+      # under the same version, so compose's :latest pair always matches.
+      - name: Build and push sandbox image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./sandbox/Containerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository }}-sandbox:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository }}-sandbox:${{ steps.ver.outputs.short }}
+            ghcr.io/${{ github.repository }}-sandbox:latest
+          cache-from: type=gha,scope=sandbox
+          cache-to: type=gha,mode=max,scope=sandbox
+
       # Tag only AFTER the image push succeeds, so a failed release never leaves
       # an orphan git tag behind — the next version is derived from the newest
       # tag, so an orphan would permanently burn that number.

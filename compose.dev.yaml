@@ -45,6 +45,10 @@ services:
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
       # HTML→PDF renderer, published on a localhost port (loom is host-networked here).
       BACKEND_GOTENBERG_URL: "http://localhost:3000"
+      # Python sandbox (run_python), published on a localhost port. Start it with
+      # --profile sandbox; without it the tool simply stays off.
+      BACKEND_SANDBOX_URL: "http://localhost:8070"
+      BACKEND_SANDBOX_TOKEN: dev-sandbox-token-please-change
       # Extra MCP servers from ./conf/mcp.json (standard mcpServers format; merged on top of built-ins).
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"
       IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"
@@ -107,6 +111,36 @@ services:
       start_period: 30s
       start_interval: 5s
       retries: 6
+
+  sandbox:
+    # run_python sidecar, built from source. Docker Desktop has no gVisor, so
+    # this runs on runc with SANDBOX_INSECURE_DEV=1: the namespaces and limits
+    # still apply, the gVisor kernel boundary does not. Local development only.
+    profiles: ["sandbox"]
+    build:
+      context: .
+      dockerfile: sandbox/Containerfile
+    runtime: runc
+    read_only: true
+    tmpfs:
+      - /work:size=16m,mode=0711
+    mem_limit: 4g
+    cap_drop: [ALL]
+    cap_add: [SYS_ADMIN, SETUID, SETGID, KILL, CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SANDBOX_TOKEN: dev-sandbox-token-please-change
+      SANDBOX_INSECURE_DEV: "1"
+    ports:
+      - "127.0.0.1:8070:8070"
+    healthcheck:
+      test: ["CMD", "/loom-sandbox", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
 
 volumes:
   loom-dev-data:
