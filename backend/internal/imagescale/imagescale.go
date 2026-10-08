@@ -14,6 +14,7 @@ import (
 	_ "image/gif" // register GIF decoder (first frame is used)
 	"image/jpeg"
 	_ "image/png" // register PNG decoder
+	"io"
 
 	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // register WebP decoder (decode-only)
@@ -107,6 +108,15 @@ func fitDims(w, h, maxDimension int) (int, int) {
 // rejects only crafted inputs (a tiny file declaring e.g. 30000×30000) that would
 // otherwise allocate gigabytes on decode and take the whole process down.
 const maxSourcePixels = 100 << 20
+
+// TooLarge reports whether the image header in r declares more pixels than
+// this package decodes. Such an image would pass through DownscaleForModel at
+// full size, so callers refuse it up front. An unreadable header is not too
+// large: decoding it fails anyway.
+func TooLarge(r io.Reader) bool {
+	cfg, _, err := image.DecodeConfig(r)
+	return err == nil && int64(cfg.Width)*int64(cfg.Height) > maxSourcePixels
+}
 
 // Thumbnail decodes data and produces a small JPEG whose longest side is at most
 // maxDimension, flattening any transparency onto white. Unlike DownscaleForModel

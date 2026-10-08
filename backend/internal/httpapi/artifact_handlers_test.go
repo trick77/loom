@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -103,6 +105,37 @@ func TestUploadImageAttachmentReturnsPayloadTooLarge(t *testing.T) {
 	})
 
 	body, contentType := multipartUploadBody(t, "file", "large.png", "image/png", bytes.Repeat([]byte("x"), artifact.MaxArtifactSizeBytes+1))
+	req := httptest.NewRequest(http.MethodPost, "/api/artifacts/images/upload", body)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+// An image declaring more pixels than imagescale will decode is refused at
+// upload, so it never reaches a model at full size.
+func TestUploadImageAttachmentRejectsTooManyPixels(t *testing.T) {
+	server := newAuthenticatedServer(t, Deps{
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+	})
+
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:4], 20000)
+	binary.BigEndian.PutUint32(ihdr[4:8], 20000)
+	ihdr[8], ihdr[9] = 8, 2 // 8-bit truecolor
+	huge := []byte("\x89PNG\r\n\x1a\n")
+	huge = binary.BigEndian.AppendUint32(huge, uint32(len(ihdr)))
+	huge = append(huge, "IHDR"...)
+	huge = append(huge, ihdr...)
+	huge = binary.BigEndian.AppendUint32(huge, crc32.ChecksumIEEE(append([]byte("IHDR"), ihdr...)))
+
+	body, contentType := multipartUploadBody(t, "file", "huge.png", "image/png", huge)
 	req := httptest.NewRequest(http.MethodPost, "/api/artifacts/images/upload", body)
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "tok"})
 	req.Header.Set("Content-Type", contentType)
