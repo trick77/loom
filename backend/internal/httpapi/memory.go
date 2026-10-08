@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -149,11 +150,19 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 	return scope.upsert(ctx, content, sourceCount)
 }
 
+// errMemoryBusy refuses an edit while a refresh of the same memory runs.
+var errMemoryBusy = errors.New("memory is being refreshed")
+
 // editMemory applies a user's natural-language instruction to the memory in
 // place — adding, modifying, or removing facts as asked — and stores the result.
 // It preserves the current source-message count so the background-refresh gate is
 // undisturbed, and allows an empty result (the user emptied the memory).
 func (s *server) editMemory(ctx context.Context, user auth.User, scope memoryScope, instruction string) error {
+	release, ok := s.inflight.tryAcquire("memory:" + scope.key)
+	if !ok {
+		return errMemoryBusy
+	}
+	defer release()
 	current, sourceCount, _, err := scope.get(ctx)
 	if err != nil {
 		return err

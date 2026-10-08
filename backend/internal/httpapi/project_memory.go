@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -162,7 +163,14 @@ func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, proje
 	if err != nil || project == nil {
 		return err
 	}
-	return s.refreshMemory(ctx, user, s.projectMemoryScope(user, *project), prior, transcriptMessages, sourceCount)
+	scope := s.projectMemoryScope(user, *project)
+	// A refresh or edit already running owns the memory; this one would race it.
+	release, ok := s.inflight.tryAcquire("memory:" + scope.key)
+	if !ok {
+		return nil
+	}
+	defer release()
+	return s.refreshMemory(ctx, user, scope, prior, transcriptMessages, sourceCount)
 }
 
 func (s *server) findProject(ctx context.Context, userID, projectID string) (*chat.Project, error) {
@@ -223,6 +231,10 @@ func (s *server) handleEditProjectMemory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := s.editMemory(r.Context(), user, s.projectMemoryScope(user, *project), instruction); err != nil {
+		if errors.Is(err, errMemoryBusy) {
+			writeJSONError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeJSONError(w, http.StatusBadGateway, "edit project memory failed")
 		return
 	}
