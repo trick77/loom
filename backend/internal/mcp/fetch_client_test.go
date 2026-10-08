@@ -7,7 +7,7 @@ import (
 )
 
 func TestFetchClientAdvertisesFetchTool(t *testing.T) {
-	client := NewFetchClient("fetch")
+	client := NewFetchClient("fetch", nil)
 	tools, err := client.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("ListTools error: %v", err)
@@ -37,7 +37,7 @@ func TestFetchClientAdvertisesFetchTool(t *testing.T) {
 }
 
 func TestFetchClientCallToolRequiresURL(t *testing.T) {
-	client := NewFetchClient("fetch")
+	client := NewFetchClient("fetch", nil)
 	// An empty URL fails before any network access, and the error must be
 	// non-nil so the deterministic fetch->obscura fallback fires.
 	_, err := client.CallTool(context.Background(), "fetch", map[string]any{})
@@ -49,8 +49,23 @@ func TestFetchClientCallToolRequiresURL(t *testing.T) {
 	}
 }
 
+func TestFetchClientOptionsWirePDFExtractor(t *testing.T) {
+	if (NewFetchClient("fetch", nil).(*fetchClient)).options(nil).PDFHandler != nil {
+		t.Fatal("no extractor must leave PDFHandler nil")
+	}
+	extract := func(_ context.Context, body []byte) (string, error) { return "text:" + string(body), nil }
+	opts := (NewFetchClient("fetch", extract).(*fetchClient)).options(map[string]any{"raw": true})
+	if !opts.Raw {
+		t.Fatal("tool arguments must still map onto options")
+	}
+	got, err := opts.PDFHandler(context.Background(), []byte("%PDF-"))
+	if err != nil || got != "text:%PDF-" {
+		t.Fatalf("PDFHandler = %q, %v; want the extractor's output", got, err)
+	}
+}
+
 func TestFetchClientCloseIsNil(t *testing.T) {
-	if err := NewFetchClient("fetch").Close(); err != nil {
+	if err := NewFetchClient("fetch", nil).Close(); err != nil {
 		t.Fatalf("Close() = %v, want nil", err)
 	}
 }

@@ -502,8 +502,14 @@ func (t toolServerConfig) union() mcp.Config {
 
 func toolConfigForConfig(cfg config.Config) (toolServerConfig, error) {
 	required := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
-	// Fetch runs in-process (no sidecar), so it is always available.
-	required.Servers["fetch"] = mcp.FetchServerConfig()
+	// Fetch runs in-process (no sidecar), so it is always available. Fetched
+	// PDFs are parsed in the Tika sidecar, never in the backend; if Tika is
+	// down, the fetch fails and the obscura fallback takes over.
+	var pdf mcp.PDFExtractor
+	if strings.TrimSpace(cfg.TikaURL) != "" {
+		pdf = documents.NewTikaClient(documents.TikaConfig{BaseURL: cfg.TikaURL}).ExtractPDF
+	}
+	required.Servers["fetch"] = mcp.FetchServerConfig(pdf)
 	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
 		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL)
 	}

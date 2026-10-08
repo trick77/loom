@@ -47,7 +47,7 @@ func TestTavilyServerConfigDefaultsURLWhenEmpty(t *testing.T) {
 }
 
 func TestFetchServerConfigAllowlistsFetchTool(t *testing.T) {
-	cfg := FetchServerConfig()
+	cfg := FetchServerConfig(nil)
 	if cfg.Transport != TransportInProcess {
 		t.Fatalf("Transport = %q, want in-process", cfg.Transport)
 	}

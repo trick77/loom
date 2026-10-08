@@ -28,12 +28,14 @@ const fetchClientDescription = `Fetches a URL from the internet and extracts its
 // unchanged.
 type fetchClient struct {
 	serverName string
+	pdf        PDFExtractor
 }
 
 // NewFetchClient builds the in-process fetch client for the given server name
-// (always "fetch" in practice).
-func NewFetchClient(serverName string) Client {
-	return &fetchClient{serverName: serverName}
+// (always "fetch" in practice). pdf, when non-nil, extracts fetched PDFs;
+// otherwise they come back as webfetch's raw "cannot be simplified" content.
+func NewFetchClient(serverName string, pdf PDFExtractor) Client {
+	return &fetchClient{serverName: serverName, pdf: pdf}
 }
 
 func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
@@ -45,9 +47,8 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 		// Schema mirrors the JSON Schema upstream's pydantic model emits, plus
 		// loom-specific options (include_metadata, full_page, selector,
 		// exclude_selectors) that surface webfetch options the sidecar never had.
-		// webfetch's ExtractPDF is deliberately not exposed: its PDF parser has no
-		// resource limits, so a crafted PDF at a model-chosen URL could exhaust
-		// backend memory.
+		// PDF extraction is not a model choice: when Tika is configured, fetched
+		// PDFs always go to it (see NewFetchClient).
 		InputSchema: map[string]any{
 			"type":  "object",
 			"title": "Fetch",
@@ -112,6 +113,14 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 
 func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[string]any) (string, error) {
 	url, _ := arguments["url"].(string)
+	// A non-nil error keeps the deterministic fetch->obscura fallback working:
+	// the dispatch layer treats a CallTool error on fetch__fetch as "try
+	// obscura" (see httpapi.fetchObscuraFallback).
+	return webfetch.Fetch(ctx, url, c.options(arguments))
+}
+
+// options maps the tool arguments onto webfetch.Options.
+func (c *fetchClient) options(arguments map[string]any) webfetch.Options {
 	opts := webfetch.Options{
 		MaxLength:        argInt(arguments, "max_length"),
 		StartIndex:       argInt(arguments, "start_index"),
@@ -121,10 +130,10 @@ func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[stri
 		Selector:         argString(arguments, "selector"),
 		ExcludeSelectors: argStringSlice(arguments, "exclude_selectors"),
 	}
-	// A non-nil error keeps the deterministic fetch->obscura fallback working:
-	// the dispatch layer treats a CallTool error on fetch__fetch as "try
-	// obscura" (see httpapi.fetchObscuraFallback).
-	return webfetch.Fetch(ctx, url, opts)
+	if c.pdf != nil {
+		opts.PDFHandler = c.pdf
+	}
+	return opts
 }
 
 func (c *fetchClient) Close() error { return nil }

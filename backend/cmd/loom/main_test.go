@@ -67,6 +67,15 @@ func TestChatClientConfigFromConfig(t *testing.T) {
 	}
 }
 
+func TestToolConfigForConfigWiresTikaIntoFetch(t *testing.T) {
+	if mustToolConfig(t, config.Config{}).Servers["fetch"].PDFExtractor != nil {
+		t.Fatal("no Tika URL must leave fetch without a PDF extractor")
+	}
+	if mustToolConfig(t, config.Config{TikaURL: "http://tika:9998"}).Servers["fetch"].PDFExtractor == nil {
+		t.Fatal("a Tika URL must give fetch a PDF extractor")
+	}
+}
+
 func TestToolConfigForConfigAddsBuiltInTavily(t *testing.T) {
 	cfg := config.Config{
 		TavilyURL:    "https://mcp.tavily.com/mcp/",
