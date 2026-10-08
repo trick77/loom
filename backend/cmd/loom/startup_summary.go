@@ -51,15 +51,12 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 	}
 }
 
+// config.Load accepts only oidc and dev.
 func authCapability(cfg config.Config) startupCapability {
-	switch cfg.AuthMode {
-	case config.AuthModeOIDC:
+	if cfg.AuthMode == config.AuthModeOIDC {
 		return startupCapability{Name: "auth", Status: "oidc", Detail: "issuer=" + cfg.OIDC.Issuer}
-	case config.AuthModeDev:
-		return startupCapability{Name: "auth", Status: "dev", Detail: "local loopback only"}
-	default:
-		return startupCapability{Name: "auth", Status: "local", Detail: "server-side sessions"}
 	}
+	return startupCapability{Name: "auth", Status: "dev", Detail: "local loopback only"}
 }
 
 func chatCapability(cfg config.Config) startupCapability {
@@ -85,17 +82,13 @@ func tikaCapability(cfg config.Config) startupCapability {
 	return startupCapability{Name: "document extraction", Status: "enabled", Detail: "url=" + cfg.TikaURL}
 }
 
+// config.Load requires an absolute BACKEND_USERS_DIR, so artifacts and the
+// document tools are always on.
 func artifactCapability(cfg config.Config) startupCapability {
-	if strings.TrimSpace(cfg.UsersDir) == "" {
-		return startupCapability{Name: "artifacts", Status: "disabled", Detail: "set BACKEND_USERS_DIR"}
-	}
 	return startupCapability{Name: "artifacts", Status: "enabled", Detail: "users_dir=" + cfg.UsersDir}
 }
 
 func docgenCapability(runtime startupRuntime) startupCapability {
-	if runtime.DocToolCount == 0 {
-		return startupCapability{Name: "document generation", Status: "disabled", Detail: "no built-in document tools"}
-	}
 	return startupCapability{Name: "document generation", Status: "enabled", Detail: fmt.Sprintf("tools=%d", runtime.DocToolCount)}
 }
 

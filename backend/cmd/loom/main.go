@@ -185,15 +185,11 @@ func run() error {
 		documentService = docs
 	}
 	gotenbergClient := docgen.NewGotenbergClient(docgen.GotenbergConfig{BaseURL: cfg.GotenbergURL})
-	// Gotenberg backs PDF export, which is enabled whenever the doc tools are
-	// offered to the model (artifact store present + a users dir configured; the
-	// store is always built, so this mirrors availableTools' gate on UsersDir).
-	// Fail fast at boot rather than let the model start a create_pdf_file call
-	// that can only end in a per-request "tool failed".
-	if strings.TrimSpace(cfg.UsersDir) != "" {
-		if err := requireSidecar("gotenberg", cfg.GotenbergURL, gotenbergClient.Ping); err != nil {
-			return err
-		}
+	// Gotenberg backs PDF export, and the doc tools are always offered (config
+	// requires a users dir). Fail fast at boot rather than let the model start a
+	// create_pdf_file call that can only end in a per-request "tool failed".
+	if err := requireSidecar("gotenberg", cfg.GotenbergURL, gotenbergClient.Ping); err != nil {
+		return err
 	}
 	docTools := []docgen.Generator{
 		docgen.TextGenerator{},
