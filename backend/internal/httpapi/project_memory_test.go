@@ -110,25 +110,25 @@ func TestStreamMessageOmitsProjectContextForProjectlessThread(t *testing.T) {
 	}
 }
 
-// TestRefreshProjectMemory_GeneratesAndStores proves the generate→store path:
+// TestRefreshMemory_ProjectScopeGeneratesAndStores proves the generate→store path:
 // the LLM-produced memory is persisted with the source message count.
-func TestRefreshProjectMemory_GeneratesAndStores(t *testing.T) {
+func TestRefreshMemory_ProjectScopeGeneratesAndStores(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
 		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
 	}
 	s := &server{thread: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
 
-	err := s.refreshProjectMemory(
+	err := s.refreshMemory(
 		context.Background(),
 		testUser,
-		projectID,
+		s.projectMemoryScope(testUser, store.project),
 		"",
 		[]chat.Message{{Role: chat.RoleUser, Content: "When should we go?"}},
 		7,
 	)
 	if err != nil {
-		t.Fatalf("refreshProjectMemory() error: %v", err)
+		t.Fatalf("refreshMemory() error: %v", err)
 	}
 	if store.projectMemory.Content != "Travel month: May" {
 		t.Fatalf("stored content = %q, want generated memory", store.projectMemory.Content)

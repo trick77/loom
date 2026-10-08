@@ -30,10 +30,6 @@ func TestEditMemory_RefusedWhileARefreshRuns(t *testing.T) {
 	if store.projectMemory.Content != "- X" {
 		t.Fatalf("memory = %q, want untouched while the refresh holds it", store.projectMemory.Content)
 	}
-	// The manual refresh reports the same instead of answering with the old memory.
-	if err := s.refreshProjectMemory(context.Background(), testUser, "proj_1", "", nil, 1); !errors.Is(err, errMemoryBusy) {
-		t.Fatalf("refreshProjectMemory() error = %v, want errMemoryBusy", err)
-	}
 }
 
 // TestRefreshMemoryIfDue_DebounceSkipsFreshMemory proves the staleness gate: a

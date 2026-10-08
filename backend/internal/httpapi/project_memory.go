@@ -156,23 +156,6 @@ func (s *server) refreshProjectMemoryIfDue(ctx context.Context, user auth.User, 
 	return s.refreshMemoryIfDue(ctx, user, s.projectMemoryScope(user, *project), memoryProjectDebounce)
 }
 
-// refreshProjectMemory generates and stores an updated memory from the given
-// (bounded) messages. When prior is non-empty it folds the transcript into it.
-func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, projectID, prior string, transcriptMessages []chat.Message, sourceCount int) error {
-	project, err := s.findProject(ctx, user.ID, projectID)
-	if err != nil || project == nil {
-		return err
-	}
-	scope := s.projectMemoryScope(user, *project)
-	// A refresh or edit already running owns the memory; this one would race it.
-	release, ok := s.inflight.tryAcquire("memory:" + scope.key)
-	if !ok {
-		return errMemoryBusy
-	}
-	defer release()
-	return s.refreshMemory(ctx, user, scope, prior, transcriptMessages, sourceCount)
-}
-
 func (s *server) findProject(ctx context.Context, userID, projectID string) (*chat.Project, error) {
 	project, found, err := s.thread.GetProject(ctx, userID, projectID)
 	if err != nil || !found {
