@@ -18,7 +18,6 @@ import {
   setThreadStarred,
   stopMessage,
   streamMessage,
-  streamIncognitoMessage,
   type Artifact,
   type MessagePastedText,
   type Project,
@@ -42,7 +41,6 @@ import {
 import {
   clearDraft,
   composeContent,
-  INCOGNITO_DRAFT_SCOPE,
   draftScopeKey,
   getDraft,
   setDraft as setScopedDraft,
@@ -57,7 +55,8 @@ import {
   type RunKey,
 } from "./streamRuns";
 import { useStreamRuns } from "./useStreamRuns";
-import { useMediaQuery } from "./useMediaQuery";
+import { useIncognitoChat } from "./useIncognitoChat";
+import { useShellChrome } from "./useShellChrome";
 import {
   composerAttachmentFromArtifact,
   createComposerAttachment,
@@ -164,10 +163,6 @@ export function ThreadShell({
     pendingAttachmentCountRef.current = pendingAttachments.length;
   }, [pendingAttachments.length]);
   const [pendingAttachNote, setPendingAttachNote] = useState("");
-  const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [modalError, setModalError] = useState("");
   // Every assistant turn in flight, keyed by the thread that owns it (see
   // streamRuns.ts). Each run reconstructs its turn as a single ordered
@@ -192,14 +187,6 @@ export function ThreadShell({
     stopRequested,
     nextProvisionalKey,
   } = useStreamRuns();
-  // Incognito mode is a standalone, ephemeral chat reachable only from /new. Its
-  // transcript lives entirely here and is never persisted or added to the thread
-  // lists; exiting or leaving discards it. Its turn is just another run, under a
-  // reserved key.
-  const [incognito, setIncognito] = useState(false);
-  const [incognitoMessages, setIncognitoMessages] = useState<
-    MessageWithActivityTrace[]
-  >([]);
   // A slash command ("/mcp", "/tools", …) opens this ephemeral overlay panel
   // instead of sending a message; null when no panel is open.
   const [slashCommand, setSlashCommand] = useState<SlashCommandName | null>(
@@ -225,37 +212,31 @@ export function ThreadShell({
   // setter directly, so the newer of the two wins; the bare setter is for clearing.
   const [sendError, setSendError] = useState("");
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const isMobile = useMediaQuery("(max-width: 767px)");
-  // On mobile the sidebar is an overlay drawer that always shows the full
-  // content; the rail-collapse only applies on desktop.
-  const railCollapsed = !isMobile && sidebarCollapsed;
-  // Stable handlers for the sidebar and the thread menus. The sidebar is
-  // memoized and the shell re-renders on every keystroke and streamed token, so
-  // an inline arrow here would re-render every thread row each time.
-  const openMobileSidebar = useCallback(() => setMobileSidebarOpen(true), []);
-  const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
-  const toggleDesktopCollapsed = useCallback(
-    () => setSidebarCollapsed((value) => !value),
-    [],
-  );
-  const toggleUserMenu = useCallback(
-    () => setUserMenuOpen((open) => !open),
-    [],
-  );
-  const closeUserMenu = useCallback(() => setUserMenuOpen(false), []);
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
-  const openSearch = useCallback(() => setSearchOpen(true), []);
-  const toggleThreadMenu = useCallback(
-    (menuKey: string) =>
-      setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey)),
-    [],
-  );
-  const closeThreadMenu = useCallback(() => setOpenThreadMenuID(null), []);
-  useEscapeKey(closeMobileSidebar, {
-    active: mobileSidebarOpen,
-  });
+  // Sidebar, menus and overlays (see useShellChrome.ts). Called here so its
+  // mobile-drawer Escape handler keeps its place in the Escape stack.
+  const {
+    openThreadMenuID,
+    setOpenThreadMenuID,
+    toggleThreadMenu,
+    closeThreadMenu,
+    userMenuOpen,
+    toggleUserMenu,
+    closeUserMenu,
+    settingsOpen,
+    setSettingsOpen,
+    openSettings,
+    searchOpen,
+    setSearchOpen,
+    openSearch,
+    isMobile,
+    sidebarCollapsed,
+    railCollapsed,
+    toggleDesktopCollapsed,
+    mobileSidebarOpen,
+    setMobileSidebarOpen,
+    openMobileSidebar,
+    closeMobileSidebar,
+  } = useShellChrome();
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
 
@@ -287,6 +268,28 @@ export function ThreadShell({
     },
     [onSessionExpired],
   );
+
+  // Incognito mode: a standalone, ephemeral chat reachable only from /new. Its
+  // turn is just another run, under a reserved key (see useIncognitoChat.ts).
+  const {
+    incognito,
+    incognitoMessages,
+    enterIncognito,
+    exitIncognito,
+    sendIncognitoContent,
+    handleIncognitoRetry,
+  } = useIncognitoChat({
+    beginStreamRun,
+    patchStreamRun,
+    endStreamRun,
+    abortStreamRun,
+    setDrafts,
+    requestComposerFocus,
+    setSendError,
+    handleActionError,
+    translateStreamError,
+    t,
+  });
 
   const {
     activeProject: activeProjectForRoute,
@@ -436,7 +439,7 @@ export function ThreadShell({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [setSearchOpen]);
 
   useEffect(() => {
     const cleanup = loadRoute(route);
@@ -486,7 +489,7 @@ export function ThreadShell({
     setMessages([]);
     setSendError("");
     go({ view: "new" });
-  }, [go, onThread]);
+  }, [go, onThread, setActiveThread, setMessages, setMobileSidebarOpen]);
 
   // "Use in thread" from the Artifacts library: open the new-chat screen with the
   // artifact pre-attached so the user can prompt against it. navigateToNew() nulls
@@ -508,25 +511,25 @@ export function ThreadShell({
     onThread();
     setMobileSidebarOpen(false);
     go({ view: "threads" });
-  }, [go, onThread]);
+  }, [go, onThread, setMobileSidebarOpen]);
 
   const navigateToArtifacts = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
     go({ view: "artifacts" });
-  }, [go, onThread]);
+  }, [go, onThread, setMobileSidebarOpen]);
 
   const navigateToProjects = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
     go({ view: "projects" });
-  }, [go, onThread]);
+  }, [go, onThread, setMobileSidebarOpen]);
 
   const navigateToMemory = useCallback(() => {
     onThread();
     setMobileSidebarOpen(false);
     go({ view: "memory" });
-  }, [go, onThread]);
+  }, [go, onThread, setMobileSidebarOpen]);
 
   const navigateToProject = useCallback(
     (project: Project) => {
@@ -535,7 +538,7 @@ export function ThreadShell({
       setOpenedProject(project);
       go({ view: "project", projectID: project.id });
     },
-    [go, onThread],
+    [go, onThread, setMobileSidebarOpen],
   );
 
   const {
@@ -612,7 +615,7 @@ export function ThreadShell({
       setMobileSidebarOpen(false);
       go({ view: "thread", threadID });
     },
-    [go, onThread],
+    [go, onThread, setMobileSidebarOpen],
   );
 
   const handleSetThreadStarred = useCallback(
@@ -644,6 +647,7 @@ export function ThreadShell({
       isUpdatingStar,
       reportShellError,
       setActiveThread,
+      setOpenThreadMenuID,
       setProjectThreads,
       setThreads,
       t,
@@ -695,7 +699,14 @@ export function ThreadShell({
         setIsUpdatingStar(false);
       }
     },
-    [handleActionError, isUpdatingStar, reportShellError, setProjects, t],
+    [
+      handleActionError,
+      isUpdatingStar,
+      reportShellError,
+      setOpenThreadMenuID,
+      setProjects,
+      t,
+    ],
   );
 
   function handleAttachPendingFiles(files: File[]) {
@@ -1167,121 +1178,6 @@ export function ThreadShell({
     }
   }
 
-  const enterIncognito = useCallback(() => {
-    // Incognito starts clean: it takes over the whole surface, so it gets its own
-    // draft scope and its own run key rather than borrowing the start screen's.
-    // Normal threads keep streaming behind it — they are separate runs, and
-    // nothing about them is visible or reachable from here.
-    abortStreamRun(INCOGNITO_RUN_KEY);
-    endStreamRun(INCOGNITO_RUN_KEY, { keepFailedTurnVisible: false });
-    setDrafts((current) => clearDraft(current, INCOGNITO_DRAFT_SCOPE));
-    setSendError("");
-    setIncognitoMessages([]);
-    setIncognito(true);
-  }, [abortStreamRun, endStreamRun]);
-
-  const exitIncognito = useCallback(() => {
-    // Discard the ephemeral transcript — nothing was ever written, so there is
-    // nothing to clean up server-side.
-    abortStreamRun(INCOGNITO_RUN_KEY);
-    endStreamRun(INCOGNITO_RUN_KEY, { keepFailedTurnVisible: false });
-    setIncognito(false);
-    setIncognitoMessages([]);
-    setDrafts((current) => clearDraft(current, INCOGNITO_DRAFT_SCOPE));
-    setSendError("");
-  }, [abortStreamRun, endStreamRun]);
-
-  // sendIncognitoContent mirrors sendContent's live-block accumulation but routes
-  // to the stateless endpoint: no thread is created, no navigation happens, and the
-  // whole prior transcript is replayed as history (the server keeps none). The
-  // assistant message is appended to the in-memory transcript only.
-  async function sendIncognitoContent(
-    content: string,
-    restoreDraftOnError: boolean,
-    // On error restore the textarea to restore.draft (without the merged pasted
-    // blocks) and re-stage restore.pastedTexts. Defaults to the full `content`.
-    restore?: { draft: string; pastedTexts: PastedText[] },
-  ) {
-    setDrafts((current) => clearDraft(current, INCOGNITO_DRAFT_SCOPE));
-    setSendError("");
-    const history = incognitoMessages
-      .filter(
-        (message) => message.role === "user" || message.role === "assistant",
-      )
-      .map((message) => ({
-        role: message.role as "user" | "assistant",
-        content: message.content,
-      }));
-    const tempID = newTempID("incognito-user");
-    const optimisticMessage: MessageWithActivityTrace = {
-      id: tempID,
-      clientKey: tempID,
-      threadId: "incognito",
-      role: "user",
-      content,
-      createdAt: new Date().toISOString(),
-      // Render collapsed pastes as chips here too (incognito is ephemeral, so this
-      // is the in-session bubble only), matching the persisted path in sendContent.
-      ...(restore && restore.pastedTexts.length > 0
-        ? { pastedTexts: restore.pastedTexts.map(toPastedTextBlock) }
-        : {}),
-    };
-    setIncognitoMessages((current) => [...current, optimisticMessage]);
-    const abortController = new AbortController();
-    beginStreamRun(INCOGNITO_RUN_KEY, abortController);
-    const turn = createTurnHandlers({
-      patch: (next) => patchStreamRun(INCOGNITO_RUN_KEY, next),
-      onAssistantMessage: (message, liveBlocks) => {
-        // Give each turn a unique id so React keys and per-message actions never
-        // collide (the server returns a constant synthetic id).
-        const uniqueID = newTempID("incognito-assistant");
-        const grafted = graftStreamedBlocks(
-          { ...message, id: uniqueID },
-          liveBlocks,
-        );
-        setIncognitoMessages((current) => [
-          ...current,
-          { ...grafted, clientKey: uniqueID },
-        ]);
-      },
-    });
-    let keepFailedTurnVisible = false;
-    try {
-      await streamIncognitoMessage(
-        content,
-        history,
-        turn.handlers,
-        abortController.signal,
-      );
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      if (abortController.signal.aborted) return;
-      keepFailedTurnVisible = true;
-      // Drop the optimistic user bubble that never got a reply so the user can retry.
-      setIncognitoMessages((current) =>
-        current.filter((message) => message.id !== tempID),
-      );
-      if (restoreDraftOnError) {
-        setDrafts((current) =>
-          setScopedDraft(current, INCOGNITO_DRAFT_SCOPE, {
-            text: restore?.draft ?? content,
-            pastedTexts: restore?.pastedTexts ?? [],
-          }),
-        );
-      }
-      handleActionError(
-        translateStreamError(error),
-        t("thread.sendFailed"),
-        (message) => patchStreamRun(INCOGNITO_RUN_KEY, { error: message }),
-      );
-    } finally {
-      endStreamRun(INCOGNITO_RUN_KEY, {
-        keepFailedTurnVisible,
-        controller: abortController,
-      });
-    }
-  }
-
   async function handleIncognitoSend() {
     const draftText = draft.text.trim();
     const content = composeContent(draft);
@@ -1292,21 +1188,6 @@ export function ThreadShell({
       pastedTexts: draft.pastedTexts,
     });
   }
-
-  const handleIncognitoRetry = useCallback(
-    (content: string, pastedTexts?: MessagePastedText[]) => {
-      const blocks = pastedTexts ?? [];
-      if (content.trim() === "" && blocks.length === 0) return;
-      setDrafts((current) =>
-        setScopedDraft(current, INCOGNITO_DRAFT_SCOPE, {
-          text: content,
-          pastedTexts: blocks.map(pastedTextFromBlock),
-        }),
-      );
-      requestComposerFocus();
-    },
-    [requestComposerFocus, setDrafts],
-  );
 
   // A failed turn's error belongs to its own thread; everything else (starring,
   // attaching, loading) belongs to the shell and shows wherever you are. The turn
