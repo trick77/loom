@@ -177,6 +177,21 @@ func TestDeleteThreadSkipsTitleGenerationForCanceledTurn(t *testing.T) {
 	})
 }
 
+// A stop that finds no registered stream (the turn is still being set up)
+// says so, so the client drops its fetch instead of waiting for a stream end
+// that never comes.
+func TestStopWithoutActiveStreamIsAConflict(t *testing.T) {
+	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store})
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stop", ""))
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("stop status = %d, want 409", rec.Code)
+	}
+}
+
 func TestStopAndWaitBlocksUntilTheStreamUnregisters(t *testing.T) {
 	var registry activeStreamRegistry
 	ctx, cancel := context.WithCancelCause(context.Background())

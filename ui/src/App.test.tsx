@@ -2177,6 +2177,32 @@ test("a stop before any answer text is not reported as a dropped connection", as
   expect(screen.queryByText(/connection dropped/i)).not.toBeInTheDocument();
 });
 
+test("a stop before the server registered the stream drops the fetch at once", async () => {
+  const inner = stoppingChatFetch();
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith("/api/threads/t1/messages:stop"))
+        return Response.json({ error: "no active stream" }, { status: 409 });
+      return inner(input, init);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("button", { name: "Stop response" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 test("a stopped answer stays on screen once the server has saved it", async () => {
   // The stop endpoint answers 204 as soon as it cancels; the server persists
   // the partial afterwards and only then sends assistant_message and done.

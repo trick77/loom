@@ -344,7 +344,12 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		writeNotFound(w)
 		return
 	}
-	s.activeStreams.stop(user.ID, threadID, stopCause(r.URL.Query().Get("source")))
+	// 409 when no stream is registered yet (the turn is still being set up):
+	// the client then drops its fetch, which cancels that turn instead.
+	if !s.activeStreams.stop(user.ID, threadID, stopCause(r.URL.Query().Get("source"))) {
+		writeJSONError(w, http.StatusConflict, "no active stream")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

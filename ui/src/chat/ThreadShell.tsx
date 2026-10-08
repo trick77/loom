@@ -377,11 +377,16 @@ export function ThreadShell({
       // cause is first-writer-wins). Once stopped, the server saves the partial
       // answer and ends the stream with assistant_message and done; reading on
       // until then keeps the answer on screen. The abort is only a fallback for a
-      // stream that never ends. The run's catch reads this mark so a close is not
+      // stream that never ends, or the stop itself when the server had no stream
+      // registered yet. The run's catch reads this mark so a close is not
       // reported as a dropped connection.
       const controller = markStopRequested(activeRunKey);
       void stopMessage(activeThread.id, source).then(
-        () => {
+        (stopped) => {
+          if (!stopped) {
+            abort();
+            return;
+          }
           window.setTimeout(() => controller?.abort(), STOP_ABORT_FALLBACK_MS);
         },
         (error: unknown) => {

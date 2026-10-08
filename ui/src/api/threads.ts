@@ -160,11 +160,12 @@ const stopMessageTimeoutMs = 4000;
 // source labels which UI action triggered the stop ("stop_button", "escape") so the
 // backend can attribute the cancellation in its logs. Callers should await this
 // before aborting the stream fetch so the stop cause wins the server-side cancel
-// race over the raw request-context drop.
+// race over the raw request-context drop. Resolves false when the server had no
+// stream registered yet (409): only dropping the fetch stops that turn.
 export async function stopMessage(
   threadId: string,
   source?: string,
-): Promise<void> {
+): Promise<boolean> {
   const query = source ? `?source=${encodeURIComponent(source)}` : "";
   const response = await fetch(
     `/api/threads/${encodeURIComponent(threadId)}/messages:stop${query}`,
@@ -173,5 +174,6 @@ export async function stopMessage(
       signal: AbortSignal.timeout(stopMessageTimeoutMs),
     },
   );
-  await expectOK(response, "failed to stop message");
+  await expectOK(response, "failed to stop message", [409]);
+  return response.status !== 409;
 }

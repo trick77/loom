@@ -447,13 +447,13 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 	}
 }
 
-func (r *activeStreamRegistry) stop(userID, threadID string, cause error) {
+func (r *activeStreamRegistry) stop(userID, threadID string, cause error) bool {
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	r.mu.Lock()
 	stream := r.streams[key]
 	r.mu.Unlock()
 	if stream == nil {
-		return
+		return false
 	}
 	// The entry stays until the handler's unregister removes it. Dropping it here
 	// would hide a stream that is still unwinding — its uninterruptible persist
@@ -461,6 +461,7 @@ func (r *activeStreamRegistry) stop(userID, threadID string, cause error) {
 	// after a stop, and that delete would then race those writes instead of
 	// waiting for them. Cancelling an already-canceled context is a no-op.
 	stream.cancel(cause)
+	return true
 }
 
 // stopAndWait cancels the user's active stream on the thread and waits for the
