@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/trick77/webfetch"
 )
 
 const (
@@ -55,7 +57,7 @@ var faviconDefaultClient = &http.Client{
 	Transport: &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout: faviconFetchTimeout,
-			Control: guardPublicAddr,
+			Control: webfetch.GuardedControl,
 		}).DialContext,
 	},
 	CheckRedirect: func(_ *http.Request, via []*http.Request) error {
@@ -237,7 +239,7 @@ func (s *server) fetchFaviconBytes(ctx context.Context, rawURL string) (body []b
 	if client == nil {
 		client = faviconDefaultClient
 	}
-	resp, err := client.Do(req) //nolint:gosec // candidate URLs stay on the page's own host (keepSameSite) and the client dials through guardPublicAddr, which rejects every non-public address and non-web port after DNS resolution
+	resp, err := client.Do(req) //nolint:gosec // candidate URLs stay on the page's own host (keepSameSite) and the client dials through webfetch.GuardedControl, which rejects every non-public address after DNS resolution
 	if err != nil {
 		return nil, "", err
 	}

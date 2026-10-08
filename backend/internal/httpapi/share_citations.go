@@ -6,6 +6,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/trick77/webfetch"
+	"golang.org/x/net/idna"
 )
 
 // The fields of a web citation a public share may carry. Everything else the stored
@@ -109,17 +112,34 @@ func isPublicWebURL(raw json.RawMessage) bool {
 // (.home.arpa), RFC 6761 (.localhost), and the widely used .internal.
 var privateHostSuffixes = []string{".local", ".internal", ".localhost", ".home.arpa"}
 
+// hostIDNA is the lookup mapping without the strict letters-digits-hyphen rule,
+// which would turn a real host with an underscore into an error.
+var hostIDNA = idna.New(idna.MapForLookup(), idna.StrictDomainName(false))
+
 func isPublicHost(host string) bool {
 	if host == "" {
 		return false
 	}
+	// A browser maps the host through IDNA first (full-width letters and digits,
+	// ideographic dots), so judge the name it will actually look up.
+	host, err := hostIDNA.ToASCII(host)
+	if err != nil {
+		return false
+	}
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	if ip := net.ParseIP(host); ip != nil {
-		return isPublicIP(ip)
+		return webfetch.IsPublicIP(ip)
 	}
 	// A single-label host ("intranet", "localhost") is only resolvable inside the
 	// owner's network, so it cannot be a page a stranger could open.
 	if !strings.Contains(host, ".") {
+		return false
+	}
+	// No TLD is numeric, so a numeric last label is an IPv4 shorthand ParseIP
+	// rejects but a browser resolves ("127.1", "0x7f.0.0.1", and "10.0x": a bare
+	// "0x" is 0 to a browser).
+	tld := host[strings.LastIndex(host, ".")+1:]
+	if _, err := strconv.ParseUint(tld, 0, 64); err == nil || tld == "0x" {
 		return false
 	}
 	for _, suffix := range privateHostSuffixes {

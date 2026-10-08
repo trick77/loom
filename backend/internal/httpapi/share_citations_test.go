@@ -245,6 +245,13 @@ func TestProjectCitationsForShare_rejectsNonPublicHosts(t *testing.T) {
 		"http://100.64.0.7/cgnat",
 		"http://[::ffff:10.0.0.5]/mapped",
 		"http://0.0.0.0/",
+		"http://127.1/short-form",
+		"http://0x7f.0.0.1/hex-form",
+		"http://10.1/short-private",
+		"http://10.0x/bare-hex-prefix",
+		"http://127.0.0。1/ideographic-dot",
+		"http://127.１/full-width-digit",
+		"http://nas.ｌｏｃａｌ/full-width-suffix",
 		"http://intranet/wiki",
 		"http://nas.local/files",
 		"http://wiki.internal/page",
@@ -266,6 +273,8 @@ func TestProjectCitationsForShare_rejectsNonPublicHosts(t *testing.T) {
 		"http://example.org/page",
 		"https://8.8.8.8/",
 		"https://sub.example.co.uk/a?b=c",
+		"https://my_site.example.com/",
+		"https://münchen.de/",
 	}
 	for _, target := range public {
 		raw := json.RawMessage(`[{"filename":"Site","url":` + mustJSON(t, target) + `,"index":1}]`)
