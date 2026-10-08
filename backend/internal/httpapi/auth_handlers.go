@@ -77,9 +77,8 @@ func (s *server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := currentUser(w, r)
 	if !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	writeJSON(w, user)
@@ -97,9 +96,8 @@ type updateMeRequest struct {
 var allowedResponseLanguages = map[string]bool{"en": true, "de": true}
 
 func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := currentUser(w, r)
 	if !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	if s.users == nil {
