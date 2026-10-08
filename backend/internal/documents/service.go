@@ -249,12 +249,6 @@ type inflightRun struct {
 	done   chan struct{}
 }
 
-// indexing reports whether an ingest is running for the document.
-func (s *Service) indexing(userID, documentID string) bool {
-	_, running := s.inflight.Load(inflightKey(userID, documentID))
-	return running
-}
-
 // cancelIndexing aborts a running ingest for the document, if any, and waits
 // for it to unwind so nothing writes chunks underneath the caller.
 func (s *Service) cancelIndexing(ctx context.Context, userID, documentID string) error {
@@ -337,18 +331,6 @@ func (s *Service) DocumentsInScope(ctx context.Context, userID string, projectID
 // scope with their token counts, for deciding which to inject in full.
 func (s *Service) IndexedDocsInScope(ctx context.Context, userID string, projectID, threadID *string) ([]rag.IndexedDoc, error) {
 	return s.store.IndexedDocsInScope(ctx, userID, projectID, threadID)
-}
-
-// Unindex removes a document's chunks/embeddings but keeps the file and document
-// row (status back to pending), so it can be re-indexed later.
-func (s *Service) Unindex(ctx context.Context, userID, documentID string) error {
-	if s.indexing(userID, documentID) {
-		return ErrIndexInProgress
-	}
-	if err := s.store.ClearChunks(ctx, userID, documentID); err != nil {
-		return err
-	}
-	return s.store.UpdateStatus(ctx, userID, documentID, rag.StatusPending, "")
 }
 
 // Delete removes the document, its chunks/embeddings, its artifact row, and the

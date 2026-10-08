@@ -365,8 +365,7 @@ func TestService_Retrieve_embedsQueryAndReturnsChunks(t *testing.T) {
 }
 
 // A second index request for a document that is already being ingested (a
-// double click, two tabs) must not start a second Tika/embedding run, and an
-// unindex or delete must not race the running ingest's chunk writes.
+// double click, two tabs) must not start a second Tika/embedding run.
 func TestService_Index_isSingleFlightPerDocument(t *testing.T) {
 	svc, idx, _ := newTestService(t)
 	idx.entered = make(chan struct{}, 1)
@@ -381,19 +380,12 @@ func TestService_Index_isSingleFlightPerDocument(t *testing.T) {
 	if err := svc.Index(ctx, "u", doc.ID); !errors.Is(err, ErrIndexInProgress) {
 		t.Fatalf("second Index() error = %v, want ErrIndexInProgress", err)
 	}
-	if err := svc.Unindex(ctx, "u", doc.ID); !errors.Is(err, ErrIndexInProgress) {
-		t.Fatalf("Unindex() during ingest error = %v, want ErrIndexInProgress", err)
-	}
 	close(idx.block)
 	if err := <-first; err != nil {
 		t.Fatalf("first Index() error = %v", err)
 	}
 	if len(idx.called) != 1 {
 		t.Fatalf("Ingest calls = %d, want 1", len(idx.called))
-	}
-	// Once the ingest is done the document is free again.
-	if err := svc.Unindex(ctx, "u", doc.ID); err != nil {
-		t.Fatalf("Unindex() after ingest error = %v", err)
 	}
 }
 
@@ -443,7 +435,7 @@ func TestService_Delete_cancelsRunningIngest(t *testing.T) {
 	if _, ok, err := svc.store.GetDocument(ctx, "u", doc.ID); err != nil || ok {
 		t.Fatalf("document still present after Delete() (ok=%v, err=%v)", ok, err)
 	}
-	if svc.indexing("u", doc.ID) {
+	if _, held := svc.inflight.Load(inflightKey("u", doc.ID)); held {
 		t.Fatal("inflight key still held after the cancelled ingest")
 	}
 }

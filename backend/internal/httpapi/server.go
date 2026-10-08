@@ -351,7 +351,6 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	mux.Handle("POST /api/projects/{projectID}/unarchive", s.requireAuth(http.HandlerFunc(s.handleUnarchiveProject)))
 	mux.Handle("DELETE /api/projects/{projectID}", s.requireAuth(http.HandlerFunc(s.handleDeleteProject)))
 	mux.Handle("GET /api/projects/{projectID}/memory", s.requireAuth(http.HandlerFunc(s.handleGetProjectMemory)))
-	mux.Handle("POST /api/projects/{projectID}/memory:refresh", s.requireAuth(http.HandlerFunc(s.handleRefreshProjectMemory)))
 	mux.Handle("POST /api/projects/{projectID}/memory:edit", s.requireAuth(http.HandlerFunc(s.handleEditProjectMemory)))
 	mux.Handle("GET /api/threads", s.requireAuth(http.HandlerFunc(s.handleListThreads)))
 	mux.Handle("POST /api/threads", s.requireAuth(http.HandlerFunc(s.handleCreateThread)))
@@ -389,7 +388,6 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	mux.Handle("POST /api/documents/upload", s.requireAuth(http.HandlerFunc(s.handleUploadDocument)))
 	mux.Handle("GET /api/documents", s.requireAuth(http.HandlerFunc(s.handleListDocuments)))
 	mux.Handle("POST /api/documents/{documentID}/index", s.requireAuth(http.HandlerFunc(s.handleIndexDocument)))
-	mux.Handle("POST /api/documents/{documentID}/unindex", s.requireAuth(http.HandlerFunc(s.handleUnindexDocument)))
 	mux.Handle("DELETE /api/documents/{documentID}", s.requireAuth(http.HandlerFunc(s.handleDeleteDocument)))
 	if d.Static != nil {
 		// Server-render per-share OG/Twitter meta into index.html so link-preview

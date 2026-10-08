@@ -84,16 +84,6 @@ export async function indexDocument(documentId: string): Promise<Document> {
   return expectJSON<Document>(response, "failed to index document");
 }
 
-export async function unindexDocument(documentId: string): Promise<void> {
-  const response = await fetch(
-    `/api/documents/${encodeURIComponent(documentId)}/unindex`,
-    {
-      method: "POST",
-    },
-  );
-  await expectOK(response, "failed to unindex document");
-}
-
 export async function deleteDocument(documentId: string): Promise<void> {
   const response = await fetch(
     `/api/documents/${encodeURIComponent(documentId)}`,

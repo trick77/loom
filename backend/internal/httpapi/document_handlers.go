@@ -20,7 +20,6 @@ type DocumentService interface {
 	Get(context.Context, string, string) (rag.Document, bool, error)
 	FullText(context.Context, string, string) (string, error)
 	Index(context.Context, string, string) error
-	Unindex(context.Context, string, string) error
 	Delete(context.Context, string, string) error
 	DeleteForArtifact(context.Context, string, string) (bool, error)
 	DeleteThreadData(context.Context, string, string) error
@@ -186,26 +185,6 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 	})
 	doc.Status = rag.StatusPending
 	writeJSON(w, toDocumentResponse(doc))
-}
-
-func (s *server) handleUnindexDocument(w http.ResponseWriter, r *http.Request) {
-	user, ok := currentUser(w, r)
-	if !ok {
-		return
-	}
-	if s.documents == nil {
-		writeNotFound(w)
-		return
-	}
-	if err := s.documents.Unindex(r.Context(), user.ID, r.PathValue("documentID")); err != nil {
-		if errors.Is(err, documents.ErrIndexInProgress) {
-			writeJSONError(w, http.StatusConflict, "document is being indexed")
-			return
-		}
-		serverError(w, r, err, "unindex failed")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {

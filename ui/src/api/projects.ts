@@ -87,21 +87,6 @@ export async function getProjectMemory(
   return expectJSON<ProjectMemory>(response, "failed to load project memory");
 }
 
-export async function refreshProjectMemory(
-  projectId: string,
-): Promise<ProjectMemory> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/memory:refresh`,
-    {
-      method: "POST",
-    },
-  );
-  return expectJSON<ProjectMemory>(
-    response,
-    "failed to refresh project memory",
-  );
-}
-
 export async function editProjectMemory(
   projectId: string,
   instruction: string,

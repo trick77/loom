@@ -105,25 +105,6 @@ func (s *Store) ReplaceChunks(ctx context.Context, userID, documentID string, ch
 	return nil
 }
 
-// ClearChunks removes a document's chunks and embeddings but keeps the document
-// row, so it can be re-indexed later (used by "unindex").
-func (s *Store) ClearChunks(ctx context.Context, userID, documentID string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	deleted, err := deleteChunksTx(ctx, tx, userID, documentID)
-	if err != nil {
-		return fmt.Errorf("clear chunks: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	s.warnBloatAfterDelete(ctx, deleted, "user", userID, "document", documentID)
-	return nil
-}
-
 // collectChunkRowids materialises chunk rowids from a query so the caller can
 // issue per-row vec_chunks deletes afterwards (SQLite forbids interleaving a
 // write with an open read on its single connection).

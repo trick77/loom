@@ -3,7 +3,6 @@ import {
   deleteDocument,
   indexDocument,
   listDocuments,
-  unindexDocument,
   uploadDocument,
   uploadImageAttachment,
 } from "./documents";
@@ -228,33 +227,6 @@ describe("indexDocument", () => {
 
     await expect(indexDocument("doc_1")).rejects.toThrow(
       "failed to index document",
-    );
-  });
-});
-
-describe("unindexDocument", () => {
-  test("posts to the unindex endpoint", async () => {
-    const fetchMock = stubFetch(new Response(null, { status: 204 }));
-
-    await expect(unindexDocument("doc_1")).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith("/api/documents/doc_1/unindex", {
-      method: "POST",
-    });
-  });
-
-  test("throws AuthExpiredError on 401", async () => {
-    stubFetch(new Response("", { status: 401 }));
-
-    await expect(unindexDocument("doc_1")).rejects.toBeInstanceOf(
-      AuthExpiredError,
-    );
-  });
-
-  test("throws on a non-ok response", async () => {
-    stubFetch(new Response("", { status: 500 }));
-
-    await expect(unindexDocument("doc_1")).rejects.toThrow(
-      "failed to unindex document",
     );
   });
 });
