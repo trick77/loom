@@ -73,8 +73,8 @@ github.com/tiendc/go-deepcopy v1.7.2 h1:Ut2yYR7W9tWjTQitganoIue4UGxZwCcJy3orjrrI
 github.com/tiendc/go-deepcopy v1.7.2/go.mod h1:4bKjNC2r7boYOkD2IOuZpYjmlDdzjbpTRyCx+goBCJQ=
 github.com/trick77/llmwire v0.0.43 h1:r9VUQ+oXqfZ1Pl7//lBUbPVXJ/t2SfBVDHIi2cQFiUk=
 github.com/trick77/llmwire v0.0.43/go.mod h1:uX1JBjy3g+FoNR/paMV4GmmY79jY8xgXOYs1OME5HJE=
-github.com/trick77/webfetch v0.2.1 h1:IyVnFKfRIdCkd1gzSm3tlnaoRV3+BYeVI4SOTWniBdA=
-github.com/trick77/webfetch v0.2.1/go.mod h1:0bRrYv9xDumNgMol6aNy+frdu8ky+VyBkeofWjE/gRw=
+github.com/trick77/webfetch v0.2.4 h1:go6sqMGjseeXMlPKh0gbu23frrENH/kNjPgWDE3xfZ8=
+github.com/trick77/webfetch v0.2.4/go.mod h1:0bRrYv9xDumNgMol6aNy+frdu8ky+VyBkeofWjE/gRw=
 github.com/xuri/efp v0.0.1 h1:fws5Rv3myXyYni8uwj2qKjVaRP30PdjeYe2Y6FDsCL8=
 github.com/xuri/efp v0.0.1/go.mod h1:ybY/Jr0T0GTCnYjKqmdwxyxn2BQf2RcQIIvex5QldPI=
 github.com/xuri/excelize/v2 v2.11.0 h1:HxaEFl6sRN2+8J5a8HaKq+0M4FsjBGMnWWtjOCPSG88=

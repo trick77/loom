@@ -465,51 +465,6 @@ func TestHandleFavicon_returns304OnIfNoneMatch(t *testing.T) {
 	}
 }
 
-func TestGuardPublicAddr(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		addr    string
-		blocked bool
-	}{
-		{"loopback-v4", "127.0.0.1:80", true},
-		{"loopback-v6", "[::1]:80", true},
-		{"private-10", "10.0.0.5:443", true},
-		{"private-192", "192.168.1.1:443", true},
-		{"link-local", "169.254.169.254:80", true}, // cloud metadata endpoint
-		{"unspecified", "0.0.0.0:80", true},
-		{"ula-v6", "[fd00::1]:80", true},
-		{"public-v4", "93.184.216.34:443", false},
-		{"public-v6", "[2606:2800:220:1:248:1893:25c8:1946]:443", false},
-		{"unresolved", "example.com:443", true}, // must be a literal IP at dial time
-		// IANA special-use ranges that IsPrivate/IsLoopback do not cover.
-		{"this-network-0/8", "0.1.2.3:80", true},
-		{"cgnat-100.64/10", "100.64.0.1:443", true},
-		{"benchmark-198.18/15", "198.18.0.1:443", true},
-		{"nat64", "[64:ff9b::7f00:1]:80", true},
-		{"6to4", "[2002:7f00:1::]:80", true},
-		{"v4-compatible-v6", "[::127.0.0.1]:80", true},
-		{"v4-mapped-private", "[::ffff:10.0.0.1]:80", true},
-		// IPv6 outside 2000::/3 is never public; inside it, the IETF-assigned
-		// and deprecated site-local ranges are not either.
-		{"site-local-v6", "[fec0::1]:80", true},
-		{"outside-global-unicast", "[4000::1]:80", true},
-		{"v4-translated", "[::ffff:0:7f00:1]:80", true},
-		{"teredo", "[2001:0:4136:e378:8000:63bf:3fff:fdd2]:80", true},
-		// A public web server on a non-standard port is still a public web server.
-		{"public-non-standard-port", "93.184.216.34:3000", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := guardPublicAddr("tcp", tc.addr, nil)
-			if tc.blocked && err == nil {
-				t.Fatalf("addr %q should be blocked", tc.addr)
-			}
-			if !tc.blocked && err != nil {
-				t.Fatalf("addr %q should be allowed, got %v", tc.addr, err)
-			}
-		})
-	}
-}
-
 func TestHandleFavicon_noUsableIconReturnsError(t *testing.T) {
 	// Every candidate 404s (and the service fallback is stubbed empty) → non-2xx, so
 	// the frontend renders its letter avatar.

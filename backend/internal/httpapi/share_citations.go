@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/trick77/webfetch"
 )
 
 // The fields of a web citation a public share may carry. Everything else the stored
@@ -115,7 +117,7 @@ func isPublicHost(host string) bool {
 	}
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	if ip := net.ParseIP(host); ip != nil {
-		return isPublicIP(ip)
+		return webfetch.IsPublicIP(ip)
 	}
 	// A single-label host ("intranet", "localhost") is only resolvable inside the
 	// owner's network, so it cannot be a page a stranger could open.
