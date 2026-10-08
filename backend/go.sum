@@ -71,8 +71,8 @@ github.com/tetratelabs/wazero v1.9.0 h1:IcZ56OuxrtaEz8UYNRHBrUa9bYeX9oVY93KspZZB
 github.com/tetratelabs/wazero v1.9.0/go.mod h1:TSbcXCfFP0L2FGkRPxHphadXPjo1T6W+CseNNY7EkjM=
 github.com/tiendc/go-deepcopy v1.7.2 h1:Ut2yYR7W9tWjTQitganoIue4UGxZwCcJy3orjrrIj44=
 github.com/tiendc/go-deepcopy v1.7.2/go.mod h1:4bKjNC2r7boYOkD2IOuZpYjmlDdzjbpTRyCx+goBCJQ=
-github.com/trick77/llmwire v0.0.42 h1:ezg355MfXQYnZMojrIZKeiRUX5piAIISdcKY/304JB8=
-github.com/trick77/llmwire v0.0.42/go.mod h1:uX1JBjy3g+FoNR/paMV4GmmY79jY8xgXOYs1OME5HJE=
+github.com/trick77/llmwire v0.0.43 h1:r9VUQ+oXqfZ1Pl7//lBUbPVXJ/t2SfBVDHIi2cQFiUk=
+github.com/trick77/llmwire v0.0.43/go.mod h1:uX1JBjy3g+FoNR/paMV4GmmY79jY8xgXOYs1OME5HJE=
 github.com/trick77/webfetch v0.2.1 h1:IyVnFKfRIdCkd1gzSm3tlnaoRV3+BYeVI4SOTWniBdA=
 github.com/trick77/webfetch v0.2.1/go.mod h1:0bRrYv9xDumNgMol6aNy+frdu8ky+VyBkeofWjE/gRw=
 github.com/xuri/efp v0.0.1 h1:fws5Rv3myXyYni8uwj2qKjVaRP30PdjeYe2Y6FDsCL8=
