@@ -55,14 +55,6 @@ type OIDCService struct {
 	secure  bool
 }
 
-// NewOIDCService creates an OIDC service from config.
-func NewOIDCService(cfg OIDCServiceConfig) *OIDCService {
-	return &OIDCService{
-		backend: cfg.Backend,
-		secure:  cfg.SecureCookie,
-	}
-}
-
 // NewOIDCServiceFromDiscovery discovers the configured OIDC provider.
 func NewOIDCServiceFromDiscovery(ctx context.Context, cfg OIDCServiceConfig) (*OIDCService, error) {
 	provider, err := oidc.NewProvider(ctx, cfg.Issuer)

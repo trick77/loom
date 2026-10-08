@@ -2,6 +2,15 @@ package classifier
 
 import "testing"
 
+// Values returns every category value in catalog order, including General.
+func Values() []Category {
+	out := make([]Category, 0, len(catalog))
+	for _, c := range catalog {
+		out = append(out, c.cat)
+	}
+	return out
+}
+
 func TestNormalize(t *testing.T) {
 	cases := map[string]Category{
 		"coding":              Coding,

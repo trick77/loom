@@ -323,12 +323,6 @@ func newServer(d Deps) *server {
 	}
 }
 
-// New returns the fully wired HTTP handler.
-func New(d Deps) http.Handler {
-	handler, _ := NewWithMemoryWorker(d)
-	return handler
-}
-
 // NewWithMemoryWorker returns the HTTP handler and the background memory worker
 // on one shared server, so the worker's sweep and the request path's refreshes
 // hold the same single-flight guard.

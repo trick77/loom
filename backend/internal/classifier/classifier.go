@@ -209,15 +209,6 @@ func Match(reply string) Category {
 	return General
 }
 
-// Values returns every category value in catalog order, including General.
-func Values() []Category {
-	out := make([]Category, 0, len(catalog))
-	for _, c := range catalog {
-		out = append(out, c.cat)
-	}
-	return out
-}
-
 // PromptGuide renders the taxonomy as a newline-separated list of
 // "- value: gloss" lines, for embedding in the classifying model's system prompt.
 // Hidden categories are omitted so the model is never offered them. Callers may

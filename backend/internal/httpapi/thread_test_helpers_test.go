@@ -21,6 +21,12 @@ import (
 
 var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 
+// New returns the fully wired HTTP handler without its memory worker.
+func New(d Deps) http.Handler {
+	handler, _ := NewWithMemoryWorker(d)
+	return handler
+}
+
 func newAuthenticatedServer(t *testing.T, deps Deps) http.Handler {
 	t.Helper()
 	return newAuthenticatedServerForUser(t, testUser, deps)
