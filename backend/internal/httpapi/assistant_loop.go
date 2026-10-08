@@ -114,13 +114,17 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	initialHistoryLen := len(history)
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
-		b.addResult(titles, result)
 		if err != nil {
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, llm.ErrStreamStalled) {
+				return assistantLoopResult{}, err
+			}
+			b.addResult(titles, result)
 			if b.keepInterrupted(&result, err, artifacts) {
 				return b.result(result, artifacts, ""), nil
 			}
 			return assistantLoopResult{}, err
 		}
+		b.addResult(titles, result)
 		if len(result.ToolCalls) == 0 {
 			// A normal textual answer ends the loop. But if the model stops
 			// after running tools without producing any text, fall through to a
