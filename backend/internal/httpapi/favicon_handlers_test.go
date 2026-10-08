@@ -465,6 +465,24 @@ func TestHandleFavicon_returns304OnIfNoneMatch(t *testing.T) {
 	}
 }
 
+// The production client dials through the SSRF guard; every other favicon test
+// swaps it out to reach its loopback upstream.
+func TestFaviconDefaultClientRefusesLoopback(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("loopback upstream was reached")
+	}))
+	defer upstream.Close()
+
+	resp, err := faviconDefaultClient.Get(upstream.URL)
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("faviconDefaultClient reached a loopback server")
+	}
+	if !strings.Contains(err.Error(), "non-public") {
+		t.Fatalf("error = %v, want the SSRF refusal", err)
+	}
+}
+
 func TestHandleFavicon_noUsableIconReturnsError(t *testing.T) {
 	// Every candidate 404s (and the service fallback is stubbed empty) → non-2xx, so
 	// the frontend renders its letter avatar.
