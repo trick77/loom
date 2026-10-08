@@ -2,6 +2,7 @@
 package mcp
 
 import (
+	"context"
 	"net/url"
 	"strings"
 )
@@ -50,7 +51,13 @@ type ServerConfig struct {
 	// its classifier categories — so an unrecognized value simply never matches
 	// and hides the server. See Service.ToolsFor.
 	Categories []string `json:"categories"`
+	// PDFExtractor, for the in-process fetch server only, turns a fetched PDF
+	// into text outside the backend process. Nil leaves PDFs unextracted.
+	PDFExtractor PDFExtractor `json:"-"`
 }
+
+// PDFExtractor extracts the text of a fetched PDF (webfetch.Options.PDFHandler).
+type PDFExtractor func(ctx context.Context, body []byte) (string, error)
 
 // ExposedToolName constructs the exposed tool name by joining server and tool names with "__".
 func ExposedToolName(serverName, toolName string) string {
@@ -99,11 +106,12 @@ func TavilyServerConfig(baseURL, apiKey string) ServerConfig {
 // FetchServerConfig builds the config for the built-in fetch tool. Fetch runs
 // in-process (via the shared github.com/trick77/webfetch module) rather than as
 // an external MCP sidecar, so there is no URL; the exposed tool name and surface
-// ("fetch__fetch") are unchanged.
-func FetchServerConfig() ServerConfig {
+// ("fetch__fetch") are unchanged. pdf may be nil.
+func FetchServerConfig(pdf PDFExtractor) ServerConfig {
 	return ServerConfig{
-		Transport: TransportInProcess,
-		Tools:     []string{"fetch"},
+		Transport:    TransportInProcess,
+		Tools:        []string{"fetch"},
+		PDFExtractor: pdf,
 	}
 }
 

@@ -138,6 +138,7 @@ func run() error {
 
 	// Document RAG is enabled only when an embeddings key is configured.
 	var documentService httpapi.DocumentService
+	var fetchPDF mcp.PDFExtractor
 	reembed := func(context.Context) {}
 	if cfg.EmbedEnabled {
 		ragStore := rag.NewStore(db)
@@ -174,6 +175,7 @@ func run() error {
 		if err := requireSidecar("tika", cfg.TikaURL, tikaClient.Ping); err != nil {
 			return err
 		}
+		fetchPDF = tikaClient.ExtractPDF
 		ingester := rag.NewIngester(ragStore, documents.VolumeOpener{UsersDir: cfg.UsersDir}, tikaClient, embedClient)
 		ingester.SetUsageRecorder(usageStore)
 		if llmClient != nil {
@@ -216,7 +218,7 @@ func run() error {
 		chatClient = llmClient
 	}
 	var toolService httpapi.ToolService
-	toolCfg, err := toolConfigForConfig(cfg)
+	toolCfg, err := toolConfigForConfig(cfg, fetchPDF)
 	if err != nil {
 		return err
 	}
@@ -500,10 +502,13 @@ func (t toolServerConfig) union() mcp.Config {
 	return out
 }
 
-func toolConfigForConfig(cfg config.Config) (toolServerConfig, error) {
+// pdf is the fetch tool's PDF extractor: the boot-checked Tika client when
+// document RAG runs, else nil (PDFs then come back unextracted).
+func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerConfig, error) {
 	required := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
-	// Fetch runs in-process (no sidecar), so it is always available.
-	required.Servers["fetch"] = mcp.FetchServerConfig()
+	// Fetch runs in-process (no sidecar), so it is always available. Fetched
+	// PDFs are parsed in the Tika sidecar (pdf), never in the backend.
+	required.Servers["fetch"] = mcp.FetchServerConfig(pdf)
 	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
 		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL)
 	}

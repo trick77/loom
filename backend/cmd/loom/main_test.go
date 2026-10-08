@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +20,7 @@ import (
 // many built-in-server cases stay terse.
 func mustToolConfig(t *testing.T, cfg config.Config) mcp.Config {
 	t.Helper()
-	got, err := toolConfigForConfig(cfg)
+	got, err := toolConfigForConfig(cfg, nil)
 	if err != nil {
 		t.Fatalf("toolConfigForConfig() error = %v", err)
 	}
@@ -64,6 +65,22 @@ func TestChatClientConfigFromConfig(t *testing.T) {
 	}
 	if got.ResponseLogDir != cfg.ChatLogDir {
 		t.Fatalf("ResponseLogDir = %q, want %q", got.ResponseLogDir, cfg.ChatLogDir)
+	}
+}
+
+func TestToolConfigForConfigWiresPDFExtractorIntoFetch(t *testing.T) {
+	// A default Tika URL alone must not enable it: Tika is only boot-checked
+	// when document RAG runs, which is what passes an extractor in.
+	if mustToolConfig(t, config.Config{TikaURL: "http://tika:9998"}).Servers["fetch"].PDFExtractor != nil {
+		t.Fatal("no extractor passed must leave fetch without one")
+	}
+	extract := func(context.Context, []byte) (string, error) { return "", nil }
+	got, err := toolConfigForConfig(config.Config{}, extract)
+	if err != nil {
+		t.Fatalf("toolConfigForConfig() error = %v", err)
+	}
+	if got.Required.Servers["fetch"].PDFExtractor == nil {
+		t.Fatal("the passed extractor must reach the fetch server config")
 	}
 }
 
@@ -180,7 +197,7 @@ func TestToolConfigForConfigSplitsFileServersBestEffort(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	got, err := toolConfigForConfig(config.Config{MCPServersFile: path})
+	got, err := toolConfigForConfig(config.Config{MCPServersFile: path}, nil)
 	if err != nil {
 		t.Fatalf("toolConfigForConfig() error = %v", err)
 	}
@@ -203,7 +220,7 @@ func TestToolConfigForConfigPropagatesFileError(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{ "mcpServers": { "x": { "type": "sse", "url": "https://x" } } }`), 0o600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	if _, err := toolConfigForConfig(config.Config{MCPServersFile: path}); err == nil {
+	if _, err := toolConfigForConfig(config.Config{MCPServersFile: path}, nil); err == nil {
 		t.Fatal("toolConfigForConfig() error = nil, want propagated file error")
 	}
 }

@@ -1,6 +1,7 @@
 package documents
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -57,6 +58,13 @@ func (c *TikaClient) Ping(ctx context.Context) error {
 		return fmt.Errorf("tika health check: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// ExtractPDF extracts the text of an in-memory PDF. It has the shape of
+// webfetch.Options.PDFHandler, so fetched PDFs are parsed in the Tika sidecar,
+// where a malicious PDF cannot take the backend down.
+func (c *TikaClient) ExtractPDF(ctx context.Context, body []byte) (string, error) {
+	return c.Extract(ctx, "fetched.pdf", "application/pdf", bytes.NewReader(body))
 }
 
 // Extract streams the file bytes to Tika's `PUT /tika` endpoint and returns the
