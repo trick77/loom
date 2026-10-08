@@ -26,6 +26,7 @@ import (
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
 )
 
@@ -1430,6 +1431,28 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 		// with that source's [n] marker for inline citation.
 		if !strings.HasPrefix(got, "Web source [1]: https://example.com") {
 			t.Fatalf("output = %q, want leading web-source marker", got)
+		}
+	})
+
+	t.Run("skips obscura for a failed PDF extraction", func(t *testing.T) {
+		srv := &server{mcp: fakeMCPService{
+			available: map[string]bool{
+				obscuraNavigateToolName: true,
+				obscuraSnapshotToolName: true,
+			},
+			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+				if name == fetchToolName {
+					return "", mcp.PDFExtractionError{Err: errors.New("Failed to extract PDF x: no extractable text")}
+				}
+				t.Fatalf("obscura tool %q called for a PDF extraction failure", name)
+				return "", nil
+			},
+		}}
+
+		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
+
+		if !strings.Contains(got, "no extractable text") {
+			t.Fatalf("output = %q, want the extraction error", got)
 		}
 	})
 

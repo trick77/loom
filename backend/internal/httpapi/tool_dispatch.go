@@ -68,8 +68,12 @@ func (s *server) finishToolCall(ctx context.Context, user auth.User, call llm.To
 		// A fresh budget: callCtx is already expired when fetch failed on its deadline.
 		fallbackCtx, cancelFallback := context.WithTimeout(ctx, maxToolCallDuration)
 		defer cancelFallback()
-		if fallback, ok := s.fetchObscuraFallback(fallbackCtx, user, call.Function.Name, arguments, round, reg); ok {
-			return fallback
+		// A failed PDF extraction is reported as is: obscura on a PDF URL only
+		// snapshots the browser's PDF viewer.
+		if !mcp.IsPDFExtractionError(err) {
+			if fallback, ok := s.fetchObscuraFallback(fallbackCtx, user, call.Function.Name, arguments, round, reg); ok {
+				return fallback
+			}
 		}
 		return capToolOutput("tool failed: " + err.Error())
 	}

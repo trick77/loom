@@ -45,6 +45,25 @@ func TestTikaClient_Extract_returnsPlainText(t *testing.T) {
 	}
 }
 
+func TestTikaClient_ExtractPDF_sendsPDF(t *testing.T) {
+	var gotType, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotType = r.Header.Get("Content-Type")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		io.WriteString(w, "pdf text")
+	}))
+	defer srv.Close()
+
+	text, err := NewTikaClient(TikaConfig{BaseURL: srv.URL}).ExtractPDF(context.Background(), []byte("%PDF-1.4"))
+	if err != nil || text != "pdf text" {
+		t.Fatalf("ExtractPDF() = %q, %v; want Tika's text", text, err)
+	}
+	if gotType != "application/pdf" || gotBody != "%PDF-1.4" {
+		t.Errorf("sent %q with %q, want the PDF bytes as application/pdf", gotBody, gotType)
+	}
+}
+
 func TestTikaClient_Extract_errorsOnNon2xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)

@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/trick77/webfetch"
 )
@@ -17,7 +19,27 @@ const fetchClientToolName = "fetch"
 // dropped: it is legacy framing that carries no operational intent and only
 // costs tokens in every tool-list injection. This is a deliberate divergence
 // from byte-for-byte sidecar parity, kept minimal so tool dispatch is unchanged.
-const fetchClientDescription = `Fetches a URL from the internet and extracts its contents as markdown. Set 'raw' for the unsimplified HTML, 'extract_pdf' to extract text from PDF responses, or 'include_metadata' to prepend a title/author/date block. If the default extraction drops content you need, use 'full_page' (whole page) or 'selector' (a specific CSS region); 'exclude_selectors' strips unwanted elements.`
+const fetchClientDescription = `Fetches a URL from the internet and extracts its contents as markdown. Set 'raw' for the unsimplified HTML, or 'include_metadata' to prepend a title/author/date block. If the default extraction drops content you need, use 'full_page' (whole page) or 'selector' (a specific CSS region); 'exclude_selectors' strips unwanted elements.`
+
+// fetchClientPDFNote is appended to the description when fetched PDFs are
+// extracted, so the model does not reach for 'raw' (which bypasses extraction).
+const fetchClientPDFNote = ` PDFs are returned as extracted text; do not set 'raw' for them.`
+
+// PDFExtractionError marks a fetch that failed while extracting a PDF (Tika
+// down, timeout, a scan without text). Its message is webfetch's, unchanged.
+// The obscura fallback skips these: a headless browser on a PDF URL yields a
+// viewer snapshot, not the text.
+type PDFExtractionError struct{ Err error }
+
+func (e PDFExtractionError) Error() string { return e.Err.Error() }
+
+func (e PDFExtractionError) Unwrap() error { return e.Err }
+
+// IsPDFExtractionError reports whether err is (or wraps) a PDFExtractionError.
+func IsPDFExtractionError(err error) bool {
+	var target PDFExtractionError
+	return errors.As(err, &target)
+}
 
 // fetchClient is an in-process Client that replaces the external fetch MCP
 // sidecar. It performs the fetch directly in the backend via the shared
@@ -28,23 +50,34 @@ const fetchClientDescription = `Fetches a URL from the internet and extracts its
 // unchanged.
 type fetchClient struct {
 	serverName string
+	pdf        PDFExtractor
 }
 
 // NewFetchClient builds the in-process fetch client for the given server name
-// (always "fetch" in practice).
-func NewFetchClient(serverName string) Client {
-	return &fetchClient{serverName: serverName}
+// (always "fetch" in practice). pdf, when non-nil, extracts fetched PDFs;
+// otherwise they come back as webfetch's raw "cannot be simplified" content.
+func NewFetchClient(serverName string, pdf PDFExtractor) Client {
+	return &fetchClient{serverName: serverName, pdf: pdf}
+}
+
+func (c *fetchClient) description() string {
+	if c.pdf != nil {
+		return fetchClientDescription + fetchClientPDFNote
+	}
+	return fetchClientDescription
 }
 
 func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 	return []Tool{{
 		Name:         ExposedToolName(c.serverName, fetchClientToolName),
 		OriginalName: fetchClientToolName,
-		Description:  fetchClientDescription,
+		Description:  c.description(),
 		ServerName:   c.serverName,
-		// Schema mirrors the JSON Schema upstream's pydantic model emits, plus two
-		// loom-specific booleans (extract_pdf, include_metadata) that surface
-		// webfetch options the sidecar never had.
+		// Schema mirrors the JSON Schema upstream's pydantic model emits, plus
+		// loom-specific options (include_metadata, full_page, selector,
+		// exclude_selectors) that surface webfetch options the sidecar never had.
+		// PDF extraction is not a model choice: when Tika is configured, fetched
+		// PDFs always go to it (see NewFetchClient).
 		InputSchema: map[string]any{
 			"type":  "object",
 			"title": "Fetch",
@@ -75,12 +108,6 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 					"default":     false,
 					"description": "Get the actual HTML content of the requested page, without simplification.",
 					"title":       "Raw",
-					"type":        "boolean",
-				},
-				"extract_pdf": map[string]any{
-					"default":     false,
-					"description": "Extract the text of PDF responses instead of returning raw bytes. Ignored for non-PDF content.",
-					"title":       "Extract Pdf",
 					"type":        "boolean",
 				},
 				"include_metadata": map[string]any{
@@ -115,20 +142,29 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 
 func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[string]any) (string, error) {
 	url, _ := arguments["url"].(string)
-	opts := webfetch.Options{
+	// A non-nil error keeps the deterministic fetch->obscura fallback working:
+	// the dispatch layer treats a CallTool error on fetch__fetch as "try
+	// obscura" (see httpapi.fetchObscuraFallback), except for a failed PDF
+	// extraction, which is marked so the fallback skips it.
+	out, err := webfetch.Fetch(ctx, url, c.options(arguments))
+	if err != nil && strings.HasPrefix(err.Error(), "Failed to extract PDF") {
+		err = PDFExtractionError{Err: err}
+	}
+	return out, err
+}
+
+// options maps the tool arguments onto webfetch.Options.
+func (c *fetchClient) options(arguments map[string]any) webfetch.Options {
+	return webfetch.Options{
 		MaxLength:        argInt(arguments, "max_length"),
 		StartIndex:       argInt(arguments, "start_index"),
 		Raw:              argBool(arguments, "raw"),
-		ExtractPDF:       argBool(arguments, "extract_pdf"),
 		IncludeMetadata:  argBool(arguments, "include_metadata"),
 		FullPage:         argBool(arguments, "full_page"),
 		Selector:         argString(arguments, "selector"),
 		ExcludeSelectors: argStringSlice(arguments, "exclude_selectors"),
+		PDFHandler:       c.pdf,
 	}
-	// A non-nil error keeps the deterministic fetch->obscura fallback working:
-	// the dispatch layer treats a CallTool error on fetch__fetch as "try
-	// obscura" (see httpapi.fetchObscuraFallback).
-	return webfetch.Fetch(ctx, url, opts)
 }
 
 func (c *fetchClient) Close() error { return nil }
