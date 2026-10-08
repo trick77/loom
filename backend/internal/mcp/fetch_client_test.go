@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -61,6 +63,26 @@ func TestFetchClientOptionsWirePDFExtractor(t *testing.T) {
 	got, err := opts.PDFHandler(context.Background(), []byte("%PDF-"))
 	if err != nil || got != "text:%PDF-" {
 		t.Fatalf("PDFHandler = %q, %v; want the extractor's output", got, err)
+	}
+}
+
+func TestFetchClientDescriptionMentionsPDFsOnlyWithExtractor(t *testing.T) {
+	extract := func(context.Context, []byte) (string, error) { return "", nil }
+	if strings.Contains((NewFetchClient("fetch", nil).(*fetchClient)).description(), "PDF") {
+		t.Fatal("without an extractor the description must not promise PDF text")
+	}
+	if !strings.Contains((NewFetchClient("fetch", extract).(*fetchClient)).description(), "PDFs are returned as extracted text") {
+		t.Fatal("with an extractor the description must say PDFs are extracted")
+	}
+}
+
+func TestIsPDFExtractionError(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", PDFExtractionError{Err: errors.New("Failed to extract PDF x")})
+	if !IsPDFExtractionError(err) || err.Error() != "wrapped: Failed to extract PDF x" {
+		t.Fatalf("IsPDFExtractionError(%v) = false, or the message changed", err)
+	}
+	if IsPDFExtractionError(errors.New("Failed to fetch x")) {
+		t.Fatal("a plain fetch error is not a PDF extraction error")
 	}
 }
 
