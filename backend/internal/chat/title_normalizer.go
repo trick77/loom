@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"strconv"
 	"strings"
 	"unicode"
 
@@ -13,13 +12,7 @@ import (
 // collapses multiple spaces, and truncates to MaxThreadTitleLength. It is used
 // for both user-provided titles (before capitalization) and model-generated ones.
 func NormalizeThreadTitle(title string) string {
-	title = strings.TrimSpace(title)
-	title = titletext.NormalizeQuotes(title)
-	if unquoted, err := strconv.Unquote(title); err == nil {
-		title = strings.TrimSpace(unquoted)
-	} else {
-		title = strings.TrimSpace(titletext.StripWrappingQuotes(title))
-	}
+	title = titletext.Unwrap(title)
 	title = firstNonEmptyLine(title)
 	title = trimMarkdownTitleSyntax(title)
 	title = stripEmoji(title)
