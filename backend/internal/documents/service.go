@@ -371,7 +371,9 @@ func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
 		return err
 	}
 	if doc.ArtifactID != nil {
-		_ = s.artifacts.Delete(ctx, userID, *doc.ArtifactID)
+		if err := s.artifacts.Delete(ctx, userID, *doc.ArtifactID); err != nil {
+			return err
+		}
 	}
 	if abs, err := artifact.ResolveExisting(s.usersDir, userID, doc.VolumeRelpath); err == nil {
 		_ = os.Remove(abs)

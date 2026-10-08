@@ -244,6 +244,26 @@ func TestService_DeleteForArtifact_deletesOnlyABackedDocument(t *testing.T) {
 	}
 }
 
+// failingDeleteArtifacts is the real artifact store with a Delete that fails.
+type failingDeleteArtifacts struct{ ArtifactStore }
+
+func (failingDeleteArtifacts) Delete(context.Context, string, string) error {
+	return errors.New("database is locked")
+}
+
+// A failed artifact-row delete must reach the caller, who would otherwise
+// report success while the row survives pointing at a removed file.
+func TestService_Delete_reportsAFailedArtifactDelete(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	svc.artifacts = failingDeleteArtifacts{svc.artifacts}
+
+	if err := svc.Delete(ctx, "u", doc.ID); err == nil {
+		t.Fatal("Delete() = nil, want the artifact delete error")
+	}
+}
+
 type countingEmbedder struct{ calls int }
 
 func (c *countingEmbedder) Embed(_ context.Context, inputs []string) (rag.EmbedResult, error) {
