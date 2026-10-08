@@ -2,7 +2,6 @@
 package httpapi
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -32,7 +31,7 @@ type Deps struct {
 	OIDC     OIDCService
 	Auth     *auth.Middleware
 	Sessions SessionService
-	// SessionTTL is the login lifetime; zero means defaultSessionTTL.
+	// SessionTTL is the login lifetime (config defaults it).
 	SessionTTL time.Duration
 	Users      UserService
 	Thread     ThreadStore
@@ -299,7 +298,7 @@ func newServer(d Deps) *server {
 		oidc:                       d.OIDC,
 		auth:                       d.Auth,
 		sessions:                   d.Sessions,
-		sessionTTL:                 cmp.Or(d.SessionTTL, defaultSessionTTL),
+		sessionTTL:                 d.SessionTTL,
 		users:                      d.Users,
 		thread:                     d.Thread,
 		usage:                      d.Usage,

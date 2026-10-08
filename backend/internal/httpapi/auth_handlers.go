@@ -4,14 +4,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/trick77/loom/internal/auth"
 )
-
-// defaultSessionTTL applies when Deps.SessionTTL is unset (tests, and any
-// caller that does not read BACKEND_SESSION_TTL).
-const defaultSessionTTL = 30 * 24 * time.Hour
 
 func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if s.devAuthClaims.Subject != "" {
