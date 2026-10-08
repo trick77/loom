@@ -16,7 +16,7 @@ import (
 )
 
 func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
-	service, err := NewService(map[string]Client{
+	service, err := NewRequiredServiceFromClients(context.Background(), map[string]Client{
 		"search": &fakeClient{
 			tools: []Tool{{
 				Name:         "search__web",
@@ -29,7 +29,7 @@ func TestServiceMapsToolsAndRoutesCalls(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("NewService() error: %v", err)
+		t.Fatalf("NewRequiredServiceFromClients() error: %v", err)
 	}
 
 	tools := service.Tools()
@@ -89,12 +89,12 @@ func TestToolsForGatesByServerCategories(t *testing.T) {
 }
 
 func TestServiceRejectsDuplicateToolNames(t *testing.T) {
-	_, err := NewService(map[string]Client{
+	_, err := NewRequiredServiceFromClients(context.Background(), map[string]Client{
 		"a": &fakeClient{tools: []Tool{{Name: "dup__tool", OriginalName: "tool", ServerName: "dup"}}},
 		"b": &fakeClient{tools: []Tool{{Name: "dup__tool", OriginalName: "tool", ServerName: "dup"}}},
 	})
 	if err == nil {
-		t.Fatal("NewService() error = nil, want duplicate error")
+		t.Fatal("NewRequiredServiceFromClients() error = nil, want duplicate error")
 	}
 }
 
@@ -185,9 +185,9 @@ func newStatusTestService(t *testing.T) *Service {
 		"alpha": {Transport: TransportStreamableHTTP, URL: server.URL},
 		"zeta":  {Transport: TransportStreamableHTTP, URL: "http://127.0.0.1:1"},
 	}}
-	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, server.Client(), nil)
+	service, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, server.Client(), nil)
 	if err != nil {
-		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+		t.Fatalf("NewServiceFromConfigs() error: %v", err)
 	}
 	return service
 }
@@ -271,9 +271,9 @@ func TestBestEffortServiceIncludesSyntheticTavilyAndExternalTools(t *testing.T) 
 		"fetch":  {Transport: TransportStreamableHTTP, URL: external.URL},
 		"tavily": TavilyServerConfig(tavily.URL, "test-key"),
 	}}
-	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, external.Client(), nil)
+	service, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, external.Client(), nil)
 	if err != nil {
-		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+		t.Fatalf("NewServiceFromConfigs() error: %v", err)
 	}
 
 	names := []string{}
@@ -373,9 +373,9 @@ func TestServiceServerStatusProbesSyntheticTavilyConfig(t *testing.T) {
 	cfg := Config{Servers: map[string]ServerConfig{
 		"tavily": TavilyServerConfig(tavily.URL, "test-key"),
 	}}
-	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, tavily.Client(), nil)
+	service, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, tavily.Client(), nil)
 	if err != nil {
-		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+		t.Fatalf("NewServiceFromConfigs() error: %v", err)
 	}
 
 	statuses := service.ServerStatus(context.Background())
@@ -389,9 +389,9 @@ func TestServiceServerStatusNilAndEmpty(t *testing.T) {
 	if got := nilService.ServerStatus(context.Background()); got != nil {
 		t.Errorf("nil service ServerStatus() = %#v, want nil", got)
 	}
-	empty, err := NewBestEffortServiceFromConfig(context.Background(), Config{Servers: map[string]ServerConfig{}}, nil, nil)
+	empty, err := NewServiceFromConfigs(context.Background(), Config{}, Config{Servers: map[string]ServerConfig{}}, nil, nil)
 	if err != nil {
-		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+		t.Fatalf("NewServiceFromConfigs() error: %v", err)
 	}
 	if got := empty.ServerStatus(context.Background()); got != nil {
 		t.Errorf("empty service ServerStatus() = %#v, want nil", got)
@@ -481,9 +481,9 @@ func TestServiceServerStatusIsCachedWithinTTL(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	cfg := Config{Servers: map[string]ServerConfig{"alpha": {Transport: TransportStreamableHTTP, URL: server.URL}}}
-	service, err := NewBestEffortServiceFromConfig(context.Background(), cfg, server.Client(), nil)
+	service, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, server.Client(), nil)
 	if err != nil {
-		t.Fatalf("NewBestEffortServiceFromConfig() error: %v", err)
+		t.Fatalf("NewServiceFromConfigs() error: %v", err)
 	}
 	baseline := requests.Load()
 
