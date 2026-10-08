@@ -1,4 +1,4 @@
-import { expectOK, request, requestJSON } from "./http";
+import { request, requestJSON } from "./http";
 import type { Page, Thread, ThreadContentHit, ThreadResponse } from "./types";
 
 const threadUrl = (threadId: string) =>
@@ -156,13 +156,14 @@ export async function stopMessage(
   source?: string,
 ): Promise<boolean> {
   const query = source ? `?source=${encodeURIComponent(source)}` : "";
-  const response = await fetch(
+  const response = await request(
     `/api/threads/${encodeURIComponent(threadId)}/messages:stop${query}`,
+    "failed to stop message",
     {
       method: "POST",
       signal: AbortSignal.timeout(stopMessageTimeoutMs),
     },
+    [409],
   );
-  await expectOK(response, "failed to stop message", [409]);
   return response.status !== 409;
 }

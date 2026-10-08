@@ -2,10 +2,12 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import type { Message, StreamHandlers } from "../api";
+import i18n from "../i18n";
 import { getDraft, INCOGNITO_DRAFT_SCOPE } from "./composerDrafts";
 import { INCOGNITO_RUN_KEY } from "./streamRuns";
 import { useComposerDrafts } from "./useComposerDrafts";
 import { useIncognitoChat } from "./useIncognitoChat";
+import { useStreamRuns } from "./useStreamRuns";
 
 const api = vi.hoisted(() => ({
   streamIncognitoMessage: vi.fn(),
@@ -41,6 +43,7 @@ function setup() {
   const hook = renderHook(() => {
     const composer = useComposerDrafts();
     const chat = useIncognitoChat({
+      runs: {},
       beginStreamRun: runs.begin,
       patchStreamRun: runs.patch,
       endStreamRun: runs.end,
@@ -50,7 +53,6 @@ function setup() {
       setSendError,
       handleActionError: (_error, fallback, setError) => setError(fallback),
       translateStreamError: (error) => error,
-      t: (key: string) => key,
     });
     return { composer, chat };
   });
@@ -164,11 +166,53 @@ test("a failed send drops the bubble, restores the draft and keeps the error", a
     pastedTexts: [pasted],
   });
   expect(runs.patch).toHaveBeenCalledWith(INCOGNITO_RUN_KEY, {
-    error: "thread.sendFailed",
+    error: i18n.t("thread.sendFailed"),
   });
   expect(runs.end).toHaveBeenLastCalledWith(INCOGNITO_RUN_KEY, {
     keepFailedTurnVisible: true,
     controller: expect.any(AbortController),
+  });
+});
+
+test("a send while the incognito turn is streaming is ignored", async () => {
+  let finishFirst = () => {};
+  api.streamIncognitoMessage.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishFirst = resolve;
+      }),
+  );
+  const { result } = renderHook(() => {
+    const composer = useComposerDrafts();
+    const runs = useStreamRuns();
+    const chat = useIncognitoChat({
+      runs: runs.runs,
+      beginStreamRun: runs.begin,
+      patchStreamRun: runs.patch,
+      endStreamRun: runs.end,
+      abortStreamRun: runs.abort,
+      setDrafts: composer.setDrafts,
+      requestComposerFocus: composer.requestFocus,
+      setSendError: () => {},
+      handleActionError: (_error, fallback, setError) => setError(fallback),
+      translateStreamError: (error) => error,
+    });
+    return { chat };
+  });
+
+  let first: Promise<void> = Promise.resolve();
+  act(() => {
+    first = result.current.chat.sendIncognitoContent("one", true);
+  });
+  await act(() => result.current.chat.sendIncognitoContent("two", true));
+
+  expect(api.streamIncognitoMessage).toHaveBeenCalledTimes(1);
+  expect(
+    result.current.chat.incognitoMessages.map((message) => message.content),
+  ).toEqual(["one"]);
+  await act(async () => {
+    finishFirst();
+    await first;
   });
 });
 

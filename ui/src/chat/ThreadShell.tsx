@@ -33,16 +33,13 @@ import { useRouteState } from "./useRouteState";
 import type { MessageWithActivityTrace } from "./types";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
-import {
-  pastedTextFromBlock,
-  toPastedTextBlock,
-  type PastedText,
-} from "./pastedText";
+import { toPastedTextBlock, type PastedText } from "./pastedText";
 import {
   clearDraft,
   composeContent,
   draftScopeKey,
   getDraft,
+  restageDraft,
   setDraft as setScopedDraft,
   threadDraftScope,
   type DraftScope,
@@ -212,28 +209,25 @@ export function ThreadShell({
   // setter directly, so the newer of the two wins; the bare setter is for clearing.
   const [sendError, setSendError] = useState("");
   const [isUpdatingStar, setIsUpdatingStar] = useState(false);
-  // Sidebar, menus and overlays (see useShellChrome.ts). Called here so its
-  // mobile-drawer Escape handler keeps its place in the Escape stack.
+  // Sidebar, menus and overlays (see useShellChrome.ts).
   const {
     openThreadMenuID,
-    setOpenThreadMenuID,
     toggleThreadMenu,
     closeThreadMenu,
     userMenuOpen,
     toggleUserMenu,
     closeUserMenu,
     settingsOpen,
-    setSettingsOpen,
     openSettings,
+    closeSettings,
     searchOpen,
-    setSearchOpen,
     openSearch,
+    closeSearch,
     isMobile,
     sidebarCollapsed,
     railCollapsed,
     toggleDesktopCollapsed,
     mobileSidebarOpen,
-    setMobileSidebarOpen,
     openMobileSidebar,
     closeMobileSidebar,
   } = useShellChrome();
@@ -279,6 +273,7 @@ export function ThreadShell({
     sendIncognitoContent,
     handleIncognitoRetry,
   } = useIncognitoChat({
+    runs,
     beginStreamRun,
     patchStreamRun,
     endStreamRun,
@@ -288,7 +283,6 @@ export function ThreadShell({
     setSendError,
     handleActionError,
     translateStreamError,
-    t,
   });
 
   const {
@@ -410,6 +404,11 @@ export function ThreadShell({
     ],
   );
 
+  // Escape goes to the last surface registered: the thread menu (which can open
+  // inside the mobile drawer) registers after the drawer, so it closes first.
+  useEscapeKey(closeMobileSidebar, {
+    active: mobileSidebarOpen,
+  });
   useEscapeKey(closeThreadMenu, {
     active: openThreadMenuID !== null,
   });
@@ -432,14 +431,14 @@ export function ThreadShell({
         (event.key === "k" || event.key === "K")
       ) {
         event.preventDefault();
-        setSearchOpen(true);
+        openSearch();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [setSearchOpen]);
+  }, [openSearch]);
 
   useEffect(() => {
     const cleanup = loadRoute(route);
@@ -483,13 +482,13 @@ export function ThreadShell({
 
   const navigateToNew = useCallback(() => {
     onThread();
-    setMobileSidebarOpen(false);
+    closeMobileSidebar();
     activeThreadIDRef.current = null;
     setActiveThread(null);
     setMessages([]);
     setSendError("");
     go({ view: "new" });
-  }, [go, onThread, setActiveThread, setMessages, setMobileSidebarOpen]);
+  }, [go, onThread, setActiveThread, setMessages, closeMobileSidebar]);
 
   // "Use in thread" from the Artifacts library: open the new-chat screen with the
   // artifact pre-attached so the user can prompt against it. navigateToNew() nulls
@@ -509,36 +508,36 @@ export function ThreadShell({
 
   const navigateToThreads = useCallback(() => {
     onThread();
-    setMobileSidebarOpen(false);
+    closeMobileSidebar();
     go({ view: "threads" });
-  }, [go, onThread, setMobileSidebarOpen]);
+  }, [go, onThread, closeMobileSidebar]);
 
   const navigateToArtifacts = useCallback(() => {
     onThread();
-    setMobileSidebarOpen(false);
+    closeMobileSidebar();
     go({ view: "artifacts" });
-  }, [go, onThread, setMobileSidebarOpen]);
+  }, [go, onThread, closeMobileSidebar]);
 
   const navigateToProjects = useCallback(() => {
     onThread();
-    setMobileSidebarOpen(false);
+    closeMobileSidebar();
     go({ view: "projects" });
-  }, [go, onThread, setMobileSidebarOpen]);
+  }, [go, onThread, closeMobileSidebar]);
 
   const navigateToMemory = useCallback(() => {
     onThread();
-    setMobileSidebarOpen(false);
+    closeMobileSidebar();
     go({ view: "memory" });
-  }, [go, onThread, setMobileSidebarOpen]);
+  }, [go, onThread, closeMobileSidebar]);
 
   const navigateToProject = useCallback(
     (project: Project) => {
       onThread();
-      setMobileSidebarOpen(false);
+      closeMobileSidebar();
       setOpenedProject(project);
       go({ view: "project", projectID: project.id });
     },
-    [go, onThread, setMobileSidebarOpen],
+    [go, onThread, closeMobileSidebar],
   );
 
   const {
@@ -561,7 +560,7 @@ export function ThreadShell({
     navigateToProject,
     navigateToProjects,
     setModalError,
-    setOpenThreadMenuID,
+    closeThreadMenu,
     setProjects,
     setProjectThreads,
     setThreads,
@@ -590,7 +589,7 @@ export function ThreadShell({
     activeThreadIDRef,
     setActiveThread,
     setModalError,
-    setOpenThreadMenuID,
+    closeThreadMenu,
     setProjectThreads,
     setThreadMutationVersion,
     setThreads,
@@ -612,10 +611,10 @@ export function ThreadShell({
   const selectThread = useCallback(
     async (threadID: string) => {
       onThread();
-      setMobileSidebarOpen(false);
+      closeMobileSidebar();
       go({ view: "thread", threadID });
     },
-    [go, onThread, setMobileSidebarOpen],
+    [go, onThread, closeMobileSidebar],
   );
 
   const handleSetThreadStarred = useCallback(
@@ -633,7 +632,7 @@ export function ThreadShell({
         );
         setThreadMutationVersion((value) => value + 1);
         if (menuKey !== undefined) {
-          setOpenThreadMenuID(null);
+          closeThreadMenu();
         }
         setSendError("");
       } catch (error) {
@@ -647,7 +646,7 @@ export function ThreadShell({
       isUpdatingStar,
       reportShellError,
       setActiveThread,
-      setOpenThreadMenuID,
+      closeThreadMenu,
       setProjectThreads,
       setThreads,
       t,
@@ -686,7 +685,7 @@ export function ThreadShell({
           ),
         );
         if (menuKey !== undefined) {
-          setOpenThreadMenuID(null);
+          closeThreadMenu();
         }
         setSendError("");
       } catch (error) {
@@ -703,7 +702,7 @@ export function ThreadShell({
       handleActionError,
       isUpdatingStar,
       reportShellError,
-      setOpenThreadMenuID,
+      closeThreadMenu,
       setProjects,
       t,
     ],
@@ -807,16 +806,14 @@ export function ThreadShell({
   const hasActiveThread = activeThread !== null;
   const handleRetry = useCallback(
     (content: string, pastedTexts?: MessagePastedText[]) => {
-      const blocks = pastedTexts ?? [];
-      if ((content.trim() === "" && blocks.length === 0) || !hasActiveThread)
-        return;
-      setDrafts((current) =>
-        setScopedDraft(current, draftScope, {
-          text: content,
-          pastedTexts: blocks.map(pastedTextFromBlock),
-        }),
+      if (!hasActiveThread) return;
+      restageDraft(
+        setDrafts,
+        requestComposerFocus,
+        draftScope,
+        content,
+        pastedTexts,
       );
-      requestComposerFocus();
     },
     [draftScope, hasActiveThread, requestComposerFocus, setDrafts],
   );
@@ -1181,8 +1178,9 @@ export function ThreadShell({
   async function handleIncognitoSend() {
     const draftText = draft.text.trim();
     const content = composeContent(draft);
-    if (content === "" || isStreaming(runs, INCOGNITO_RUN_KEY)) return;
+    if (content === "") return;
     if (runSlashCommand(draftText)) return;
+    // sendIncognitoContent ignores a send while the incognito turn streams.
     await sendIncognitoContent(content, true, {
       draft: draftText,
       pastedTexts: draft.pastedTexts,
@@ -1496,7 +1494,7 @@ export function ThreadShell({
       )}
       {settingsOpen && (
         <Suspense fallback={null}>
-          <SettingsModal onClose={() => setSettingsOpen(false)} />
+          <SettingsModal onClose={closeSettings} />
         </Suspense>
       )}
       {slashCommand !== null && (
@@ -1507,7 +1505,7 @@ export function ThreadShell({
       )}
       {searchOpen && (
         <SearchModal
-          onClose={() => setSearchOpen(false)}
+          onClose={closeSearch}
           onSelectThread={(threadID) => void selectThread(threadID)}
           onSessionExpired={onSessionExpired}
         />

@@ -13,7 +13,11 @@
  * record does not grow with every thread visited.
  */
 import type { RouteState } from "./routing";
-import type { PastedText } from "./pastedText";
+import {
+  pastedTextFromBlock,
+  type PastedText,
+  type PastedTextBlock,
+} from "./pastedText";
 
 export type DraftScope = string;
 
@@ -110,6 +114,29 @@ export function clearDraft(
   scope: DraftScope,
 ): ComposerDrafts {
   return withDraft(drafts, scope, EMPTY_DRAFT);
+}
+
+/**
+ * Retry: load a sent message back into `scope` for the user to edit and send
+ * manually, then focus the composer. Collapsed pastes are re-staged as chips (not
+ * the folded inline text), so a resend keeps the same collapse. An empty message
+ * changes nothing.
+ */
+export function restageDraft(
+  setDrafts: (update: (current: ComposerDrafts) => ComposerDrafts) => void,
+  requestFocus: () => void,
+  scope: DraftScope,
+  content: string,
+  pastedTexts: PastedTextBlock[] = [],
+): void {
+  if (content.trim() === "" && pastedTexts.length === 0) return;
+  setDrafts((current) =>
+    setDraft(current, scope, {
+      text: content,
+      pastedTexts: pastedTexts.map(pastedTextFromBlock),
+    }),
+  );
+  requestFocus();
 }
 
 /** Merge the trimmed draft with its staged pastes into the outgoing content. */

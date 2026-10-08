@@ -1,4 +1,4 @@
-import { act, fireEvent, renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import { useShellChrome } from "./useShellChrome";
@@ -35,16 +35,25 @@ test("the openers stay stable across renders", () => {
   expect(result.current.openMobileSidebar).toBe(first.openMobileSidebar);
   expect(result.current.toggleThreadMenu).toBe(first.toggleThreadMenu);
   expect(result.current.closeThreadMenu).toBe(first.closeThreadMenu);
+  expect(result.current.closeSettings).toBe(first.closeSettings);
+  expect(result.current.closeSearch).toBe(first.closeSearch);
 });
 
-test("Escape closes the mobile drawer", () => {
+test("the closers close what the openers opened", () => {
   const { result } = renderHook(() => useShellChrome());
 
-  act(() => result.current.openMobileSidebar());
-  expect(result.current.mobileSidebarOpen).toBe(true);
   act(() => {
-    fireEvent.keyDown(window, { key: "Escape" });
+    result.current.openSettings();
+    result.current.openSearch();
+    result.current.openMobileSidebar();
+  });
+  act(() => {
+    result.current.closeSettings();
+    result.current.closeSearch();
+    result.current.closeMobileSidebar();
   });
 
+  expect(result.current.settingsOpen).toBe(false);
+  expect(result.current.searchOpen).toBe(false);
   expect(result.current.mobileSidebarOpen).toBe(false);
 });

@@ -30,6 +30,23 @@ test("requestJSON passes plain options through and encodes a json body", async (
   });
 });
 
+test("a json body keeps the caller's own headers", async () => {
+  const fetchMock = vi.fn(async () => Response.json({ ok: true }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await request("/api/x", "failed", {
+    method: "POST",
+    headers: { "X-Custom": "1" },
+    json: { a: 1 },
+  });
+
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/x", {
+    method: "POST",
+    headers: { "X-Custom": "1", "Content-Type": "application/json" },
+    body: JSON.stringify({ a: 1 }),
+  });
+});
+
 test("request maps failures like expectOK and returns the response", async () => {
   const fetchMock = vi
     .fn()

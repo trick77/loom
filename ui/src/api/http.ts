@@ -65,13 +65,19 @@ export async function request(
   const { json, ...init } = options ?? {};
   const response = await (options === undefined
     ? fetch(url)
-    : json === undefined
-      ? fetch(url, init)
-      : fetch(url, {
-          ...init,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(json),
-        }));
+    : fetch(
+        url,
+        json === undefined
+          ? init
+          : {
+              ...init,
+              headers: {
+                ...(init.headers as Record<string, string> | undefined),
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(json),
+            },
+      ));
   await expectOK(response, errorMessage, tolerate);
   return response;
 }

@@ -1,15 +1,11 @@
 import { useCallback, useState } from "react";
 
-import { useEscapeKey } from "./useEscapeKey";
 import { useMediaQuery } from "./useMediaQuery";
 
 // useShellChrome owns the shell's open/closed UI state that is not about any
 // thread: the sidebar (desktop rail and mobile drawer), the user menu, the
-// per-thread action menu, and the settings and search overlays.
-//
-// The Escape handler for the mobile drawer registers here, so call this where
-// the shell registered it before: Escape goes to the last surface registered,
-// and the thread menu's handler (in the shell) must stay above it.
+// per-thread action menu, and the settings and search overlays. Escape handling
+// stays in the shell, where the order of the Escape stack is set.
 export function useShellChrome() {
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -36,37 +32,34 @@ export function useShellChrome() {
   );
   const closeUserMenu = useCallback(() => setUserMenuOpen(false), []);
   const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
   const toggleThreadMenu = useCallback(
     (menuKey: string) =>
       setOpenThreadMenuID((current) => (current === menuKey ? null : menuKey)),
     [],
   );
   const closeThreadMenu = useCallback(() => setOpenThreadMenuID(null), []);
-  useEscapeKey(closeMobileSidebar, {
-    active: mobileSidebarOpen,
-  });
 
   return {
     openThreadMenuID,
-    setOpenThreadMenuID,
     toggleThreadMenu,
     closeThreadMenu,
     userMenuOpen,
     toggleUserMenu,
     closeUserMenu,
     settingsOpen,
-    setSettingsOpen,
     openSettings,
+    closeSettings,
     searchOpen,
-    setSearchOpen,
     openSearch,
+    closeSearch,
     isMobile,
     sidebarCollapsed,
     railCollapsed,
     toggleDesktopCollapsed,
     mobileSidebarOpen,
-    setMobileSidebarOpen,
     openMobileSidebar,
     closeMobileSidebar,
   };

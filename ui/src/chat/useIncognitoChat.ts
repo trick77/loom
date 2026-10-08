@@ -1,19 +1,17 @@
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { streamIncognitoMessage, type MessagePastedText } from "../api";
 import {
   clearDraft,
   INCOGNITO_DRAFT_SCOPE,
+  restageDraft,
   setDraft as setScopedDraft,
   type ComposerDrafts,
 } from "./composerDrafts";
 import { graftStreamedBlocks } from "./contentBlocks";
-import {
-  pastedTextFromBlock,
-  toPastedTextBlock,
-  type PastedText,
-} from "./pastedText";
-import { INCOGNITO_RUN_KEY } from "./streamRuns";
+import { toPastedTextBlock, type PastedText } from "./pastedText";
+import { INCOGNITO_RUN_KEY, isStreaming } from "./streamRuns";
 import { createTurnHandlers, newTempID } from "./turnHandlers";
 import type { MessageWithActivityTrace } from "./types";
 import type { useStreamRuns } from "./useStreamRuns";
@@ -26,6 +24,7 @@ type StreamRunControls = ReturnType<typeof useStreamRuns>;
 // another run, under a reserved key, so the shell's run registry, draft store
 // and error reporting are passed in rather than duplicated.
 export function useIncognitoChat({
+  runs,
   beginStreamRun,
   patchStreamRun,
   endStreamRun,
@@ -35,8 +34,8 @@ export function useIncognitoChat({
   setSendError,
   handleActionError,
   translateStreamError,
-  t,
 }: {
+  runs: StreamRunControls["runs"];
   beginStreamRun: StreamRunControls["begin"];
   patchStreamRun: StreamRunControls["patch"];
   endStreamRun: StreamRunControls["end"];
@@ -50,8 +49,8 @@ export function useIncognitoChat({
     setError: (message: string) => void,
   ): void;
   translateStreamError(error: unknown): unknown;
-  t(key: string): string;
 }) {
+  const { t } = useTranslation();
   const [incognito, setIncognito] = useState(false);
   const [incognitoMessages, setIncognitoMessages] = useState<
     MessageWithActivityTrace[]
@@ -84,7 +83,8 @@ export function useIncognitoChat({
   // sendIncognitoContent mirrors sendContent's live-block accumulation but routes
   // to the stateless endpoint: no thread is created, no navigation happens, and the
   // whole prior transcript is replayed as history (the server keeps none). The
-  // assistant message is appended to the in-memory transcript only.
+  // assistant message is appended to the in-memory transcript only. A send while
+  // the incognito turn is still streaming is ignored.
   async function sendIncognitoContent(
     content: string,
     restoreDraftOnError: boolean,
@@ -92,6 +92,7 @@ export function useIncognitoChat({
     // blocks) and re-stage restore.pastedTexts. Defaults to the full `content`.
     restore?: { draft: string; pastedTexts: PastedText[] },
   ) {
+    if (isStreaming(runs, INCOGNITO_RUN_KEY)) return;
     setDrafts((current) => clearDraft(current, INCOGNITO_DRAFT_SCOPE));
     setSendError("");
     const history = incognitoMessages
@@ -173,17 +174,14 @@ export function useIncognitoChat({
   }
 
   const handleIncognitoRetry = useCallback(
-    (content: string, pastedTexts?: MessagePastedText[]) => {
-      const blocks = pastedTexts ?? [];
-      if (content.trim() === "" && blocks.length === 0) return;
-      setDrafts((current) =>
-        setScopedDraft(current, INCOGNITO_DRAFT_SCOPE, {
-          text: content,
-          pastedTexts: blocks.map(pastedTextFromBlock),
-        }),
-      );
-      requestComposerFocus();
-    },
+    (content: string, pastedTexts?: MessagePastedText[]) =>
+      restageDraft(
+        setDrafts,
+        requestComposerFocus,
+        INCOGNITO_DRAFT_SCOPE,
+        content,
+        pastedTexts,
+      ),
     [requestComposerFocus, setDrafts],
   );
 

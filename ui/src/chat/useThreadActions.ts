@@ -14,7 +14,7 @@ export function useThreadActions({
   activeThreadIDRef,
   setActiveThread,
   setModalError,
-  setOpenThreadMenuID,
+  closeThreadMenu,
   setProjectThreads,
   setThreadMutationVersion,
   setThreads,
@@ -27,7 +27,7 @@ export function useThreadActions({
   activeThreadIDRef: React.MutableRefObject<string | null>;
   setActiveThread(thread: Thread | null): void;
   setModalError(message: string): void;
-  setOpenThreadMenuID(menuID: string | null): void;
+  closeThreadMenu(): void;
   setProjectThreads(update: (current: Thread[]) => Thread[]): void;
   setThreadMutationVersion(update: (value: number) => number): void;
   setThreads(update: (current: Thread[]) => Thread[]): void;
@@ -54,9 +54,9 @@ export function useThreadActions({
       setRenamingThread(thread);
       setRenameTitle(thread.title);
       setModalError("");
-      setOpenThreadMenuID(null);
+      closeThreadMenu();
     },
-    [onOpenThreadModal, setModalError, setOpenThreadMenuID],
+    [onOpenThreadModal, setModalError, closeThreadMenu],
   );
 
   const openDeleteModal = useCallback(
@@ -64,9 +64,9 @@ export function useThreadActions({
       onOpenThreadModal();
       setDeletingThread(thread);
       setModalError("");
-      setOpenThreadMenuID(null);
+      closeThreadMenu();
     },
-    [onOpenThreadModal, setModalError, setOpenThreadMenuID],
+    [onOpenThreadModal, setModalError, closeThreadMenu],
   );
 
   const openMoveModal = useCallback(
@@ -223,7 +223,7 @@ export function useThreadActions({
         setActiveThread(updatedThread);
       }
       setThreadMutationVersion((value) => value + 1);
-      setOpenThreadMenuID(null);
+      closeThreadMenu();
       setModalError("");
     } catch (error) {
       handleActionError(
