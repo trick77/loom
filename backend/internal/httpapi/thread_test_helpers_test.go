@@ -365,10 +365,6 @@ func (f *fakeThreadStore) DeleteThread(_ context.Context, _ string, threadID str
 	return true, nil
 }
 
-func (f *fakeThreadStore) AddMessage(ctx context.Context, _ string, threadID string, role chat.Role, content string) (chat.Message, error) {
-	return f.AddMessageWithUsage(ctx, "", threadID, role, content, chat.MessageTokenUsage{})
-}
-
 func (f *fakeThreadStore) AddMessageWithAttachments(_ context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage) (chat.Message, error) {
 	if len(attachments) == 0 {
 		attachments = json.RawMessage("[]")
@@ -406,18 +402,6 @@ func (f *fakeThreadStore) AddMessageCost(_ context.Context, _ string, messageID 
 		return true, nil
 	}
 	return false, nil
-}
-
-func (f *fakeThreadStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
-	return f.AddMessageWithArtifacts(ctx, "", threadID, role, content, usage, nil)
-}
-
-func (f *fakeThreadStore) AddMessageWithArtifacts(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage) (chat.Message, error) {
-	return f.AddMessageWithActivityTrace(ctx, "", threadID, role, content, usage, artifacts, nil)
-}
-
-func (f *fakeThreadStore) AddMessageWithActivityTrace(ctx context.Context, userID string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (chat.Message, error) {
-	return f.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil, nil)
 }
 
 func (f *fakeThreadStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (chat.Message, error) {
