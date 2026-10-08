@@ -131,7 +131,7 @@ func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 		out.OutputFormat = "jpeg"
 	}
 	if out.SafetyTolerance == nil {
-		out.SafetyTolerance = intPtr(2)
+		out.SafetyTolerance = new(2)
 	}
 	if *out.SafetyTolerance < 0 || *out.SafetyTolerance > 5 {
 		return GenerateRequest{}, errors.New("safety_tolerance must be between 0 and 5")
@@ -192,10 +192,6 @@ func AspectRatioForSize(w, h int) string {
 		}
 	}
 	return best
-}
-
-func intPtr(value int) *int {
-	return &value
 }
 
 func align16(v int) int {

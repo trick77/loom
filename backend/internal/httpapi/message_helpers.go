@@ -25,14 +25,14 @@ func messageMetricsWithCost(result llm.StreamResult, usage llm.TokenUsage, durat
 		metrics.ReasoningEffort = strPtr(result.ReasoningEffort)
 	}
 	if duration > 0 {
-		metrics.DurationMs = intPtr(int(duration.Milliseconds()))
+		metrics.DurationMs = new(int(duration.Milliseconds()))
 	}
 	if usage.Present() {
-		metrics.PromptTokens = intPtr(usage.PromptTokens)
-		metrics.CompletionTokens = intPtr(usage.CompletionTokens)
-		metrics.TotalTokens = intPtr(usage.TotalTokens)
-		metrics.CachedTokens = intPtr(usage.PromptTokensDetails.CachedTokens)
-		metrics.ReasoningTokens = intPtr(usage.CompletionTokenDetails.ReasoningTokens)
+		metrics.PromptTokens = new(usage.PromptTokens)
+		metrics.CompletionTokens = new(usage.CompletionTokens)
+		metrics.TotalTokens = new(usage.TotalTokens)
+		metrics.CachedTokens = new(usage.PromptTokensDetails.CachedTokens)
+		metrics.ReasoningTokens = new(usage.CompletionTokenDetails.ReasoningTokens)
 	}
 	// ContextTokens is the final answer call's own model-reported total_tokens (the
 	// real size of that single generation's context), not the per-turn accumulated
@@ -41,16 +41,12 @@ func messageMetricsWithCost(result llm.StreamResult, usage llm.TokenUsage, durat
 	// the UI. Sourced from the returned StreamResult, which is always the final
 	// answer call.
 	if result.Usage.TotalTokens > 0 {
-		metrics.ContextTokens = intPtr(result.Usage.TotalTokens)
+		metrics.ContextTokens = new(result.Usage.TotalTokens)
 	}
 	if priced {
 		metrics.CostNanoUSD = &costNanoUSD
 	}
 	return metrics
-}
-
-func intPtr(value int) *int {
-	return &value
 }
 
 func strPtr(value string) *string {
