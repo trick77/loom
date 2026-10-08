@@ -57,6 +57,12 @@ func TestKeepInterruptedKeepsEarlierRoundsProse(t *testing.T) {
 	if b.keepInterrupted(&llm.StreamResult{}, errors.New("boom"), nil) {
 		t.Fatal("keepInterrupted kept a turn that failed rather than being interrupted")
 	}
+	// A stall is the upstream's failure, not the user's stop: it still has to
+	// reach the user as an error unless the stalled round itself streamed text.
+	stalled := fmt.Errorf("read: %w", llm.ErrStreamStalled)
+	if b.keepInterrupted(&llm.StreamResult{}, stalled, nil) {
+		t.Fatal("keepInterrupted turned a stalled round into a finished answer")
+	}
 }
 
 func TestPersistInterruptedPartial(t *testing.T) {

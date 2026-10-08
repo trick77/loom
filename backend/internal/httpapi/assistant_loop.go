@@ -471,12 +471,13 @@ func persistInterruptedPartial(result llm.StreamResult, err error) bool {
 }
 
 // keepInterrupted is persistInterruptedPartial for a multi-round turn: a round
-// interrupted before it streamed any prose still keeps what earlier rounds
+// the user stopped before it streamed any prose still keeps what earlier rounds
 // produced. Their prose, or else a line naming the last artifact, becomes the
 // persisted content, so a stop after a tool created a file does not drop the
-// file from the transcript.
+// file from the transcript. A stall gets no such fallback: it is the upstream
+// failing, and the user has to see that.
 func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, artifacts []artifactResponse) bool {
-	if strings.TrimSpace(result.Content) != "" {
+	if strings.TrimSpace(result.Content) != "" || !errors.Is(err, context.Canceled) {
 		return persistInterruptedPartial(*result, err)
 	}
 	kept := *result
