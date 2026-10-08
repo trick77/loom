@@ -10,8 +10,6 @@ Open items from the simplification and performance pass (PR #630). Each is its o
 - **Per-host limit for concurrent fetches.** `startToolRuns` runs four fetches at once with no
   per-host bound; a strict site may rate-limit a paste of many links to one host, and each failure
   then takes the slower fallback.
-- **One server constructor.** `httpapi.New` wraps `NewWithMemoryWorker` and discards the worker;
-  about 20 tests call `New`. Fold into one once the tests take the pair.
 - **Index build at boot.** Migration 0034 builds `idx_messages_user_thread` under the write lock on
   first boot. Fine today; revisit if a migration ever has to index a large table again.
 
@@ -75,7 +73,7 @@ Open items from the simplification and performance pass (PR #630). Each is its o
 - **Artifact handlers** repeat the owned-artifact lookup and the file-serving block four times.
 - **`config.Load`** repeats the parse-and-validate block for each duration and integer.
 - **`mcp`**: the initialize params and the `IsError` handling are duplicated between the remote and
-  stdio clients; three constructors are test-only.
+  stdio clients.
 - **Favicon candidates** are probed one after another.
 - **Removable once safe**: the ignored `ReasoningEffort` request field (kept as a sink for stale
   browser tabs) and `Message.ToolCalls` (always `[]`; API change).

@@ -114,6 +114,11 @@ const SettingsModal = lazy(() =>
 );
 import { useEscapeKey } from "./useEscapeKey";
 
+// How long a stopped stream may take to deliver the server's saved partial
+// before the fetch is dropped anyway. Saving waits up to 5s on reasoning
+// titles, so this sits well past that.
+const STOP_ABORT_FALLBACK_MS = 15_000;
+
 type ThreadShellProps = {
   user: User;
   adminPanel: React.ReactNode;
@@ -366,18 +371,29 @@ export function ThreadShell({
         abort();
         return;
       }
-      // Tell the server which UI action stopped the stream, and only abort the
-      // fetch once that stop request has been sent. Aborting first would drop the
-      // connection and make the server log the generic request-context cancel
-      // instead of this attributed one (the cancel cause is first-writer-wins).
-      // The server may close the stream before the abort lands; the run's catch
-      // reads this mark so that close is not reported as a dropped connection.
-      markStopRequested(activeRunKey);
-      void stopMessage(activeThread.id, source)
-        .catch((error: unknown) => {
+      // Tell the server which UI action stopped the stream, and do not abort the
+      // fetch first: that would drop the connection and make the server log the
+      // generic request-context cancel instead of this attributed one (the cancel
+      // cause is first-writer-wins). Once stopped, the server saves the partial
+      // answer and ends the stream with assistant_message and done; reading on
+      // until then keeps the answer on screen. The abort is only a fallback for a
+      // stream that never ends, or the stop itself when the server had no stream
+      // registered yet. The run's catch reads this mark so a close is not
+      // reported as a dropped connection.
+      const controller = markStopRequested(activeRunKey);
+      void stopMessage(activeThread.id, source).then(
+        (stopped) => {
+          if (!stopped) {
+            abort();
+            return;
+          }
+          window.setTimeout(() => controller?.abort(), STOP_ABORT_FALLBACK_MS);
+        },
+        (error: unknown) => {
           handleActionError(error, t("thread.stopFailed"), reportShellError);
-        })
-        .finally(abort);
+          abort();
+        },
+      );
     },
     [
       abortStreamRun,

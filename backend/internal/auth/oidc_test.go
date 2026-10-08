@@ -11,6 +11,11 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// NewOIDCService builds a service on cfg.Backend, skipping provider discovery.
+func NewOIDCService(cfg OIDCServiceConfig) *OIDCService {
+	return &OIDCService{backend: cfg.Backend, secure: cfg.SecureCookie}
+}
+
 func TestOIDCService_CallbackRejectsInvalidState(t *testing.T) {
 	service := NewOIDCService(OIDCServiceConfig{
 		ClientID: "client",

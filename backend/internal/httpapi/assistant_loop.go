@@ -115,8 +115,11 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
 		if err != nil {
-			if persistInterruptedPartial(result, err) {
-				b.addResult(titles, result)
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, llm.ErrStreamStalled) {
+				return assistantLoopResult{}, err
+			}
+			b.addResult(titles, result)
+			if b.keepInterrupted(&result, err, artifacts) {
 				return b.result(result, artifacts, ""), nil
 			}
 			return assistantLoopResult{}, err
@@ -286,7 +289,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	}
 	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, finalAnswerInference(inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(titles, result)
-	if persistInterruptedPartial(result, err) {
+	if b.keepInterrupted(&result, err, artifacts) {
 		return b.result(result, artifacts, ""), nil
 	}
 	// Backstop: if the clean synthesis still produced no prose (e.g. the model emitted
@@ -300,7 +303,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		}
 		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalRetryInference(inference, result), nil)
 		b.addResult(titles, result)
-		if persistInterruptedPartial(result, err) {
+		if b.keepInterrupted(&result, err, artifacts) {
 			return b.result(result, artifacts, ""), nil
 		}
 		if err == nil && strings.TrimSpace(result.Content) == "" {
@@ -404,11 +407,11 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	})
 	final, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
 	b.addResult(titles, final)
-	if persistInterruptedPartial(final, err) {
+	if b.keepInterrupted(&final, err, artifacts) {
 		return b.result(final, artifacts, ""), nil
 	}
 	if err == nil && strings.TrimSpace(final.Content) == "" {
-		final.Content = fallbackImageArtifactResponse(created[0])
+		final.Content = fallbackArtifactResponse(created[0])
 		// addResult skipped the empty final turn's text; surface the fallback prose
 		// so the timeline matches the persisted content column.
 		b.addText(final.Content)
@@ -416,9 +419,9 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	return b.result(final, artifacts, ""), err
 }
 
-func fallbackImageArtifactResponse(response artifactResponse) string {
+func fallbackArtifactResponse(response artifactResponse) string {
 	if strings.TrimSpace(response.DisplayFilename) == "" {
-		return "Created the image artifact."
+		return "Created the artifact."
 	}
 	return "Created " + response.DisplayFilename + "."
 }
@@ -465,6 +468,32 @@ func persistInterruptedPartial(result llm.StreamResult, err error) bool {
 		return false
 	}
 	return errors.Is(err, context.Canceled) || errors.Is(err, llm.ErrStreamStalled)
+}
+
+// keepInterrupted is persistInterruptedPartial for a multi-round turn: a round
+// the user stopped before it streamed any prose still keeps what earlier rounds
+// produced. Their prose, or else a line naming the last artifact, becomes the
+// persisted content, so a stop after a tool created a file does not drop the
+// file from the transcript. A stall gets no such fallback: it is the upstream
+// failing, and the user has to see that.
+func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, artifacts []artifactResponse) bool {
+	if strings.TrimSpace(result.Content) != "" || !errors.Is(err, context.Canceled) {
+		return persistInterruptedPartial(*result, err)
+	}
+	kept := *result
+	kept.Content = b.prose()
+	fallback := kept.Content == "" && len(artifacts) > 0
+	if fallback {
+		kept.Content = fallbackArtifactResponse(artifacts[len(artifacts)-1])
+	}
+	if !persistInterruptedPartial(kept, err) {
+		return false
+	}
+	if fallback {
+		b.addText(kept.Content)
+	}
+	*result = kept
+	return true
 }
 
 // runIncognitoAssistantTurn runs a single, tool-free assistant turn for an

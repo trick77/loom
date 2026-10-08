@@ -12,29 +12,6 @@ import (
 	"github.com/trick77/loom/internal/sqlutil"
 )
 
-// AddMessage inserts a message with only identity, role and content.
-func (s *Store) AddMessage(ctx context.Context, userID, threadID string, role Role, content string) (Message, error) {
-	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content})
-}
-
-// AddMessageWithUsage inserts a message and records the turn's token counts,
-// cost and other metrics.
-func (s *Store) AddMessageWithUsage(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage) (Message, error) {
-	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage})
-}
-
-// AddMessageWithArtifacts inserts a message together with its generated
-// artifacts (a JSON array).
-func (s *Store) AddMessageWithArtifacts(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage) (Message, error) {
-	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage, artifacts: artifacts})
-}
-
-// AddMessageWithActivityTrace inserts a message together with its artifacts
-// and the activity trace recording its tool calls.
-func (s *Store) AddMessageWithActivityTrace(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (Message, error) {
-	return s.insertMessage(ctx, messageInsert{userID: userID, threadID: threadID, role: role, content: content, usage: usage, artifacts: artifacts, activityTrace: activityTrace})
-}
-
 // AddMessageWithCitations is the full assistant insert: artifacts, activity
 // trace, citations (the documents and web sources behind the answer) and the
 // ordered content blocks. Any of the JSON columns may be nil.

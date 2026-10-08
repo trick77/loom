@@ -3,7 +3,9 @@ package llm
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
+	"hash/crc32"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -62,6 +64,26 @@ func TestDescribeImage_emptyContentReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "empty") {
 		t.Errorf("error = %q, want it to mention empty content", err.Error())
+	}
+}
+
+// An image too large to downscale is never sent to the vision model at full
+// size.
+func TestDescribeImage_refusesTooManyPixels(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("vision model called for an oversized image")
+	}))
+	defer srv.Close()
+
+	// onePixelPNG with its IHDR rewritten to declare 20000×20000.
+	data := onePixelPNG()
+	binary.BigEndian.PutUint32(data[16:20], 20000)
+	binary.BigEndian.PutUint32(data[20:24], 20000)
+	binary.BigEndian.PutUint32(data[29:33], crc32.ChecksumIEEE(data[12:29]))
+
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	if _, err := c.DescribeImage(context.Background(), data, "image/png"); err == nil || !strings.Contains(err.Error(), "too many pixels") {
+		t.Fatalf("DescribeImage(oversized) error = %v, want the pixel refusal", err)
 	}
 }
 

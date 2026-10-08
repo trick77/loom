@@ -2,7 +2,6 @@ package llm
 
 import (
 	"context"
-	"strconv"
 	"strings"
 
 	"github.com/trick77/loom/internal/titletext"
@@ -56,13 +55,7 @@ func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistant
 }
 
 func cleanThreadTitle(title string) string {
-	title = strings.TrimSpace(title)
-	title = titletext.NormalizeQuotes(title)
-	if unquoted, err := strconv.Unquote(title); err == nil {
-		title = strings.TrimSpace(unquoted)
-	} else {
-		title = strings.TrimSpace(titletext.StripWrappingQuotes(title))
-	}
+	title = titletext.Unwrap(title)
 	if title == "" {
 		return "New thread"
 	}

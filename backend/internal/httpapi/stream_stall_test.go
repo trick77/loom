@@ -44,6 +44,27 @@ func TestStreamMessageSurfacesStallAsClearError(t *testing.T) {
 	}
 }
 
+func TestKeepInterruptedKeepsEarlierRoundsProse(t *testing.T) {
+	b := &blockBuilder{}
+	b.addText("Searching first.")
+	result := llm.StreamResult{}
+	if !b.keepInterrupted(&result, context.Canceled, nil) {
+		t.Fatal("keepInterrupted dropped a turn whose earlier round streamed prose")
+	}
+	if result.Content != "Searching first." {
+		t.Fatalf("content = %q, want the earlier round's prose", result.Content)
+	}
+	if b.keepInterrupted(&llm.StreamResult{}, errors.New("boom"), nil) {
+		t.Fatal("keepInterrupted kept a turn that failed rather than being interrupted")
+	}
+	// A stall is the upstream's failure, not the user's stop: it still has to
+	// reach the user as an error unless the stalled round itself streamed text.
+	stalled := fmt.Errorf("read: %w", llm.ErrStreamStalled)
+	if b.keepInterrupted(&llm.StreamResult{}, stalled, nil) {
+		t.Fatal("keepInterrupted turned a stalled round into a finished answer")
+	}
+}
+
 func TestPersistInterruptedPartial(t *testing.T) {
 	stalled := fmt.Errorf("read chat completion stream: %w", llm.ErrStreamStalled)
 	cases := []struct {

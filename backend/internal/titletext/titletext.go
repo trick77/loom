@@ -4,6 +4,7 @@
 package titletext
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -42,6 +43,17 @@ func StripWrappingQuotes(s string) string {
 		}
 		return s
 	}
+}
+
+// Unwrap trims a model-written title and removes the quotes around it: a Go
+// string literal is unquoted (escapes included), anything else loses only
+// matching wrapping quotes.
+func Unwrap(s string) string {
+	s = NormalizeQuotes(strings.TrimSpace(s))
+	if unquoted, err := strconv.Unquote(s); err == nil {
+		return strings.TrimSpace(unquoted)
+	}
+	return strings.TrimSpace(StripWrappingQuotes(s))
 }
 
 // scriptGroup is one writing-system equivalence class. The tables are Unicode

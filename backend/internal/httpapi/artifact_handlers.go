@@ -13,6 +13,7 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/documents"
+	"github.com/trick77/loom/internal/imagescale"
 )
 
 const multipartUploadOverheadBytes = 1 << 20
@@ -230,6 +231,20 @@ func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w)
 		return
 	}
+	// An upload behind a knowledge document goes with its document, or the
+	// document would stay embedded and keep feeding answers from a deleted file.
+	if s.documents != nil {
+		deleted, err := s.documents.DeleteForArtifact(r.Context(), user.ID, found.ID)
+		if err != nil {
+			serverError(w, r, err, "delete document failed")
+			return
+		}
+		if deleted {
+			artifact.RemoveThumbnail(s.usersDir, user.ID, found.VolumeRelPath)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
 	if err := s.artifacts.Delete(r.Context(), user.ID, found.ID); err != nil {
 		serverError(w, r, err, "delete artifact failed")
 		return
@@ -335,6 +350,14 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	mimeType := header.Header.Get("Content-Type")
 	if !allowedImageMIME(mimeType) {
 		mimeType = canonicalMIME
+	}
+	if imagescale.TooLarge(file) {
+		writeJSONError(w, http.StatusRequestEntityTooLarge, "image has too many pixels")
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid upload")
+		return
 	}
 	threadID := strings.TrimSpace(r.FormValue("threadId"))
 	projectID := strings.TrimSpace(r.FormValue("projectId"))

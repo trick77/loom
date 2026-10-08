@@ -1,8 +1,8 @@
 <!--
   Loom's icon: the spiral mark, the same single path ui/src/assets/loom-logo.svg
-  and ui/src/LoomMark.tsx draw. Copied rather than imported — nothing loads a
-  React component to produce a static asset. Stroke is 1.5 in glyph units, so it
-  scales with the glyph and stays proportional across all three sources here.
+  draws. Copied rather than imported: a static asset cannot import another.
+  Stroke is 1.5 in glyph units, so it scales with the glyph and stays
+  proportional across both sources.
 
   Sized off the mark's TRUE bbox, not the nominal 24x24 viewBox the path only
   partly fills. Measured by rendering at 1024 and trimming: the ink is a square

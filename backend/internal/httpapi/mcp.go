@@ -3,7 +3,6 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/mcp"
 )
 
@@ -12,8 +11,7 @@ import (
 // and the failure reason when down). Endpoints are credential-free by
 // construction (see mcp.ServerStatus).
 func (s *server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.UserFromContext(r.Context()); !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	if _, ok := currentUser(w, r); !ok {
 		return
 	}
 	servers := []mcp.ServerStatus{}
@@ -40,8 +38,7 @@ type mcpToolInfo struct {
 // into any given request, so a tool listed here is not guaranteed to be offered
 // on every turn.
 func (s *server) handleMCPTools(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.UserFromContext(r.Context()); !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	if _, ok := currentUser(w, r); !ok {
 		return
 	}
 	tools := []mcpToolInfo{}

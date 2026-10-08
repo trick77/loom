@@ -14,6 +14,7 @@ import (
 	_ "image/gif" // register GIF decoder (first frame is used)
 	"image/jpeg"
 	_ "image/png" // register PNG decoder
+	"io"
 
 	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // register WebP decoder (decode-only)
@@ -60,11 +61,11 @@ func DownscaleForEditInput(data []byte, mimeType string) ([]byte, string) {
 // and MIME unchanged.
 func fitWithin(data []byte, mimeType string, maxDimension, byteCap int) ([]byte, string) {
 	// The header alone says whether there is anything to do: an image that
-	// already fits is the common case and never pays for a full decode. No pixel
-	// cap here, unlike Thumbnail: a very long screenshot is a legitimate input
-	// and must still be scaled down, or the model would get it at full size.
+	// already fits is the common case and never pays for a full decode. The
+	// pixel cap is an area cap, so a long screenshot well past maxDimension is
+	// still scaled down; only a decompression bomb is passed through undecoded.
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxSourcePixels {
 		return data, mimeType
 	}
 	if max(cfg.Width, cfg.Height) <= maxDimension && len(data) <= byteCap {
@@ -101,12 +102,21 @@ func fitDims(w, h, maxDimension int) (int, int) {
 	return max(1, int(float64(w)*scale)), max(1, int(float64(h)*scale))
 }
 
-// maxThumbnailSourcePixels caps the pixel area of an image we will fully decode to
-// build a thumbnail. It is a decompression-bomb guard, not a typical-photo limit:
+// maxSourcePixels caps the pixel area of an image we will fully decode. It is a
+// decompression-bomb guard, not a typical-photo limit:
 // at 100 MP it sits far above a 4096² (~16 MP) edit input or any real camera, so it
 // rejects only crafted inputs (a tiny file declaring e.g. 30000×30000) that would
-// otherwise allocate gigabytes on decode. A rejected image simply gets no thumbnail.
-const maxThumbnailSourcePixels = 100 << 20
+// otherwise allocate gigabytes on decode and take the whole process down.
+const maxSourcePixels = 100 << 20
+
+// TooLarge reports whether the image header in r declares more pixels than
+// this package decodes. Such an image would pass through DownscaleForModel at
+// full size, so callers refuse it up front. An unreadable header is not too
+// large: decoding it fails anyway.
+func TooLarge(r io.Reader) bool {
+	cfg, _, err := image.DecodeConfig(r)
+	return err == nil && int64(cfg.Width)*int64(cfg.Height) > maxSourcePixels
+}
 
 // Thumbnail decodes data and produces a small JPEG whose longest side is at most
 // maxDimension, flattening any transparency onto white. Unlike DownscaleForModel
@@ -122,7 +132,7 @@ func Thumbnail(data []byte, maxDimension int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxThumbnailSourcePixels {
+	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxSourcePixels {
 		return nil, errors.New("imagescale: source image too large to thumbnail")
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))

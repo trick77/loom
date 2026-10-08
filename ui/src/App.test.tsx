@@ -2177,6 +2177,104 @@ test("a stop before any answer text is not reported as a dropped connection", as
   expect(screen.queryByText(/connection dropped/i)).not.toBeInTheDocument();
 });
 
+test("a stop before the server registered the stream drops the fetch at once", async () => {
+  const inner = stoppingChatFetch();
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith("/api/threads/t1/messages:stop"))
+        return Response.json({ error: "no active stream" }, { status: 409 });
+      return inner(input, init);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("button", { name: "Stop response" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+test("a stopped answer stays on screen once the server has saved it", async () => {
+  // The stop endpoint answers 204 as soon as it cancels; the server persists
+  // the partial afterwards and only then sends assistant_message and done.
+  let finishStream: (() => void) | null = null;
+  const encoder = new TextEncoder();
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [threadFixture()], nextCursor: null });
+      if (url === "/api/threads/t1")
+        return Response.json({ thread: threadFixture(), messages: [] });
+      if (
+        url.startsWith("/api/threads/t1/messages:stop") &&
+        init?.method === "POST"
+      ) {
+        setTimeout(() => finishStream?.(), 30);
+        return new Response(null, { status: 204 });
+      }
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n' +
+                  'event: assistant_delta\ndata: {"content":"Partial answer"}\n\n',
+              ),
+            );
+            finishStream = () => {
+              controller.enqueue(
+                encoder.encode(
+                  'event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"Partial answer","createdAt":"2026-05-30T00:00:01Z"}\n\n' +
+                    "event: done\ndata: {}\n\n",
+                ),
+              );
+              controller.close();
+            };
+            init.signal?.addEventListener("abort", () => {
+              controller.error(new DOMException("Aborted", "AbortError"));
+            });
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await screen.findByText("Partial answer");
+  fireEvent.click(screen.getByRole("button", { name: "Stop response" }));
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("button", { name: "Stop response" }),
+    ).not.toBeInTheDocument();
+  });
+  expect(screen.getByText("Partial answer")).toBeInTheDocument();
+});
+
 test("renders artifact card from streamed artifact event", async () => {
   const artifact = {
     id: "art_1",

@@ -211,23 +211,6 @@ func endpointForServer(sc ServerConfig) string {
 	return rest
 }
 
-// NewService creates a Service from a map of MCP clients, discovering all tools from each client.
-func NewService(clients map[string]Client) (*Service, error) {
-	service := &Service{routes: map[string]toolRoute{}}
-	names := sortedServerNames(clients)
-	for _, serverName := range names {
-		client := clients[serverName]
-		tools, err := client.ListTools(context.Background())
-		if err != nil {
-			return nil, fmt.Errorf("list MCP tools for %s: %w", serverName, err)
-		}
-		if err := service.register(serverName, client, tools, failOnDuplicate); err != nil {
-			return nil, err
-		}
-	}
-	return service, nil
-}
-
 // NewRequiredServiceFromConfig creates a Service from a Config, failing if any client's tool discovery fails.
 func NewRequiredServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client) (*Service, error) {
 	clients := map[string]Client{}
@@ -326,31 +309,6 @@ func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, htt
 	service.cfg = merged
 	service.origins = origins
 	service.httpClient = httpClient
-	return service, nil
-}
-
-// NewBestEffortServiceFromConfig creates a Service from a Config, logging and skipping any server whose discovery fails.
-func NewBestEffortServiceFromConfig(ctx context.Context, cfg Config, httpClient *http.Client, logger *slog.Logger) (*Service, error) {
-	origins := make(map[string]string, len(cfg.Servers))
-	for name := range cfg.Servers {
-		origins[name] = OriginFile
-	}
-	service := &Service{routes: map[string]toolRoute{}, cfg: cfg, origins: origins, httpClient: httpClient}
-	names := sortedServerNames(cfg.Servers)
-	for _, serverName := range names {
-		client := clientForServer(serverName, cfg.Servers[serverName], httpClient)
-		tools, err := client.ListTools(ctx)
-		if err != nil {
-			if logger != nil {
-				logger.Warn("MCP server discovery failed", "server", serverName, "err", err)
-			}
-			_ = client.Close()
-			continue
-		}
-		if err := service.register(serverName, client, tools, failOnDuplicate); err != nil {
-			return nil, err
-		}
-	}
 	return service, nil
 }
 

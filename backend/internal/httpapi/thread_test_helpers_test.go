@@ -2,10 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -17,9 +19,32 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/store"
 )
 
 var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
+
+// newUserDB opens a migrated test database holding testUser's row.
+func newUserDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+// New returns the fully wired HTTP handler without its memory worker.
+func New(d Deps) http.Handler {
+	handler, _ := NewWithMemoryWorker(d)
+	return handler
+}
 
 func newAuthenticatedServer(t *testing.T, deps Deps) http.Handler {
 	t.Helper()
@@ -359,10 +384,6 @@ func (f *fakeThreadStore) DeleteThread(_ context.Context, _ string, threadID str
 	return true, nil
 }
 
-func (f *fakeThreadStore) AddMessage(ctx context.Context, _ string, threadID string, role chat.Role, content string) (chat.Message, error) {
-	return f.AddMessageWithUsage(ctx, "", threadID, role, content, chat.MessageTokenUsage{})
-}
-
 func (f *fakeThreadStore) AddMessageWithAttachments(_ context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage) (chat.Message, error) {
 	if len(attachments) == 0 {
 		attachments = json.RawMessage("[]")
@@ -400,18 +421,6 @@ func (f *fakeThreadStore) AddMessageCost(_ context.Context, _ string, messageID 
 		return true, nil
 	}
 	return false, nil
-}
-
-func (f *fakeThreadStore) AddMessageWithUsage(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage) (chat.Message, error) {
-	return f.AddMessageWithArtifacts(ctx, "", threadID, role, content, usage, nil)
-}
-
-func (f *fakeThreadStore) AddMessageWithArtifacts(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage) (chat.Message, error) {
-	return f.AddMessageWithActivityTrace(ctx, "", threadID, role, content, usage, artifacts, nil)
-}
-
-func (f *fakeThreadStore) AddMessageWithActivityTrace(ctx context.Context, userID string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage) (chat.Message, error) {
-	return f.AddMessageWithCitations(ctx, userID, threadID, role, content, usage, artifacts, activityTrace, nil, nil)
 }
 
 func (f *fakeThreadStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (chat.Message, error) {
@@ -953,6 +962,7 @@ type fakeToolChatClient struct {
 	histories      [][]llm.Message
 	tools          [][]llm.Tool
 	plain          string
+	plainErr       error
 	classifyResult string
 	imageIntent    llm.ImageIntent
 	titleResult    string
@@ -960,6 +970,9 @@ type fakeToolChatClient struct {
 }
 
 func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error) {
+	if f.plainErr != nil {
+		return llm.StreamResult{Content: f.plain}, f.plainErr
+	}
 	if f.plain == "" {
 		return llm.StreamResult{}, nil
 	}

@@ -311,7 +311,7 @@ describe("stopMessage", () => {
   test("posts without a source query when none is given", async () => {
     const fetchMock = stubFetch(new Response(null, { status: 204 }));
 
-    await expect(stopMessage("t1")).resolves.toBeUndefined();
+    await expect(stopMessage("t1")).resolves.toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/threads/t1/messages:stop",
       expect.objectContaining({ method: "POST" }),
@@ -327,6 +327,12 @@ describe("stopMessage", () => {
       "/api/threads/t1/messages:stop?source=stop%20button",
       expect.objectContaining({ method: "POST", signal: expect.anything() }),
     );
+  });
+
+  test("resolves false when no stream was registered yet", async () => {
+    stubFetch(Response.json({ error: "no active stream" }, { status: 409 }));
+
+    await expect(stopMessage("t1")).resolves.toBe(false);
   });
 
   test("throws AuthExpiredError on 401", async () => {

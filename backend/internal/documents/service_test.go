@@ -225,6 +225,45 @@ func TestService_Delete_removesFileArtifactAndDocument(t *testing.T) {
 	}
 }
 
+func TestService_DeleteForArtifact_deletesOnlyABackedDocument(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+	doc, art, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+
+	if deleted, err := svc.DeleteForArtifact(ctx, "other", art.ID); err != nil || deleted {
+		t.Fatalf("DeleteForArtifact(foreign user) = %v, %v; want false, nil", deleted, err)
+	}
+	if deleted, err := svc.DeleteForArtifact(ctx, "u", art.ID); err != nil || !deleted {
+		t.Fatalf("DeleteForArtifact = %v, %v; want true, nil", deleted, err)
+	}
+	if _, ok, _ := svc.Get(ctx, "u", doc.ID); ok {
+		t.Error("document still present after deleting its artifact")
+	}
+	if deleted, err := svc.DeleteForArtifact(ctx, "u", art.ID); err != nil || deleted {
+		t.Fatalf("DeleteForArtifact(again) = %v, %v; want false, nil", deleted, err)
+	}
+}
+
+// failingDeleteArtifacts is the real artifact store with a Delete that fails.
+type failingDeleteArtifacts struct{ ArtifactStore }
+
+func (failingDeleteArtifacts) Delete(context.Context, string, string) error {
+	return errors.New("database is locked")
+}
+
+// A failed artifact-row delete must reach the caller, who would otherwise
+// report success while the row survives pointing at a removed file.
+func TestService_Delete_reportsAFailedArtifactDelete(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	svc.artifacts = failingDeleteArtifacts{svc.artifacts}
+
+	if err := svc.Delete(ctx, "u", doc.ID); err == nil {
+		t.Fatal("Delete() = nil, want the artifact delete error")
+	}
+}
+
 type countingEmbedder struct{ calls int }
 
 func (c *countingEmbedder) Embed(_ context.Context, inputs []string) (rag.EmbedResult, error) {

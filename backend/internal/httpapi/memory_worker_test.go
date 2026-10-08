@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -9,6 +10,31 @@ import (
 
 	"github.com/trick77/loom/internal/chat"
 )
+
+// An edit while a refresh of the same memory is in flight is refused: the
+// refresh read the memory before the edit and would write that stale prior
+// back over it, silently undoing what the user asked to forget.
+func TestEditMemory_RefusedWhileARefreshRuns(t *testing.T) {
+	store := &fakeThreadStore{
+		project:       chat.Project{ID: "proj_1", UserID: testUser.ID},
+		projectMemory: chat.ProjectMemory{ProjectID: "proj_1", Content: "- X"},
+	}
+	s := &server{thread: store, llm: fakeChatClient{editedMemory: "- (X forgotten)"}}
+	scope := s.projectMemoryScope(testUser, store.project)
+	release, _ := s.inflight.tryAcquire("memory:" + scope.key)
+	defer release()
+
+	if err := s.editMemory(context.Background(), testUser, scope, "forget X"); !errors.Is(err, errMemoryBusy) {
+		t.Fatalf("editMemory() error = %v, want errMemoryBusy", err)
+	}
+	if store.projectMemory.Content != "- X" {
+		t.Fatalf("memory = %q, want untouched while the refresh holds it", store.projectMemory.Content)
+	}
+	// The manual refresh reports the same instead of answering with the old memory.
+	if err := s.refreshProjectMemory(context.Background(), testUser, "proj_1", "", nil, 1); !errors.Is(err, errMemoryBusy) {
+		t.Fatalf("refreshProjectMemory() error = %v, want errMemoryBusy", err)
+	}
+}
 
 // TestRefreshMemoryIfDue_DebounceSkipsFreshMemory proves the staleness gate: a
 // memory refreshed within minAge is left alone even when enough new messages have

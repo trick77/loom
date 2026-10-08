@@ -117,6 +117,19 @@ func TestReembedUntilDone_StopsWhenTheWaitIsCancelled(t *testing.T) {
 	}
 }
 
+// A run cut short by shutdown is not a failure: no retry wait, no error log.
+func TestReembedUntilDone_StopsWhenTheRunIsCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	waited := false
+	reembedUntilDone(ctx, func(context.Context) (int, error) {
+		cancel()
+		return 0, context.Canceled
+	}, func(context.Context, time.Duration) bool { waited = true; return true })
+	if waited {
+		t.Fatal("reembedUntilDone waited to retry a run cancelled by shutdown")
+	}
+}
+
 // A database from before the model was recorded holds vectors from an unknown
 // model: re-embed once rather than trust them to match the configured one.
 func TestReconcileVectorWidth_UnrecordedVectorsAreReembedded(t *testing.T) {

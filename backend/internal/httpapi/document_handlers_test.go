@@ -34,6 +34,10 @@ type fakeDocumentService struct {
 	// fullTextEntered, when set, is signalled (non-blocking) when FullText runs.
 	fullTextEntered chan struct{}
 	deleteErr       error
+	// backingArtifactID is the artifact behind the one document this fake knows;
+	// DeleteForArtifact records the artifacts it deleted a document for.
+	backingArtifactID  string
+	deletedForArtifact []string
 	// indexCalls, when set, receives the id of every document Index runs for.
 	indexCalls chan string
 }
@@ -68,6 +72,13 @@ func (f *fakeDocumentService) Index(_ context.Context, _, documentID string) err
 }
 func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return f.unindexErr }
 func (f *fakeDocumentService) Delete(context.Context, string, string) error  { return f.deleteErr }
+func (f *fakeDocumentService) DeleteForArtifact(_ context.Context, _ string, artifactID string) (bool, error) {
+	if f.backingArtifactID == "" || artifactID != f.backingArtifactID {
+		return false, nil
+	}
+	f.deletedForArtifact = append(f.deletedForArtifact, artifactID)
+	return true, f.deleteErr
+}
 func (f *fakeDocumentService) DeleteThreadData(_ context.Context, _ string, threadID string) error {
 	f.deletedThreadData = append(f.deletedThreadData, threadID)
 	return f.deleteDataErr

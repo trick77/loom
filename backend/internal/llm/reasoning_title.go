@@ -64,12 +64,7 @@ func cleanReasoningTitle(title string) string {
 	if contentBlockTitle.MatchString(title) {
 		title = unwrapContentBlock(title)
 	}
-	title = titletext.NormalizeQuotes(title)
-	if unquoted, err := strconv.Unquote(title); err == nil {
-		title = strings.TrimSpace(unquoted)
-	} else {
-		title = strings.TrimSpace(titletext.StripWrappingQuotes(title))
-	}
+	title = titletext.Unwrap(title)
 	title = trimTrailingDots(title)
 	if title == "" {
 		return ""

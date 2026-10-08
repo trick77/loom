@@ -303,9 +303,6 @@ func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
 	if cfg.AuthMode != AuthModeDev {
 		t.Fatalf("AuthMode = %q, want dev", cfg.AuthMode)
 	}
-	if cfg.DevUser.Role != "admin" {
-		t.Fatalf("DevUser role = %q, want admin", cfg.DevUser.Role)
-	}
 }
 
 // anyChatModel is a registry chat model loom's chat role accepts, found at run

@@ -58,7 +58,7 @@ func TestGenerateRequestNormalize(t *testing.T) {
 }
 
 func TestGenerateRequestNormalizePreservesStrictSafetyTolerance(t *testing.T) {
-	got, err := (GenerateRequest{Prompt: "test", SafetyTolerance: intPtr(0)}).Normalized()
+	got, err := (GenerateRequest{Prompt: "test", SafetyTolerance: new(0)}).Normalized()
 	if err != nil {
 		t.Fatalf("Normalized() error = %v", err)
 	}

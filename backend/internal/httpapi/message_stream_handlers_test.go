@@ -27,7 +27,6 @@ import (
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
-	"github.com/trick77/loom/internal/store"
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
@@ -573,16 +572,7 @@ func TestStreamMessageUsesFallbackWhenForcedFinalAnswerIsEmpty(t *testing.T) {
 	// forces a tool-free final answer. A tool-eager model answers that with another
 	// inline tool call, which is stripped — leaving the content empty. The turn must not persist
 	// an empty (or raw-XML) message: a fallback answer is substituted instead.
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
-		t.Fatal(err)
-	}
+	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
@@ -640,16 +630,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 }
 
 func TestStreamMessageExecutesBuiltInArtifactTool(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
-		t.Fatal(err)
-	}
+	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
@@ -709,16 +690,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 }
 
 func TestStreamMessageExecutesBuiltInImageTool(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
-		t.Fatal(err)
-	}
+	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
@@ -783,16 +755,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 }
 
 func TestStreamMessageUsesFallbackTextWhenImageFinalResponseIsEmpty(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
-		t.Fatal(err)
-	}
+	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
@@ -848,17 +811,59 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 }
 
-func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+// A stop after the image exists but before the final prose starts must still
+// persist the turn with its artifact, not drop the paid-for image from the
+// transcript.
+func TestStreamMessagePersistsImageWhenFinalResponseIsCanceled(t *testing.T) {
+	db := newUserDB(t)
+	threadStore := chat.NewStore(db)
+	user := testUser
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Images"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+	llmClient := &fakeToolChatClient{
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		results: []llm.StreamResult{{
+			ToolCalls: []llm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "generate_image",
+					Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
+				},
+			}},
+		}},
+		plainErr: context.Canceled,
+	}
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     threadStore,
+		Artifacts:  artifact.NewStore(db),
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make an image"}`)
+	server.ServeHTTP(httptest.NewRecorder(), req)
+
+	messages, _, err := threadStore.ListMessages(context.Background(), user.ID, thread.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
+	var assistant chat.Message
+	for _, message := range messages {
+		if message.Role == chat.RoleAssistant {
+			assistant = message
+		}
+	}
+	if !bytes.Contains(assistant.Artifacts, []byte("image/png")) {
+		t.Fatalf("assistant not persisted with its image after cancel: messages=%d artifacts=%s", len(messages), assistant.Artifacts)
+	}
+}
+
+func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
+	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
@@ -2735,16 +2740,7 @@ func TestStreamMessageForcedFinalUsesCleanSynthesisHistory(t *testing.T) {
 // deterministically as image_generation, overriding (and skipping) the text
 // classifier — even when the classifier would have returned something else.
 func TestStreamMessageStampsImageGenerationCategory(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
-		t.Fatal(err)
-	}
+	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	user := testUser
@@ -2800,16 +2796,7 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 // short-circuits, so an image-phrased prompt is classified normally and is never
 // stamped image_generation.
 func TestStreamMessageDoesNotStampImageGenerationWhenImageToolsAbsent(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
-		t.Fatal(err)
-	}
+	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	user := testUser
 	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: chat.DefaultThreadTitle})

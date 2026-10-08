@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -137,6 +138,7 @@ func run() error {
 
 	// Document RAG is enabled only when an embeddings key is configured.
 	var documentService httpapi.DocumentService
+	reembed := func(context.Context) {}
 	if cfg.EmbedEnabled {
 		ragStore := rag.NewStore(db)
 		if err := ragStore.ResetStuckIngestions(context.Background()); err != nil {
@@ -157,7 +159,7 @@ func run() error {
 			return err
 		}
 		// A new embedding model with another width: rebuild the vector table at
-		// the model's width. The chunks stay; reembedInBackground restores their
+		// the model's width. The chunks stay; the re-embed worker restores their
 		// vectors below.
 		if err := reconcileVectorWidth(context.Background(), ragStore, cfg.EmbedModel); err != nil {
 			return err
@@ -177,21 +179,17 @@ func run() error {
 		if llmClient != nil {
 			ingester.SetImageDescriber(llmClient)
 		}
-		reembedInBackground(ingester)
+		reembed = func(ctx context.Context) { reembedUntilDone(ctx, ingester.ReembedMissing, sleepCtx) }
 		docs := documents.NewService(ragStore, artifactStore, ingester, embedClient, cfg.UsersDir)
 		docs.SetUsageRecorder(usageStore)
 		documentService = docs
 	}
 	gotenbergClient := docgen.NewGotenbergClient(docgen.GotenbergConfig{BaseURL: cfg.GotenbergURL})
-	// Gotenberg backs PDF export, which is enabled whenever the doc tools are
-	// offered to the model (artifact store present + a users dir configured; the
-	// store is always built, so this mirrors availableTools' gate on UsersDir).
-	// Fail fast at boot rather than let the model start a create_pdf_file call
-	// that can only end in a per-request "tool failed".
-	if strings.TrimSpace(cfg.UsersDir) != "" {
-		if err := requireSidecar("gotenberg", cfg.GotenbergURL, gotenbergClient.Ping); err != nil {
-			return err
-		}
+	// Gotenberg backs PDF export, and the doc tools are always offered (config
+	// requires a users dir). Fail fast at boot rather than let the model start a
+	// create_pdf_file call that can only end in a per-request "tool failed".
+	if err := requireSidecar("gotenberg", cfg.GotenbergURL, gotenbergClient.Ping); err != nil {
+		return err
 	}
 	docTools := []docgen.Generator{
 		docgen.TextGenerator{},
@@ -324,7 +322,7 @@ func run() error {
 	defer stop()
 	return serve(ctx, srv, ln, background, memoryWorker.Run, func(ctx context.Context) {
 		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
-	}, sandboxWatch)
+	}, sandboxWatch, reembed)
 }
 
 // sandboxProbeInterval is how quickly run_python follows the sidecar going
@@ -367,10 +365,11 @@ var errServerShuttingDown = errors.New("server shutting down")
 //     stream unwinds now (persisting its partial answer on a detached context)
 //     instead of holding Shutdown for the whole timeout;
 //  2. Shutdown the listener and wait for handlers to return;
-//  3. drain the background group, whose tasks still write to the database.
+//  3. drain the background group, whose tasks still write to the database;
+//  4. wait for the workers to return.
 //
-// workers are the long-running sweeps (memory refresh, session janitor);
-// they stop when ctx does.
+// workers are the long-running sweeps (memory refresh, session janitor,
+// re-embed); they stop when ctx does.
 func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *httpapi.Background, workers ...func(context.Context)) error {
 	baseCtx, cancelBase := context.WithCancelCause(context.Background())
 	defer cancelBase(nil)
@@ -387,10 +386,27 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *h
 	}()
 
 	workerCtx, stopWorkers := context.WithCancel(ctx)
-	defer stopWorkers()
+	var running sync.WaitGroup
 	for _, worker := range workers {
-		go worker(workerCtx)
+		running.Go(func() { worker(workerCtx) })
 	}
+	// Workers write to the database, so serve returns only once they are done,
+	// on every way out. On shutdown they unwind alongside the background drain
+	// and share its deadline rather than adding one of their own.
+	var drainBy time.Time
+	defer func() {
+		stopWorkers()
+		if drainBy.IsZero() {
+			drainBy = time.Now().Add(shutdownTimeout)
+		}
+		stopped := make(chan struct{})
+		go func() { running.Wait(); close(stopped) }()
+		select {
+		case <-stopped:
+		case <-time.After(time.Until(drainBy)):
+			slog.Warn("workers did not stop", "timeout", shutdownTimeout.String())
+		}
+	}()
 
 	select {
 	case <-ctx.Done():
@@ -416,6 +432,8 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *h
 			slog.Warn("shutdown did not finish cleanly", "err", err)
 		}
 	}
+	stopWorkers()
+	drainBy = time.Now().Add(shutdownTimeout)
 	if err := background.Stop(shutdownTimeout); err != nil {
 		slog.Warn("background tasks did not drain", "err", err)
 	}

@@ -371,12 +371,24 @@ func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
 		return err
 	}
 	if doc.ArtifactID != nil {
-		_ = s.artifacts.Delete(ctx, userID, *doc.ArtifactID)
+		if err := s.artifacts.Delete(ctx, userID, *doc.ArtifactID); err != nil {
+			return err
+		}
 	}
 	if abs, err := artifact.ResolveExisting(s.usersDir, userID, doc.VolumeRelpath); err == nil {
 		_ = os.Remove(abs)
 	}
 	return nil
+}
+
+// DeleteForArtifact deletes the document the artifact backs, chunks and file
+// included, and reports whether there was one.
+func (s *Service) DeleteForArtifact(ctx context.Context, userID, artifactID string) (bool, error) {
+	documentID, ok, err := s.store.DocumentIDForArtifact(ctx, userID, artifactID)
+	if err != nil || !ok {
+		return false, err
+	}
+	return true, s.Delete(ctx, userID, documentID)
 }
 
 // DeleteThreadData removes all RAG data (documents, chunks, embeddings) scoped

@@ -2,7 +2,6 @@
 package httpapi
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -32,7 +31,7 @@ type Deps struct {
 	OIDC     OIDCService
 	Auth     *auth.Middleware
 	Sessions SessionService
-	// SessionTTL is the login lifetime; zero means defaultSessionTTL.
+	// SessionTTL is the login lifetime (config defaults it).
 	SessionTTL time.Duration
 	Users      UserService
 	Thread     ThreadStore
@@ -299,7 +298,7 @@ func newServer(d Deps) *server {
 		oidc:                       d.OIDC,
 		auth:                       d.Auth,
 		sessions:                   d.Sessions,
-		sessionTTL:                 cmp.Or(d.SessionTTL, defaultSessionTTL),
+		sessionTTL:                 d.SessionTTL,
 		users:                      d.Users,
 		thread:                     d.Thread,
 		usage:                      d.Usage,
@@ -321,12 +320,6 @@ func newServer(d Deps) *server {
 		knowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
 		projectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
 	}
-}
-
-// New returns the fully wired HTTP handler.
-func New(d Deps) http.Handler {
-	handler, _ := NewWithMemoryWorker(d)
-	return handler
 }
 
 // NewWithMemoryWorker returns the HTTP handler and the background memory worker
@@ -454,13 +447,13 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 	}
 }
 
-func (r *activeStreamRegistry) stop(userID, threadID string, cause error) {
+func (r *activeStreamRegistry) stop(userID, threadID string, cause error) bool {
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	r.mu.Lock()
 	stream := r.streams[key]
 	r.mu.Unlock()
 	if stream == nil {
-		return
+		return false
 	}
 	// The entry stays until the handler's unregister removes it. Dropping it here
 	// would hide a stream that is still unwinding — its uninterruptible persist
@@ -468,6 +461,7 @@ func (r *activeStreamRegistry) stop(userID, threadID string, cause error) {
 	// after a stop, and that delete would then race those writes instead of
 	// waiting for them. Cancelling an already-canceled context is a no-op.
 	stream.cancel(cause)
+	return true
 }
 
 // stopAndWait cancels the user's active stream on the thread and waits for the

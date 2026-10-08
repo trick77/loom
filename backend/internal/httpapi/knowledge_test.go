@@ -30,7 +30,10 @@ func (s *stubDocs) FullText(context.Context, string, string) (string, error) { r
 func (s *stubDocs) Index(context.Context, string, string) error              { return nil }
 func (s *stubDocs) Unindex(context.Context, string, string) error            { return nil }
 func (s *stubDocs) Delete(context.Context, string, string) error             { return nil }
-func (s *stubDocs) DeleteThreadData(context.Context, string, string) error   { return nil }
+func (s *stubDocs) DeleteForArtifact(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+func (s *stubDocs) DeleteThreadData(context.Context, string, string) error { return nil }
 func (s *stubDocs) ArtifactIDsForThreadArtifactsInUse(context.Context, string, string) ([]string, error) {
 	return nil, nil
 }

@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
 
 import {
-  anyStreaming,
   beginRun,
   endRun,
   isStreaming,
@@ -36,10 +35,8 @@ test("two threads stream independently", () => {
   runs = endRun(runs, A, { keepFailedTurnVisible: false });
   expect(isStreaming(runs, A)).toBe(false);
   expect(isStreaming(runs, B)).toBe(true);
-  expect(anyStreaming(runs)).toBe(true);
 
   runs = endRun(runs, B, { keepFailedTurnVisible: false });
-  expect(anyStreaming(runs)).toBe(false);
   expect(runs).toEqual({});
 });
 

@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -34,6 +35,9 @@ func (c *Client) DescribeImage(ctx context.Context, data []byte, mime string) (s
 	// Tag the call even when it runs from a path that attached no metadata (a
 	// detached ingest goroutine), so the log line is never an anonymous
 	// vision-model call.
+	if imagescale.TooLarge(bytes.NewReader(data)) {
+		return "", fmt.Errorf("describe image: image has too many pixels")
+	}
 	ctx = inference.WithDefaultPurpose(ctx, "image_describe")
 	ctx, cancel := context.WithTimeout(ctx, imageDescribeTimeout)
 	defer cancel()

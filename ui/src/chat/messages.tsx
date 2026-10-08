@@ -30,6 +30,7 @@ import { formatMessageTime } from "../metrics";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import {
   downloadableResponse,
+  formatFileSize,
   formatReceivedKB,
   markdownToPlainText,
   pendingFencedArtifact,
@@ -42,7 +43,6 @@ import {
   AttachmentPreview,
   isRevocablePreview,
 } from "../components/AttachmentPreview";
-import { formatAttachmentSize } from "./attachmentFiles";
 import { MessageCitations } from "./Citations";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { CheckIcon, DownloadIcon } from "./icons";
@@ -460,7 +460,7 @@ function sentAttachmentStatus(attachment: ComposerAttachment): string {
   if (attachment.status === "processing") return i18n.t("messages.processing");
   if (attachment.status === "error")
     return attachment.error ?? i18n.t("messages.uploadFailed");
-  return formatAttachmentSize(attachment.sizeBytes);
+  return formatFileSize(attachment.sizeBytes);
 }
 
 function CodeBlock({

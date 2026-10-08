@@ -2,6 +2,7 @@ package imagescale
 
 import (
 	"bytes"
+	"compress/zlib"
 	"encoding/binary"
 	"hash/crc32"
 	"image"
@@ -145,6 +146,51 @@ func TestThumbnail_rejectsDecompressionBomb(t *testing.T) {
 	if _, err := Thumbnail(bomb, 144); err == nil {
 		t.Fatal("Thumbnail accepted an oversized image; want rejection before decode")
 	}
+}
+
+func TestDownscaleForModel_skipsDecompressionBomb(t *testing.T) {
+	// A real, decodable gray PNG just over the 100 MP cap. All-zero rows deflate
+	// to ~100 KB, so it passes any upload size limit, yet a full decode would
+	// allocate the whole pixel buffer (gigabytes at e.g. 60000×60000).
+	bomb := zeroGrayPNG(t, 10241, 10241)
+	out, mime := DownscaleForModel(bomb, "image/png")
+	if mime != "image/png" || !bytes.Equal(out, bomb) {
+		t.Fatalf("DownscaleForModel decoded an oversized image (mime %q); want it passed through undecoded", mime)
+	}
+}
+
+// zeroGrayPNG streams an all-black 8-bit grayscale PNG of w×h without building
+// the image in memory.
+func zeroGrayPNG(t *testing.T, w, h uint32) []byte {
+	t.Helper()
+	var idat bytes.Buffer
+	zw := zlib.NewWriter(&idat)
+	row := make([]byte, 1+w) // filter byte + pixels, all zero
+	for range h {
+		if _, err := zw.Write(row); err != nil {
+			t.Fatalf("deflate: %v", err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("deflate: %v", err)
+	}
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:4], w)
+	binary.BigEndian.PutUint32(ihdr[4:8], h)
+	ihdr[8] = 8 // bit depth
+	ihdr[9] = 0 // color type: grayscale
+	var buf bytes.Buffer
+	buf.WriteString("\x89PNG\r\n\x1a\n")
+	for _, c := range []struct {
+		name string
+		data []byte
+	}{{"IHDR", ihdr}, {"IDAT", idat.Bytes()}, {"IEND", nil}} {
+		_ = binary.Write(&buf, binary.BigEndian, uint32(len(c.data)))
+		buf.WriteString(c.name)
+		buf.Write(c.data)
+		_ = binary.Write(&buf, binary.BigEndian, crc32.ChecksumIEEE(append([]byte(c.name), c.data...)))
+	}
+	return buf.Bytes()
 }
 
 // pngHeaderWithDimensions builds the PNG signature plus a single valid IHDR chunk

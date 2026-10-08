@@ -393,9 +393,6 @@ func (s *Store) SetThreadTitleIfUnchanged(ctx context.Context, userID, threadID,
 	if title == "" {
 		return Thread{}, false, validation("thread title is required")
 	}
-	if len(title) > MaxThreadTitleLength {
-		return Thread{}, false, validation("thread title is too long")
-	}
 	result, err := s.db.ExecContext(ctx, `
 UPDATE threads
 SET title = ?, updated_at = datetime('now')

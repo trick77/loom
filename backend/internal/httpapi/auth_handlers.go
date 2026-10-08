@@ -4,14 +4,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/trick77/loom/internal/auth"
 )
-
-// defaultSessionTTL applies when Deps.SessionTTL is unset (tests, and any
-// caller that does not read BACKEND_SESSION_TTL).
-const defaultSessionTTL = 30 * 24 * time.Hour
 
 func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if s.devAuthClaims.Subject != "" {
@@ -77,9 +72,8 @@ func (s *server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := currentUser(w, r)
 	if !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	writeJSON(w, user)
@@ -97,9 +91,8 @@ type updateMeRequest struct {
 var allowedResponseLanguages = map[string]bool{"en": true, "de": true}
 
 func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := currentUser(w, r)
 	if !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	if s.users == nil {

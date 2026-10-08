@@ -63,11 +63,6 @@ export function isStreaming(runs: StreamRuns, key: RunKey | null): boolean {
   return runs[key]?.status === "streaming";
 }
 
-/** True while any run is in flight, regardless of which thread owns it. */
-export function anyStreaming(runs: StreamRuns): boolean {
-  return Object.values(runs).some((run) => run.status === "streaming");
-}
-
 /** Start a turn on `key`, discarding whatever a previous failed turn left there. */
 export function beginRun(runs: StreamRuns, key: RunKey): StreamRuns {
   return {

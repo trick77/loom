@@ -489,6 +489,12 @@ func TestGuardPublicAddr(t *testing.T) {
 		{"6to4", "[2002:7f00:1::]:80", true},
 		{"v4-compatible-v6", "[::127.0.0.1]:80", true},
 		{"v4-mapped-private", "[::ffff:10.0.0.1]:80", true},
+		// IPv6 outside 2000::/3 is never public; inside it, the IETF-assigned
+		// and deprecated site-local ranges are not either.
+		{"site-local-v6", "[fec0::1]:80", true},
+		{"outside-global-unicast", "[4000::1]:80", true},
+		{"v4-translated", "[::ffff:0:7f00:1]:80", true},
+		{"teredo", "[2001:0:4136:e378:8000:63bf:3fff:fdd2]:80", true},
 		// A public web server on a non-standard port is still a public web server.
 		{"public-non-standard-port", "93.184.216.34:3000", false},
 	} {

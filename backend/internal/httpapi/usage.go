@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/usage"
 )
@@ -28,9 +27,8 @@ type usageResponse struct {
 }
 
 func (s *server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := currentUser(w, r)
 	if !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	var totals usage.Totals

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/store"
 )
@@ -1621,6 +1622,27 @@ func TestStore_SetThreadTitleIfUnchanged(t *testing.T) {
 	}
 	if current.Title != "Mine" {
 		t.Fatalf("title after skipped update = %q, want Mine", current.Title)
+	}
+}
+
+// A title over the cap is shortened, not refused: the rune cap leaves
+// 199 runes plus an ellipsis, which is more than 200 bytes.
+func TestStore_SetThreadTitleIfUnchangedCapsALongTitle(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: DefaultThreadTitle})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+
+	updated, ok, err := store.SetThreadTitleIfUnchanged(ctx, userID, thread.ID, DefaultThreadTitle, strings.Repeat("ä", 250))
+	if err != nil || !ok {
+		t.Fatalf("SetThreadTitleIfUnchanged(long) = ok %v, err %v; want true, nil", ok, err)
+	}
+	if got := utf8.RuneCountInString(updated.Title); got != MaxThreadTitleLength {
+		t.Fatalf("title runes = %d, want %d", got, MaxThreadTitleLength)
 	}
 }
 
