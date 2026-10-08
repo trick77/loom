@@ -386,11 +386,27 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *h
 	}()
 
 	workerCtx, stopWorkers := context.WithCancel(ctx)
-	defer stopWorkers()
 	var running sync.WaitGroup
 	for _, worker := range workers {
 		running.Go(func() { worker(workerCtx) })
 	}
+	// Workers write to the database, so serve returns only once they are done,
+	// on every way out. On shutdown they unwind alongside the background drain
+	// and share its deadline rather than adding one of their own.
+	var drainBy time.Time
+	defer func() {
+		stopWorkers()
+		if drainBy.IsZero() {
+			drainBy = time.Now().Add(shutdownTimeout)
+		}
+		stopped := make(chan struct{})
+		go func() { running.Wait(); close(stopped) }()
+		select {
+		case <-stopped:
+		case <-time.After(time.Until(drainBy)):
+			slog.Warn("workers did not stop", "timeout", shutdownTimeout.String())
+		}
+	}()
 
 	select {
 	case <-ctx.Done():
@@ -416,16 +432,10 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *h
 			slog.Warn("shutdown did not finish cleanly", "err", err)
 		}
 	}
+	stopWorkers()
+	drainBy = time.Now().Add(shutdownTimeout)
 	if err := background.Stop(shutdownTimeout); err != nil {
 		slog.Warn("background tasks did not drain", "err", err)
-	}
-	stopWorkers()
-	stopped := make(chan struct{})
-	go func() { running.Wait(); close(stopped) }()
-	select {
-	case <-stopped:
-	case <-time.After(shutdownTimeout):
-		slog.Warn("workers did not stop", "timeout", shutdownTimeout.String())
 	}
 	return nil
 }

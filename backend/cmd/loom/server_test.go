@@ -142,38 +142,42 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 }
 
 // The database closes right after serve() returns, so a worker still writing
-// when the signal arrives must have stopped by then.
+// must have stopped by then, whether a signal or a listener failure ends it.
 func TestServeWaitsForWorkersToStop(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	srv := newServer(ln.Addr().String(), http.NewServeMux())
-	ctx, cancel := context.WithCancel(context.Background())
-	started := make(chan struct{})
-	var stopped atomic.Bool
-	worker := func(ctx context.Context) {
-		close(started)
-		<-ctx.Done()
-		time.Sleep(50 * time.Millisecond) // finishing its last write
-		stopped.Store(true)
-	}
-
-	served := make(chan error, 1)
-	go func() { served <- serve(ctx, srv, ln, httpapi.NewBackground(context.Background()), worker) }()
-	<-started
-	cancel()
-
-	select {
-	case err := <-served:
+	for _, listenerFails := range []bool{false, true} {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			t.Fatalf("serve() error = %v", err)
+			t.Fatalf("listen: %v", err)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("serve() did not return after the signal")
-	}
-	if !stopped.Load() {
-		t.Fatal("serve() returned while a worker was still running")
+		srv := newServer(ln.Addr().String(), http.NewServeMux())
+		ctx, cancel := context.WithCancel(context.Background())
+		started := make(chan struct{})
+		var stopped atomic.Bool
+		worker := func(ctx context.Context) {
+			close(started)
+			<-ctx.Done()
+			time.Sleep(50 * time.Millisecond) // finishing its last write
+			stopped.Store(true)
+		}
+
+		served := make(chan error, 1)
+		go func() { served <- serve(ctx, srv, ln, httpapi.NewBackground(context.Background()), worker) }()
+		<-started
+		if listenerFails {
+			_ = ln.Close()
+		} else {
+			cancel()
+		}
+
+		select {
+		case <-served:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("serve() did not return (listener fails: %v)", listenerFails)
+		}
+		if !stopped.Load() {
+			t.Fatalf("serve() returned while a worker was still running (listener fails: %v)", listenerFails)
+		}
+		cancel()
 	}
 }
 
