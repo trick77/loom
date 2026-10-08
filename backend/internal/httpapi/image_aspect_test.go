@@ -17,7 +17,6 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/store"
 )
 
 // writeTestPNG writes a w×h PNG artifact for a user and returns the users dir.
@@ -134,16 +133,7 @@ func TestLoadEditSourceImage_undecodableHasUnknownDimensions(t *testing.T) {
 // artifact the user sees. The unit tests cover each step; this covers the wiring
 // between them, which is where a forgotten field assignment would hide.
 func TestStreamMessageAppliesAspectRatioFromToolCall(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `
-INSERT INTO users (id, oidc_subject, username, role)
-VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
-		t.Fatal(err)
-	}
+	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	thread, err := threadStore.CreateThread(context.Background(), testUser.ID, chat.CreateThreadInput{Title: "Images"})
