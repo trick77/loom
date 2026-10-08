@@ -22,6 +22,7 @@ type DocumentService interface {
 	Index(context.Context, string, string) error
 	Unindex(context.Context, string, string) error
 	Delete(context.Context, string, string) error
+	DeleteForArtifact(context.Context, string, string) (bool, error)
 	DeleteThreadData(context.Context, string, string) error
 	ArtifactIDsForThreadArtifactsInUse(context.Context, string, string) ([]string, error)
 	DeleteProjectData(context.Context, string, string) error

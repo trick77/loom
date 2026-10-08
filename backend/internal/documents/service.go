@@ -379,6 +379,16 @@ func (s *Service) Delete(ctx context.Context, userID, documentID string) error {
 	return nil
 }
 
+// DeleteForArtifact deletes the document the artifact backs, chunks and file
+// included, and reports whether there was one.
+func (s *Service) DeleteForArtifact(ctx context.Context, userID, artifactID string) (bool, error) {
+	documentID, ok, err := s.store.DocumentIDForArtifact(ctx, userID, artifactID)
+	if err != nil || !ok {
+		return false, err
+	}
+	return true, s.Delete(ctx, userID, documentID)
+}
+
 // DeleteThreadData removes all RAG data (documents, chunks, embeddings) scoped
 // to a deleted chat. Files on disk are cleaned up separately by the caller via
 // the artifact cleanup routine. Call before the thread row is deleted.

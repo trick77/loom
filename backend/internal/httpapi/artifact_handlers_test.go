@@ -176,6 +176,31 @@ func TestDeleteArtifactRemovesOwnArtifactRowAndFile(t *testing.T) {
 	}
 }
 
+// An upload that backs a knowledge document must go through the document
+// delete: removing only the artifact left the document embedded, so its chunks
+// kept feeding answers after the user deleted the file.
+func TestDeleteArtifactDeletesTheDocumentItBacks(t *testing.T) {
+	deleted := []string{}
+	store := fakeArtifactStore{
+		deleted: &deleted,
+		artifacts: []artifact.Artifact{
+			{ID: "art_1", UserID: "user_1", VolumeRelPath: "files/uploads/a.pdf", DisplayFilename: "a.pdf", MIMEType: "application/pdf"},
+		},
+	}
+	docs := &fakeDocumentService{backingArtifactID: "art_1"}
+	server := newAuthenticatedServer(t, Deps{Artifacts: store, Documents: docs, UsersDir: t.TempDir()})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/artifacts/art_1", ""))
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if len(docs.deletedForArtifact) != 1 || docs.deletedForArtifact[0] != "art_1" {
+		t.Fatalf("document deletes = %v, want the one backed by art_1", docs.deletedForArtifact)
+	}
+}
+
 func TestDeleteArtifactRejectsAnotherUsersArtifact(t *testing.T) {
 	deleted := []string{}
 	store := fakeArtifactStore{

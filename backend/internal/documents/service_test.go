@@ -225,6 +225,25 @@ func TestService_Delete_removesFileArtifactAndDocument(t *testing.T) {
 	}
 }
 
+func TestService_DeleteForArtifact_deletesOnlyABackedDocument(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+	doc, art, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+
+	if deleted, err := svc.DeleteForArtifact(ctx, "other", art.ID); err != nil || deleted {
+		t.Fatalf("DeleteForArtifact(foreign user) = %v, %v; want false, nil", deleted, err)
+	}
+	if deleted, err := svc.DeleteForArtifact(ctx, "u", art.ID); err != nil || !deleted {
+		t.Fatalf("DeleteForArtifact = %v, %v; want true, nil", deleted, err)
+	}
+	if _, ok, _ := svc.Get(ctx, "u", doc.ID); ok {
+		t.Error("document still present after deleting its artifact")
+	}
+	if deleted, err := svc.DeleteForArtifact(ctx, "u", art.ID); err != nil || deleted {
+		t.Fatalf("DeleteForArtifact(again) = %v, %v; want false, nil", deleted, err)
+	}
+}
+
 type countingEmbedder struct{ calls int }
 
 func (c *countingEmbedder) Embed(_ context.Context, inputs []string) (rag.EmbedResult, error) {

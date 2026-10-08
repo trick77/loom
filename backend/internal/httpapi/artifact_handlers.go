@@ -230,6 +230,20 @@ func (s *server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w)
 		return
 	}
+	// An upload behind a knowledge document goes with its document, or the
+	// document would stay embedded and keep feeding answers from a deleted file.
+	if s.documents != nil {
+		deleted, err := s.documents.DeleteForArtifact(r.Context(), user.ID, found.ID)
+		if err != nil {
+			serverError(w, r, err, "delete document failed")
+			return
+		}
+		if deleted {
+			artifact.RemoveThumbnail(s.usersDir, user.ID, found.VolumeRelPath)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
 	if err := s.artifacts.Delete(r.Context(), user.ID, found.ID); err != nil {
 		serverError(w, r, err, "delete artifact failed")
 		return

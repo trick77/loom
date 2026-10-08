@@ -160,6 +160,22 @@ func (s *Store) SetDocumentFullText(ctx context.Context, userID, id, text string
 // the document does not exist or was indexed before text caching (callers then
 // fall back to live extraction). full_text is intentionally excluded from
 // documentColumns so List/Get stay cheap; this is a targeted single-row read.
+// DocumentIDForArtifact returns the id of the user's document backed by the
+// given artifact, if any.
+func (s *Store) DocumentIDForArtifact(ctx context.Context, userID, artifactID string) (string, bool, error) {
+	var id string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM documents WHERE user_id = ? AND artifact_id = ? LIMIT 1`,
+		userID, artifactID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("document for artifact: %w", err)
+	}
+	return id, true, nil
+}
+
 func (s *Store) GetDocumentFullText(ctx context.Context, userID, id string) (string, error) {
 	var text string
 	err := s.db.QueryRowContext(ctx,
