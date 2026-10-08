@@ -67,7 +67,7 @@ func reembedUntilDone(ctx context.Context, run func(context.Context) (int, error
 	delay := reembedFirstRetry
 	for {
 		_, err := run(ctx)
-		if err == nil {
+		if err == nil || ctx.Err() != nil {
 			return
 		}
 		slog.Error("rag: re-embedding failed; retrying", "err", err, "retry_in", delay.String())
