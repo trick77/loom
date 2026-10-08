@@ -13,7 +13,7 @@ import (
 // embedding model is not the one that wrote it: a different width, or a
 // different model of the same width (its vectors live in another space). Every
 // vector is dropped and re-embedded from the stored chunk text (see
-// reembedInBackground); until then retrieval finds nothing for those
+// the re-embed worker); until then retrieval finds nothing for those
 // documents. Vectors without a recorded model (from before the record existed)
 // came from an unknown model and are re-embedded once; an empty table simply
 // records the configured model.
@@ -59,15 +59,10 @@ const (
 	reembedMaxRetry   = 30 * time.Minute
 )
 
-// reembedInBackground restores every missing vector without holding up boot.
-// It runs on every boot and does nothing when no vector is missing; a failed
-// run retries with a growing wait until it completes.
-func reembedInBackground(ingester *rag.Ingester) {
-	go reembedUntilDone(context.Background(), ingester.ReembedMissing, sleepCtx)
-}
-
 // reembedUntilDone runs run until it succeeds, waiting between failures (the
 // wait doubles up to reembedMaxRetry). wait returning false ends the loop.
+// Run as a serve worker, it restores every missing vector without holding up
+// boot, and does nothing when no vector is missing.
 func reembedUntilDone(ctx context.Context, run func(context.Context) (int, error), wait func(context.Context, time.Duration) bool) {
 	delay := reembedFirstRetry
 	for {

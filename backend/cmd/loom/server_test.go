@@ -141,6 +141,42 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 	}
 }
 
+// The database closes right after serve() returns, so a worker still writing
+// when the signal arrives must have stopped by then.
+func TestServeWaitsForWorkersToStop(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	srv := newServer(ln.Addr().String(), http.NewServeMux())
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	var stopped atomic.Bool
+	worker := func(ctx context.Context) {
+		close(started)
+		<-ctx.Done()
+		time.Sleep(50 * time.Millisecond) // finishing its last write
+		stopped.Store(true)
+	}
+
+	served := make(chan error, 1)
+	go func() { served <- serve(ctx, srv, ln, httpapi.NewBackground(context.Background()), worker) }()
+	<-started
+	cancel()
+
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Fatalf("serve() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve() did not return after the signal")
+	}
+	if !stopped.Load() {
+		t.Fatal("serve() returned while a worker was still running")
+	}
+}
+
 // An ordinary request in flight when the signal arrives finishes with its
 // context intact: only what outlives the grace is cancelled.
 func TestServeShutdownLetsShortRequestsFinish(t *testing.T) {
