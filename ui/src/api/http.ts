@@ -49,3 +49,39 @@ export async function expectOK(
     throw new Error(errorMessage);
   }
 }
+
+// RequestOptions is RequestInit plus `json`: a body that is stringified and
+// sent with `Content-Type: application/json`.
+export type RequestOptions = Omit<RequestInit, "body"> & { json?: unknown };
+
+// request sends to an authenticated endpoint and checks the answer (see
+// expectOK); it returns the response for a caller that reads the body.
+export async function request(
+  url: string,
+  errorMessage: string,
+  options?: RequestOptions,
+  tolerate: number[] = [],
+): Promise<Response> {
+  const { json, ...init } = options ?? {};
+  const response = await (options === undefined
+    ? fetch(url)
+    : json === undefined
+      ? fetch(url, init)
+      : fetch(url, {
+          ...init,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(json),
+        }));
+  await expectOK(response, errorMessage, tolerate);
+  return response;
+}
+
+// requestJSON is request plus decoding the JSON answer.
+export async function requestJSON<T>(
+  url: string,
+  errorMessage: string,
+  options?: RequestOptions,
+): Promise<T> {
+  const response = await request(url, errorMessage, options);
+  return response.json() as Promise<T>;
+}

@@ -1,4 +1,4 @@
-import { expectJSON, expectOK } from "./http";
+import { request, requestJSON } from "./http";
 import type {
   Artifact,
   ArtifactListType,
@@ -41,13 +41,11 @@ export async function listArtifacts(
     query.set("cursor", params.cursor);
   }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
-  const response = await fetch(`/api/artifacts${suffix}`);
-  return expectJSON<Page<Artifact>>(response, "failed to load artifacts");
+  return requestJSON(`/api/artifacts${suffix}`, "failed to load artifacts");
 }
 
 export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
-  const response = await fetch(downloadUrl);
-  await expectOK(response, "failed to download artifact");
+  const response = await request(downloadUrl, "failed to download artifact");
   return response.blob();
 }
 
@@ -56,13 +54,11 @@ export async function downloadArtifact(downloadUrl: string): Promise<Blob> {
 // call it for artifacts the composer itself uploaded — never for re-attached
 // existing artifacts (e.g. a generated image), which must outlive the removal.
 export async function deleteArtifact(artifactId: string): Promise<void> {
-  const response = await fetch(
+  await request(
     `/api/artifacts/${encodeURIComponent(artifactId)}`,
-    {
-      method: "DELETE",
-    },
+    "failed to delete artifact",
+    { method: "DELETE" },
   );
-  await expectOK(response, "failed to delete artifact");
 }
 
 // renameArtifact changes an artifact's display filename. The new name propagates
@@ -72,13 +68,9 @@ export async function renameArtifact(
   artifactId: string,
   displayFilename: string,
 ): Promise<void> {
-  const response = await fetch(
+  await request(
     `/api/artifacts/${encodeURIComponent(artifactId)}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayFilename }),
-    },
+    "failed to rename artifact",
+    { method: "PATCH", json: { displayFilename } },
   );
-  await expectOK(response, "failed to rename artifact");
 }

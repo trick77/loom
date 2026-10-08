@@ -1,37 +1,32 @@
-import { expectJSON, expectOK } from "./http";
+import { request, requestJSON } from "./http";
 import type { Project, ProjectMemory } from "./types";
+
+const projectUrl = (projectId: string) =>
+  `/api/projects/${encodeURIComponent(projectId)}`;
 
 export async function listProjects(archived?: boolean): Promise<Project[]> {
   const query = archived === undefined ? "" : `?archived=${String(archived)}`;
-  const response = await fetch(`/api/projects${query}`);
-  return expectJSON<Project[]>(response, "failed to load projects");
+  return requestJSON(`/api/projects${query}`, "failed to load projects");
 }
 
 export async function createProject(input: {
   name: string;
   description?: string;
 }): Promise<Project> {
-  const response = await fetch("/api/projects", {
+  return requestJSON("/api/projects", "failed to create project", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    json: input,
   });
-  return expectJSON<Project>(response, "failed to create project");
 }
 
 export async function updateProject(
   projectId: string,
   input: { name?: string; description?: string },
 ): Promise<Project> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
-  return expectJSON<Project>(response, "failed to update project");
+  return requestJSON(projectUrl(projectId), "failed to update project", {
+    method: "PATCH",
+    json: input,
+  });
 }
 
 export async function setProjectStarred(
@@ -39,65 +34,53 @@ export async function setProjectStarred(
   starred: boolean,
 ): Promise<Project> {
   const action = starred ? "star" : "unstar";
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/${action}`,
-    {
-      method: "POST",
-    },
+  return requestJSON(
+    `${projectUrl(projectId)}/${action}`,
+    "failed to update project",
+    { method: "POST" },
   );
-  return expectJSON<Project>(response, "failed to update project");
 }
 
 export async function archiveProject(projectId: string): Promise<void> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/archive`,
+  await request(
+    `${projectUrl(projectId)}/archive`,
+    "failed to archive project",
     {
       method: "POST",
     },
   );
-  await expectOK(response, "failed to archive project");
 }
 
 export async function unarchiveProject(projectId: string): Promise<void> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/unarchive`,
-    {
-      method: "POST",
-    },
+  await request(
+    `${projectUrl(projectId)}/unarchive`,
+    "failed to unarchive project",
+    { method: "POST" },
   );
-  await expectOK(response, "failed to unarchive project");
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}`,
-    {
-      method: "DELETE",
-    },
-  );
-  await expectOK(response, "failed to delete project");
+  await request(projectUrl(projectId), "failed to delete project", {
+    method: "DELETE",
+  });
 }
 
 export async function getProjectMemory(
   projectId: string,
 ): Promise<ProjectMemory> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/memory`,
+  return requestJSON(
+    `${projectUrl(projectId)}/memory`,
+    "failed to load project memory",
   );
-  return expectJSON<ProjectMemory>(response, "failed to load project memory");
 }
 
 export async function editProjectMemory(
   projectId: string,
   instruction: string,
 ): Promise<ProjectMemory> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/memory:edit`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction }),
-    },
+  return requestJSON(
+    `${projectUrl(projectId)}/memory:edit`,
+    "failed to edit project memory",
+    { method: "POST", json: { instruction } },
   );
-  return expectJSON<ProjectMemory>(response, "failed to edit project memory");
 }
