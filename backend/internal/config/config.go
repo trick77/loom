@@ -167,7 +167,6 @@ type DevUserConfig struct {
 	Username    string
 	Email       string
 	DisplayName string
-	Role        string
 }
 
 func env(key, def string) string {
@@ -284,7 +283,6 @@ func Load() (Config, error) {
 			Username:    env("BACKEND_DEV_USER_USERNAME", "dev"),
 			Email:       env("BACKEND_DEV_USER_EMAIL", "dev@example.local"),
 			DisplayName: env("BACKEND_DEV_USER_NAME", "Dev Admin"),
-			Role:        "admin",
 		},
 	}
 	if err := loadChatModels(&cfg); err != nil {
