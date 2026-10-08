@@ -124,6 +124,11 @@ func isPublicHost(host string) bool {
 	if !strings.Contains(host, ".") {
 		return false
 	}
+	// No TLD is numeric, so a numeric last label is an IPv4 shorthand ParseIP
+	// rejects but a browser resolves ("127.1", "0x7f.0.0.1").
+	if _, err := strconv.ParseUint(host[strings.LastIndex(host, ".")+1:], 0, 64); err == nil {
+		return false
+	}
 	for _, suffix := range privateHostSuffixes {
 		if strings.HasSuffix(host, suffix) {
 			return false
