@@ -109,6 +109,7 @@ export function useStreamRuns() {
   const markStopRequested = useCallback((key: RunKey) => {
     const controller = abortsRef.current.get(key);
     if (controller !== undefined) stopRequestedRef.current.add(controller);
+    return controller;
   }, []);
   const stopRequested = useCallback(
     (controller: AbortController) => stopRequestedRef.current.has(controller),
