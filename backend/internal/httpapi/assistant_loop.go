@@ -411,7 +411,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		return b.result(final, artifacts, ""), nil
 	}
 	if err == nil && strings.TrimSpace(final.Content) == "" {
-		final.Content = fallbackImageArtifactResponse(created[0])
+		final.Content = fallbackArtifactResponse(created[0])
 		// addResult skipped the empty final turn's text; surface the fallback prose
 		// so the timeline matches the persisted content column.
 		b.addText(final.Content)
@@ -419,9 +419,9 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	return b.result(final, artifacts, ""), err
 }
 
-func fallbackImageArtifactResponse(response artifactResponse) string {
+func fallbackArtifactResponse(response artifactResponse) string {
 	if strings.TrimSpace(response.DisplayFilename) == "" {
-		return "Created the image artifact."
+		return "Created the artifact."
 	}
 	return "Created " + response.DisplayFilename + "."
 }
@@ -484,7 +484,7 @@ func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, arti
 	kept.Content = b.prose()
 	fallback := kept.Content == "" && len(artifacts) > 0
 	if fallback {
-		kept.Content = fallbackImageArtifactResponse(artifacts[len(artifacts)-1])
+		kept.Content = fallbackArtifactResponse(artifacts[len(artifacts)-1])
 	}
 	if !persistInterruptedPartial(kept, err) {
 		return false
