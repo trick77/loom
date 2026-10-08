@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trick77/webfetch"
 )
 
 // faviconServer builds a server whose fetch client has no SSRF guard, so tests can
@@ -478,8 +480,32 @@ func TestFaviconDefaultClientRefusesLoopback(t *testing.T) {
 		_ = resp.Body.Close()
 		t.Fatal("faviconDefaultClient reached a loopback server")
 	}
-	if !strings.Contains(err.Error(), "non-public") {
-		t.Fatalf("error = %v, want the SSRF refusal", err)
+}
+
+// The addresses the favicon fetch relies on, so a webfetch bump that changes
+// any of them fails here.
+func TestFaviconGuardAddresses(t *testing.T) {
+	for _, tc := range []struct {
+		addr    string
+		blocked bool
+	}{
+		{"127.0.0.1:80", true},
+		{"[::1]:80", true},
+		{"10.0.0.5:443", true},
+		{"169.254.169.254:80", true}, // cloud metadata endpoint
+		{"100.64.0.1:443", true},     // CGNAT
+		{"[fd00::1]:80", true},
+		{"[::ffff:10.0.0.1]:80", true},
+		{"[64:ff9b::7f00:1]:80", true}, // NAT64 of loopback
+		{"example.com:443", true},      // must be a literal IP at dial time
+		{"93.184.216.34:443", false},
+		{"[2606:2800:220:1:248:1893:25c8:1946]:443", false},
+		{"93.184.216.34:3000", false}, // a public server on a non-standard port
+	} {
+		err := webfetch.GuardedControl("tcp", tc.addr, nil)
+		if blocked := err != nil; blocked != tc.blocked {
+			t.Errorf("GuardedControl(%q) blocked = %v, want %v (err %v)", tc.addr, blocked, tc.blocked, err)
+		}
 	}
 }
 
