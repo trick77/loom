@@ -848,6 +848,66 @@ VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
 	}
 }
 
+// A stop after the image exists but before the final prose starts must still
+// persist the turn with its artifact, not drop the paid-for image from the
+// transcript.
+func TestStreamMessagePersistsImageWhenFinalResponseIsCanceled(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), `
+INSERT INTO users (id, oidc_subject, username, role)
+VALUES ('user_1', 'subject-user_1', 'user_1', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	threadStore := chat.NewStore(db)
+	user := testUser
+	thread, err := threadStore.CreateThread(context.Background(), user.ID, chat.CreateThreadInput{Title: "Images"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	llmClient := &fakeToolChatClient{
+		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		results: []llm.StreamResult{{
+			ToolCalls: []llm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: llm.ToolCallFunction{
+					Name:      "generate_image",
+					Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
+				},
+			}},
+		}},
+		plainErr: context.Canceled,
+	}
+	server := newAuthenticatedServer(t, Deps{
+		Thread:     threadStore,
+		Artifacts:  artifact.NewStore(db),
+		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		UsersDir:   t.TempDir(),
+		LLM:        llmClient,
+	})
+
+	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make an image"}`)
+	server.ServeHTTP(httptest.NewRecorder(), req)
+
+	messages, _, err := threadStore.ListMessages(context.Background(), user.ID, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var assistant chat.Message
+	for _, message := range messages {
+		if message.Role == chat.RoleAssistant {
+			assistant = message
+		}
+	}
+	if !bytes.Contains(assistant.Artifacts, []byte("image/png")) {
+		t.Fatalf("assistant not persisted with its image after cancel: messages=%d artifacts=%s", len(messages), assistant.Artifacts)
+	}
+}
+
 func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

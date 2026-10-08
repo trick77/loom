@@ -953,6 +953,7 @@ type fakeToolChatClient struct {
 	histories      [][]llm.Message
 	tools          [][]llm.Tool
 	plain          string
+	plainErr       error
 	classifyResult string
 	imageIntent    llm.ImageIntent
 	titleResult    string
@@ -960,6 +961,9 @@ type fakeToolChatClient struct {
 }
 
 func (f *fakeToolChatClient) StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error) {
+	if f.plainErr != nil {
+		return llm.StreamResult{Content: f.plain}, f.plainErr
+	}
 	if f.plain == "" {
 		return llm.StreamResult{}, nil
 	}

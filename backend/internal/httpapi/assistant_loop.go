@@ -114,14 +114,13 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	initialHistoryLen := len(history)
 	for round := 1; round <= maxToolRounds; round++ {
 		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
+		b.addResult(titles, result)
 		if err != nil {
-			if persistInterruptedPartial(result, err) {
-				b.addResult(titles, result)
+			if b.keepInterrupted(&result, err, artifacts) {
 				return b.result(result, artifacts, ""), nil
 			}
 			return assistantLoopResult{}, err
 		}
-		b.addResult(titles, result)
 		if len(result.ToolCalls) == 0 {
 			// A normal textual answer ends the loop. But if the model stops
 			// after running tools without producing any text, fall through to a
@@ -286,7 +285,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 	}
 	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, finalAnswerInference(inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(titles, result)
-	if persistInterruptedPartial(result, err) {
+	if b.keepInterrupted(&result, err, artifacts) {
 		return b.result(result, artifacts, ""), nil
 	}
 	// Backstop: if the clean synthesis still produced no prose (e.g. the model emitted
@@ -300,7 +299,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		}
 		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalRetryInference(inference, result), nil)
 		b.addResult(titles, result)
-		if persistInterruptedPartial(result, err) {
+		if b.keepInterrupted(&result, err, artifacts) {
 			return b.result(result, artifacts, ""), nil
 		}
 		if err == nil && strings.TrimSpace(result.Content) == "" {
@@ -404,7 +403,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	})
 	final, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
 	b.addResult(titles, final)
-	if persistInterruptedPartial(final, err) {
+	if b.keepInterrupted(&final, err, artifacts) {
 		return b.result(final, artifacts, ""), nil
 	}
 	if err == nil && strings.TrimSpace(final.Content) == "" {
@@ -465,6 +464,31 @@ func persistInterruptedPartial(result llm.StreamResult, err error) bool {
 		return false
 	}
 	return errors.Is(err, context.Canceled) || errors.Is(err, llm.ErrStreamStalled)
+}
+
+// keepInterrupted is persistInterruptedPartial for a multi-round turn: a round
+// interrupted before it streamed any prose still keeps what earlier rounds
+// produced. Their prose, or else a line naming the last artifact, becomes the
+// persisted content, so a stop after a tool created a file does not drop the
+// file from the transcript.
+func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, artifacts []artifactResponse) bool {
+	if strings.TrimSpace(result.Content) != "" {
+		return persistInterruptedPartial(*result, err)
+	}
+	kept := *result
+	kept.Content = b.prose()
+	fallback := kept.Content == "" && len(artifacts) > 0
+	if fallback {
+		kept.Content = fallbackImageArtifactResponse(artifacts[len(artifacts)-1])
+	}
+	if !persistInterruptedPartial(kept, err) {
+		return false
+	}
+	if fallback {
+		b.addText(kept.Content)
+	}
+	*result = kept
+	return true
 }
 
 // runIncognitoAssistantTurn runs a single, tool-free assistant turn for an

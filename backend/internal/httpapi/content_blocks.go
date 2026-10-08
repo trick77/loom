@@ -47,6 +47,17 @@ func (b *blockBuilder) addText(s string) {
 	b.blocks = append(b.blocks, contentBlock{Type: "text", Content: s})
 }
 
+// prose joins the turn's text blocks so far.
+func (b *blockBuilder) prose() string {
+	var parts []string
+	for _, block := range b.blocks {
+		if block.Type == "text" {
+			parts = append(parts, block.Content)
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
 // addArtifact appends an artifact block at the position the artifact was produced.
 func (b *blockBuilder) addArtifact(a artifactResponse) {
 	b.blocks = append(b.blocks, contentBlock{Type: "artifact", Artifact: &a})
