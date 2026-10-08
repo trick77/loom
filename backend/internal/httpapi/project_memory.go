@@ -167,7 +167,7 @@ func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, proje
 	// A refresh or edit already running owns the memory; this one would race it.
 	release, ok := s.inflight.tryAcquire("memory:" + scope.key)
 	if !ok {
-		return nil
+		return errMemoryBusy
 	}
 	defer release()
 	return s.refreshMemory(ctx, user, scope, prior, transcriptMessages, sourceCount)
@@ -279,6 +279,10 @@ func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Reque
 	}
 	// Full rebuild: ignore prior memory and re-summarize from scratch.
 	if err := s.refreshProjectMemory(r.Context(), user, projectID, "", messages, count); err != nil {
+		if errors.Is(err, errMemoryBusy) {
+			writeJSONError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeJSONError(w, http.StatusBadGateway, "refresh project memory failed")
 		return
 	}
