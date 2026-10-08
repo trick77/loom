@@ -468,7 +468,7 @@ func TestHandleFavicon_returns304OnIfNoneMatch(t *testing.T) {
 // The production client dials through the SSRF guard; every other favicon test
 // swaps it out to reach its loopback upstream.
 func TestFaviconDefaultClientRefusesLoopback(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Error("loopback upstream was reached")
 	}))
 	defer upstream.Close()
