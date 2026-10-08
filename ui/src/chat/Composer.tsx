@@ -13,10 +13,10 @@ import { AttachmentPreview } from "../components/AttachmentPreview";
 import {
   attachAcceptedFiles,
   clipboardImageFiles,
-  formatAttachmentSize,
   toSupportedImageFile,
   UNSUPPORTED_FILE_MESSAGE,
 } from "./attachmentFiles";
+import { formatFileSize } from "./artifacts";
 import { Icon } from "./Icon";
 import { useModelInfo } from "../useContextWindow";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
@@ -522,6 +522,6 @@ function attachmentStatusLabel(attachment: ComposerAttachment): string {
   if (attachment.status === "uploading") return i18n.t("composer.uploading");
   if (attachment.status === "processing") return i18n.t("composer.processing");
   if (attachment.status === "ready")
-    return formatAttachmentSize(attachment.sizeBytes);
+    return formatFileSize(attachment.sizeBytes);
   return attachment.error ?? i18n.t("composer.uploadFailed");
 }
