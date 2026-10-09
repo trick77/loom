@@ -19,6 +19,9 @@ type toolSpec struct {
 	name string
 	// schema builds the definition offered to the model; nil for an MCP tool.
 	schema func() llm.Tool
+	// tool is schema's result, built once by registry and shared by every
+	// turn: read-only, its Parameters map included.
+	tool llm.Tool
 	// offered reports whether the turn gets the tool; nil means always.
 	offered func(e *Engine, thread chat.Thread, gate toolGate) bool
 	// run executes a call and returns the model-facing output and the
@@ -204,7 +207,8 @@ func imageToolSpec(gen imagegen.Tool) toolSpec {
 
 // registry returns this engine's built-ins in offer order and the same specs
 // by name. It is built once, on first use, so an Engine literal works like
-// one from New. On a duplicate name the first spec wins.
+// one from New; so is each built-in's definition. On a duplicate name the
+// first spec wins.
 func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 	s.toolsOnce.Do(func() {
 		tools := slices.Clone(coreTools)
@@ -214,6 +218,9 @@ func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 		tools = append(tools, sandboxToolSpec)
 		for _, gen := range s.imageTools {
 			tools = append(tools, imageToolSpec(gen))
+		}
+		for i := range tools {
+			tools[i].tool = tools[i].schema()
 		}
 		s.tools, s.toolsByName = tools, indexTools(tools)
 	})

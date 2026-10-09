@@ -3,6 +3,7 @@ package turn
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -113,6 +114,41 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 				t.Fatalf("offered tools =\n  %v\nwant\n  %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// recordingDocGen is a docgen tool under any name: it counts how often its
+// schema is built and how many calls reach it.
+type recordingDocGen struct {
+	name    string
+	schemas int
+	calls   int
+}
+
+func (g *recordingDocGen) ToolName() string { return g.name }
+
+func (g *recordingDocGen) Schema() docgen.ToolSchema {
+	g.schemas++
+	return docgen.ToolSchema{Name: g.name, Parameters: map[string]any{"type": "object"}}
+}
+
+func (g *recordingDocGen) Generate(docgen.GenerateRequest, io.Writer) (docgen.GeneratedMeta, error) {
+	g.calls++
+	return docgen.GeneratedMeta{}, errors.New("recorded")
+}
+
+// A built-in's definition is built once per engine, not on every turn.
+func TestBuiltInDefinitionsBuiltOnce(t *testing.T) {
+	gen := &recordingDocGen{name: "create_text_file"}
+	e := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), docTools: []docgen.Generator{gen}}
+	gate := newToolGate(string(classifier.Coding), "", "")
+	for range 3 {
+		if !toolNames(e.availableTools(chat.Thread{}, gate))[gen.name] {
+			t.Fatalf("%s not offered", gen.name)
+		}
+	}
+	if gen.schemas != 1 {
+		t.Fatalf("schema built %d times over three turns, want once", gen.schemas)
 	}
 }
 

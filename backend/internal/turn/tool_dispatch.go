@@ -219,7 +219,8 @@ func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 		if spec.offered != nil && !spec.offered(s, thread, gate) {
 			continue
 		}
-		tool := spec.schema()
+		// A copy of the shared definition; its Parameters map is never written.
+		tool := spec.tool
 		if owner, exists := names[tool.Function.Name]; exists {
 			slog.Warn("skipping duplicate built-in tool name", "tool", tool.Function.Name, "existing", owner)
 			continue
