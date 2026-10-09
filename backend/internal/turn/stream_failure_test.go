@@ -50,7 +50,7 @@ func TestStreamCanceled(t *testing.T) {
 	interrupt := errors.New("vector search interrupted: sqlite3: SQL logic error: chunks iter error")
 	live := context.Background()
 	stopped, cancel := context.WithCancelCause(context.Background())
-	cancel(ErrStopRequested)
+	cancel(errors.New("stream stop requested"))
 
 	for _, tc := range []struct {
 		name string

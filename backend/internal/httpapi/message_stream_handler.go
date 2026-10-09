@@ -17,11 +17,18 @@ import (
 	"github.com/trick77/loom/internal/turn"
 )
 
-// The stream cancel causes are defined in package turn, which reads them back.
+// Cancel causes of a turn's stream context. The handlers cancel with one of
+// them and read it back via context.Cause to log why a stream ended and to
+// skip work that no longer makes sense (titling a thread being deleted).
 var (
-	errStreamStopRequested = turn.ErrStopRequested
-	errStreamSuperseded    = turn.ErrSuperseded
-	errStreamThreadDeleted = turn.ErrThreadDeleted
+	// errStreamStopRequested is the cause of an explicit client stop.
+	errStreamStopRequested = errors.New("stream stop requested")
+	// errStreamSuperseded is the cause when a newer request on the same
+	// thread replaces the running turn.
+	errStreamSuperseded = errors.New("stream superseded by newer request")
+	// errStreamThreadDeleted is the cause when the turn's thread is being
+	// deleted.
+	errStreamThreadDeleted = errors.New("stream canceled: thread deleted")
 )
 
 // streamHeartbeatInterval is how often the SSE stream emits a keep-alive comment
