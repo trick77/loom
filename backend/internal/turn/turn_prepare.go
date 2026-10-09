@@ -153,12 +153,11 @@ func (t *Run) Prepare(in PrepareInput) {
 	)
 	parallel(
 		func() {
-			gateInference := llm.InferenceMetadata{UserID: t.user.ID, Username: t.user.Username, ThreadID: t.thread.ID}
-			imageRoute = t.e.classifyImageTurn(in.StreamCtx, gateInference, in.Content, len(in.ImageAttachmentIDs) > 0, in.PriorMessages)
+			imageRoute = t.e.classifyImageTurn(in.StreamCtx, t.inference, in.Content, len(in.ImageAttachmentIDs) > 0, in.PriorMessages)
 		},
 		func() {
 			if freshlyClassified {
-				classified = t.e.classifyFirstTurn(in.StreamCtx, t.user, t.thread.ID, t.userMessage.Content)
+				classified = t.e.classifyFirstTurn(in.StreamCtx, t.inference, t.userMessage.Content)
 			}
 		},
 		// Semantic drift detection: on a continued turn whose sticky category does
@@ -173,7 +172,7 @@ func (t *Run) Prepare(in PrepareInput) {
 			if freshlyClassified || categoryGrantsCodingDocs(category) {
 				return
 			}
-			driftInference := llm.InferenceMetadata{UserID: t.user.ID, Username: t.user.Username, ThreadID: t.thread.ID, Purpose: "classify_drift", Round: 1}
+			driftInference := inferenceWithPurpose(t.inference, "classify_drift", 1)
 			driftCtx, cancelDrift := context.WithTimeout(in.StreamCtx, turnGateTimeout)
 			defer cancelDrift()
 			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)

@@ -61,7 +61,7 @@ func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadat
 	}
 	threadHasImage := priorConversationHasImageArtifact(priorMessages)
 	threadID := inf.ThreadID
-	meta := llm.InferenceMetadata{UserID: inf.UserID, Username: inf.Username, ThreadID: threadID, Purpose: "image_intent", Round: 1}
+	meta := inferenceWithPurpose(inf, "image_intent", 1)
 	gateCtx, cancel := context.WithTimeout(ctx, turnGateTimeout)
 	defer cancel()
 	started := time.Now()

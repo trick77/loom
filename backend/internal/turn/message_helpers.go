@@ -64,9 +64,9 @@ func strPtr(value string) *string {
 // utility calls could share one goroutine pair, and the cost was that the title
 // model only ever saw the bare question — production always passed an empty
 // assistant message. See GenerateAndSendThreadTitle, which now runs once the
-// answer exists.
-func (s *Engine) classifyFirstTurn(requestCtx context.Context, user auth.User, threadID, userMessage string) string {
-	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
+// answer exists. inf attributes the call to the turn's user and thread.
+func (s *Engine) classifyFirstTurn(requestCtx context.Context, inf llm.InferenceMetadata, userMessage string) string {
+	classifyInference := inferenceWithPurpose(inf, "classify", 1)
 	requestCtx, cancelClassify := context.WithTimeout(requestCtx, turnGateTimeout)
 	defer cancelClassify()
 	// ClassifyThread always returns a valid category (General on failure); the
@@ -108,7 +108,7 @@ const titleSourceLimit = 2000
 // title. The model call is bounded by turnGateTimeout; the store writes run on
 // ctx itself.
 func (t *Run) GenerateAndSendThreadTitle(ctx context.Context, assistantMessage string) error {
-	titleInference := llm.InferenceMetadata{UserID: t.user.ID, Username: t.user.Username, ThreadID: t.thread.ID, Purpose: "title", Round: 1}
+	titleInference := inferenceWithPurpose(t.inference, "title", 1)
 	titleCtx, cancelTitle := context.WithTimeout(ctx, turnGateTimeout)
 	defer cancelTitle()
 
