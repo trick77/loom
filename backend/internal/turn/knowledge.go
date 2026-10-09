@@ -130,5 +130,5 @@ func snippet(text string) string {
 	if len(text) <= citationSnippetChars {
 		return text
 	}
-	return strings.TrimSpace(TruncateBytesOnRuneBoundary(text, citationSnippetChars)) + "…"
+	return strings.TrimSpace(truncateBytesOnRuneBoundary(text, citationSnippetChars)) + "…"
 }

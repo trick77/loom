@@ -110,7 +110,7 @@ func (s *Engine) documentInlineContext(ctx context.Context, userID string, threa
 		// attached document, even before background indexing makes RAG available.
 		// Reserve room for the header, the truncation marker, and the closing tag.
 		avail := inlineDocByteBudget - b.Len() - len(header) - len(inlineTruncationMarker) - len(inlineDocsClosingTag)
-		head := TruncateBytesOnRuneBoundary(text, avail)
+		head := truncateBytesOnRuneBoundary(text, avail)
 		if head == "" {
 			// The budget is already exhausted by earlier documents; skip this one
 			// without taking its marker.

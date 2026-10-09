@@ -112,7 +112,7 @@ func buildThreadDigestSection(messages []chat.Message, byteBudget int) string {
 			if len(kept) == 0 {
 				// The final substantive turn alone exceeds the budget. Keep its
 				// tail (the conclusion) rather than dropping the whole thread.
-				kept = append(kept, digestTurn{role: label, text: TruncateTailToBytes(text, byteBudget)})
+				kept = append(kept, digestTurn{role: label, text: truncateTailToBytes(text, byteBudget)})
 			}
 			break
 		}

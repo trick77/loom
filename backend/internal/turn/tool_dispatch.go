@@ -577,7 +577,7 @@ func capToolOutput(output string) string {
 	if len(output) <= maxToolResultContentBytes {
 		return output
 	}
-	return TruncateBytesOnRuneBoundary(output, maxToolResultContentBytes)
+	return truncateBytesOnRuneBoundary(output, maxToolResultContentBytes)
 }
 
 // summarizeForLog trims a value (e.g. tool arguments) to a length that is safe
@@ -588,7 +588,7 @@ func summarizeForLog(value string) string {
 	if len(value) <= maxLen {
 		return value
 	}
-	return TruncateBytesOnRuneBoundary(value, maxLen) + TruncationEllipsis
+	return truncateBytesOnRuneBoundary(value, maxLen) + truncationEllipsis
 }
 
 func parseToolArguments(raw string) (map[string]any, error) {

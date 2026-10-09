@@ -31,11 +31,11 @@ import (
 
 const sandboxToolName = "run_python"
 
-// SandboxGuidancePrompt teaches the model when to delegate to run_python. One
+// sandboxGuidancePrompt teaches the model when to delegate to run_python. One
 // general rule on purpose: a list of use cases grows with every missed
 // trigger and bloats every turn's prompt. A missed trigger is fixed by
 // sharpening the rule.
-const SandboxGuidancePrompt = "You have run_python: Python 3 with numpy, pandas, scipy, sympy, matplotlib, openpyxl, dateutil and pint. No internet, no state between calls; include all imports and data each time.\n" +
+const sandboxGuidancePrompt = "You have run_python: Python 3 with numpy, pandas, scipy, sympy, matplotlib, openpyxl, dateutil and pint. No internet, no state between calls; include all imports and data each time.\n" +
 	"Use it whenever the answer depends on exact mechanical work (calculating, counting, transforming text or data, analysing a file) where doing it in your head could give a wrong result. You see tokens, not characters or rows, so such work is unreliable without it. Skip it for knowledge, judgement, writing, and trivial or approximate math. For an input file, pass it in `files` and read it in the code (pd.read_excel('in/<name>'), open(...)); never copy its data into the code from the document text you were shown, which may be truncated.\n" +
 	"print() what you need; only printed output returns. On an error, fix and retry, at most twice.\n" +
 	"Save to out/ (relative to the working directory) only a chart or file the user asked for; it is shown to them automatically; never link or embed it.\n" +
@@ -194,10 +194,10 @@ func (s *Engine) sandboxGuidance(ctx context.Context, userID string, thread chat
 	// user is most likely asking about. The stable list above stays first.
 	attached := s.missingAttachments(ctx, userID, thread, listed, turnAttachmentIDs)
 	if len(listed) == 0 && len(attached) == 0 {
-		return SandboxGuidancePrompt
+		return sandboxGuidancePrompt
 	}
 	var b strings.Builder
-	b.WriteString(SandboxGuidancePrompt)
+	b.WriteString(sandboxGuidancePrompt)
 	b.WriteString("\n\nInput files available to run_python (pass the name in `files`; read it at in/<name>):\n")
 	for _, in := range listed {
 		fmt.Fprintf(&b, "- %s (uploaded as %q)\n", in.alias, in.doc.Filename)

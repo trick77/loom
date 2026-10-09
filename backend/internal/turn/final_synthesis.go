@@ -147,9 +147,9 @@ func truncateHead(s string, keep int) string {
 	}
 	body := keep - len(truncationMarker)
 	if body <= 0 {
-		return TruncateBytesOnRuneBoundary(s, keep)
+		return truncateBytesOnRuneBoundary(s, keep)
 	}
-	return TruncateBytesOnRuneBoundary(s, body) + truncationMarker
+	return truncateBytesOnRuneBoundary(s, body) + truncationMarker
 }
 
 // webSourceIndexBlock renders the complete list of gathered sources as a compact

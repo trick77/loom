@@ -123,7 +123,7 @@ func toolNames(tools []llm.Tool) map[string]bool {
 func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 	f := newSandboxFixture(t)
 	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil)
-	if !strings.HasPrefix(g, SandboxGuidancePrompt) {
+	if !strings.HasPrefix(g, sandboxGuidancePrompt) {
 		t.Fatal("guidance must start with the rule")
 	}
 	notes := strings.Index(g, aliasNotes)
@@ -142,7 +142,7 @@ func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 	}
 
 	empty := &Engine{sandbox: f.box}
-	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil); got != SandboxGuidancePrompt {
+	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil); got != sandboxGuidancePrompt {
 		t.Fatalf("no documents: %q", got)
 	}
 }
@@ -224,7 +224,7 @@ func TestSandboxGuidanceNamesTheTurnsAttachment(t *testing.T) {
 	// Out-of-scope or unreadable attachments stay out.
 	other := rag.Document{ID: "x", ThreadID: strp("t9"), Filename: "x.csv"}
 	s.documents = &listDocuments{Extra: []rag.Document{other}}
-	if g := s.sandboxGuidance(context.Background(), testUser.ID, thread, []string{"x", "missing"}); g != SandboxGuidancePrompt {
+	if g := s.sandboxGuidance(context.Background(), testUser.ID, thread, []string{"x", "missing"}); g != sandboxGuidancePrompt {
 		t.Fatalf("out-of-scope attachment named:\n%s", g)
 	}
 }
@@ -433,7 +433,7 @@ func TestTurnRunsPythonAndAnswers(t *testing.T) {
 	if !toolNames(llmClient.Tools[0])[sandboxToolName] {
 		t.Fatal("run_python not offered to the model")
 	}
-	if !strings.Contains(llmClient.Histories[0][0].Content, SandboxGuidancePrompt) {
+	if !strings.Contains(llmClient.Histories[0][0].Content, sandboxGuidancePrompt) {
 		t.Fatal("guidance missing from the system prompt")
 	}
 	if len(box.Got) != 1 || box.Got[0].Code != "print('strawberry'.count('r'))" {

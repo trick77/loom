@@ -106,11 +106,11 @@ func snippetFromText(s string) string {
 		return s
 	}
 	// Trim to the cap on a rune boundary, then back off to the last space.
-	cut := TruncateBytesOnRuneBoundary(s, maxSourceSnippetChars)
+	cut := truncateBytesOnRuneBoundary(s, maxSourceSnippetChars)
 	if sp := strings.LastIndexByte(cut, ' '); sp > maxSourceSnippetChars/2 {
 		cut = cut[:sp]
 	}
-	return strings.TrimSpace(cut) + TruncationEllipsis
+	return strings.TrimSpace(cut) + truncationEllipsis
 }
 
 func (r *webSourceRegistry) all() []webSource { return r.sources }
