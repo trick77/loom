@@ -59,8 +59,8 @@ func (t *Run) PersistAssistantTurn(ctx context.Context, result *LoopResult) (cha
 			citationsJSON = encoded
 		}
 	}
-	turnCost, turnPriced := t.usage.TurnCost()
-	assistantMessage, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, MessageMetricsWithCost(result.StreamResult, t.usage.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
+	turnCost, turnPriced := t.acc.TurnCost()
+	assistantMessage, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, MessageMetricsWithCost(result.StreamResult, t.acc.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		return chat.Message{}, err
 	}

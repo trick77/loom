@@ -31,8 +31,8 @@ type Run struct {
 	userMessage chat.Message
 	// plan is what Prepare assembled for the assistant loop.
 	plan turnPlan
-	// usage sums every model call of the turn; start times its wall clock.
-	usage *llm.UsageAccumulator
+	// acc sums every model call of the turn; start times its wall clock.
+	acc   *llm.UsageAccumulator
 	start time.Time
 }
 
@@ -97,7 +97,7 @@ func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
 		user:        c.User,
 		thread:      c.Thread,
 		userMessage: c.UserMessage,
-		usage:       c.Usage,
+		acc:         c.Usage,
 		start:       c.Start,
 	}
 	t.plan = t.prepare(in)
