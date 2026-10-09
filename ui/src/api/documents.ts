@@ -1,4 +1,4 @@
-import { UserFacingError, expectJSON, expectOK } from "./http";
+import { UserFacingError, expectJSON, request, requestJSON } from "./http";
 import {
   DOCUMENT_MAX_THREAD_ATTACHMENTS,
   type Artifact,
@@ -66,40 +66,25 @@ export async function uploadImageAttachment(
 
 export async function listDocuments(projectId?: string): Promise<Document[]> {
   const suffix = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-  const response = await fetch(`/api/documents${suffix}`);
-  const body = await expectJSON<{ items: Document[] }>(
-    response,
+  const body = await requestJSON<{ items: Document[] }>(
+    `/api/documents${suffix}`,
     "failed to load documents",
   );
   return body.items ?? [];
 }
 
 export async function indexDocument(documentId: string): Promise<Document> {
-  const response = await fetch(
+  return requestJSON(
     `/api/documents/${encodeURIComponent(documentId)}/index`,
-    {
-      method: "POST",
-    },
+    "failed to index document",
+    { method: "POST" },
   );
-  return expectJSON<Document>(response, "failed to index document");
-}
-
-export async function unindexDocument(documentId: string): Promise<void> {
-  const response = await fetch(
-    `/api/documents/${encodeURIComponent(documentId)}/unindex`,
-    {
-      method: "POST",
-    },
-  );
-  await expectOK(response, "failed to unindex document");
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {
-  const response = await fetch(
+  await request(
     `/api/documents/${encodeURIComponent(documentId)}`,
-    {
-      method: "DELETE",
-    },
+    "failed to delete document",
+    { method: "DELETE" },
   );
-  await expectOK(response, "failed to delete document");
 }

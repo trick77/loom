@@ -13,7 +13,11 @@
  * record does not grow with every thread visited.
  */
 import type { RouteState } from "./routing";
-import type { PastedText } from "./pastedText";
+import {
+  pastedTextFromBlock,
+  type PastedText,
+  type PastedTextBlock,
+} from "./pastedText";
 
 export type DraftScope = string;
 
@@ -110,6 +114,33 @@ export function clearDraft(
   scope: DraftScope,
 ): ComposerDrafts {
   return withDraft(drafts, scope, EMPTY_DRAFT);
+}
+
+/**
+ * Retry: load a sent message back into `scope` for the user to edit and send
+ * manually. Collapsed pastes are re-staged as chips (not the folded inline text),
+ * so a resend keeps the same collapse. Null for an empty message, which changes
+ * nothing.
+ */
+export function restagedDrafts(
+  drafts: ComposerDrafts,
+  scope: DraftScope,
+  content: string,
+  pastedTexts: PastedTextBlock[] = [],
+): ComposerDrafts | null {
+  if (isEmptyMessage(content, pastedTexts)) return null;
+  return setDraft(drafts, scope, {
+    text: content,
+    pastedTexts: pastedTexts.map(pastedTextFromBlock),
+  });
+}
+
+/** A message with no text and no pastes: nothing to restage. */
+export function isEmptyMessage(
+  content: string,
+  pastedTexts: PastedTextBlock[] = [],
+): boolean {
+  return content.trim() === "" && pastedTexts.length === 0;
 }
 
 /** Merge the trimmed draft with its staged pastes into the outgoing content. */

@@ -156,23 +156,6 @@ func (s *server) refreshProjectMemoryIfDue(ctx context.Context, user auth.User, 
 	return s.refreshMemoryIfDue(ctx, user, s.projectMemoryScope(user, *project), memoryProjectDebounce)
 }
 
-// refreshProjectMemory generates and stores an updated memory from the given
-// (bounded) messages. When prior is non-empty it folds the transcript into it.
-func (s *server) refreshProjectMemory(ctx context.Context, user auth.User, projectID, prior string, transcriptMessages []chat.Message, sourceCount int) error {
-	project, err := s.findProject(ctx, user.ID, projectID)
-	if err != nil || project == nil {
-		return err
-	}
-	scope := s.projectMemoryScope(user, *project)
-	// A refresh or edit already running owns the memory; this one would race it.
-	release, ok := s.inflight.tryAcquire("memory:" + scope.key)
-	if !ok {
-		return errMemoryBusy
-	}
-	defer release()
-	return s.refreshMemory(ctx, user, scope, prior, transcriptMessages, sourceCount)
-}
-
 func (s *server) findProject(ctx context.Context, userID, projectID string) (*chat.Project, error) {
 	project, found, err := s.thread.GetProject(ctx, userID, projectID)
 	if err != nil || !found {
@@ -236,54 +219,6 @@ func (s *server) handleEditProjectMemory(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		writeJSONError(w, http.StatusBadGateway, "edit project memory failed")
-		return
-	}
-	memory, _, err := s.thread.GetProjectMemory(r.Context(), user.ID, projectID)
-	if err != nil {
-		serverError(w, r, err, "get project memory failed")
-		return
-	}
-	writeJSON(w, memory)
-}
-
-// handleRefreshProjectMemory forces a full rebuild from the most recent messages
-// across all of the project's threads (bounded by memoryRebuildLimit).
-func (s *server) handleRefreshProjectMemory(w http.ResponseWriter, r *http.Request) {
-	user, ok := currentUser(w, r)
-	if !ok || !requireThreadStore(w, s) {
-		return
-	}
-	if s.llm == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
-		return
-	}
-	projectID := r.PathValue("projectID")
-	project, err := s.findProject(r.Context(), user.ID, projectID)
-	if err != nil {
-		serverError(w, r, err, "refresh project memory failed")
-		return
-	}
-	if project == nil {
-		writeNotFound(w)
-		return
-	}
-	count, err := s.thread.CountProjectMessages(r.Context(), user.ID, projectID)
-	if err != nil {
-		serverError(w, r, err, "refresh project memory failed")
-		return
-	}
-	messages, err := s.thread.ListProjectMessages(r.Context(), user.ID, projectID, memoryRebuildLimit)
-	if err != nil {
-		serverError(w, r, err, "refresh project memory failed")
-		return
-	}
-	// Full rebuild: ignore prior memory and re-summarize from scratch.
-	if err := s.refreshProjectMemory(r.Context(), user, projectID, "", messages, count); err != nil {
-		if errors.Is(err, errMemoryBusy) {
-			writeJSONError(w, http.StatusConflict, err.Error())
-			return
-		}
-		writeJSONError(w, http.StatusBadGateway, "refresh project memory failed")
 		return
 	}
 	memory, _, err := s.thread.GetProjectMemory(r.Context(), user.ID, projectID)

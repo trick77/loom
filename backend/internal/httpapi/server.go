@@ -103,14 +103,10 @@ type server struct {
 	activeStreams              activeStreamRegistry
 }
 
-// The persistence dependency used by the HTTP handlers is split into narrow,
-// role-based interfaces below (one per chat/*_store.go concern) so that
-// individual handlers and their test fakes can depend on just the slice they
-// need. ThreadStore is the composite that embeds all of them; chat.Store
-// implements every role interface, so wiring in Deps/server is unchanged.
-
-// ProjectStore persists projects and their thread listing.
-type ProjectStore interface {
+// ThreadStore is the thread persistence dependency used by the HTTP handlers;
+// chat.Store satisfies it.
+type ThreadStore interface {
+	// Projects.
 	CreateProject(context.Context, string, chat.CreateProjectInput) (chat.Project, error)
 	GetProject(context.Context, string, string) (chat.Project, bool, error)
 	ListProjects(context.Context, string, bool) ([]chat.Project, error)
@@ -120,10 +116,8 @@ type ProjectStore interface {
 	SetProjectArchived(context.Context, string, string, bool) (bool, error)
 	DeleteProject(context.Context, string, string) (bool, error)
 	ListProjectThreadTitles(context.Context, string, string) ([]string, error)
-}
 
-// ThreadCRUDStore persists threads.
-type ThreadCRUDStore interface {
+	// Threads.
 	CreateThread(context.Context, string, chat.CreateThreadInput) (chat.Thread, error)
 	GetThread(context.Context, string, string) (chat.Thread, bool, error)
 	ListThreads(context.Context, string, chat.ListThreadsOptions) ([]chat.Thread, error)
@@ -134,71 +128,44 @@ type ThreadCRUDStore interface {
 	SetThreadTitleIfUnchanged(context.Context, string, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
-}
 
-// MessageStore appends messages and reads them back.
-type MessageStore interface {
+	// Messages.
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage) (chat.Message, error)
 	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	AddMessageCost(context.Context, string, string, int64) (bool, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 	ListRecentMessages(context.Context, string, string, int) ([]chat.Message, error)
 	ListRecentMessagesForThreads(context.Context, string, []string, int) (map[string][]chat.Message, error)
-}
 
-// MessageSearchStore runs full-text search over messages and threads.
-type MessageSearchStore interface {
+	// Search.
 	SearchMessages(context.Context, string, string, *string, string, int) ([]chat.MessageSearchHit, error)
 	SearchThreadsByContent(context.Context, string, string, *string, int) ([]chat.ThreadContentHit, error)
-}
 
-// ProjectMemoryStore persists project-scoped memory and message roll-ups.
-type ProjectMemoryStore interface {
+	// Project memory.
 	GetProjectMemory(context.Context, string, string) (chat.ProjectMemory, bool, error)
 	UpsertProjectMemory(context.Context, string, string, string, int) (chat.ProjectMemory, error)
 	CountProjectMessages(context.Context, string, string) (int, error)
 	ListProjectMessages(context.Context, string, string, int) ([]chat.Message, error)
-}
 
-// UserMemoryStore persists user-scoped memory and message roll-ups.
-type UserMemoryStore interface {
+	// User memory.
 	GetUserMemory(context.Context, string) (chat.UserMemory, bool, error)
 	UpsertUserMemory(context.Context, string, string, int) (chat.UserMemory, error)
 	CountUserMessages(context.Context, string) (int, error)
 	ListUserMessages(context.Context, string, int) ([]chat.Message, error)
-}
 
-// UserDirectiveStore persists a user's standing instructions.
-type UserDirectiveStore interface {
+	// User directives.
 	ListUserDirectives(context.Context, string) ([]chat.UserDirective, error)
 	AddUserDirective(context.Context, string, string) (chat.UserDirective, error)
 	RemoveUserDirective(context.Context, string, string) (bool, error)
 	ReplaceUserDirective(context.Context, string, string, string) (chat.UserDirective, bool, error)
-}
 
-// ShareStore persists public share snapshots.
-type ShareStore interface {
+	// Shares.
 	CreateShare(context.Context, string, chat.CreateShareInput) (chat.Share, error)
 	GetShareByThreadID(context.Context, string, string) (chat.Share, bool, error)
 	GetShareByShareID(context.Context, string) (chat.Share, bool, error)
 	UpdateShareSnapshot(context.Context, string, string, chat.UpdateShareInput) (chat.Share, bool, error)
 	SetShareEnabled(context.Context, string, string, bool) (bool, error)
 	ListSharesForUser(context.Context, string) ([]chat.Share, error)
-}
-
-// ThreadStore is the full thread persistence dependency used by the HTTP
-// handlers. It is a composite of the role interfaces above; chat.Store
-// satisfies it. Prefer depending on a narrower role interface where a handler
-// or test only needs one concern.
-type ThreadStore interface {
-	ProjectStore
-	ThreadCRUDStore
-	MessageStore
-	MessageSearchStore
-	ProjectMemoryStore
-	UserMemoryStore
-	UserDirectiveStore
-	ShareStore
 }
 
 // UsageStore records per-user lifetime usage counters. All methods are
@@ -351,7 +318,6 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	mux.Handle("POST /api/projects/{projectID}/unarchive", s.requireAuth(http.HandlerFunc(s.handleUnarchiveProject)))
 	mux.Handle("DELETE /api/projects/{projectID}", s.requireAuth(http.HandlerFunc(s.handleDeleteProject)))
 	mux.Handle("GET /api/projects/{projectID}/memory", s.requireAuth(http.HandlerFunc(s.handleGetProjectMemory)))
-	mux.Handle("POST /api/projects/{projectID}/memory:refresh", s.requireAuth(http.HandlerFunc(s.handleRefreshProjectMemory)))
 	mux.Handle("POST /api/projects/{projectID}/memory:edit", s.requireAuth(http.HandlerFunc(s.handleEditProjectMemory)))
 	mux.Handle("GET /api/threads", s.requireAuth(http.HandlerFunc(s.handleListThreads)))
 	mux.Handle("POST /api/threads", s.requireAuth(http.HandlerFunc(s.handleCreateThread)))
@@ -389,7 +355,6 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	mux.Handle("POST /api/documents/upload", s.requireAuth(http.HandlerFunc(s.handleUploadDocument)))
 	mux.Handle("GET /api/documents", s.requireAuth(http.HandlerFunc(s.handleListDocuments)))
 	mux.Handle("POST /api/documents/{documentID}/index", s.requireAuth(http.HandlerFunc(s.handleIndexDocument)))
-	mux.Handle("POST /api/documents/{documentID}/unindex", s.requireAuth(http.HandlerFunc(s.handleUnindexDocument)))
 	mux.Handle("DELETE /api/documents/{documentID}", s.requireAuth(http.HandlerFunc(s.handleDeleteDocument)))
 	if d.Static != nil {
 		// Server-render per-share OG/Twitter meta into index.html so link-preview

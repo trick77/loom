@@ -36,9 +36,8 @@ func (s *attributionStub) FullText(ctx context.Context, _, _ string) (string, er
 	s.fullTextMetadata = inference.MetadataFromContext(ctx)
 	return "the document text", nil
 }
-func (s *attributionStub) Index(context.Context, string, string) error   { return nil }
-func (s *attributionStub) Unindex(context.Context, string, string) error { return nil }
-func (s *attributionStub) Delete(context.Context, string, string) error  { return nil }
+func (s *attributionStub) Index(context.Context, string, string) error  { return nil }
+func (s *attributionStub) Delete(context.Context, string, string) error { return nil }
 func (s *attributionStub) DeleteForArtifact(context.Context, string, string) (bool, error) {
 	return false, nil
 }

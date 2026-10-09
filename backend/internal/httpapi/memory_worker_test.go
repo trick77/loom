@@ -30,9 +30,14 @@ func TestEditMemory_RefusedWhileARefreshRuns(t *testing.T) {
 	if store.projectMemory.Content != "- X" {
 		t.Fatalf("memory = %q, want untouched while the refresh holds it", store.projectMemory.Content)
 	}
-	// The manual refresh reports the same instead of answering with the old memory.
-	if err := s.refreshProjectMemory(context.Background(), testUser, "proj_1", "", nil, 1); !errors.Is(err, errMemoryBusy) {
-		t.Fatalf("refreshProjectMemory() error = %v, want errMemoryBusy", err)
+	// A second refresh that would otherwise be due skips instead of racing it.
+	store.projectMessageCount = 5
+	store.messages = []chat.Message{{Role: chat.RoleUser, Content: "hi"}}
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, scope, 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error = %v, want nil (skipped)", err)
+	}
+	if store.projectMemory.Content != "- X" {
+		t.Fatalf("memory = %q, want untouched by a refresh that found the lock held", store.projectMemory.Content)
 	}
 }
 

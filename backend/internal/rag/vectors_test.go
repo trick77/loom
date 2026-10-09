@@ -24,7 +24,7 @@ func seedEmbeddedDocument(t *testing.T, s *Store, id string, texts ...string) {
 }
 
 // Re-embedding lists chunks, embeds for seconds, then inserts. A document
-// cleared or re-indexed meanwhile must not get a stale vector, and must not
+// deleted or re-indexed meanwhile must not get a stale vector, and must not
 // fail the batch: those chunks are skipped.
 func TestStore_InsertVectorsSkipsChunksChangedMeanwhile(t *testing.T) {
 	s, _ := newTestStore(t)
@@ -39,8 +39,8 @@ func TestStore_InsertVectorsSkipsChunksChangedMeanwhile(t *testing.T) {
 		t.Fatalf("missing = %v, %v", missing, err)
 	}
 
-	// d1 is unindexed (chunks gone); d2 is re-indexed (new chunks, own vectors).
-	if err := s.ClearChunks(ctx, "u1", "d1"); err != nil {
+	// d1 is deleted (chunks gone); d2 is re-indexed (new chunks, own vectors).
+	if err := s.DeleteDocument(ctx, "u1", "d1"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ReplaceChunks(ctx, "u1", "d2", []TextChunk{{Ordinal: 0, Text: "beta v2"}}, [][]float32{unit()}); err != nil {

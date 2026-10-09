@@ -1,5 +1,8 @@
-import { expectJSON, expectOK } from "./http";
+import { request, requestJSON } from "./http";
 import type { Page, Thread, ThreadContentHit, ThreadResponse } from "./types";
+
+const threadUrl = (threadId: string) =>
+  `/api/threads/${encodeURIComponent(threadId)}`;
 
 export async function listThreads(
   params: {
@@ -38,8 +41,7 @@ export async function listThreads(
     query.set("cursor", params.cursor);
   }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
-  const response = await fetch(`/api/threads${suffix}`);
-  return expectJSON<Page<Thread>>(response, "failed to load threads");
+  return requestJSON(`/api/threads${suffix}`, "failed to load threads");
 }
 
 // listThreadIds returns the ids of every thread matching the search, with no
@@ -53,8 +55,7 @@ export async function listThreadIds(
     query.set("search", params.search);
   }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
-  const response = await fetch(`/api/threads/ids${suffix}`);
-  return expectJSON<string[]>(response, "failed to load thread ids");
+  return requestJSON(`/api/threads/ids${suffix}`, "failed to load thread ids");
 }
 
 // searchThreadContent runs the slower full-text search over message content
@@ -78,11 +79,9 @@ export async function searchThreadContent(params: {
   ) {
     query.set("projectId", params.projectId);
   }
-  const response = await fetch(`/api/threads/search?${query.toString()}`);
-  const body = await expectJSON<{ items: Array<Thread & { snippet: string }> }>(
-    response,
-    "failed to search threads",
-  );
+  const body = await requestJSON<{
+    items: Array<Thread & { snippet: string }>;
+  }>(`/api/threads/search?${query.toString()}`, "failed to search threads");
   return body.items.map(({ snippet, ...thread }) => ({ thread, snippet }));
 }
 
@@ -94,17 +93,14 @@ export const DEFAULT_THREAD_TITLE = "New thread";
 export async function createThread(
   input: { projectId?: string | null; title?: string } = {},
 ): Promise<Thread> {
-  const response = await fetch("/api/threads", {
+  return requestJSON("/api/threads", "failed to create thread", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    json: input,
   });
-  return expectJSON<Thread>(response, "failed to create thread");
 }
 
 export async function getThread(threadId: string): Promise<ThreadResponse> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`);
-  return expectJSON<ThreadResponse>(response, "failed to load thread");
+  return requestJSON(threadUrl(threadId), "failed to load thread");
 }
 
 export async function setThreadStarred(
@@ -112,43 +108,36 @@ export async function setThreadStarred(
   starred: boolean,
 ): Promise<Thread> {
   const action = starred ? "star" : "unstar";
-  const response = await fetch(
-    `/api/threads/${encodeURIComponent(threadId)}/${action}`,
-    {
-      method: "POST",
-    },
+  return requestJSON(
+    `${threadUrl(threadId)}/${action}`,
+    "failed to update thread",
+    { method: "POST" },
   );
-  return expectJSON<Thread>(response, "failed to update thread");
 }
 
 export async function updateThread(
   threadId: string,
   input: { title?: string; projectId?: string | null },
 ): Promise<Thread> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
+  return requestJSON(threadUrl(threadId), "failed to update thread", {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    json: input,
   });
-  return expectJSON<Thread>(response, "failed to update thread");
 }
 
 export async function deleteThread(threadId: string): Promise<void> {
-  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
+  await request(threadUrl(threadId), "failed to delete thread", {
     method: "DELETE",
   });
-  await expectOK(response, "failed to delete thread");
 }
 
 export async function bulkDeleteThreads(
   threadIds: string[],
 ): Promise<{ deleted: number }> {
-  const response = await fetch("/api/threads:delete", {
+  return requestJSON("/api/threads:delete", "failed to delete threads", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ threadIds }),
+    json: { threadIds },
   });
-  return expectJSON<{ deleted: number }>(response, "failed to delete threads");
 }
 
 // Bound on the stop round-trip. Callers await this before aborting the stream
@@ -167,13 +156,14 @@ export async function stopMessage(
   source?: string,
 ): Promise<boolean> {
   const query = source ? `?source=${encodeURIComponent(source)}` : "";
-  const response = await fetch(
+  const response = await request(
     `/api/threads/${encodeURIComponent(threadId)}/messages:stop${query}`,
+    "failed to stop message",
     {
       method: "POST",
       signal: AbortSignal.timeout(stopMessageTimeoutMs),
     },
+    [409],
   );
-  await expectOK(response, "failed to stop message", [409]);
   return response.status !== 409;
 }

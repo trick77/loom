@@ -2113,6 +2113,59 @@ test("Escape stops the active assistant response", async () => {
   });
 });
 
+test("Escape closes the mobile sidebar drawer", async () => {
+  vi.stubGlobal("fetch", basicSignedInFetch());
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query === "(max-width: 767px)",
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+
+  render(<App />);
+  fireEvent.click(await screen.findByLabelText("Show sidebar"));
+  const toggle = screen.getByLabelText("Hide sidebar");
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  fireEvent.keyDown(window, { key: "Escape" });
+
+  await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
+});
+
+test("a slash command typed while the incognito answer streams does nothing", async () => {
+  const signedIn = basicSignedInFetch();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/incognito/messages:stream") {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            init?.signal?.addEventListener("abort", () => {
+              controller.error(new DOMException("Aborted", "AbortError"));
+            });
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }
+      return signedIn(input);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use incognito" }));
+  const composer = await screen.findByPlaceholderText("Message incognito...");
+  fireEvent.change(composer, { target: { value: "Hi" } });
+  fireEvent.keyDown(composer, { key: "Enter" });
+  await screen.findByRole("button", { name: "Stop response" });
+
+  fireEvent.change(composer, { target: { value: "/help" } });
+  fireEvent.keyDown(composer, { key: "Enter" });
+
+  expect(
+    screen.queryByRole("dialog", { name: "Slash commands" }),
+  ).not.toBeInTheDocument();
+  expect(composer).toHaveValue("/help");
+});
+
 test("a stop before any answer text is not reported as a dropped connection", async () => {
   // The server's cancel branch returns without a terminal event, so the stream
   // body simply ends once the stop request lands, before the client aborts.

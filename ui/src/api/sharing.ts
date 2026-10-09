@@ -1,4 +1,4 @@
-import { expectJSON, expectOK } from "./http";
+import { request, requestJSON } from "./http";
 import type { PublicShare, ShareInfo, ShareListItem } from "./types";
 
 // ShareNotFoundError signals a missing, disabled, or deleted share — the public
@@ -9,43 +9,36 @@ export class ShareNotFoundError extends Error {
   }
 }
 
+const shareUrl = (threadId: string) =>
+  `/api/threads/${encodeURIComponent(threadId)}/share`;
+
 // createShare creates (or returns the existing) public share for a thread.
 export async function createShare(threadId: string): Promise<ShareInfo> {
-  const response = await fetch(
-    `/api/threads/${encodeURIComponent(threadId)}/share`,
-    {
-      method: "POST",
-    },
-  );
-  return expectJSON<ShareInfo>(response, "failed to create share");
+  return requestJSON(shareUrl(threadId), "failed to create share", {
+    method: "POST",
+  });
 }
 
 // updateShare re-freezes the snapshot of an existing share (same link).
 export async function updateShare(threadId: string): Promise<ShareInfo> {
-  const response = await fetch(
-    `/api/threads/${encodeURIComponent(threadId)}/share:update`,
-    {
-      method: "POST",
-    },
-  );
-  return expectJSON<ShareInfo>(response, "failed to update share");
+  return requestJSON(`${shareUrl(threadId)}:update`, "failed to update share", {
+    method: "POST",
+  });
 }
 
 // disableShare turns the public link off (the "Keep private" action).
 export async function disableShare(threadId: string): Promise<void> {
-  const response = await fetch(
-    `/api/threads/${encodeURIComponent(threadId)}/share`,
-    {
-      method: "DELETE",
-    },
+  await request(
+    shareUrl(threadId),
+    "failed to disable share",
+    { method: "DELETE" },
+    [404],
   );
-  await expectOK(response, "failed to disable share", [404]);
 }
 
 export async function getMyShares(): Promise<ShareListItem[]> {
-  const response = await fetch("/api/shares");
-  const page = await expectJSON<{ items: ShareListItem[] }>(
-    response,
+  const page = await requestJSON<{ items: ShareListItem[] }>(
+    "/api/shares",
     "failed to load shares",
   );
   return page.items ?? [];

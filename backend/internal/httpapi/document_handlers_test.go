@@ -30,7 +30,6 @@ type fakeDocumentService struct {
 	artifactsInUse      []string
 	artifactsInUseErr   error
 	inUseQueriedThreads []string
-	unindexErr          error
 	// fullTextEntered, when set, is signalled (non-blocking) when FullText runs.
 	fullTextEntered chan struct{}
 	deleteErr       error
@@ -70,8 +69,7 @@ func (f *fakeDocumentService) Index(_ context.Context, _, documentID string) err
 	}
 	return nil
 }
-func (f *fakeDocumentService) Unindex(context.Context, string, string) error { return f.unindexErr }
-func (f *fakeDocumentService) Delete(context.Context, string, string) error  { return f.deleteErr }
+func (f *fakeDocumentService) Delete(context.Context, string, string) error { return f.deleteErr }
 func (f *fakeDocumentService) DeleteForArtifact(_ context.Context, _ string, artifactID string) (bool, error) {
 	if f.backingArtifactID == "" || artifactID != f.backingArtifactID {
 		return false, nil
@@ -246,17 +244,15 @@ func TestToDocumentResponse_setsDownloadURLFromArtifact(t *testing.T) {
 	}
 }
 
-// While an ingest runs, unindex and delete are refused with a 409 so the client
-// keeps polling instead of racing the running chunk writes.
-func TestHandleUnindexAndDeleteDocument_conflictWhileIndexing(t *testing.T) {
+// A delete the service refuses while an ingest runs answers 409 so the client
+// keeps polling.
+func TestHandleDeleteDocument_conflictWhileIndexing(t *testing.T) {
 	svc := &fakeDocumentService{
-		doc:        rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusExtracting},
-		unindexErr: documents.ErrIndexInProgress,
-		deleteErr:  documents.ErrIndexInProgress,
+		doc:       rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusExtracting},
+		deleteErr: documents.ErrIndexInProgress,
 	}
 	server := newAuthenticatedServer(t, Deps{Documents: svc})
 	for _, req := range []*http.Request{
-		authenticatedRequest(http.MethodPost, "/api/documents/d1/unindex", ""),
 		authenticatedRequest(http.MethodDelete, "/api/documents/d1", ""),
 	} {
 		rec := httptest.NewRecorder()

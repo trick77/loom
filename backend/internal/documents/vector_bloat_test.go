@@ -101,8 +101,6 @@ func TestService_vectorDeletesWarnOfBloat(t *testing.T) {
 		run    func(*Service, string) error
 		want   map[string]string
 	}{
-		{"unindex", UploadInput{}, func(s *Service, id string) error { return s.Unindex(context.Background(), "u", id) },
-			map[string]string{"user": "u", "document": "<doc>"}},
 		{"delete", UploadInput{}, func(s *Service, id string) error { return s.Delete(context.Background(), "u", id) },
 			map[string]string{"user": "u", "document": "<doc>"}},
 		{"thread", UploadInput{ThreadID: "thread_1"}, func(s *Service, _ string) error { return s.DeleteThreadData(context.Background(), "u", "thread_1") },

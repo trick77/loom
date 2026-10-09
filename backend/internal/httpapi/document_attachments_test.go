@@ -30,9 +30,8 @@ func (s *inlineStub) Get(_ context.Context, _, id string) (rag.Document, bool, e
 func (s *inlineStub) FullText(_ context.Context, _, id string) (string, error) {
 	return s.texts[id], nil
 }
-func (s *inlineStub) Index(context.Context, string, string) error   { return nil }
-func (s *inlineStub) Unindex(context.Context, string, string) error { return nil }
-func (s *inlineStub) Delete(context.Context, string, string) error  { return nil }
+func (s *inlineStub) Index(context.Context, string, string) error  { return nil }
+func (s *inlineStub) Delete(context.Context, string, string) error { return nil }
 func (s *inlineStub) DeleteForArtifact(context.Context, string, string) (bool, error) {
 	return false, nil
 }

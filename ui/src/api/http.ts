@@ -49,3 +49,44 @@ export async function expectOK(
     throw new Error(errorMessage);
   }
 }
+
+// RequestOptions is RequestInit plus `json`: a body that is stringified and
+// sent with `Content-Type: application/json`.
+export type RequestOptions = Omit<RequestInit, "body"> & { json?: unknown };
+
+// request sends to an authenticated endpoint and checks the answer (see
+// expectOK); it returns the response for a caller that reads the body.
+export async function request(
+  url: string,
+  errorMessage: string,
+  options?: RequestOptions,
+  tolerate: number[] = [],
+): Promise<Response> {
+  const { json, ...init } = options ?? {};
+  // Keeps fetch's single-argument form, which the tests and callers rely on.
+  const response = await (options === undefined
+    ? fetch(url)
+    : fetch(url, json === undefined ? init : withJSONBody(init, json)));
+  await expectOK(response, errorMessage, tolerate);
+  return response;
+}
+
+// withJSONBody normalizes the caller's headers (a record, a Headers instance or
+// tuples; keys come out lowercase) so its own content type cannot survive next
+// to ours.
+function withJSONBody(init: RequestInit, json: unknown): RequestInit {
+  const headers = Object.fromEntries(new Headers(init.headers));
+  delete headers["content-type"];
+  headers["Content-Type"] = "application/json";
+  return { ...init, headers, body: JSON.stringify(json) };
+}
+
+// requestJSON is request plus decoding the JSON answer.
+export async function requestJSON<T>(
+  url: string,
+  errorMessage: string,
+  options?: RequestOptions,
+): Promise<T> {
+  const response = await request(url, errorMessage, options);
+  return response.json() as Promise<T>;
+}

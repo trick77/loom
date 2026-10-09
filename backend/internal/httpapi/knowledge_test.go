@@ -28,7 +28,6 @@ func (s *stubDocs) Get(context.Context, string, string) (rag.Document, bool, err
 }
 func (s *stubDocs) FullText(context.Context, string, string) (string, error) { return "", nil }
 func (s *stubDocs) Index(context.Context, string, string) error              { return nil }
-func (s *stubDocs) Unindex(context.Context, string, string) error            { return nil }
 func (s *stubDocs) Delete(context.Context, string, string) error             { return nil }
 func (s *stubDocs) DeleteForArtifact(context.Context, string, string) (bool, error) {
 	return false, nil

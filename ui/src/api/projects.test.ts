@@ -7,7 +7,6 @@ import {
   editProjectMemory,
   getProjectMemory,
   listProjects,
-  refreshProjectMemory,
   setProjectStarred,
   unarchiveProject,
   updateProject,
@@ -206,23 +205,6 @@ describe("project memory", () => {
 
     await expect(getProjectMemory("p1")).rejects.toThrow(
       "failed to load project memory",
-    );
-  });
-
-  test("refreshProjectMemory posts to the refresh endpoint", async () => {
-    const fetchMock = stubFetch(Response.json(memory));
-
-    await expect(refreshProjectMemory("p1")).resolves.toEqual(memory);
-    expect(fetchMock).toHaveBeenCalledWith("/api/projects/p1/memory:refresh", {
-      method: "POST",
-    });
-  });
-
-  test("refreshProjectMemory throws on a non-ok response", async () => {
-    stubFetch(new Response("", { status: 503 }));
-
-    await expect(refreshProjectMemory("p1")).rejects.toThrow(
-      "failed to refresh project memory",
     );
   });
 

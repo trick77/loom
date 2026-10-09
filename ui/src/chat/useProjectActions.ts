@@ -17,7 +17,7 @@ export function useProjectActions({
   navigateToProject,
   navigateToProjects,
   setModalError,
-  setOpenThreadMenuID,
+  closeThreadMenu,
   setProjects,
   setProjectThreads,
   setThreads,
@@ -27,7 +27,7 @@ export function useProjectActions({
   navigateToProject(project: Project): void;
   navigateToProjects(): void;
   setModalError(message: string): void;
-  setOpenThreadMenuID(menuID: string | null): void;
+  closeThreadMenu(): void;
   setProjects(update: (current: Project[]) => Project[]): void;
   setProjectThreads(update: Thread[] | ((current: Thread[]) => Thread[])): void;
   setThreads(update: (current: Thread[]) => Thread[]): void;
@@ -53,27 +53,27 @@ export function useProjectActions({
     (project: Project | null) => {
       setEditingProject(project);
       setModalError("");
-      setOpenThreadMenuID(null);
+      closeThreadMenu();
     },
-    [setModalError, setOpenThreadMenuID],
+    [setModalError, closeThreadMenu],
   );
 
   const openArchiveProjectModal = useCallback(
     (project: Project) => {
       setArchivingProject(project);
       setModalError("");
-      setOpenThreadMenuID(null);
+      closeThreadMenu();
     },
-    [setModalError, setOpenThreadMenuID],
+    [setModalError, closeThreadMenu],
   );
 
   const openDeleteProjectModal = useCallback(
     (project: Project) => {
       setDeletingProject(project);
       setModalError("");
-      setOpenThreadMenuID(null);
+      closeThreadMenu();
     },
-    [setModalError, setOpenThreadMenuID],
+    [setModalError, closeThreadMenu],
   );
 
   async function handleProjectDialogSubmit(input: {
@@ -126,7 +126,7 @@ export function useProjectActions({
       if (route.view === "project" && route.projectID === project.id) {
         navigateToProjects();
       }
-      setOpenThreadMenuID(null);
+      closeThreadMenu();
       setModalError("");
     } catch (error) {
       handleActionError(
@@ -150,7 +150,7 @@ export function useProjectActions({
         { ...project, archivedAt: undefined },
         ...current.filter((item) => item.id !== project.id),
       ]);
-      setOpenThreadMenuID(null);
+      closeThreadMenu();
       setModalError("");
     } catch (error) {
       handleActionError(
