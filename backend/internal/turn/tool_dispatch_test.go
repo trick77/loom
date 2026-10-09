@@ -20,7 +20,11 @@ import (
 // copy of the same block; one path now serves them all.
 func TestExecuteBuiltInToolReportsInvalidArgumentsForEveryArgTool(t *testing.T) {
 	s := &Engine{}
-	for _, name := range []string{conversationSearchToolName, readThreadToolName, addUserDirectiveToolName, removeUserDirectiveToolName, replaceUserDirectiveToolName} {
+	for _, spec := range coreTools {
+		name := spec.name
+		if name == ProjectThreadsToolName {
+			continue // takes no arguments
+		}
 		call := llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: "{not json"}}
 		run := &Run{e: s, user: testUser, thread: chat.Thread{ID: "t1"}}
 		output, resp, handled := run.executeBuiltInTool(context.Background(), call)

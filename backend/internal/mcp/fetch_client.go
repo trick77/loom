@@ -144,7 +144,7 @@ func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[stri
 	url, _ := arguments["url"].(string)
 	// A non-nil error keeps the deterministic fetch->obscura fallback working:
 	// the dispatch layer treats a CallTool error on fetch__fetch as "try
-	// obscura" (see httpapi.fetchObscuraFallback), except for a failed PDF
+	// obscura" (see turn's fetchObscuraFallback), except for a failed PDF
 	// extraction, which is marked so the fallback skips it.
 	out, err := webfetch.Fetch(ctx, url, c.options(arguments))
 	if err != nil && strings.HasPrefix(err.Error(), "Failed to extract PDF") {
