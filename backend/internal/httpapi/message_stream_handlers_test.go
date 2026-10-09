@@ -1626,9 +1626,9 @@ func TestActiveStreamRegistryCancelsPreviousStreamWithSupersededCause(t *testing
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 
-	unregisterFirst := registry.register("user_1", "thr_1", cancel, nil)
+	unregisterFirst := registry.register("user_1", "thr_1", "", cancel, nil)
 	defer unregisterFirst()
-	unregisterSecond := registry.register("user_1", "thr_1", func(error) {}, nil)
+	unregisterSecond := registry.register("user_1", "thr_1", "", func(error) {}, nil)
 	defer unregisterSecond()
 
 	if !errors.Is(context.Cause(ctx), errStreamSuperseded) {

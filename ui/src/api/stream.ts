@@ -47,6 +47,16 @@ export class StreamInterruptedError extends Error {
   }
 }
 
+// StreamConnectError: the send request itself failed on the network (fetch
+// rejected), so no response arrived. The server may still have stored the
+// message; the caller asks before treating the send as failed.
+export class StreamConnectError extends Error {
+  constructor() {
+    super("stream request failed");
+    this.name = "StreamConnectError";
+  }
+}
+
 // StreamFailedError carries the server's own `error` event text, which is
 // written for the user (e.g. "image generation was not completed").
 export class StreamFailedError extends UserFacingError {
@@ -73,6 +83,8 @@ export async function streamMessage(
     documentAttachmentIds?: string[];
     imageAttachmentIds?: string[];
     pastedTexts?: MessagePastedText[];
+    // The client's id for this send: stored with the message, named by a stop.
+    clientMessageId?: string;
   } = {},
 ): Promise<void> {
   const requestBody: {
@@ -80,7 +92,11 @@ export async function streamMessage(
     documentAttachmentIds?: string[];
     imageAttachmentIds?: string[];
     pastedTexts?: MessagePastedText[];
+    clientMessageId?: string;
   } = { content };
+  if (opts.clientMessageId) {
+    requestBody.clientMessageId = opts.clientMessageId;
+  }
   if (opts.documentAttachmentIds && opts.documentAttachmentIds.length > 0) {
     requestBody.documentAttachmentIds = opts.documentAttachmentIds;
   }
@@ -90,15 +106,22 @@ export async function streamMessage(
   if (opts.pastedTexts && opts.pastedTexts.length > 0) {
     requestBody.pastedTexts = opts.pastedTexts;
   }
-  const response = await fetch(
-    `/api/threads/${encodeURIComponent(threadId)}/messages:stream`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-      signal,
-    },
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/threads/${encodeURIComponent(threadId)}/messages:stream`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+        signal,
+      },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new StreamConnectError();
+  }
   await readSSEStream(await expectStreamResponse(response), handlers);
 }
 

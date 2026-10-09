@@ -467,12 +467,15 @@ func TestMessagesPersistAttachments(t *testing.T) {
 
 	rawAttachments := json.RawMessage(`[{"kind":"image","artifactId":"art_1","filename":"photo.png","mimeType":"image/png","sizeBytes":1234,"downloadUrl":"/api/artifacts/art_1/download"}]`)
 	rawPastedTexts := json.RawMessage(`[{"text":"a very long pasted block","lineCount":42}]`)
-	message, err := store.AddMessageWithAttachments(ctx, userID, thread.ID, RoleUser, "Look at this", rawAttachments, rawPastedTexts)
+	message, err := store.AddMessageWithAttachments(ctx, userID, thread.ID, RoleUser, "Look at this", rawAttachments, rawPastedTexts, "send_1")
 	if err != nil {
 		t.Fatalf("AddMessageWithAttachments() error = %v", err)
 	}
 	if string(message.Attachments) != string(rawAttachments) {
 		t.Fatalf("message.Attachments = %s", message.Attachments)
+	}
+	if message.ClientMessageID != "send_1" {
+		t.Fatalf("message.ClientMessageID = %q, want send_1", message.ClientMessageID)
 	}
 	if string(message.PastedTexts) != string(rawPastedTexts) {
 		t.Fatalf("message.PastedTexts = %s", message.PastedTexts)
@@ -487,6 +490,11 @@ func TestMessagesPersistAttachments(t *testing.T) {
 	}
 	if string(messages[0].PastedTexts) != string(rawPastedTexts) {
 		t.Fatalf("listed PastedTexts = %s", messages[0].PastedTexts)
+	}
+	// The send id survives a reload: a client whose connection dropped
+	// mid-send looks for it to learn whether the message was stored.
+	if messages[0].ClientMessageID != "send_1" {
+		t.Fatalf("listed ClientMessageID = %q, want send_1", messages[0].ClientMessageID)
 	}
 }
 

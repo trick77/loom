@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   PayloadTooLargeError,
   StreamFailedError,
+  StreamConnectError,
   StreamInterruptedError,
   attachStream,
   streamIncognitoMessage,
@@ -215,6 +216,41 @@ describe("a dropped connection", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body)));
 
     await expect(streamMessage("t1", "hi", handlers())).rejects.toBe(abort);
+  });
+});
+
+describe("a send", () => {
+  test("carries its client id", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          sseBody([
+            'event: assistant_message\ndata: {"id":"m2","content":"x"}\n\n',
+          ]),
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamMessage("t1", "hi", handlers(), undefined, {
+      clientMessageId: "send-1",
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body.clientMessageId).toBe("send-1");
+  });
+
+  // The request itself failing (the network was down) is told apart from a
+  // bug: the caller asks the server whether the send arrived anyway.
+  test("a request the network failed is a StreamConnectError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Load failed")),
+    );
+
+    await expect(streamMessage("t1", "hi", handlers())).rejects.toBeInstanceOf(
+      StreamConnectError,
+    );
   });
 });
 

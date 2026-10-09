@@ -51,6 +51,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validSendID(body.ClientMessageID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid clientMessageId")
+		return
+	}
+
 	threadID := r.PathValue("threadID")
 	thread, found, err := s.thread.GetThread(r.Context(), user.ID, threadID)
 	if err != nil {
@@ -88,7 +93,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// into body.Content, so the model and every content-derived path (title,
 	// classifier, RAG, history) are unchanged; this is render-only metadata.
 	pastedTexts := turn.MarshalPastedTexts(body.PastedTexts)
-	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments, pastedTexts)
+	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments, pastedTexts, body.ClientMessageID)
 	if err != nil {
 		writeStoreError(w, r, err)
 		return
@@ -127,7 +132,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	turnStart := time.Now()
 	// The turn writes its events into the hub, never to a client directly.
 	stream := newTurnHub()
-	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream, stream)
+	unregisterStream := s.activeStreams.register(user.ID, threadID, body.ClientMessageID, cancelStream, stream)
 	// endTurn ends the turn for every client: followers drain the hub and
 	// return, and the thread no longer reports a running turn. Idempotent.
 	endTurn := func() {
@@ -368,15 +373,35 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		writeNotFound(w)
 		return
 	}
-	// 409 when no stream is registered yet (the turn is still being set up).
-	// The turn runs detached from the client, so the client dropping its fetch
-	// does not end it: the registry keeps the stop and applies it when the
-	// turn registers.
-	if !s.activeStreams.stop(user.ID, threadID, stopCause(r.URL.Query().Get("source"))) {
+	// 409 when the send's turn is not registered yet (it is still being set
+	// up). The turn runs detached from the client, so the client dropping its
+	// fetch does not end it: a stop naming the send (sendId) is kept and
+	// applied when that turn registers.
+	sendID := r.URL.Query().Get("sendId")
+	if !validSendID(sendID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid sendId")
+		return
+	}
+	if !s.activeStreams.stop(user.ID, threadID, sendID, stopCause(r.URL.Query().Get("source"))) {
 		writeJSONError(w, http.StatusConflict, "no active stream")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validSendID accepts "" (no id) or a client send id: up to 64 characters of
+// [A-Za-z0-9_-]. It is stored and used as a map key, never interpreted.
+func validSendID(id string) bool {
+	if len(id) > 64 {
+		return false
+	}
+	for _, c := range id {
+		allowed := c == '-' || c == '_' || ('0' <= c && c <= '9') || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
+		if !allowed {
+			return false
+		}
+	}
+	return true
 }
 
 // stopCause builds the cancellation cause for an explicit client stop. It always

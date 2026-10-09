@@ -68,17 +68,27 @@ func (r *firstWriteRecorder) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// sseEventNames lists the event names in an SSE body, in order, with
-// consecutive repeats collapsed: a reattach merges runs of deltas.
+// sseEventNames lists the event names in an SSE body, in order.
 func sseEventNames(body string) []string {
 	var names []string
 	for line := range strings.SplitSeq(body, "\n") {
-		name, ok := strings.CutPrefix(line, "event: ")
-		if ok && (len(names) == 0 || names[len(names)-1] != name) {
+		if name, ok := strings.CutPrefix(line, "event: "); ok {
 			names = append(names, name)
 		}
 	}
 	return names
+}
+
+// collapseRepeats drops consecutive repeats: a reattach merges runs of
+// deltas, so only the order of event kinds compares with the sent stream.
+func collapseRepeats(names []string) []string {
+	var out []string
+	for _, name := range names {
+		if len(out) == 0 || out[len(out)-1] != name {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // A phone that freezes the tab drops the connection mid-answer. The turn must
@@ -140,8 +150,8 @@ func TestAttachReplaysTheRunningTurnThenFollowsIt(t *testing.T) {
 	if got := attachRec.Header().Get("Content-Type"); got != "text/event-stream" {
 		t.Fatalf("attach content type = %q, want text/event-stream", got)
 	}
-	sent := sseEventNames(sendRec.Body.String())
-	attached := sseEventNames(attachRec.Body.String())
+	sent := collapseRepeats(sseEventNames(sendRec.Body.String()))
+	attached := collapseRepeats(sseEventNames(attachRec.Body.String()))
 	if strings.Join(attached, ",") != strings.Join(sent, ",") {
 		t.Fatalf("attached events = %v, want the sent stream %v", attached, sent)
 	}
@@ -166,7 +176,7 @@ func TestAttachWithoutARunningTurnIsNoContent(t *testing.T) {
 func TestActiveStreamRegistryLookupIsUserScoped(t *testing.T) {
 	var registry activeStreamRegistry
 	hub := newTurnHub()
-	unregister := registry.register("user_1", "thr_1", func(error) {}, hub)
+	unregister := registry.register("user_1", "thr_1", "", func(error) {}, hub)
 	if got := registry.lookup("user_2", "thr_1"); got != nil {
 		t.Fatal("lookup found another user's turn")
 	}
@@ -249,42 +259,129 @@ func TestStreamMessageTurnStopsWhenTheServerShutsDown(t *testing.T) {
 	}
 }
 
-// A stop that arrives while the turn is still being set up finds nothing
-// registered. It must still end that turn: the client's dropped fetch no
-// longer does.
-func TestActiveStreamRegistryAppliesAStopThatArrivedBeforeRegister(t *testing.T) {
+// A stop that arrives while its send's turn is still being set up finds
+// nothing registered. It must still end that turn: the client's dropped fetch
+// no longer does.
+func TestActiveStreamRegistryAppliesAStopThatArrivedBeforeItsTurn(t *testing.T) {
 	var registry activeStreamRegistry
-	if registry.stop("user_1", "thr_1", errStreamStopRequested) {
+	if registry.stop("user_1", "thr_1", "send_1", errStreamStopRequested) {
 		t.Fatal("stop() = true with nothing registered")
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
-	unregister := registry.register("user_1", "thr_1", cancel, nil)
+	unregister := registry.register("user_1", "thr_1", "send_1", cancel, nil)
 	defer unregister()
 	if !errors.Is(context.Cause(ctx), errStreamStopRequested) {
 		t.Fatalf("cause = %v, want the early stop", context.Cause(ctx))
 	}
+}
 
-	// Consumed once: the next turn on the thread runs.
-	next, cancelNext := context.WithCancelCause(context.Background())
-	defer cancelNext(nil)
-	unregisterNext := registry.register("user_1", "thr_1", cancelNext, nil)
-	defer unregisterNext()
-	if next.Err() != nil {
-		t.Fatal("a consumed early stop cancelled the next turn")
+// An early stop belongs to one send. A stop for a send that never registers
+// (it failed, or its turn already ended) must not end any other send's turn.
+func TestActiveStreamRegistryEarlyStopNeverEndsAnotherSend(t *testing.T) {
+	var registry activeStreamRegistry
+	registry.stop("user_1", "thr_1", "send_lost", errStreamStopRequested)
+	// Without a send id there is nothing to keep the stop for.
+	registry.stop("user_1", "thr_1", "", errStreamStopRequested)
+
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	unregister := registry.register("user_1", "thr_1", "send_2", cancel, nil)
+	defer unregister()
+	if ctx.Err() != nil {
+		t.Fatal("an early stop for another send cancelled this turn")
+	}
+
+	// A stop naming an older send leaves the running turn alone, too.
+	if registry.stop("user_1", "thr_1", "send_old", errStreamStopRequested) {
+		t.Fatal("stop() for another send = true")
+	}
+	if ctx.Err() != nil {
+		t.Fatal("a stop for another send cancelled the running turn")
+	}
+	if !registry.stop("user_1", "thr_1", "send_2", errStreamStopRequested) || ctx.Err() == nil {
+		t.Fatal("a stop naming the running send did not end it")
 	}
 }
 
-func TestActiveStreamRegistryIgnoresAStaleEarlyStop(t *testing.T) {
+// Early stops for sends that never register are dropped after the window
+// instead of piling up for the life of the process.
+func TestActiveStreamRegistryDropsStaleEarlyStops(t *testing.T) {
 	start := time.Unix(0, 0)
 	registry := activeStreamRegistry{now: func() time.Time { return start }}
-	registry.stop("user_1", "thr_1", errStreamStopRequested)
+	registry.stop("user_1", "thr_1", "send_1", errStreamStopRequested)
 	registry.now = func() time.Time { return start.Add(earlyStopWindow + time.Second) }
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	unregister := registry.register("user_1", "thr_1", cancel, nil)
+	unregister := registry.register("user_1", "thr_1", "send_1", cancel, nil)
 	defer unregister()
 	if ctx.Err() != nil {
 		t.Fatal("a stale early stop cancelled a later turn")
+	}
+	if len(registry.earlyStops) != 0 {
+		t.Fatalf("%d early stops kept past the window, want 0", len(registry.earlyStops))
+	}
+}
+
+func TestValidSendID(t *testing.T) {
+	for id, want := range map[string]bool{
+		"":                      true,
+		"send-1_A":              true,
+		strings.Repeat("a", 64): true,
+		strings.Repeat("a", 65): false,
+		"a b":                   false,
+		"a/b":                   false,
+	} {
+		if got := validSendID(id); got != want {
+			t.Errorf("validSendID(%q) = %v, want %v", id, got, want)
+		}
+	}
+}
+
+// A send carries its id to the stored user message, and a stop naming it ends
+// that turn.
+func TestStreamMessageStoresTheSendIDAndStopsByIt(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: llmClient})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.ServeHTTP(httptest.NewRecorder(), authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi","clientMessageId":"send_1"}`))
+	}()
+	select {
+	case <-llmClient.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the turn never reached the model")
+	}
+	other := httptest.NewRecorder()
+	srv.ServeHTTP(other, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stop?sendId=send_other", ""))
+	if other.Code != http.StatusConflict {
+		t.Fatalf("stop for another send = %d, want 409", other.Code)
+	}
+	stop := httptest.NewRecorder()
+	srv.ServeHTTP(stop, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stop?sendId=send_1", ""))
+	if stop.Code != http.StatusNoContent {
+		t.Fatalf("stop = %d, want 204", stop.Code)
+	}
+	waitClosed(t, done, "the stream handler")
+	if store.UserClientMessageID != "send_1" {
+		t.Fatalf("stored send id = %q, want send_1", store.UserClientMessageID)
+	}
+}
+
+func TestStreamMessageRejectsAnInvalidSendID(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{}})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi","clientMessageId":"a b"}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	stop := httptest.NewRecorder()
+	srv.ServeHTTP(stop, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stop?sendId=a%20b", ""))
+	if stop.Code != http.StatusBadRequest {
+		t.Fatalf("stop status = %d, want 400", stop.Code)
 	}
 }
 

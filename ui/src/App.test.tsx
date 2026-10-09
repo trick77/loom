@@ -934,7 +934,7 @@ test("inserts the titled sidebar chat before rendering the first new chat respon
       "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ content: "It is hot" }),
+        body: sendBody({ content: "It is hot" }),
       }),
     ),
   );
@@ -1144,7 +1144,7 @@ test("sends a deferred new-chat image with the first prompt and shows the prompt
       "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({
+        body: sendBody({
           content: "What is this image?",
           imageAttachmentIds: ["art_image"],
         }),
@@ -1273,7 +1273,7 @@ test('"Use in thread" references an existing artifact without re-uploading it', 
       "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({
+        body: sendBody({
           content: "Describe this",
           imageAttachmentIds: ["art_1"],
         }),
@@ -1397,7 +1397,7 @@ test("retries a failed deferred new-chat image upload before streaming", async (
       "/api/threads/t2/messages:stream",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({
+        body: sendBody({
           content: "What is this image?",
           imageAttachmentIds: ["art_image_retry"],
         }),
@@ -2082,7 +2082,9 @@ test("turns the send button into a stop button while the assistant is running", 
 
   await waitFor(() => {
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/threads/t1/messages:stop?source=stop_button",
+      expect.stringMatching(
+        /^\/api\/threads\/t1\/messages:stop\?source=stop_button&sendId=send-/,
+      ),
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -2107,7 +2109,9 @@ test("Escape stops the active assistant response", async () => {
 
   await waitFor(() => {
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/threads/t1/messages:stop?source=escape",
+      expect.stringMatching(
+        /^\/api\/threads\/t1\/messages:stop\?source=escape&sendId=send-/,
+      ),
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -3845,7 +3849,10 @@ function chatThreadFetch(
   });
 }
 
+// stoppingChatFetch streams a turn that runs until stopped. A stop ends it the
+// way the server does: the stream closes with done.
 function stoppingChatFetch() {
+  let endStream: (() => void) | null = null;
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/me")
@@ -3855,17 +3862,26 @@ function stoppingChatFetch() {
       return Response.json({ items: [threadFixture()], nextCursor: null });
     if (url === "/api/threads/t1")
       return Response.json({ thread: threadFixture(), messages: [] });
-    if (url === "/api/threads/t1/messages:stop" && init?.method === "POST") {
+    if (
+      url.startsWith("/api/threads/t1/messages:stop") &&
+      init?.method === "POST"
+    ) {
+      endStream?.();
       return new Response("", { status: 204 });
     }
     if (url === "/api/threads/t1/messages:stream" && init?.method === "POST") {
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
+          const encoder = new TextEncoder();
           controller.enqueue(
-            new TextEncoder().encode(
+            encoder.encode(
               'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
             ),
           );
+          endStream = () => {
+            controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+            controller.close();
+          };
           init.signal?.addEventListener("abort", () => {
             controller.error(new DOMException("Aborted", "AbortError"));
           });
@@ -5453,6 +5469,24 @@ function basicSignedInFetch(user: { role?: "admin" | "user" } = {}) {
       return Response.json({ items: [], nextCursor: null });
     throw new Error(`unexpected fetch ${url}`);
   });
+}
+
+// sendBody matches a send's JSON body: exactly these fields, plus the
+// client's generated send id.
+function sendBody(fields: Record<string, unknown>) {
+  return {
+    asymmetricMatch(body: unknown) {
+      const { clientMessageId, ...rest } = JSON.parse(String(body)) as {
+        clientMessageId?: unknown;
+      };
+      return (
+        typeof clientMessageId === "string" &&
+        clientMessageId.startsWith("send-") &&
+        JSON.stringify(rest) === JSON.stringify(fields)
+      );
+    },
+    toString: () => `sendBody(${JSON.stringify(fields)})`,
+  };
 }
 
 function threadFixture() {

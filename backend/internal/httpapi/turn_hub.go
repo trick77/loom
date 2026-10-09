@@ -87,7 +87,8 @@ func (h *turnHub) follow(ctx context.Context, w eventWriter, merge bool) {
 		h.mu.Unlock()
 		if len(pending) > 0 {
 			events := pending
-			if merge {
+			// A single live event has nothing to merge with.
+			if merge && len(pending) > 1 {
 				events = mergeDeltas(pending)
 			}
 			for _, batch := range splitEvents(events, maxReplayWriteBytes) {

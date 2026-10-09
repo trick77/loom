@@ -79,6 +79,8 @@ export type Message = {
   threadId: string;
   role: "user" | "assistant" | "tool";
   content: string;
+  // The client's id for the send that stored this user message.
+  clientMessageId?: string;
   reasoningContent?: string;
   activityTrace?: ActivityTraceEvent[];
   contentBlocks?: ContentBlock[];

@@ -10,23 +10,31 @@ import {
 export const MAX_ATTACH_ATTEMPTS = 8;
 // The backoff doubles from retryDelayMs and stops growing at this multiple.
 const MAX_BACKOFF_FACTOR = 10;
+// How long an attach must stay connected to count as working. Every attach
+// replays the turn from its first event, so events alone prove nothing: a link
+// that cuts out right after the replay would otherwise retry forever.
+const PROGRESS_AFTER_MS = 10_000;
 
 // followRunningTurn reattaches to a thread's turn that is still running on the
 // server, typically after a phone froze the tab and dropped the stream. It
 // waits until the page is visible and online again, then follows the turn; a
-// reattach the network drops as well is retried, and one that streamed before
-// it dropped starts the retry budget afresh. Each attempt gets fresh handlers,
-// because the server replays the turn from its first event.
+// reattach the network drops as well is retried, and one that stayed
+// connected for a while before it dropped starts the retry budget afresh.
+// Each attempt gets fresh handlers, because the server replays the turn from
+// its first event.
 export async function followRunningTurn(opts: {
   threadId: string;
   signal: AbortSignal;
   handlers: () => StreamHandlers;
   retryDelayMs?: number;
+  progressAfterMs?: number;
 }): Promise<"attached" | "finished"> {
   const retryDelayMs = opts.retryDelayMs ?? 1000;
+  const progressAfterMs = opts.progressAfterMs ?? PROGRESS_AFTER_MS;
   for (let attempt = 1; ; attempt++) {
     await whenReachable(opts.signal);
     let streamed = false;
+    const started = Date.now();
     try {
       return await attachStream(
         opts.threadId,
@@ -35,8 +43,9 @@ export async function followRunningTurn(opts: {
       );
     } catch (error) {
       if (!(error instanceof StreamInterruptedError)) throw error;
+      const worked = streamed && Date.now() - started >= progressAfterMs;
       // The loop's increment makes the next attempt the first again.
-      if (streamed) attempt = 0;
+      if (worked) attempt = 0;
       else if (attempt >= MAX_ATTACH_ATTEMPTS) throw error;
     }
     const factor = Math.min(2 ** Math.max(attempt - 1, 0), MAX_BACKOFF_FACTOR);

@@ -329,6 +329,17 @@ describe("stopMessage", () => {
     );
   });
 
+  test("names the send it stops", async () => {
+    const fetchMock = stubFetch(new Response(null, { status: 204 }));
+
+    await stopMessage("t1", "escape", "send-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stop?source=escape&sendId=send-1",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   test("resolves false when no stream was registered yet", async () => {
     stubFetch(Response.json({ error: "no active stream" }, { status: 409 }));
 

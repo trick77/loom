@@ -28,6 +28,7 @@ import {
   type Thread,
   type User,
   PayloadTooLargeError,
+  StreamConnectError,
   StreamInterruptedError,
 } from "../api";
 import { graftStreamedBlocks } from "./contentBlocks";
@@ -120,6 +121,10 @@ import { useEscapeKey } from "./useEscapeKey";
 // titles, so this sits well past that.
 const STOP_ABORT_FALLBACK_MS = 15_000;
 
+// How often, and how far apart, a dropped send is looked up on the server.
+const SENT_MESSAGE_LOOKS = 3;
+const SENT_MESSAGE_LOOK_DELAY_MS = 1000;
+
 // foldAssistantMessage puts a finished assistant message into the transcript.
 // The persisted message may already carry the backend's ordered contentBlocks.
 // When it doesn't (older backends / lag), the just-streamed blocks are grafted
@@ -207,7 +212,9 @@ export function ThreadShell({
     abort: abortStreamRun,
     abortAll: abortAllStreamRuns,
     markStopRequested,
+    unmarkStopRequested,
     stopRequested,
+    sendIdOf,
     nextProvisionalKey,
   } = useStreamRuns();
   // A slash command ("/mcp", "/tools", …) opens this ephemeral overlay panel
@@ -401,17 +408,18 @@ export function ThreadShell({
         abort();
         return;
       }
-      // Tell the server which UI action stopped the stream, and do not abort the
-      // fetch first: that would drop the connection and make the server log the
-      // generic request-context cancel instead of this attributed one (the cancel
-      // cause is first-writer-wins). Once stopped, the server saves the partial
-      // answer and ends the stream with assistant_message and done; reading on
-      // until then keeps the answer on screen. The abort is only a fallback for a
-      // stream that never ends, or the stop itself when the server had no stream
-      // registered yet. The run's catch reads this mark so a close is not
-      // reported as a dropped connection.
+      // The turn runs on the server detached from this fetch, so only the stop
+      // endpoint ends it; the fetch is not aborted first. Once stopped, the
+      // server saves the partial answer and ends the stream with
+      // assistant_message and done; reading on until then keeps the answer on
+      // screen. The abort is a fallback for a stream that never ends. A 409
+      // means the send's turn has not registered yet: the server keeps the stop
+      // for that send (named by its id), and the fetch is dropped. The run's
+      // catch reads the mark so a close is not reported as a dropped
+      // connection. A stop that fails reached nothing: the answer keeps
+      // running, and the user is told.
       const controller = markStopRequested(activeRunKey);
-      void stopMessage(activeThread.id, source).then(
+      void stopMessage(activeThread.id, source, sendIdOf(activeRunKey)).then(
         (stopped) => {
           if (!stopped) {
             abort();
@@ -420,8 +428,8 @@ export function ThreadShell({
           window.setTimeout(() => controller?.abort(), STOP_ABORT_FALLBACK_MS);
         },
         (error: unknown) => {
+          if (controller !== undefined) unmarkStopRequested(controller);
           handleActionError(error, t("thread.stopFailed"), reportShellError);
-          abort();
         },
       );
     },
@@ -433,7 +441,9 @@ export function ThreadShell({
       incognito,
       markStopRequested,
       reportShellError,
+      sendIdOf,
       t,
+      unmarkStopRequested,
     ],
   );
 
@@ -884,7 +894,10 @@ export function ThreadShell({
     setDrafts((current) => clearDraft(current, options.draftScope));
     setSendError("");
     const abortController = new AbortController();
-    beginStreamRun(runKey, abortController);
+    // The client's id for this send: stored with the message, named by a stop,
+    // and what a dropped send is looked up by.
+    const sendId = newTempID("send");
+    beginStreamRun(runKey, abortController, sendId);
     let createdThreadForFallback: Thread | null = null;
     let receivedThreadEvent = false;
     let keepFailedTurnVisible = false;
@@ -896,9 +909,6 @@ export function ThreadShell({
     let userMessageConfirmed = false;
     // The stream dropped and the run is following the turn again.
     let reattaching = false;
-    // The transcript before this send: a dropped send is checked against it
-    // for a question the server stored after all.
-    const knownMessageIDs = new Set(messages.map((message) => message.id));
     // The thread this run belongs to, known up front for an existing thread and
     // filled in below for one created by this send. Whether the user is still
     // looking at it decides the writes into `messages`, which is a single array
@@ -1135,16 +1145,17 @@ export function ThreadShell({
             documentAttachmentIds,
             imageAttachmentIds,
             pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
+            clientMessageId: sendId,
           },
         );
       } catch (error) {
         // The connection dropped, typically a phone freezing the tab. Once the
         // server has the message the turn runs there, so follow it again
-        // instead of failing the send. A drop before the server confirmed it
-        // (fetch rejects with a TypeError) may still have stored it: ask.
+        // instead of failing the send. A send whose request failed before the
+        // server confirmed it may still have been stored: ask.
         const dropped =
           error instanceof StreamInterruptedError ||
-          (error instanceof TypeError && !userMessageConfirmed);
+          error instanceof StreamConnectError;
         if (
           !dropped ||
           abortController.signal.aborted ||
@@ -1156,8 +1167,7 @@ export function ThreadShell({
           !(await sentMessageReachedServer(
             threadIDForRun,
             abortController.signal,
-            content,
-            knownMessageIDs,
+            sendId,
           ))
         )
           throw error;
@@ -1255,27 +1265,34 @@ export function ThreadShell({
       setMessages(response.messages.map(rehydrateLoadedMessage));
   }
 
-  // sentMessageReachedServer reports whether the thread holds a new user
-  // message with this content: a send whose connection dropped before the
-  // server confirmed it may have been stored all the same.
+  // sentMessageReachedServer reports whether the thread holds the message this
+  // send stored, by its send id: a send whose connection dropped before the
+  // server confirmed it may have been stored all the same. The server may
+  // still be writing it when the request fails, so it looks a few times.
   async function sentMessageReachedServer(
     threadID: string,
     signal: AbortSignal,
-    content: string,
-    knownMessageIDs: Set<string>,
+    sendId: string,
   ): Promise<boolean> {
-    await whenReachable(signal);
-    try {
-      const response = await getThread(threadID);
-      return response.messages.some(
-        (message) =>
-          message.role === "user" &&
-          !knownMessageIDs.has(message.id) &&
-          message.content === content.trim(),
-      );
-    } catch {
-      return false;
+    for (let look = 0; look < SENT_MESSAGE_LOOKS; look++) {
+      if (look > 0)
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, SENT_MESSAGE_LOOK_DELAY_MS),
+        );
+      await whenReachable(signal);
+      try {
+        const response = await getThread(threadID);
+        if (
+          response.messages.some(
+            (message) => message.clientMessageId === sendId,
+          )
+        )
+          return true;
+      } catch {
+        // Not reachable after all: try again, then give up.
+      }
     }
+    return false;
   }
 
   // attachToRunningTurn picks up a turn found running when its thread loads: a

@@ -47,8 +47,9 @@ function sse(chunks: string[], dropAtEnd = false) {
 
 function shellFetch(routes: {
   thread: () => Response;
-  stream?: () => Response;
+  stream?: (sendId: string) => Response;
   attach: () => Response;
+  stop?: (url: string) => Response | Promise<Response>;
 }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -62,8 +63,14 @@ function shellFetch(routes: {
       url === "/api/threads/t1/messages:stream" &&
       init?.method === "POST" &&
       routes.stream !== undefined
-    )
-      return routes.stream();
+    ) {
+      const body = JSON.parse(String(init.body)) as {
+        clientMessageId?: string;
+      };
+      return routes.stream(body.clientMessageId ?? "");
+    }
+    if (url.startsWith("/api/threads/t1/messages:stop") && routes.stop)
+      return routes.stop(url);
     if (url === "/api/threads/t1/messages:attach") return routes.attach();
     throw new Error(`unexpected fetch ${url}`);
   });
@@ -202,6 +209,7 @@ test("opening a thread whose answer is still being written follows it live", asy
 // that is no failed send.
 test("a drop before the first event follows the turn the server started", async () => {
   let threadLoads = 0;
+  let sentId = "";
   const fetchMock = shellFetch({
     thread: () => {
       threadLoads += 1;
@@ -217,12 +225,14 @@ test("a drop before the first event follows the turn the server started", async 
                   threadId: "t1",
                   role: "user",
                   content: "Hi",
+                  clientMessageId: sentId,
                   createdAt: "2026-05-30T00:00:00Z",
                 },
               ],
       });
     },
-    stream: () => {
+    stream: (sendId) => {
+      sentId = sendId;
       throw new TypeError("Load failed");
     },
     attach: () => sse([userMessage, ...answerEvents("Made it")]),
@@ -251,4 +261,72 @@ test("a send that never reached the server still fails as before", async () => {
 
   expect(await screen.findByText(/failed to send/i)).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
+});
+
+// The same text sent earlier is not this send: only the send id counts.
+test("an older identical question does not pass for the dropped send", async () => {
+  const older = {
+    id: "m0",
+    threadId: "t1",
+    role: "user",
+    content: "Hi",
+    clientMessageId: "send-older",
+    createdAt: "2026-05-29T00:00:00Z",
+  };
+  const fetchMock = shellFetch({
+    thread: () => Response.json({ thread, messages: [older] }),
+    stream: () => {
+      throw new TypeError("Load failed");
+    },
+    attach: () => new Response(null, { status: 204 }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await sendHi();
+
+  expect(await screen.findByText(/failed to send/i)).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
+});
+
+// A stop names the send it belongs to, and one that fails leaves the answer
+// running on screen: dropping the fetch no longer stops the server.
+test("a stop that fails keeps the answer running and says so", async () => {
+  let release: (() => void) | null = null;
+  const stopURLs: string[] = [];
+  let sentId = "";
+  const fetchMock = shellFetch({
+    thread: () => Response.json({ thread, messages: [] }),
+    stream: (sendId) => {
+      sentId = sendId;
+      const encoder = new TextEncoder();
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(userMessage));
+            release = () => {
+              for (const event of answerEvents("Kept going"))
+                controller.enqueue(encoder.encode(event));
+              controller.close();
+            };
+          },
+        }),
+      );
+    },
+    attach: () => new Response(null, { status: 204 }),
+    stop: (url) => {
+      stopURLs.push(url);
+      return new Response("", { status: 503 });
+    },
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await sendHi();
+  fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
+
+  expect(await screen.findByText(/failed to stop/i)).toBeInTheDocument();
+  expect(stopURLs[0]).toContain(`sendId=${sentId}`);
+  expect(sentId).not.toBe("");
+  expect(screen.getByRole("button", { name: "Stop response" })).toBeVisible();
+  release!();
+  expect(await screen.findByText("Kept going")).toBeInTheDocument();
 });

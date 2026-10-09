@@ -155,9 +155,30 @@ describe("followRunningTurn", () => {
         signal: new AbortController().signal,
         handlers,
         retryDelayMs: 0,
+        progressAfterMs: 0,
       }),
     ).resolves.toBe("attached");
     expect(fetchMock).toHaveBeenCalledTimes(MAX_ATTACH_ATTEMPTS + 3);
+  });
+
+  // Every attach replays the turn from its first event, so events alone prove
+  // nothing: a link that keeps cutting out right after the replay must still
+  // run out of attempts instead of looping for the whole turn.
+  test("attaches that drop right after the replay still use up the budget", async () => {
+    const fetchMock = vi.fn(async () =>
+      sseResponse(['event: assistant_delta\ndata: {"content":"a"}\n\n']),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      followRunningTurn({
+        threadId: "t1",
+        signal: new AbortController().signal,
+        handlers,
+        retryDelayMs: 0,
+      }),
+    ).rejects.toBeInstanceOf(StreamInterruptedError);
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_ATTACH_ATTEMPTS);
   });
 
   test("reports a turn that finished meanwhile", async () => {

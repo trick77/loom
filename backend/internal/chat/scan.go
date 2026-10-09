@@ -93,7 +93,7 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 }
 
 // messageColumns is the full messages projection scanMessage reads.
-const messageColumns = "id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, created_at"
+const messageColumns = "id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, client_message_id, created_at"
 
 // transcriptColumns is the narrow projection for callers that only render a
 // "Role: content" transcript (thread digests, memory generation). It leaves out
@@ -151,6 +151,7 @@ func scanMessage(row rowScanner) (Message, error) {
 		&durationMs,
 		&model,
 		&reasoningEffort,
+		&message.ClientMessageID,
 		&createdAt,
 	); err != nil {
 		return Message{}, err

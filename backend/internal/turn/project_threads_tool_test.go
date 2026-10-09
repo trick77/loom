@@ -36,7 +36,7 @@ func seedThread(t *testing.T, st *chat.Store, userID, projectID, title string, t
 		t.Fatalf("create thread %q: %v", title, err)
 	}
 	for _, turn := range turns {
-		if _, err := st.AddMessageWithAttachments(context.Background(), userID, thread.ID, chat.Role(turn[0]), turn[1], nil, nil); err != nil {
+		if _, err := st.AddMessageWithAttachments(context.Background(), userID, thread.ID, chat.Role(turn[0]), turn[1], nil, nil, ""); err != nil {
 			t.Fatalf("add message to %q: %v", title, err)
 		}
 	}
