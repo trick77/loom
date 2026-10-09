@@ -85,7 +85,6 @@ func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content str
 	run := e.Prepare(RunConfig{
 		Stream:      stream,
 		Titles:      titles,
-		Inference:   inference,
 		User:        testUser,
 		Thread:      store.Thread,
 		UserMessage: userMessage,
@@ -95,7 +94,6 @@ func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content str
 		StreamCtx:     ctx,
 		TurnCtx:       ctx,
 		ReqCtx:        context.Background(),
-		Content:       content,
 		PriorMessages: prior,
 	})
 	result, err := run.RunAssistantLoop(ctx)

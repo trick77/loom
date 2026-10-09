@@ -37,12 +37,12 @@ type Run struct {
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.
+// The turn's model calls are attributed to User and Thread.
 type RunConfig struct {
-	Stream    Emitter
-	Titles    *ReasoningTitleTracker
-	Inference llm.InferenceMetadata
-	User      auth.User
-	Thread    chat.Thread
+	Stream Emitter
+	Titles *ReasoningTitleTracker
+	User   auth.User
+	Thread chat.Thread
 	// UserMessage is the persisted user message this turn answers.
 	UserMessage chat.Message
 	// Usage sums every model call of the turn; Start times its wall clock.
@@ -59,8 +59,8 @@ type PrepareInput struct {
 	StreamCtx context.Context
 	TurnCtx   context.Context
 	ReqCtx    context.Context
-	// Content and the attachment ids are the user's send as requested.
-	Content               string
+	// The attachment ids are the user's send as requested; its text is
+	// RunConfig.UserMessage.
 	ImageAttachmentIDs    []string
 	DocumentAttachmentIDs []string
 	PriorMessages         []chat.Message
@@ -90,10 +90,14 @@ type turnPlan struct {
 // the first token.
 func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
 	t := &Run{
-		e:           s,
-		stream:      c.Stream,
-		titles:      c.Titles,
-		inference:   c.Inference,
+		e:      s,
+		stream: c.Stream,
+		titles: c.Titles,
+		inference: llm.InferenceMetadata{
+			UserID:   c.User.ID,
+			Username: c.User.Username,
+			ThreadID: c.Thread.ID,
+		},
 		user:        c.User,
 		thread:      c.Thread,
 		userMessage: c.UserMessage,
@@ -157,7 +161,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	)
 	parallel(
 		func() {
-			imageRoute = t.e.classifyImageTurn(in.StreamCtx, t.inference, in.Content, len(in.ImageAttachmentIDs) > 0, in.PriorMessages)
+			imageRoute = t.e.classifyImageTurn(in.StreamCtx, t.inference, t.userMessage.Content, len(in.ImageAttachmentIDs) > 0, in.PriorMessages)
 		},
 		func() {
 			if freshlyClassified {

@@ -105,17 +105,18 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// edges — the RAG query embedding, a live vision description for an attached
 	// image, the image tool — log under the same user/thread as the chat calls.
 	// The per-call metadata attached below (purposes, rounds, reasoning effort)
-	// builds on this; without it those edge calls logged anonymously.
-	turnAttribution := llm.InferenceMetadata{
+	// builds on this; without it those edge calls logged anonymously. The
+	// reasoning titles below log under it too.
+	inference := llm.InferenceMetadata{
 		UserID:   user.ID,
 		Username: user.Username,
 		ThreadID: threadID,
 	}
-	streamCtx = llm.WithInferenceMetadata(streamCtx, turnAttribution)
+	streamCtx = llm.WithInferenceMetadata(streamCtx, inference)
 	// The prompt-assembly helpers below run on the request context rather than
 	// streamCtx, so they need the same attribution attached separately — and the
 	// accumulator, so their calls (the RAG query embedding) count in the turn.
-	turnCtx := llm.WithUsageAccumulator(llm.WithInferenceMetadata(r.Context(), turnAttribution), usageTotal)
+	turnCtx := llm.WithUsageAccumulator(llm.WithInferenceMetadata(r.Context(), inference), usageTotal)
 	turnStart := time.Now()
 	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream)
 	defer unregisterStream()
@@ -145,7 +146,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID}
 	// Background sweep-line generation: the working title from the question
 	// right away, alongside the pre-answer gates, then one title per reasoning
 	// round. The deferred waits keep any title goroutine from writing to the
@@ -159,7 +159,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	run := s.engine.Prepare(turn.RunConfig{
 		Stream:      emitter,
 		Titles:      titles,
-		Inference:   inference,
 		User:        user,
 		Thread:      thread,
 		UserMessage: userMessage,
@@ -169,7 +168,6 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		StreamCtx:             streamCtx,
 		TurnCtx:               turnCtx,
 		ReqCtx:                r.Context(),
-		Content:               body.Content,
 		ImageAttachmentIDs:    body.ImageAttachmentIDs,
 		DocumentAttachmentIDs: body.DocumentAttachmentIDs,
 		PriorMessages:         priorMessages,
