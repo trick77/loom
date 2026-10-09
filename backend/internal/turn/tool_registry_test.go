@@ -283,16 +283,25 @@ func TestDocgenToolsWidenToolCallIdleTimeout(t *testing.T) {
 	for _, tool := range e.availableTools(chat.Thread{}, newToolGate(string(classifier.Coding), "", "")) {
 		offered[tool.Function.Name] = tool
 	}
+	// Each case waits out the server's pause, so they run in parallel: the
+	// handler keeps no state, and the client and offered are only read. The
+	// parent's server cleanup runs after every subtest.
 	for _, gen := range allDocTools() {
-		tool, ok := offered[gen.ToolName()]
-		if !ok {
-			t.Fatalf("%s not offered", gen.ToolName())
-		}
-		if err := stream(tool); err != nil {
-			t.Errorf("%s: stream error = %v, want the widened idle window", gen.ToolName(), err)
-		}
+		t.Run(gen.ToolName(), func(t *testing.T) {
+			t.Parallel()
+			tool, ok := offered[gen.ToolName()]
+			if !ok {
+				t.Fatalf("%s not offered", gen.ToolName())
+			}
+			if err := stream(tool); err != nil {
+				t.Errorf("%s: stream error = %v, want the widened idle window", gen.ToolName(), err)
+			}
+		})
 	}
-	if err := stream(offered[conversationSearchToolName]); !errors.Is(err, llm.ErrStreamStalled) {
-		t.Fatalf("non-document tool: error = %v, want ErrStreamStalled", err)
-	}
+	t.Run("non-document tool", func(t *testing.T) {
+		t.Parallel()
+		if err := stream(offered[conversationSearchToolName]); !errors.Is(err, llm.ErrStreamStalled) {
+			t.Fatalf("non-document tool: error = %v, want ErrStreamStalled", err)
+		}
+	})
 }
