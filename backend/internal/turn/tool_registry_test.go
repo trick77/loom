@@ -196,7 +196,7 @@ func TestDocgenToolsWidenToolCallIdleTimeout(t *testing.T) {
 		flusher, _ := w.(http.Flusher)
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"x","arguments":"{\"a\""}}]}}]}` + "\n\n"))
 		flusher.Flush()
-		time.Sleep(150 * time.Millisecond)
+		time.Sleep(400 * time.Millisecond)
 		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":1}"}}]},"finish_reason":"tool_calls"}]}` + "\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
@@ -206,7 +206,7 @@ func TestDocgenToolsWidenToolCallIdleTimeout(t *testing.T) {
 		Registry:    llmwiretest.Registry(),
 		Models:      llm.Roles{Chat: llmwiretest.ChatModel},
 		Timeout:     5 * time.Second,
-		IdleTimeout: 40 * time.Millisecond,
+		IdleTimeout: 100 * time.Millisecond,
 	}, server.Client())
 	if err != nil {
 		t.Fatal(err)
