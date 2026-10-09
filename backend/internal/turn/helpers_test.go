@@ -60,7 +60,7 @@ func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content str
 	if err != nil {
 		t.Fatal(err)
 	}
-	userMessage, err := store.AddMessageWithAttachments(ctx, testUser.ID, store.Thread.ID, chat.RoleUser, content, nil, nil)
+	userMessage, err := store.AddMessageWithAttachments(ctx, testUser.ID, store.Thread.ID, chat.RoleUser, content, nil, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

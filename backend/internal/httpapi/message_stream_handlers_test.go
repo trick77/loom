@@ -1626,9 +1626,9 @@ func TestActiveStreamRegistryCancelsPreviousStreamWithSupersededCause(t *testing
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 
-	unregisterFirst := registry.register("user_1", "thr_1", cancel)
+	unregisterFirst := registry.register("user_1", "thr_1", "", cancel, nil)
 	defer unregisterFirst()
-	unregisterSecond := registry.register("user_1", "thr_1", func(error) {})
+	unregisterSecond := registry.register("user_1", "thr_1", "", func(error) {}, nil)
 	defer unregisterSecond()
 
 	if !errors.Is(context.Cause(ctx), errStreamSuperseded) {
@@ -1652,15 +1652,6 @@ func TestStreamCancelDetailsClassifiesCancellationSource(t *testing.T) {
 		source, reason := streamCancelDetails(ctx)
 		if source != "superseded_stream" || reason != errStreamSuperseded.Error() {
 			t.Fatalf("details = %q %q, want superseded stream", source, reason)
-		}
-	})
-
-	t.Run("request context", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		source, reason := streamCancelDetails(ctx)
-		if source != "request_context" || reason != context.Canceled.Error() {
-			t.Fatalf("details = %q %q, want request context", source, reason)
 		}
 	})
 

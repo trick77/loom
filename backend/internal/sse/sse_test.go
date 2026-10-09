@@ -123,3 +123,43 @@ func TestWriter_HeartbeatStopIsIdempotent(t *testing.T) {
 	stop()
 	stop() // must not panic or block
 }
+
+// deadlineRecorder records the write deadline set through
+// http.ResponseController and counts the writes made while one was set.
+type deadlineRecorder struct {
+	*httptest.ResponseRecorder
+	deadline        time.Time
+	writesUnderTime int
+}
+
+func (d *deadlineRecorder) SetWriteDeadline(t time.Time) error {
+	d.deadline = t
+	return nil
+}
+
+func (d *deadlineRecorder) Write(p []byte) (int, error) {
+	if !d.deadline.IsZero() {
+		d.writesUnderTime++
+	}
+	return d.ResponseRecorder.Write(p)
+}
+
+// A client that stops reading (a frozen phone tab) must not block a write
+// forever: each write runs under a deadline, cleared afterwards so it never
+// outlives the stream on a kept-alive connection.
+func TestWriter_SendWritesUnderADeadlineAndClearsIt(t *testing.T) {
+	rec := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	w, err := NewWriter(rec)
+	if err != nil {
+		t.Fatalf("NewWriter error: %v", err)
+	}
+	if err := w.Send("ping", "1"); err != nil {
+		t.Fatalf("Send error: %v", err)
+	}
+	if rec.writesUnderTime == 0 {
+		t.Fatal("Send wrote without a write deadline")
+	}
+	if !rec.deadline.IsZero() {
+		t.Fatalf("deadline = %v after Send, want cleared", rec.deadline)
+	}
+}

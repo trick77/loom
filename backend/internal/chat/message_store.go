@@ -32,14 +32,15 @@ func (s *Store) AddMessageWithCitations(ctx context.Context, userID, threadID st
 // AddMessageWithAttachments persists a message together with the attachments the
 // user sent with it (uploaded images and attached documents), so the sent
 // previews survive a reload. attachments may be nil for a message without any.
-func (s *Store) AddMessageWithAttachments(ctx context.Context, userID, threadID string, role Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage) (Message, error) {
+func (s *Store) AddMessageWithAttachments(ctx context.Context, userID, threadID string, role Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage, clientMessageID string) (Message, error) {
 	return s.insertMessage(ctx, messageInsert{
-		userID:      userID,
-		threadID:    threadID,
-		role:        role,
-		content:     content,
-		attachments: attachments,
-		pastedTexts: pastedTexts,
+		userID:          userID,
+		threadID:        threadID,
+		role:            role,
+		content:         content,
+		attachments:     attachments,
+		pastedTexts:     pastedTexts,
+		clientMessageID: clientMessageID,
 	})
 }
 
@@ -58,6 +59,8 @@ type messageInsert struct {
 	attachments   json.RawMessage
 	pastedTexts   json.RawMessage
 	contentBlocks json.RawMessage
+	// clientMessageID is the id the client gave the send; "" when none.
+	clientMessageID string
 }
 
 func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, error) {
@@ -131,9 +134,10 @@ INSERT INTO messages (
     cost_nano_usd,
     duration_ms,
     model,
-    reasoning_effort
+    reasoning_effort,
+    client_message_id
 )
-VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		messageID,
 		threadID,
 		userID,
@@ -156,6 +160,7 @@ VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		usage.DurationMs,
 		usage.Model,
 		usage.ReasoningEffort,
+		in.clientMessageID,
 	)
 	if err != nil {
 		return Message{}, fmt.Errorf("insert message: %w", err)

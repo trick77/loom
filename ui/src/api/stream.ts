@@ -47,6 +47,16 @@ export class StreamInterruptedError extends Error {
   }
 }
 
+// StreamConnectError: the send request itself failed on the network (fetch
+// rejected), so no response arrived. The server may still have stored the
+// message; the caller asks before treating the send as failed.
+export class StreamConnectError extends Error {
+  constructor() {
+    super("stream request failed");
+    this.name = "StreamConnectError";
+  }
+}
+
 // StreamFailedError carries the server's own `error` event text, which is
 // written for the user (e.g. "image generation was not completed").
 export class StreamFailedError extends UserFacingError {
@@ -73,6 +83,8 @@ export async function streamMessage(
     documentAttachmentIds?: string[];
     imageAttachmentIds?: string[];
     pastedTexts?: MessagePastedText[];
+    // The client's id for this send: stored with the message, named by a stop.
+    clientMessageId?: string;
   } = {},
 ): Promise<void> {
   const requestBody: {
@@ -80,7 +92,11 @@ export async function streamMessage(
     documentAttachmentIds?: string[];
     imageAttachmentIds?: string[];
     pastedTexts?: MessagePastedText[];
+    clientMessageId?: string;
   } = { content };
+  if (opts.clientMessageId) {
+    requestBody.clientMessageId = opts.clientMessageId;
+  }
   if (opts.documentAttachmentIds && opts.documentAttachmentIds.length > 0) {
     requestBody.documentAttachmentIds = opts.documentAttachmentIds;
   }
@@ -90,16 +106,50 @@ export async function streamMessage(
   if (opts.pastedTexts && opts.pastedTexts.length > 0) {
     requestBody.pastedTexts = opts.pastedTexts;
   }
-  const response = await fetch(
-    `/api/threads/${encodeURIComponent(threadId)}/messages:stream`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-      signal,
-    },
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/threads/${encodeURIComponent(threadId)}/messages:stream`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+        signal,
+      },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new StreamConnectError();
+  }
   await readSSEStream(await expectStreamResponse(response), handlers);
+}
+
+// attachStream reattaches to the thread's running turn: the server replays every
+// event the turn has sent so far, then follows it live, so the handlers see the
+// turn from its first event. "finished" means no turn is running any more; its
+// answer, if any, is already saved on the thread.
+export async function attachStream(
+  threadId: string,
+  handlers: StreamHandlers,
+  signal?: AbortSignal,
+): Promise<"attached" | "finished"> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/threads/${encodeURIComponent(threadId)}/messages:attach`,
+      { method: "GET", signal },
+    );
+  } catch (error) {
+    // fetch rejects with a TypeError when the network is down: the same
+    // dropped connection as a stream cut mid-turn.
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new StreamInterruptedError();
+  }
+  if (response.status === 204) return "finished";
+  await readSSEStream(await expectStreamResponse(response), handlers);
+  return "attached";
 }
 
 // streamIncognitoMessage runs an ephemeral turn against the stateless incognito
@@ -167,7 +217,20 @@ async function readSSEStream(
   };
   try {
     for (;;) {
-      const { value, done } = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        // Our own abort stays an AbortError. Anything else is the connection
+        // going away (Safari: TypeError "Load failed"), typically a phone
+        // freezing the tab: after the answer arrived that changes nothing,
+        // before it the turn was interrupted, not failed to send.
+        if (error instanceof DOMException && error.name === "AbortError")
+          throw error;
+        if (settled) break;
+        throw new StreamInterruptedError();
+      }
+      const { value, done } = chunk;
       if (done) {
         break;
       }

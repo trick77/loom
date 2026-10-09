@@ -196,7 +196,7 @@ func TestStopAndWaitBlocksUntilTheStreamUnregisters(t *testing.T) {
 	var registry activeStreamRegistry
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	unregister := registry.register(testUser.ID, "thr_1", cancel)
+	unregister := registry.register(testUser.ID, "thr_1", "", cancel, nil)
 
 	// The handler unwinds shortly after the cancel, as a canceled turn does.
 	go func() {
@@ -221,9 +221,9 @@ func TestStopAndWaitBlocksUntilTheStreamUnregisters(t *testing.T) {
 // wait exists to prevent.
 func TestStopAndWaitStillWaitsForAStreamAlreadyStopped(t *testing.T) {
 	var registry activeStreamRegistry
-	unregister := registry.register(testUser.ID, "thr_1", func(error) {})
+	unregister := registry.register(testUser.ID, "thr_1", "", func(error) {}, nil)
 
-	registry.stop(testUser.ID, "thr_1", errStreamStopRequested)
+	registry.stop(testUser.ID, "thr_1", "", errStreamStopRequested)
 
 	const (
 		unwindDelay = 20 * time.Millisecond
@@ -253,7 +253,7 @@ func TestStopAndWaitStillWaitsForAStreamAlreadyStopped(t *testing.T) {
 func TestStopAndWaitGivesUpAfterTheTimeout(t *testing.T) {
 	var registry activeStreamRegistry
 	// A turn parked on something that ignores its context: nothing ever unregisters.
-	unregister := registry.register(testUser.ID, "thr_1", func(error) {})
+	unregister := registry.register(testUser.ID, "thr_1", "", func(error) {}, nil)
 	defer unregister()
 
 	done := make(chan struct{})
@@ -275,7 +275,7 @@ func TestStopAndWaitIsScopedToTheOwningUser(t *testing.T) {
 	var registry activeStreamRegistry
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	unregister := registry.register("user_1", "thr_1", cancel)
+	unregister := registry.register("user_1", "thr_1", "", cancel, nil)
 	defer unregister()
 
 	registry.stopAndWait("user_2", "thr_1", errStreamThreadDeleted, 20*time.Millisecond)

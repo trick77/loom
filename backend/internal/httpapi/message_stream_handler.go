@@ -51,6 +51,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validSendID(body.ClientMessageID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid clientMessageId")
+		return
+	}
+
 	threadID := r.PathValue("threadID")
 	thread, found, err := s.thread.GetThread(r.Context(), user.ID, threadID)
 	if err != nil {
@@ -88,12 +93,19 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// into body.Content, so the model and every content-derived path (title,
 	// classifier, RAG, history) are unchanged; this is render-only metadata.
 	pastedTexts := turn.MarshalPastedTexts(body.PastedTexts)
-	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments, pastedTexts)
+	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments, pastedTexts, body.ClientMessageID)
 	if err != nil {
 		writeStoreError(w, r, err)
 		return
 	}
-	streamCtx, cancelStream := context.WithCancelCause(r.Context())
+	// The turn runs detached from the client. A phone that freezes the tab drops
+	// the connection mid-answer; the answer must still finish and be saved, so
+	// the client can reattach (handleAttachStreamMessage) or find it on reload.
+	// liveCtx ends only on shutdown; stop, supersede and delete cancel streamCtx
+	// through activeStreams.
+	liveCtx, endLive := s.detachedFromClient(r.Context())
+	defer endLive()
+	streamCtx, cancelStream := context.WithCancelCause(liveCtx)
 	defer cancelStream(nil)
 	// Sum token usage across every model call this turn makes — answer turns, tool
 	// rounds, and the background reasoning/thread-title helpers — so the persisted
@@ -113,28 +125,51 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		ThreadID: threadID,
 	}
 	streamCtx = llm.WithInferenceMetadata(streamCtx, inference)
-	// The prompt-assembly helpers below run on the request context rather than
-	// streamCtx, so they need the same attribution attached separately — and the
-	// accumulator, so their calls (the RAG query embedding) count in the turn.
-	turnCtx := llm.WithUsageAccumulator(llm.WithInferenceMetadata(r.Context(), inference), usageTotal)
+	// The prompt-assembly helpers below run on liveCtx rather than streamCtx, so
+	// they need the same attribution attached separately — and the accumulator,
+	// so their calls (the RAG query embedding) count in the turn.
+	turnCtx := llm.WithUsageAccumulator(llm.WithInferenceMetadata(liveCtx, inference), usageTotal)
 	turnStart := time.Now()
-	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream)
-	defer unregisterStream()
+	// The turn writes its events into the hub, never to a client directly.
+	stream := newTurnHub()
+	unregisterStream := s.activeStreams.register(user.ID, threadID, body.ClientMessageID, cancelStream, stream)
+	// endTurn ends the turn for every client: followers drain the hub and
+	// return, and the thread no longer reports a running turn. Idempotent.
+	endTurn := func() {
+		stream.close()
+		unregisterStream()
+	}
+	defer endTurn()
 
-	stream, err := sse.NewWriter(w)
+	writer, err := sse.NewWriter(w)
 	if err != nil {
 		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Keep the connection alive through idle proxies during long silent gaps —
+	// notably while a model serializes a large tool-call argument server-side and
+	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
+	defer writer.Heartbeat(r.Context(), streamHeartbeatInterval)()
+	// The sending client follows the hub like a reattaching one. The handler
+	// waits for it, as w is only valid until the handler returns; sse's write
+	// deadline bounds a client that stopped reading.
+	following := make(chan struct{})
+	go func() {
+		defer close(following)
+		stream.follow(r.Context(), writer, false)
+	}()
+	// The turn is over before the sending client is waited for: a client that
+	// stopped reading must not keep it registered, which would hold a thread
+	// delete and report the thread as still answering.
+	defer func() {
+		endTurn()
+		<-following
+	}()
 	// From here on the 200 is committed, so a panic must end the stream with an
 	// error event rather than reach the recovery middleware, which can no longer
 	// answer with a 500.
 	defer recoverToStream(stream, r)
-	// Keep the connection alive through idle proxies during long silent gaps —
-	// notably while a model serializes a large tool-call argument server-side and
-	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
-	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 	// Book what the turn spent on every exit path. Deferred ahead of
 	// titles.Wait below so it runs after it: the reasoning-title calls must have
 	// finished before the turn's cost is read. The success path settles
@@ -166,7 +201,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}, turn.PrepareInput{
 		StreamCtx:             streamCtx,
 		TurnCtx:               turnCtx,
-		ReqCtx:                r.Context(),
+		ReqCtx:                liveCtx,
 		ImageAttachmentIDs:    body.ImageAttachmentIDs,
 		DocumentAttachmentIDs: body.DocumentAttachmentIDs,
 		PriorMessages:         priorMessages,
@@ -238,8 +273,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			finishCosts()
 			// End the stream deliberately. A client that did not issue the stop
 			// itself (the thread open in a second tab) would otherwise read an
-			// unterminated stream as a dropped connection. The write fails
-			// harmlessly when the client is the one that went away.
+			// unterminated stream as a dropped connection.
 			_ = stream.SendJSON("done", struct{}{})
 			return
 		}
@@ -339,21 +373,41 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		writeNotFound(w)
 		return
 	}
-	// 409 when no stream is registered yet (the turn is still being set up):
-	// the client then drops its fetch, which cancels that turn instead.
-	if !s.activeStreams.stop(user.ID, threadID, stopCause(r.URL.Query().Get("source"))) {
+	// 409 when the send's turn is not registered yet (it is still being set
+	// up). The turn runs detached from the client, so the client dropping its
+	// fetch does not end it: a stop naming the send (sendId) is kept and
+	// applied when that turn registers.
+	sendID := r.URL.Query().Get("sendId")
+	if !validSendID(sendID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid sendId")
+		return
+	}
+	if !s.activeStreams.stop(user.ID, threadID, sendID, stopCause(r.URL.Query().Get("source"))) {
 		writeJSONError(w, http.StatusConflict, "no active stream")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// validSendID accepts "" (no id) or a client send id: up to 64 characters of
+// [A-Za-z0-9_-]. It is stored and used as a map key, never interpreted.
+func validSendID(id string) bool {
+	if len(id) > 64 {
+		return false
+	}
+	for _, c := range id {
+		allowed := c == '-' || c == '_' || ('0' <= c && c <= '9') || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
+		if !allowed {
+			return false
+		}
+	}
+	return true
+}
+
 // stopCause builds the cancellation cause for an explicit client stop. It always
 // wraps errStreamStopRequested (so cancel_source stays "stop_endpoint"), and folds
 // the client-declared UI trigger — "stop_button", "escape", "new_send" — into the
-// cause message so it surfaces in the canceled log's reason field. Attribution is
-// reliable because the client awaits this stop request before aborting its fetch,
-// so this cause wins the WithCancelCause race over the raw request-context cancel.
+// cause message so it surfaces in the canceled log's reason field.
 func stopCause(source string) error {
 	source = sanitizeCancelSource(source)
 	if source == "" {
@@ -378,6 +432,41 @@ func sanitizeCancelSource(source string) string {
 	return b.String()
 }
 
+// handleAttachStreamMessage reattaches a client to the user's running turn on
+// the thread: it replays every event the turn has sent so far, then follows it
+// live to the end. 204 when no turn is running; the client then reloads the
+// thread, where a finished turn's answer is already saved.
+func (s *server) handleAttachStreamMessage(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	hub := s.activeStreams.lookup(user.ID, r.PathValue("threadID"))
+	if hub == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writer, err := sse.NewWriter(w)
+	if err != nil {
+		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer writer.Heartbeat(r.Context(), streamHeartbeatInterval)()
+	hub.follow(r.Context(), writer, true)
+}
+
+// detachedFromClient returns a context with parent's values that a dropped
+// client connection does not end; only the server's shutdown does.
+func (s *server) detachedFromClient(parent context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancelCause(context.WithoutCancel(parent))
+	stop := context.AfterFunc(s.lifetime, func() { cancel(context.Cause(s.lifetime)) })
+	return ctx, func() {
+		stop()
+		cancel(nil)
+	}
+}
+
 func streamCancelDetails(ctx context.Context) (string, string) {
 	cause := context.Cause(ctx)
 	if cause == nil {
@@ -391,8 +480,6 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 		source = "thread_deleted"
 	case errors.Is(cause, errStreamSuperseded):
 		source = "superseded_stream"
-	case errors.Is(cause, context.Canceled):
-		source = "request_context"
 	case errors.Is(cause, context.DeadlineExceeded):
 		source = "deadline"
 	}
@@ -404,7 +491,7 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 // failed turn instead of a stream that just stops. The panic is logged here
 // with its stack; it is not re-raised because the recovery middleware could
 // only write a 500 into the open stream.
-func recoverToStream(stream *sse.Writer, r *http.Request) {
+func recoverToStream(stream turn.Emitter, r *http.Request) {
 	if p := recover(); p != nil {
 		slog.Error("panic recovered mid-stream", "err", p, "path", r.URL.Path, "stack", string(debug.Stack()))
 		_ = stream.SendJSON("error", map[string]string{"error": "internal server error"})

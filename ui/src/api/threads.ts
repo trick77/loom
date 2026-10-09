@@ -140,22 +140,24 @@ export async function bulkDeleteThreads(
   });
 }
 
-// Bound on the stop round-trip. Callers await this before aborting the stream
-// fetch so the attributed stop cause wins the server-side cancel race; the timeout
-// caps how long a hung stop endpoint can defer that abort. On timeout the request
-// rejects and the caller falls through to a plain abort (logged as request_context).
+// Bound on the stop round-trip. On timeout the request rejects: the stop did
+// not reach the server, and the turn keeps running there.
 const stopMessageTimeoutMs = 4000;
 
-// source labels which UI action triggered the stop ("stop_button", "escape") so the
-// backend can attribute the cancellation in its logs. Callers should await this
-// before aborting the stream fetch so the stop cause wins the server-side cancel
-// race over the raw request-context drop. Resolves false when the server had no
-// stream registered yet (409): only dropping the fetch stops that turn.
+// stopMessage asks the server to end the thread's turn. The turn runs detached
+// from the client, so this is the only way to stop it: dropping the stream
+// fetch does not. source labels the UI action ("stop_button", "escape") for the
+// server's logs. sendId names the send whose turn to end; a stop that arrives
+// before that turn registers is kept for it, and resolves false (409).
 export async function stopMessage(
   threadId: string,
   source?: string,
+  sendId?: string,
 ): Promise<boolean> {
-  const query = source ? `?source=${encodeURIComponent(source)}` : "";
+  const params: string[] = [];
+  if (source) params.push(`source=${encodeURIComponent(source)}`);
+  if (sendId) params.push(`sendId=${encodeURIComponent(sendId)}`);
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
   const response = await request(
     `/api/threads/${encodeURIComponent(threadId)}/messages:stop${query}`,
     "failed to stop message",

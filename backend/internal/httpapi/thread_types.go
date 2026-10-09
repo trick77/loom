@@ -106,6 +106,9 @@ type getThreadResponse struct {
 	// Share is the thread's share state (nil if never shared), used by the UI to show
 	// the Share button's "shared" state and the "new messages since snapshot" badge.
 	Share *shareSummary `json:"share,omitempty"`
+	// Streaming: an answer is still being written. A reloaded page reattaches
+	// to it (messages:attach) instead of showing the question unanswered.
+	Streaming bool `json:"streaming,omitempty"`
 }
 
 // shareSummary is the owner-facing share state attached to a thread response and
@@ -126,6 +129,10 @@ type streamMessageRequest struct {
 	// sees it); they are persisted separately only so the sent bubble can render a
 	// chip instead of the inline wall of text.
 	PastedTexts []chat.MessagePastedText `json:"pastedTexts"`
+	// ClientMessageID is the client's id for this send, stored with the user
+	// message. A stop names it to end only this send's turn, and a client whose
+	// connection dropped before the server confirmed the message looks for it.
+	ClientMessageID string `json:"clientMessageId"`
 	// ReasoningEffort is accepted and IGNORED. Loom no longer sends a reasoning
 	// level (see llm's reasoning note), but decodeJSONBody sets
 	// DisallowUnknownFields, so dropping the field outright would 400 every

@@ -69,6 +69,10 @@ type Deps struct {
 	// Background owns the goroutines that outlive a request (post-turn memory
 	// refreshes). nil means a group nobody stops, which is what tests want.
 	Background *background.Group
+	// Lifetime ends when the server shuts down. A chat turn runs detached from
+	// its client, so a dropped connection does not end it; this is what still
+	// stops it on shutdown. nil means a lifetime that never ends.
+	Lifetime context.Context
 	// ReasoningTitleHold and ReasoningTitleStartBytes tune the reasoning title
 	// timing (see turn.Config); zero keeps the defaults, tests shorten them.
 	ReasoningTitleHold       time.Duration
@@ -100,6 +104,7 @@ type server struct {
 	postLogoutRedirectURL string
 	publicURL             string
 	activeStreams         activeStreamRegistry
+	lifetime              context.Context
 	// engine runs the chat turns the stream handlers start.
 	engine *turn.Engine
 }
@@ -135,7 +140,7 @@ type ThreadStore interface {
 	DeleteThread(context.Context, string, string) (bool, error)
 
 	// Messages.
-	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage) (chat.Message, error)
+	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage, string) (chat.Message, error)
 	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
 	AddMessageCost(context.Context, string, string, int64) (bool, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
@@ -256,8 +261,13 @@ func newServer(d Deps) *server {
 	if bg == nil {
 		bg = background.New(context.Background())
 	}
+	lifetime := d.Lifetime
+	if lifetime == nil {
+		lifetime = context.Background()
+	}
 	s := &server{
 		background:            bg,
+		lifetime:              lifetime,
 		version:               d.Version,
 		model:                 d.Model,
 		oidc:                  d.OIDC,
@@ -344,6 +354,7 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	mux.Handle("DELETE /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleDeleteThread)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
+	mux.Handle("GET /api/threads/{threadID}/messages:attach", s.requireAuth(http.HandlerFunc(s.handleAttachStreamMessage)))
 	// Incognito: a fully ephemeral, stateless turn — no thread/messages/artifacts
 	// rows, no memory reads or writes. History is supplied by the client per request.
 	mux.Handle("POST /api/incognito/messages:stream", s.requireAuth(http.HandlerFunc(s.handleIncognitoStreamMessage)))
@@ -382,6 +393,47 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 type activeStreamRegistry struct {
 	mu      sync.Mutex
 	streams map[activeStreamKey]*activeStream
+	// earlyStops holds a stop for a send whose turn has not registered yet: it
+	// is still being set up. The turn runs detached from its client, so the
+	// client's dropped fetch no longer ends it; register applies the stop
+	// instead. Keyed by the send id, a stop can only ever end the turn of the
+	// send it was meant for.
+	earlyStops map[earlyStopKey]earlyStop
+	// now is time.Now; tests replace it.
+	now func() time.Time
+}
+
+type earlyStopKey struct {
+	activeStreamKey
+	sendID string
+}
+
+// earlyStop is a stop waiting for its turn to register.
+type earlyStop struct {
+	cause error
+	at    time.Time
+}
+
+// earlyStopWindow bounds how long an early stop waits for its turn. Setup
+// takes seconds at most; an older stop is for a send that never registers,
+// and is dropped.
+const earlyStopWindow = 30 * time.Second
+
+// pruneEarlyStopsLocked drops the early stops past earlyStopWindow.
+func (r *activeStreamRegistry) pruneEarlyStopsLocked() {
+	now := r.clock()
+	for key, early := range r.earlyStops {
+		if now.Sub(early.at) >= earlyStopWindow {
+			delete(r.earlyStops, key)
+		}
+	}
+}
+
+func (r *activeStreamRegistry) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
 }
 
 type activeStreamKey struct {
@@ -391,6 +443,11 @@ type activeStreamKey struct {
 
 type activeStream struct {
 	cancel context.CancelCauseFunc
+	// sendID is the client's id for the send that started the turn; "" when
+	// the client sent none.
+	sendID string
+	// hub carries the turn's events to the clients that reattach to it.
+	hub *turnHub
 	// done is closed once the stream handler has returned. stopAndWait blocks on
 	// it so a caller that needs the turn to be really finished — the thread delete
 	// path, which must not race the turn's remaining writes — can wait for it.
@@ -398,9 +455,9 @@ type activeStream struct {
 	closeOnce sync.Once
 }
 
-func (r *activeStreamRegistry) register(userID, threadID string, cancel context.CancelCauseFunc) func() {
+func (r *activeStreamRegistry) register(userID, threadID, sendID string, cancel context.CancelCauseFunc, hub *turnHub) func() {
 	key := activeStreamKey{userID: userID, threadID: threadID}
-	stream := &activeStream{cancel: cancel, done: make(chan struct{})}
+	stream := &activeStream{cancel: cancel, sendID: sendID, hub: hub, done: make(chan struct{})}
 	r.mu.Lock()
 	if r.streams == nil {
 		r.streams = make(map[activeStreamKey]*activeStream)
@@ -409,7 +466,18 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 		previous.cancel(errStreamSuperseded)
 	}
 	r.streams[key] = stream
+	r.pruneEarlyStopsLocked()
+	var early earlyStop
+	hasEarly := false
+	if sendID != "" {
+		earlyKey := earlyStopKey{activeStreamKey: key, sendID: sendID}
+		early, hasEarly = r.earlyStops[earlyKey]
+		delete(r.earlyStops, earlyKey)
+	}
 	r.mu.Unlock()
+	if hasEarly {
+		cancel(early.cause)
+	}
 	return func() {
 		r.mu.Lock()
 		if r.streams[key] == stream {
@@ -423,10 +491,35 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 	}
 }
 
-func (r *activeStreamRegistry) stop(userID, threadID string, cause error) bool {
+// lookup returns the hub of the user's running turn on the thread, or nil when
+// none is running.
+func (r *activeStreamRegistry) lookup(userID, threadID string) *turnHub {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if stream := r.streams[activeStreamKey{userID: userID, threadID: threadID}]; stream != nil {
+		return stream.hub
+	}
+	return nil
+}
+
+// stop ends the user's running turn on the thread. With a sendID it ends only
+// the turn of that send: when that turn has not registered yet, the stop is
+// kept for it (see earlyStops) and stop reports false. Without one it ends
+// whatever turn is running.
+func (r *activeStreamRegistry) stop(userID, threadID, sendID string, cause error) bool {
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	r.mu.Lock()
 	stream := r.streams[key]
+	if stream != nil && sendID != "" && stream.sendID != sendID {
+		stream = nil
+	}
+	if stream == nil && sendID != "" {
+		r.pruneEarlyStopsLocked()
+		if r.earlyStops == nil {
+			r.earlyStops = make(map[earlyStopKey]earlyStop)
+		}
+		r.earlyStops[earlyStopKey{activeStreamKey: key, sendID: sendID}] = earlyStop{cause: cause, at: r.clock()}
+	}
 	r.mu.Unlock()
 	if stream == nil {
 		return false

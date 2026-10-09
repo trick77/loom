@@ -22,6 +22,8 @@ import {
 export function useStreamRuns() {
   const [runs, setRuns] = useState<StreamRuns>({});
   const abortsRef = useRef<Map<RunKey, AbortController>>(new Map());
+  // The client's id for the send behind each run, named by a stop.
+  const sendIdsRef = useRef<Map<RunKey, string>>(new Map());
   // Each start-screen send takes its own provisional key: createThread (plus a
   // possible image-upload flush) can take seconds, and a second send in that
   // window must not land on the first one's key.
@@ -32,8 +34,10 @@ export function useStreamRuns() {
   }, []);
 
   const begin = useCallback(
-    (key: RunKey, controller: AbortController) => {
+    (key: RunKey, controller: AbortController, sendId?: string) => {
       abortsRef.current.set(key, controller);
+      if (sendId === undefined) sendIdsRef.current.delete(key);
+      else sendIdsRef.current.set(key, sendId);
       commit((current) => beginRun(current, key));
     },
     [commit],
@@ -65,6 +69,9 @@ export function useStreamRuns() {
         abortsRef.current.delete(from);
         abortsRef.current.set(to, controller);
       }
+      const sendId = sendIdsRef.current.get(from);
+      sendIdsRef.current.delete(from);
+      if (sendId !== undefined) sendIdsRef.current.set(to, sendId);
       commit((current) => rekeyRun(current, from, to));
     },
     [commit],
@@ -87,7 +94,10 @@ export function useStreamRuns() {
       const stored = abortsRef.current.get(key);
       if (controller !== null && stored !== undefined && stored !== controller)
         return;
-      if (stored !== undefined) abortsRef.current.delete(key);
+      if (stored !== undefined) {
+        abortsRef.current.delete(key);
+        sendIdsRef.current.delete(key);
+      }
       commit((current) =>
         endRun(current, key, {
           keepFailedTurnVisible: options.keepFailedTurnVisible,
@@ -96,6 +106,10 @@ export function useStreamRuns() {
     },
     [commit],
   );
+
+  // has reports whether a run is in flight on key, read from the ref so a
+  // caller outside render (a load callback) sees the current answer.
+  const has = useCallback((key: RunKey) => abortsRef.current.has(key), []);
 
   const abort = useCallback((key: RunKey) => {
     abortsRef.current.get(key)?.abort();
@@ -115,6 +129,14 @@ export function useStreamRuns() {
     (controller: AbortController) => stopRequestedRef.current.has(controller),
     [],
   );
+  // A stop that never reached the server stopped nothing: the run goes on.
+  const unmarkStopRequested = useCallback((controller: AbortController) => {
+    stopRequestedRef.current.delete(controller);
+  }, []);
+  const sendIdOf = useCallback(
+    (key: RunKey) => sendIdsRef.current.get(key),
+    [],
+  );
 
   const abortAll = useCallback(() => {
     abortsRef.current.forEach((controller) => controller.abort());
@@ -132,10 +154,13 @@ export function useStreamRuns() {
     patch,
     rekey,
     end,
+    has,
     abort,
     abortAll,
     markStopRequested,
+    unmarkStopRequested,
     stopRequested,
+    sendIdOf,
     nextProvisionalKey,
   };
 }

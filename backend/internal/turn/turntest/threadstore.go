@@ -12,13 +12,15 @@ import (
 // ThreadStore is an in-memory thread store holding one thread and one project.
 // It records what the code under test wrote so tests can assert on it.
 type ThreadStore struct {
-	Thread                    chat.Thread
-	Project                   chat.Project
-	Messages                  []chat.Message
-	ListThreadsUserID         string
-	ListThreadsOptions        chat.ListThreadsOptions
-	AssistantContent          string
-	AssistantContextErr       error
+	Thread              chat.Thread
+	Project             chat.Project
+	Messages            []chat.Message
+	ListThreadsUserID   string
+	ListThreadsOptions  chat.ListThreadsOptions
+	AssistantContent    string
+	AssistantContextErr error
+	// UserClientMessageID is the send id the last user message was stored with.
+	UserClientMessageID       string
 	LastCitations             json.RawMessage
 	LastContentBlocks         json.RawMessage
 	LastAttachments           json.RawMessage
@@ -229,8 +231,9 @@ func (f *ThreadStore) DeleteThread(_ context.Context, _ string, threadID string)
 }
 
 // AddMessageWithAttachments appends msg_1 to Messages and records its
-// attachments and pasted texts.
-func (f *ThreadStore) AddMessageWithAttachments(_ context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage) (chat.Message, error) {
+// attachments, pasted texts and send id.
+func (f *ThreadStore) AddMessageWithAttachments(_ context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage, clientMessageID string) (chat.Message, error) {
+	f.UserClientMessageID = clientMessageID
 	if len(attachments) == 0 {
 		attachments = json.RawMessage("[]")
 	}

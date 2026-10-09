@@ -174,8 +174,12 @@ type Message struct {
 	// array of MessagePastedText; "[]" when none. Stored purely for rendering — the
 	// block text is also folded into Content so the model sees it unchanged; the
 	// bubble strips it back out and renders a chip.
-	PastedTexts   json.RawMessage `json:"pastedTexts"`
-	ActivityTrace json.RawMessage `json:"activityTrace"`
+	PastedTexts json.RawMessage `json:"pastedTexts"`
+	// ClientMessageID is the id the client gave the send that stored this
+	// message; "" for messages the client did not tag. A client whose
+	// connection dropped before the server confirmed the send looks for it.
+	ClientMessageID string          `json:"clientMessageId,omitempty"`
+	ActivityTrace   json.RawMessage `json:"activityTrace"`
 	// ContentBlocks is the ordered, interleaved timeline of this assistant
 	// message — text prose, tool-activity trace runs, and artifacts — in the
 	// chronological order they were produced. A JSON array of tagged blocks;
