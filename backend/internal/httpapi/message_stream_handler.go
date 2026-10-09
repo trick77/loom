@@ -150,7 +150,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// round. The deferred waits keep any title goroutine from writing to the
 	// SSE stream after the handler returns. They run before costs.Settle, so a
 	// working title that outlived the answer still has its cost booked.
-	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, turn.UserResponseLanguage(user))
+	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, user.ResponseLanguageName())
 	defer titles.Wait()
 	defer titles.WaitWorking()
 	titles.SpawnWorking(userMessage.Content)

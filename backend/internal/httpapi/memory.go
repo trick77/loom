@@ -11,7 +11,6 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/turn"
 )
 
 // Memory tuning, shared by the project and user memories.
@@ -141,7 +140,7 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 		}
 	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
-	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt, turn.UserResponseLanguage(user))
+	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt, user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}
@@ -174,7 +173,7 @@ func (s *server) editMemory(ctx context.Context, user auth.User, scope memorySco
 	// markdown). ApplyMemoryEdit's own user message supplies the authoritative
 	// "apply only this instruction, leave the rest unchanged" framing that
 	// overrides the prompt's summarize-from-conversation wording.
-	edited, err := s.llm.ApplyMemoryEdit(llm.WithInferenceMetadata(ctx, inference), scope.header, current, instruction, scope.systemPrompt, turn.UserResponseLanguage(user))
+	edited, err := s.llm.ApplyMemoryEdit(llm.WithInferenceMetadata(ctx, inference), scope.header, current, instruction, scope.systemPrompt, user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}

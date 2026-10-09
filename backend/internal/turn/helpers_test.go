@@ -64,7 +64,7 @@ func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content str
 	if err != nil {
 		t.Fatal(err)
 	}
-	titles := NewReasoningTitleTracker(ctx, cfg.LLM, stream, inference, UserResponseLanguage(testUser))
+	titles := NewReasoningTitleTracker(ctx, cfg.LLM, stream, inference, testUser.ResponseLanguageName())
 	defer titles.Wait()
 	run := e.Prepare(RunConfig{
 		Stream:      stream,

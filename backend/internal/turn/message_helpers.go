@@ -9,8 +9,6 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
-	"golang.org/x/text/language"
-	"golang.org/x/text/language/display"
 )
 
 // MessageMetricsWithCost is messageMetricsFromTurn plus the turn's summed cost;
@@ -115,7 +113,7 @@ func (t *Run) GenerateAndSendThreadTitle(ctx context.Context, assistantMessage s
 	if runes := []rune(assistantMessage); len(runes) > titleSourceLimit {
 		assistantMessage = string(runes[:titleSourceLimit])
 	}
-	title, err := t.e.llm.GenerateThreadTitle(llm.WithInferenceMetadata(titleCtx, titleInference), t.userMessage.Content, assistantMessage, UserResponseLanguage(t.user))
+	title, err := t.e.llm.GenerateThreadTitle(llm.WithInferenceMetadata(titleCtx, titleInference), t.userMessage.Content, assistantMessage, t.user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}
@@ -188,7 +186,7 @@ const incognitoDirectAnswerNudge = "Answer my previous message directly now, in 
 
 func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
 	dateLine := "\nThe current date is " + now.Format("2006-01-02") + ". Treat this as today when interpreting time-relative requests; do not assume an earlier year."
-	return incognitoSystemPrompt + languageDirective(user.ResponseLanguage) + dateLine
+	return incognitoSystemPrompt + languageDirective(user) + dateLine
 }
 
 // BuildIncognitoHistory assembles the model history for an incognito turn: the
@@ -218,7 +216,7 @@ func ShouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 
 func systemPromptForUser(user auth.User, now time.Time) string {
 	dateLine := "\nThe current date is " + now.Format("2006-01-02") + ". Treat this as today when interpreting time-relative requests and when constructing search queries; do not assume an earlier year."
-	return loomSystemPrompt + languageDirective(user.ResponseLanguage) + dateLine
+	return loomSystemPrompt + languageDirective(user) + dateLine
 }
 
 // languageDirective builds the answer-language line appended to the chat and
@@ -226,37 +224,12 @@ func systemPromptForUser(user auth.User, now time.Time) string {
 // it yields to an explicit in-message request or a message written in another
 // language — so a per-turn "answer in X" always wins over the profile. An
 // empty/unset value pins nothing and simply tracks the user's own language; a
-// legacy "auto" (predating its removal) is treated the same, defensively.
-func languageDirective(responseLanguage string) string {
-	if responseLanguage == "" || strings.EqualFold(responseLanguage, "auto") {
+// legacy "auto" (predating its removal) is treated the same, defensively (see
+// auth.User.ResponseLanguageName).
+func languageDirective(user auth.User) string {
+	name := user.ResponseLanguageName()
+	if name == "" {
 		return "\nAnswer in the language the user writes in."
 	}
-	return "\nAnswer in " + languageName(responseLanguage) + ". If the user asks for a different language, or writes their message in a different language, reply in that language instead."
-}
-
-// UserResponseLanguage resolves the language a user-facing utility generation
-// (thread title, project description, reasoning title, project memory) should be
-// written in. A pinned profile language is returned so the utility matches the
-// chat's answer language. Unset returns "" — no directive, so the utility simply
-// follows the source content's own language (which is the user's), consistent
-// with the chat's unset behavior. A legacy "auto" is treated as unset, defensively.
-func UserResponseLanguage(user auth.User) string {
-	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
-		return ""
-	}
-	return languageName(user.ResponseLanguage)
-}
-
-// languageName resolves a profile language value to its English name (for
-// example "de" -> "German"). Values that are not valid language tags — such as
-// a name that is already spelled out — are returned unchanged.
-func languageName(value string) string {
-	tag, err := language.Parse(value)
-	if err != nil {
-		return value
-	}
-	if name := display.English.Tags().Name(tag); name != "" {
-		return name
-	}
-	return value
+	return "\nAnswer in " + name + ". If the user asks for a different language, or writes their message in a different language, reply in that language instead."
 }

@@ -79,7 +79,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
-	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, turn.UserResponseLanguage(user))
+	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, user.ResponseLanguageName())
 	defer titles.Wait()
 
 	assistantResult, err := s.engine.RunIncognitoTurn(streamCtx, turn.IncognitoConfig{Stream: stream, Titles: titles, Inference: inference}, history)

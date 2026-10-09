@@ -8,7 +8,6 @@ import (
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/turn"
 )
 
 // maybeRefreshProjectDescriptionAsync refreshes a project's auto-generated
@@ -68,7 +67,7 @@ func (s *server) refreshProjectDescriptionIfDue(ctx context.Context, user auth.U
 		return nil
 	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "project_description", Round: 1}
-	description, err := s.llm.GenerateProjectDescription(llm.WithInferenceMetadata(ctx, inference), project.Name, titles, turn.UserResponseLanguage(user))
+	description, err := s.llm.GenerateProjectDescription(llm.WithInferenceMetadata(ctx, inference), project.Name, titles, user.ResponseLanguageName())
 	if err != nil {
 		slog.Warn("generate project description failed", "project_id", projectID, "err", err)
 		return nil
