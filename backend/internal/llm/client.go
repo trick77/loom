@@ -249,44 +249,46 @@ func (c *Client) prose(ctx context.Context, messages []Message, answerTokens int
 }
 
 func (c *Client) maxCompletionTokensForTools(tools []Tool) int {
-	if !hasDocumentGenerationTool(tools) || c.maxCompletionTokens >= documentToolMaxCompletionTokens {
+	if !hasLongRunningTool(tools) || c.maxCompletionTokens >= documentToolMaxCompletionTokens {
 		return c.maxCompletionTokens
 	}
 	return documentToolMaxCompletionTokens
 }
 
 // timeoutForTools is the coarse total wall-clock budget for a streamed turn. It
-// stays generous (documentToolTimeout) whenever a document tool is on offer,
-// because a turn that streams a full document payload as a tool-call argument
-// legitimately needs the room — and intent cannot be known up front. The idle
-// watchdog catches a stalled reasoning/content phase in seconds; but once a
-// document tool call is underway it widens (see toolCallIdleTimeout), so this
-// coarse deadline is the real backstop for that phase.
+// stays generous (documentToolTimeout) whenever a long-running tool (see
+// Tool.LongRunning) is on offer, because a turn that streams a whole document as
+// a tool-call argument legitimately needs the room — and intent cannot be known
+// up front. The idle watchdog catches a stalled reasoning/content phase in
+// seconds; but once a tool call is underway in such a turn it widens (see
+// toolCallIdleTimeout), so this coarse deadline is the real backstop for that
+// phase.
 func (c *Client) timeoutForTools(tools []Tool) time.Duration {
-	if c.timeout == 0 || !hasDocumentGenerationTool(tools) || c.timeout >= documentToolTimeout {
+	if c.timeout == 0 || !hasLongRunningTool(tools) || c.timeout >= documentToolTimeout {
 		return c.timeout
 	}
 	return documentToolTimeout
 }
 
 // toolCallIdleTimeout is the idle window to apply once a tool call is underway in
-// a turn that can generate a document. An endpoint that buffers tool-call
-// arguments server-side flushes them in one delayed burst (no incremental
-// deltas), so a large document argument goes silent for far longer than the
+// a turn that offers a long-running tool (see Tool.LongRunning). An endpoint that
+// buffers tool-call arguments server-side flushes them in one delayed burst (no
+// incremental deltas), so a large argument goes silent for far longer than the
 // normal idle window — which would falsely trip the watchdog mid-generation
 // (~82s silent measured for a ~10KB spec; whether a model buffers is its
-// llmwire profile's streaming.buffers_tool_args). Widen to the document timeout
-// and let the coarse total deadline backstop a genuine hang. Non-document turns keep the normal window: their tool
-// arguments are small and stream promptly. Zero means "no change" to llmwire.
+// llmwire profile's streaming.buffers_tool_args). Widen to documentToolTimeout
+// and let the coarse total deadline backstop a genuine hang. A turn without a
+// long-running tool keeps the normal window: its tool arguments are small and
+// stream promptly. Zero means "no change" to llmwire.
 func toolCallIdleTimeout(tools []Tool) time.Duration {
-	if hasDocumentGenerationTool(tools) {
+	if hasLongRunningTool(tools) {
 		return documentToolTimeout
 	}
 	return 0
 }
 
-// hasDocumentGenerationTool reports whether any tool on offer is long-running
+// hasLongRunningTool reports whether any tool on offer is long-running
 // (see Tool.LongRunning).
-func hasDocumentGenerationTool(tools []Tool) bool {
+func hasLongRunningTool(tools []Tool) bool {
 	return slices.ContainsFunc(tools, func(tool Tool) bool { return tool.LongRunning })
 }
