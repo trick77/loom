@@ -32,7 +32,7 @@ type imageRouting struct {
 	typography bool
 }
 
-// turnGateTimeout bounds the small helper calls a turn blocks on before the
+// defaultTurnGateTimeout bounds the small helper calls a turn blocks on before the
 // answer can start: the image-intent gate and the drift classifier. Both are
 // 32-64 token routing decisions, and both are fail-safe, so giving up is strictly
 // better than making the user wait — a degraded endpoint was observed taking 78s
@@ -40,14 +40,22 @@ type imageRouting struct {
 // and nothing bounded it: the turn context has no deadline (see the stream
 // handler) and the client only applies its timeout on the streaming path.
 //
-// A var, not a const, so tests can shorten it.
-var turnGateTimeout = 30 * time.Second
+// Config.TurnGateTimeout overrides it; tests shorten it there.
+const defaultTurnGateTimeout = 30 * time.Second
+
+// gateTimeout is the configured turn gate timeout, or the default.
+func (s *Engine) gateTimeout() time.Duration {
+	if s.turnGateTimeout > 0 {
+		return s.turnGateTimeout
+	}
+	return defaultTurnGateTimeout
+}
 
 // classifyImageTurn decides how this turn routes to image generation/editing. It
 // short-circuits (no LLM call) when image tooling is not configured or the turn
 // carries no text, then asks the semantic gate and maps its answer with
 // imageRoutingFor. The gate is fail-safe (ImageIntentNone on any error), so a
-// classification failure — including the turnGateTimeout expiring — degrades to
+// classification failure — including the gate timeout expiring — degrades to
 // the normal, non-image path instead of holding up the answer. inf attributes
 // the gate call to the turn's user and thread.
 func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadata, content string, hasAttachedImage bool, priorMessages []chat.Message) imageRouting {
@@ -62,7 +70,8 @@ func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadat
 	threadHasImage := priorConversationHasImageArtifact(priorMessages)
 	threadID := inf.ThreadID
 	meta := inferenceWithPurpose(inf, "image_intent", 1)
-	gateCtx, cancel := context.WithTimeout(ctx, turnGateTimeout)
+	timeout := s.gateTimeout()
+	gateCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	started := time.Now()
 	intent, err := s.llm.ClassifyImageIntent(llm.WithInferenceMetadata(gateCtx, meta), content, hasAttachedImage, threadHasImage)
@@ -71,7 +80,7 @@ func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadat
 		// answered as text, which looks like a routing bug from the outside.
 		if errors.Is(gateCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
 			slog.Warn("image-intent gate timed out; routing as non-image",
-				"thread_id", threadID, "waited_ms", time.Since(started).Milliseconds(), "timeout", turnGateTimeout)
+				"thread_id", threadID, "waited_ms", time.Since(started).Milliseconds(), "timeout", timeout)
 		} else {
 			slog.Warn("image-intent classification failed; routing as non-image", "thread_id", threadID, "err", err)
 		}

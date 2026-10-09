@@ -25,23 +25,21 @@ func (f *hangingIntentChatClient) ClassifyImageIntent(ctx context.Context, _ str
 
 // serverWithHangingIntentGate wires the minimum classifyImageTurn needs to get
 // past its short-circuits: an image tool, an artifact store and a users dir.
-func serverWithHangingIntentGate(t *testing.T) (*Engine, *hangingIntentChatClient) {
+// gateTimeout bounds the gate call.
+func serverWithHangingIntentGate(t *testing.T, gateTimeout time.Duration) (*Engine, *hangingIntentChatClient) {
 	t.Helper()
 	chat := &hangingIntentChatClient{entered: make(chan struct{})}
-	return &Engine{
-		llm:        chat,
-		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		artifacts:  fakeArtifactStore{},
-		usersDir:   t.TempDir(),
-	}, chat
+	return New(Config{
+		LLM:             chat,
+		ImageTools:      []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		Artifacts:       fakeArtifactStore{},
+		UsersDir:        t.TempDir(),
+		TurnGateTimeout: gateTimeout,
+	}), chat
 }
 
 func TestClassifyImageTurnGivesUpOnAStalledGate(t *testing.T) {
-	previous := turnGateTimeout
-	turnGateTimeout = 50 * time.Millisecond
-	t.Cleanup(func() { turnGateTimeout = previous })
-
-	s, chat := serverWithHangingIntentGate(t)
+	s, chat := serverWithHangingIntentGate(t, 50*time.Millisecond)
 
 	done := make(chan imageRouting, 1)
 	go func() {
@@ -67,11 +65,7 @@ func TestClassifyImageTurnGivesUpOnAStalledGate(t *testing.T) {
 // TestClassifyImageTurnDoesNotOutliveTheTurn keeps the bound from becoming a
 // floor: a caller whose own context is already done must not wait for it.
 func TestClassifyImageTurnDoesNotOutliveTheTurn(t *testing.T) {
-	previous := turnGateTimeout
-	turnGateTimeout = time.Minute
-	t.Cleanup(func() { turnGateTimeout = previous })
-
-	s, chat := serverWithHangingIntentGate(t)
+	s, chat := serverWithHangingIntentGate(t, time.Minute)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan imageRouting, 1)

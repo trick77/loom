@@ -67,7 +67,7 @@ func strPtr(value string) *string {
 // answer exists. inf attributes the call to the turn's user and thread.
 func (s *Engine) classifyFirstTurn(requestCtx context.Context, inf llm.InferenceMetadata, userMessage string) string {
 	classifyInference := inferenceWithPurpose(inf, "classify", 1)
-	requestCtx, cancelClassify := context.WithTimeout(requestCtx, turnGateTimeout)
+	requestCtx, cancelClassify := context.WithTimeout(requestCtx, s.gateTimeout())
 	defer cancelClassify()
 	// ClassifyThread always returns a valid category (General on failure); the
 	// error is informational.
@@ -105,11 +105,11 @@ const titleSourceLimit = 2000
 // the stream. The title the turn started from (t.thread.Title) is the expected
 // title: the update is a compare-and-set against it, so a rename made while the
 // answer streamed wins and no thread event is sent for the discarded generated
-// title. The model call is bounded by turnGateTimeout; the store writes run on
+// title. The model call is bounded by the turn gate timeout; the store writes run on
 // ctx itself.
 func (t *Run) GenerateAndSendThreadTitle(ctx context.Context, assistantMessage string) error {
 	titleInference := inferenceWithPurpose(t.inference, "title", 1)
-	titleCtx, cancelTitle := context.WithTimeout(ctx, turnGateTimeout)
+	titleCtx, cancelTitle := context.WithTimeout(ctx, t.e.gateTimeout())
 	defer cancelTitle()
 
 	if runes := []rune(assistantMessage); len(runes) > titleSourceLimit {

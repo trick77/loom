@@ -293,7 +293,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// supplies none of that, and the title model used to guess from it alone.
 	//
 	// Deliberately after the answer is persisted and delivered, not before: this
-	// call is bounded by turnGateTimeout, and a slow short-gate endpoint would
+	// call is bounded by the turn gate timeout, and a slow short-gate endpoint would
 	// otherwise hold the just-streamed answer unpersisted — and the UI in its
 	// streaming state — for up to that long. The cost is that the title call's
 	// tokens miss the per-message stats; its cost is added onto the message and

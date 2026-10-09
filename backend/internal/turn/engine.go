@@ -37,6 +37,9 @@ type Engine struct {
 	// timing; zero means the default (see titleHold, titleStartBytes).
 	reasoningTitleHold       time.Duration
 	reasoningTitleStartBytes int
+	// turnGateTimeout bounds the gate calls; zero means the default (see
+	// gateTimeout).
+	turnGateTimeout time.Duration
 }
 
 // Config is what New builds an Engine from. Nil stores and services turn the
@@ -72,6 +75,9 @@ type Config struct {
 	// tests shorten them.
 	ReasoningTitleHold       time.Duration
 	ReasoningTitleStartBytes int
+	// TurnGateTimeout bounds each gate call (image intent, classification,
+	// drift, thread title). Zero keeps the default; tests shorten it.
+	TurnGateTimeout time.Duration
 }
 
 // New builds an Engine from c.
@@ -94,6 +100,7 @@ func New(c Config) *Engine {
 		memory:                     c.Memory,
 		reasoningTitleHold:         c.ReasoningTitleHold,
 		reasoningTitleStartBytes:   c.ReasoningTitleStartBytes,
+		turnGateTimeout:            c.TurnGateTimeout,
 	}
 }
 

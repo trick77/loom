@@ -177,7 +177,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 				return
 			}
 			driftInference := inferenceWithPurpose(t.inference, "classify_drift", 1)
-			driftCtx, cancelDrift := context.WithTimeout(in.StreamCtx, turnGateTimeout)
+			driftCtx, cancelDrift := context.WithTimeout(in.StreamCtx, t.e.gateTimeout())
 			defer cancelDrift()
 			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)
 		},
