@@ -17,7 +17,6 @@ import (
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
-	"github.com/trick77/loom/internal/sandbox"
 	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/loom/internal/usage"
 )
@@ -225,12 +224,9 @@ type ToolService interface {
 	ServerStatus(context.Context) []mcp.ServerStatus
 }
 
-// SandboxRunner runs run_python jobs; *sandbox.Client implements it.
-type SandboxRunner interface {
-	Available() bool
-	Timeout() time.Duration
-	Run(context.Context, sandbox.Request) (sandbox.Result, error)
-}
+// SandboxRunner runs run_python jobs; *sandbox.Client implements it. The
+// handlers need nothing beyond the engine's port, so it is the same type.
+type SandboxRunner = turn.SandboxRunner
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.
 type OIDCService interface {
