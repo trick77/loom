@@ -176,7 +176,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			if freshlyClassified || categoryGrantsCodingDocs(category) {
 				return
 			}
-			driftInference := inferenceWithPurpose(t.inference, "classify_drift", 1)
+			driftInference := gateInference(t.inference, "classify_drift")
 			driftCtx, cancelDrift := context.WithTimeout(in.StreamCtx, t.e.gateTimeout())
 			defer cancelDrift()
 			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)

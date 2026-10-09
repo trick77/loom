@@ -59,3 +59,19 @@ func TestIncognitoRetryInferenceWidensOnlyAfterCapHit(t *testing.T) {
 		t.Fatalf("purpose/round = %q/%d and %q/%d, want chat/2", capped.Purpose, capped.Round, plain.Purpose, plain.Round)
 	}
 }
+
+// A gate call takes only the turn's identity: a budget, reasoning level or
+// incognito flag set on the turn's metadata must not reach it.
+func TestGateInferenceKeepsOnlyIdentity(t *testing.T) {
+	base := llm.InferenceMetadata{
+		UserID: "user_1", Username: "jan", ThreadID: "thr_1",
+		Purpose: "chat", Round: 3, LeastReasoning: true, MaxCompletionTokens: 99, Incognito: true,
+	}
+
+	got := gateInference(base, "classify")
+
+	want := llm.InferenceMetadata{UserID: "user_1", Username: "jan", ThreadID: "thr_1", Purpose: "classify", Round: 1}
+	if got != want {
+		t.Fatalf("gateInference = %+v, want %+v", got, want)
+	}
+}

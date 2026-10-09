@@ -654,6 +654,21 @@ func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round 
 	return metadata
 }
 
+// gateInference builds the metadata for a gate call (image intent,
+// classification, drift, thread title) from the turn's identity alone, logged
+// as round 1 since a gate is a single call. A gate is a short routing or
+// titling call with its own budget and reasoning level, so nothing else set on
+// the turn's metadata may reach it.
+func gateInference(base llm.InferenceMetadata, purpose string) llm.InferenceMetadata {
+	return llm.InferenceMetadata{
+		UserID:   base.UserID,
+		Username: base.Username,
+		ThreadID: base.ThreadID,
+		Purpose:  purpose,
+		Round:    1,
+	}
+}
+
 // finalAnswerMaxCompletionTokens is the completion budget for the forced final
 // answer. It matches the default chat cap: the forced final synthesizes many
 // gathered sources, and it must never be tighter than the answer a normal

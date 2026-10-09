@@ -66,7 +66,7 @@ func strPtr(value string) *string {
 // assistant message. See GenerateAndSendThreadTitle, which now runs once the
 // answer exists. inf attributes the call to the turn's user and thread.
 func (s *Engine) classifyFirstTurn(requestCtx context.Context, inf llm.InferenceMetadata, userMessage string) string {
-	classifyInference := inferenceWithPurpose(inf, "classify", 1)
+	classifyInference := gateInference(inf, "classify")
 	requestCtx, cancelClassify := context.WithTimeout(requestCtx, s.gateTimeout())
 	defer cancelClassify()
 	// ClassifyThread always returns a valid category (General on failure); the
@@ -108,7 +108,7 @@ const titleSourceLimit = 2000
 // title. The model call is bounded by the turn gate timeout; the store writes run on
 // ctx itself.
 func (t *Run) GenerateAndSendThreadTitle(ctx context.Context, assistantMessage string) error {
-	titleInference := inferenceWithPurpose(t.inference, "title", 1)
+	titleInference := gateInference(t.inference, "title")
 	titleCtx, cancelTitle := context.WithTimeout(ctx, t.e.gateTimeout())
 	defer cancelTitle()
 
