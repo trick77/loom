@@ -24,25 +24,12 @@ type (
 	fakeToolChatClient  = turntest.ToolChatClient
 	fakeMCPService      = turntest.ToolService
 	fakeDocumentService = turntest.DocumentService
-	fakeSandbox         = turntest.Sandbox
 	stubUsageStore      = turntest.UsageStore
 	recordingUsageStore = turntest.RecordingUsageStore
 	fakeImageProvider   = turntest.ImageProvider
 )
 
 var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
-
-// The turn engine's tool names and per-turn limits the stream tests drive
-// against. They mirror package turn's values: the tool names are what the model
-// sees, and a changed limit shows up here as a failing test.
-const (
-	fetchToolName              = "fetch__fetch"
-	conversationSearchToolName = "conversation_search"
-	sandboxToolName            = "run_python"
-	maxToolRounds              = 6
-	maxToolCallsPerRound       = 8
-	cheapToolCallsPerRound     = 12
-)
 
 func strPtr(value string) *string {
 	return &value

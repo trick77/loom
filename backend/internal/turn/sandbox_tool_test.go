@@ -404,3 +404,57 @@ func TestSandboxToolSchema(t *testing.T) {
 		t.Fatal("per-round cap")
 	}
 }
+
+func TestTurnRunsPythonAndAnswers(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{{ID: "call_py", Type: "function", Function: llm.ToolCallFunction{
+			Name: sandboxToolName, Arguments: `{"code":"print('strawberry'.count('r'))"}`,
+		}}}},
+		{Content: "There are 3."},
+	}}
+	box := &fakeSandbox{Enabled: true, Result: sandbox.Result{Stdout: "3\n"}}
+	out := runStoredTurn(t, Config{
+		LLM:       llmClient,
+		Sandbox:   box,
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+	}, store, "How many r in strawberry?")
+
+	if out.err != nil {
+		t.Fatalf("turn failed: %v: %s", out.err, out.body)
+	}
+	if !strings.Contains(out.body, `"name":"run_python"`) || !strings.Contains(out.body, `exit_code: 0\nstdout:\n3`) {
+		t.Fatalf("SSE body lacks the run:\n%s", out.body)
+	}
+	if store.AssistantContent != "There are 3." {
+		t.Fatalf("answer %q", store.AssistantContent)
+	}
+	if !toolNames(llmClient.Tools[0])[sandboxToolName] {
+		t.Fatal("run_python not offered to the model")
+	}
+	if !strings.Contains(llmClient.Histories[0][0].Content, SandboxGuidancePrompt) {
+		t.Fatal("guidance missing from the system prompt")
+	}
+	if len(box.Got) != 1 || box.Got[0].Code != "print('strawberry'.count('r'))" {
+		t.Fatalf("sandbox requests %+v", box.Got)
+	}
+}
+
+func TestTurnOmitsPythonWhenSandboxDown(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{{Content: "Hi."}}}
+	out := runStoredTurn(t, Config{
+		LLM:       llmClient,
+		Sandbox:   &fakeSandbox{Enabled: false},
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+	}, store, "Hello")
+
+	if out.err != nil {
+		t.Fatalf("turn failed: %v: %s", out.err, out.body)
+	}
+	if toolNames(llmClient.Tools[0])[sandboxToolName] || strings.Contains(llmClient.Histories[0][0].Content, "run_python") {
+		t.Fatal("run_python offered or named while the sandbox is down")
+	}
+}
