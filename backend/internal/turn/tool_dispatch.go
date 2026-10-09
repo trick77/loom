@@ -141,17 +141,17 @@ func (s *Engine) startToolRuns(ctx context.Context, calls []llm.ToolCall, skippe
 }
 
 // countToolCall increments the per-user counter for a successfully completed
-// MCP tool call (see toolSpec.count). An obscura page load is counted per
+// MCP tool call (see toolSpec.counts). An obscura page load is counted per
 // browser_navigate (one fetch = one navigated page); this covers the model
 // driving obscura directly. The deterministic fetch->obscura fallback navigates
 // obscura outside this path, so it counts itself in fetchObscuraFallback —
 // there is no double count.
 func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName string) {
-	spec := toolPolicy(toolName)
-	if spec.count == nil {
+	counter := toolPolicy(toolName).counts
+	if counter == nil {
 		return
 	}
-	usage.Record(s.usage, spec.counter, func() error { return spec.count(s.usage, ctx, user.ID) })
+	usage.Record(s.usage, counter.label, func() error { return counter.inc(s.usage, ctx, user.ID) })
 }
 
 // Tool names involved in the deterministic fetch->obscura fallback. fetch is the

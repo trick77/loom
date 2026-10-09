@@ -33,10 +33,16 @@ type toolSpec struct {
 	// concurrent marks a stateless web read whose calls in a round may
 	// overlap (see startToolRuns).
 	concurrent bool
-	// counter names the usage counter count bumps after a successful MCP
-	// call; count nil counts nothing. Built-ins count themselves.
-	counter string
-	count   func(u UsageStore, ctx context.Context, userID string) error
+	// counts is the usage counter a successful MCP call bumps; nil counts
+	// nothing. Built-ins count themselves.
+	counts *usageCounter
+}
+
+// usageCounter is one per-user usage counter: its label in the usage log and
+// the store method that bumps it.
+type usageCounter struct {
+	label string
+	inc   func(u UsageStore, ctx context.Context, userID string) error
 }
 
 type toolRunFunc func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response)
@@ -122,20 +128,17 @@ var mcpPolicies = []toolSpec{
 		name:        fetchToolName,
 		capPerRound: cheapToolCallsPerRound,
 		concurrent:  true,
-		counter:     "web_fetch",
-		count:       UsageStore.IncWebFetch,
+		counts:      &usageCounter{"web_fetch", UsageStore.IncWebFetch},
 	},
 	{
 		name:       tavilySearchExposedName,
 		concurrent: true,
-		counter:    "web_search",
-		count:      UsageStore.IncWebSearch,
+		counts:     &usageCounter{"web_search", UsageStore.IncWebSearch},
 	},
 	{
 		name:        obscuraNavigateToolName,
 		capPerRound: cheapToolCallsPerRound,
-		counter:     "obscura_fetch",
-		count:       UsageStore.IncObscuraFetch,
+		counts:      &usageCounter{"obscura_fetch", UsageStore.IncObscuraFetch},
 	},
 	{name: obscuraSnapshotToolName, capPerRound: cheapToolCallsPerRound},
 }
