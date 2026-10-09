@@ -35,7 +35,7 @@ type DocumentService struct {
 	IndexCalls chan string
 }
 
-// Upload implements turn.DocumentService.
+// Upload records in and returns Doc, or UploadErr.
 func (f *DocumentService) Upload(_ context.Context, in documents.UploadInput) (rag.Document, artifact.Artifact, error) {
 	f.Uploaded = in
 	if f.UploadErr != nil {
@@ -44,7 +44,7 @@ func (f *DocumentService) Upload(_ context.Context, in documents.UploadInput) (r
 	return f.Doc, artifact.Artifact{}, nil
 }
 
-// List implements turn.DocumentService.
+// List returns Doc.
 func (f *DocumentService) List(context.Context, string, *string) ([]rag.Document, error) {
 	return []rag.Document{f.Doc}, nil
 }
@@ -65,7 +65,7 @@ func (f *DocumentService) FullText(context.Context, string, string) (string, err
 	return f.Text, f.FullTextErr
 }
 
-// Index implements turn.DocumentService.
+// Index sends documentID to IndexCalls when set.
 func (f *DocumentService) Index(_ context.Context, _, documentID string) error {
 	if f.IndexCalls != nil {
 		f.IndexCalls <- documentID
@@ -73,10 +73,11 @@ func (f *DocumentService) Index(_ context.Context, _, documentID string) error {
 	return nil
 }
 
-// Delete implements turn.DocumentService.
+// Delete returns DeleteErr.
 func (f *DocumentService) Delete(context.Context, string, string) error { return f.DeleteErr }
 
-// DeleteForArtifact implements turn.DocumentService.
+// DeleteForArtifact deletes the document behind BackingArtifactID and records
+// the artifact in DeletedForArtifact.
 func (f *DocumentService) DeleteForArtifact(_ context.Context, _ string, artifactID string) (bool, error) {
 	if f.BackingArtifactID == "" || artifactID != f.BackingArtifactID {
 		return false, nil
@@ -85,19 +86,20 @@ func (f *DocumentService) DeleteForArtifact(_ context.Context, _ string, artifac
 	return true, f.DeleteErr
 }
 
-// DeleteThreadData implements turn.DocumentService.
+// DeleteThreadData records threadID in DeletedThreadData.
 func (f *DocumentService) DeleteThreadData(_ context.Context, _ string, threadID string) error {
 	f.DeletedThreadData = append(f.DeletedThreadData, threadID)
 	return f.DeleteDataErr
 }
 
-// ArtifactIDsForThreadArtifactsInUse implements turn.DocumentService.
+// ArtifactIDsForThreadArtifactsInUse records threadID and returns
+// ArtifactsInUse.
 func (f *DocumentService) ArtifactIDsForThreadArtifactsInUse(_ context.Context, _ string, threadID string) ([]string, error) {
 	f.InUseQueriedThreads = append(f.InUseQueriedThreads, threadID)
 	return f.ArtifactsInUse, f.ArtifactsInUseErr
 }
 
-// DeleteProjectData implements turn.DocumentService.
+// DeleteProjectData records projectID in DeletedProjectData.
 func (f *DocumentService) DeleteProjectData(_ context.Context, _ string, projectID string) error {
 	f.DeletedProjectData = append(f.DeletedProjectData, projectID)
 	return f.DeleteDataErr
@@ -126,16 +128,6 @@ type RetrievingDocuments struct {
 	GotPID *string
 }
 
-// Upload implements turn.DocumentService.
-func (s *RetrievingDocuments) Upload(context.Context, documents.UploadInput) (rag.Document, artifact.Artifact, error) {
-	return rag.Document{}, artifact.Artifact{}, nil
-}
-
-// List implements turn.DocumentService.
-func (s *RetrievingDocuments) List(context.Context, string, *string) ([]rag.Document, error) {
-	return nil, nil
-}
-
 // Get implements turn.DocumentService.
 func (s *RetrievingDocuments) Get(context.Context, string, string) (rag.Document, bool, error) {
 	return rag.Document{}, false, nil
@@ -145,28 +137,6 @@ func (s *RetrievingDocuments) Get(context.Context, string, string) (rag.Document
 func (s *RetrievingDocuments) FullText(context.Context, string, string) (string, error) {
 	return "", nil
 }
-
-// Index implements turn.DocumentService.
-func (s *RetrievingDocuments) Index(context.Context, string, string) error { return nil }
-
-// Delete implements turn.DocumentService.
-func (s *RetrievingDocuments) Delete(context.Context, string, string) error { return nil }
-
-// DeleteForArtifact implements turn.DocumentService.
-func (s *RetrievingDocuments) DeleteForArtifact(context.Context, string, string) (bool, error) {
-	return false, nil
-}
-
-// DeleteThreadData implements turn.DocumentService.
-func (s *RetrievingDocuments) DeleteThreadData(context.Context, string, string) error { return nil }
-
-// ArtifactIDsForThreadArtifactsInUse implements turn.DocumentService.
-func (s *RetrievingDocuments) ArtifactIDsForThreadArtifactsInUse(context.Context, string, string) ([]string, error) {
-	return nil, nil
-}
-
-// DeleteProjectData implements turn.DocumentService.
-func (s *RetrievingDocuments) DeleteProjectData(context.Context, string, string) error { return nil }
 
 // DocumentsInScope implements turn.DocumentService.
 func (s *RetrievingDocuments) DocumentsInScope(context.Context, string, *string, *string, int) ([]rag.Document, error) {
@@ -184,7 +154,7 @@ func (s *RetrievingDocuments) Retrieve(_ context.Context, _ string, projectID *s
 	return s.Chunks, s.Err
 }
 
-// ListingDocuments is a document service whose List returns several documents.
+// ListingDocuments is a document service whose scope listing returns Docs.
 type ListingDocuments struct {
 	DocumentService
 	Docs  []rag.Document

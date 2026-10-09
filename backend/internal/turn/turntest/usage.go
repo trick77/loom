@@ -41,11 +41,11 @@ func (s UsageStore) IncImageGen(context.Context, string) error { return nil }
 // IncCodeRun implements turn.UsageStore.
 func (s UsageStore) IncCodeRun(context.Context, string) error { return nil }
 
-// IncThreadCreated implements turn.UsageStore.
+// IncThreadCreated discards the thread counter, which no turn bumps.
 func (s UsageStore) IncThreadCreated(context.Context, string) error { return nil }
 
-// IncProjectCreated implements turn.UsageStore.
+// IncProjectCreated discards the project counter, which no turn bumps.
 func (s UsageStore) IncProjectCreated(context.Context, string) error { return nil }
 
-// Get implements turn.UsageStore.
+// Get returns Totals; no turn reads it.
 func (s UsageStore) Get(context.Context, string) (usage.Totals, error) { return s.Totals, nil }

@@ -84,7 +84,8 @@ type ChatClient struct {
 	TitleAssistantSeen *string
 }
 
-// StreamChatResult implements turn.ChatClient.
+// StreamChatResult streams "Hello" in two deltas and returns StreamText when
+// set.
 func (f ChatClient) StreamChatResult(_ context.Context, history []llm.Message, onDelta func(string) error) (llm.StreamResult, error) {
 	if f.History != nil {
 		*f.History = append((*f.History)[:0], history...)
@@ -182,7 +183,7 @@ func (f ChatClient) GenerateReasoningTitle(ctx context.Context, reasoning, _ str
 	return f.ReasoningTitle, nil
 }
 
-// GenerateMemory implements turn.ChatClient.
+// GenerateMemory fakes the memory refresh, which runs outside a turn.
 func (f ChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _, _ string) (string, error) {
 	if f.MemoryPriors != nil {
 		f.MemoryPriors <- prior
@@ -199,12 +200,13 @@ func (f ChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _, _ strin
 	return f.ProjectMemory, nil
 }
 
-// ApplyMemoryEdit implements turn.ChatClient.
+// ApplyMemoryEdit fakes a user's memory edit, which runs outside a turn.
 func (f ChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return f.EditedMemory, nil
 }
 
-// GenerateProjectDescription implements turn.ChatClient.
+// GenerateProjectDescription fakes the project description refresh, which runs
+// outside a turn.
 func (f ChatClient) GenerateProjectDescription(_ context.Context, _ string, _ []string, _ string) (string, error) {
 	if f.ProjectDescriptionCalls != nil {
 		*f.ProjectDescriptionCalls++
@@ -292,7 +294,7 @@ type ToolChatClient struct {
 	TitleFor       func(reasoning string) string
 }
 
-// StreamChatResult implements turn.ChatClient.
+// StreamChatResult answers a tool-free round with Plain and PlainErr.
 func (f *ToolChatClient) StreamChatResult(context.Context, []llm.Message, func(string) error) (llm.StreamResult, error) {
 	if f.PlainErr != nil {
 		return llm.StreamResult{Content: f.Plain}, f.PlainErr
@@ -385,17 +387,18 @@ func (f *ToolChatClient) GenerateWorkingTitle(context.Context, string, string) (
 	return "", nil
 }
 
-// GenerateMemory implements turn.ChatClient.
+// GenerateMemory fakes the memory refresh, which runs outside a turn.
 func (f *ToolChatClient) GenerateMemory(_ context.Context, _, _, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 
-// ApplyMemoryEdit implements turn.ChatClient.
+// ApplyMemoryEdit fakes a user's memory edit, which runs outside a turn.
 func (f *ToolChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 
-// GenerateProjectDescription implements turn.ChatClient.
+// GenerateProjectDescription fakes the project description refresh, which runs
+// outside a turn.
 func (f *ToolChatClient) GenerateProjectDescription(context.Context, string, []string, string) (string, error) {
 	return "", nil
 }

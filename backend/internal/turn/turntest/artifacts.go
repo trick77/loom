@@ -19,7 +19,7 @@ type ArtifactStore struct {
 	Created   *artifact.CreateInput
 }
 
-// DetachFromThread implements turn.ArtifactStore.
+// DetachFromThread records the detached ids in Detached.
 func (f ArtifactStore) DetachFromThread(_ context.Context, _ string, artifactIDs []string) error {
 	if f.Detached != nil {
 		*f.Detached = append(*f.Detached, artifactIDs...)
@@ -27,7 +27,7 @@ func (f ArtifactStore) DetachFromThread(_ context.Context, _ string, artifactIDs
 	return nil
 }
 
-// Delete implements turn.ArtifactStore.
+// Delete records the deleted id in Deleted.
 func (f ArtifactStore) Delete(_ context.Context, _ string, artifactID string) error {
 	if f.Deleted != nil {
 		*f.Deleted = append(*f.Deleted, artifactID)
@@ -35,7 +35,7 @@ func (f ArtifactStore) Delete(_ context.Context, _ string, artifactID string) er
 	return nil
 }
 
-// Rename implements turn.ArtifactStore.
+// Rename sets the matching artifact's display filename.
 func (f ArtifactStore) Rename(_ context.Context, userID, artifactID, displayFilename string) error {
 	for i := range f.Artifacts {
 		if f.Artifacts[i].UserID == userID && f.Artifacts[i].ID == artifactID {
@@ -45,7 +45,7 @@ func (f ArtifactStore) Rename(_ context.Context, userID, artifactID, displayFile
 	return nil
 }
 
-// SetThumbnailRelPath implements turn.ArtifactStore.
+// SetThumbnailRelPath sets the matching artifact's thumbnail path.
 func (f ArtifactStore) SetThumbnailRelPath(_ context.Context, userID, artifactID, relPath string) error {
 	for i := range f.Artifacts {
 		if f.Artifacts[i].UserID == userID && f.Artifacts[i].ID == artifactID {
@@ -103,7 +103,7 @@ func (f ArtifactStore) Get(_ context.Context, userID, artifactID string) (artifa
 	return artifact.Artifact{}, false, nil
 }
 
-// List implements turn.ArtifactStore.
+// List returns the user's artifacts, ignoring the options.
 func (f ArtifactStore) List(_ context.Context, userID string, _ artifact.ListOptions) ([]artifact.Artifact, error) {
 	var out []artifact.Artifact
 	for _, item := range f.Artifacts {
@@ -114,7 +114,7 @@ func (f ArtifactStore) List(_ context.Context, userID string, _ artifact.ListOpt
 	return out, nil
 }
 
-// ListForThread implements turn.ArtifactStore.
+// ListForThread returns the artifacts in the thread.
 func (f ArtifactStore) ListForThread(_ context.Context, _ string, threadID string) ([]artifact.Artifact, error) {
 	var out []artifact.Artifact
 	for _, item := range f.Artifacts {
@@ -125,7 +125,7 @@ func (f ArtifactStore) ListForThread(_ context.Context, _ string, threadID strin
 	return out, nil
 }
 
-// ListForProject implements turn.ArtifactStore.
+// ListForProject returns the artifacts in the project.
 func (f ArtifactStore) ListForProject(_ context.Context, _ string, projectID string) ([]artifact.Artifact, error) {
 	var out []artifact.Artifact
 	for _, item := range f.Artifacts {

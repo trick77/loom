@@ -57,7 +57,7 @@ func (f ToolService) ToolsFor(active map[string]bool) []llm.Tool {
 	return out
 }
 
-// ServerStatus implements turn.ToolService.
+// ServerStatus returns Servers; no turn reads it.
 func (f ToolService) ServerStatus(context.Context) []mcp.ServerStatus {
 	return f.Servers
 }

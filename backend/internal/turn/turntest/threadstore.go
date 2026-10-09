@@ -53,13 +53,13 @@ type ThreadStore struct {
 	ContentHits []chat.ThreadContentHit
 }
 
-// CreateProject implements turn.ThreadStore.
+// CreateProject replaces Project with proj_1.
 func (f *ThreadStore) CreateProject(_ context.Context, userID string, in chat.CreateProjectInput) (chat.Project, error) {
 	f.Project = chat.Project{ID: "proj_1", UserID: userID, Name: in.Name, Description: in.Description, DescriptionUserEdited: in.Description != ""}
 	return f.Project, nil
 }
 
-// GetProject implements turn.ThreadStore.
+// GetProject returns Project when the id matches.
 func (f *ThreadStore) GetProject(_ context.Context, _ string, projectID string) (chat.Project, bool, error) {
 	if f.Project.ID == "" || f.Project.ID != projectID {
 		return chat.Project{}, false, nil
@@ -67,7 +67,7 @@ func (f *ThreadStore) GetProject(_ context.Context, _ string, projectID string) 
 	return f.Project, true, nil
 }
 
-// ListProjects implements turn.ThreadStore.
+// ListProjects returns Project, if any.
 func (f *ThreadStore) ListProjects(context.Context, string, bool) ([]chat.Project, error) {
 	if f.Project.ID == "" {
 		return []chat.Project{}, nil
@@ -75,7 +75,7 @@ func (f *ThreadStore) ListProjects(context.Context, string, bool) ([]chat.Projec
 	return []chat.Project{f.Project}, nil
 }
 
-// UpdateProject implements turn.ThreadStore.
+// UpdateProject returns Project unchanged when the id matches.
 func (f *ThreadStore) UpdateProject(_ context.Context, _ string, projectID string, _ chat.UpdateProjectInput) (chat.Project, bool, error) {
 	if f.Project.ID == "" || f.Project.ID != projectID {
 		return chat.Project{}, false, nil
@@ -83,7 +83,7 @@ func (f *ThreadStore) UpdateProject(_ context.Context, _ string, projectID strin
 	return f.Project, true, nil
 }
 
-// SetAutoProjectDescription implements turn.ThreadStore.
+// SetAutoProjectDescription stores a generated description on Project.
 func (f *ThreadStore) SetAutoProjectDescription(_ context.Context, _ string, projectID, description string, sourceThreadCount int) (chat.Project, bool, error) {
 	if f.Project.ID == "" || f.Project.ID != projectID {
 		return chat.Project{}, false, nil
@@ -101,7 +101,7 @@ func (f *ThreadStore) SetAutoProjectDescription(_ context.Context, _ string, pro
 	return f.Project, true, nil
 }
 
-// ListProjectThreadTitles implements turn.ThreadStore.
+// ListProjectThreadTitles returns ProjectThreadTitles for Project.
 func (f *ThreadStore) ListProjectThreadTitles(_ context.Context, _ string, projectID string) ([]string, error) {
 	if f.Project.ID == "" || f.Project.ID != projectID {
 		return nil, nil
@@ -109,7 +109,7 @@ func (f *ThreadStore) ListProjectThreadTitles(_ context.Context, _ string, proje
 	return f.ProjectThreadTitles, nil
 }
 
-// SetProjectStarred implements turn.ThreadStore.
+// SetProjectStarred stars or unstars Project.
 func (f *ThreadStore) SetProjectStarred(_ context.Context, _ string, projectID string, starred bool) (chat.Project, bool, error) {
 	if f.Project.ID == "" || f.Project.ID != projectID {
 		return chat.Project{}, false, nil
@@ -118,17 +118,17 @@ func (f *ThreadStore) SetProjectStarred(_ context.Context, _ string, projectID s
 	return f.Project, true, nil
 }
 
-// SetProjectArchived implements turn.ThreadStore.
+// SetProjectArchived reports whether the id is Project's.
 func (f *ThreadStore) SetProjectArchived(_ context.Context, _ string, projectID string, _ bool) (bool, error) {
 	return f.Project.ID != "" && f.Project.ID == projectID, nil
 }
 
-// DeleteProject implements turn.ThreadStore.
+// DeleteProject reports whether the id is Project's.
 func (f *ThreadStore) DeleteProject(_ context.Context, _ string, projectID string) (bool, error) {
 	return f.Project.ID != "" && f.Project.ID == projectID, nil
 }
 
-// CreateThread implements turn.ThreadStore.
+// CreateThread replaces Thread with thr_1, or fails with CreateThreadErr.
 func (f *ThreadStore) CreateThread(_ context.Context, userID string, in chat.CreateThreadInput) (chat.Thread, error) {
 	if f.CreateThreadErr != nil {
 		return chat.Thread{}, f.CreateThreadErr
@@ -159,7 +159,7 @@ func (f *ThreadStore) ListThreads(_ context.Context, userID string, opts chat.Li
 	return []chat.Thread{f.Thread}, nil
 }
 
-// ListThreadIDs implements turn.ThreadStore.
+// ListThreadIDs records its arguments and returns Thread's id, if any.
 func (f *ThreadStore) ListThreadIDs(_ context.Context, userID string, opts chat.ListThreadsOptions) ([]string, error) {
 	f.ListThreadsUserID = userID
 	f.ListThreadsOptions = opts
@@ -191,7 +191,7 @@ func (f *ThreadStore) UpdateThread(_ context.Context, userID, threadID string, i
 	return f.Thread, true, nil
 }
 
-// SetThreadStarred implements turn.ThreadStore.
+// SetThreadStarred returns Thread unchanged.
 func (f *ThreadStore) SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error) {
 	return f.Thread, true, nil
 }
@@ -214,12 +214,12 @@ func (f *ThreadStore) SetThreadImageModelIfEmpty(_ context.Context, _, _, model 
 	return f.Thread, false, nil
 }
 
-// SetThreadArchived implements turn.ThreadStore.
+// SetThreadArchived always succeeds.
 func (f *ThreadStore) SetThreadArchived(context.Context, string, string, bool) (bool, error) {
 	return true, nil
 }
 
-// DeleteThread implements turn.ThreadStore.
+// DeleteThread records the id in DeletedThreads, or fails with DeleteThreadErr.
 func (f *ThreadStore) DeleteThread(_ context.Context, _ string, threadID string) (bool, error) {
 	if f.DeleteThreadErr != nil {
 		return false, f.DeleteThreadErr
@@ -228,7 +228,8 @@ func (f *ThreadStore) DeleteThread(_ context.Context, _ string, threadID string)
 	return true, nil
 }
 
-// AddMessageWithAttachments implements turn.ThreadStore.
+// AddMessageWithAttachments appends msg_1 to Messages and records its
+// attachments and pasted texts.
 func (f *ThreadStore) AddMessageWithAttachments(_ context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage) (chat.Message, error) {
 	if len(attachments) == 0 {
 		attachments = json.RawMessage("[]")
@@ -311,7 +312,7 @@ func (f *ThreadStore) AddMessageWithCitations(ctx context.Context, _ string, thr
 	return message, nil
 }
 
-// ListMessages implements turn.ThreadStore.
+// ListMessages returns a copy of Messages.
 func (f *ThreadStore) ListMessages(context.Context, string, string) ([]chat.Message, bool, error) {
 	return append([]chat.Message(nil), f.Messages...), true, nil
 }
@@ -343,7 +344,7 @@ func (f *ThreadStore) SearchMessages(_ context.Context, _ string, _ string, _ *s
 	return append([]chat.MessageSearchHit(nil), f.SearchHits...), nil
 }
 
-// SearchThreadsByContent implements turn.ThreadStore.
+// SearchThreadsByContent returns ContentHits up to limit.
 func (f *ThreadStore) SearchThreadsByContent(_ context.Context, _ string, _ string, _ *string, limit int) ([]chat.ThreadContentHit, error) {
 	hits := append([]chat.ThreadContentHit(nil), f.ContentHits...)
 	if limit > 0 && len(hits) > limit {
@@ -352,7 +353,7 @@ func (f *ThreadStore) SearchThreadsByContent(_ context.Context, _ string, _ stri
 	return hits, nil
 }
 
-// GetProjectMemory implements turn.ThreadStore.
+// GetProjectMemory returns ProjectMemory, if set.
 func (f *ThreadStore) GetProjectMemory(_ context.Context, _ string, projectID string) (chat.ProjectMemory, bool, error) {
 	if f.ProjectMemory.ProjectID == "" {
 		return chat.ProjectMemory{ProjectID: projectID}, false, nil
@@ -360,24 +361,24 @@ func (f *ThreadStore) GetProjectMemory(_ context.Context, _ string, projectID st
 	return f.ProjectMemory, true, nil
 }
 
-// UpsertProjectMemory implements turn.ThreadStore.
+// UpsertProjectMemory replaces ProjectMemory.
 func (f *ThreadStore) UpsertProjectMemory(_ context.Context, _ string, projectID, content string, sourceMessageCount int) (chat.ProjectMemory, error) {
 	f.ProjectMemory = chat.ProjectMemory{ProjectID: projectID, Content: content, SourceMessageCount: sourceMessageCount}
 	return f.ProjectMemory, nil
 }
 
-// CountProjectMessages implements turn.ThreadStore.
+// CountProjectMessages returns ProjectMessageCount.
 func (f *ThreadStore) CountProjectMessages(context.Context, string, string) (int, error) {
 	return f.ProjectMessageCount, nil
 }
 
-// ListProjectMessages implements turn.ThreadStore.
+// ListProjectMessages records limit in ListLimit and returns Messages.
 func (f *ThreadStore) ListProjectMessages(_ context.Context, _ string, _ string, limit int) ([]chat.Message, error) {
 	f.ListLimit = limit
 	return append([]chat.Message(nil), f.Messages...), nil
 }
 
-// GetUserMemory implements turn.ThreadStore.
+// GetUserMemory returns UserMemory, if set.
 func (f *ThreadStore) GetUserMemory(context.Context, string) (chat.UserMemory, bool, error) {
 	if f.UserMemory.Content == "" {
 		return chat.UserMemory{}, false, nil
@@ -385,18 +386,18 @@ func (f *ThreadStore) GetUserMemory(context.Context, string) (chat.UserMemory, b
 	return f.UserMemory, true, nil
 }
 
-// UpsertUserMemory implements turn.ThreadStore.
+// UpsertUserMemory replaces UserMemory.
 func (f *ThreadStore) UpsertUserMemory(_ context.Context, _ string, content string, sourceMessageCount int) (chat.UserMemory, error) {
 	f.UserMemory = chat.UserMemory{Content: content, SourceMessageCount: sourceMessageCount}
 	return f.UserMemory, nil
 }
 
-// CountUserMessages implements turn.ThreadStore.
+// CountUserMessages returns UserMessageCount.
 func (f *ThreadStore) CountUserMessages(context.Context, string) (int, error) {
 	return f.UserMessageCount, nil
 }
 
-// ListUserMessages implements turn.ThreadStore.
+// ListUserMessages records limit in ListLimit and returns Messages.
 func (f *ThreadStore) ListUserMessages(_ context.Context, _ string, limit int) ([]chat.Message, error) {
 	f.ListLimit = limit
 	return append([]chat.Message(nil), f.Messages...), nil
@@ -442,7 +443,7 @@ func (f *ThreadStore) ReplaceUserDirective(_ context.Context, _, id, content str
 	return chat.UserDirective{}, false, nil
 }
 
-// CreateShare implements turn.ThreadStore.
+// CreateShare stores a share for the thread in Shares.
 func (f *ThreadStore) CreateShare(_ context.Context, userID string, in chat.CreateShareInput) (chat.Share, error) {
 	if f.Shares == nil {
 		f.Shares = map[string]chat.Share{}
@@ -461,13 +462,13 @@ func (f *ThreadStore) CreateShare(_ context.Context, userID string, in chat.Crea
 	return share, nil
 }
 
-// GetShareByThreadID implements turn.ThreadStore.
+// GetShareByThreadID returns the thread's share from Shares.
 func (f *ThreadStore) GetShareByThreadID(_ context.Context, _ string, threadID string) (chat.Share, bool, error) {
 	share, ok := f.Shares[threadID]
 	return share, ok, nil
 }
 
-// GetShareByShareID implements turn.ThreadStore.
+// GetShareByShareID finds a share in Shares by its public id.
 func (f *ThreadStore) GetShareByShareID(_ context.Context, shareID string) (chat.Share, bool, error) {
 	for _, share := range f.Shares {
 		if share.ShareID == shareID {
@@ -477,7 +478,7 @@ func (f *ThreadStore) GetShareByShareID(_ context.Context, shareID string) (chat
 	return chat.Share{}, false, nil
 }
 
-// UpdateShareSnapshot implements turn.ThreadStore.
+// UpdateShareSnapshot replaces the thread's share snapshot in Shares.
 func (f *ThreadStore) UpdateShareSnapshot(_ context.Context, _ string, threadID string, in chat.UpdateShareInput) (chat.Share, bool, error) {
 	share, ok := f.Shares[threadID]
 	if !ok {
@@ -491,7 +492,7 @@ func (f *ThreadStore) UpdateShareSnapshot(_ context.Context, _ string, threadID 
 	return share, true, nil
 }
 
-// SetShareEnabled implements turn.ThreadStore.
+// SetShareEnabled turns the thread's share in Shares on or off.
 func (f *ThreadStore) SetShareEnabled(_ context.Context, _ string, threadID string, enabled bool) (bool, error) {
 	share, ok := f.Shares[threadID]
 	if !ok {
@@ -502,7 +503,7 @@ func (f *ThreadStore) SetShareEnabled(_ context.Context, _ string, threadID stri
 	return true, nil
 }
 
-// ListSharesForUser implements turn.ThreadStore.
+// ListSharesForUser returns every share in Shares.
 func (f *ThreadStore) ListSharesForUser(_ context.Context, _ string) ([]chat.Share, error) {
 	shares := make([]chat.Share, 0, len(f.Shares))
 	for _, share := range f.Shares {
