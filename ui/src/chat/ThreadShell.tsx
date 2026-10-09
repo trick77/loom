@@ -14,11 +14,14 @@ import {
   DEFAULT_THREAD_TITLE,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   createThread,
+  getThread,
   setProjectStarred,
   setThreadStarred,
   stopMessage,
   streamMessage,
   type Artifact,
+  type ContentBlock,
+  type Message,
   type MessagePastedText,
   type Project,
   type ShareInfo,
@@ -63,7 +66,8 @@ import {
   useDocumentAttachments,
   type ComposerAttachment,
 } from "./useDocumentAttachments";
-import { useThreadData } from "./useThreadData";
+import { rehydrateLoadedMessage, useThreadData } from "./useThreadData";
+import { followRunningTurn } from "./followRunningTurn";
 import { useProjectActions } from "./useProjectActions";
 import { useThreadActions } from "./useThreadActions";
 import { ThreadPanel } from "./ThreadPanel";
@@ -115,6 +119,26 @@ import { useEscapeKey } from "./useEscapeKey";
 // before the fetch is dropped anyway. Saving waits up to 5s on reasoning
 // titles, so this sits well past that.
 const STOP_ABORT_FALLBACK_MS = 15_000;
+
+// foldAssistantMessage puts a finished assistant message into the transcript.
+// The persisted message may already carry the backend's ordered contentBlocks.
+// When it doesn't (older backends / lag), the just-streamed blocks are grafted
+// on — settled to done — so the chronological order (and the activity panel)
+// survives the turn settling. A message a route refresh already loaded is
+// replaced in place, keeping the richer grafted blocks and its clientKey,
+// instead of appending a duplicate bubble.
+function foldAssistantMessage(
+  current: MessageWithActivityTrace[],
+  message: Message,
+  liveBlocks: ContentBlock[],
+): MessageWithActivityTrace[] {
+  const grafted = graftStreamedBlocks(message, liveBlocks);
+  const index = current.findIndex((item) => item.id === grafted.id);
+  if (index === -1) return [...current, grafted];
+  const next = current.slice();
+  next[index] = { ...grafted, clientKey: current[index].clientKey };
+  return next;
+}
 
 type ThreadShellProps = {
   user: User;
@@ -179,6 +203,7 @@ export function ThreadShell({
     patch: patchStreamRun,
     rekey: rekeyStreamRun,
     end: endStreamRun,
+    has: hasStreamRun,
     abort: abortStreamRun,
     abortAll: abortAllStreamRuns,
     markStopRequested,
@@ -234,6 +259,9 @@ export function ThreadShell({
   } = useShellChrome();
   const [threadMutationVersion, setThreadMutationVersion] = useState(0);
   const activeThreadIDRef = useRef<string | null>(null);
+  // Set further down, once the state it closes over exists; read only from the
+  // thread load, which runs after the first render.
+  const attachToRunningTurnRef = useRef<(thread: Thread) => void>(() => {});
 
   // translateStreamError names the two transport failures the user can act on
   // in their own language; every other error keeps its own text (a server
@@ -314,6 +342,10 @@ export function ThreadShell({
     activeThreadIDRef,
     handleActionError,
     onSessionExpired,
+    onRunningTurn: useCallback(
+      (thread: Thread) => attachToRunningTurnRef.current(thread),
+      [],
+    ),
   });
 
   // The composer surface currently on screen, and the draft that belongs to it.
@@ -859,6 +891,9 @@ export function ThreadShell({
     // Id of the optimistic user bubble until the server confirms it; the catch reads
     // this to decide whether to drop the placeholder, so it must outlive the try block.
     let optimisticUserMessageID: string | null = null;
+    // The server stored the user message: from then on the turn runs on the
+    // server whatever happens to this connection.
+    let userMessageConfirmed = false;
     // The thread this run belongs to, known up front for an existing thread and
     // filled in below for one created by this send. Whether the user is still
     // looking at it decides the writes into `messages`, which is a single array
@@ -987,82 +1022,66 @@ export function ThreadShell({
       }
       targetThreadID = targetThread.id;
       const threadIDForRun = targetThreadID;
-      const turn = createTurnHandlers({
-        patch: (next) => patchStreamRun(runKey, next),
-        onUserMessage: (message) => {
-          if (!isCurrentThread()) return;
-          const confirmed =
-            options.attachments.length > 0
-              ? {
-                  ...message,
-                  attachments: options.attachments.map(toSentAttachment),
-                }
-              : message;
-          // Fold the persisted message into the list, replacing the optimistic
-          // placeholder in place (its clientKey/position survive => stable React key,
-          // no remount or scroll jump). Capture the placeholder id into a const rather
-          // than reading the outer `optimisticUserMessageID` inside the updater: the
-          // latter is reset to null synchronously below, but React may defer the
-          // updater (when its queue is non-empty mid-stream) until after that reset —
-          // reading null then would miss the placeholder, append a second bubble, and
-          // leave the orphaned optimistic one. Reset before setMessages so the catch
-          // block treats the message as confirmed and won't drop it.
-          const placeholderID = optimisticUserMessageID;
-          optimisticUserMessageID = null;
-          setMessages((current) =>
-            reconcileUserMessage(current, placeholderID, confirmed),
-          );
-        },
-        onAssistantMessage: (message, liveBlocks) => {
-          // The persisted message may already carry the backend's ordered
-          // contentBlocks. When it doesn't (older backends / lag), graft the
-          // just-streamed blocks — settled to done — so the chronological order
-          // (and the activity panel) survives the turn settling. The final answer
-          // text can arrive only on the assistant_message (not as deltas), so
-          // ensure the message content is represented as a trailing text block
-          // when the streamed blocks carry no prose of their own.
-          if (isCurrentThread()) {
-            setMessages((current) => {
-              const grafted = graftStreamedBlocks(message, liveBlocks);
-              // Mirror the user-message dedup: if a route refresh already loaded this
-              // assistant message, replace it in place (keeping the richer grafted
-              // blocks and its clientKey) instead of appending a duplicate bubble.
-              const index = current.findIndex((item) => item.id === grafted.id);
-              if (index === -1) return [...current, grafted];
-              const next = current.slice();
-              next[index] = {
-                ...grafted,
-                clientKey: current[index].clientKey,
-              };
-              return next;
-            });
-          }
-          // The settled message carries its own citations and blocks, so drop the
-          // live copies now rather than at endRun — the stream reader yields
-          // between chunks, so waiting would flash the turn twice.
-        },
-        onMessageCost: (event) => {
-          if (isCurrentThread()) {
-            setMessages((current) => applyMessageCost(current, event));
-          }
-        },
-        onThread: (updatedThread) => {
-          receivedThreadEvent = true;
-          if (isCurrentThread()) setActiveThread(updatedThread);
-          setThreads((current) => upsertThreadById(current, updatedThread));
-          // Compare against the project captured when this send started, never a
-          // live `route` read: a run outlives navigation now.
-          if (
-            projectIDForNewThread !== null &&
-            updatedThread.projectId !== undefined &&
-            updatedThread.projectId === projectIDForNewThread
-          ) {
-            setProjectThreads((current) =>
-              upsertThreadById(current, updatedThread),
+      const makeTurn = () =>
+        createTurnHandlers({
+          patch: (next) => patchStreamRun(runKey, next),
+          onUserMessage: (message) => {
+            userMessageConfirmed = true;
+            if (!isCurrentThread()) return;
+            const confirmed =
+              options.attachments.length > 0
+                ? {
+                    ...message,
+                    attachments: options.attachments.map(toSentAttachment),
+                  }
+                : message;
+            // Fold the persisted message into the list, replacing the optimistic
+            // placeholder in place (its clientKey/position survive => stable React key,
+            // no remount or scroll jump). Capture the placeholder id into a const rather
+            // than reading the outer `optimisticUserMessageID` inside the updater: the
+            // latter is reset to null synchronously below, but React may defer the
+            // updater (when its queue is non-empty mid-stream) until after that reset —
+            // reading null then would miss the placeholder, append a second bubble, and
+            // leave the orphaned optimistic one. Reset before setMessages so the catch
+            // block treats the message as confirmed and won't drop it.
+            const placeholderID = optimisticUserMessageID;
+            optimisticUserMessageID = null;
+            setMessages((current) =>
+              reconcileUserMessage(current, placeholderID, confirmed),
             );
-          }
-        },
-      });
+          },
+          onAssistantMessage: (message, liveBlocks) => {
+            if (isCurrentThread()) {
+              setMessages((current) =>
+                foldAssistantMessage(current, message, liveBlocks),
+              );
+            }
+            // The settled message carries its own citations and blocks, so drop the
+            // live copies now rather than at endRun — the stream reader yields
+            // between chunks, so waiting would flash the turn twice.
+          },
+          onMessageCost: (event) => {
+            if (isCurrentThread()) {
+              setMessages((current) => applyMessageCost(current, event));
+            }
+          },
+          onThread: (updatedThread) => {
+            receivedThreadEvent = true;
+            if (isCurrentThread()) setActiveThread(updatedThread);
+            setThreads((current) => upsertThreadById(current, updatedThread));
+            // Compare against the project captured when this send started, never a
+            // live `route` read: a run outlives navigation now.
+            if (
+              projectIDForNewThread !== null &&
+              updatedThread.projectId !== undefined &&
+              updatedThread.projectId === projectIDForNewThread
+            ) {
+              setProjectThreads((current) =>
+                upsertThreadById(current, updatedThread),
+              );
+            }
+          },
+        });
       const documentAttachmentIds = options.attachments
         .filter((attachment) => attachment.documentId !== undefined)
         .map((attachment) => attachment.documentId!);
@@ -1101,17 +1120,36 @@ export function ThreadShell({
         };
         setMessages((current) => [...current, optimisticMessage]);
       }
-      await streamMessage(
-        threadIDForRun,
-        content,
-        turn.handlers,
-        abortController.signal,
-        {
-          documentAttachmentIds,
-          imageAttachmentIds,
-          pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
-        },
-      );
+      try {
+        await streamMessage(
+          threadIDForRun,
+          content,
+          makeTurn().handlers,
+          abortController.signal,
+          {
+            documentAttachmentIds,
+            imageAttachmentIds,
+            pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
+          },
+        );
+      } catch (error) {
+        // The connection dropped after the server took the message, typically
+        // a phone freezing the tab: the turn is still running there, so follow
+        // it again instead of failing the send.
+        if (
+          !(error instanceof StreamInterruptedError) ||
+          !userMessageConfirmed ||
+          abortController.signal.aborted ||
+          stopRequested(abortController)
+        )
+          throw error;
+        await resumeRunningTurn(
+          threadIDForRun,
+          abortController.signal,
+          makeTurn,
+          isCurrentThread,
+        );
+      }
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThreadById(current, fallbackThread));
@@ -1174,6 +1212,87 @@ export function ThreadShell({
       });
     }
   }
+
+  // resumeRunningTurn follows a turn that is still running on the server. The
+  // replay starts from the turn's first event, so each attempt gets fresh
+  // handlers; their first flush replaces whatever streamed before the drop. A
+  // turn that ended meanwhile is already saved: the thread is reloaded.
+  async function resumeRunningTurn(
+    threadID: string,
+    signal: AbortSignal,
+    makeTurn: () => ReturnType<typeof createTurnHandlers>,
+    isCurrentThread: () => boolean,
+  ) {
+    const outcome = await followRunningTurn({
+      threadId: threadID,
+      signal,
+      handlers: () => makeTurn().handlers,
+    });
+    if (outcome === "attached" || !isCurrentThread()) return;
+    const response = await getThread(threadID);
+    if (isCurrentThread())
+      setMessages(response.messages.map(rehydrateLoadedMessage));
+  }
+
+  // attachToRunningTurn picks up a turn found running when its thread loads: a
+  // reload, or a phone that discarded the tab mid-answer. A run this tab already
+  // has on the thread is left alone.
+  attachToRunningTurnRef.current = (thread: Thread) => {
+    const runKey = threadRunKey(thread.id);
+    if (hasStreamRun(runKey)) return;
+    const abortController = new AbortController();
+    beginStreamRun(runKey, abortController);
+    const isCurrentThread = () => activeThreadIDRef.current === thread.id;
+    const makeTurn = () =>
+      createTurnHandlers({
+        patch: (next) => patchStreamRun(runKey, next),
+        onUserMessage: (message) => {
+          if (isCurrentThread())
+            setMessages((current) =>
+              reconcileUserMessage(current, null, message),
+            );
+        },
+        onAssistantMessage: (message, liveBlocks) => {
+          if (isCurrentThread())
+            setMessages((current) =>
+              foldAssistantMessage(current, message, liveBlocks),
+            );
+        },
+        onMessageCost: (event) => {
+          if (isCurrentThread())
+            setMessages((current) => applyMessageCost(current, event));
+        },
+        onThread: (updatedThread) => {
+          if (isCurrentThread()) setActiveThread(updatedThread);
+          setThreads((current) => upsertThreadById(current, updatedThread));
+        },
+      });
+    let failed = false;
+    resumeRunningTurn(
+      thread.id,
+      abortController.signal,
+      makeTurn,
+      isCurrentThread,
+    )
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        if (abortController.signal.aborted || stopRequested(abortController))
+          return;
+        failed = true;
+        handleActionError(
+          translateStreamError(error),
+          t("thread.sendFailed"),
+          (message) => patchStreamRun(runKey, { error: message }),
+        );
+      })
+      .finally(() => {
+        endStreamRun(runKey, {
+          keepFailedTurnVisible: failed,
+          controller: abortController,
+        });
+      });
+  };
 
   async function handleIncognitoSend() {
     const draftText = draft.text.trim();

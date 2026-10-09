@@ -60,7 +60,8 @@ func TestServeReturnsListenerError(t *testing.T) {
 	defer cancel()
 
 	done := make(chan error, 1)
-	go func() { done <- serve(ctx, srv, ln, background.New(ctx), func(context.Context) {}) }()
+	cancelBase := testBase(t, srv)
+	go func() { done <- serve(ctx, srv, ln, background.New(ctx), cancelBase, func(context.Context) {}) }()
 
 	select {
 	case err := <-done:
@@ -106,7 +107,8 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 	})
 
 	served := make(chan error, 1)
-	go func() { served <- serve(ctx, srv, ln, bg, func(context.Context) {}) }()
+	cancelBase := testBase(t, srv)
+	go func() { served <- serve(ctx, srv, ln, bg, cancelBase, func(context.Context) {}) }()
 	go func() {
 		resp, err := http.Get("http://" + ln.Addr().String() + "/hang")
 		if err == nil {
@@ -161,7 +163,8 @@ func TestServeWaitsForWorkersToStop(t *testing.T) {
 		}
 
 		served := make(chan error, 1)
-		go func() { served <- serve(ctx, srv, ln, background.New(context.Background()), worker) }()
+		cancelBase := testBase(t, srv)
+		go func() { served <- serve(ctx, srv, ln, background.New(context.Background()), cancelBase, worker) }()
 		<-started
 		if listenerFails {
 			_ = ln.Close()
@@ -204,7 +207,8 @@ func TestServeShutdownLetsShortRequestsFinish(t *testing.T) {
 	bg := background.New(context.Background())
 
 	served := make(chan error, 1)
-	go func() { served <- serve(ctx, srv, ln, bg, func(context.Context) {}) }()
+	cancelBase := testBase(t, srv)
+	go func() { served <- serve(ctx, srv, ln, bg, cancelBase, func(context.Context) {}) }()
 	status := make(chan int, 1)
 	go func() {
 		resp, err := http.Get("http://" + ln.Addr().String() + "/short")
@@ -234,4 +238,14 @@ func TestServeShutdownLetsShortRequestsFinish(t *testing.T) {
 	if got := <-status; got != http.StatusOK {
 		t.Fatalf("in-flight request status = %d, want 200 (it was cancelled instead of allowed to finish)", got)
 	}
+}
+
+// testBase gives srv a fresh base context, as run() does, and returns its
+// cancel for serve.
+func testBase(t *testing.T, srv *http.Server) context.CancelCauseFunc {
+	t.Helper()
+	base, cancel := context.WithCancelCause(context.Background())
+	t.Cleanup(func() { cancel(nil) })
+	srv.BaseContext = func(net.Listener) context.Context { return base }
+	return cancel
 }

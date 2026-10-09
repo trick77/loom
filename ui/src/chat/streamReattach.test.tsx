@@ -1,0 +1,182 @@
+import "@testing-library/jest-dom/vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+
+import App from "../App";
+
+// A phone that freezes the tab mid-answer drops the stream; the server keeps
+// the turn running. These drive the whole shell through that: the answer must
+// come back without an error and without the question returning to the
+// composer for a resend.
+
+const thread = {
+  id: "t1",
+  title: "Existing chat",
+  starred: false,
+  createdAt: "2026-05-30T00:00:00Z",
+  updatedAt: "2026-05-30T00:00:00Z",
+};
+
+const userMessage =
+  'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n';
+
+function answerEvents(content: string) {
+  return [
+    `event: assistant_delta\ndata: {"content":"${content}"}\n\n`,
+    `event: assistant_message\ndata: {"id":"m2","threadId":"t1","role":"assistant","content":"${content}","createdAt":"2026-05-30T00:00:01Z"}\n\n`,
+    "event: done\ndata: {}\n\n",
+  ];
+}
+
+// sse serves chunks one per read; dropAtEnd then fails the read the way a
+// browser does when the network goes away (Safari: TypeError "Load failed").
+function sse(chunks: string[], dropAtEnd = false) {
+  const encoder = new TextEncoder();
+  const pending = [...chunks];
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = pending.shift();
+        if (chunk !== undefined) controller.enqueue(encoder.encode(chunk));
+        else if (dropAtEnd) controller.error(new TypeError("Load failed"));
+        else controller.close();
+      },
+    }),
+  );
+}
+
+function shellFetch(routes: {
+  thread: () => Response;
+  stream?: () => Response;
+  attach: () => Response;
+}) {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/me")
+      return Response.json({ id: "u1", username: "jan", role: "user" });
+    if (url === "/api/projects") return Response.json([]);
+    if (url === "/api/threads?limit=30")
+      return Response.json({ items: [thread], nextCursor: null });
+    if (url === "/api/threads/t1") return routes.thread();
+    if (
+      url === "/api/threads/t1/messages:stream" &&
+      init?.method === "POST" &&
+      routes.stream !== undefined
+    )
+      return routes.stream();
+    if (url === "/api/threads/t1/messages:attach") return routes.attach();
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
+
+beforeEach(() => {
+  window.history.replaceState({}, "", "/");
+  window.localStorage.clear();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+async function sendHi() {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  fireEvent.change(await screen.findByPlaceholderText(/message/i), {
+    target: { value: "Hi" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+}
+
+test("a stream dropped mid-answer reattaches and finishes the answer", async () => {
+  const fetchMock = shellFetch({
+    thread: () => Response.json({ thread, messages: [] }),
+    stream: () =>
+      sse(
+        [userMessage, 'event: assistant_delta\ndata: {"content":"Hel"}\n\n'],
+        true,
+      ),
+    attach: () => sse([userMessage, ...answerEvents("Hello there")]),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await sendHi();
+
+  expect(await screen.findByText("Hello there")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Stop response" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByText(/failed to send/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/connection dropped/i)).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("");
+  expect(screen.getAllByText("Hi")).toHaveLength(1);
+});
+
+test("a turn that finished while the stream was down is loaded from the thread", async () => {
+  let threadLoads = 0;
+  const fetchMock = shellFetch({
+    thread: () => {
+      threadLoads += 1;
+      return Response.json({
+        thread,
+        messages:
+          threadLoads === 1
+            ? []
+            : [
+                {
+                  id: "m1",
+                  threadId: "t1",
+                  role: "user",
+                  content: "Hi",
+                  createdAt: "2026-05-30T00:00:00Z",
+                },
+                {
+                  id: "m2",
+                  threadId: "t1",
+                  role: "assistant",
+                  content: "Saved answer",
+                  createdAt: "2026-05-30T00:00:01Z",
+                },
+              ],
+      });
+    },
+    stream: () => sse([userMessage], true),
+    attach: () => new Response(null, { status: 204 }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await sendHi();
+
+  expect(await screen.findByText("Saved answer")).toBeInTheDocument();
+  expect(screen.queryByText(/failed to send/i)).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("");
+});
+
+test("opening a thread whose answer is still being written follows it live", async () => {
+  const fetchMock = shellFetch({
+    thread: () =>
+      Response.json({
+        thread,
+        streaming: true,
+        messages: [
+          {
+            id: "m1",
+            threadId: "t1",
+            role: "user",
+            content: "Hi",
+            createdAt: "2026-05-30T00:00:00Z",
+          },
+        ],
+      }),
+    attach: () => sse([userMessage, ...answerEvents("Still coming")]),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+
+  expect(await screen.findByText("Still coming")).toBeInTheDocument();
+  // The replayed user message folds into the loaded one.
+  expect(screen.getAllByText("Hi")).toHaveLength(1);
+});

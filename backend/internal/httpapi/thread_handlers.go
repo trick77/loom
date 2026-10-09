@@ -152,7 +152,11 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "get thread share failed")
 		return
 	}
-	resp := getThreadResponse{Thread: thread, Messages: messages}
+	resp := getThreadResponse{
+		Thread:    thread,
+		Messages:  messages,
+		Streaming: s.activeStreams.lookup(user.ID, threadID) != nil,
+	}
 	if hasShare {
 		summary := s.shareSummaryOf(share)
 		resp.Share = &summary

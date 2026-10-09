@@ -93,7 +93,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, r, err)
 		return
 	}
-	streamCtx, cancelStream := context.WithCancelCause(r.Context())
+	// The turn runs detached from the client. A phone that freezes the tab drops
+	// the connection mid-answer; the answer must still finish and be saved, so
+	// the client can reattach (handleAttachStreamMessage) or find it on reload.
+	// liveCtx ends only on shutdown; stop, supersede and delete cancel streamCtx
+	// through activeStreams.
+	liveCtx, endLive := s.detachedFromClient(r.Context())
+	defer endLive()
+	streamCtx, cancelStream := context.WithCancelCause(liveCtx)
 	defer cancelStream(nil)
 	// Sum token usage across every model call this turn makes — answer turns, tool
 	// rounds, and the background reasoning/thread-title helpers — so the persisted
@@ -113,28 +120,42 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		ThreadID: threadID,
 	}
 	streamCtx = llm.WithInferenceMetadata(streamCtx, inference)
-	// The prompt-assembly helpers below run on the request context rather than
-	// streamCtx, so they need the same attribution attached separately — and the
-	// accumulator, so their calls (the RAG query embedding) count in the turn.
-	turnCtx := llm.WithUsageAccumulator(llm.WithInferenceMetadata(r.Context(), inference), usageTotal)
+	// The prompt-assembly helpers below run on liveCtx rather than streamCtx, so
+	// they need the same attribution attached separately — and the accumulator,
+	// so their calls (the RAG query embedding) count in the turn.
+	turnCtx := llm.WithUsageAccumulator(llm.WithInferenceMetadata(liveCtx, inference), usageTotal)
 	turnStart := time.Now()
-	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream)
+	// The turn writes its events into the hub, never to a client directly.
+	stream := newTurnHub()
+	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream, stream)
 	defer unregisterStream()
 
-	stream, err := sse.NewWriter(w)
+	writer, err := sse.NewWriter(w)
 	if err != nil {
 		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Keep the connection alive through idle proxies during long silent gaps —
+	// notably while a model serializes a large tool-call argument server-side and
+	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
+	defer writer.Heartbeat(r.Context(), streamHeartbeatInterval)()
+	// The sending client follows the hub like a reattaching one. The handler
+	// waits for it, as w is only valid until the handler returns; sse's write
+	// deadline bounds a client that stopped reading.
+	following := make(chan struct{})
+	go func() {
+		defer close(following)
+		stream.follow(r.Context(), writer)
+	}()
+	defer func() {
+		stream.close()
+		<-following
+	}()
 	// From here on the 200 is committed, so a panic must end the stream with an
 	// error event rather than reach the recovery middleware, which can no longer
 	// answer with a 500.
 	defer recoverToStream(stream, r)
-	// Keep the connection alive through idle proxies during long silent gaps —
-	// notably while a model serializes a large tool-call argument server-side and
-	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
-	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 	// Book what the turn spent on every exit path. Deferred ahead of
 	// titles.Wait below so it runs after it: the reasoning-title calls must have
 	// finished before the turn's cost is read. The success path settles
@@ -166,7 +187,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}, turn.PrepareInput{
 		StreamCtx:             streamCtx,
 		TurnCtx:               turnCtx,
-		ReqCtx:                r.Context(),
+		ReqCtx:                liveCtx,
 		ImageAttachmentIDs:    body.ImageAttachmentIDs,
 		DocumentAttachmentIDs: body.DocumentAttachmentIDs,
 		PriorMessages:         priorMessages,
@@ -238,8 +259,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			finishCosts()
 			// End the stream deliberately. A client that did not issue the stop
 			// itself (the thread open in a second tab) would otherwise read an
-			// unterminated stream as a dropped connection. The write fails
-			// harmlessly when the client is the one that went away.
+			// unterminated stream as a dropped connection.
 			_ = stream.SendJSON("done", struct{}{})
 			return
 		}
@@ -378,6 +398,41 @@ func sanitizeCancelSource(source string) string {
 	return b.String()
 }
 
+// handleAttachStreamMessage reattaches a client to the user's running turn on
+// the thread: it replays every event the turn has sent so far, then follows it
+// live to the end. 204 when no turn is running; the client then reloads the
+// thread, where a finished turn's answer is already saved.
+func (s *server) handleAttachStreamMessage(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	hub := s.activeStreams.lookup(user.ID, r.PathValue("threadID"))
+	if hub == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writer, err := sse.NewWriter(w)
+	if err != nil {
+		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer writer.Heartbeat(r.Context(), streamHeartbeatInterval)()
+	hub.follow(r.Context(), writer)
+}
+
+// detachedFromClient returns a context with parent's values that a dropped
+// client connection does not end; only the server's shutdown does.
+func (s *server) detachedFromClient(parent context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancelCause(context.WithoutCancel(parent))
+	stop := context.AfterFunc(s.lifetime, func() { cancel(context.Cause(s.lifetime)) })
+	return ctx, func() {
+		stop()
+		cancel(nil)
+	}
+}
+
 func streamCancelDetails(ctx context.Context) (string, string) {
 	cause := context.Cause(ctx)
 	if cause == nil {
@@ -404,7 +459,7 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 // failed turn instead of a stream that just stops. The panic is logged here
 // with its stack; it is not re-raised because the recovery middleware could
 // only write a 500 into the open stream.
-func recoverToStream(stream *sse.Writer, r *http.Request) {
+func recoverToStream(stream turn.Emitter, r *http.Request) {
 	if p := recover(); p != nil {
 		slog.Error("panic recovered mid-stream", "err", p, "path", r.URL.Path, "stack", string(debug.Stack()))
 		_ = stream.SendJSON("error", map[string]string{"error": "internal server error"})

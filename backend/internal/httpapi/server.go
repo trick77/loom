@@ -69,6 +69,10 @@ type Deps struct {
 	// Background owns the goroutines that outlive a request (post-turn memory
 	// refreshes). nil means a group nobody stops, which is what tests want.
 	Background *background.Group
+	// Lifetime ends when the server shuts down. A chat turn runs detached from
+	// its client, so a dropped connection does not end it; this is what still
+	// stops it on shutdown. nil means a lifetime that never ends.
+	Lifetime context.Context
 	// ReasoningTitleHold and ReasoningTitleStartBytes tune the reasoning title
 	// timing (see turn.Config); zero keeps the defaults, tests shorten them.
 	ReasoningTitleHold       time.Duration
@@ -100,6 +104,7 @@ type server struct {
 	postLogoutRedirectURL string
 	publicURL             string
 	activeStreams         activeStreamRegistry
+	lifetime              context.Context
 	// engine runs the chat turns the stream handlers start.
 	engine *turn.Engine
 }
@@ -256,8 +261,13 @@ func newServer(d Deps) *server {
 	if bg == nil {
 		bg = background.New(context.Background())
 	}
+	lifetime := d.Lifetime
+	if lifetime == nil {
+		lifetime = context.Background()
+	}
 	s := &server{
 		background:            bg,
+		lifetime:              lifetime,
 		version:               d.Version,
 		model:                 d.Model,
 		oidc:                  d.OIDC,
@@ -344,6 +354,7 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	mux.Handle("DELETE /api/threads/{threadID}", s.requireAuth(http.HandlerFunc(s.handleDeleteThread)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
+	mux.Handle("GET /api/threads/{threadID}/messages:attach", s.requireAuth(http.HandlerFunc(s.handleAttachStreamMessage)))
 	// Incognito: a fully ephemeral, stateless turn — no thread/messages/artifacts
 	// rows, no memory reads or writes. History is supplied by the client per request.
 	mux.Handle("POST /api/incognito/messages:stream", s.requireAuth(http.HandlerFunc(s.handleIncognitoStreamMessage)))
@@ -391,6 +402,8 @@ type activeStreamKey struct {
 
 type activeStream struct {
 	cancel context.CancelCauseFunc
+	// hub carries the turn's events to the clients that reattach to it.
+	hub *turnHub
 	// done is closed once the stream handler has returned. stopAndWait blocks on
 	// it so a caller that needs the turn to be really finished — the thread delete
 	// path, which must not race the turn's remaining writes — can wait for it.
@@ -398,9 +411,9 @@ type activeStream struct {
 	closeOnce sync.Once
 }
 
-func (r *activeStreamRegistry) register(userID, threadID string, cancel context.CancelCauseFunc) func() {
+func (r *activeStreamRegistry) register(userID, threadID string, cancel context.CancelCauseFunc, hub *turnHub) func() {
 	key := activeStreamKey{userID: userID, threadID: threadID}
-	stream := &activeStream{cancel: cancel, done: make(chan struct{})}
+	stream := &activeStream{cancel: cancel, hub: hub, done: make(chan struct{})}
 	r.mu.Lock()
 	if r.streams == nil {
 		r.streams = make(map[activeStreamKey]*activeStream)
@@ -421,6 +434,17 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 		// would never fire and every waiter would burn its full timeout.
 		stream.closeOnce.Do(func() { close(stream.done) })
 	}
+}
+
+// lookup returns the hub of the user's running turn on the thread, or nil when
+// none is running.
+func (r *activeStreamRegistry) lookup(userID, threadID string) *turnHub {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if stream := r.streams[activeStreamKey{userID: userID, threadID: threadID}]; stream != nil {
+		return stream.hub
+	}
+	return nil
 }
 
 func (r *activeStreamRegistry) stop(userID, threadID string, cause error) bool {

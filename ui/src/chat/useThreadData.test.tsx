@@ -26,16 +26,18 @@ function thread(id: string) {
 
 async function setup() {
   const activeThreadIDRef = { current: null as string | null };
+  const onRunningTurn = vi.fn();
   const hook = renderHook(() =>
     useThreadData({
       abortAllStreamRuns: vi.fn(),
       activeThreadIDRef,
       handleActionError: (_error, fallback, setError) => setError(fallback),
       onSessionExpired: vi.fn(),
+      onRunningTurn,
     }),
   );
   await waitFor(() => expect(hook.result.current.threadDataLoaded).toBe(true));
-  return { hook, activeThreadIDRef };
+  return { hook, activeThreadIDRef, onRunningTurn };
 }
 
 beforeEach(() => {
@@ -82,4 +84,30 @@ test("a successful load clears a previous load error", async () => {
   });
   await waitFor(() => expect(hook.result.current.activeThread?.id).toBe("c"));
   expect(hook.result.current.loadError).toBe("");
+});
+
+// A reloaded page, or a phone that discarded the tab, finds the answer still
+// being written and hands the thread over to be reattached.
+test("a thread loaded mid-answer reports its running turn", async () => {
+  const { hook, onRunningTurn } = await setup();
+  api.getThread.mockResolvedValueOnce({
+    thread: thread("a"),
+    messages: [],
+    streaming: true,
+  });
+  act(() => {
+    hook.result.current.loadRoute({ view: "thread", threadID: "a" });
+  });
+  await waitFor(() =>
+    expect(onRunningTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "a" }),
+    ),
+  );
+
+  api.getThread.mockResolvedValueOnce({ thread: thread("b"), messages: [] });
+  act(() => {
+    hook.result.current.loadRoute({ view: "thread", threadID: "b" });
+  });
+  await waitFor(() => expect(hook.result.current.activeThread?.id).toBe("b"));
+  expect(onRunningTurn).toHaveBeenCalledTimes(1);
 });

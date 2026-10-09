@@ -97,6 +97,10 @@ export function useStreamRuns() {
     [commit],
   );
 
+  // has reports whether a run is in flight on key, read from the ref so a
+  // caller outside render (a load callback) sees the current answer.
+  const has = useCallback((key: RunKey) => abortsRef.current.has(key), []);
+
   const abort = useCallback((key: RunKey) => {
     abortsRef.current.get(key)?.abort();
   }, []);
@@ -132,6 +136,7 @@ export function useStreamRuns() {
     patch,
     rekey,
     end,
+    has,
     abort,
     abortAll,
     markStopRequested,

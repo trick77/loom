@@ -15,16 +15,20 @@ import (
 // reasoning-title generation) may emit events at the same time.
 type Writer struct {
 	w            http.ResponseWriter
-	flusher      http.Flusher
+	rc           *http.ResponseController
 	mu           sync.Mutex
 	lastActivity time.Time
 }
 
+// writeTimeout bounds one event's write. A client that stops reading (a frozen
+// phone tab keeps its TCP connection open) would otherwise block the write, and
+// everything waiting on the stream, until the connection dies.
+const writeTimeout = 30 * time.Second
+
 // NewWriter sets SSE headers and returns a Writer, or an error if the
 // ResponseWriter does not support flushing.
 func NewWriter(w http.ResponseWriter) (*Writer, error) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		return nil, fmt.Errorf("response writer does not support flushing")
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -33,17 +37,28 @@ func NewWriter(w http.ResponseWriter) (*Writer, error) {
 	// Ask any fronting reverse proxy / LB that honors this convention (Traefik and
 	// several others) not to buffer the stream.
 	w.Header().Set("X-Accel-Buffering", "no")
-	return &Writer{w: w, flusher: flusher, lastActivity: time.Now()}, nil
+	return &Writer{w: w, rc: http.NewResponseController(w), lastActivity: time.Now()}, nil
 }
 
 // Send writes one event with the given name and data payload, then flushes.
 func (s *Writer) Send(event, data string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", event, data); err != nil {
+	return s.writeLocked(fmt.Sprintf("event: %s\ndata: %s\n\n", event, data))
+}
+
+// writeLocked writes and flushes text under writeTimeout. The deadline is
+// cleared afterwards: net/http does not reset it for the next request on a
+// kept-alive connection. A writer without deadline support writes untimed.
+func (s *Writer) writeLocked(text string) error {
+	_ = s.rc.SetWriteDeadline(time.Now().Add(writeTimeout))
+	defer func() { _ = s.rc.SetWriteDeadline(time.Time{}) }()
+	if _, err := fmt.Fprint(s.w, text); err != nil {
 		return err
 	}
-	s.flusher.Flush()
+	if err := s.rc.Flush(); err != nil {
+		return err
+	}
 	s.lastActivity = time.Now()
 	return nil
 }
@@ -89,10 +104,7 @@ func (s *Writer) Heartbeat(ctx context.Context, interval time.Duration) func() {
 					// Best-effort: a write error here means the client is gone, which
 					// the real Send path surfaces; don't disrupt the stream over a
 					// failed keep-alive.
-					if _, err := fmt.Fprint(s.w, ": keepalive\n\n"); err == nil {
-						s.flusher.Flush()
-						s.lastActivity = time.Now()
-					}
+					_ = s.writeLocked(": keepalive\n\n")
 				}
 				s.mu.Unlock()
 			}

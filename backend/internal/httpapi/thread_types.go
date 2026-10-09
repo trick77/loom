@@ -106,6 +106,9 @@ type getThreadResponse struct {
 	// Share is the thread's share state (nil if never shared), used by the UI to show
 	// the Share button's "shared" state and the "new messages since snapshot" badge.
 	Share *shareSummary `json:"share,omitempty"`
+	// Streaming: an answer is still being written. A reloaded page reattaches
+	// to it (messages:attach) instead of showing the question unanswered.
+	Streaming bool `json:"streaming,omitempty"`
 }
 
 // shareSummary is the owner-facing share state attached to a thread response and

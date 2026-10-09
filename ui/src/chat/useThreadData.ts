@@ -22,6 +22,7 @@ export function useThreadData({
   activeThreadIDRef,
   handleActionError,
   onSessionExpired,
+  onRunningTurn,
 }: {
   // Only ever called on unmount: route changes deliberately leave running turns
   // alone, so switching threads no longer touches stream state at all.
@@ -33,6 +34,9 @@ export function useThreadData({
     setError: (message: string) => void,
   ): void;
   onSessionExpired(): void;
+  // A thread opened while its answer is still being written: a reload, or a
+  // phone that discarded the tab mid-answer.
+  onRunningTurn(thread: Thread): void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -98,6 +102,7 @@ export function useThreadData({
           activeThreadIDRef.current = response.thread.id;
           setMessages(response.messages.map(rehydrateLoadedMessage));
           setLoadError("");
+          if (response.streaming === true) onRunningTurn(response.thread);
         })
         .catch((error: unknown) => {
           if (!active) return;
@@ -118,7 +123,7 @@ export function useThreadData({
         active = false;
       };
     },
-    [activeThreadIDRef, handleActionError],
+    [activeThreadIDRef, handleActionError, onRunningTurn],
   );
 
   const loadProjectThreads = useCallback(
@@ -210,7 +215,7 @@ export function useThreadData({
 // converts the persisted attachments (MessageAttachment[]) into the
 // ComposerAttachment[] the sent-message renderer expects, so a reloaded
 // message's previews look identical to one that was just sent.
-function rehydrateLoadedMessage(
+export function rehydrateLoadedMessage(
   message: LoadedMessage,
 ): MessageWithActivityTrace {
   return withNormalizedBlocks({

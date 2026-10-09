@@ -282,8 +282,13 @@ func run() error {
 	// Post-turn refreshes outlive their request; serve() drains this group before
 	// the deferred db.Close above runs.
 	bg := background.New(context.Background())
+	// Every request derives from base; serve() cancels it on shutdown, which
+	// also ends the chat turns that run detached from their client.
+	base, cancelBase := context.WithCancelCause(context.Background())
+	defer cancelBase(nil)
 	deps := httpapi.Deps{
 		Background:                 bg,
+		Lifetime:                   base,
 		Version:                    version,
 		Model:                      chatModelInfo(cfg),
 		Static:                     web.SPAHandler(),
@@ -314,6 +319,7 @@ func run() error {
 	handler, memoryWorker := httpapi.NewWithMemoryWorker(deps)
 
 	srv := newServer(cfg.Addr, handler)
+	srv.BaseContext = func(net.Listener) context.Context { return base }
 	// Bind synchronously so "address in use" fails startup here instead of
 	// being logged from a goroutine while the process waits for a signal.
 	ln, err := net.Listen("tcp", cfg.Addr)
@@ -323,7 +329,7 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return serve(ctx, srv, ln, bg, memoryWorker.Run, func(ctx context.Context) {
+	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, func(ctx context.Context) {
 		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
 	}, sandboxWatch, reembed)
 }
@@ -371,12 +377,11 @@ var errServerShuttingDown = errors.New("server shutting down")
 //  3. drain the background group, whose tasks still write to the database;
 //  4. wait for the workers to return.
 //
+// cancelBase cancels srv's BaseContext, which every request derives from.
 // workers are the long-running sweeps (memory refresh, session janitor,
 // re-embed); they stop when ctx does.
-func serve(ctx context.Context, srv *http.Server, ln net.Listener, bg *background.Group, workers ...func(context.Context)) error {
-	baseCtx, cancelBase := context.WithCancelCause(context.Background())
+func serve(ctx context.Context, srv *http.Server, ln net.Listener, bg *background.Group, cancelBase context.CancelCauseFunc, workers ...func(context.Context)) error {
 	defer cancelBase(nil)
-	srv.BaseContext = func(net.Listener) context.Context { return baseCtx }
 
 	serveErr := make(chan error, 1)
 	go func() {

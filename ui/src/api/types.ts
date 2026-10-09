@@ -236,6 +236,8 @@ export type ThreadResponse = {
   messages: LoadedMessage[];
   /** Present once the thread has been shared; drives the Share button state + badge. */
   share?: ShareInfo;
+  /** An answer is still being written; the client reattaches to it. */
+  streaming?: boolean;
 };
 
 // ShareInfo is the owner-facing share state for a thread.

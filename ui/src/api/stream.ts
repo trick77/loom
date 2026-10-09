@@ -102,6 +102,24 @@ export async function streamMessage(
   await readSSEStream(await expectStreamResponse(response), handlers);
 }
 
+// attachStream reattaches to the thread's running turn: the server replays every
+// event the turn has sent so far, then follows it live, so the handlers see the
+// turn from its first event. "finished" means no turn is running any more; its
+// answer, if any, is already saved on the thread.
+export async function attachStream(
+  threadId: string,
+  handlers: StreamHandlers,
+  signal?: AbortSignal,
+): Promise<"attached" | "finished"> {
+  const response = await fetch(
+    `/api/threads/${encodeURIComponent(threadId)}/messages:attach`,
+    { method: "GET", signal },
+  );
+  if (response.status === 204) return "finished";
+  await readSSEStream(await expectStreamResponse(response), handlers);
+  return "attached";
+}
+
 // streamIncognitoMessage runs an ephemeral turn against the stateless incognito
 // endpoint. The server persists nothing, so the whole prior transcript is replayed
 // as `history` on every turn. Shares streamMessage's SSE plumbing.
@@ -167,7 +185,20 @@ async function readSSEStream(
   };
   try {
     for (;;) {
-      const { value, done } = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        // Our own abort stays an AbortError. Anything else is the connection
+        // going away (Safari: TypeError "Load failed"), typically a phone
+        // freezing the tab: after the answer arrived that changes nothing,
+        // before it the turn was interrupted, not failed to send.
+        if (error instanceof DOMException && error.name === "AbortError")
+          throw error;
+        if (settled) break;
+        throw new StreamInterruptedError();
+      }
+      const { value, done } = chunk;
       if (done) {
         break;
       }
