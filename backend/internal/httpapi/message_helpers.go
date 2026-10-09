@@ -102,18 +102,20 @@ const titleSourceLimit = 2000
 // than replaced by a placeholder, so the thread keeps the message it was created
 // with instead of going blank.
 // generateAndSendThreadTitle names the thread from the turn and announces it on
-// the stream. expectedTitle is the title the turn started from: the update is a
-// compare-and-set against it, so a rename made while the answer streamed wins
-// and no thread event is sent for the discarded generated title.
-func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream Emitter, user auth.User, threadID, expectedTitle, userMessage, assistantMessage string) error {
-	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
-	requestCtx, cancelTitle := context.WithTimeout(requestCtx, turnGateTimeout)
+// the stream. The title the turn started from (t.thread.Title) is the expected
+// title: the update is a compare-and-set against it, so a rename made while the
+// answer streamed wins and no thread event is sent for the discarded generated
+// title. The model call is bounded by turnGateTimeout; the store writes run on
+// ctx itself.
+func (t *turnRun) generateAndSendThreadTitle(ctx context.Context, assistantMessage string) error {
+	titleInference := llm.InferenceMetadata{UserID: t.user.ID, Username: t.user.Username, ThreadID: t.thread.ID, Purpose: "title", Round: 1}
+	titleCtx, cancelTitle := context.WithTimeout(ctx, turnGateTimeout)
 	defer cancelTitle()
 
 	if runes := []rune(assistantMessage); len(runes) > titleSourceLimit {
 		assistantMessage = string(runes[:titleSourceLimit])
 	}
-	title, err := s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(requestCtx, titleInference), userMessage, assistantMessage, userResponseLanguage(user))
+	title, err := t.s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(titleCtx, titleInference), t.userMessage.Content, assistantMessage, userResponseLanguage(t.user))
 	if err != nil {
 		return err
 	}
@@ -123,7 +125,7 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	// Model-written, not user-written: capitalize it here, since the store
 	// leaves a title exactly as it was handed over (a rename must stick).
 	title = chat.CapitalizeThreadTitle(chat.NormalizeThreadTitle(title))
-	thread, updated, err := s.thread.SetThreadTitleIfUnchanged(persistCtx, user.ID, threadID, expectedTitle, title)
+	thread, updated, err := t.s.thread.SetThreadTitleIfUnchanged(ctx, t.user.ID, t.thread.ID, t.thread.Title, title)
 	if err != nil {
 		return err
 	}
@@ -134,18 +136,23 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	// refresh its big-picture description (debounced/count-gated, so this is cheap and
 	// fires real work only when the set actually changed). Best-effort, off the hot path.
 	if thread.ProjectID != nil {
-		s.maybeRefreshProjectDescriptionAsync(persistCtx, user, *thread.ProjectID)
+		t.s.maybeRefreshProjectDescriptionAsync(ctx, t.user, *thread.ProjectID)
 	}
-	return stream.Send("thread", thread)
+	return t.stream.Send("thread", thread)
 }
 
-func buildLLMHistory(user auth.User, toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+// promptBlocks are the context blocks appended to a turn's system prompt.
+type promptBlocks struct {
+	toolGuidance, classifier, user, project, knowledge, document string
+}
+
+func buildLLMHistory(user auth.User, blocks promptBlocks, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	// Tool guidance (e.g. the file-creation guardrail) travels with the tools it
 	// describes: it is passed non-empty only when those tools are offered this
 	// turn, so the prompt never names a tool that was gated out of the request.
 	// The blocks keep this order; an empty one is skipped.
 	systemContent := systemPromptForUser(user, time.Now())
-	for _, block := range []string{toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext} {
+	for _, block := range []string{blocks.toolGuidance, blocks.classifier, blocks.user, blocks.project, blocks.knowledge, blocks.document} {
 		if strings.TrimSpace(block) != "" {
 			systemContent += "\n\n" + block
 		}

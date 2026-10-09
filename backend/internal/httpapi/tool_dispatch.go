@@ -47,15 +47,17 @@ func (s *server) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	return toolRun{arguments: arguments, output: output, err: err, durationMS: time.Since(start).Milliseconds()}
 }
 
+// executeToolCall runs one MCP call start to finish. It needs only the user,
+// not a whole turn, so it stays on the server.
 func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry) string {
-	return s.finishToolCall(ctx, user, call, round, reg, s.runToolCall(ctx, call))
+	return (&turnRun{s: s, user: user}).finishToolCall(ctx, call, round, reg, s.runToolCall(ctx, call))
 }
 
 // finishToolCall turns a finished run into the tool result the model sees:
 // the obscura fallback for a failed fetch, the usage count, and the [n] source
 // labels. It writes to the source registry and the shared obscura browser, so
 // it runs one call at a time, in the order the model issued the calls.
-func (s *server) finishToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) string {
+func (t *turnRun) finishToolCall(ctx context.Context, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) string {
 	args := summarizeForLog(call.Function.Arguments)
 	if run.argsErr != nil {
 		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", run.argsErr)
@@ -70,17 +72,17 @@ func (s *server) finishToolCall(ctx context.Context, user auth.User, call llm.To
 		// A failed PDF extraction is reported as is: obscura on a PDF URL only
 		// snapshots the browser's PDF viewer.
 		if !mcp.IsPDFExtractionError(err) {
-			if fallback, ok := s.fetchObscuraFallback(fallbackCtx, user, call.Function.Name, arguments, round, reg); ok {
+			if fallback, ok := t.fetchObscuraFallback(fallbackCtx, call.Function.Name, arguments, round, reg); ok {
 				return fallback
 			}
 		}
 		return capToolOutput("tool failed: " + err.Error())
 	}
 	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
-	s.countToolCall(ctx, user, call.Function.Name)
+	t.s.countToolCall(ctx, t.user, call.Function.Name)
 	// Annotate web-search/fetch results with [n] citation markers and register
 	// their source URLs before capping, so the model can cite them inline.
-	return capToolOutput(s.relabelWebToolOutput(call.Function.Name, arguments, output, reg))
+	return capToolOutput(t.s.relabelWebToolOutput(call.Function.Name, arguments, output, reg))
 }
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at
@@ -179,28 +181,28 @@ var tavilySearchExposedName = mcp.ExposedToolName(tavilyServerName, mcp.TavilySe
 // It only fires for the fetch tool when obscura is configured and the call
 // carried a URL. On success it returns the obscura snapshot and true; otherwise
 // it returns ok=false so the caller surfaces the original fetch failure.
-func (s *server) fetchObscuraFallback(ctx context.Context, user auth.User, toolName string, arguments map[string]any, round int, reg *webSourceRegistry) (string, bool) {
+func (t *turnRun) fetchObscuraFallback(ctx context.Context, toolName string, arguments map[string]any, round int, reg *webSourceRegistry) (string, bool) {
 	if toolName != fetchToolName {
 		return "", false
 	}
-	if !s.mcp.HasTool(obscuraNavigateToolName) || !s.mcp.HasTool(obscuraSnapshotToolName) {
+	if !t.s.mcp.HasTool(obscuraNavigateToolName) || !t.s.mcp.HasTool(obscuraSnapshotToolName) {
 		return "", false
 	}
 	url, ok := arguments["url"].(string)
 	if !ok || strings.TrimSpace(url) == "" {
 		return "", false
 	}
-	if _, err := s.mcp.CallTool(ctx, obscuraNavigateToolName, map[string]any{"url": url}); err != nil {
+	if _, err := t.s.mcp.CallTool(ctx, obscuraNavigateToolName, map[string]any{"url": url}); err != nil {
 		slog.Warn("obscura fallback navigate failed", "url", url, "round", round, "err", err)
 		return "", false
 	}
-	snapshot, err := s.mcp.CallTool(ctx, obscuraSnapshotToolName, map[string]any{})
+	snapshot, err := t.s.mcp.CallTool(ctx, obscuraSnapshotToolName, map[string]any{})
 	if err != nil {
 		slog.Warn("obscura fallback snapshot failed", "url", url, "round", round, "err", err)
 		return "", false
 	}
 	slog.Info("fetch failed, obscura fallback succeeded", "url", url, "round", round, "result_bytes", len(snapshot))
-	s.recordUsage("obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
+	t.s.recordUsage("obscura_fetch", func() error { return t.s.usage.IncObscuraFetch(ctx, t.user.ID) })
 	// The requested fetch URL is the source; annotate the rendered snapshot with
 	// its [n] marker so the model cites it inline like any other web source.
 	return capToolOutput(prependURLSource(url, snapshot, reg)), true
@@ -319,29 +321,29 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 // executeBuiltInTool runs a tool loom implements itself. It returns the
 // model-facing output, the artifacts the call created (run_python can write
 // several) and whether the name was a built-in at all.
-func (s *server) executeBuiltInTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource, typography bool) (string, []artifactResponse, bool) {
+func (t *turnRun) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string, []artifactResponse, bool) {
 	if call.Function.Name == projectThreadsToolName {
-		return s.projectThreadsDigest(ctx, user.ID, thread), nil, true
+		return t.s.projectThreadsDigest(ctx, t.user.ID, t.thread), nil, true
 	}
 	if isArgTool(call.Function.Name) {
 		args, err := parseToolArguments(call.Function.Arguments)
 		if err != nil {
 			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
 		}
-		return s.runArgTool(ctx, user, thread, call.Function.Name, args), nil, true
+		return t.s.runArgTool(ctx, t.user, t.thread, call.Function.Name, args), nil, true
 	}
 	if call.Function.Name == sandboxToolName {
-		output, created := s.runSandboxTool(ctx, stream, user, thread, call)
+		output, created := t.s.runSandboxTool(ctx, t.stream, t.user, t.thread, call)
 		return output, created, true
 	}
-	if response, output, handled := s.executeImageTool(ctx, stream, user, thread, call, editSource, typography); handled {
+	if response, output, handled := t.executeImageTool(ctx, call); handled {
 		return output, oneArtifact(response), true
 	}
-	generator := s.docGenerator(call.Function.Name)
+	generator := t.s.docGenerator(call.Function.Name)
 	if generator == nil {
 		return "", nil, false
 	}
-	output, resp := s.runDocGenerator(ctx, stream, user, thread, call, generator)
+	output, resp := t.runDocGenerator(ctx, call, generator)
 	return output, oneArtifact(resp), true
 }
 
@@ -359,13 +361,13 @@ func oneArtifact(resp *artifactResponse) []artifactResponse {
 // server-side failures invisible. The deferred log fixes that: every outcome is
 // recorded with the tool name, argument size, a truncated argument preview and
 // the result, so the next failure is diagnosable from the logs.
-func (s *server) runDocGenerator(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifactResponse) {
+func (t *turnRun) runDocGenerator(ctx context.Context, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifactResponse) {
 	start := time.Now()
 	defer func() {
 		attrs := []any{
 			"tool", call.Function.Name,
-			"thread_id", thread.ID,
-			"user_id", user.ID,
+			"thread_id", t.thread.ID,
+			"user_id", t.user.ID,
 			"arg_bytes", len(call.Function.Arguments),
 			"args", summarizeForLog(call.Function.Arguments),
 			"duration_ms", time.Since(start).Milliseconds(),
@@ -395,7 +397,7 @@ func (s *server) runDocGenerator(ctx context.Context, stream Emitter, user auth.
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
 		return "tool failed: generated file is too large", nil
 	}
-	created, err := s.persistArtifactBytes(ctx, user, thread, artifactSpec{
+	created, err := t.s.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
 		DisplayFilename: meta.DisplayFilename,
 		Extension:       meta.Extension,
 		Data:            buffer.Bytes(),
@@ -405,7 +407,7 @@ func (s *server) runDocGenerator(ctx context.Context, stream Emitter, user auth.
 		return capToolOutput("tool failed: " + err.Error()), nil
 	}
 	response := artifactResponseFromArtifact(created)
-	_ = stream.Send("artifact", response)
+	_ = t.stream.Send("artifact", response)
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
 
@@ -442,8 +444,10 @@ func (s *server) resolveThreadImageModel(ctx context.Context, userID string, thr
 	return candidate
 }
 
-func (s *server) executeImageTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource, typography bool) (*artifactResponse, string, bool) {
-	generator := s.imageTool(call.Function.Name)
+// executeImageTool runs an image tool call with the turn's edit source and
+// typography routing.
+func (t *turnRun) executeImageTool(ctx context.Context, call llm.ToolCall) (*artifactResponse, string, bool) {
+	generator := t.s.imageTool(call.Function.Name)
 	if generator == nil {
 		return nil, "", false
 	}
@@ -478,7 +482,7 @@ func (s *server) executeImageTool(ctx context.Context, stream Emitter, user auth
 	}
 	// Forward the user's uploaded/prior image so the model edits the actual pixels
 	// instead of a lossy text re-description. Injected here (never from LLM args).
-	if editSource != nil && len(editSource.Data) > 0 {
+	if editSource := t.plan.editSource; editSource != nil && len(editSource.Data) > 0 {
 		req.InputImages = [][]byte{editSource.Data}
 		// An edit keeps the source image's proportions unless the turn asked for
 		// something else: restyling a 16:9 photo must not hand back a square that
@@ -490,8 +494,8 @@ func (s *server) executeImageTool(ctx context.Context, stream Emitter, user auth
 	}
 	// Pick (and lock, once per thread) the image model. When it is the typography
 	// model, clamp output to ≤1024 px/side so flex matches the klein default's size.
-	req.Model = s.resolveThreadImageModel(ctx, user.ID, thread, typography, req.Prompt)
-	if tm := strings.TrimSpace(s.imageTypographyModel); tm != "" && req.Model == tm {
+	req.Model = t.s.resolveThreadImageModel(ctx, t.user.ID, t.thread, t.plan.imageRoute.typography, req.Prompt)
+	if tm := strings.TrimSpace(t.s.imageTypographyModel); tm != "" && req.Model == tm {
 		req.Width, req.Height = imagegen.ClampMaxSide(req.Width, req.Height, maxTypographyImageSide)
 	}
 	var buffer bytes.Buffer
@@ -500,19 +504,19 @@ func (s *server) executeImageTool(ctx context.Context, stream Emitter, user auth
 	// stays as a backstop for any dispatch path that reaches here on a context
 	// without metadata — otherwise the image model would be the one call in a turn
 	// whose log line cannot be tied back to a user or thread.
-	meta, err := generator.Generate(withUserAttribution(ctx, user, thread.ID), req, &buffer)
+	meta, err := generator.Generate(withUserAttribution(ctx, t.user, t.thread.ID), req, &buffer)
 	if err != nil {
 		output := capToolOutput("tool failed: " + err.Error())
 		slog.Warn("image tool failed",
 			"tool", call.Function.Name,
-			"thread_id", thread.ID,
+			"thread_id", t.thread.ID,
 			"provider_error", err)
 		return nil, output, true
 	}
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
 		return nil, "tool failed: generated image is too large", true
 	}
-	created, err := s.persistArtifactBytes(ctx, user, thread, artifactSpec{
+	created, err := t.s.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
 		DisplayFilename: meta.DisplayFilename,
 		Extension:       meta.Extension,
 		MIMEType:        meta.MIMEType,
@@ -528,8 +532,8 @@ func (s *server) executeImageTool(ctx context.Context, stream Emitter, user auth
 	response.Width = meta.Width
 	response.Height = meta.Height
 	response.DurationMs = meta.DurationMs
-	s.recordUsage("image_gen", func() error { return s.usage.IncImageGen(ctx, user.ID) })
-	_ = stream.Send("artifact", response)
+	t.s.recordUsage("image_gen", func() error { return t.s.usage.IncImageGen(ctx, t.user.ID) })
+	_ = t.stream.Send("artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
 }
 

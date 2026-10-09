@@ -7,9 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/llm"
 )
 
 // persistAssistantTurn turns a finished loop result into the stored assistant
@@ -18,7 +16,7 @@ import (
 // merges the knowledge and web citations, and inserts the row. ctx must
 // outlive the request (the caller detaches it): a client that disconnected
 // still gets its answer persisted.
-func (s *server) persistAssistantTurn(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, user auth.User, thread chat.Thread, result *assistantLoopResult, knowledgeSources []citation, usageTotal *llm.UsageAccumulator, turnStart time.Time) (chat.Message, error) {
+func (t *turnRun) persistAssistantTurn(ctx context.Context, result *assistantLoopResult) (chat.Message, error) {
 	artifacts := result.Artifacts
 	if artifacts == nil {
 		artifacts = []artifactResponse{}
@@ -27,7 +25,7 @@ func (s *server) persistAssistantTurn(ctx context.Context, stream Emitter, title
 	// deterministic, code-driven pass over the finished answer — the model emits
 	// the code inline (and is told not to call file tools itself), and the size
 	// gate here decides what becomes a download.
-	if extracted := s.extractCodeArtifacts(ctx, stream, user, thread, result.Content, artifacts); len(extracted) > 0 {
+	if extracted := t.extractCodeArtifacts(ctx, result.Content, artifacts); len(extracted) > 0 {
 		artifacts = append(artifacts, extracted...)
 		// These artifacts are derived from the FINAL answer's inline code, so they
 		// render after the final text: append them as artifact blocks at the END of
@@ -42,18 +40,18 @@ func (s *server) persistAssistantTurn(ctx context.Context, stream Emitter, title
 	}
 	// Ensure every background title has landed and been emitted before persisting
 	// the trace; this also guarantees the title SSE events precede assistant_message.
-	titles.wait()
-	titles.mergeInto(result.ActivityTrace)
+	t.titles.wait()
+	t.titles.mergeInto(result.ActivityTrace)
 	// The blocks' trace events are separate objects from the flat trace but share
 	// reasoning ids, so stamp the same titles onto them too.
-	titles.mergeIntoBlocks(result.Blocks)
-	activityTraceJSON, contentBlocksJSON := marshalTurnJSON(thread.ID, result.ActivityTrace, result.Blocks)
-	allSources := knowledgeSources
+	t.titles.mergeIntoBlocks(result.Blocks)
+	activityTraceJSON, contentBlocksJSON := marshalTurnJSON(t.thread.ID, result.ActivityTrace, result.Blocks)
+	allSources := t.plan.knowledgeSources
 	if webCitations := webSourceCitations(result.WebSources); len(webCitations) > 0 {
-		// Clone first: appending into knowledgeSources' backing array could clobber
-		// it if it had spare capacity. It's not read after this today, but the copy
-		// keeps the merge self-contained.
-		allSources = append(append([]citation(nil), knowledgeSources...), webCitations...)
+		// Clone first: appending into the knowledge sources' backing array could
+		// clobber it if it had spare capacity. It's not read after this today, but
+		// the copy keeps the merge self-contained.
+		allSources = append(append([]citation(nil), t.plan.knowledgeSources...), webCitations...)
 	}
 	citationsJSON := json.RawMessage("[]")
 	if len(allSources) > 0 {
@@ -61,8 +59,8 @@ func (s *server) persistAssistantTurn(ctx context.Context, stream Emitter, title
 			citationsJSON = encoded
 		}
 	}
-	turnCost, turnPriced := usageTotal.TurnCost()
-	assistantMessage, err := s.thread.AddMessageWithCitations(ctx, user.ID, thread.ID, chat.RoleAssistant, result.Content, messageMetricsWithCost(result.StreamResult, usageTotal.Total(), time.Since(turnStart), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
+	turnCost, turnPriced := t.usage.TurnCost()
+	assistantMessage, err := t.s.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, messageMetricsWithCost(result.StreamResult, t.usage.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		return chat.Message{}, err
 	}

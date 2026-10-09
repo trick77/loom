@@ -6,9 +6,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/trick77/loom/internal/auth"
-	"github.com/trick77/loom/internal/chat"
 )
 
 // Code/XML blocks below these bounds are treated as illustrative snippets and
@@ -72,7 +69,7 @@ var (
 // When the model already produced an explicit (non-image) file this turn, the
 // user asked for a save directly and we suppress auto-extraction so the same
 // code is not duplicated as a second download.
-func (s *server) extractCodeArtifacts(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, content string, existing []artifactResponse) []artifactResponse {
+func (t *turnRun) extractCodeArtifacts(ctx context.Context, content string, existing []artifactResponse) []artifactResponse {
 	for _, a := range existing {
 		if !strings.HasPrefix(a.MIMEType, "image/") {
 			return nil
@@ -81,12 +78,12 @@ func (s *server) extractCodeArtifacts(ctx context.Context, stream Emitter, user 
 
 	var created []artifactResponse
 	for _, q := range qualifyingCodeBlocks(content) {
-		response, err := s.createCodeArtifact(ctx, user, thread, q.block, q.extension, q.filename)
+		response, err := t.createCodeArtifact(ctx, q)
 		if err != nil {
-			slog.Warn("auto code artifact failed", "thread_id", thread.ID, "filename", q.filename, "err", err)
+			slog.Warn("auto code artifact failed", "thread_id", t.thread.ID, "filename", q.filename, "err", err)
 			continue
 		}
-		_ = stream.Send("artifact", response)
+		_ = t.stream.Send("artifact", response)
 		created = append(created, response)
 	}
 	return created
@@ -144,11 +141,11 @@ func isDownloadWorthyCode(body string) bool {
 	return strings.Count(body, "\n")+1 >= codeArtifactMinLines
 }
 
-func (s *server) createCodeArtifact(ctx context.Context, user auth.User, thread chat.Thread, block fencedCodeBlock, ext, filename string) (artifactResponse, error) {
-	created, err := s.persistArtifactBytes(ctx, user, thread, artifactSpec{
-		DisplayFilename: filename,
-		Extension:       ext,
-		Data:            []byte(block.body),
+func (t *turnRun) createCodeArtifact(ctx context.Context, q qualifiedBlock) (artifactResponse, error) {
+	created, err := t.s.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
+		DisplayFilename: q.filename,
+		Extension:       q.extension,
+		Data:            []byte(q.block.body),
 	})
 	if err != nil {
 		return artifactResponse{}, err

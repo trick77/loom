@@ -166,16 +166,23 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	defer titles.waitWorking()
 	titles.spawnWorking(userMessage.Content)
 
-	plan := s.prepareTurn(turnInput{
+	run := &turnRun{
+		s:           s,
+		stream:      emitter,
+		titles:      titles,
+		inference:   inference,
+		user:        user,
+		thread:      thread,
+		userMessage: userMessage,
+		usage:       usageTotal,
+		start:       turnStart,
+	}
+	run.plan = run.prepareTurn(turnInput{
 		streamCtx:     streamCtx,
 		turnCtx:       turnCtx,
 		reqCtx:        r.Context(),
-		stream:        emitter,
-		user:          user,
-		thread:        thread,
 		body:          body,
 		priorMessages: priorMessages,
-		userMessage:   userMessage,
 		imageParts:    imageParts,
 	})
 	// titleThread names an as-yet-untitled thread. It runs after the answer so the
@@ -200,7 +207,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		// per-message stats and the lifetime rollup. WithoutCancel keeps that
 		// value while letting the call outlive a client disconnect.
 		titleCtx := context.WithoutCancel(streamCtx)
-		if err := s.generateAndSendThreadTitle(titleCtx, titleCtx, emitter, user, threadID, thread.Title, userMessage.Content, assistantMessage); err != nil {
+		if err := run.generateAndSendThreadTitle(titleCtx, assistantMessage); err != nil {
 			slog.Warn("thread title generation failed", "thread_id", threadID, "error", err)
 		}
 	}
@@ -226,7 +233,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		titleThread(titleSource)
 	}
 
-	assistantResult, err := s.runAssistantLoop(streamCtx, emitter, titles, plan.history, inference, user, thread, plan.gate, plan.imageRoute.generate, plan.editSource, plan.imageRoute.typography, userMessage.Content, plan.sourceCount)
+	assistantResult, err := run.runAssistantLoop(streamCtx, run.plan.history)
 	if err != nil {
 		if streamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
@@ -253,7 +260,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	assistantContent := assistantResult.Content
-	if plan.imageRoute.generate && len(assistantResult.Artifacts) == 0 {
+	if run.plan.imageRoute.generate && len(assistantResult.Artifacts) == 0 {
 		message := "image generation was not completed"
 		if strings.TrimSpace(assistantResult.ToolError) != "" {
 			message = assistantResult.ToolError
@@ -279,7 +286,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	persistCtx := context.WithoutCancel(r.Context())
-	assistantMessage, err := s.persistAssistantTurn(persistCtx, emitter, titles, user, thread, &assistantResult, plan.knowledgeSources, usageTotal, turnStart)
+	assistantMessage, err := run.persistAssistantTurn(persistCtx, &assistantResult)
 	if err != nil {
 		slog.Warn("persist assistant message failed", "thread_id", threadID, "err", err)
 		failTurn(assistantContent, "persist assistant message failed")

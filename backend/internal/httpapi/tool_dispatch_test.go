@@ -15,7 +15,8 @@ func TestExecuteBuiltInToolReportsInvalidArgumentsForEveryArgTool(t *testing.T) 
 	s := &server{}
 	for _, name := range []string{conversationSearchToolName, readThreadToolName, addUserDirectiveToolName, removeUserDirectiveToolName, replaceUserDirectiveToolName} {
 		call := llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: "{not json"}}
-		output, resp, handled := s.executeBuiltInTool(context.Background(), nil, testUser, chat.Thread{ID: "t1"}, call, nil, false)
+		run := &turnRun{s: s, user: testUser, thread: chat.Thread{ID: "t1"}}
+		output, resp, handled := run.executeBuiltInTool(context.Background(), call)
 		if !handled || resp != nil {
 			t.Fatalf("%s: handled=%v resp=%v, want handled with no artifact", name, handled, resp)
 		}

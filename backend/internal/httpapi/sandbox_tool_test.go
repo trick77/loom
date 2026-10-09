@@ -105,6 +105,11 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 	return sandboxFixture{srv: srv, box: box, thread: thread, body: rec, stream: sseEmitter{w: stream}}
 }
 
+// turn is testUser's turn in thread, emitting to the fixture's stream.
+func (f sandboxFixture) turn(thread chat.Thread) *turnRun {
+	return &turnRun{s: f.srv, stream: f.stream, user: testUser, thread: thread}
+}
+
 func runCall(args string) llm.ToolCall {
 	return llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: sandboxToolName, Arguments: args}}
 }
@@ -178,8 +183,8 @@ func TestSandboxGuidanceOffersUserGlobalDocuments(t *testing.T) {
 
 func TestRunSandboxToolArgumentErrors(t *testing.T) {
 	f := newSandboxFixture(t)
-	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread,
-		runCall(`{"code":"1","files":"`+aliasUmsatz+`"}`), nil, false)
+	out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(),
+		runCall(`{"code":"1","files":"`+aliasUmsatz+`"}`))
 	if !strings.Contains(out, "files must be an array") {
 		t.Fatalf("string files: %q", out)
 	}
@@ -192,8 +197,8 @@ func TestRunSandboxToolArgumentErrors(t *testing.T) {
 		names = append(names, `"`+sandboxAlias(d)+`"`)
 	}
 	f.srv.documents = &listDocuments{docs: docs}
-	out, _, _ = f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, chat.Thread{ID: "t1"},
-		runCall(`{"code":"1","files":[`+strings.Join(names, ",")+`]}`), nil, false)
+	out, _, _ = f.turn(chat.Thread{ID: "t1"}).executeBuiltInTool(context.Background(),
+		runCall(`{"code":"1","files":[`+strings.Join(names, ",")+`]}`))
 	if !strings.Contains(out, fmt.Sprintf("at most %d input files", maxSandboxInputFiles)) || len(f.box.got) != 0 {
 		t.Fatalf("too many files: %q", out)
 	}
@@ -202,7 +207,7 @@ func TestRunSandboxToolArgumentErrors(t *testing.T) {
 func TestRunSandboxToolPassesRejectionReason(t *testing.T) {
 	f := newSandboxFixture(t)
 	f.box.err = fmt.Errorf("%w: code exceeds 262144 bytes", sandbox.ErrRejected)
-	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread, runCall(`{"code":"1"}`), nil, false)
+	out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(), runCall(`{"code":"1"}`))
 	if !strings.Contains(out, "code exceeds 262144 bytes") || strings.Contains(out, "unavailable") {
 		t.Fatalf("output %q", out)
 	}
@@ -322,8 +327,8 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 		},
 		Dropped: []string{"link.txt: not a regular file"},
 	}
-	out, created, handled := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread,
-		runCall(`{"code":"print(1)","files":["`+aliasUmsatz+`","/work/in/`+aliasNotes+`"]}`), nil, false)
+	out, created, handled := f.turn(f.thread).executeBuiltInTool(context.Background(),
+		runCall(`{"code":"print(1)","files":["`+aliasUmsatz+`","/work/in/`+aliasNotes+`"]}`))
 	if !handled {
 		t.Fatal("run_python not handled")
 	}
@@ -347,8 +352,8 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 
 func TestRunSandboxToolRejectsOutOfScopeFiles(t *testing.T) {
 	f := newSandboxFixture(t)
-	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread,
-		runCall(`{"code":"print(1)","files":["`+sandboxAlias(rag.Document{ID: "doc-cccc3333", Filename: "other.csv"})+`"]}`), nil, false)
+	out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(),
+		runCall(`{"code":"print(1)","files":["`+sandboxAlias(rag.Document{ID: "doc-cccc3333", Filename: "other.csv"})+`"]}`))
 	if !strings.HasPrefix(out, "tool failed: unknown input file") || strings.Contains(out[strings.Index(out, "Available"):], "other_") {
 		t.Fatalf("output %q", out)
 	}
@@ -375,7 +380,7 @@ func TestRunSandboxToolReportsFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newSandboxFixture(t)
 			f.box.err = tc.err
-			out, created, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread, runCall(tc.args), nil, false)
+			out, created, _ := f.turn(f.thread).executeBuiltInTool(context.Background(), runCall(tc.args))
 			if !strings.HasPrefix(out, toolFailedPrefix) || !strings.Contains(out, tc.want) || created != nil {
 				t.Fatalf("output %q created %v", out, created)
 			}
@@ -384,7 +389,7 @@ func TestRunSandboxToolReportsFailures(t *testing.T) {
 
 	f := newSandboxFixture(t)
 	f.box.available = false
-	if out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread, runCall(`{"code":"1"}`), nil, false); !strings.Contains(out, "not available") {
+	if out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(), runCall(`{"code":"1"}`)); !strings.Contains(out, "not available") {
 		t.Fatalf("withdrawn sandbox: %q", out)
 	}
 
@@ -392,7 +397,7 @@ func TestRunSandboxToolReportsFailures(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	f.box.err = context.Canceled
-	if out, _, _ := f.srv.executeBuiltInTool(ctx, f.stream, testUser, f.thread, runCall(`{"code":"1"}`), nil, false); out != "tool failed: cancelled" {
+	if out, _, _ := f.turn(f.thread).executeBuiltInTool(ctx, runCall(`{"code":"1"}`)); out != "tool failed: cancelled" {
 		t.Fatalf("cancelled: %q", out)
 	}
 }
@@ -400,7 +405,7 @@ func TestRunSandboxToolReportsFailures(t *testing.T) {
 func TestRunSandboxToolNonZeroExitIsAResult(t *testing.T) {
 	f := newSandboxFixture(t)
 	f.box.result = sandbox.Result{ExitCode: 1, Stderr: "Traceback\nKeyError: 'Umsatz'\n", TimedOut: true}
-	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread, runCall(`{"code":"x"}`), nil, false)
+	out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(), runCall(`{"code":"x"}`))
 	if strings.HasPrefix(out, toolFailedPrefix) {
 		t.Fatalf("a failing program is not a tool failure: %q", out)
 	}
@@ -417,8 +422,8 @@ func TestRunSandboxToolInputBudget(t *testing.T) {
 	if err := os.WriteFile(big, make([]byte, maxSandboxInputBytes+1), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, _, _ := f.srv.executeBuiltInTool(context.Background(), f.stream, testUser, f.thread,
-		runCall(`{"code":"1","files":["`+aliasUmsatz+`"]}`), nil, false)
+	out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(),
+		runCall(`{"code":"1","files":["`+aliasUmsatz+`"]}`))
 	if !strings.Contains(out, "too large") || len(f.box.got) != 0 {
 		t.Fatalf("output %q", out)
 	}

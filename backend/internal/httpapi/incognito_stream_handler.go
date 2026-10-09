@@ -82,7 +82,8 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	titles := newReasoningTitleTracker(streamCtx, s, emitter, inference, userResponseLanguage(user))
 	defer titles.wait()
 
-	assistantResult, err := s.runIncognitoAssistantTurn(streamCtx, emitter, titles, history, inference)
+	run := &turnRun{s: s, stream: emitter, titles: titles, inference: inference, user: user}
+	assistantResult, err := run.runIncognitoAssistantTurn(streamCtx, history)
 	if err != nil {
 		if streamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)

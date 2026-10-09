@@ -6,12 +6,33 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
 )
+
+// turnRun is one chat turn's fixed state: who asks, in which thread, where its
+// events go, and the routing prepareTurn decided. It is built once per turn;
+// what varies per call (ctx, a round's history, a tool call) stays a parameter.
+// The incognito turn uses a reduced form with no thread, message or plan.
+type turnRun struct {
+	s         *server
+	stream    Emitter
+	titles    *reasoningTitleTracker
+	inference llm.InferenceMetadata
+	user      auth.User
+	thread    chat.Thread
+	// userMessage is the persisted user message this turn answers.
+	userMessage chat.Message
+	// plan is set from prepareTurn's result before the assistant loop runs.
+	plan turnPlan
+	// usage sums every model call of the turn; start times its wall clock.
+	usage *llm.UsageAccumulator
+	start time.Time
+}
 
 // turnInput is what the prompt-assembly phase of a persisted turn works from.
 type turnInput struct {
@@ -22,12 +43,8 @@ type turnInput struct {
 	streamCtx     context.Context
 	turnCtx       context.Context
 	reqCtx        context.Context
-	stream        Emitter
-	user          auth.User
-	thread        chat.Thread
 	body          streamMessageRequest
 	priorMessages []chat.Message
-	userMessage   chat.Message
 	// imageParts are the vision parts for the images the user attached this
 	// turn, resolved (and validated) before anything was persisted.
 	imageParts []llm.MessageContentPart
@@ -51,7 +68,7 @@ type turnPlan struct {
 // builds the model history. It emits the knowledge_sources event as a side
 // effect, since the sources are known here and the client wants them before
 // the first token.
-func (s *server) prepareTurn(in turnInput) turnPlan {
+func (t *turnRun) prepareTurn(in turnInput) turnPlan {
 	imageParts := in.imageParts
 	// category drives the prompt-classifier block injected below. On the first
 	// message we classify now (before the answer history is built) and use the
@@ -72,7 +89,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	// thread's category describes what it opened with, so it is set on turn one or
 	// not at all; later drift is handled per-turn just below. Titling has moved
 	// after the answer and no longer shares this gate.
-	category := in.thread.Category
+	category := t.thread.Category
 	freshlyClassified := len(in.priorMessages) == 0 && strings.TrimSpace(category) == ""
 
 	// Every pre-answer load below is independent of the others, and each may be
@@ -99,15 +116,15 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		docIdx                            = newDocIndexer()
 		documentContext, knowledgeContext string
 		knowledgeSources                  []citation
-		sandboxOn                         = s.sandboxOffered()
+		sandboxOn                         = t.s.sandboxOffered()
 	)
 	parallel(
 		func() {
-			imageRoute = s.classifyImageTurn(in.streamCtx, in.user, in.thread.ID, in.body.Content, len(in.body.ImageAttachmentIDs) > 0, in.priorMessages)
+			imageRoute = t.s.classifyImageTurn(in.streamCtx, t.user, t.thread.ID, in.body.Content, len(in.body.ImageAttachmentIDs) > 0, in.priorMessages)
 		},
 		func() {
 			if freshlyClassified {
-				classified = s.classifyFirstTurn(in.streamCtx, in.user, in.thread.ID, in.userMessage.Content)
+				classified = t.s.classifyFirstTurn(in.streamCtx, t.user, t.thread.ID, t.userMessage.Content)
 			}
 		},
 		// Semantic drift detection: on a continued turn whose sticky category does
@@ -122,29 +139,29 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 			if freshlyClassified || categoryGrantsCodingDocs(category) {
 				return
 			}
-			driftInference := llm.InferenceMetadata{UserID: in.user.ID, Username: in.user.Username, ThreadID: in.thread.ID, Purpose: "classify_drift", Round: 1}
+			driftInference := llm.InferenceMetadata{UserID: t.user.ID, Username: t.user.Username, ThreadID: t.thread.ID, Purpose: "classify_drift", Round: 1}
 			driftCtx, cancelDrift := context.WithTimeout(in.streamCtx, turnGateTimeout)
 			defer cancelDrift()
-			turnCategory, _ = s.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), in.userMessage.Content)
+			turnCategory, _ = t.s.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)
 		},
-		func() { userContext = s.userContextForUser(in.reqCtx, in.user.ID) },
-		func() { projectContext = s.projectContextForThread(in.reqCtx, in.user.ID, in.thread) },
+		func() { userContext = t.s.userContextForUser(in.reqCtx, t.user.ID) },
+		func() { projectContext = t.s.projectContextForThread(in.reqCtx, t.user.ID, t.thread) },
 		// run_python's guidance travels with the tool: when the sidecar is
 		// off, the prompt never mentions it.
 		func() {
 			if sandboxOn {
-				sandboxGuidance = s.sandboxGuidance(in.reqCtx, in.user.ID, in.thread, in.body.DocumentAttachmentIDs)
+				sandboxGuidance = t.s.sandboxGuidance(in.reqCtx, t.user.ID, t.thread, in.body.DocumentAttachmentIDs)
 			}
 		},
 		func() {
 			var inlinedDocIDs, knowledgeInlinedIDs map[string]bool
 			var attachmentSources []citation
 			var inlinedAll bool
-			documentContext, inlinedDocIDs, attachmentSources = s.documentInlineContext(in.turnCtx, in.user.ID, in.thread, in.body.DocumentAttachmentIDs, docIdx)
-			knowledgeContext, knowledgeInlinedIDs, knowledgeSources, inlinedAll = s.knowledgeInlineContext(in.turnCtx, in.user.ID, in.thread, inlinedDocIDs, docIdx)
+			documentContext, inlinedDocIDs, attachmentSources = t.s.documentInlineContext(in.turnCtx, t.user.ID, t.thread, in.body.DocumentAttachmentIDs, docIdx)
+			knowledgeContext, knowledgeInlinedIDs, knowledgeSources, inlinedAll = t.s.knowledgeInlineContext(in.turnCtx, t.user.ID, t.thread, inlinedDocIDs, docIdx)
 			if !inlinedAll {
 				ragExclude := mergeDocIDSets(inlinedDocIDs, knowledgeInlinedIDs)
-				ragContext, ragSources := s.knowledgeContextForThread(in.turnCtx, in.user.ID, in.thread, in.userMessage.Content, ragExclude, docIdx)
+				ragContext, ragSources := t.s.knowledgeContextForThread(in.turnCtx, t.user.ID, t.thread, t.userMessage.Content, ragExclude, docIdx)
 				knowledgeContext = joinNonEmptyBlocks(knowledgeContext, ragContext)
 				knowledgeSources = append(knowledgeSources, ragSources...)
 			}
@@ -161,20 +178,26 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		if imageArtifactRequired {
 			category = string(classifier.ImageGeneration)
 		}
-		s.persistThreadCategory(context.WithoutCancel(in.reqCtx), in.user, in.thread.ID, category)
+		t.s.persistThreadCategory(context.WithoutCancel(in.reqCtx), t.user, t.thread.ID, category)
 	}
 
-	gate := newToolGate(category, turnCategory, in.userMessage.Content)
+	gate := newToolGate(category, turnCategory, t.userMessage.Content)
 	gate.sandbox = sandboxOn
 	fileToolGuidance := ""
 	if gate.docgenEnabled() {
 		fileToolGuidance = fileToolGuardrailPrompt
 	}
 	if len(knowledgeSources) > 0 {
-		_ = in.stream.Send("knowledge_sources", map[string]any{"sources": knowledgeSources})
+		_ = t.stream.Send("knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
-	toolGuidance := joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance)
-	history := buildLLMHistory(in.user, toolGuidance, classifier.Block(category), userContext, projectContext, knowledgeContext, documentContext, in.priorMessages, in.userMessage)
+	history := buildLLMHistory(t.user, promptBlocks{
+		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance),
+		classifier:   classifier.Block(category),
+		user:         userContext,
+		project:      projectContext,
+		knowledge:    knowledgeContext,
+		document:     documentContext,
+	}, in.priorMessages, t.userMessage)
 	// editSourceID is the image whose original pixels are forwarded to the image
 	// model for direct editing (image-to-image). Defaults to the photo the user
 	// attached this turn; the follow-up branch below sets it to a reused prior image.
@@ -191,9 +214,9 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	// explicit attachment (handled above) whose failure is surfaced to the user.
 	if len(imageParts) == 0 && imageRoute.reuseSource {
 		if sourceID := latestImageArtifactID(in.priorMessages); sourceID != "" {
-			if parts, partsErr := s.imageContentParts(in.reqCtx, in.user.ID, in.userMessage.Content, []string{sourceID}); partsErr != nil {
+			if parts, partsErr := t.s.imageContentParts(in.reqCtx, t.user.ID, t.userMessage.Content, []string{sourceID}); partsErr != nil {
 				slog.Warn("auto-attach of prior image failed; continuing without source image",
-					"thread_id", in.thread.ID, "artifact_id", sourceID, "err", partsErr)
+					"thread_id", t.thread.ID, "artifact_id", sourceID, "err", partsErr)
 			} else {
 				imageParts = parts
 				editSourceID = sourceID
@@ -210,9 +233,9 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 	// the source image.
 	var editSource *editImageSource
 	if imageArtifactRequired && editSourceID != "" {
-		if src, ok, srcErr := s.loadEditSourceImage(in.reqCtx, in.user.ID, editSourceID); srcErr != nil {
+		if src, ok, srcErr := t.s.loadEditSourceImage(in.reqCtx, t.user.ID, editSourceID); srcErr != nil {
 			slog.Warn("load edit source image failed; generating without source image",
-				"thread_id", in.thread.ID, "artifact_id", editSourceID, "err", srcErr)
+				"thread_id", t.thread.ID, "artifact_id", editSourceID, "err", srcErr)
 		} else if ok {
 			editSource = &src
 		}

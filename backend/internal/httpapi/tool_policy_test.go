@@ -180,7 +180,7 @@ func TestFileToolGuardrailTracksDocgenGating(t *testing.T) {
 		return ""
 	}
 	systemPrompt := func(gate toolGate) string {
-		history := buildLLMHistory(user, guidanceFor(gate), "", "", "", "", "", nil, newMsg)
+		history := buildLLMHistory(user, promptBlocks{toolGuidance: guidanceFor(gate)}, nil, newMsg)
 		return history[0].Content
 	}
 

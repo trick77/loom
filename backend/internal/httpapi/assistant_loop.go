@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/loom/internal/auth"
-	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 )
@@ -61,25 +59,24 @@ type assistantLoopResult struct {
 	WebSources []webSource
 }
 
-// userPrompt is the user's own message text for this turn, used only by the
-// required-image path: the last history message's Content is blanked when image
-// parts are attached, so the raw text is not recoverable from history there.
-func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool, userPrompt string, sourceIndexOffset int) (out assistantLoopResult, outErr error) {
-	tools := s.availableTools(thread, gate)
+// runAssistantLoop answers the turn from history, running tool rounds as the
+// model asks for them, then a forced final answer if the rounds run out.
+func (t *turnRun) runAssistantLoop(ctx context.Context, history []llm.Message) (out assistantLoopResult, outErr error) {
+	tools := t.s.availableTools(t.thread, t.plan.gate)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
-		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
-		b.addResult(titles, result)
+		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)
+		b.addResult(t.titles, result)
 		if persistInterruptedPartial(result, err) {
 			return b.result(result, nil, ""), nil
 		}
 		return b.result(result, nil, ""), err
 	}
-	if imageArtifactRequired {
+	if t.plan.imageRoute.generate {
 		if imageTool := findGenerateImageTool(tools); imageTool != nil {
-			return s.runRequiredImageAssistantLoop(ctx, stream, titles, history, inference, user, thread, *imageTool, editSource, typography, userPrompt)
+			return t.runRequiredImageAssistantLoop(ctx, history, *imageTool)
 		}
-		slog.Warn("image artifact required but generate_image tool is unavailable", "thread_id", thread.ID, "tools", len(tools))
+		slog.Warn("image artifact required but generate_image tool is unavailable", "thread_id", t.thread.ID, "tools", len(tools))
 	}
 
 	toolRan := false
@@ -99,7 +96,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 	// numbered before the loop. A snapshot is pushed to the browser after every
 	// round (see the web_sources event below) so inline markers resolve while the
 	// answer streams; the same sources are also persisted with the message.
-	reg := newWebSourceRegistryAfter(sourceIndexOffset)
+	reg := newWebSourceRegistryAfter(t.plan.sourceCount)
 	// Stamp gathered sources onto every subsequent return (natural answer, forced
 	// final, interrupted partial) in one place. The tool-less/image fast paths
 	// return above this and never gather web sources.
@@ -112,18 +109,18 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 	// this prefix.
 	initialHistoryLen := len(history)
 	for round := 1; round <= maxToolRounds; round++ {
-		result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat_tool_round", round), tools)
+		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat_tool_round", round), tools)
 		if err != nil {
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, llm.ErrStreamStalled) {
 				return assistantLoopResult{}, err
 			}
-			b.addResult(titles, result)
+			b.addResult(t.titles, result)
 			if b.keepInterrupted(&result, err, artifacts) {
 				return b.result(result, artifacts, ""), nil
 			}
 			return assistantLoopResult{}, err
 		}
-		b.addResult(titles, result)
+		b.addResult(t.titles, result)
 		if len(result.ToolCalls) == 0 {
 			// A normal textual answer ends the loop. But if the model stops
 			// after running tools without producing any text, fall through to a
@@ -191,7 +188,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 		// The round's independent web reads start now and overlap; everything
 		// below still handles the calls one at a time, in the model's order.
 		runsCtx, cancelRuns := context.WithCancel(ctx)
-		runs := s.startToolRuns(runsCtx, result.ToolCalls, deferred)
+		runs := t.s.startToolRuns(runsCtx, result.ToolCalls, deferred)
 		lastRoundDeferred = false
 		for i, call := range result.ToolCalls {
 			var output string
@@ -211,7 +208,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 			} else {
 				var created []artifactResponse
 				var handled bool
-				output, created, handled = s.executeBuiltInTool(ctx, stream, user, thread, call, editSource, typography)
+				output, created, handled = t.executeBuiltInTool(ctx, call)
 				if handled {
 					for _, response := range created {
 						artifacts = append(artifacts, response)
@@ -221,12 +218,12 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 						imageGenerated = true
 					}
 				} else if runs[i] != nil {
-					output = s.finishToolCall(ctx, user, call, round, reg, <-runs[i])
+					output = t.finishToolCall(ctx, call, round, reg, <-runs[i])
 				} else {
-					output = s.executeToolCall(ctx, user, call, round, reg)
+					output = t.s.executeToolCall(ctx, t.user, call, round, reg)
 				}
 			}
-			if err := stream.Send("tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+			if err := t.stream.Send("tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				cancelRuns()
 				return assistantLoopResult{}, err
 			}
@@ -253,7 +250,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 		// the result (above), and stream.Send is sequential — so the snapshot
 		// always reaches the browser before the deltas that reference it.
 		if reg.len() > 0 {
-			if err := stream.Send("web_sources", webSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
+			if err := t.stream.Send("web_sources", webSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
 				return assistantLoopResult{}, err
 			}
 		}
@@ -286,8 +283,8 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 		}
 		finalHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: directive})
 	}
-	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, finalAnswerInference(inference, "chat_final", maxToolRounds+1), nil)
-	b.addResult(titles, result)
+	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), finalHistory, finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
+	b.addResult(t.titles, result)
 	if b.keepInterrupted(&result, err, artifacts) {
 		return b.result(result, artifacts, ""), nil
 	}
@@ -300,8 +297,8 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 		if !ok {
 			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}
-		result, err = s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, finalRetryInference(inference, result), nil)
-		b.addResult(titles, result)
+		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), retryHistory, finalRetryInference(t.inference, result), nil)
+		b.addResult(t.titles, result)
 		if b.keepInterrupted(&result, err, artifacts) {
 			return b.result(result, artifacts, ""), nil
 		}
@@ -322,9 +319,11 @@ func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *r
 // clear message rather than an empty bubble.
 const finalAnswerFallback = "I couldn't put together a final answer from the information gathered. Please try rephrasing or narrowing your question."
 
-func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool, editSource *editImageSource, typography bool, userPrompt string) (assistantLoopResult, error) {
+// runRequiredImageAssistantLoop answers an image turn: a prompt-compiler round
+// that must call imageTool, the image call itself, then a brief final answer.
+func (t *turnRun) runRequiredImageAssistantLoop(ctx context.Context, history []llm.Message, imageTool llm.Tool) (assistantLoopResult, error) {
 	compilerPrompt := imagePromptCompilerSystemPrompt
-	if editSource != nil && len(editSource.Data) > 0 {
+	if editSource := t.plan.editSource; editSource != nil && len(editSource.Data) > 0 {
 		// The source image is forwarded to the model directly, so the compiler must
 		// write a concise editing instruction describing only the desired
 		// transformation — re-describing the scene would reintroduce the detail loss
@@ -336,11 +335,11 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream Emitt
 		Content: compilerPrompt,
 	})
 	b := &blockBuilder{}
-	result, err := s.streamAssistantTurnSuppressingContent(ctx, stream, titles, b.nextReasoningID(), compilerHistory, inferenceWithPurpose(inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
+	result, err := t.streamAssistantTurnSuppressingContent(ctx, b.nextReasoningID(), compilerHistory, inferenceWithPurpose(t.inference, "image_prompt_compiler", 1), []llm.Tool{imageTool})
 	// The compiler turn's content is deliberately suppressed (it is the internal
 	// prompt-compiler output, never shown), so add only its reasoning/tool events
 	// — adding its prose would leak hidden text into the timeline.
-	b.addTraceOnlyResult(titles, result)
+	b.addTraceOnlyResult(t.titles, result)
 	if err != nil {
 		return assistantLoopResult{}, err
 	}
@@ -357,19 +356,21 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream Emitt
 		}
 	}
 	if !compiled {
-		fallback, ok := fallbackImageToolCall(userPrompt)
+		// The user's own text comes from the stored message, not history: the last
+		// history message's Content is blanked when image parts are attached.
+		fallback, ok := fallbackImageToolCall(t.userMessage.Content)
 		if !ok {
 			return b.result(result, nil, ""), nil
 		}
 		slog.Warn("image prompt compiler produced no usable tool call; generating from the user's own text",
-			"thread_id", thread.ID, "tool_calls", len(result.ToolCalls))
+			"thread_id", t.thread.ID, "tool_calls", len(result.ToolCalls))
 		call = fallback
 		// Nothing announced this call: it was synthesized here rather than streamed,
 		// so neither the browser nor the trace has seen it. Announce it exactly as a
 		// streamed call would be, or the tool_result below refers to a step that
 		// does not exist on either side.
 		b.addTraceEvent(toolCallEvent(call))
-		if err := stream.Send("tool_call", toolCallResponse{
+		if err := t.stream.Send("tool_call", toolCallResponse{
 			ID:        call.ID,
 			Name:      call.Function.Name,
 			Arguments: call.Function.Arguments,
@@ -381,11 +382,11 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream Emitt
 		Role:      "assistant",
 		ToolCalls: []llm.ToolCall{call},
 	})
-	output, created, handled := s.executeBuiltInTool(ctx, stream, user, thread, call, editSource, typography)
+	output, created, handled := t.executeBuiltInTool(ctx, call)
 	if !handled {
 		output = capToolOutput("tool failed: generate_image is not available")
 	}
-	if err := stream.Send("tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+	if err := t.stream.Send("tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 		return assistantLoopResult{}, err
 	}
 	b.setToolResult(call.ID, output)
@@ -404,8 +405,8 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream Emitt
 		Role:    "system",
 		Content: "Provide a brief final response that refers to the created artifact. Do not call any more tools. Never claim an image was created unless the tool result confirms an artifact.",
 	})
-	final, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), finalHistory, inferenceWithPurpose(inference, "image_final", 2), nil)
-	b.addResult(titles, final)
+	final, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), finalHistory, inferenceWithPurpose(t.inference, "image_final", 2), nil)
+	b.addResult(t.titles, final)
 	if b.keepInterrupted(&final, err, artifacts) {
 		return b.result(final, artifacts, ""), nil
 	}
@@ -500,9 +501,9 @@ func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, arti
 // path exactly: with no tools there are no persistence-capable side effects (no
 // artifacts, no directive/memory writes), which is what lets an incognito turn
 // answer while writing nothing.
-func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata) (assistantLoopResult, error) {
+func (t *turnRun) runIncognitoAssistantTurn(ctx context.Context, history []llm.Message) (assistantLoopResult, error) {
 	b := &blockBuilder{}
-	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
+	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)
 	// Safety net: a tool-eager model may still emit an inline tool call
 	// despite the no-tool prompt. The parser strips that markup — whether it
 	// recovers a call or the markup is truncated/malformed and none is recovered —
@@ -512,11 +513,11 @@ func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream Emitter, 
 	if err == nil && strings.TrimSpace(result.Content) == "" {
 		slog.Info("incognito turn produced no answer text; retrying tool-free", "recovered_tool_calls", len(result.ToolCalls))
 		retryHistory := append(append([]llm.Message(nil), history...), llm.Message{Role: "user", Content: incognitoDirectAnswerNudge})
-		if retryResult, retryErr := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), retryHistory, incognitoRetryInference(inference, result), nil); retryErr == nil && strings.TrimSpace(retryResult.Content) != "" {
+		if retryResult, retryErr := t.streamAssistantTurn(ctx, b.nextReasoningID(), retryHistory, incognitoRetryInference(t.inference, result), nil); retryErr == nil && strings.TrimSpace(retryResult.Content) != "" {
 			result = retryResult
 		}
 	}
-	b.addResult(titles, result)
+	b.addResult(t.titles, result)
 	if persistInterruptedPartial(result, err) {
 		return b.result(result, nil, ""), nil
 	}
@@ -545,19 +546,19 @@ func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamRes
 }
 
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
-// tool-call events to the SSE stream. titles/reasoningID let it spawn the
+// tool-call events to the SSE stream. t.titles/reasoningID let it spawn the
 // reasoning abstract while the model is still reasoning (see
 // reasoningTitleStartBytes), or at the latest when it starts answering or
 // calling a tool, so the title overlaps the turn instead of trailing it.
-func (s *server) streamAssistantTurn(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
-	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, true)
+func (t *turnRun) streamAssistantTurn(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+	return t.streamAssistantTurnWithContentStreaming(ctx, reasoningID, history, meta, tools, true)
 }
 
-func (s *server) streamAssistantTurnSuppressingContent(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
-	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, false)
+func (t *turnRun) streamAssistantTurnSuppressingContent(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+	return t.streamAssistantTurnWithContentStreaming(ctx, reasoningID, history, meta, tools, false)
 }
 
-func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
+func (t *turnRun) streamAssistantTurnWithContentStreaming(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
 	callCtx := llm.WithInferenceMetadata(ctx, meta)
 	var reasoningBuf strings.Builder
 	titleSpawned := false
@@ -571,7 +572,7 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 			return
 		}
 		titleSpawned = true
-		titleDone = titles.spawn(reasoningID, reasoningBuf.String())
+		titleDone = t.titles.spawn(reasoningID, reasoningBuf.String())
 	}
 	// The title is what the reader looks at while the answer is on its way, so
 	// it goes out before the first answer word, never after. A short thinker
@@ -596,9 +597,9 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 			return ctx.Err()
 		}
 	}
-	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
+	return t.s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
-			if err := stream.Send("assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
+			if err := t.stream.Send("assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
 				return err
 			}
 			// The buffer only feeds the title, so it stops growing once that is spawned.
@@ -612,18 +613,18 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 		}
 		if event.ToolPending {
 			spawnTitle()
-			return stream.Send("tool_pending", struct{}{})
+			return t.stream.Send("tool_pending", struct{}{})
 		}
 		if event.Delta != "" && streamContent {
 			spawnTitle()
 			if err := awaitTitle(); err != nil {
 				return err
 			}
-			return stream.Send("assistant_delta", streamDeltaResponse{Content: event.Delta})
+			return t.stream.Send("assistant_delta", streamDeltaResponse{Content: event.Delta})
 		}
 		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
 			spawnTitle()
-			return stream.Send("tool_call", toolCallResponse{
+			return t.stream.Send("tool_call", toolCallResponse{
 				ID:        event.ToolCall.ID,
 				Name:      event.ToolCall.Function.Name,
 				Arguments: event.ToolCall.Function.Arguments,
