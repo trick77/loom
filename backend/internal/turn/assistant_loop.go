@@ -60,7 +60,8 @@ type LoopResult struct {
 // rounds run out.
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
 	history := t.plan.history
-	tools := t.e.availableTools(t.thread, t.plan.gate)
+	tools, offered := t.e.offerTools(t.thread, t.plan.gate)
+	t.offered = offered
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)

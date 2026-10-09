@@ -31,6 +31,9 @@ type Run struct {
 	userMessage chat.Message
 	// plan is what Prepare assembled for the assistant loop.
 	plan turnPlan
+	// offered is the built-ins the assistant loop offered, by name; dispatch
+	// runs a built-in only through it (see offerTools).
+	offered map[string]*toolSpec
 	// acc sums every model call of the turn; start times its wall clock.
 	acc   *llm.UsageAccumulator
 	start time.Time

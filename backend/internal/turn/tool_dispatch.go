@@ -202,7 +202,7 @@ func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, argumen
 	return capToolOutput(prependURLSource(url, snapshot, reg)), true
 }
 
-// availableTools assembles the tool set injected into the prompt for this turn:
+// offerTools assembles the tool set injected into the prompt for this turn:
 // the built-ins the registry offers, then the MCP tools. The always-on core
 // (cross-thread memory, directives, web search) is offered unconditionally; the
 // heavier optional groups are gated by the turn's toolGate so a simple turn no
@@ -210,12 +210,16 @@ func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, argumen
 // use. gate is a widen-only signal, so gating can only omit tools the turn is
 // unlikely to need — never one the model has already been told to use. Called
 // once per turn (not per round); the trimmed set is reused across all tool
-// rounds.
-func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
+// rounds. It also returns the offered built-ins by name, the only way dispatch
+// runs a built-in (see executeBuiltInTool). A name both claim stays the
+// built-in's.
+func (s *Engine) offerTools(thread chat.Thread, gate toolGate) ([]llm.Tool, map[string]*toolSpec) {
 	tools := []llm.Tool(nil)
+	builtIns := map[string]*toolSpec{}
 	names := map[string]string{}
 	specs, _ := s.registry()
-	for _, spec := range specs {
+	for i := range specs {
+		spec := &specs[i]
 		if spec.offered != nil && !spec.offered(s, thread, gate) {
 			continue
 		}
@@ -226,6 +230,7 @@ func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 			continue
 		}
 		names[tool.Function.Name] = "built_in"
+		builtIns[tool.Function.Name] = spec
 		tools = append(tools, tool)
 	}
 	if s.mcp != nil {
@@ -248,7 +253,7 @@ func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 			tools = append(tools, tool)
 		}
 	}
-	return tools
+	return tools, builtIns
 }
 
 func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
@@ -263,10 +268,11 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 
 // executeBuiltInTool runs a tool loom implements itself. It returns the
 // model-facing output, the artifacts the call created (run_python can write
-// several) and whether the name was a built-in at all.
+// several) and whether the call was a built-in's. Only a built-in this turn
+// offered under the name runs, so a call reaches the tool whose definition the
+// model saw; any other name is left to MCP.
 func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string, []artifact.Response, bool) {
-	_, byName := t.e.registry()
-	spec := byName[call.Function.Name]
+	spec := t.offered[call.Function.Name]
 	if spec == nil || spec.run == nil {
 		return "", nil, false
 	}
