@@ -3,6 +3,7 @@ package turn
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
@@ -32,6 +33,10 @@ type Engine struct {
 	// read_project_threads tool.
 	projectSummaryTokenBudget int
 	memory                    Memory
+	// reasoningTitleHold and reasoningTitleStartBytes tune the reasoning title
+	// timing; zero means the default (see titleHold, titleStartBytes).
+	reasoningTitleHold       time.Duration
+	reasoningTitleStartBytes int
 }
 
 // Config is what New builds an Engine from. Nil stores and services turn the
@@ -61,6 +66,12 @@ type Config struct {
 	ProjectSummaryTokenBudget int
 	// Memory supplies the user and project context; required.
 	Memory Memory
+	// ReasoningTitleHold bounds how long the first answer word waits for its
+	// round's reasoning title; ReasoningTitleStartBytes is how much reasoning
+	// must have streamed before that title generates. Zero keeps the defaults;
+	// tests shorten them.
+	ReasoningTitleHold       time.Duration
+	ReasoningTitleStartBytes int
 }
 
 // New builds an Engine from c.
@@ -81,6 +92,8 @@ func New(c Config) *Engine {
 		knowledgeInlineTokenBudget: c.KnowledgeInlineTokenBudget,
 		projectSummaryTokenBudget:  c.ProjectSummaryTokenBudget,
 		memory:                     c.Memory,
+		reasoningTitleHold:         c.ReasoningTitleHold,
+		reasoningTitleStartBytes:   c.ReasoningTitleStartBytes,
 	}
 }
 

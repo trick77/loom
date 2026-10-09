@@ -552,7 +552,7 @@ func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamRes
 // streamAssistantTurn runs one model turn, relaying reasoning/content deltas and
 // tool-call events to the SSE stream. t.titles/reasoningID let it spawn the
 // reasoning abstract while the model is still reasoning (see
-// ReasoningTitleStartBytes), or at the latest when it starts answering or
+// defaultReasoningTitleStartBytes), or at the latest when it starts answering or
 // calling a tool, so the title overlaps the turn instead of trailing it.
 func (t *Run) streamAssistantTurn(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
 	return t.streamAssistantTurnWithContentStreaming(ctx, reasoningID, history, meta, tools, true)
@@ -567,7 +567,7 @@ func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reaso
 	var reasoningBuf strings.Builder
 	titleSpawned := false
 	var titleDone <-chan struct{}
-	// Called once ReasoningTitleStartBytes of reasoning have streamed, and at
+	// Called once titleStartBytes of reasoning have streamed, and at
 	// the reasoning->content (or reasoning->tool) boundary for a round that
 	// never got that far. The first call wins; the title names the subject,
 	// which the opening of the reasoning already carries.
@@ -583,14 +583,14 @@ func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reaso
 	// finishes reasoning ~2.7s before its title call returns,
 	// and the answer used to overtake it. Blocking here is safe: llmwire's
 	// reader never blocks on its consumer, so the deltas queue and the idle
-	// guard keeps measuring the model. ReasoningTitleHold bounds the wait.
+	// guard keeps measuring the model. titleHold bounds the wait.
 	awaitTitle := func() error {
 		if titleDone == nil {
 			return nil
 		}
 		done := titleDone
 		titleDone = nil
-		hold := time.NewTimer(ReasoningTitleHold)
+		hold := time.NewTimer(t.e.titleHold())
 		defer hold.Stop()
 		select {
 		case <-done:
@@ -609,7 +609,7 @@ func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reaso
 			// The buffer only feeds the title, so it stops growing once that is spawned.
 			if !titleSpawned {
 				reasoningBuf.WriteString(event.ReasoningDelta)
-				if reasoningBuf.Len() >= ReasoningTitleStartBytes {
+				if reasoningBuf.Len() >= t.e.titleStartBytes() {
 					spawnTitle()
 				}
 			}

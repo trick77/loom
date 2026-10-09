@@ -224,18 +224,17 @@ func TestStreamMessageSendsReasoningTitleBeforeFirstAnswerDelta(t *testing.T) {
 	}
 }
 
-// A title call that hangs holds the answer for turn.ReasoningTitleHold, then the
+// A title call that hangs holds the answer for Deps.ReasoningTitleHold, then the
 // answer goes out without it.
 func TestStreamMessageAnswerNotHeldPastReasoningTitleHold(t *testing.T) {
-	defer func(prev time.Duration) { turn.ReasoningTitleHold = prev }(turn.ReasoningTitleHold)
-	turn.ReasoningTitleHold = 50 * time.Millisecond
 	gate := make(chan struct{})
 	store := &fakeThreadStore{
 		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	streamText := "Answer."
 	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
-		Thread: store,
+		ReasoningTitleHold: 50 * time.Millisecond,
+		Thread:             store,
 		LLM: fakeChatClient{
 			StreamText:         &streamText,
 			ReasoningText:      "Short thought.",
@@ -388,11 +387,6 @@ func TestStreamMessageBooksWorkingTitleCost(t *testing.T) {
 // not wait for the model to stop thinking: once enough reasoning has streamed
 // to name the subject, the title generates from it while the model thinks on.
 func TestStreamMessageSendsReasoningTitleWhileStillReasoning(t *testing.T) {
-	// A cleanup registered first runs last: after srv.Close has waited out the
-	// handler that reads the threshold.
-	prev := turn.ReasoningTitleStartBytes
-	t.Cleanup(func() { turn.ReasoningTitleStartBytes = prev })
-	turn.ReasoningTitleStartBytes = 20
 	hold := make(chan struct{})
 	var release sync.Once
 	seen := make(chan string, 4)
@@ -401,7 +395,8 @@ func TestStreamMessageSendsReasoningTitleWhileStillReasoning(t *testing.T) {
 	}
 	streamText := "Answer."
 	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
-		Thread: store,
+		ReasoningTitleStartBytes: 20,
+		Thread:                   store,
 		LLM: fakeChatClient{
 			StreamText:         &streamText,
 			ReasoningDeltas:    []string{"The user asks why the sky is blue.", " Rayleigh scattering explains it."},
@@ -1435,16 +1430,15 @@ func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
 
 // A reasoning-title call still in flight when the turn fails (it goes to the
 // same dead upstream) must not hold the error back; its cost is booked later.
-// The first answer word waits for the title, but only for turn.ReasoningTitleHold.
+// The first answer word waits for the title, but only for Deps.ReasoningTitleHold.
 func TestStreamMessageFailedTurnErrorDoesNotWaitForReasoningTitles(t *testing.T) {
-	defer func(prev time.Duration) { turn.ReasoningTitleHold = prev }(turn.ReasoningTitleHold)
-	turn.ReasoningTitleHold = 50 * time.Millisecond
 	gate := make(chan struct{})
 	store := &fakeThreadStore{
 		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
-		Thread: store,
+		ReasoningTitleHold: 50 * time.Millisecond,
+		Thread:             store,
 		LLM: fakeChatClient{
 			ReasoningText:      "Let me think about this.",
 			ReasoningTitle:     "Thinking",

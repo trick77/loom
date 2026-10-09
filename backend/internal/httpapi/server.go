@@ -64,6 +64,10 @@ type Deps struct {
 	// Background owns the goroutines that outlive a request (post-turn memory
 	// refreshes). nil means a group nobody stops, which is what tests want.
 	Background *background.Group
+	// ReasoningTitleHold and ReasoningTitleStartBytes tune the reasoning title
+	// timing (see turn.Config); zero keeps the defaults, tests shorten them.
+	ReasoningTitleHold       time.Duration
+	ReasoningTitleStartBytes int
 }
 
 type server struct {
@@ -179,6 +183,8 @@ func newServer(d Deps) *server {
 		KnowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
 		ProjectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
 		Memory:                     engineMemory{s: s},
+		ReasoningTitleHold:         d.ReasoningTitleHold,
+		ReasoningTitleStartBytes:   d.ReasoningTitleStartBytes,
 	})
 	return s
 }

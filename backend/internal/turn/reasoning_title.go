@@ -15,21 +15,38 @@ import (
 // client has no timeout, so without this a hung title call would stall delivery.
 const reasoningTitleTimeout = 10 * time.Second
 
-// ReasoningTitleHold bounds how long the first answer word waits for its
-// round's title (see streamAssistantTurnWithContentStreaming). Measured on a
-// short thinker the title lands ~2.7s after reasoning ends; a title call on a
+// defaultReasoningTitleHold bounds how long the first answer word waits for
+// its round's title (see streamAssistantTurnWithContentStreaming). Measured on
+// a short thinker the title lands ~2.7s after reasoning ends; a title call on a
 // dead upstream must not hold the answer, or the turn's error, much past that.
-// A var so tests can shorten it.
-var ReasoningTitleHold = 5 * time.Second
+// Config.ReasoningTitleHold overrides it.
+const defaultReasoningTitleHold = 5 * time.Second
 
-// ReasoningTitleStartBytes is how much of a round's reasoning must have
+// defaultReasoningTitleStartBytes is how much of a round's reasoning must have
 // streamed before its title generates. The title names the subject, which the
 // opening of the reasoning already carries, so it need not wait for the model
 // to stop thinking: that wait kept the first sweep line off screen for the
 // whole thinking phase, and past the first answer words whenever the title
-// call was slower than ReasoningTitleHold. A round with less reasoning is
-// titled at its end, as before. A var so tests can shorten it.
-var ReasoningTitleStartBytes = 300
+// call was slower than the hold. A round with less reasoning is titled at its
+// end, as before. Config.ReasoningTitleStartBytes overrides it.
+const defaultReasoningTitleStartBytes = 300
+
+// titleHold is the configured reasoning-title hold, or the default.
+func (s *Engine) titleHold() time.Duration {
+	if s.reasoningTitleHold > 0 {
+		return s.reasoningTitleHold
+	}
+	return defaultReasoningTitleHold
+}
+
+// titleStartBytes is the configured reasoning-title start threshold, or the
+// default.
+func (s *Engine) titleStartBytes() int {
+	if s.reasoningTitleStartBytes > 0 {
+		return s.reasoningTitleStartBytes
+	}
+	return defaultReasoningTitleStartBytes
+}
 
 // ReasoningTitleTracker generates a short abstract title for each reasoning
 // round in the background. Titles are emitted over SSE as they become ready and
